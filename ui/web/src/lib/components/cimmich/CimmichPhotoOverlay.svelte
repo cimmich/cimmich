@@ -2975,12 +2975,12 @@
         evidence = refreshed.evidence;
         bundle = refreshed.bundle;
       }
+      stopTagging();
       manualTagActionMessage =
         result.status === 'restored'
           ? `${result.tag.subject.displayName} tag restored`
           : `${result.tag.subject.displayName} tag removed`;
       manualTagUndoDecisionId = '';
-      closeManualTagEditor();
     } catch (error) {
       manualTagSaveError = error instanceof Error ? error.message : 'Unable to undo this tag';
     } finally {

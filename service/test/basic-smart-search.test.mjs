@@ -217,6 +217,111 @@ test("Basic Smart Search keeps AND semantics across distinct matched terms", asy
   );
 });
 
+test("Basic Smart Search does not AND description-only collisions onto an exact subject and place intent", async () => {
+  const search = async ({ candidates, query }) => {
+    const { sql } = fakeSql({
+      assets: [
+        {
+          asset_id: `asset-${query}`,
+          capture_time: new Date("2026-07-01T00:00:00Z"),
+          height: 800,
+          media_kind: "image",
+          mime_type: "image/jpeg",
+          width: 1200,
+        },
+      ],
+      candidates,
+    });
+    return createBasicSmartSearch(sql).search({ query });
+  };
+
+  const juniper = await search({
+    candidates: [
+      {
+        aliases: [],
+        description: "",
+        display_name: "Juniper",
+        entity_id: "pet-juniper",
+        entity_kind: "pet",
+      },
+      {
+        aliases: [],
+        description: "Juniper visits the garden",
+        display_name: "Willow Community Garden",
+        entity_id: "place-willow",
+        entity_kind: "place",
+      },
+      {
+        aliases: [],
+        description: "Juniper rides beside the garden beds",
+        display_name: "Moss",
+        entity_id: "object-moss",
+        entity_kind: "object",
+      },
+      {
+        aliases: [],
+        description: "Juniper joins the garden crew",
+        display_name: "Saturday Garden Crew",
+        entity_id: "event-garden-crew",
+        entity_kind: "event",
+      },
+    ],
+    query: "Juniper at the garden",
+  });
+  assert.deepEqual(
+    juniper.interpretation.selectors.map((selector) => [
+      selector.entityKind,
+      selector.ids,
+      selector.matchKind,
+    ]),
+    [
+      ["pet", ["pet-juniper"], "label"],
+      ["place", ["place-willow"], "description"],
+    ],
+  );
+  assert.deepEqual(juniper.interpretation.unresolvedTerms, []);
+  assert.equal(juniper.items.length, 1);
+
+  const maya = await search({
+    candidates: [
+      {
+        aliases: ["Maya"],
+        description: "",
+        display_name: "Maya Chen",
+        entity_id: "person-maya",
+        entity_kind: "person",
+      },
+      {
+        aliases: [],
+        description: "",
+        display_name: "Cedar House",
+        entity_id: "place-cedar",
+        entity_kind: "place",
+      },
+      {
+        aliases: [],
+        description: "Maya visits Cedar House",
+        display_name: "Cedar House Years",
+        entity_id: "event-cedar-years",
+        entity_kind: "event",
+      },
+    ],
+    query: "Maya at Cedar House",
+  });
+  assert.deepEqual(
+    maya.interpretation.selectors.map((selector) => [
+      selector.entityKind,
+      selector.ids,
+      selector.matchKind,
+    ]),
+    [
+      ["person", ["person-maya"], "label"],
+      ["place", ["place-cedar"], "label"],
+    ],
+  );
+  assert.equal(maya.items.length, 1);
+});
+
 test("Basic Smart Search keeps the longest exact label for one nested span", async () => {
   const { sql } = fakeSql({
     assets: [

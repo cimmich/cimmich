@@ -65,6 +65,17 @@ const required = (options, key, fallback = "") => {
   if (!value) throw fail(`--${key}=... is required`);
   return value;
 };
+const requiredDatabaseUrl = (options) => {
+  if (Object.hasOwn(options, "database-url")) {
+    throw fail(
+      "Supply the database connection through DATABASE_URL, never a command argument",
+      "DOCUMENT_LIFECYCLE_SECRET_TRANSPORT_INVALID",
+    );
+  }
+  const value = String(databaseUrl || "").trim();
+  if (!value) throw fail("DATABASE_URL is required");
+  return value;
+};
 const readDatabaseSchemaVersion = async (sql) => {
   const [row] = await sql`
     SELECT max(version)::int AS schema_version FROM cimmich_schema_migration
@@ -258,7 +269,7 @@ const verify = async (rootValue) => {
 };
 
 const backup = async (options) => {
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   const output = resolve(required(options, "output"));
   if (await exists(output)) throw fail("Backup output already exists");
@@ -351,7 +362,7 @@ const backup = async (options) => {
 
 const restore = async (options) => {
   const input = resolve(required(options, "input"));
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   const manifest = await verify(input);
   const sql = postgres(db, { max: 1, prepare: true });
@@ -433,7 +444,7 @@ const restore = async (options) => {
 };
 
 const exportDocument = async (options) => {
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   const documentId = required(options, "document-id");
   const output = resolve(required(options, "output"));
@@ -516,7 +527,7 @@ const exportDocument = async (options) => {
 };
 
 const repairLegacyDigests = async (options) => {
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   if (required(options, "confirm") !== "repair-schema47-document-digests") {
     throw fail(
@@ -689,7 +700,7 @@ const repairLegacyDigests = async (options) => {
 };
 
 const purge = async (options) => {
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   const documentId = required(options, "document-id");
   if (
@@ -917,7 +928,7 @@ const purge = async (options) => {
 };
 
 const removeEmptyStore = async (options) => {
-  const db = required(options, "database-url", databaseUrl);
+  const db = requiredDatabaseUrl(options);
   const storeRoot = resolve(required(options, "store-root", defaultStoreRoot));
   if (required(options, "confirm") !== "remove-empty-document-store") {
     throw fail("Removal requires --confirm=remove-empty-document-store");

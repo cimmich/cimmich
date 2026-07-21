@@ -15,6 +15,8 @@ const expectedDigest = String(
 const receiptPath = String(
   process.env.CIMMICH_STOCK_BOOTSTRAP_RECEIPT || "",
 ).trim();
+const withOnboardingPeopleFixture =
+  process.env.CIMMICH_STOCK_ONBOARDING_PEOPLE_FIXTURE === "1";
 
 if (
   !apiRoot ||
@@ -93,6 +95,7 @@ assert.equal(typeof upload?.id, "string");
 
 let stableAssetRevision = "";
 let stableObservations = 0;
+let stableAsset = null;
 for (let attempt = 0; attempt < 60; attempt += 1) {
   const assetResponse = await fetch(`${apiRoot}/assets/${upload.id}`, {
     headers: { authorization: `Bearer ${login.accessToken}` },
@@ -117,6 +120,7 @@ for (let attempt = 0; attempt < 60; attempt += 1) {
     Number.isInteger(asset.height) &&
     asset.height > 0
   ) {
+    stableAsset = asset;
     break;
   }
   await new Promise((resolve) => setTimeout(resolve, 1_000));
@@ -125,6 +129,34 @@ assert.ok(
   stableObservations >= 5,
   "Stock Immich asset revision did not quiesce",
 );
+
+if (withOnboardingPeopleFixture) {
+  assert.ok(stableAsset, "Stock Immich asset geometry is unavailable");
+  const namedPerson = await requestJson("/people", {
+    body: { name: "Named Stock Fixture" },
+    token: login.accessToken,
+  });
+  const unnamedPerson = await requestJson("/people", {
+    body: {},
+    token: login.accessToken,
+  });
+  for (const [index, person] of [namedPerson, unnamedPerson].entries()) {
+    assert.equal(typeof person?.id, "string");
+    await requestJson("/faces", {
+      body: {
+        assetId: upload.id,
+        height: Math.max(40, Math.floor(stableAsset.height * 0.18)),
+        imageHeight: stableAsset.height,
+        imageWidth: stableAsset.width,
+        personId: person.id,
+        width: Math.max(40, Math.floor(stableAsset.width * 0.14)),
+        x: Math.floor(stableAsset.width * (0.12 + index * 0.35)),
+        y: Math.floor(stableAsset.height * 0.18),
+      },
+      token: login.accessToken,
+    });
+  }
+}
 
 const limitedMutation = await fetch(`${apiRoot}/assets/${upload.id}`, {
   method: "PUT",
@@ -146,6 +178,9 @@ await writeFile(
     fixtureSha256: fixtureDigest,
     immichVersion: "3.0.3",
     permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
+    peopleFixture: withOnboardingPeopleFixture
+      ? { labelled: 1, unlabelled: 1 }
+      : null,
     stableAssetRevision: createHash("sha256")
       .update(stableAssetRevision)
       .digest("hex"),
@@ -161,6 +196,9 @@ process.stdout.write(
     fixtureSha256: fixtureDigest,
     immichVersion: "3.0.3",
     limitedKeyMutationDenied: true,
+    peopleFixture: withOnboardingPeopleFixture
+      ? { labelled: 1, unlabelled: 1 }
+      : null,
     permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
     stableAssetObservations: stableObservations,
     status: "READY",

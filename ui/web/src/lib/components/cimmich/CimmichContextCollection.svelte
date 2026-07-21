@@ -24,40 +24,35 @@
   } from '@mdi/js';
   import {
     contextEventYear,
-    contextFamilyEyebrows,
     contextFamilyLabels,
     contextPlaceHierarchy,
     contextPlaceMapProjection,
     contextTypeDescription,
-    eventTypeFilters,
     formatContextDatePrecision,
-    groupContextEventsByYear,
     humanizeContextKind,
-    objectTypeFilters,
     sortContextEntities,
     type ContextTypeFilter,
   } from './context-entity-presentation';
 
   interface Props {
-    description: string;
+    controlledTypeFilter?: ContextTypeFilter;
     entities: CimmichContextEntity[];
     family: CimmichContextFamily;
     onAdd: () => void;
     onOpen: (entity: CimmichContextEntity) => void;
   }
 
-  let { description, entities, family, onAdd, onOpen }: Props = $props();
+  let { controlledTypeFilter, entities, family, onAdd, onOpen }: Props = $props();
   let activeTypeFilter = $state<ContextTypeFilter>('all');
   let placeView = $state<'atlas' | 'list'>('list');
 
-  const filters = $derived(family === 'events' ? eventTypeFilters : family === 'objects' ? objectTypeFilters : []);
+  const effectiveTypeFilter = $derived(controlledTypeFilter ?? activeTypeFilter);
   const filteredEntities = $derived(
     sortContextEntities(
-      activeTypeFilter === 'all' ? entities : entities.filter((entity) => entity.typeKind === activeTypeFilter),
+      effectiveTypeFilter === 'all' ? entities : entities.filter((entity) => entity.typeKind === effectiveTypeFilter),
       family,
     ),
   );
-  const eventGroups = $derived(groupContextEventsByYear(filteredEntities));
   const placeProjection = $derived(contextPlaceMapProjection(entities));
   const mappedPlaceCount = $derived(placeProjection.markers.length + placeProjection.areas.length);
 
@@ -106,21 +101,8 @@
 </script>
 
 <section class="pt-7" aria-label={contextFamilyLabels[family]} data-testid={`cimmich-${family}-collection`}>
-  <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">{contextFamilyEyebrows[family]}</p>
-      <p class="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-300">{description}</p>
-      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        {entities.length}
-        {entities.length === 1
-          ? family === 'objects'
-            ? 'thing'
-            : family.slice(0, -1)
-          : contextFamilyLabels[family].toLowerCase()}
-      </p>
-    </div>
-
-    {#if family === 'places'}
+  {#if family === 'places'}
+    <header class="mb-5 flex justify-end">
       <div class="flex rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Places view">
         <button
           class:context-view-active={placeView === 'atlas'}
@@ -137,23 +119,8 @@
           onclick={() => (placeView = 'list')}><Icon icon={mdiViewGridOutline} size="17" /> Places</button
         >
       </div>
-    {:else}
-      <div
-        class="flex max-w-full flex-wrap gap-2 pb-1 sm:flex-nowrap sm:overflow-x-auto"
-        aria-label={`${contextFamilyLabels[family]} type`}
-      >
-        {#each filters as filter (filter.value)}
-          <button
-            class="context-filter-pill"
-            class:context-filter-pill--active={activeTypeFilter === filter.value}
-            type="button"
-            aria-pressed={activeTypeFilter === filter.value}
-            onclick={() => (activeTypeFilter = filter.value)}>{filter.label}</button
-          >
-        {/each}
-      </div>
-    {/if}
-  </header>
+    </header>
+  {/if}
 
   {#if family === 'places' && placeView === 'atlas'}
     <div class="context-atlas-grid">
@@ -232,8 +199,8 @@
               {/if}
             </div>
             <div class="p-4 text-left">
-              <p class="truncate text-base font-semibold">{entity.displayName}</p>
-              <p class="mt-1 truncate text-xs text-gray-500">
+              <p class="line-clamp-2 min-h-12 text-lg/6 font-semibold">{entity.displayName}</p>
+              <p class="mt-1 line-clamp-2 min-h-8 text-xs/4 text-gray-500">
                 {hierarchy.length > 1
                   ? hierarchy.slice(0, -1).join(' / ')
                   : entity.description || contextTypeDescription(entity.typeKind)}
@@ -250,13 +217,15 @@
     {#if filteredEntities.length === 0}
       <div class="context-first-state">
         <span><Icon icon={mdiPackageVariantClosed} size="34" /></span>
-        <h2>{activeTypeFilter === 'all' ? 'Name the first thing worth finding again' : 'Nothing in this type yet'}</h2>
+        <h2>
+          {effectiveTypeFilter === 'all' ? 'Name the first thing worth finding again' : 'Nothing in this type yet'}
+        </h2>
         <p>
-          {activeTypeFilter === 'all'
+          {effectiveTypeFilter === 'all'
             ? 'Vehicles, homes, devices, keepsakes and equipment become useful when they have their own name and history.'
             : 'Choose another type or add the particular thing you have in mind.'}
         </p>
-        {#if activeTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add a thing</button>{/if}
+        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add a thing</button>{/if}
       </div>
     {:else}
       <div class="context-thing-grid">
@@ -302,67 +271,62 @@
       <div class="context-first-state">
         <span><Icon icon={mdiCalendarBlankOutline} size="34" /></span>
         <h2>
-          {activeTypeFilter === 'all' ? 'Bring the first memory together' : 'Nothing in this part of your timeline yet'}
+          {effectiveTypeFilter === 'all'
+            ? 'Bring the first memory together'
+            : 'Nothing in this part of your timeline yet'}
         </h2>
         <p>
-          {activeTypeFilter === 'all'
+          {effectiveTypeFilter === 'all'
             ? 'Start with a trip, one occasion, a recurring activity or a longer chapter of life.'
             : 'Choose another type or add the memory you want to organise.'}
         </p>
-        {#if activeTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add to your timeline</button>{/if}
+        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add to your timeline</button>{/if}
       </div>
     {:else}
-      <div class="grid gap-9">
-        {#each eventGroups as [year, events] (year)}
-          <section aria-labelledby={`context-year-${year}`}>
-            <div class="context-year-heading">
-              <h2 id={`context-year-${year}`}>{year}</h2>
-              <span>{events.length} {events.length === 1 ? 'memory' : 'memories'}</span>
+      <div class="context-event-grid">
+        {#each filteredEntities as entity (entity.entityId)}
+          {@const previewIds = eventPreviewIds(entity)}
+          {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
+          <button class={eventCardClass(entity)} type="button" onclick={() => onOpen(entity)}>
+            <div
+              class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
+              class="context-event-cover"
+              data-preview-count={visiblePreviewIds.length}
+              data-testid={entity.typeKind === 'trip' && visiblePreviewIds.length > 1
+                ? 'cimmich-event-contact-sheet'
+                : undefined}
+            >
+              {#if visiblePreviewIds.length > 0}
+                {#each visiblePreviewIds as previewAssetId (previewAssetId)}
+                  <img
+                    src={getAssetMediaUrl({ id: previewAssetId, size: AssetMediaSize.Preview })}
+                    alt=""
+                    loading="lazy"
+                  />
+                {/each}
+              {:else}
+                <span><Icon icon={iconForType(entity.typeKind)} size="36" /></span>
+              {/if}
+              <span class="context-event-kind"
+                ><Icon icon={iconForType(entity.typeKind)} size="14" />
+                {humanizeContextKind(entity.typeKind)}</span
+              >
             </div>
-            <div class="context-event-grid">
-              {#each events as entity (entity.entityId)}
-                {@const previewIds = eventPreviewIds(entity)}
-                {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
-                <button class={eventCardClass(entity)} type="button" onclick={() => onOpen(entity)}>
-                  <div
-                    class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
-                    class="context-event-cover"
-                    data-preview-count={visiblePreviewIds.length}
-                    data-testid={entity.typeKind === 'trip' && visiblePreviewIds.length > 1
-                      ? 'cimmich-event-contact-sheet'
-                      : undefined}
-                  >
-                    {#if visiblePreviewIds.length > 0}
-                      {#each visiblePreviewIds as previewAssetId (previewAssetId)}
-                        <img
-                          src={getAssetMediaUrl({ id: previewAssetId, size: AssetMediaSize.Preview })}
-                          alt=""
-                          loading="lazy"
-                        />
-                      {/each}
-                    {:else}
-                      <span><Icon icon={iconForType(entity.typeKind)} size="36" /></span>
-                    {/if}
-                    <span class="context-event-kind"
-                      ><Icon icon={iconForType(entity.typeKind)} size="14" />
-                      {humanizeContextKind(entity.typeKind)}</span
-                    >
-                  </div>
-                  <div class="context-event-copy">
-                    <p class="text-lg font-semibold">{entity.displayName}</p>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {formatContextDatePrecision(entity) ||
-                        (contextEventYear(entity) === 'Undated' ? 'Date not set' : contextEventYear(entity))}
-                    </p>
-                    {#if entity.description}<p class="mt-3 line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
-                        {entity.description}
-                      </p>{/if}
-                    <p class="mt-4 text-xs font-medium text-gray-500">{entity.assetCount} photos & videos</p>
-                  </div>
-                </button>
-              {/each}
+            <div class="context-event-copy">
+              <p class="truncate text-lg font-semibold">{entity.displayName}</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {formatContextDatePrecision(entity) ||
+                  (contextEventYear(entity) === 'Undated' ? 'Date not set' : contextEventYear(entity))}
+              </p>
+              {#if entity.description}<p class="mt-3 line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
+                  {entity.description}
+                </p>{/if}
+              <p class="mt-4 text-xs font-medium text-gray-500">
+                {entity.assetCount}
+                {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}
+              </p>
             </div>
-          </section>
+          </button>
         {/each}
       </div>
     {/if}
@@ -627,45 +591,22 @@
     backdrop-filter: blur(8px);
   }
 
-  .context-year-heading {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 12px;
-    border-bottom: 1px solid rgb(229 231 235);
-    padding-bottom: 8px;
-  }
-
-  :global(.dark) .context-year-heading {
-    border-color: rgb(31 41 55);
-  }
-
-  .context-year-heading h2 {
-    font-size: 1.5rem;
-    font-weight: 650;
-    letter-spacing: -0.025em;
-  }
-
-  .context-year-heading span {
-    color: rgb(107 114 128);
-    font-size: 0.75rem;
-  }
-
   .context-event-grid {
     display: grid;
-    gap: 14px;
+    gap: 16px;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 
   .context-event-card {
-    display: grid;
+    display: flex;
     overflow: hidden;
-    min-height: 178px;
+    min-width: 0;
+    flex-direction: column;
     border: 1px solid rgb(229 231 235);
-    border-radius: 22px;
+    border-radius: 12px;
     background: white;
     text-align: left;
     transition: 160ms ease;
-    grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1fr);
   }
 
   :global(.dark) .context-event-card {
@@ -676,7 +617,9 @@
   .context-event-cover {
     position: relative;
     display: grid;
-    min-height: 178px;
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
     place-items: center;
     background: linear-gradient(145deg, rgb(var(--immich-primary) / 0.12), rgb(124 58 237 / 0.12));
     color: rgb(var(--immich-primary));
@@ -708,12 +651,12 @@
   }
 
   .context-event-copy {
-    align-self: center;
-    padding: 20px;
+    min-width: 0;
+    padding: 16px;
   }
 
   .context-event-card--period {
-    border-left: 5px solid rgb(var(--immich-primary) / 0.7);
+    border-color: rgb(var(--immich-primary) / 0.3);
   }
 
   @media (min-width: 700px) {
@@ -730,13 +673,7 @@
     }
 
     .context-event-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .context-event-card--trip,
-    .context-event-card--period {
-      grid-column: 1 / -1;
-      grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.4fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 
@@ -746,6 +683,10 @@
     }
 
     .context-thing-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .context-event-grid {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
@@ -769,15 +710,8 @@
       max-height: 320px;
     }
 
-    .context-event-card,
-    .context-event-card--trip,
-    .context-event-card--period {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
     .context-event-cover {
-      min-height: 180px;
-      aspect-ratio: 16 / 9;
+      aspect-ratio: 4 / 3;
     }
   }
 </style>

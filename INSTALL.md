@@ -19,7 +19,8 @@ published-image installation is not yet claimed.
 
 You need:
 
-1. A working Immich installation on a supported 3.x release.
+1. A working Immich 3.0.3 installation. Other 3.x releases are not claimed by
+   this release until their compatibility is proved.
 2. Docker Desktop, OrbStack or Docker Engine with Docker Compose v2.
 3. A downloaded Cimmich release folder. Extract it before running commands.
 4. Enough free disk space for a separate Cimmich database and local image

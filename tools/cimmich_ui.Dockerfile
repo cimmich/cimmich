@@ -42,4 +42,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=10 \
   CMD node -e "fetch('http://127.0.0.1:3000/').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"
 
+USER node
 CMD ["node", "build"]

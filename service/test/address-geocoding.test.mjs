@@ -258,3 +258,21 @@ test("query, result count, timeout, provider failure and rate are closed", async
     code: "ADDRESS_GEOCODING_TIMEOUT",
   });
 });
+
+test("provider responses are bounded while streaming before allocation", async () => {
+  const oversized = createAddressGeocoder({
+    fetchImpl: async () => new Response("x".repeat(262_145)),
+  });
+  await assert.rejects(() => oversized.search({ query: "bounded response" }), {
+    code: "ADDRESS_GEOCODING_UNAVAILABLE",
+  });
+
+  const declaredOversized = createAddressGeocoder({
+    fetchImpl: async () =>
+      new Response("{}", { headers: { "content-length": "262145" } }),
+  });
+  await assert.rejects(
+    () => declaredOversized.search({ query: "declared response" }),
+    { code: "ADDRESS_GEOCODING_UNAVAILABLE" },
+  );
+});

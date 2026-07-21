@@ -315,6 +315,7 @@ export const createImmichCompanion = ({
   supportedVersion = IMMICH_COMPANION_SUPPORTED_VERSION,
   timeoutMs = 5_000,
   maxImageBytes = IMMICH_COMPANION_DEFAULT_MAX_IMAGE_BYTES,
+  maxJsonBytes = 16 * 1024 * 1024,
 } = {}) => {
   const normalizedApiBaseUrl = normalizeImmichApiBaseUrl(apiBaseUrl);
   const normalizedApiKey = String(apiKey || "").trim();
@@ -352,6 +353,58 @@ export const createImmichCompanion = ({
       500,
     );
   }
+  if (
+    !Number.isInteger(maxJsonBytes) ||
+    maxJsonBytes < 64 * 1024 ||
+    maxJsonBytes > 64 * 1024 * 1024
+  ) {
+    throw companionError(
+      "IMMICH_COMPANION_CONFIG_INVALID",
+      "Immich JSON response limit must be between 64 KiB and 64 MiB",
+      500,
+    );
+  }
+
+  const readJsonResponse = async (response) => {
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > maxJsonBytes) {
+      throw companionError(
+        "IMMICH_COMPANION_PROTOCOL_INVALID",
+        "Immich companion response exceeded its configured limit",
+        502,
+      );
+    }
+    if (!response.body) {
+      throw companionError(
+        "IMMICH_COMPANION_PROTOCOL_INVALID",
+        "Immich companion returned an empty response",
+        502,
+      );
+    }
+    const chunks = [];
+    let byteLength = 0;
+    for await (const chunk of response.body) {
+      const bytes = Buffer.from(chunk);
+      byteLength += bytes.length;
+      if (byteLength > maxJsonBytes) {
+        throw companionError(
+          "IMMICH_COMPANION_PROTOCOL_INVALID",
+          "Immich companion response exceeded its configured limit",
+          502,
+        );
+      }
+      chunks.push(bytes);
+    }
+    try {
+      return JSON.parse(Buffer.concat(chunks, byteLength).toString("utf8"));
+    } catch {
+      throw companionError(
+        "IMMICH_COMPANION_PROTOCOL_INVALID",
+        "Immich companion returned invalid JSON",
+        502,
+      );
+    }
+  };
 
   const requestJson = async (
     path,
@@ -386,67 +439,68 @@ export const createImmichCompanion = ({
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
     } catch {
+      clearTimeout(timeout);
       throw companionError(
         "IMMICH_COMPANION_UNAVAILABLE",
         "Immich companion is unavailable",
         503,
       );
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      let upstreamCode = "";
-      let upstreamMessage = "";
-      try {
-        const upstream = await response.json();
-        upstreamCode = String(upstream?.error || "").trim();
-        upstreamMessage = String(upstream?.message || "").trim();
-      } catch {
-        // Authentication failures stay redacted when Immich sends no JSON.
-      }
-      if (
-        response.status === 401 &&
-        path === "/search/metadata" &&
-        (upstreamCode === "Unauthorized" || !upstreamCode) &&
-        upstreamMessage === "Elevated permission is required"
-      ) {
-        throw companionError(
-          "IMMICH_COMPANION_ELEVATED_REQUIRED",
-          "Immich locked assets require an interactive elevated session and are excluded from API-key inventory",
-          409,
-        );
-      }
-      throw companionError(
-        "IMMICH_COMPANION_AUTH_FAILED",
-        "Immich API key was rejected or lacks required permission",
-        503,
-      );
-    }
-    if (response.status === 404 && notFoundCode) {
-      throw companionError(
-        notFoundCode,
-        notFoundCode === "IMMICH_PERSON_NOT_FOUND"
-          ? "Immich Person was not found"
-          : "Immich asset was not found",
-        404,
-      );
-    }
-    if (!response.ok) {
-      throw companionError(
-        "IMMICH_COMPANION_UNAVAILABLE",
-        "Immich companion request failed",
-        503,
-      );
     }
     try {
-      return await response.json();
-    } catch {
+      if (response.status === 401 || response.status === 403) {
+        let upstreamCode = "";
+        let upstreamMessage = "";
+        try {
+          const upstream = await readJsonResponse(response);
+          upstreamCode = String(upstream?.error || "").trim();
+          upstreamMessage = String(upstream?.message || "").trim();
+        } catch {
+          // Authentication failures stay redacted when Immich sends no JSON.
+        }
+        if (
+          response.status === 401 &&
+          path === "/search/metadata" &&
+          (upstreamCode === "Unauthorized" || !upstreamCode) &&
+          upstreamMessage === "Elevated permission is required"
+        ) {
+          throw companionError(
+            "IMMICH_COMPANION_ELEVATED_REQUIRED",
+            "Immich locked assets require an interactive elevated session and are excluded from API-key inventory",
+            409,
+          );
+        }
+        throw companionError(
+          "IMMICH_COMPANION_AUTH_FAILED",
+          "Immich API key was rejected or lacks required permission",
+          503,
+        );
+      }
+      if (response.status === 404 && notFoundCode) {
+        throw companionError(
+          notFoundCode,
+          notFoundCode === "IMMICH_PERSON_NOT_FOUND"
+            ? "Immich Person was not found"
+            : "Immich asset was not found",
+          404,
+        );
+      }
+      if (!response.ok) {
+        throw companionError(
+          "IMMICH_COMPANION_UNAVAILABLE",
+          "Immich companion request failed",
+          503,
+        );
+      }
+      return await readJsonResponse(response);
+    } catch (error) {
+      if (String(error?.code || "").startsWith("IMMICH_")) throw error;
       throw companionError(
-        "IMMICH_COMPANION_PROTOCOL_INVALID",
-        "Immich companion returned invalid JSON",
-        502,
+        "IMMICH_COMPANION_UNAVAILABLE",
+        "Immich companion response could not be read",
+        503,
       );
+    } finally {
+      clearTimeout(timeout);
     }
   };
 

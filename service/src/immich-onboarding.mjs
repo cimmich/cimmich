@@ -485,6 +485,23 @@ const scanSource = async ({ companion, scope }) => {
     }
   }
   const faces = [...facesByAsset.values()].flat();
+  // Immich's People collection omits some unnamed clusters even though their
+  // assigned Face rows remain visible through the asset Face API. Preview
+  // must describe that source truth so the owner sees the exact work that
+  // will block import, without inventing a blank Cimmich Person.
+  const visiblePersonIds = new Set(
+    people.filter((person) => !person.isHidden).map((person) => person.id),
+  );
+  const unlabelledPersonIds = new Set(
+    people
+      .filter((person) => !person.isHidden && !person.name)
+      .map((person) => person.id),
+  );
+  for (const face of faces) {
+    if (!face.personId || face.person?.isHidden) continue;
+    visiblePersonIds.add(face.personId);
+    if (!face.person?.name) unlabelledPersonIds.add(face.personId);
+  }
   const publicPreview = {
     schemaVersion: IMMICH_ONBOARDING_SCHEMA_VERSION,
     connection: {
@@ -504,13 +521,11 @@ const scanSource = async ({ companion, scope }) => {
       assignedFaces: faces.filter((face) => face.personId).length,
       assets: assets.length,
       images: assets.filter((asset) => asset.assetType === "image").length,
-      people: people.filter((person) => !person.isHidden).length,
+      people: visiblePersonIds.size,
       labelledPeople: people.filter((person) => !person.isHidden && person.name)
         .length,
       hiddenPeople: people.filter((person) => person.isHidden).length,
-      unlabelledPeople: people.filter(
-        (person) => !person.isHidden && !person.name,
-      ).length,
+      unlabelledPeople: unlabelledPersonIds.size,
       unassignedFaces: faces.filter((face) => !face.personId).length,
       videos: assets.filter((asset) => asset.assetType === "video").length,
       visibilityLanes: laneCounts,

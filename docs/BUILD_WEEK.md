@@ -20,7 +20,7 @@ its representative 3,985-asset cold review request falls from 4.459 seconds to
 1.188–1.221 seconds; an immediate repeat is 4.4 ms. The optimization evaluates
 visibility and accepted same-photo truth once per asset and reads vectors only
 for the fixed 48-Face frontier. It does not change ranking, thresholds, cache
-duration or automatic identity authority. Service 588/588, migration acceptance
+duration or automatic identity authority. Service 595/595, migration acceptance
 through migration-ledger schema 75, the full disposable synthetic journey and
 three independent fresh stock-Immich installation lifecycles pass. The
 public-demo operator additionally passes an immutable cold run: stop, restart
@@ -89,10 +89,12 @@ Local detection + corrected embeddings ----> Cimmich PostgreSQL / pgvector
                               Append-only user identity decision
 ```
 
-Cimmich holds no model-provider key and sends no request outward. The separate
-Guided token authorizes only the local capability surface. A hosted client is
-not local or private merely because Cimmich runs locally; the connected client
-and operator own any disclosure.
+Cimmich holds no model-provider key and sends no biometric or model-processing
+request outward. The optional, owner-invoked Photon address search is the one
+disclosed network lookup made by the Cimmich service. The separate Guided token
+authorizes only the local capability surface. A hosted client is not local or
+private merely because Cimmich runs locally; the connected client and operator
+own any disclosure.
 
 ## Three cumulative product layers
 
@@ -100,10 +102,10 @@ Cimmich extends a supported Immich installation and must remain useful without
 an OpenAI account, API key, private operator infrastructure, hosted Cimmich service or
 private fixture. The supported capability ladder is explicit:
 
-1. **Basic — bring your own stack:** Cimmich manages, corrects, sorts and reviews
+1. **Core — useful without a model:** Cimmich manages, corrects, sorts and reviews
    the tags and model output a user already has. It does not require a detector,
    recognizer or embedding migration.
-2. **Standard — local intelligence (recommended):** Cimmich adds recommended
+2. **Enhanced — optional local intelligence:** Cimmich adds recommended
    local detection, matching, SourcePack learning and deterministic review on
    the user's own server. It remains complete and offline-capable.
 3. **Guided — opt-in agent assistance:** Cimmich's target contract exposes a model-neutral local
@@ -120,13 +122,14 @@ Standard/Personal/Private ceiling; it delegates only catalogued canonical API
 actions and grants no ambient filesystem, database or provider authority.
 
 The Cimmich server holds no OpenAI or other model-provider credential and makes
-no provider request. Cimmich itself transmits nothing outward; a connected
-hosted client may disclose what it retrieves, and its operator owns that
-decision. Media upload remains a direct client→Immich action using a separate
+no model-provider request. Apart from the disclosed optional Photon address
+search, Cimmich itself transmits nothing outward; a connected hosted client may
+disclose what it retrieves, and its operator owns that decision. Media upload
+remains a direct client→Immich action using a separate
 user-issued Immich credential; Cimmich does not proxy those bytes or reveal the
 credential.
 
-Current source and the isolated schema-66 demo prove the endpoint/instruction
+Current source and the isolated schema-75 demo prove the endpoint/instruction
 contract, token/authority/visibility enforcement and one complete external
 Codex Space Trip operation journey. Broad client interoperability remains a
 separate claim.
@@ -191,7 +194,7 @@ Face/Head/Body/Presence correction states without exposing a private library.
 
 Its source-controlled bootstrap validates the complete hashes, prompts,
 synthetic/visual-QA declarations and rights/attribution digest before binding
-supported Immich API upload results to fresh schema-65 Cimmich state. Reset proof
+supported Immich API upload results to fresh schema-75 Cimmich state. Reset proof
 destroys and recreates only disposable demo infrastructure and requires the
 semantic receipt and display bridge to replay byte-for-byte.
 
@@ -204,9 +207,10 @@ Immich upload plus signed-in browser/video acceptance remains a separate gate.
 
 Guided is disabled by default. When enabled, Cimmich requires a strong dedicated
 capability token that is not a provider credential. The token is accepted only
-in the Authorization header; query/body transport is forbidden. Every Guided
-request runs on an internally forced Standard surface, so caller headers cannot
-inherit or raise Personal/Private access.
+in the Authorization header; query/body transport is forbidden. Guided V1 runs
+on an internally forced Standard surface, so caller headers cannot inherit or
+raise Personal/Private access. Guided V2 uses a separate explicit authority and
+visibility ceiling described below.
 
 Read/propose actions:
 
@@ -254,7 +258,9 @@ that disclosure risk.
   precision and 1.562% FAR versus all-trusted's 75.993%, 98.674% and equal FAR
   with 7,701 references. All-trusted still wins forced closed-set top-1 95.553%
   to 93.156%. This is an offline human-review operating-point win, not automatic
-  authority or a claim that the policy currently serves the UI.
+  authority or a claim that the policy currently serves the UI. These
+  private-archive measurements are recorded development evidence and cannot be
+  reproduced from the synthetic public demo.
 - Schema 26 reduced the overlap-safe limit-24 review read to 4.31 seconds cold
   and 2 ms reused; concurrent review and Steward planning share one snapshot.
 - Schema 27 and a restored disposable clone pass a 4,085-reference exact-pack

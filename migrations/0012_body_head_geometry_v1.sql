@@ -21,3 +21,4 @@ ALTER TABLE body_observation
   );
 
 COMMIT;
+

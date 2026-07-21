@@ -2,6 +2,10 @@
 
 > **Complete the picture.**
 
+<p align="center">
+  <img src="docs/assets/cimmich-logo.png" alt="Cimmich astronaut inside a four-colour focus frame" width="220">
+</p>
+
 **Cimmich is an open-source, local-first companion for Immich.** It adds the
 missing memory layer around a photo library: people can be recorded even when a
 face is obscured or absent, useful local matching can stay selective, and the
@@ -10,11 +14,9 @@ archive owner remains the authority on identity.
 Built for **OpenAI Build Week — Apps for Your Life** with **Codex powered by
 GPT-5.6 Sol**.
 
-[Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
+[Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
-[Check release proof](docs/RELEASE_READINESS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md)
-
-<!-- RELEASE_FREEZE: Add the public YouTube demo link to the navigation above. -->
+[Check release proof](docs/RELEASE_READINESS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
@@ -103,9 +105,10 @@ demographic fairness or suitability for another person's archive.
 
 ### Five-minute product journey
 
-1. Open **People** and follow one fictional person across clear faces, partial
-   views, rear views and known Presence.
-2. Open a photo from that person's page and see the person's name briefly orient
+1. Open **People** and follow the Cedar House cast across clear faces, partial
+   views, rear views and known Presence. The optional Space Trip Guided journey
+   adds all four evidence types to Maya without pre-seeding that final state.
+2. Open a photo from a person's page and see the person's name briefly orient
    the viewer before the controls recede.
 3. Move through the related Pet, Place, Event and linked Document pages.
 4. Search the shared memory graph and switch between Standard, Personal and
@@ -123,7 +126,7 @@ Immich/Cimmich installations.
 ### Requirements
 
 - Docker with Compose v2;
-- `curl`, `nc` and `sha256sum`;
+- `curl`, `nc` and either `sha256sum` or macOS `shasum`;
 - the complete [Cedar House V1 release archive](https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz);
 - three free local ports (defaults: `3303`, `3301` and `22859`).
 
@@ -136,9 +139,13 @@ Download, verify and extract the exact Build Week archive:
 
 ```sh
 curl -fLO https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz
-printf '%s  %s\n' \
-  '937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f' \
-  'cimmich-cedar-house-v1.tar.gz' | sha256sum -c -
+expected_sha256=937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f
+if command -v sha256sum >/dev/null 2>&1; then
+  actual_sha256=$(sha256sum cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
+else
+  actual_sha256=$(shasum -a 256 cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
+fi
+test "$actual_sha256" = "$expected_sha256"
 tar -xzf cimmich-cedar-house-v1.tar.gz
 ```
 
@@ -373,10 +380,10 @@ Current release-hardening evidence is recorded in
 service, migration, disposable synthetic, web, Svelte, TypeScript,
 production-build and public-demo lifecycle gates.
 
-The current source candidate targets exact Immich 3.0.3 and derives schema 75
-from its contiguous migration ledger. It has no assigned release tag or image
-digest yet. Its disposable certification requires service, migration, synthetic,
-clean public-demo and fresh stock-Immich lifecycle gates from this same checkout.
+The Build Week release tag is `v1.0.0-build-week`. It targets exact Immich 3.0.3
+and derives schema 75 from its contiguous migration ledger. Its certification
+requires service, migration, synthetic, clean public-demo and fresh stock-Immich
+lifecycle gates from the release checkout.
 The public-demo gate starts from no prepared Cimmich data at the pristine
 `51:9:12:5:4:0` semantic state, preserves owner/database/volume markers across
 stop, restart and down/up, restores a checksummed schema-74 backup forward to

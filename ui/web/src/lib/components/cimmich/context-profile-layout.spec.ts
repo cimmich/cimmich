@@ -24,7 +24,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain('class="context-profile-rail');
     expect(source).toContain('<span>Add media</span>');
     expect(source).toContain('<span>Add connection</span>');
-    expect(source).toContain('class:flex-nowrap={Boolean(selected)}');
+    expect(source).toContain("selected ? 'flex flex-nowrap items-center gap-3' : ''");
     expect(source).toContain('context-profile-edit');
     expect(source).toContain('aria-label={`More actions for ${selected.entity.displayName}`}');
     expect(source).toContain('Delete permanently');

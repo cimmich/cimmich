@@ -13,8 +13,9 @@ version and document-store mount match the installation:
 ```sh
 node bin/document-lifecycle.mjs backup --output=/safe/new/backup
 node bin/document-lifecycle.mjs verify --input=/safe/new/backup
+DATABASE_URL_FILE=/run/secrets/cimmich-empty-target-database-url
+export DATABASE_URL="$(cat "$DATABASE_URL_FILE")"
 node bin/document-lifecycle.mjs restore \
-  --database-url=postgres://.../empty_target \
   --input=/safe/backup --store-root=/safe/empty-store
 node bin/document-lifecycle.mjs export \
   --document-id=document_... --output=/safe/new/export
@@ -30,8 +31,9 @@ verifies raw byte count and SHA-256 independently, writes mode-0600 artifacts,
 and publishes the manifest last. A backup is valid only when `verify` passes.
 
 `backup` records the exact Cimmich database migration version in the manifest;
-the current tool supports schema 48 through 66 and fails closed outside that
-range. `restore` accepts only an empty target database and empty target store.
+the current tool supports schema 48 through the highest checksummed migration
+embedded in the same service image and fails closed outside that range.
+`restore` accepts only an empty target database and empty target store.
 It verifies the complete input first, restores into a staging store, requires
 the restored migration ledger to equal the manifest version, checks the
 schema-48 Document-lifecycle receipt and exact Document count, and then

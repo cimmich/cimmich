@@ -321,7 +321,8 @@
     }
 
     .context-detail-copy {
-      padding: 42px;
+      justify-content: flex-start;
+      padding: 76px 42px 32px;
     }
   }
 </style>
