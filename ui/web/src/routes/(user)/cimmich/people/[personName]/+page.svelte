@@ -103,7 +103,7 @@
     mdiViewGridOutline,
   } from '@mdi/js';
   import { Icon, Tooltip } from '@immich/ui';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PageData } from './$types';
 
   interface Props {
@@ -254,7 +254,7 @@
   );
   const visibleCimmichAssets = $derived(preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort));
   const cimmichPersonConnections = $derived.by(() => {
-    const connections = new Map<string, CimmichPersonConnection & { assetIds: Set<string> }>();
+    const connections = new SvelteMap<string, CimmichPersonConnection & { assetIds: Set<string> }>();
     for (const asset of cimmichAssets) {
       for (const context of asset.contexts) {
         const existing = connections.get(context.entityId);
@@ -302,7 +302,7 @@
         ? Route.cimmichPerson({ name: person.display_name, personId: person.person_id })
         : Route.cimmichPeople();
     }
-    const search = new URLSearchParams({ entityId });
+    const search = new SvelteURLSearchParams({ entityId });
     if (entityKind === 'object') {
       search.set('family', 'objects');
       return `${Route.cimmichPlaces()}?${search.toString()}`;
@@ -315,7 +315,9 @@
     people: CimmichPerson[],
   ) => {
     const contexts = [
-      ...new Map(assets.flatMap((asset) => asset.contexts).map((context) => [context.entityId, context])).values(),
+      ...new SvelteMap(
+        assets.flatMap((asset) => asset.contexts).map((context) => [context.entityId, context]),
+      ).values(),
     ];
     const details = await Promise.all(
       contexts.map((context) =>
@@ -325,13 +327,19 @@
         ).catch(() => null),
       ),
     );
-    const linked = new Map<string, CimmichPersonConnection & { contextIds: Set<string> }>();
+    const linked = new SvelteMap<string, CimmichPersonConnection & { contextIds: Set<string> }>();
     for (const detail of details) {
-      if (!detail) continue;
+      if (!detail) {
+        continue;
+      }
       for (const relation of detail.relations) {
-        if (relation.targetKind !== 'person' || relation.targetId === personId) continue;
+        if (relation.targetKind !== 'person' || relation.targetId === personId) {
+          continue;
+        }
         const person = people.find((row) => row.person_id === relation.targetId);
-        if (!person?.sourceAssetId) continue;
+        if (!person?.sourceAssetId) {
+          continue;
+        }
         const existing = linked.get(person.person_id);
         if (existing) {
           existing.contextIds.add(detail.entity.entityId);
@@ -1199,14 +1207,6 @@
     }
   };
 
-  const openCimmichMerge = async () => {
-    await openCimmichSetup();
-    globalThis.requestAnimationFrame(() => {
-      document.querySelector('#cimmich-merge-identities')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      (document.querySelector('#cimmich-merge-identities input[type="search"]') as HTMLInputElement | null)?.focus();
-    });
-  };
-
   const openCimmichDetails = (edit = false) => {
     cimmichProfileEditOnOpen = edit;
     cimmichMode = 'details';
@@ -1659,7 +1659,7 @@
   <div class="mx-auto flex w-full max-w-7xl flex-col gap-3 p-4 text-immich-fg sm:p-5 dark:text-immich-dark-fg">
     {#if cimmichPerson}
       <section
-        class="relative min-h-[25rem] overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-2xl ring-1 ring-white/10"
+        class="relative min-h-100 overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-2xl ring-1 ring-white/10"
         data-testid="cimmich-person-hero"
       >
         {#if cimmichPerson.sourceAssetId}
@@ -1669,8 +1669,8 @@
             class="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgb(71_85_105),rgb(15_23_42)_58%,rgb(2_6_23))]"
           ></div>
         {/if}
-        <div class="absolute inset-0 bg-gradient-to-r from-black/92 via-black/60 to-black/18"></div>
-        <div class="absolute inset-0 bg-gradient-to-t from-black/92 via-transparent to-black/45"></div>
+        <div class="absolute inset-0 bg-linear-to-r from-black/92 via-black/60 to-black/18"></div>
+        <div class="absolute inset-0 bg-linear-to-t from-black/92 via-transparent to-black/45"></div>
         <a
           class="absolute top-5 left-5 z-10 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 text-sm font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/55 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:top-7 sm:left-7"
           href={cimmichPerson.subject_kind === 'pet' ? Route.cimmichPets() : Route.cimmichPeople()}
@@ -1690,7 +1690,7 @@
           <span>Edit</span>
         </button>
         <div
-          class="relative flex min-h-[25rem] min-w-0 flex-col justify-end gap-5 p-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
+          class="relative flex min-h-100 min-w-0 flex-col justify-end gap-5 p-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
         >
           {#if cimmichPerson.sourceAssetId}
             <span
@@ -1741,7 +1741,7 @@
                       <dt class="sr-only">{field.label}</dt>
                       <dd
                         class={field.fieldKey === 'about'
-                          ? 'max-w-3xl text-base/7 font-normal text-white/85 whitespace-pre-wrap text-pretty sm:text-lg/8'
+                          ? 'max-w-3xl text-base/7 font-normal text-pretty whitespace-pre-wrap text-white/85 sm:text-lg/8'
                           : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md'}
                       >
                         {#if field.fieldKey !== 'about'}

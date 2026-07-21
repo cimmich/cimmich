@@ -615,7 +615,7 @@
   aria-labelledby={heading ? 'documents-heading' : undefined}
 >
   <div class:without-heading={!heading} class="document-toolbar">
-    {#if heading}<h2 class="whitespace-nowrap text-xl font-semibold" id="documents-heading">{heading}</h2>{/if}
+    {#if heading}<h2 class="text-xl font-semibold whitespace-nowrap" id="documents-heading">{heading}</h2>{/if}
     {#if loaded && (documents.length > 0 || query || kindFilter || showArchived)}
       <form
         class="document-toolbar-search"
@@ -833,7 +833,7 @@
             <span class="document-card-tier">{document.effectiveVisibilityTier}</span>
           </span>
           <span class="document-card-copy">
-            <span class="line-clamp-2 block text-base leading-5 font-semibold">{document.displayTitle}</span>
+            <span class="line-clamp-2 block text-base/5 font-semibold">{document.displayTitle}</span>
             <span class="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">
               {labelForDocumentKind(document.documentKind, document.documentLabel)}
               {#if document.issuedOn}

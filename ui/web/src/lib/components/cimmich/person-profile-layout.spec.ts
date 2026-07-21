@@ -9,9 +9,9 @@ describe('Person profile layout', () => {
 
     expect(source).toContain('data-testid="cimmich-person-hero"');
     expect(source).toContain('style={cimmichPersonHeroStyle(cimmichPerson)}');
-    expect(source).toContain('min-h-[25rem]');
+    expect(source).toContain('min-h-100');
     expect(source).toContain('sm:text-5xl lg:text-6xl');
-    expect(source).toContain('bg-gradient-to-r from-black/92');
+    expect(source).toContain('bg-linear-to-r from-black/92');
     expect(source).toContain('ring-4 ring-white/90');
     expect(source).toContain('bg-black/30 px-3 font-semibold backdrop-blur-md');
   });
