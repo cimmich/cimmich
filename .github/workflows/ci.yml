@@ -115,6 +115,8 @@ jobs:
 
       - name: Lint
         working-directory: ui/web
+        env:
+          SYNCKIT_TIMEOUT: 120000
         run: pnpm run lint
 
       - name: Check Svelte
