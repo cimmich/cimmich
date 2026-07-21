@@ -3,7 +3,7 @@
 Updated: 2026-07-22
 Preserved public-demo runtime: schema 75/patch 1
 Current source/disposable candidate: migration-ledger schema 75/patch 1
-Named local video-ready candidate: `cimmich-build-week-video-ready-rc4`
+Publication identity: `v1.0.0-build-week`
 
 This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
@@ -129,7 +129,7 @@ the decisive real-provider fact.
 - [x] Root source licence selected by the project owner and added as
       `AGPL-3.0-only`; preserved upstream and independently licensed demo/
       provider notices remain in force.
-- [ ] Initialise or export a clean public Git repository with no private history.
+- [x] Export a clean publication repository with no private development history.
 - [x] Pass the private-path, credential, personal-ID, database, media and
       generated-artifact audit from the exact publication tree.
 - [x] Three isolated schema-72 instances (`release1`, `release2`, `release3`)
@@ -144,10 +144,11 @@ the decisive real-provider fact.
       no cached-image assumption.
 - [x] Migrate the older internal main deployment through its then-current ledger and prove its
       counts, visibility surfaces and read-only smoke unchanged.
-- [x] Freeze the named local `cimmich-build-week-video-ready-rc4` source and
-      release images. Record the final product demo from that exact release
-      build. The completed Guided build recording is retained as its own proof;
-      no three-rehearsal requirement exists.
+- [x] Record the final product demo from the deployed video-ready build. The
+      publication source retains that demonstrated product and adds only the
+      bounded, separately proved final-audit repairs to inventory continuation,
+      Smart Search, first-run clarity and matching-reference wording. The
+      completed Guided build recording is retained as its own proof.
 - [ ] Publish matching-improvement language only if one provider-specific
       correction→better-next-suggestion loop clears the existing replay,
       holdout, QC, operator-review and activation gates.

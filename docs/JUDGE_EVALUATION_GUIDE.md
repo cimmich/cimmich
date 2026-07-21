@@ -35,9 +35,13 @@ From a clean checkout:
 
 ```sh
 curl -fLO https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz
-printf '%s  %s\n' \
-  '937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f' \
-  'cimmich-cedar-house-v1.tar.gz' | sha256sum -c -
+expected_sha256=937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f
+if command -v sha256sum >/dev/null 2>&1; then
+  actual_sha256=$(sha256sum cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
+else
+  actual_sha256=$(shasum -a 256 cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
+fi
+test "$actual_sha256" = "$expected_sha256"
 tar -xzf cimmich-cedar-house-v1.tar.gz
 export CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$PWD/cedar-house-v1"
 ./tools/public_demo.sh up
@@ -104,7 +108,6 @@ not a required runtime dependency and receives no automatic identity authority.
 
 ```yaml
 releaseTag: v1.0.0-build-week
-deployedRuntimeCandidate: cimmich-build-week-video-ready-rc4
 supportedImmich: 3.0.3
 schema: 75
 patchLevel: 1
