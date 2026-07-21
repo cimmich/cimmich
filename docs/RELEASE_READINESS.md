@@ -3,7 +3,8 @@
 Updated: 2026-07-22
 Preserved public-demo runtime: schema 75/patch 1
 Current source/disposable candidate: migration-ledger schema 75/patch 1
-Publication identity: `v1.0.0-build-week`
+Publication identity: `v1.0.0-build-week` at
+`9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 
 This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
@@ -153,34 +154,31 @@ the decisive real-provider fact.
       correction→better-next-suggestion loop clears the existing replay,
       holdout, QC, operator-review and activation gates.
 
-## Devpost submission gates
+## Build Week submission outcome
 
 The [official FAQ](https://openai.devpost.com/details/faqs) and
-[Official Rules](https://openai.devpost.com/rules) control. Submission closes
-21 July 2026 at 5:00 PM Pacific Time; the working judge path must remain free
-and available through the judging period.
+[Official Rules](https://openai.devpost.com/rules) controlled the submission.
+Benji confirmed the **Apps for Your Life** entry was submitted before the
+deadline; the authenticated Devpost receipt and private `/feedback` value are
+deliberately not copied into this public repository.
 
-- [ ] Devpost registration and **Apps for Your Life** selection confirmed.
-- [ ] Human eligibility, entrant/representative status and conflict-of-interest
-      declarations confirmed by the entrant.
-- [ ] Public repository URL published, or private repository shared with both
-      `testing@devpost.com` and `build-week-event@openai.com`.
-- [ ] Exact published repository passes its setup/sample-data/test instructions
-      without private infrastructure.
-- [ ] Primary majority-core task runs `/feedback`; returned Session ID matches
-      the private ledger before it is entered into Devpost.
-- [ ] Public YouTube video is under 180 seconds, contains English audio, clearly
-      demonstrates the working product, and explicitly explains what was built,
-      how Codex was used and how GPT-5.6 was used.
-- [ ] Final video contains no unlicensed music, copyrighted material or
-      third-party trademarks; privacy and credential frame audit passes.
-- [ ] Devpost description and public README disclose inherited/open-source work,
-      link the dated Build Week extension ledger and preserve all licences and
-      notices.
-- [ ] Judge download/demo/test path is free, stable and planned to remain
-      available through 5 August 2026 at 5:00 PM Pacific Time.
-- [ ] Final submission receipt, repository revision, video URL and test-build
-      checksum are recorded before the deadline.
+- [x] Public repository: <https://github.com/cimmich/cimmich>.
+- [x] Immutable release: `v1.0.0-build-week` at
+      `9b40c1b3b353f4e2e10aa91462ad821793ef043b`.
+- [x] Exact release CI passed service/release truth, web quality, migration
+      acceptance and the full disposable synthetic lifecycle:
+      <https://github.com/cimmich/cimmich/actions/runs/29870903618>.
+- [x] Public English-language film: <https://youtu.be/CfR_r0n4deQ>,
+      177.989696 seconds.
+- [x] Cedar House release download independently reverified at 139,905,427
+      bytes and SHA-256
+      `937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f`.
+- [x] Public README, film and submission preserve the inherited/open-source
+      disclosure and the synthetic-data/licensing boundary.
+- [x] The judge setup path is free and is intended to remain available through
+      5 August 2026 at 5:00 PM Pacific Time.
+- [x] Devpost submission completion was confirmed by the entrant; its private
+      authenticated receipt remains outside the public source tree.
 
 ## Public repository contents
 
