@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "cimmich.face-detector.v1",
+  "detector": {
+    "artifactSha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "inputSize": [320, 320],
+    "model": "YuNet",
+    "modelVersion": "2023mar",
+    "scoreThreshold": 0.8
+  },
+  "preprocessing": {
+    "colorSpace": "bgr",
+    "orientation": "decoded-source",
+    "pipelineVersion": "full-frame-yunet-v1"
+  },
+  "provider": {
+    "name": "opencv-yunet-cpu",
+    "version": "1"
+  },
+  "execution": {
+    "device": "cpu",
+    "network": "forbidden",
+    "runtime": "opencv-dnn-4.11",
+    "threads": 1
+  },
+  "privacy": {
+    "externalUpload": "none",
+    "sourceMedia": "local-read-only"
+  },
+  "detectorConfigDigest": "75325e3f49ebea75b93c23d1dbf4a8c6a20a5ead120bfb38cb044acda6b3f649"
+}

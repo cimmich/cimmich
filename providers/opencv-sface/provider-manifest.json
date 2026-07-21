@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "cimmich.recognition-provider.v1",
+  "detector": {
+    "artifactSha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "inputSize": [320, 320],
+    "model": "YuNet",
+    "modelVersion": "2023mar",
+    "scoreThreshold": 0.8
+  },
+  "recognizer": {
+    "artifactSha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+    "model": "SFace-MobileFaceNet",
+    "modelVersion": "2021dec"
+  },
+  "embedding": {
+    "dimension": 128,
+    "metric": "cosine",
+    "normalized": true
+  },
+  "preprocessing": {
+    "alignment": "opencv-five-landmark-alignCrop",
+    "colorSpace": "bgr",
+    "inputSize": [112, 112],
+    "pipelineVersion": "target-centric-fixed320-tight-crop+2.4x-source-fallback-v2"
+  },
+  "provider": {
+    "name": "opencv-yunet-sface-cpu",
+    "version": "1"
+  },
+  "execution": {
+    "device": "cpu",
+    "network": "forbidden",
+    "runtime": "opencv-dnn-4.11",
+    "threads": 1
+  },
+  "licensing": {
+    "code": "Apache-2.0",
+    "model": "YuNet MIT; SFace Apache-2.0",
+    "trainingData": "Exact OpenCV weight provenance not declared; upstream SFace paper evaluates CASIA-WebFace, VGGFace2 and MS1MV2"
+  },
+  "privacy": {
+    "externalUpload": "none",
+    "sourceMedia": "local-read-only"
+  },
+  "providerConfigDigest": "07d88f33017baa05df755764b1e2a49c58fc7cb45c51cfd693deb09a64b42be5",
+  "vectorSpaceId": "vector_space_8727d0dacd9e0d5fdead7508c5e63975428a45fbe3ffe1af61947ada22ba3c86"
+}

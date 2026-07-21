@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible Cimmich defect using synthetic or redacted evidence.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Cimmich. Do not include real photos, faces, names, credentials, database dumps, embeddings, private paths or library metadata. Use Cedar House or another licensed synthetic reproduction.
+  - type: input
+    id: version
+    attributes:
+      label: Cimmich revision
+      description: Release tag or commit SHA.
+      placeholder: v1.0.0-build-week or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: immich
+    attributes:
+      label: Immich version
+      placeholder: 3.0.3
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation path
+      options:
+        - Isolated Cedar House demo
+        - Guided companion install
+        - Advanced companion install
+        - Development checkout
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Synthetic reproduction
+      description: Give the smallest sequence that reproduces the issue using public-safe data.
+      placeholder: |
+        1. Start Cedar House with...
+        2. Open...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Public-safe diagnostics
+      description: Paste only redacted status or logs. Do not include secrets or private library facts.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Privacy and scope confirmation
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: This report contains no private media, identity data, credentials, embeddings, database dump or private path.
+          required: true
+        - label: This is not a security vulnerability. I will use the private route in SECURITY.md for security reports.
+          required: true

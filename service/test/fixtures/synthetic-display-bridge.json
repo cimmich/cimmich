@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "cimmich.display-bridge.v1",
+  "assets": [
+    {
+      "assetId": "asset_service_fixture",
+      "sourceAssetId": "source-service-fixture",
+      "filename": "synthetic-service.jpg"
+    },
+    {
+      "assetId": "asset_identity_fixture",
+      "sourceAssetId": "source-identity-fixture",
+      "filename": "synthetic-identity.jpg"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "authority": {
+    "automaticIdentity": "none",
+    "sourcePackActivation": "governed_operator_review_only",
+    "training": "none"
+  },
+  "component": "cimmich-enhanced",
+  "interfaceVersion": "cimmich.core-enhanced.v1",
+  "matcherPolicy": {
+    "policyVersion": "cimmich-best-prime-v1",
+    "scorer": "best_individual_prime"
+  },
+  "schemaVersion": "cimmich.enhanced-artifact.v1",
+  "version": "1.0.0"
+}

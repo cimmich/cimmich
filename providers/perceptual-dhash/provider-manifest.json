@@ -1,0 +1,40 @@
+{
+  "execution": {
+    "device": "cpu",
+    "network": "forbidden",
+    "runtimeId": "python-pillow-12.2.0",
+    "threads": 1
+  },
+  "licensing": {
+    "code": "declared",
+    "model": "not_applicable",
+    "trainingData": "not_applicable"
+  },
+  "preprocessing": {
+    "colorSpace": "gray",
+    "inputHeight": 8,
+    "inputWidth": 9,
+    "resizeMode": "stretch"
+  },
+  "privacy": {
+    "externalUpload": "none",
+    "sourceMedia": "local-read-only"
+  },
+  "provider": {
+    "providerId": "pillow-dhash",
+    "versionId": "v1"
+  },
+  "resources": {
+    "maxMemoryMiB": 512,
+    "maxRuntimeMs": 30000
+  },
+  "schemaVersion": "cimmich.asset-similarity-provider.v1",
+  "similarity": {
+    "artifactDigest": "74e7cd596c856a8a22ae6a21f544603ec94c4141ef711f463b02323ead9e0af2",
+    "modelId": "difference-hash-64",
+    "modelVersionId": "v1",
+    "scoreSemantics": "symmetric_unit_similarity"
+  },
+  "featureSpaceId": "feature_space_cafd16a1f86df1a8b94724735dc2e43d1bbec50c51e44d177dec19d60f84a806",
+  "providerConfigDigest": "99b42b00b294d3ae75e76c901fa5a213c45ca4d3f8dfae218b2ac07d3d47e286"
+}

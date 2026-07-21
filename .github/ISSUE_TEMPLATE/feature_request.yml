@@ -1,0 +1,60 @@
+name: Feature request
+description: Propose a user outcome while preserving Cimmich's authority and privacy boundaries.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lead with the memory-library outcome, not a model or implementation. Cimmich keeps Immich as the base product and the archive owner as the identity authority.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What real library task or frustration should become easier?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should the owner be able to understand or accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: journey
+    attributes:
+      label: Example journey
+      description: Describe a public-safe example using fictional or synthetic people and media.
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Primary boundary
+      options:
+        - Core
+        - Enhanced
+        - Evidence provider
+        - Guided
+        - Installation or operations
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: authority
+    attributes:
+      label: Authority and privacy considerations
+      description: What must remain an owner decision, remain local or require an explicit grant?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: This request does not assume automatic identity authority or official Immich affiliation.
+          required: true

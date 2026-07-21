@@ -1,0 +1,35 @@
+.env
+.env.*
+!.env.example
+data/
+runtime/
+reports/private/
+*.db
+*.sqlite*
+*.npy
+*.npz
+*.parquet
+*.onnx
+*.pt
+*.pth
+*.bin
+*.log
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.mp4
+*.mov
+
+# Public-safe source and licensed synthetic-demo images. Keep these narrow: the
+# blanket media rules above continue to exclude arbitrary owner/private media.
+!demo/space-trip-v1/media/*.png
+!demo/space-trip-v1/qa/*.jpg
+!ui/web/src/lib/assets/*.png
+!ui/web/static/*.png
+__pycache__/
+.pytest_cache/
+node_modules/
+.svelte-kit/
+build/
+.DS_Store

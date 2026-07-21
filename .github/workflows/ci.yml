@@ -1,0 +1,147 @@
+name: Cimmich CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_release:
+        description: Run Docker migration and full synthetic release acceptance
+        required: false
+        type: boolean
+        default: true
+  pull_request:
+  push:
+    branches:
+      - main
+      - post-build-week
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cimmich-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  service-and-release-truth:
+    name: Service and release truth
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      - name: Audit service dependencies
+        working-directory: service
+        run: npm audit --audit-level=low
+
+      - name: Run service and release-schema tests
+        working-directory: service
+        run: npm test
+
+      - name: Verify portable operator syntax
+        run: |
+          sh -n tools/current_schema_version.sh
+          sh -n tools/install.sh
+          sh -n tools/companion.sh
+          sh -n tools/public_demo.sh
+          sh -n tools/run_migration_runner_acceptance.sh
+          sh -n tools/run_synthetic_acceptance.sh
+
+  web:
+    name: Web quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable pinned pnpm
+        run: corepack enable
+
+      - name: Cache pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install web dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit web dependencies
+        working-directory: ui
+        run: pnpm audit --audit-level=low
+
+      - name: Build local Immich SDK
+        working-directory: ui
+        run: pnpm --filter @immich/sdk build
+
+      - name: Check formatting
+        working-directory: ui/web
+        run: pnpm run format
+
+      - name: Lint
+        working-directory: ui/web
+        run: pnpm run lint
+
+      - name: Check Svelte
+        working-directory: ui/web
+        run: pnpm run check:svelte
+
+      - name: Check TypeScript
+        working-directory: ui/web
+        run: pnpm run check:typescript
+
+      - name: Run web tests
+        working-directory: ui/web
+        run: pnpm run test -- --run
+
+      - name: Build production web
+        working-directory: ui/web
+        run: pnpm run build
+
+  full-release-lifecycle:
+    name: Full release lifecycle
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.full_release == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      - name: Prove fresh, concurrent, interrupted and resumed migrations
+        run: tools/run_migration_runner_acceptance.sh
+
+      - name: Prove the full disposable synthetic product lifecycle
+        run: tools/run_synthetic_acceptance.sh

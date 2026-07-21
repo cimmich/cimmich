@@ -1,0 +1,129 @@
+name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
+
+services:
+  cimmich-database:
+    image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
+    environment:
+      POSTGRES_DB: cimmich
+      POSTGRES_PASSWORD: ${CIMMICH_DB_PASSWORD:?configure the companion first}
+      POSTGRES_USER: cimmich
+    volumes:
+      - cimmich-database:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U cimmich -d cimmich]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [cimmich-internal]
+
+  cimmich-api:
+    build:
+      context: ..
+      dockerfile: tools/public_demo_api.Dockerfile
+      target: production
+    image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-api:current-source
+    environment:
+      CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}
+      CIMMICH_DOCUMENT_STORE_ROOT: /documents
+      CIMMICH_GUIDED_ENABLED: "false"
+      CIMMICH_IMMICH_SOURCE_ID: immich-primary
+      CIMMICH_IMMICH_CREDENTIAL_FILE: /config/immich-credential.json
+      CIMMICH_MEDIA_JOB_CONFIG_DIGEST: "0000000000000000000000000000000000000000000000000000000000000000"
+      CIMMICH_MEDIA_JOB_OPERATION: detect_and_recognize
+      CIMMICH_MEDIA_JOB_TOOL_VERSION: inventory-only-v1
+      CIMMICH_RUNTIME_MODE: production
+      CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: ${CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE:-password}
+      DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
+      HOST: 0.0.0.0
+      IMMICH_API_KEY: ${CIMMICH_IMMICH_API_KEY:-}
+      IMMICH_API_URL: ${CIMMICH_IMMICH_API_URL:-}
+      PORT: "3101"
+    depends_on:
+      cimmich-database:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}:3101
+    volumes:
+      - cimmich-config:/config
+      - cimmich-documents:/documents
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3101/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks: [cimmich-internal]
+
+  cimmich-ui:
+    build:
+      context: ..
+      dockerfile: tools/cimmich_ui.Dockerfile
+      args:
+        PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}
+    image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-ui:current-source
+    depends_on:
+      cimmich-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    networks: [cimmich-internal]
+
+  cimmich-gateway:
+    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        envsubst '$$CIMMICH_IMMICH_WEB_ORIGIN' <
+        /template/default.conf.template > /etc/nginx/conf.d/default.conf &&
+        exec nginx -g 'daemon off;'
+    environment:
+      CIMMICH_IMMICH_WEB_ORIGIN: ${CIMMICH_IMMICH_WEB_ORIGIN:?configure the companion first}
+    depends_on:
+      cimmich-api:
+        condition: service_healthy
+      cimmich-ui:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413}:80
+    volumes:
+      - ./cimmich_gateway.conf.template:/template/default.conf.template:ro
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    networks: [cimmich-internal]
+
+networks:
+  cimmich-internal:
+
+volumes:
+  cimmich-database:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-database
+  cimmich-documents:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-documents
+  cimmich-config:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-config

@@ -1,0 +1,52 @@
+asset_id,chapter,title,orientation,subjects,contexts,demonstrates,visibility
+CHA-001,anchors,Maya in the Cedar House kitchen,portrait,Maya,Cedar House,Person cover;clear Face;Prime candidate,standard
+CHA-002,anchors,Alex repairing a porch planter,portrait,Alex,Cedar House,Person cover;clear Face;Body,standard
+CHA-003,anchors,Nora reading beside the window,portrait,Nora,Cedar House,Person cover;age detail;clear Face,personal
+CHA-004,anchors,Theo at the Northside workbench,landscape,Theo,Northside Workshop,Person cover;Thing context,standard
+CHA-005,anchors,Samira among garden beds,portrait,Samira,Willow Community Garden,Person cover;Place context,standard
+CHA-006,anchors,Eli with a football in the yard,portrait,Eli,Cedar House,Person cover;child archive context,personal
+CHA-007,anchors,Pixel on the Star Quilt,landscape,Pixel,Star Quilt;Cedar House,Pet cover;Thing connection,standard
+CHA-008,anchors,Juniper at the garden gate,landscape,Juniper,Cedar House,Pet cover;Body profile,standard
+CHA-009,cedar_house,Moving day at Cedar House,landscape,Maya;Alex;Theo;Eli,Cedar House;Cedar House Years,Life Period;group Faces;connections,standard
+CHA-010,cedar_house,Maya and Alex cooking dinner,landscape,Maya;Alex,Cedar House;Cedar House Years,coappearance;clear Faces;everyday archive,personal
+CHA-011,cedar_house,Nora teaches Eli the family recipe,landscape,Nora;Eli,Cedar House;Cedar House Years,Person connection;Document precursor,personal
+CHA-012,cedar_house,Theo repairs Moss in the hall,landscape,Theo,Moss;Cedar House,Thing profile;Body evidence,standard
+CHA-013,cedar_house,Maya and Samira plant herbs,landscape,Maya;Samira,Cedar House;Cedar House Years,coappearance;Place media,standard
+CHA-014,cedar_house,Alex and Juniper in backlight,portrait,Alex;Juniper,Cedar House,Pet connection;difficult Face;Secondary candidate,standard
+CHA-015,cedar_house,Pixel asleep on the Star Quilt,landscape,Pixel,Star Quilt;Cedar House,Pet media;Thing cover,standard
+CHA-016,cedar_house,Busy family dinner,landscape,Maya;Alex;Nora;Theo;Samira;Eli,Cedar House;Cedar House Years,crowded group;occlusion;candidate review,personal
+CHA-017,cedar_house,Carrying boxes through porch rain,portrait,Alex;Theo,Cedar House,Body tags;faces obscured;manual Head,standard
+CHA-018,cedar_house,Eli and Juniper walking away,portrait,Eli;Juniper,Cedar House,manual Presence;Body;Pet association,personal
+CHA-019,cedar_house,Moss waiting at the front gate,portrait,,Moss;Cedar House,Thing cover;Place connection;no Person,standard
+CHA-020,cedar_house,Cedar House exterior at dusk,landscape,,Cedar House,Place cover;Life Period cover,standard
+CHA-021,bluewater,Ruby packed for departure,landscape,Samira;Alex;Eli,Ruby;Bluewater Weekend,Trip opening;Thing;participants,standard
+CHA-022,bluewater,Maya driving in profile,landscape,Maya,Ruby;Bluewater Weekend,sunglasses;profile Face;LQ review,personal
+CHA-023,bluewater,Bluewater beach group arrival,landscape,Maya;Alex;Nora;Samira;Eli;Juniper,Bluewater Beach;Bluewater Weekend,Trip cover;group matching;Pet,standard
+CHA-024,bluewater,Alex and Eli launch Sunbeam,landscape,Alex;Eli,Sunbeam;Bluewater Beach,Thing;Body;parent-child connection,standard
+CHA-025,bluewater,Samira under a broad sunhat,portrait,Samira,Bluewater Beach;Bluewater Weekend,manual Head;occluded Face,standard
+CHA-026,bluewater,Nora under the beach umbrella,portrait,Nora,Bluewater Beach;Bluewater Weekend,partial Face;difficult candidate,personal
+CHA-027,bluewater,Juniper running through the shallows,landscape,Juniper,Bluewater Beach;Bluewater Weekend,Pet action;Event media,standard
+CHA-028,bluewater,Family silhouettes at sunset,landscape,Maya;Alex;Nora;Samira;Eli,Bluewater Beach;Bluewater Weekend,Body and Presence;no reliable Faces,standard
+CHA-029,bluewater,Backs of heads at the tide pools,landscape,Nora;Samira;Eli,Bluewater Beach;Bluewater Weekend,Head evidence;manual correction,standard
+CHA-030,bluewater,Bluewater overlook with tiny figures,landscape,Maya;Alex;Eli;Juniper,Bluewater Beach;Bluewater Weekend,Place context;Presence;Nearby media,standard
+CHA-031,birthday,Setting Nora's birthday table,landscape,Maya;Samira,Star Quilt;Nora's 70th Birthday,Event preparation;Thing connection,standard
+CHA-032,birthday,Nora with the birthday cake,landscape,Nora,Nora's 70th Birthday,Event cover;clear Face;Person cover alternative,standard
+CHA-033,birthday,Crowded birthday toast,landscape,Maya;Alex;Nora;Theo;Samira,Nora's 70th Birthday,group occlusion;candidate review,personal
+CHA-034,birthday,Maya carries the cake through the room,portrait,Maya,Nora's 70th Birthday,Body tag;motion;Face absent,standard
+CHA-035,birthday,Samira and Theo in side-profile conversation,landscape,Samira;Theo,Nora's 70th Birthday,side profiles;identity correction,personal
+CHA-036,birthday,Eli laughing in motion blur,landscape,Eli,Nora's 70th Birthday,Unknown versus accepted identity;LQ evidence,personal
+CHA-037,birthday,Hands opening the birthday card,landscape,Nora;Eli,Nora's 70th Birthday,Event detail;Presence;Document connection,personal
+CHA-038,birthday,Formal family group after cake,landscape,Maya;Alex;Nora;Theo;Samira;Eli,Nora's 70th Birthday,complete group;duplicate Person merge fixture,standard
+CHA-039,garden,Willow Garden morning overview,landscape,,Willow Community Garden;Saturday Garden Crew,Place cover;Activity cover,standard
+CHA-040,garden,Theo and Alex carry reclaimed timber,landscape,Theo;Alex,Willow Community Garden;Saturday Garden Crew,Body continuity;Activity participants,standard
+CHA-041,garden,Maya and Samira planting seedlings,landscape,Maya;Samira,Willow Community Garden;Saturday Garden Crew,coappearance;clear Faces,standard
+CHA-042,garden,Nora resting beneath a sunhat,portrait,Nora,Willow Community Garden;Saturday Garden Crew,Head;partial Face;quiet profile,personal
+CHA-043,garden,Eli and Juniper beside the wheelbarrow,landscape,Eli;Juniper,Willow Community Garden;Saturday Garden Crew,Pet and Person connection;Body,standard
+CHA-044,garden,Tools and Moss beside the shed,landscape,,Moss;Willow Community Garden;Saturday Garden Crew,Thing media;Activity detail,standard
+CHA-045,garden,Garden crew walking away,landscape,Maya;Alex;Theo;Samira;Eli,Willow Community Garden;Saturday Garden Crew,Presence;Body;backs turned,standard
+CHA-046,documents,Bluewater Weekend itinerary,landscape,,Bluewater Weekend;Bluewater Beach;Ruby,Document linked to Event Place and Thing,standard
+CHA-047,documents,Juniper vaccination card,landscape,Juniper,,Document linked to Pet;privacy control,private
+CHA-048,documents,Ruby repair receipt,landscape,,Ruby;Northside Workshop,Document linked to Thing and Place,personal
+CHA-049,documents,Nora's handwritten recipe card,landscape,Nora,Cedar House,Document linked to Person and Place,personal
+CHA-050,documents,Nora's birthday invitation,landscape,Nora,Nora's 70th Birthday,Document linked to Person and Event,standard
+CHA-051,bluewater,Maya on the Bluewater boardwalk with two strangers,landscape,Maya,Bluewater Beach;Bluewater Weekend,Known Face plus two reviewable unknown Faces;Unknown/Later/Undo,standard

@@ -1,0 +1,64 @@
+import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+
+const readPersonProfile = () => readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8');
+
+describe('Person profile layout', () => {
+  it('opens with a photo-led identity hero instead of an administrative record card', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain('data-testid="cimmich-person-hero"');
+    expect(source).toContain('style={cimmichPersonHeroStyle(cimmichPerson)}');
+    expect(source).toContain('min-h-[25rem]');
+    expect(source).toContain('sm:text-5xl lg:text-6xl');
+    expect(source).toContain('bg-gradient-to-r from-black/92');
+    expect(source).toContain('ring-4 ring-white/90');
+    expect(source).toContain('bg-black/30 px-3 font-semibold backdrop-blur-md');
+  });
+
+  it('pins navigation and editing to the hero corners while keeping administration in Details', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain('absolute top-5 left-5 z-10');
+    expect(source).toContain('absolute top-5 right-5 z-10');
+    expect(source).toContain('<CimmichObjectVisibility');
+    expect(source).toContain('Merge duplicate');
+    expect(source).toContain('data-testid="cimmich-person-edit"');
+  });
+
+  it('keeps Photos visual controls compact and makes Tags a bucket-first matching library', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain('aria-label="Photo view options"');
+    expect(source).toContain('aria-label="Thumbnail size"');
+    expect(source).toContain('<option value="medium">Medium</option>');
+    expect(source).toContain('<h2 class="text-xl font-semibold">Matching library</h2>');
+    expect(source).toContain('<legend class="sr-only">Choose a matching bucket</legend>');
+    expect(source).toContain("{ id: 'prime', label: 'Strong', description: 'Best reference photos' }");
+    expect(source).toContain("{ id: 'face_only', label: 'Not used', description: 'Identity only' }");
+    expect(source).not.toContain('Tagged appearances');
+    expect(source).not.toContain('Filter tagged appearances');
+    expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
+  });
+
+  it('promotes Connections and keeps Details free of add and administration rails', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain("cimmichMode === 'connections'");
+    expect(source).toContain('aria-label="Connections"');
+    expect(source).not.toContain('id="person-connections-heading"');
+    expect(source).not.toContain("connected through {cimmichPerson.display_name}'s photo stories");
+    expect(source).toContain(".filter((category) => category.category_kind === 'relationship')");
+    expect(source).toContain(".join(' · ') || 'Connected person'");
+    expect(source).toContain("{ id: 'person', label: 'People' }");
+    expect(source).toContain("{ id: 'event', label: 'Events' }");
+    expect(source).toContain("{ id: 'place', label: 'Places' }");
+    expect(source).toContain("{ id: 'object', label: 'Things' }");
+    expect(source.indexOf("{ id: 'person', label: 'People' }")).toBeLessThan(
+      source.indexOf("{ id: 'event', label: 'Events' }"),
+    );
+    expect(source).not.toContain('aria-label="Details tools"');
+    expect(source).not.toContain('cimmichQuickDetailActions');
+    expect(source).toContain('<h2 class="text-lg font-semibold">Profile settings</h2>');
+  });
+});

@@ -1,0 +1,38 @@
+{
+  "name": "cimmich-local-service",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "asset-similarity-conformance": "node acceptance/asset-similarity-provider-journey.mjs",
+    "bootstrap-public-demo": "node bin/bootstrap-public-demo.mjs",
+    "bootstrap-public-demo-immich": "node bin/bootstrap-public-demo-immich.mjs",
+    "body-provider-conformance": "node bin/validate-body-provider-conformance.mjs",
+    "body-detector-review": "node bin/validate-body-detector.mjs",
+    "commit-recognition-job": "node bin/commit-recognition-job.mjs",
+    "document-lifecycle": "node bin/document-lifecycle.mjs",
+    "guided-local-conformance": "node bin/guided-local-conformance.mjs",
+    "link-face-bodies": "node bin/link-face-bodies.mjs",
+    "media-job": "node bin/media-job.mjs",
+    "matching-qc-cohort": "node bin/evaluate-matching-qc-cohort.mjs",
+    "matching-lever-review": "node bin/evaluate-matching-lever.mjs",
+    "migrate": "node bin/migrate.mjs",
+    "provider-review": "node bin/evaluate-provider-review.mjs",
+    "sync-immich-inventory": "node bin/sync-immich-inventory.mjs",
+    "reference-accumulation": "node bin/build-reference-accumulation-galleries.mjs",
+    "rebuild-source-pack": "node bin/run-source-pack-rebuild-worker.mjs",
+    "secondary-routing-gate": "node bin/secondary-routing-gate.mjs",
+    "source-pack-lifecycle": "node bin/source-pack-lifecycle.mjs",
+    "start": "node bin/start.mjs",
+    "validate-recognition-provider": "node bin/validate-recognition-provider.mjs",
+    "visibility-credential": "node bin/visibility-credential.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "postgres": "3.4.9"
+  }
+}

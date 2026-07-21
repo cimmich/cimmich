@@ -1,0 +1,7 @@
+id,filename,width,height,sha256,subject,scene,intended_role,synthetic,generator_route,status
+ST-001,ST-001-maya-eva-hero.png,1672,941,db17133006d5a9f4e2e3e6b6a864ce54bdfe31757f3f2c0917ff4d84bd104c32,Maya Chen,EVA above Earth,hero match cut;Body;Head;Face unsuitable,true,Codex built-in OpenAI image generation,review-ready
+ST-002,ST-002-maya-suit-up.png,1024,1536,d469a59cba8b19af877ec419f0fe9c18e6b61e23f3f49edf6ffbac84ec7df66c,Maya Chen,suit-up room,clear Face;identity anchor,true,Codex built-in OpenAI image generation,review-ready
+ST-003,ST-003-maya-capsule-window.png,1536,1024,60f7fc290484c48e3fe29eee096390b49bf6da21c8790e5f6902f1a01da18210,Maya Chen,capsule window,reflected visor;weaker Face;Head,true,Codex built-in OpenAI image generation,review-ready
+ST-004,ST-004-maya-earth-window-rear.png,1024,1536,95a760c0841e63ab24e83f1b6410bbb57fa1e8f5f720fe1ed3a098f96c1394ab,Maya Chen,observation bay,rear Body;Face absent,true,Codex built-in OpenAI image generation,review-ready
+ST-005,ST-005-maya-orbital-sunrise-pov.png,1536,1024,ca015790d2fd52e501a46dfed7e665b7c2eda9b0821d7729348a1303cabd88bf,Maya Chen,orbital sunrise,known Presence;no local region,true,Codex built-in OpenAI image generation,review-ready
+ST-006,ST-006-maya-cabin-candid.png,1536,1024,cc7d5670ca00b9beb141a30955bebb3b75854a608e703ab8320c4e320db448e2,Maya Chen,cabin candid,clear Face;trip context,true,Codex built-in OpenAI image generation,review-ready

@@ -1,0 +1,210 @@
+name: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:v3.0.3@sha256:c716dc20f957aafd89fa9d284a2ec63e25c9e2d8d8e87c6197d540a3dce237db
+    volumes:
+      - immich-library:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      DB_HOSTNAME: immich-database
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD:?set IMMICH_DB_PASSWORD}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      IMMICH_MACHINE_LEARNING_URL: http://immich-machine-learning:3003
+    ports:
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_IMMICH_PORT:-22859}:2283
+    depends_on:
+      immich-database:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+    networks:
+      - demo-internal
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:v3.0.3@sha256:d76fe88b69282c09a97eac4f82dafa82cfd77bce274bc742591cde974f87dacb
+    volumes:
+      - immich-model-cache:/cache
+    networks:
+      - demo-internal
+
+  immich-redis:
+    image: docker.io/valkey/valkey:9@sha256:4963247afc4cd33c7d3b2d2816b9f7f8eeebab148d29056c2ca4d7cbc966f2d9
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping || exit 1"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    networks:
+      - demo-internal
+
+  immich-database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD:?set IMMICH_DB_PASSWORD}
+      POSTGRES_USER: immich
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: --data-checksums
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - immich-database:/var/lib/postgresql/data
+    networks:
+      - demo-internal
+
+  cimmich-database:
+    image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
+    environment:
+      POSTGRES_DB: cimmich
+      POSTGRES_PASSWORD: ${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}
+      POSTGRES_USER: cimmich
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cimmich -d cimmich"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - cimmich-database:/var/lib/postgresql/data
+    networks:
+      - demo-internal
+
+  cimmich-bootstrap:
+    profiles: [bootstrap]
+    build:
+      context: ..
+      dockerfile: tools/public_demo_api.Dockerfile
+      target: production
+    image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    environment:
+      DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
+    volumes:
+      - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}:/demo-state
+    networks:
+      - demo-internal
+
+  cimmich-init:
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+    network_mode: none
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        chown 1000:1000 /documents
+        chmod 700 /documents
+    restart: "no"
+    volumes:
+      - cimmich-documents:/documents
+
+  cimmich-face-provider-init:
+    profiles: [face-provider]
+    image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    command:
+      ["/bin/sh", "/app/providers/opencv-sface/install-models.sh", "/models"]
+    network_mode: bridge
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - cimmich-face-models:/models
+
+  cimmich-api:
+    build:
+      context: ..
+      dockerfile: tools/public_demo_api.Dockerfile
+      target: production
+    image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    command:
+      - /bin/sh
+      - -c
+      - |
+        export IMMICH_API_KEY="$$(node -e "const fs=require('fs');process.stdout.write(JSON.parse(fs.readFileSync('/demo-state/immich-credential.json','utf8')).apiKey)")"
+        export CIMMICH_GUIDED_ACCESS_TOKEN="$$(cat /demo-state/guided-token)"
+        exec node bin/start.mjs
+    depends_on:
+      cimmich-database:
+        condition: service_healthy
+      cimmich-init:
+        condition: service_completed_successfully
+      immich-server:
+        condition: service_started
+    environment:
+      CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303},http://localhost:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}
+      CIMMICH_DISPLAY_BRIDGE_PATH: /demo-state/display-bridge.json
+      CIMMICH_DOCUMENT_STORE_ROOT: /documents
+      CIMMICH_GUIDED_ENABLED: "true"
+      CIMMICH_GUIDED_AUTHORITY: operate
+      CIMMICH_GUIDED_IMMICH_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_IMMICH_PORT:-22859}/api
+      CIMMICH_GUIDED_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}
+      CIMMICH_GUIDED_UI_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}
+      CIMMICH_GUIDED_VISIBILITY_CEILING: private
+      CIMMICH_RUNTIME_MODE: production
+      CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: password
+      DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
+      HOST: 0.0.0.0
+      IMMICH_API_URL: http://immich-server:2283/api
+      CIMMICH_IMMICH_SOURCE_ID: cimmich-public-demo-cedar-house-v1
+      CIMMICH_LOCAL_MEDIA_PROVIDER: ${CIMMICH_PUBLIC_DEMO_FACE_PROVIDER:-}
+      CIMMICH_LOCAL_PYTHON_PATH: /usr/bin/python3
+      CIMMICH_OPENCV_DETECTOR_MODEL_PATH: /provider-models/face_detection_yunet_2023mar.onnx
+      CIMMICH_OPENCV_RECOGNIZER_MODEL_PATH: /provider-models/face_recognition_sface_2021dec.onnx
+      PORT: "3101"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3101/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    ports:
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}:3101
+    volumes:
+      - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/display-bridge.json:/demo-state/display-bridge.json:ro
+      - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/immich-credential.json:/demo-state/immich-credential.json:ro
+      - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/guided-token:/demo-state/guided-token:ro
+      - cimmich-documents:/documents
+      - cimmich-face-models:/provider-models:ro
+    networks:
+      - demo-internal
+
+  public-demo-ui:
+    build:
+      context: ..
+      dockerfile: tools/public_demo_ui.Dockerfile
+      args:
+        PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}
+    image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-ui:current-source
+    depends_on:
+      cimmich-api:
+        condition: service_healthy
+      immich-server:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    ports:
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}:80
+    networks:
+      - demo-internal
+
+networks:
+  demo-internal:
+
+volumes:
+  cimmich-database:
+  cimmich-documents:
+  cimmich-face-models:
+  immich-database:
+  immich-library:
+  immich-model-cache:

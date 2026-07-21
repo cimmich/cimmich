@@ -1,0 +1,11 @@
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+const framed = Buffer.concat(chunks);
+if (framed.length < 18) process.exit(2);
+const leftLength = Number(framed.readBigUInt64BE(0));
+const rightLength = Number(framed.readBigUInt64BE(8));
+if (framed.length !== 16 + leftLength + rightLength) process.exit(3);
+const left = framed.subarray(16, 16 + leftLength);
+const right = framed.subarray(16 + leftLength);
+const similarity = left.equals(right) ? 1 : 0.84375;
+process.stdout.write(`${JSON.stringify({ similarity })}\n`);

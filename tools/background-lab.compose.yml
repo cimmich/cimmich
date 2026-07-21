@@ -1,0 +1,90 @@
+name: cimmich-background-lab
+
+services:
+  secret-init:
+    image: alpine:3.22
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        umask 077
+        if [ ! -s /secrets/guided-token ]; then
+          head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /secrets/guided-token
+        fi
+        chmod 644 /secrets/guided-token
+        chown 1000:1000 /documents
+        chmod 700 /documents
+    restart: "no"
+    volumes:
+      - document-store:/documents
+      - guided-secrets:/secrets
+
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg17-trixie
+    environment:
+      POSTGRES_DB: cimmich_background
+      POSTGRES_PASSWORD: background-lab-only-password
+      POSTGRES_USER: cimmich_background
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U cimmich_background -d cimmich_background"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3202:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: service/Dockerfile
+      target: production
+    image: cimmich-background-lab-api:schema62-current-source-20260719
+    command:
+      - /bin/sh
+      - -c
+      - |
+        export CIMMICH_GUIDED_ACCESS_TOKEN="$$(cat /run/cimmich-lab/guided-token)"
+        exec node bin/start.mjs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      secret-init:
+        condition: service_completed_successfully
+    environment:
+      CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:3200,http://localhost:3200
+      CIMMICH_DOCUMENT_STORE_ROOT: /documents
+      CIMMICH_GUIDED_ENABLED: "${CIMMICH_LAB_GUIDED_ENABLED:-true}"
+      CIMMICH_ALL_TRUSTED_SHORTLIST_ENABLED: "${CIMMICH_LAB_ALL_TRUSTED_SHORTLIST_ENABLED:-false}"
+      CIMMICH_ALL_TRUSTED_SHORTLIST_EVALUATION_RECEIPT_DIGEST: "${CIMMICH_LAB_ALL_TRUSTED_SHORTLIST_EVALUATION_RECEIPT_DIGEST:-}"
+      CIMMICH_ALL_TRUSTED_SHORTLIST_PACK_ID: "${CIMMICH_LAB_ALL_TRUSTED_SHORTLIST_PACK_ID:-}"
+      CIMMICH_RUNTIME_MODE: isolated_lab
+      DATABASE_URL: postgres://cimmich_background:background-lab-only-password@postgres:5432/cimmich_background
+      HOST: 0.0.0.0
+      PORT: "3101"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3101/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports:
+      - "127.0.0.1:3201:3101"
+    restart: unless-stopped
+    volumes:
+      - document-store:/documents
+      - guided-secrets:/run/cimmich-lab:ro
+
+volumes:
+  document-store:
+  guided-secrets:
+  postgres-data:
