@@ -25,6 +25,7 @@ reports/private/
 # blanket media rules above continue to exclude arbitrary owner/private media.
 !demo/space-trip-v1/media/*.png
 !demo/space-trip-v1/qa/*.jpg
+!docs/assets/*.png
 !ui/web/src/lib/assets/*.png
 !ui/web/static/*.png
 __pycache__/

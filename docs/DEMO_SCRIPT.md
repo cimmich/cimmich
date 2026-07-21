@@ -3,7 +3,7 @@
 Hard limit: **strictly below 3:00**. The current full rough is **2:58.256** and
 is not the upload keeper; final capture and trim target **2:56–2:57** so the
 encoded master retains operational margin. The final YouTube upload must be
-Public or Unlisted, accessible by the submitted link, and contain intelligible
+Public, accessible by the submitted link, and contain intelligible
 English audio.
 
 This is the Devpost judge cut. It must show the real frozen release and explain
@@ -106,7 +106,7 @@ person’s name when opening a photo from their page.
 ## Mandatory final checks
 
 - [ ] Final encoded duration is `<180.000s`.
-- [ ] Video is uploaded to YouTube as **Public or Unlisted**, never Private, and
+- [ ] Video is uploaded to YouTube as **Public**, never Unlisted or Private, and
       the exact submitted link works logged out.
 - [ ] English narration and captions audibly cover the working product, Codex
       workflow and GPT-5.6 use.

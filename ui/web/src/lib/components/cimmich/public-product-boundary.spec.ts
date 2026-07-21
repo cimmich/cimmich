@@ -85,6 +85,19 @@ describe('public Cimmich product boundary', () => {
     expect(detailPanel).toContain('<CimmichAppearancesPanel {asset} compact />');
   });
 
+  it('returns the manual-tag toolbar to neutral after decision Undo restores the prior evidence kind', async () => {
+    const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
+    const undoStart = overlay.indexOf('const undoManualTag = async');
+    const undoEnd = overlay.indexOf('const undoLastManualTag', undoStart);
+    const undoFlow = overlay.slice(undoStart, undoEnd);
+
+    expect(undoFlow).toContain('await undoCimmichManualSubjectTag(');
+    expect(undoFlow).toContain('await loadManualSubjectTagReadback');
+    expect(undoFlow).toContain('stopTagging();');
+    expect(undoFlow.indexOf('stopTagging();')).toBeLessThan(undoFlow.indexOf('manualTagActionMessage ='));
+    expect(overlay).toContain("isTaggingMode ? 'Cancel adding a person or pet' : 'Add a person or pet'");
+  });
+
   it('keeps every unavailable legacy route fail-closed and product-neutral', async () => {
     const unavailable = await read('./CimmichUnavailableCapability.svelte');
     expect(unavailable).toContain('does not expose a validated capability');

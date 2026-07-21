@@ -43,29 +43,27 @@ const entity = (overrides: Partial<CimmichContextEntity> = {}): CimmichContextEn
 describe('Cimmich context collections', () => {
   it('presents Things as durable identities and filters without changing the object contract', async () => {
     const onOpen = vi.fn();
-    const { getByRole, getByText, queryByRole } = render(CimmichContextCollection, {
-      description: 'Particular things with history.',
+    const { getByRole, getByText, queryByRole, queryByText } = render(CimmichContextCollection, {
+      controlledTypeFilter: 'device',
       entities: [
-        entity({ assetCount: 1, displayName: 'Campervan', entityId: 'object_vehicle', typeKind: 'vehicle' }),
-        entity({ displayName: 'Old camera', entityId: 'object_device', typeKind: 'device' }),
+        entity({ displayName: 'Campervan', entityId: 'object_vehicle', typeKind: 'vehicle' }),
+        entity({ assetCount: 1, displayName: 'Old camera', entityId: 'object_device', typeKind: 'device' }),
       ],
       family: 'objects',
       onAdd: vi.fn(),
       onOpen,
     });
 
-    expect(getByRole('button', { name: /Campervan/ })).toBeInTheDocument();
-    expect(getByText('2 things')).toBeInTheDocument();
-    expect(getByText('1 photo')).toBeInTheDocument();
-    await fireEvent.click(getByRole('button', { name: 'Devices' }));
     expect(queryByRole('button', { name: /Campervan/ })).not.toBeInTheDocument();
+    expect(queryByText('The things that stay with you')).not.toBeInTheDocument();
+    expect(getByText('1 photo')).toBeInTheDocument();
+    expect(queryByRole('combobox', { name: 'Filter Things' })).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: /Old camera/ }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'object_device' }));
   });
 
-  it('renders Events as a newest-first year timeline with distinct temporal shapes', () => {
-    const { getByRole, getByTestId, getByText } = render(CimmichContextCollection, {
-      description: 'Moments and longer chapters.',
+  it('renders Events as a compact newest-first photo collection', () => {
+    const { getAllByRole, getByTestId, getByText, queryByRole } = render(CimmichContextCollection, {
       entities: [
         entity({
           dateStart: '2024-07-01',
@@ -88,17 +86,20 @@ describe('Cimmich context collections', () => {
       onOpen: vi.fn(),
     });
 
-    expect(getByRole('heading', { name: '2024' })).toBeInTheDocument();
-    expect(getByRole('heading', { name: '2023' })).toBeInTheDocument();
+    expect(queryByRole('heading', { name: '2024' })).not.toBeInTheDocument();
+    expect(queryByRole('heading', { name: '2023' })).not.toBeInTheDocument();
     expect(getByText('Corfu trip')).toBeInTheDocument();
     expect(getByText('Summer football')).toBeInTheDocument();
     expect(getByTestId('cimmich-event-contact-sheet').querySelectorAll('img')).toHaveLength(4);
+    expect(getAllByRole('button', { name: /Corfu trip|Summer football/ }).map((button) => button.textContent)).toEqual([
+      expect.stringContaining('Corfu trip'),
+      expect.stringContaining('Summer football'),
+    ]);
   });
 
   it('starts Places in the photographic view while keeping the Map adjacent', async () => {
     const onAdd = vi.fn();
     const { getByRole, getByText } = render(CimmichContextCollection, {
-      description: 'Your locations.',
       entities: [],
       family: 'places',
       onAdd,
@@ -115,7 +116,6 @@ describe('Cimmich context collections', () => {
   it('opens a Place when its cover photo is clicked', async () => {
     const onOpen = vi.fn();
     const { getByTestId } = render(CimmichContextCollection, {
-      description: 'Your locations.',
       entities: [
         entity({
           coverAssetId: 'asset_cover',

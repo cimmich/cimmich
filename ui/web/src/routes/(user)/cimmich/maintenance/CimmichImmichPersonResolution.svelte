@@ -169,10 +169,10 @@
     <div>
       <h3 id="immich-cluster-resolution-title" class="font-semibold">Resolve unnamed Face groups</h3>
       <p class="mt-1 max-w-3xl text-sm/6 text-gray-700 dark:text-gray-200">
-        These are Faces Immich groups under an unnamed Person reference. This can include a Face group whose source
-        Person no longer appears separately in Immich, so the total may be higher than the unnamed People count above.
-        Review the visible crop and exact Face count, then map or classify each group. Cimmich never infers this choice
-        from Bodies, geometry or matching.
+        These are separate upstream Immich face groups, not unnamed versions of your existing Cimmich People. A group
+        can remain after its source Person no longer appears separately in Immich, so this total may be higher than the
+        preview above. Review the bounded crop and exact Face count, then map or classify each group. Cimmich never
+        infers this choice from Bodies, geometry or matching.
       </p>
     </div>
     <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold dark:bg-immich-dark-bg">
@@ -192,22 +192,29 @@
       {#each clusters as cluster (cluster.immichPersonId)}
         <article class="grid gap-4 rounded-2xl border border-gray-200 p-4 sm:grid-cols-[8rem_1fr] dark:border-gray-700">
           <div
-            aria-label={`Representative crop for Immich cluster ${cluster.immichPersonId}`}
+            aria-label={`Representative crop for unnamed Immich face group with ${cluster.faceCount} ${cluster.faceCount === 1 ? 'Face' : 'Faces'}`}
             class="aspect-square w-full rounded-2xl bg-gray-200 bg-no-repeat dark:bg-gray-800"
             style={cropStyle(cluster)}
           ></div>
           <div class="min-w-0">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <p class="font-semibold">{cluster.faceCount} {cluster.faceCount === 1 ? 'Face' : 'Faces'}</p>
+              <div>
+                <p class="font-semibold">Unnamed face group</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {cluster.faceCount}
+                  {cluster.faceCount === 1 ? 'Face' : 'Faces'} in this upstream group
+                </p>
+              </div>
               <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-immich-dark-gray">
                 {cluster.resolution.state === 'resolved'
                   ? cluster.resolution.action.replaceAll('_', ' ')
                   : cluster.resolution.state}
               </span>
             </div>
-            <p class="mt-1 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">
-              {cluster.immichPersonId}
-            </p>
+            <details class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+              <summary class="cursor-pointer font-medium">Technical details</summary>
+              <code class="mt-1 block truncate" title={cluster.immichPersonId}>{cluster.immichPersonId}</code>
+            </details>
 
             {#if cluster.resolution.state === 'resolved' || cluster.resolution.state === 'later'}
               <p class="mt-3 text-sm/6">

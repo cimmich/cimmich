@@ -376,6 +376,70 @@ try {
       AND immich_asset_id = 'inventory-c'
   `;
   assert.equal(preservedArchive.state, "active");
+
+  let rolloverAssetsVisible = false;
+  const rolloverCalls = [];
+  const rolloverCompanion = {
+    async status() {
+      return {
+        immichVersion: "3.0.3",
+        principal: { userId: "synthetic-rollover-principal" },
+        state: "ready",
+      };
+    },
+    async listAssets({ cursor, visibility }) {
+      rolloverCalls.push({ cursor, visibility });
+      assert.equal(visibility, "timeline");
+      return {
+        items: rolloverAssetsVisible
+          ? Array.from({ length: 6 }, (_, index) =>
+              asset(`inventory-rollover-${index + 1}`, "timeline", "a"),
+            )
+          : [],
+        nextCursor: null,
+        visibility,
+      };
+    },
+  };
+  const rolloverSynchronizer = createImmichInventorySynchronizer({
+    companion: rolloverCompanion,
+    job: null,
+    pageSize: 10,
+    sourceId: "synthetic-immich-rollover",
+    sql,
+  });
+  const stranded = await rolloverSynchronizer.synchronize({
+    maxPages: 1,
+    visibilities: ["timeline"],
+  });
+  assert.equal(stranded.run.state, "processing");
+  assert.equal(stranded.admittedAssetCount, 0);
+  rolloverAssetsVisible = true;
+  const recovered = await rolloverSynchronizer.synchronize({
+    maxPages: 2,
+    visibilities: ["timeline"],
+  });
+  assert.equal(recovered.run.state, "completed");
+  assert.notEqual(recovered.run.runId, stranded.run.runId);
+  assert.equal(recovered.pagesProcessed, 1);
+  assert.equal(recovered.admittedAssetCount, 6);
+  assert.equal(rolloverCalls.length, 2);
+  const replayedRollover = await rolloverSynchronizer.synchronize({
+    maxPages: 2,
+    visibilities: ["timeline"],
+  });
+  assert.equal(replayedRollover.run.state, "completed");
+  assert.equal(replayedRollover.admittedAssetCount, 0);
+  const [rolloverCounts] = await sql`
+    SELECT
+      (SELECT count(*)::int FROM immich_asset_projection
+       WHERE source_id = 'synthetic-immich-rollover') AS projections,
+      (SELECT count(*)::int FROM media_job job
+       JOIN immich_asset_projection projection
+         ON projection.cimmich_asset_id = job.asset_id
+       WHERE projection.source_id = 'synthetic-immich-rollover') AS jobs
+  `;
+  assert.deepEqual(rolloverCounts, { jobs: 0, projections: 6 });
   await assert.rejects(
     () => sql`
       SELECT * FROM begin_immich_inventory_run(

@@ -887,80 +887,104 @@ export const createImmichInventorySynchronizer = ({
       const principalDigest = digest(
         requiredText(companionStatus.principal?.userId, "principal.userId"),
       );
-      const run = await ledger.beginScoped({
+      let run = await ledger.beginScoped({
         immichVersion: companionStatus.immichVersion,
         principalDigest,
         sourceId: normalizedSourceId,
         visibilities: selectedVisibilities,
       });
+      let resumedRun = run.pageCount > 0;
+      let freshRolloverUsed = false;
       let processedPages = 0;
       let admittedAssetCount = 0;
       const admittedAssets = [];
 
-      for (const visibility of selectedVisibilities) {
-        let lane = (await ledger.lanes({ runId: run.runId })).find(
-          (candidate) => candidate.visibility === visibility,
-        );
-        while (lane.state !== "completed") {
-          const page = await companion.listAssets({
-            cursor: lane.cursor,
-            limit: normalizedPageSize,
-            visibility,
-          });
-          const recorded = await ledger.recordPage({
-            job: normalizedJob,
-            page: { cursor: lane.cursor, page, visibility },
-            runId: run.runId,
-            sourceId: normalizedSourceId,
-          });
-          admittedAssetCount += recorded.admittedAssetMappings.length;
-          admittedAssets.push(
-            ...recorded.admittedAssetMappings.slice(
-              0,
-              Math.max(1_000 - admittedAssets.length, 0),
-            ),
+      while (true) {
+        for (const visibility of selectedVisibilities) {
+          let lane = (await ledger.lanes({ runId: run.runId })).find(
+            (candidate) => candidate.visibility === visibility,
           );
-          if (onProjectionCommitted) {
-            await onProjectionCommitted({
-              entries: recorded.bridgeEntries,
-              phase: "page_committed",
+          while (lane.state !== "completed") {
+            const page = await companion.listAssets({
+              cursor: lane.cursor,
+              limit: normalizedPageSize,
+              visibility,
+            });
+            const recorded = await ledger.recordPage({
+              job: normalizedJob,
+              page: { cursor: lane.cursor, page, visibility },
               runId: run.runId,
               sourceId: normalizedSourceId,
             });
-          }
-          lane = recorded.lane;
-          processedPages += 1;
-          if (processedPages >= maxPages) {
-            return {
-              ...(await inventoryStatus({ probeLocked: false })),
-              admittedAssetCount,
-              admittedAssets,
-              admittedAssetsTruncated:
-                admittedAssetCount > admittedAssets.length,
-              pagesProcessed: processedPages,
-              run: { ...run, state: "processing" },
-            };
+            admittedAssetCount += recorded.admittedAssetMappings.length;
+            admittedAssets.push(
+              ...recorded.admittedAssetMappings.slice(
+                0,
+                Math.max(1_000 - admittedAssets.length, 0),
+              ),
+            );
+            if (onProjectionCommitted) {
+              await onProjectionCommitted({
+                entries: recorded.bridgeEntries,
+                phase: "page_committed",
+                runId: run.runId,
+                sourceId: normalizedSourceId,
+              });
+            }
+            lane = recorded.lane;
+            processedPages += 1;
+            if (processedPages >= maxPages) {
+              return {
+                ...(await inventoryStatus({ probeLocked: false })),
+                admittedAssetCount,
+                admittedAssets,
+                admittedAssetsTruncated:
+                  admittedAssetCount > admittedAssets.length,
+                pagesProcessed: processedPages,
+                run: { ...run, state: "processing" },
+              };
+            }
           }
         }
-      }
 
-      const completed = await ledger.completeScoped({ runId: run.runId });
-      if (onProjectionCommitted) {
-        await onProjectionCommitted({
-          entries: [],
-          phase: "run_completed",
-          runId: run.runId,
-          sourceId: normalizedSourceId,
-        });
+        const completed = await ledger.completeScoped({ runId: run.runId });
+        if (onProjectionCommitted) {
+          await onProjectionCommitted({
+            entries: [],
+            phase: "run_completed",
+            runId: run.runId,
+            sourceId: normalizedSourceId,
+          });
+        }
+        if (
+          resumedRun &&
+          !freshRolloverUsed &&
+          admittedAssetCount === 0 &&
+          processedPages < maxPages
+        ) {
+          const freshRun = await ledger.beginScoped({
+            immichVersion: companionStatus.immichVersion,
+            principalDigest,
+            sourceId: normalizedSourceId,
+            visibilities: selectedVisibilities,
+          });
+          if (freshRun.runId === run.runId || freshRun.pageCount !== 0) {
+            throw new Error("Immich inventory fresh rollover did not advance");
+          }
+          run = freshRun;
+          resumedRun = false;
+          freshRolloverUsed = true;
+          continue;
+        }
+        return {
+          ...(await inventoryStatus({ probeLocked: false })),
+          admittedAssetCount,
+          admittedAssets,
+          admittedAssetsTruncated: admittedAssetCount > admittedAssets.length,
+          pagesProcessed: processedPages,
+          run: completed,
+        };
       }
-      return {
-        ...(await inventoryStatus({ probeLocked: false })),
-        admittedAssetCount,
-        admittedAssets,
-        admittedAssetsTruncated: admittedAssetCount > admittedAssets.length,
-        pagesProcessed: processedPages,
-        run: completed,
-      };
     },
   };
 };

@@ -2,7 +2,7 @@ name: cimmich-stock-lifecycle
 
 services:
   immich-server:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3.0.3}
+    image: ghcr.io/immich-app/immich-server:v3.0.3@sha256:c716dc20f957aafd89fa9d284a2ec63e25c9e2d8d8e87c6197d540a3dce237db
     volumes:
       - ${IMMICH_UPLOAD_ROOT:?set IMMICH_UPLOAD_ROOT}:/data
       - /etc/localtime:/etc/localtime:ro
@@ -24,7 +24,7 @@ services:
       - immich-internal
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3.0.3}
+    image: ghcr.io/immich-app/immich-machine-learning:v3.0.3@sha256:d76fe88b69282c09a97eac4f82dafa82cfd77bce274bc742591cde974f87dacb
     volumes:
       - ${IMMICH_MODEL_CACHE_ROOT:?set IMMICH_MODEL_CACHE_ROOT}:/cache
     networks:
@@ -59,7 +59,7 @@ services:
       - immich-internal
 
   cimmich-database:
-    image: pgvector/pgvector:0.8.2-pg17-trixie
+    image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
     environment:
       POSTGRES_PASSWORD: ${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}
       POSTGRES_USER: cimmich

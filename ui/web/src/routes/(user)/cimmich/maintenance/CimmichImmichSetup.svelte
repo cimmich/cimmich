@@ -2,6 +2,7 @@
   import {
     CimmichServiceError,
     connectCimmichImmich,
+    getCimmichPeople,
     getCimmichImmichOnboardingStatus,
     importCimmichImmichOnboarding,
     previewCimmichImmichOnboarding,
@@ -10,6 +11,7 @@
     type CimmichImmichOnboardingScope,
     type CimmichImmichOnboardingStatus,
   } from '$lib/services/cimmich.service';
+  import { Route } from '$lib/route';
   import { Icon } from '@immich/ui';
   import { mdiCheckCircleOutline, mdiDatabaseImportOutline, mdiRefresh } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -23,6 +25,7 @@
   let error = $state('');
   let notice = $state('');
   let personResolutionReady = $state(true);
+  let existingCimmichPeopleCount = $state(0);
   let apiBaseUrl = $state('');
   let credential = $state('');
   let scope = $state<CimmichImmichOnboardingScope>({
@@ -58,7 +61,12 @@
     loading = true;
     error = '';
     try {
-      status = await getCimmichImmichOnboardingStatus();
+      const [currentStatus, visiblePeople] = await Promise.all([
+        getCimmichImmichOnboardingStatus(),
+        getCimmichPeople(500).catch(() => []),
+      ]);
+      status = currentStatus;
+      existingCimmichPeopleCount = visiblePeople.filter((person) => person.subject_kind === 'person').length;
       result = status.latestRun?.result ?? undefined;
       if (interrupted && status.latestRun?.scope) {
         scope = copyScope(status.latestRun.scope);
@@ -303,6 +311,19 @@
       </div>
     </dl>
 
+    <div
+      class="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm/6 text-sky-950 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100"
+    >
+      <p class="font-semibold">
+        Your {existingCimmichPeopleCount.toLocaleString()} existing Cimmich
+        {existingCimmichPeopleCount === 1 ? 'Person is' : 'People are'} preserved.
+      </p>
+      <p class="mt-1">
+        This optional preview reads separate upstream Immich face groups. Its labelled and unnamed counts do not
+        describe, replace or remove the People already in Cimmich.
+      </p>
+    </div>
+
     {#if interrupted}
       <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm/6 text-amber-950">
         <p class="font-semibold">An import can be resumed safely.</p>
@@ -393,6 +414,12 @@
         <Icon icon={mdiRefresh} size="18" class={busy === 'preview' ? 'animate-spin' : ''} />
         {busy === 'preview' ? 'Reading…' : 'Preview this scope'}
       </button>
+      <a
+        class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-immich-dark-gray"
+        href={Route.cimmichHome()}
+      >
+        Not now — continue using Cimmich
+      </a>
       <span class="self-center text-xs/5 text-gray-500 dark:text-gray-400">Nothing changes until you import.</span>
     </div>
 
@@ -406,8 +433,9 @@
             <h3 class="font-semibold">Current preview</h3>
             <p class="mt-1 text-sm/6 text-gray-700 dark:text-gray-200">
               {preview.counts.assets} supported media · {preview.counts.images} photos · {preview.counts.videos} videos ·
-              {preview.counts.labelledPeople} labelled People · {preview.counts.unlabelledPeople} unnamed People ·
-              {preview.counts.assignedFaces} assigned Faces · {preview.counts.unassignedFaces} unassigned Faces
+              {preview.counts.labelledPeople} labelled Immich People · {preview.counts.unlabelledPeople} unnamed Immich face
+              groups · {preview.counts.assignedFaces} Faces assigned upstream · {preview.counts.unassignedFaces}
+              unassigned upstream Faces
             </p>
             <dl class="mt-3 flex flex-wrap gap-2 text-xs">
               {#each ['timeline', 'archive', 'hidden', 'locked'] as lane (lane)}
@@ -442,7 +470,8 @@
         </button>
         {#if !personResolutionReady}
           <p class="mt-2 text-sm/6 font-medium text-indigo-950 dark:text-indigo-100">
-            Resolve every Face group below before importing Person identity.
+            Import stays safely unavailable until every upstream face group below is explicitly resolved. You can leave
+            this setup now and continue using your existing Cimmich People.
           </p>
         {/if}
         {#if preview.counts.unlabelledPeople > 0 && scope.importPeople}

@@ -218,6 +218,60 @@ const eliminateNestedLabels = (matches) =>
     });
   });
 
+const DESCRIPTION_KIND_PRIORITY = new Map(
+  ["place", "event", "object", "person", "pet", "document"].map(
+    (kind, index) => [kind, index],
+  ),
+);
+
+const selectNonConjunctiveDescriptions = (matches) => {
+  const remaining = [...matches];
+  const selected = [];
+  while (remaining.length) {
+    const component = [remaining.shift()];
+    const terms = new Set(component[0].match.coveredTerms);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let index = remaining.length - 1; index >= 0; index -= 1) {
+        const candidate = remaining[index];
+        if (!candidate.match.coveredTerms.some((term) => terms.has(term))) {
+          continue;
+        }
+        component.push(candidate);
+        for (const term of candidate.match.coveredTerms) terms.add(term);
+        remaining.splice(index, 1);
+        changed = true;
+      }
+    }
+    const byKind = new Map();
+    for (const candidate of component) {
+      const group = byKind.get(candidate.entity_kind) || [];
+      group.push(candidate);
+      byKind.set(candidate.entity_kind, group);
+    }
+    const [winner] = [...byKind.entries()].sort(
+      ([leftKind, left], [rightKind, right]) => {
+        const leftTerms = new Set(
+          left.flatMap((candidate) => candidate.match.coveredTerms),
+        ).size;
+        const rightTerms = new Set(
+          right.flatMap((candidate) => candidate.match.coveredTerms),
+        ).size;
+        return (
+          rightTerms - leftTerms ||
+          (DESCRIPTION_KIND_PRIORITY.get(leftKind) ?? Number.MAX_SAFE_INTEGER) -
+            (DESCRIPTION_KIND_PRIORITY.get(rightKind) ??
+              Number.MAX_SAFE_INTEGER) ||
+          leftKind.localeCompare(rightKind)
+        );
+      },
+    );
+    selected.push(...winner[1]);
+  }
+  return selected;
+};
+
 const selectMatches = (matches) => {
   const labelMatches = eliminateNestedLabels(
     matches.filter((candidate) => candidate.match.matchKind === "label"),
@@ -225,10 +279,19 @@ const selectMatches = (matches) => {
   const labelTerms = new Set(
     labelMatches.flatMap((candidate) => candidate.match.coveredTerms),
   );
-  const descriptionMatches = matches.filter(
-    (candidate) =>
-      candidate.match.matchKind === "description" &&
-      candidate.match.coveredTerms.some((term) => !labelTerms.has(term)),
+  const descriptionMatches = selectNonConjunctiveDescriptions(
+    matches
+      .filter((candidate) => candidate.match.matchKind === "description")
+      .map((candidate) => ({
+        ...candidate,
+        match: {
+          ...candidate.match,
+          coveredTerms: candidate.match.coveredTerms.filter(
+            (term) => !labelTerms.has(term),
+          ),
+        },
+      }))
+      .filter((candidate) => candidate.match.coveredTerms.length > 0),
   );
   return { descriptionMatches, labelMatches };
 };

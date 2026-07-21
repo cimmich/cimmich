@@ -604,12 +604,14 @@ docker exec "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs export \
   --document-id="$DOCUMENT_ID" --output=/tmp/cimmich-document-export
 docker exec "$CONTAINER" dropdb --if-exists -U cimmich_test cimmich_restore
 docker exec "$CONTAINER" createdb -U cimmich_test cimmich_restore
-docker exec "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs restore \
-  --database-url=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+docker exec \
+  -e DATABASE_URL=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+  "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs restore \
   --input=/tmp/cimmich-document-backup \
   --store-root=/tmp/cimmich-documents-restored
-docker exec "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs purge \
-  --database-url=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+docker exec \
+  -e DATABASE_URL=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+  "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs purge \
   --store-root=/tmp/cimmich-documents-restored \
   --document-id="$DOCUMENT_ID" --confirm="$DOCUMENT_ID"
 docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_restore -c \
@@ -625,8 +627,9 @@ docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_rest
       RAISE EXCEPTION 'Legacy Pet document truth was changed by generic purge';
     END IF;
   END \$\$;" >/dev/null
-docker exec "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs remove-empty-store \
-  --database-url=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+docker exec \
+  -e DATABASE_URL=postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/cimmich_restore \
+  "$SERVICE_CONTAINER" node bin/document-lifecycle.mjs remove-empty-store \
   --store-root=/tmp/cimmich-documents-restored \
   --confirm=remove-empty-document-store
 docker exec "$CONTAINER" dropdb -U cimmich_test cimmich_restore

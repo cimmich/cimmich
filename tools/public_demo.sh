@@ -34,6 +34,27 @@ random_hex() {
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
 }
 
+sha256_generate() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$@"
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$@"
+  else
+    fail "sha256sum or shasum is required"
+  fi
+}
+
+sha256_verify_manifest() {
+  manifest_path=$1
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$manifest_path"
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 -c "$manifest_path"
+  else
+    fail "sha256sum or shasum is required"
+  fi
+}
+
 validate_project() {
   case "$PROJECT" in
     cimmich-public-demo | cimmich-public-demo-[a-z0-9-]*) ;;
@@ -124,7 +145,8 @@ validate_prerequisites() {
   require_command awk
   require_command find
   require_command nc
-  require_command sha256sum
+  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||
+    fail "sha256sum or shasum is required"
   require_command tar
   docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
 }
@@ -274,9 +296,16 @@ validate_backup_path() {
 
 validate_tar_members() {
   archive=$1
-  if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+  members=$(tar -tzf "$archive") || fail "backup archive is unreadable"
+  if printf '%s\n' "$members" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     fail "backup archive contains unsafe traversal members"
   fi
+  tar -tvzf "$archive" | awk '
+    {
+      kind = substr($1, 1, 1)
+      if (kind != "-" && kind != "d") exit 1
+    }
+  ' >/dev/null || fail "backup archive contains links or special files"
 }
 
 validate_operator_state_archive() {
@@ -421,7 +450,7 @@ backup() {
   test "$backup_counts_after" = "$backup_counts_before" || fail "demo semantic counts changed during backup"
   printf 'project=%s\nschema_version=%s\nsemantic_counts_before=%s\nsemantic_counts_after=%s\n' \
     "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$backup_counts_before" "$backup_counts_after" > "$backup_staging/manifest.txt"
-  (cd "$backup_staging" && sha256sum cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
+  (cd "$backup_staging" && sha256_generate cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
   chmod 600 "$backup_staging"/*
   mv "$backup_staging" "$backup_path"
   backup_complete=1
@@ -457,7 +486,7 @@ validate_backup() {
   test "$checksum_names" = "cimmich-documents.tgz:cimmich-face-models.tgz:cimmich.dump:immich-library.tgz:immich.dump:manifest.txt:operator-state.tgz:" ||
     fail "backup checksum manifest is invalid"
   test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" = 7 || fail "backup checksum manifest is invalid"
-  (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) || fail "backup checksum verification failed"
+  (cd "$backup_path" && sha256_verify_manifest SHA256SUMS >/dev/null) || fail "backup checksum verification failed"
   validate_tar_members "$backup_path/immich-library.tgz"
   validate_tar_members "$backup_path/cimmich-documents.tgz"
   validate_tar_members "$backup_path/cimmich-face-models.tgz"

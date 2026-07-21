@@ -219,6 +219,63 @@ validate_semantic_counts() {
 validate_tar_archive() {
   backup_path=$1
   archive_name=$2
+  # BusyBox tar normalizes leading ../ segments before listing them, so its
+  # human-readable output cannot be the authority for traversal validation.
+  # Parse the decompressed USTAR headers as a stream, retaining at most one
+  # chunk plus a header while rejecting links, devices and unsafe raw names.
+  docker run --rm -v "$backup_path:/backup:ro" "$NODE_IMAGE" node -e '
+    const { createReadStream } = require("node:fs");
+    const { createGunzip } = require("node:zlib");
+    const archive = process.argv[1];
+    let buffer = Buffer.alloc(0);
+    let remaining = 0;
+    let entries = 0;
+    let ended = false;
+    const fail = () => process.exit(2);
+    const text = (block, start, length) => {
+      const bytes = block.subarray(start, start + length);
+      const zero = bytes.indexOf(0);
+      return bytes.subarray(0, zero < 0 ? bytes.length : zero).toString("utf8");
+    };
+    const input = createReadStream(archive).on("error", fail);
+    const gunzip = createGunzip().on("error", fail);
+    gunzip.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length) {
+        if (remaining) {
+          const consumed = Math.min(remaining, buffer.length);
+          buffer = buffer.subarray(consumed);
+          remaining -= consumed;
+          continue;
+        }
+        if (buffer.length < 512) break;
+        const block = buffer.subarray(0, 512);
+        buffer = buffer.subarray(512);
+        if (block.every((byte) => byte === 0)) {
+          ended = true;
+          continue;
+        }
+        if (ended || ++entries > 1000000) fail();
+        const name = text(block, 0, 100);
+        const prefix = text(block, 345, 155);
+        const fullName = prefix ? `${prefix}/${name}` : name;
+        const parts = fullName.split("/");
+        if (!fullName || fullName.startsWith("/") || fullName.includes("\\") ||
+            /[\u0000-\u001f\u007f]/u.test(fullName) || parts.includes("..")) fail();
+        const type = block[156];
+        if (![0, 48, 53].includes(type)) fail();
+        const sizeText = text(block, 124, 12).trim();
+        if (!/^[0-7]+$/.test(sizeText || "0")) fail();
+        const size = Number.parseInt(sizeText || "0", 8);
+        if (!Number.isSafeInteger(size) || size < 0 || (type === 53 && size !== 0)) fail();
+        remaining = Math.ceil(size / 512) * 512;
+      }
+    });
+    gunzip.on("end", () => {
+      if (remaining || (buffer.length && !buffer.every((byte) => byte === 0))) fail();
+    });
+    input.pipe(gunzip);
+  ' "/backup/$archive_name" || fail "backup archive contains unsafe members: $archive_name"
   members=$(docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
     tar -tzf "/backup/$archive_name") || fail "backup archive is unreadable: $archive_name"
   if printf '%s\n' "$members" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
@@ -237,18 +294,34 @@ validate_config_archive() {
   backup_path=$1
   config_members=$(docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
     tar -tzf /backup/config.tgz | sed 's#^\./##' | sort | tr '\n' ':')
-  test "$config_members" = ":runtime.env:" || fail "backup config archive members are invalid"
-  config_bytes=$(docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
-    tar -xOzf /backup/config.tgz ./runtime.env) || fail "backup runtime configuration is unreadable"
-  printf '%s\n' "$config_bytes" | grep -qx "CIMMICH_COMPANION_PROJECT=$PROJECT" ||
-    fail "backup runtime configuration project mismatch"
-  test "$(printf '%s\n' "$config_bytes" | grep -c '^CIMMICH_COMPANION_PROJECT=')" -eq 1 ||
-    fail "backup runtime configuration is malformed"
-  test "$(printf '%s\n' "$config_bytes" | grep -c '^CIMMICH_DB_PASSWORD=[0-9a-f]\{64\}$')" -eq 1 ||
-    fail "backup runtime database credential is malformed"
+  case "$config_members" in
+    :|:immich-credential.json:) ;;
+    *) fail "backup config archive members are invalid" ;;
+  esac
+  if test "$config_members" = ":immich-credential.json:"; then
+    docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
+      tar -xOzf /backup/config.tgz ./immich-credential.json |
+      docker run --rm -i "$NODE_IMAGE" node -e '
+        let input = "";
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", (chunk) => { input += chunk; });
+        process.stdin.on("end", () => {
+          if (Buffer.byteLength(input) > 2048) process.exit(2);
+          let value;
+          try { value = JSON.parse(input); } catch { process.exit(2); }
+          if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(2);
+          if (Object.keys(value).sort().join(",") !== "apiBaseUrl,apiKey") process.exit(2);
+          if (typeof value.apiKey !== "string" || value.apiKey.length < 16 || value.apiKey.length > 512 || /[\u0000-\u001f\u007f]/u.test(value.apiKey)) process.exit(2);
+          if (typeof value.apiBaseUrl !== "string" || value.apiBaseUrl.length > 2048) process.exit(2);
+          let url;
+          try { url = new URL(value.apiBaseUrl); } catch { process.exit(2); }
+          if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.hostname || !url.pathname.endsWith("/api")) process.exit(2);
+        });
+      ' || fail "backup Immich credential is invalid"
+  fi
 }
 
-preflight_backup_database() {
+preflight_backup_database() (
   backup_path=$1
   preflight_id="cimmich-companion-restore-preflight-$$"
   preflight_network="$preflight_id-network"
@@ -266,7 +339,11 @@ preflight_backup_database() {
     -e POSTGRES_DB=cimmich -e POSTGRES_USER=cimmich -e POSTGRES_PASSWORD="$preflight_password" \
     "$PGVECTOR_IMAGE" >/dev/null
   i=0
-  until docker exec "$preflight_database" pg_isready -U cimmich -d cimmich >/dev/null 2>&1; do
+  # pg_isready reports only server acceptance and can succeed before the
+  # requested database has been created. Require one real query against the
+  # exact restore target before feeding pg_restore.
+  until docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
+    'SELECT 1' >/dev/null 2>&1; do
     i=$((i + 1))
     test "$i" -lt 60 || fail "backup restore preflight database readiness timeout"
     sleep 1
@@ -300,7 +377,7 @@ preflight_backup_database() {
     fail "backup migration changed semantic counts"
   trap - EXIT INT TERM
   preflight_cleanup
-}
+)
 
 validate_backup() {
   backup_path=$1
@@ -345,24 +422,47 @@ validate_backup() {
 backup() {
   require_configured
   test "$#" -eq 1 || fail "usage: companion.sh backup ABSOLUTE_NEW_DIRECTORY"
-  backup_path=$1
-  validate_backup_path "$backup_path"
-  test ! -e "$backup_path" || fail "backup target already exists"
-  mkdir -p "$backup_path"
-  chmod 700 "$backup_path"
-  compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc > "$backup_path/cimmich.dump"
-  docker run --rm -v "$DOCUMENT_VOLUME:/source:ro" -v "$backup_path:/backup" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce \
+  # Keep the requested destination separate from the validation helpers'
+  # scratch variables. POSIX shell functions share one variable namespace;
+  # validate_backup() intentionally inspects the staging directory and must
+  # never turn the final rename into a move of that directory into itself.
+  backup_destination=$1
+  validate_backup_path "$backup_destination"
+  test ! -e "$backup_destination" || fail "backup target already exists"
+  backup_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read companion semantic counts"
+  validate_semantic_counts "$backup_counts_before"
+  backup_staging="$backup_destination.incomplete.$$"
+  test ! -e "$backup_staging" || fail "incomplete backup staging path already exists"
+  backup_complete=0
+  backup_cleanup() {
+    if test "$backup_complete" -eq 0; then rm -rf "$backup_staging"; fi
+  }
+  trap backup_cleanup EXIT INT TERM
+  umask 077
+  mkdir -p "$backup_staging"
+  chmod 700 "$backup_staging"
+  compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc > "$backup_staging/cimmich.dump"
+  docker run --rm -v "$DOCUMENT_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" \
     tar -czf /backup/documents.tgz -C /source .
-  docker run --rm -v "$CONFIG_VOLUME:/source:ro" -v "$backup_path:/backup" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce \
+  docker run --rm -v "$CONFIG_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" \
     tar -czf /backup/config.tgz -C /source .
   health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
-  printf '{"health":%s,"project":"%s"}\n' "$health" "$PROJECT" > "$backup_path/manifest.json"
-  (cd "$backup_path" && sha256sum cimmich.dump documents.tgz config.tgz manifest.json > SHA256SUMS)
-  chmod 600 "$backup_path"/*
-  backup_id=${backup_path##*/}
-  printf '{"backupId":"%s","project":"%s","status":"READY"}\n' "$backup_id" "$PROJECT"
+  backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read companion semantic counts"
+  test "$backup_counts_after" = "$backup_counts_before" ||
+    fail "companion semantic counts changed during backup"
+  printf '{"health":%s,"project":"%s","semanticCounts":"%s"}\n' \
+    "$health" "$PROJECT" "$backup_counts_before" > "$backup_staging/manifest.json"
+  (cd "$backup_staging" && sha256sum cimmich.dump documents.tgz config.tgz manifest.json > SHA256SUMS)
+  chmod 600 "$backup_staging"/*
+  validate_backup "$backup_staging"
+  mv "$backup_staging" "$backup_destination"
+  backup_complete=1
+  trap - EXIT INT TERM
+  backup_id=${backup_destination##*/}
+  printf '{"backupId":"%s","project":"%s","schemaVersion":%s,"semanticCounts":"%s","status":"READY"}\n' \
+    "$backup_id" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$backup_counts_before"
 }
 
 restore() {
@@ -370,24 +470,26 @@ restore() {
   test "$#" -eq 2 || fail "usage: companion.sh restore ABSOLUTE_BACKUP --confirm=PROJECT"
   backup_path=$1
   confirmation=$2
-  validate_backup_path "$backup_path"
   test "$confirmation" = "--confirm=$PROJECT" || fail "restore confirmation must exactly name $PROJECT"
-  test -f "$backup_path/SHA256SUMS" || fail "backup is incomplete"
-  (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) || fail "backup checksum verification failed"
+  validate_backup "$backup_path"
   compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
   compose up --detach --wait cimmich-database
   compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich
   compose exec -T cimmich-database createdb -U cimmich cimmich
   compose exec -T cimmich-database pg_restore -U cimmich -d cimmich --no-owner --no-privileges < "$backup_path/cimmich.dump"
   docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$backup_path:/backup:ro" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce \
+    "$ALPINE_IMAGE" \
     sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/documents.tgz -C /target'
   docker run --rm -v "$CONFIG_VOLUME:/target" -v "$backup_path:/backup:ro" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce \
+    "$ALPINE_IMAGE" \
     sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/config.tgz -C /target'
   compose up --detach --wait
+  restored_counts=$(semantic_counts 2>/dev/null) || fail "unable to read restored semantic counts"
+  test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
+    fail "restored semantic counts do not match the backup"
   backup_id=${backup_path##*/}
-  printf '{"backupId":"%s","project":"%s","status":"RESTORED"}\n' "$backup_id" "$PROJECT"
+  printf '{"backupId":"%s","backupSchemaVersion":%s,"project":"%s","restoredSchemaVersion":%s,"semanticCounts":"%s","status":"RESTORED"}\n' \
+    "$backup_id" "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
 }
 
 disable() {

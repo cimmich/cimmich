@@ -111,7 +111,7 @@
   }
 
   type CountRow = { count: number; label: string };
-  type CimmichIdentityFilter = 'all' | 'face_only' | 'head' | 'lq' | 'needs_qc' | 'prime' | 'secondary';
+  type CimmichIdentityFilter = 'all' | 'head' | 'lq' | 'needs_qc' | 'non_face' | 'prime' | 'secondary';
   type CimmichPersonMode = 'candidates' | 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
@@ -227,12 +227,12 @@
     label: string;
     description: string;
   }> = [
-    { id: 'all', label: 'All faces', description: 'Every accepted face' },
+    { id: 'all', label: 'All Face observations', description: 'Every accepted Face' },
     { id: 'prime', label: 'Strong', description: 'Best reference photos' },
     { id: 'secondary', label: 'Supporting', description: 'Useful extra angles' },
     { id: 'lq', label: 'Low quality', description: 'Kept with less weight' },
-    { id: 'head', label: 'Head evidence', description: 'Visible head, limited face' },
-    { id: 'face_only', label: 'Not used', description: 'Identity only' },
+    { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
+    { id: 'non_face', label: 'Not for matching', description: 'Body and Presence truth' },
     { id: 'needs_qc', label: 'Needs review', description: 'Check before trusting' },
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
@@ -403,6 +403,11 @@
   });
   const cimmichMainBucket = (face: CimmichIdentityFace) =>
     face.main_evidence_tier === 'face_only' ? null : face.main_evidence_tier;
+  const cimmichBodyPresenceAssets = $derived(
+    cimmichAssets.filter(
+      ({ association_types }) => association_types.includes('body') || association_types.includes('presence'),
+    ),
+  );
   const visibleCimmichIdentityFaces = $derived.by(() => {
     if (
       cimmichIdentityFilter === 'prime' ||
@@ -412,8 +417,8 @@
     ) {
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === cimmichIdentityFilter);
     }
-    if (cimmichIdentityFilter === 'face_only') {
-      return cimmichIdentityFaces.filter((face) => face.main_evidence_tier === 'face_only');
+    if (cimmichIdentityFilter === 'non_face') {
+      return [];
     }
     if (cimmichIdentityFilter === 'needs_qc') {
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'head' || face.qc_flags.length > 0);
@@ -429,8 +434,8 @@
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'head' || face.qc_flags.length > 0)
         .length;
     }
-    if (filter === 'face_only') {
-      return cimmichIdentityFaces.filter((face) => face.main_evidence_tier === 'face_only').length;
+    if (filter === 'non_face') {
+      return cimmichBodyPresenceAssets.length;
     }
     return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === filter).length;
   };
@@ -446,7 +451,7 @@
       return 'Low quality';
     }
     if (bucket === 'head') {
-      return 'Head evidence';
+      return 'Head reference';
     }
     return 'Not used for matching';
   };
@@ -2280,13 +2285,15 @@
               <p class="text-sm font-semibold">Choose a match for each held face</p>
             {:else}
               <div>
-                <h2 class="text-xl font-semibold">Matching library</h2>
+                <h2 class="text-xl font-semibold">Face matching references</h2>
                 <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-                  Choose which confirmed faces Cimmich should trust most when comparing photos.
+                  These buckets organise accepted Face observations for comparison. Head references are Face-derived;
+                  manual Head tags stay visible on their photos and are intentionally not counted here. Body and
+                  Presence are also not used for matching.
                 </p>
               </div>
               <fieldset class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-                <legend class="sr-only">Choose a matching bucket</legend>
+                <legend class="sr-only">Choose a Face matching reference bucket</legend>
                 {#each cimmichIdentityFilters as filter (filter.id)}
                   {@const count = cimmichIdentityBucketCount(filter.id)}
                   <button
@@ -2323,14 +2330,17 @@
                     {cimmichIdentityFilters.find((filter) => filter.id === cimmichIdentityFilter)?.label}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-                    {renderedCimmichIdentityFaces.length.toLocaleString()} face{renderedCimmichIdentityFaces.length ===
-                    1
-                      ? ''
-                      : 's'}
+                    {cimmichIdentityFilter === 'non_face'
+                      ? `${cimmichBodyPresenceAssets.length.toLocaleString()} appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
+                      : `${renderedCimmichIdentityFaces.length.toLocaleString()} face${renderedCimmichIdentityFaces.length === 1 ? '' : 's'}`}
                   </p>
                 </div>
                 <p class="max-w-xl text-right text-xs text-gray-500 dark:text-gray-400">
-                  Open a face to change its matching role or record appearance notes.
+                  {cimmichIdentityFilter === 'non_face'
+                    ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
+                    : cimmichIdentityFilter === 'head'
+                      ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
+                      : 'Open a face to change its matching role or record appearance notes.'}
                 </p>
               </div>
             {/if}
@@ -2404,6 +2414,56 @@
 
           {#if cimmichIdentityLoading}
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading identity photos…</p>
+          {:else if cimmichIdentityFilter === 'non_face'}
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              {#each cimmichBodyPresenceAssets as asset (asset.asset_id)}
+                {@const hasBody = asset.association_types.includes('body')}
+                {@const hasPresence = asset.association_types.includes('presence')}
+                <article
+                  class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                >
+                  <a
+                    href={Route.viewCimmichPersonAsset({
+                      id: asset.sourceAssetId,
+                      personId: cimmichPerson.person_id,
+                      personName: cimmichPerson.display_name,
+                    })}
+                    class="group relative block aspect-4/5 overflow-hidden bg-gray-200 dark:bg-gray-800"
+                    title={asset.filename}
+                  >
+                    <img
+                      class="size-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                      src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
+                      alt={asset.filename}
+                    />
+                    <div class="pointer-events-none absolute right-2 bottom-2 flex flex-wrap justify-end gap-1">
+                      {#if hasBody}
+                        <span class="rounded-sm bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">Body</span>
+                      {/if}
+                      {#if hasPresence}
+                        <span class="rounded-sm bg-black/75 px-2 py-1 text-[10px] font-semibold text-white"
+                          >Presence</span
+                        >
+                      {/if}
+                    </div>
+                  </a>
+                  <div class="grid gap-1 p-2.5">
+                    <p class="text-xs font-semibold">
+                      {[hasBody ? 'Body' : '', hasPresence ? 'Presence' : ''].filter(Boolean).join(' · ')}
+                    </p>
+                    <p class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={asset.filename}>
+                      {asset.filename}
+                    </p>
+                  </div>
+                </article>
+              {/each}
+            </div>
+            {#if cimmichBodyPresenceAssets.length === 0}
+              <CimmichStatePanel
+                title="No Body or Presence evidence"
+                description="Body and whole-photo Presence tags for this person will appear here."
+              />
+            {/if}
           {:else}
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {#each renderedCimmichIdentityFaces as face (face.face_id)}
@@ -2527,7 +2587,7 @@
                           <label
                             class="grid gap-1 text-[11px] font-medium tracking-wide text-gray-500 uppercase dark:text-gray-400"
                           >
-                            Matching role
+                            Face matching role
                             <select
                               class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm font-medium tracking-normal text-immich-fg normal-case outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
                               value={mainBucket ?? ''}
@@ -2542,11 +2602,11 @@
                                 );
                               }}
                             >
-                              <option value="">Not used for matching</option>
+                              <option value="">Not a matching reference</option>
                               <option value="prime">Strong reference</option>
                               <option value="secondary">Supporting reference</option>
                               <option value="lq">Low-quality reference</option>
-                              <option value="head">Head evidence</option>
+                              <option value="head">Head reference (Face-derived)</option>
                             </select>
                           </label>
 
@@ -2803,12 +2863,16 @@
                   ? 'Nothing in the loaded results'
                   : cimmichIdentityFilter === 'needs_qc'
                     ? 'Nothing needs review'
-                    : 'This bucket is empty'}
+                    : cimmichIdentityFilter === 'head'
+                      ? 'No Face-derived Head references'
+                      : 'This bucket is empty'}
                 description={cimmichIdentityNextCursor
                   ? 'Load more identity faces to continue checking this filter.'
                   : cimmichIdentityFilter === 'needs_qc'
                     ? 'This person has no currently flagged identity evidence.'
-                    : 'Choose another bucket or move a face here from All faces.'}
+                    : cimmichIdentityFilter === 'head'
+                      ? 'Manual Head tags remain visible on photos and are intentionally not counted in this reference library.'
+                      : 'Choose another bucket or move a face here from All faces.'}
               />
             {/if}
             {#if cimmichIdentityNextCursor}

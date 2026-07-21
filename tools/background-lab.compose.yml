@@ -2,7 +2,7 @@ name: cimmich-background-lab
 
 services:
   secret-init:
-    image: alpine:3.22
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
     command:
       - /bin/sh
       - -c
@@ -12,7 +12,7 @@ services:
         if [ ! -s /secrets/guided-token ]; then
           head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /secrets/guided-token
         fi
-        chmod 644 /secrets/guided-token
+        chmod 600 /secrets/guided-token
         chown 1000:1000 /documents
         chmod 700 /documents
     restart: "no"
@@ -21,7 +21,7 @@ services:
       - guided-secrets:/secrets
 
   postgres:
-    image: pgvector/pgvector:0.8.2-pg17-trixie
+    image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
     environment:
       POSTGRES_DB: cimmich_background
       POSTGRES_PASSWORD: background-lab-only-password
@@ -80,6 +80,9 @@ services:
     ports:
       - "127.0.0.1:3201:3101"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     volumes:
       - document-store:/documents
       - guided-secrets:/run/cimmich-lab:ro

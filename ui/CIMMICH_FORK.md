@@ -1,74 +1,44 @@
-# Cimmich UI fork baseline
+# Cimmich UI lineage and boundary
 
-Date: 2026-07-14
-Fresh-eyes review: 2026-07-16
+Current release review: 2026-07-22
 
-This directory is the dependency-complete Cimmich fork of the current local
-Rimmich UI working tree, based on Immich 3.0.1. Today it is honestly a
-Cimmich-owned People/Identity slice inside an inherited Immich-backed shell,
-not yet a standalone Cimmich application.
+This directory contains Cimmich's product UI. Its shell lineage began from the
+Immich 3.0.1 web application; the supported companion-server baseline for this
+release is Immich 3.0.3. Cimmich retains the upstream AGPL licence and notices
+while owning its separate routes, evidence model, service and database.
 
-## Preserved scope
+## Product scope
 
-The fork intentionally preserves the complete current UI surface, including
-library intelligence, extended summaries, People, Places, Trips, Events,
-Activities, Pets & Objects, Documents, Smart Search, QC, Maintenance, overlays,
-viewer integrations, and their supporting routes and services.
+The inherited Immich shell continues to provide photo-library navigation and
+viewer behavior. Cimmich adds its own Home, People, Pets, Places, Things,
+Events, Trips, Activities, Life periods, Documents, Smart Search, evidence
+overlays, viewing modes, maintenance and Models & Guided surfaces.
 
-No feature is removed from this fork unless the project owner explicitly selects
-it for removal.
+Cimmich is an unofficial companion, not an Immich replacement. Inherited
+photo-management surfaces keep their upstream identity; Cimmich features are
+named as Cimmich and use the separate Cimmich data boundary.
 
 ## Data boundary
 
-Generated builds and dependency directories may exist in this local development
-working tree, while `web/static/rimmich-data` and private evidence remain outside
-the intended release boundary. None may enter a clean public Cimmich repository.
-Private media, names, paths, crops, embeddings, and evidence payloads remain in
-protected local storage and are served through the Cimmich-owned local
-data/service boundary.
+The browser never receives a database connection. Cimmich's service owns its
+PostgreSQL access and reads Immich only through the supported companion API.
+Cimmich does not write the Immich database or original media bytes.
 
-Inherited machine-specific roots are configuration, not source constants. The
-advanced RMP+/QC/readback routes accept environment-based proof, preparation,
-release, correction-contract, and media roots (`RIMMICH_RMP_*`,
-`RIMMICH_FULL_ARCHIVE_QC_*`, `RIMMICH_RFF_*`, and `CIMMICH_MEDIA_ROOT`) and use
-neutral local defaults when they are absent. Synthetic fixtures contain neutral
-names and `/media/library`-style paths.
+Generated dependencies, local builds, private evidence, credentials, runtime
+state and source-media paths are development inputs only. They are excluded
+from the clean public repository and release archives. Public synthetic
+fixtures use neutral fictional identities and paths.
 
-## First Cimmich binding
+The Immich shell backend is configured through `IMMICH_SERVER_URL`; the
+Cimmich API is configured separately through `PUBLIC_CIMMICH_API_URL`. Local
+ignored environment files may supply deployment-specific values, but machine
+paths and secrets are not source defaults.
 
-The People surface reads the Cimmich Person index, exposes candidates only when
-the operator chooses that lane, and can submit explicit reviewed decisions.
-People/Pets/photo failures are visible and retryable, and Person links carry the
-stable Cimmich Person ID rather than treating a mutable display name as identity.
-The inherited private evidence bundle is optional enrichment, not a page-load
-requirement. The service owns
-PostgreSQL access; the browser never receives a database connection. For the
-current private fixture only, a protected ID-only bridge maps neutral Cimmich
-asset IDs to local source-application asset IDs for previews. It contains no
-paths and is not a required Cimmich dependency.
+## Current public boundary
 
-Local development keeps the inherited shell backend configurable through
-`IMMICH_SERVER_URL`; `.env.local` supplies the current ignored deployment value,
-while `.env.example` documents the neutral loopback shape. The Cimmich API is
-separately configured through `PUBLIC_CIMMICH_API_URL`.
-
-## Verification
-
-- production build: pass
-- Svelte diagnostics: 0 errors, 0 warnings
-- TypeScript: pass
-- service tests: see the current acceptance receipt; counts are not a release contract
-- source and rebuilt-output private-path/name scans: pass
-- Cimmich fresh-schema database/service contract and bounded leak scan: pass
-- disposable local-service decision proof: queue 1 → 0 and user decisions 0 → 1
+The public source no longer contains the former Rimmich product routes,
+terminology, proof loaders, private evidence roots or private writeback
+machinery. Stable Cimmich IDs, visibility-first reads and typed owner decisions
+are served through the supported Cimmich API.
 
 The upstream GNU AGPL v3 licence is retained in `LICENSE`.
-
-## 2026-07-16 release-boundary finding
-
-Preserving the full inherited surface remains the operator's explicit product choice for
-the private laboratory. It also means this fork is not currently a public Cimmich
-application: Rimmich routes, terminology, proof loaders and writeback machinery
-remain present. Public release requires a deliberate partition into a clean
-Cimmich shell; it must not be achieved by silently deleting useful private
-features from this working UI.

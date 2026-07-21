@@ -3,6 +3,7 @@
 Updated: 2026-07-22
 Preserved public-demo runtime: schema 75/patch 1
 Current source/disposable candidate: migration-ledger schema 75/patch 1
+Named local video-ready candidate: `cimmich-build-week-video-ready-rc4`
 
 This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
@@ -18,15 +19,15 @@ and from matching claims that have not cleared their gates.
   `immich_onboarding`; the untouched internal main remains 16/16.
 - Current schema-75 Backend source proof includes the atomic partial-inventory
   scope rollover, resumable onboarding import and dedicated Unknown/Noise
-  owner-resolution provenance. The schema-75 candidate passes service 588/588;
+  owner-resolution provenance. The schema-75 candidate passes service 595/595;
   migration acceptance
   passes fresh, 72→73, current no-op, concurrent, checksum-drift,
   interrupted/resumed and legacy-restore paths; the complete disposable
   synthetic product acceptance passes, including exact Place/Thing/Event
   create/update no-change and decision-scoped Undo. The integrated web proof is
-  757 passed/2 skipped with Svelte 0/0, TypeScript, formatting and production
-  builds from the deployed schema-72 release boundary. The exact deployed API/UI
-  pair then passed signed-in
+  768 passed/2 skipped with Svelte 0/0, TypeScript, formatting, lint and
+  production build green on the same schema-75 source checkout. The preserved
+  deployed API/UI pair then passed signed-in
   1280x720 and 390x844 owner acceptance with zero errors in a clean browser
   traversal, no horizontal overflow, Personal-mode direct-route/reload
   persistence and a final Standard/locked handoff.
@@ -143,9 +144,10 @@ the decisive real-provider fact.
       no cached-image assumption.
 - [x] Migrate the older internal main deployment through its then-current ledger and prove its
       counts, visibility surfaces and read-only smoke unchanged.
-- [ ] Freeze one named `video-ready` state and record the final product demo from
-      that exact release build. The completed Guided build recording is retained
-      as its own proof; no three-rehearsal requirement exists.
+- [x] Freeze the named local `cimmich-build-week-video-ready-rc4` source and
+      release images. Record the final product demo from that exact release
+      build. The completed Guided build recording is retained as its own proof;
+      no three-rehearsal requirement exists.
 - [ ] Publish matching-improvement language only if one provider-specific
       correction→better-next-suggestion loop clears the existing replay,
       holdout, QC, operator-review and activation gates.

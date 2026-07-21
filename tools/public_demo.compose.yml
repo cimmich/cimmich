@@ -167,6 +167,9 @@ services:
       retries: 60
     ports:
       - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}:3101
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     volumes:
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/display-bridge.json:/demo-state/display-bridge.json:ro
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/immich-credential.json:/demo-state/immich-credential.json:ro

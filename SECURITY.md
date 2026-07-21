@@ -11,10 +11,11 @@ release.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Once the public
-repository is available, use its private vulnerability-reporting form under
-**Security → Report a vulnerability**. Before that channel exists, contact the
-project owner privately and wait for a safe intake route.
+Do not open a public issue for a suspected vulnerability. Use the repository's
+[private vulnerability-reporting form](https://github.com/cimmich/cimmich/security/advisories/new)
+under **Security → Report a vulnerability**. If that form is temporarily
+unavailable, do not place sensitive details in a public issue; wait for the
+private intake route to return.
 
 Include the smallest reproducible description, affected version or commit,
 impact, and any proposed mitigation. Do not attach real photos, crops, face or
@@ -32,6 +33,19 @@ host administrator.
 Guided is optional and disabled by default. Cimmich does not broker model
 provider traffic. Connected software may disclose anything it retrieves, and
 the operator is responsible for that disclosure.
+
+The canonical API is a local, single-owner service. Its product containers bind
+to loopback, and actor/device headers provide audit attribution rather than a
+remote authentication perimeter. Do not expose the API, database, or provider
+ports directly to a LAN or the public Internet. A remote or multi-user install
+must add a separately reviewed authenticated reverse proxy, TLS, network access
+controls, and backup protection; Cimmich does not claim those controls itself.
+
+Treat backups, provider artifacts, configuration volumes, and Document-store
+exports as sensitive. Keep them mode-restricted and encrypted at rest where the
+host or backup destination is shared. Restore only through the checksummed
+operator flow, which validates project identity, schema compatibility, semantic
+counts, archive members, and credential shape before replacing state.
 
 See [Privacy boundary](docs/PRIVACY_BOUNDARY.md) and
 [Private viewing operations](docs/VISIBILITY_PRIVATE_OPERATIONS.md) for the

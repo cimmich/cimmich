@@ -9,10 +9,10 @@ packages:
   - .github
   - packages/*
 allowBuilds:
-  '@nestjs/core': false
-  '@parcel/watcher': false
-  '@scarf/scarf': false
-  '@swc/core': false
+  "@nestjs/core": false
+  "@parcel/watcher": false
+  "@scarf/scarf": false
+  "@swc/core": false
   bcrypt: true
   canvas: false
   core-js: false
@@ -24,7 +24,7 @@ allowBuilds:
   sharp: true
   ssh2: false
   utimes: false
-  '@tailwindcss/oxide': true
+  "@tailwindcss/oxide": true
   core-js-pure: false
   postman-code-generators: false
 overrides:
@@ -40,43 +40,44 @@ overrides:
 packageExtensions:
   nestjs-kysely:
     dependencies:
-      tslib: '*'
+      tslib: "*"
   nestjs-otel:
     dependencies:
-      tslib: '*'
-  '@photo-sphere-viewer/equirectangular-video-adapter':
+      tslib: "*"
+  "@photo-sphere-viewer/equirectangular-video-adapter":
     dependencies:
-      three: '*'
-  '@photo-sphere-viewer/video-plugin':
+      three: "*"
+  "@photo-sphere-viewer/video-plugin":
     dependencies:
-      three: '*'
+      three: "*"
   sharp:
     dependencies:
-      node-addon-api: '*'
-      node-gyp: '*'
-  '@immich/ui':
+      node-addon-api: "*"
+      node-gyp: "*"
+  "@immich/ui":
     dependencies:
-      tailwindcss: '>=4.1'
+      tailwindcss: ">=4.1"
   tailwind-variants:
     dependencies:
-      tailwindcss: '>=4.1'
+      tailwindcss: ">=4.1"
   bcrypt:
     dependencies:
-      node-addon-api: '*'
-      node-gyp: '*'
-  '@nestjs/swagger':
+      node-addon-api: "*"
+      node-gyp: "*"
+  "@nestjs/swagger":
     peerDependencies:
-      typescript: '*'
+      typescript: "*"
 dedupePeerDependents: false
 preferWorkspacePackages: true
 injectWorkspacePackages: true
 shamefullyHoist: false
 verifyDepsBeforeRun: install
 minimumReleaseAgeExclude:
-  - '@immich/ui@0.81.1'
+  - "@immich/ui@0.81.1"
   - esbuild@0.25.0
   - cookie@0.7.2
   - undici@6.27.0
   - ws@8.21.0
-  - brace-expansion@2.1.2 || 5.0.7
+  - brace-expansion@2.1.2
+  - brace-expansion@5.0.7
   - tar@7.5.19

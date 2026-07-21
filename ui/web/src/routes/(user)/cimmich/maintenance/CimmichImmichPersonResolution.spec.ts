@@ -85,7 +85,8 @@ describe('Immich unnamed Person resolution', () => {
     });
     const { getByRole, getByText } = render(CimmichImmichPersonResolution, { scope });
 
-    await waitFor(() => expect(getByText('5 Faces')).toBeInTheDocument());
+    await waitFor(() => expect(getByText('Unnamed face group')).toBeInTheDocument());
+    expect(getByText('5 Faces in this upstream group')).toBeInTheDocument();
     await fireEvent.change(getByRole('combobox', { name: 'Map to an existing Person' }), {
       target: { value: 'person-1' },
     });
@@ -101,6 +102,15 @@ describe('Immich unnamed Person resolution', () => {
         snapshotDigest: 'b'.repeat(64),
       }),
     );
+  });
+
+  it('uses a human label and bounded preview while relegating the raw upstream ID to technical details', async () => {
+    const { getByLabelText, getByText } = render(CimmichImmichPersonResolution, { scope });
+
+    await waitFor(() => expect(getByText('Unnamed face group')).toBeInTheDocument());
+    expect(getByLabelText('Representative crop for unnamed Immich face group with 5 Faces')).toBeInTheDocument();
+    expect(getByText('immich-person-1').closest('details')).toHaveTextContent('Technical details');
+    expect(getByText(/separate upstream Immich face groups/)).toBeInTheDocument();
   });
 
   it('reports import readiness only after every Face group has a final resolution', async () => {

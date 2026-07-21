@@ -188,7 +188,7 @@ test("preview counts assigned source truth without media, names or Locked leakag
   );
 });
 
-test("unlabelled upstream People preview honestly and block identity import before writes", async () => {
+test("unlabelled Face clusters omitted from the People list still preview and block identity import", async () => {
   let transactionCalls = 0;
   const anonymousPerson = {
     id: "source-person-anonymous",
@@ -222,7 +222,7 @@ test("unlabelled upstream People preview honestly and block identity import befo
       nextCursor: null,
     }),
     listPeople: async () => ({
-      items: [anonymousPerson],
+      items: [],
       nextCursor: null,
     }),
     status: async () => ({
@@ -244,6 +244,7 @@ test("unlabelled upstream People preview honestly and block identity import befo
   });
   const preview = await onboarding.preview({ viewingMode: "Standard" });
   assert.equal(preview.counts.assignedFaces, 1);
+  assert.equal(preview.counts.people, 1);
   assert.equal(preview.counts.labelledPeople, 0);
   assert.equal(preview.counts.unlabelledPeople, 1);
   await assert.rejects(

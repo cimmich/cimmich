@@ -509,6 +509,30 @@ test("media reads reject non-images and declared oversized bodies before bufferi
   );
 });
 
+test("JSON responses are timeout-bound and size-bound while streaming", async () => {
+  const calls = [];
+  const companion = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    maxJsonBytes: 64 * 1024,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith("/server/version")) {
+        return jsonResponse({ major: 3, minor: 0, patch: 3 });
+      }
+      if (url.endsWith("/users/me")) {
+        return jsonResponse({ id: asset().ownerId, isAdmin: false });
+      }
+      return new Response(`{"padding":"${"x".repeat(64 * 1024)}"}`);
+    },
+  });
+  await assert.rejects(
+    companion.getAsset({ assetId: asset().id }),
+    (error) => error.code === "IMMICH_COMPANION_PROTOCOL_INVALID",
+  );
+  assert.equal(calls.length, 3);
+});
+
 test("asset search requires an explicit visibility and preserves stable pagination", async () => {
   const calls = [];
   const companion = createImmichCompanion({

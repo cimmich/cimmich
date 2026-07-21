@@ -5,6 +5,7 @@
   import CimmichContextCollection from './CimmichContextCollection.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
+  import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
   import { focusTrap } from '$lib/actions/focus-trap';
@@ -54,6 +55,7 @@
     mdiClose,
     mdiDotsVertical,
     mdiFileDocumentOutline,
+    mdiFilterVariant,
     mdiImageMultipleOutline,
     mdiLinkPlus,
     mdiMagnify,
@@ -75,6 +77,8 @@
     contextPlaceNearbyRadii,
     contextPlacePointDistanceMeters,
     contextRelationGroups,
+    eventTypeFilters,
+    objectTypeFilters,
     contextTypeDescription,
     contextTypeKinds,
     defaultContextRelationDraft,
@@ -84,14 +88,14 @@
     parseContextPlaceCoordinates,
     resolveContextEditorMutation,
     sortContextPlaceSearchResults,
+    type ContextTypeFilter,
   } from './context-entity-presentation';
 
   interface Props {
-    description: string;
     families: CimmichContextFamily[];
   }
 
-  let { description, families }: Props = $props();
+  let { families }: Props = $props();
 
   let activeFamily = $state<CimmichContextFamily>(
     untrack(() =>
@@ -159,6 +163,8 @@
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let showDeleteContext = $state(false);
   let showEntityMenu = $state(false);
+  let showCollectionFilters = $state(false);
+  let collectionTypeFilter = $state<ContextTypeFilter>('all');
   let deleteContextError = $state('');
   let deleteContextCommandId = $state('');
 
@@ -204,14 +210,18 @@
 
   const entityKind = $derived(contextFamilyKind[activeFamily]);
   const entityNoun = $derived(entityKind === 'object' ? 'thing' : entityKind);
-  const activeDescription = $derived(
-    activeFamily === 'places'
-      ? 'Name the locations that matter, from one point to a property, route or place you cannot locate yet.'
-      : activeFamily === 'objects'
-        ? 'Give a particular vehicle, home, device, keepsake or piece of equipment its own history.'
-        : description,
-  );
   const addLabel = $derived(activeFamily === 'events' ? 'Add event' : `Add ${entityNoun}`);
+  const collectionTitle = $derived(families.length > 1 ? 'Places & Things' : contextFamilyLabels[activeFamily]);
+  const collectionMeta = $derived(
+    `${entities.length.toLocaleString()} ${
+      entities.length === 1
+        ? activeFamily === 'objects'
+          ? 'thing'
+          : contextFamilyLabels[activeFamily].slice(0, -1).toLocaleLowerCase()
+        : contextFamilyLabels[activeFamily].toLocaleLowerCase()
+    }`,
+  );
+  const collectionTypeFilters = $derived(activeFamily === 'objects' ? objectTypeFilters : eventTypeFilters);
   const filteredLibraryAssets = $derived(
     libraryAssets.filter((asset) => asset.originalFileName.toLowerCase().includes(libraryQuery.trim().toLowerCase())),
   );
@@ -361,6 +371,7 @@
       return;
     }
     query = '';
+    collectionTypeFilter = 'all';
     const url = new URL(page.url);
     url.searchParams.set('family', family);
     url.searchParams.delete('entityId');
@@ -1500,11 +1511,9 @@
   });
 </script>
 
-<div class="mx-auto w-full max-w-[1500px] px-4 pb-20 sm:px-6 lg:px-10">
-  <div
-    class="sticky top-0 z-20 -mx-4 border-b border-gray-200 bg-immich-bg/95 p-4 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10 dark:border-gray-800 dark:bg-immich-dark-bg/95"
-  >
-    <div class="flex items-center gap-3" class:flex-nowrap={Boolean(selected)} class:flex-wrap={!selected}>
+<div class="mx-auto w-full max-w-7xl px-5 pb-20 text-immich-fg sm:px-7 dark:text-immich-dark-fg">
+  <div class={selected ? 'hidden' : 'py-5'}>
+    <div class={selected ? 'flex flex-nowrap items-center gap-3' : ''}>
       {#if selected}
         <button
           class="context-icon-button"
@@ -1576,56 +1585,109 @@
           {/if}
         </div>
       {:else}
-        {#if families.length > 1}
-          <nav class="flex rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Context type">
-            {#each families as family (family)}
+        <CimmichSectionHeader icon={iconForFamily(activeFamily)} title={collectionTitle} meta={collectionMeta}>
+          {#snippet actions()}
+            {#if families.length > 1}
+              <nav class="flex min-h-11 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Context type">
+                {#each families as family (family)}
+                  <button
+                    class="rounded-lg px-4 text-sm font-semibold transition {activeFamily === family
+                      ? 'bg-white text-primary shadow-sm dark:bg-gray-700'
+                      : 'text-gray-600 hover:text-gray-950 dark:text-gray-300'}"
+                    type="button"
+                    aria-current={activeFamily === family ? 'page' : undefined}
+                    onclick={() => selectFamily(family)}>{contextFamilyLabels[family]}</button
+                  >
+                {/each}
+              </nav>
+            {/if}
+            <form
+              class="w-full min-w-0 sm:w-56 lg:w-64"
+              role="search"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void loadEntities();
+              }}
+            >
+              <label class="relative block">
+                <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
+                <Icon
+                  class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-500"
+                  icon={mdiMagnify}
+                  size="18"
+                />
+                <input
+                  class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
+                  bind:value={query}
+                  maxlength="500"
+                  placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
+                />
+              </label>
+            </form>
+            <div class="relative">
               <button
-                class="min-h-10 rounded-full px-4 text-sm font-semibold transition {activeFamily === family
-                  ? 'bg-white text-primary shadow-sm dark:bg-gray-700'
-                  : 'text-gray-600 hover:text-gray-950 dark:text-gray-300'}"
+                class="flex size-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                class:text-primary={showArchived || collectionTypeFilter !== 'all'}
                 type="button"
-                aria-current={activeFamily === family ? 'page' : undefined}
-                onclick={() => selectFamily(family)}>{contextFamilyLabels[family]}</button
+                aria-label="Filter collection"
+                aria-expanded={showCollectionFilters}
+                aria-haspopup="menu"
+                title="Filter"
+                onclick={() => (showCollectionFilters = !showCollectionFilters)}
               >
-            {/each}
-          </nav>
-        {/if}
-        <form
-          class="min-w-60 flex-1"
-          role="search"
-          onsubmit={(event) => {
-            event.preventDefault();
-            void loadEntities();
-          }}
-        >
-          <label class="relative block">
-            <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
-            <Icon
-              class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-gray-500"
-              icon={mdiMagnify}
-              size="20"
-            />
-            <input
-              class="min-h-11 w-full rounded-full border border-gray-300 bg-white pr-4 pl-11 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-900"
-              bind:value={query}
-              maxlength="500"
-              placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
-            />
-          </label>
-        </form>
-        <button class="context-primary-button" type="button" onclick={openCreate}>
-          <Icon icon={mdiPlus} size="20" />
-          {addLabel}
-        </button>
-        <button
-          class="context-secondary-button"
-          type="button"
-          aria-pressed={showArchived}
-          onclick={() => {
-            showArchived = !showArchived;
-            void loadEntities();
-          }}>{showArchived ? 'Hide archived' : 'Show archived'}</button
-        >
+                <Icon icon={mdiFilterVariant} size="20" />
+              </button>
+              {#if showCollectionFilters}
+                <div
+                  class="absolute top-12 right-0 z-30 grid min-w-52 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                  role="menu"
+                  aria-label="Collection filters"
+                >
+                  <button
+                    class="flex min-h-11 items-center justify-between gap-4 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showArchived}
+                    onclick={() => {
+                      showArchived = !showArchived;
+                      showCollectionFilters = false;
+                      void loadEntities();
+                    }}
+                  >
+                    <span>{showArchived ? 'Hide archived' : 'Include archived'}</span>
+                    {#if showArchived}<Icon icon={mdiCheck} size="18" />{/if}
+                  </button>
+                  {#if activeFamily !== 'places'}
+                    <label class="grid gap-1 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+                      <span class="text-xs text-gray-500 dark:text-gray-400">Type</span>
+                      <select
+                        class="min-h-10 rounded-xl bg-gray-100 px-3 outline-none dark:bg-gray-800"
+                        aria-label={`Filter ${contextFamilyLabels[activeFamily]}`}
+                        value={collectionTypeFilter}
+                        onchange={(event) => {
+                          collectionTypeFilter = (event.currentTarget as HTMLSelectElement).value as ContextTypeFilter;
+                          showCollectionFilters = false;
+                        }}
+                      >
+                        {#each collectionTypeFilters as filter (filter.value)}
+                          <option value={filter.value}>{filter.label}</option>
+                        {/each}
+                      </select>
+                    </label>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+            <button
+              class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+              type="button"
+              onclick={openCreate}
+            >
+              <Icon icon={mdiPlus} size="18" />
+              {addLabel}
+            </button>
+          {/snippet}
+        </CimmichSectionHeader>
       {/if}
     </div>
   </div>
@@ -1648,7 +1710,87 @@
   {#if selectedLoading}
     <p class="py-16 text-center text-sm text-gray-500" role="status">Loading details…</p>
   {:else if selected}
-    <div class="mt-6">
+    <div class="relative mt-5">
+      <button
+        class="context-hero-control context-hero-back"
+        type="button"
+        aria-label={`Back to ${contextFamilyLabels[activeFamily]}`}
+        onclick={closeDetail}
+      >
+        <Icon icon={mdiArrowLeft} size="21" />
+      </button>
+
+      <div class="context-hero-actions">
+        {#if selected.entity.visibility}
+          <CimmichObjectVisibility
+            object={selected.entity.visibility}
+            objectLabel={contextTargetLabel(selected.entity.entityKind)}
+            onChange={updateSelectedVisibility}
+          />
+        {/if}
+        {#if undoDecisionId}
+          <button
+            class="context-hero-control context-hero-control--label"
+            type="button"
+            disabled={isSaving}
+            onclick={() => void undoAssets()}
+          >
+            <Icon icon={mdiUndoVariant} size="18" />
+            <span>{undoLabel}</span>
+          </button>
+        {/if}
+        <button
+          class="context-hero-control context-hero-control--label context-profile-edit"
+          type="button"
+          onclick={openEdit}
+        >
+          <Icon icon={mdiPencilOutline} size="18" /> <span>Edit</span>
+        </button>
+        <div class="relative">
+          <button
+            class="context-hero-control"
+            type="button"
+            aria-label={`More actions for ${selected.entity.displayName}`}
+            aria-expanded={showEntityMenu}
+            aria-haspopup="menu"
+            onclick={() => (showEntityMenu = !showEntityMenu)}
+          >
+            <Icon icon={mdiDotsVertical} size="20" />
+          </button>
+          {#if showEntityMenu}
+            <div
+              class="absolute top-12 right-0 z-30 grid min-w-48 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold text-gray-900 shadow-xl dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              role="menu"
+              aria-label={`More actions for ${selected.entity.displayName}`}
+            >
+              <button
+                class="min-h-10 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                type="button"
+                role="menuitem"
+                disabled={isSaving}
+                onclick={() => {
+                  showEntityMenu = false;
+                  void changeArchivedState();
+                }}
+              >
+                {selected.entity.status === 'archived' ? 'Restore' : 'Archive'}
+              </button>
+              {#if entityKind === 'place' || entityKind === 'object'}
+                <button
+                  class="min-h-10 rounded-xl px-3 text-left text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none dark:text-red-300 dark:hover:bg-red-950/40 dark:focus-visible:bg-red-950/40"
+                  type="button"
+                  role="menuitem"
+                  disabled={isSaving}
+                  onclick={() => {
+                    showEntityMenu = false;
+                    openContextDelete();
+                  }}>Delete permanently</button
+                >
+              {/if}
+            </div>
+          {/if}
+        </div>
+      </div>
       <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
     </div>
 
@@ -1685,14 +1827,8 @@
 
     {#if activeDetailTab === 'photos'}
       <div role="tabpanel" aria-label="Photos">
-        <div class="mt-7">
-          <div>
-            <h2 class="text-xl font-semibold">Photos & videos</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Media you linked to this {entityNoun}.</p>
-          </div>
-        </div>
         {#if entityKind === 'event' && selected.assets.length > 0}
-          <div class="mt-4 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Event media lane">
+          <div class="mt-5 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Event media lane">
             {#each [{ label: 'All', value: 'all' }, { label: 'Main', value: 'main' }, { label: 'Stops', value: 'stops' }, { label: 'Nearby', value: 'nearby' }] as lane (lane.value)}
               <button
                 class="context-detail-lane"
@@ -1706,7 +1842,7 @@
         {/if}
         {#if selected.assets.length === 0}
           <div
-            class="mt-4 rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center dark:border-gray-700"
+            class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center dark:border-gray-700"
           >
             <Icon class="mx-auto text-gray-400" icon={mdiImageMultipleOutline} size="32" />
             <p class="mt-3 font-semibold">No linked media yet</p>
@@ -1714,13 +1850,13 @@
           </div>
         {:else if visibleDetailAssets.length === 0}
           <div
-            class="mt-4 rounded-3xl border border-dashed border-gray-300 px-6 py-10 text-center dark:border-gray-700"
+            class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-10 text-center dark:border-gray-700"
           >
             <p class="font-semibold">Nothing in this lane yet</p>
             <p class="mt-1 text-sm text-gray-500">Choose All or add media with this relationship.</p>
           </div>
         {:else}
-          <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {#each visibleDetailAssets as asset (asset.associationId)}
               <article class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
                 <a
@@ -1922,9 +2058,9 @@
       </div>
     {/if}
     <CimmichContextCollection
-      description={activeDescription}
       family={activeFamily}
       entities={displayedEntities}
+      controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
       onAdd={openCreate}
       onOpen={openEntity}
     />
@@ -2738,6 +2874,62 @@
   :global(.context-icon-button) {
     width: 44px;
     flex: none;
+  }
+
+  .context-hero-back,
+  .context-hero-actions {
+    position: absolute;
+    z-index: 12;
+    top: 16px;
+  }
+
+  .context-hero-back {
+    left: 16px;
+  }
+
+  .context-hero-actions {
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .context-hero-control {
+    display: inline-flex;
+    width: 42px;
+    min-height: 42px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px solid rgb(255 255 255 / 0.2);
+    border-radius: 999px;
+    background: rgb(15 23 42 / 0.72);
+    color: white;
+    font-size: 0.82rem;
+    font-weight: 700;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.16);
+    backdrop-filter: blur(12px);
+  }
+
+  .context-hero-control--label {
+    width: auto;
+    padding: 0 14px;
+  }
+
+  .context-hero-control:hover,
+  .context-hero-control:focus-visible {
+    background: rgb(15 23 42 / 0.9);
+    outline: 2px solid white;
+    outline-offset: 2px;
+  }
+
+  .context-hero-actions :global(button:not([role='menuitem'])) {
+    border-color: rgb(255 255 255 / 0.2);
+    background: rgb(15 23 42 / 0.72);
+    color: white;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.16);
+    backdrop-filter: blur(12px);
   }
   :global(.context-primary-button:focus-visible),
   :global(.context-secondary-button:focus-visible),

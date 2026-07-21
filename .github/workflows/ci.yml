@@ -52,6 +52,14 @@ jobs:
         working-directory: service
         run: npm audit --audit-level=low
 
+      - name: Audit pinned provider dependencies
+        run: |
+          python3 -m venv /tmp/cimmich-pip-audit
+          /tmp/cimmich-pip-audit/bin/python -m pip install --disable-pip-version-check --no-cache-dir pip-audit==2.10.1
+          for requirements in providers/*/requirements.txt; do
+            /tmp/cimmich-pip-audit/bin/pip-audit --no-deps --disable-pip --requirement "$requirements"
+          done
+
       - name: Run service and release-schema tests
         working-directory: service
         run: npm test

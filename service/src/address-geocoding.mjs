@@ -15,6 +15,48 @@ const attribution = Object.freeze({
 const typedError = (message, statusCode, code) =>
   Object.assign(new Error(message), { code, statusCode });
 
+const readBoundedProviderBody = async (response, maximumBytes = 262_144) => {
+  const declared = Number(response?.headers?.get?.("content-length"));
+  if (Number.isFinite(declared) && declared > maximumBytes) {
+    throw typedError(
+      "Address search provider response is unavailable",
+      503,
+      "ADDRESS_GEOCODING_UNAVAILABLE",
+    );
+  }
+  if (!response?.body?.getReader) {
+    const raw = await response.text();
+    if (Buffer.byteLength(raw) <= maximumBytes) return raw;
+    throw typedError(
+      "Address search provider response is unavailable",
+      503,
+      "ADDRESS_GEOCODING_UNAVAILABLE",
+    );
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      if (byteLength > maximumBytes) {
+        await reader.cancel().catch(() => {});
+        throw typedError(
+          "Address search provider response is unavailable",
+          503,
+          "ADDRESS_GEOCODING_UNAVAILABLE",
+        );
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, byteLength).toString("utf8");
+};
+
 const cleanQuery = (value) => {
   const query = String(value ?? "")
     .trim()
@@ -449,13 +491,7 @@ export const createAddressGeocoder = ({
               503,
               "ADDRESS_GEOCODING_UNAVAILABLE",
             );
-          const raw = await response.text();
-          if (Buffer.byteLength(raw) > 262_144)
-            throw typedError(
-              "Address search provider response is unavailable",
-              503,
-              "ADDRESS_GEOCODING_UNAVAILABLE",
-            );
+          const raw = await readBoundedProviderBody(response);
           try {
             return JSON.parse(raw);
           } catch {

@@ -4,6 +4,7 @@ import CimmichImmichSetup from './CimmichImmichSetup.svelte';
 
 const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
+  getPeople: vi.fn(),
   getStatus: vi.fn(),
   importCurrent: vi.fn(),
   preview: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('$lib/services/cimmich.service', () => ({
     }
   },
   connectCimmichImmich: mocks.connect,
+  getCimmichPeople: mocks.getPeople,
   getCimmichImmichOnboardingStatus: mocks.getStatus,
   importCimmichImmichOnboarding: mocks.importCurrent,
   previewCimmichImmichOnboarding: mocks.preview,
@@ -100,7 +102,10 @@ const preview = {
 };
 
 describe('Cimmich first-run Immich setup', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getPeople.mockResolvedValue([]);
+  });
 
   it('keeps the credential write-only and transitions into a connected preview journey', async () => {
     mocks.getStatus.mockResolvedValueOnce({
@@ -172,5 +177,35 @@ describe('Cimmich first-run Immich setup', () => {
     await fireEvent.click(getByRole('button', { name: 'Import this preview' }));
     await waitFor(() => expect(mocks.importCurrent).toHaveBeenCalledOnce());
     expect(mocks.importCurrent.mock.calls[0][0]).toMatchObject({ previewDigest: 'a'.repeat(64), scope });
+  });
+
+  it('separates preserved Cimmich People from optional unnamed upstream face groups', async () => {
+    mocks.getPeople.mockResolvedValue([
+      { person_id: 'person-1', subject_kind: 'person' },
+      { person_id: 'person-2', subject_kind: 'person' },
+      { person_id: 'pet-1', subject_kind: 'pet' },
+    ]);
+    mocks.getStatus.mockResolvedValue(readyStatus);
+    mocks.preview.mockResolvedValue({
+      ...preview,
+      counts: {
+        ...preview.counts,
+        assignedFaces: 53,
+        labelledPeople: 0,
+        unassignedFaces: 8,
+        unlabelledPeople: 8,
+      },
+    });
+    const { getByRole, getByText } = render(CimmichImmichSetup);
+
+    await waitFor(() => expect(getByText(/Your 2 existing Cimmich People are preserved/)).toBeInTheDocument());
+    expect(getByRole('link', { name: 'Not now — continue using Cimmich' })).toHaveAttribute('href', '/cimmich/home');
+
+    await fireEvent.click(getByRole('button', { name: 'Preview this scope' }));
+    await waitFor(() => expect(getByText(/0 labelled Immich People/)).toBeInTheDocument());
+    expect(getByText(/8 unnamed Immich face groups/)).toBeInTheDocument();
+    expect(getByText(/53 Faces assigned upstream/)).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Import this preview' })).toBeDisabled();
+    expect(getByText(/continue using your existing Cimmich People/)).toBeInTheDocument();
   });
 });
