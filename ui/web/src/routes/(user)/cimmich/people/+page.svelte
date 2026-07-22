@@ -21,12 +21,10 @@
     mdiClose,
     mdiImageOffOutline,
     mdiMagnify,
-    mdiPlus,
     mdiRestore,
     mdiTuneVariant,
   } from '@mdi/js';
   import { ContextMenuButton, Icon, MenuItemType, Tooltip, type ActionItem } from '@immich/ui';
-  import { onMount } from 'svelte';
   type PersonViewMode = PeopleViewMode;
   type PersonSort = 'acceptedFaces' | 'candidates' | 'name' | 'photos' | 'references';
   type PeopleCategory =
@@ -52,16 +50,12 @@
   let cimmichMessage = $state('');
   let cimmichPeople = $state<CimmichPerson[]>([]);
   let cimmichSavingClaimId = $state('');
-  let categoryPreferencesLoaded = $state(false);
   let initialViewChosen = $state(false);
   let minimumPhotos = $state(0);
   let peopleCategory = $state<PeopleCategory>('all');
-  let pinnedPeopleCategories = $state<PeopleCategory[]>([]);
   let peopleQuery = $state('');
   let personSort = $state<PersonSort>('photos');
   let viewMode = $state<PersonViewMode>('faces');
-
-  const pinnedCategoriesStorageKey = 'cimmich.people.pinned-categories.v1';
 
   const viewModes: Array<{ id: PersonViewMode; label: string }> = [
     { id: 'faces', label: 'People' },
@@ -93,6 +87,9 @@
     { id: 'sort', label: 'Review list' },
     { id: 'holding', label: '↳ Holding' },
   ];
+  const selectablePeopleCategories = peopleCategories.filter(
+    (category) => category.id !== 'sort' && category.id !== 'holding',
+  );
   const personInCategory = (person: CimmichPerson, category: PeopleCategory) => {
     if (category === 'all') {
       return true;
@@ -200,38 +197,6 @@
         ]
       : []),
   ]);
-
-  const availableRelationshipCategories = $derived(
-    peopleCategories.filter((category) => category.id !== 'all' && category.id !== 'sort' && category.id !== 'holding'),
-  );
-  const pinnedRelationshipCategories = $derived(
-    availableRelationshipCategories.filter((category) => pinnedPeopleCategories.includes(category.id)),
-  );
-  const categoryPinActions = $derived.by(() => [
-    ...availableRelationshipCategories.map(
-      (category) =>
-        ({
-          title: category.label,
-          description: pinnedPeopleCategories.includes(category.id)
-            ? `Unpin · ${peopleCategoryCounts[category.id]} people`
-            : `Pin · ${peopleCategoryCounts[category.id]} people`,
-          icon: pinnedPeopleCategories.includes(category.id) ? mdiCheck : undefined,
-          onAction: () => togglePinnedPeopleCategory(category.id),
-        }) satisfies ActionItem,
-    ),
-  ]);
-
-  const togglePinnedPeopleCategory = (category: PeopleCategory) => {
-    if (pinnedPeopleCategories.includes(category)) {
-      pinnedPeopleCategories = pinnedPeopleCategories.filter((item) => item !== category);
-      if (peopleCategory === category) {
-        peopleCategory = 'all';
-      }
-      return;
-    }
-    pinnedPeopleCategories = [...pinnedPeopleCategories, category];
-    peopleCategory = category;
-  };
 
   const initials = (name: string) =>
     name
@@ -360,30 +325,6 @@
     }
   };
 
-  onMount(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(pinnedCategoriesStorageKey) ?? '[]');
-      if (Array.isArray(stored)) {
-        const allowed = new Set(peopleCategories.map(({ id }) => id));
-        pinnedPeopleCategories = stored.filter(
-          (category): category is PeopleCategory =>
-            typeof category === 'string' && category !== 'all' && allowed.has(category as PeopleCategory),
-        );
-      }
-    } catch {
-      pinnedPeopleCategories = [];
-    } finally {
-      categoryPreferencesLoaded = true;
-    }
-  });
-
-  $effect(() => {
-    if (!categoryPreferencesLoaded) {
-      return;
-    }
-    localStorage.setItem(pinnedCategoriesStorageKey, JSON.stringify(pinnedPeopleCategories));
-  });
-
   $effect(() => {
     void cimmichVisibilityManager.version;
     void loadCimmichReview();
@@ -423,23 +364,21 @@
               <span class="text-xs opacity-65">{count}</span>
             </button>
             {#if mode.id === 'faces'}
-              <div
-                class="ml-1 inline-flex h-9 shrink-0 items-center rounded-lg border border-gray-200 bg-white/60 pl-2 text-xs font-semibold text-gray-500 dark:border-gray-700 dark:bg-black/15 dark:text-gray-300"
-              >
-                <span>Categories</span>
-                <Tooltip text="Choose which People categories appear as shortcuts">
-                  {#snippet child({ props })}
-                    <ContextMenuButton
-                      {...props}
-                      class="size-8 bg-transparent text-gray-500 hover:bg-white hover:text-immich-fg dark:hover:bg-black/25 dark:hover:text-immich-dark-fg"
-                      icon={mdiPlus}
-                      items={categoryPinActions}
-                      position="bottom-left"
-                      aria-label="Choose People category shortcuts"
-                    />
-                  {/snippet}
-                </Tooltip>
-              </div>
+              <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+              <label class="inline-flex h-9 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold text-gray-500">
+                <span class="sr-only">Category</span>
+                <select
+                  bind:value={peopleCategory}
+                  class="h-8 max-w-36 rounded-lg border border-gray-200 bg-white px-2 text-xs font-semibold text-immich-fg outline-none focus-visible:border-primary sm:max-w-44 sm:text-sm dark:border-gray-700 dark:bg-black/25 dark:text-immich-dark-fg"
+                  aria-label="People category"
+                >
+                  {#each selectablePeopleCategories as category (category.id)}
+                    <option value={category.id}>
+                      {category.id === 'all' ? 'All categories' : category.label} ({peopleCategoryCounts[category.id]})
+                    </option>
+                  {/each}
+                </select>
+              </label>
             {/if}
           {/each}
         </div>
@@ -480,35 +419,6 @@
           >Show all</a
         >
       </div>
-    {/if}
-
-    {#if viewMode === 'faces' && (pinnedRelationshipCategories.length > 0 || peopleCategory !== 'all')}
-      <nav class="flex flex-wrap gap-2" aria-label="People categories">
-        {#each pinnedRelationshipCategories as category (category.id)}
-          <button
-            class={[
-              'inline-flex h-11 items-center rounded-full px-4 text-sm font-medium transition-colors',
-              peopleCategory === category.id
-                ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-black'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-immich-dark-gray dark:text-gray-300',
-            ]}
-            type="button"
-            aria-pressed={peopleCategory === category.id}
-            onclick={() => (peopleCategory = category.id)}
-          >
-            {category.label} <span class="ml-1.5 opacity-65">{peopleCategoryCounts[category.id]}</span>
-          </button>
-        {/each}
-        {#if peopleCategory !== 'all'}
-          <button
-            class="h-11 rounded-full px-3 text-sm font-medium text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg"
-            type="button"
-            onclick={() => (peopleCategory = 'all')}
-          >
-            Clear
-          </button>
-        {/if}
-      </nav>
     {/if}
 
     {#if cimmichError}
