@@ -57,6 +57,17 @@ export type CimmichViewingModeMutationResult = CimmichVisibilityStatus & {
   intentSequence: number;
 };
 
+export type CimmichPrivateCredentialStatus = {
+  algorithm: string | null;
+  configured: boolean;
+  principalId: string;
+  privateLockMode: 'none' | 'password';
+  /** Names what the password actually protects: what is shown, not who may sign in. */
+  protectionKind: 'presentation_filter';
+  schemaVersion: 'cimmich.visibility.v1';
+  updatedAt: string | null;
+};
+
 export type CimmichVisibilityObject = {
   decisionId: string | null;
   explicit: boolean;
@@ -2858,6 +2869,31 @@ export const unlockCimmichPrivateMode = async (password: string) => {
   });
   cimmichVisibilityPrivateToken = result.privateSessionToken;
   return { expiresAt: result.expiresAt, schemaVersion: result.schemaVersion, viewingMode: result.viewingMode };
+};
+
+/**
+ * The Private password is a presentation filter, not account security: Immich
+ * owns access. Setting or clearing it therefore needs no previous password, and
+ * either action ends any live Private session.
+ */
+export const getCimmichPrivateCredentialStatus = () =>
+  visibilityRequest<CimmichPrivateCredentialStatus>('/v1/visibility/credential');
+
+export const setCimmichPrivateCredential = async (password: string) => {
+  const result = await visibilityRequest<CimmichPrivateCredentialStatus>('/v1/visibility/credential', {
+    body: JSON.stringify({ password }),
+    method: 'POST',
+  });
+  cimmichVisibilityPrivateToken = undefined;
+  return result;
+};
+
+export const clearCimmichPrivateCredential = async () => {
+  const result = await visibilityRequest<CimmichPrivateCredentialStatus>('/v1/visibility/credential', {
+    method: 'DELETE',
+  });
+  cimmichVisibilityPrivateToken = undefined;
+  return result;
 };
 
 export const lockCimmichPrivateMode = async (

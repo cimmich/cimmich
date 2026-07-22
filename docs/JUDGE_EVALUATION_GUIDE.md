@@ -72,7 +72,10 @@ in the Cedar House guide only when you intend to remove state.
   underlying image.
 - Move through a related Pet, Place, Thing, Event and Document.
 - Use Smart Search across names, aliases, dates and context.
-- Compare Standard, Personal and Private presentation.
+- Compare Standard, Personal and Private presentation. If Private asks for a
+  password you do not have, set your own from **Settings → Private view
+  password** — a reset needs no previous value, because the password filters
+  what is shown rather than who may sign in.
 - Open Models & Guided and confirm that optional machinery is separate from
   owner truth and that automatic identity is absent.
 - Inspect decision history and Undo for a consequential owner action.

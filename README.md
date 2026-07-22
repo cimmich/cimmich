@@ -1,5 +1,12 @@
 # Cimmich
 
+> [!NOTE]
+> **Cimmich is now in public-beta development.** The exact OpenAI Build Week
+> submission remains preserved in the
+> [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
+> That tag, release and its assets remain unchanged as the living project moves
+> forward.
+
 > **Complete the picture.**
 
 <p align="center">
@@ -61,7 +68,8 @@ library incomplete**.
 - **Better ways to revisit a library:** person, pet and context pages; maps;
   covers; relationships; filters; and visibility-aware Smart Search.
 - **Three cumulative viewing modes:** Standard, Personal and an optional
-  password-gated Private presentation mode.
+  password-gated Private presentation mode—a screen filter for shoulder-surfing
+  and TV slideshows, set from Settings; Immich still owns account access.
 - **Selective local matching:** confirmed owner evidence becomes governed
   references; Cimmich ranks candidates, abstains when evidence is insufficient
   and never accepts identity automatically.
@@ -276,7 +284,9 @@ Presence + contexts           evidence providers
   evaluated bulk-matching policy must pass human review and is invalidated by
   later identity corrections.
 - Private is a cumulative presentation mode—not encryption, an ACL, a vault or
-  protection from a host administrator.
+  protection from a host administrator. Immich provides the access security;
+  the Private password only decides what Cimmich draws on screen, so the owner
+  can reset it from Settings without the previous password.
 
 Detailed contracts live in the [service documentation](service/README.md),
 [privacy boundary](docs/PRIVACY_BOUNDARY.md) and provider directories.

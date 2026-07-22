@@ -57,6 +57,14 @@ diagnostic and have written zero live measurement rows.
 than reporting success from the HTTP process alone. Error responses are stable
 JSON with the intended 4xx/5xx status.
 
+`GET|POST|DELETE /v1/visibility/credential` lets the signed-in owner set, reset
+or remove the Private presentation password from Settings. Reset takes no
+previous password by design — Immich owns account access, so a forgotten screen
+filter must not become an unrecoverable lockout — and any change drops live
+Private sessions. It is owner-only: a Guided credential is refused with
+`VISIBILITY_CREDENTIAL_FORBIDDEN`. This is the only `DELETE` route, and browser
+preflight advertises it accordingly.
+
 Schema 38 adds the fail-closed `cimmich.visibility-projection.v1` registry.
 `GET /v1/visibility/projections` reports which Product V1 asset-derived route
 families are service-enforced or blocked. Schemas 44–47 now give Smart Search,

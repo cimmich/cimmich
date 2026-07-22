@@ -3468,3 +3468,32 @@ test("Face identity save accepts exactly one existing-or-new Person selector", a
   ]);
   assert.deepEqual(surfaces, Array(5).fill("asset_detail"));
 });
+
+test("browser preflight permits every method the UI actually uses", async () => {
+  // Regression guard: turning the Private filter off is a DELETE. curl does not
+  // preflight, so a missing method here fails only in a real browser, where the
+  // rejected preflight surfaces as an opaque "service is unavailable".
+  const origin = "http://127.0.0.1:3000";
+  await withServer(
+    {},
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/visibility/credential`, {
+        headers: {
+          "access-control-request-method": "DELETE",
+          origin,
+        },
+        method: "OPTIONS",
+      });
+      assert.equal(response.status, 204);
+      const allowed = new Set(
+        (response.headers.get("access-control-allow-methods") || "")
+          .split(",")
+          .map((value) => value.trim()),
+      );
+      for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
+        assert.ok(allowed.has(method), `${method} must survive preflight`);
+      }
+    },
+    { allowedOrigins: new Set([origin]) },
+  );
+});

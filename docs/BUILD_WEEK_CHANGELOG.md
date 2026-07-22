@@ -95,6 +95,28 @@ to public source, tests, contracts and reproduction paths.
   ordering regression test is included, and the corrected clean bootstrap
   reaches ready/ready/ready with the exact pristine `51:9:12:5:4:0` state.
 
+## 23 July — Owner-operable visibility controls (v1.0.1 Public Beta)
+
+The immutable `v1.0.0-build-week` tag and release asset remain unchanged. These
+post-release improvements advance maintained `main` only.
+
+- Gave the signed-in owner **Settings → Private view password**: one button to
+  set, reset or turn off the Private presentation filter. Previously the only
+  path was a service-side CLI needing `DATABASE_URL` and piped stdin. New
+  owner-only `GET|POST|DELETE /v1/visibility/credential`; Guided credentials
+  are refused.
+- Settled the framing in product and documentation: this password decides what
+  is drawn on screen, not who may sign in. Immich owns account access, so reset
+  deliberately takes no previous password and a forgotten value is never a
+  lockout. Any change drops live Private sessions.
+- Fixed a control that read as broken privacy: the global viewing-mode switch is
+  now restricted to Cimmich surfaces. Plain Immich photo viewers instead state
+  `Immich view · All photos visible`.
+- Restored reachable per-photo tier control without conflating it with global
+  viewing mode: Cimmich photo viewers label the separate action `This photo`.
+- Fixed a browser-only CORS defect: preflight now permits the `DELETE` used to
+  turn the filter off, with a regression test guarding every UI method.
+
 ## Scope and claim boundary
 
 Cimmich's Build Week result is the Cimmich-specific service, data model, product

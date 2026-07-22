@@ -187,7 +187,9 @@ export const createCimmichServer = ({
       response.writeHead(204, {
         "access-control-allow-headers":
           "authorization,content-type,x-cimmich-actor,x-cimmich-principal-id,x-cimmich-device-id,x-cimmich-private-session,x-cimmich-surface,x-cimmich-document-metadata",
-        "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
+        // DELETE is required by /v1/visibility/credential (turning the Private
+        // filter off). It is the only DELETE route, so this widens nothing else.
+        "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
         "access-control-allow-origin": allowedOrigin,
         vary: "Origin",
       });
@@ -552,6 +554,51 @@ export const createCimmichServer = ({
           allowedOrigin,
         );
         return;
+      }
+      if (url.pathname === "/v1/visibility/credential") {
+        // Owner-only: a Guided client may present within its ceiling but must
+        // never change the owner's Private filter password.
+        if (request.cimmichGuidedCredential) {
+          throw Object.assign(
+            new Error(
+              "Guided clients cannot manage the Private filter password",
+            ),
+            { code: "VISIBILITY_CREDENTIAL_FORBIDDEN", statusCode: 403 },
+          );
+        }
+        if (request.method === "GET") {
+          sendJson(
+            response,
+            200,
+            await visibility.credentialStatus(),
+            allowedOrigin,
+          );
+          return;
+        }
+        if (request.method === "POST") {
+          const body = await readJsonBody(request);
+          sendJson(
+            response,
+            200,
+            await visibility.setCredential({
+              actorId: request.headers["x-cimmich-actor"],
+              password: body.password,
+            }),
+            allowedOrigin,
+          );
+          return;
+        }
+        if (request.method === "DELETE") {
+          sendJson(
+            response,
+            200,
+            await visibility.clearCredential({
+              actorId: request.headers["x-cimmich-actor"],
+            }),
+            allowedOrigin,
+          );
+          return;
+        }
       }
       if (request.method === "POST" && url.pathname === "/v1/visibility/lock") {
         const body = await readJsonBody(request);
