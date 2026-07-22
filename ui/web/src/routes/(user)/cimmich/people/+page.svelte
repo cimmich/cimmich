@@ -29,10 +29,9 @@
     mdiClose,
     mdiImageOffOutline,
     mdiMagnify,
-    mdiRestore,
     mdiTuneVariant,
   } from '@mdi/js';
-  import { ContextMenuButton, Icon, MenuItemType, Tooltip, type ActionItem } from '@immich/ui';
+  import { ContextMenuButton, Icon, Tooltip, type ActionItem } from '@immich/ui';
   type PersonViewMode = PeopleViewMode;
   type PeopleCategory =
     | 'acquaintances'
@@ -58,7 +57,6 @@
   let cimmichPeople = $state<CimmichPerson[]>([]);
   let cimmichSavingClaimId = $state('');
   let initialViewChosen = $state(false);
-  let minimumPhotos = $state(0);
   let peopleCategory = $state<PeopleCategory>('all');
   let peopleQuery = $state('');
   let peopleSort = $state<PeopleSortState>({ ...defaultPeopleSort });
@@ -68,12 +66,6 @@
     { id: 'faces', label: 'People' },
     { id: 'candidates', label: 'Suggestions' },
     { id: 'needsFace', label: 'Review list' },
-  ];
-  const photoThresholds = [
-    { label: 'Any photo count', value: 0 },
-    { label: '10+ photos', value: 10 },
-    { label: '50+ photos', value: 50 },
-    { label: '100+ photos', value: 100 },
   ];
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
     { id: 'photos', label: 'Photos' },
@@ -137,17 +129,8 @@
           !query || [person.display_name, ...person.aliases].some((name) => name.toLowerCase().includes(query)),
       )
       .filter((person) => personInCategory(person, peopleCategory))
-      .filter((person) => person.asset_count >= minimumPhotos)
       .sort((a, b) => comparePeople(a, b, peopleSort));
   });
-
-  const resetPeopleControls = () => {
-    minimumPhotos = 0;
-    peopleCategory = 'all';
-    peopleQuery = '';
-    peopleSort = { ...defaultPeopleSort };
-    viewMode = chooseInitialPeopleView(cimmichPeople);
-  };
 
   const peopleControlActions = $derived.by(() => [
     ...sortOptions.map(
@@ -170,30 +153,6 @@
           onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
         }) satisfies ActionItem,
     ),
-    MenuItemType.Divider,
-    ...photoThresholds.map(
-      (threshold) =>
-        ({
-          title: threshold.label,
-          description: 'Minimum photo count',
-          icon: minimumPhotos === threshold.value ? mdiCheck : undefined,
-          onAction: () => (minimumPhotos = threshold.value),
-        }) satisfies ActionItem,
-    ),
-    ...(peopleQuery ||
-    minimumPhotos > 0 ||
-    peopleSort.key !== defaultPeopleSort.key ||
-    peopleSort.direction !== defaultPeopleSort.direction ||
-    peopleCategory !== 'all'
-      ? [
-          MenuItemType.Divider,
-          {
-            title: 'Reset filters',
-            icon: mdiRestore,
-            onAction: resetPeopleControls,
-          } satisfies ActionItem,
-        ]
-      : []),
   ]);
 
   const initials = (name: string) =>
@@ -392,7 +351,7 @@
             type="search"
           />
         </label>
-        <Tooltip text="Filter and sort people">
+        <Tooltip text="Sort people">
           {#snippet child({ props })}
             <ContextMenuButton
               {...props}
@@ -400,7 +359,7 @@
               icon={mdiTuneVariant}
               items={peopleControlActions}
               position="top-right"
-              aria-label="Filter and sort people"
+              aria-label="Sort people"
             />
           {/snippet}
         </Tooltip>
