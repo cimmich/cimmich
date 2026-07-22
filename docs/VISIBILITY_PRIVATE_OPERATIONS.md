@@ -4,11 +4,30 @@ Private viewing is Cimmich presentation protection. It is not encrypted storage,
 an Immich access-control rule, a locked-folder replacement or a cryptographic
 vault. Native Immich access remains Immich-owned.
 
+**Immich provides the access security; this password only decides what is drawn
+on screen.** It answers "someone is scrolling my photos next to me" and "the TV
+is running a slideshow", not "keep this person out of my library". Anyone who
+can sign in to Immich can already see everything, and switching to Immich shows
+everything by design.
+
 The lock is optional convenience inside an already authenticated Immich
 installation. It is not Cimmich account authentication. Operators may choose
 `password` with any non-empty local secret—including a one-character secret—or
 `none` when changing view modes should not require a second prompt. Cimmich does
 not impose password-complexity policy on this local preference.
+
+## Owner path (default)
+
+The signed-in owner manages this from **Settings → Private view password**: one
+button to set it, reset it, or turn it off. Because it is a screen filter rather
+than account security, a reset does not ask for the previous password—the caller
+has already authenticated to Immich, and a forgotten filter password must not
+become a permanent lockout with no recovery. Setting, resetting or removing it
+ends any open Private session immediately.
+
+That panel is owner-only. A Guided credential may present within its configured
+ceiling but is refused with `VISIBILITY_CREDENTIAL_FORBIDDEN` on
+`/v1/visibility/credential`.
 
 ## Production boundary
 
@@ -31,7 +50,10 @@ not impose password-complexity policy on this local preference.
   receive a typed 429 response during exponential backoff. Concurrent scrypt
   work is capped to keep failed local prompts from exhausting the service.
 
-## Commands
+## Operator commands (fallback)
+
+Use these for headless installs, scripted provisioning, or recovery when the web
+UI is unavailable. The Settings panel above is the normal path.
 
 Run from `service/` with `DATABASE_URL` set for the separate Cimmich database.
 Supply the chosen local view-lock string from standard input; do not put it in

@@ -28,7 +28,10 @@ Cimmich keeps its derived state in a database separate from Immich and must not
 write the Immich database or source-media bytes. Private viewing mode is a
 local presentation convenience inside an already authenticated Immich session;
 it is not encryption, an access-control list, a vault, or protection from a
-host administrator.
+host administrator. Its password is owner-resettable from Settings without the
+previous value by design: Immich owns account access, so a forgotten screen
+filter must not become an unrecoverable lockout. Treat anyone with a live
+Immich session as able to clear that filter.
 
 Guided is optional and disabled by default. Cimmich does not broker model
 provider traffic. Connected software may disclose anything it retrieves, and

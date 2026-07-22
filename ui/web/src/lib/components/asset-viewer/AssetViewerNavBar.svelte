@@ -13,7 +13,10 @@
   import SetVisibilityAction from '$lib/components/asset-viewer/actions/SetVisibilityAction.svelte';
   import UnstackAction from '$lib/components/asset-viewer/actions/UnstackAction.svelte';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
+  import CimmichAssetVisibility from '$lib/components/cimmich/CimmichAssetVisibility.svelte';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
+  import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
+  import { page } from '$app/state';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import RemoveFromAlbumAction from '$lib/components/timeline/actions/RemoveFromAlbumAction.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
@@ -33,8 +36,8 @@
     type PersonResponseDto,
     type StackResponseDto,
   } from '@immich/sdk';
-  import { ActionButton, CommandPaletteDefaultProvider, Tooltip, type ActionItem } from '@immich/ui';
-  import { mdiArrowLeft, mdiArrowRight, mdiDotsVertical, mdiVideoOutline } from '@mdi/js';
+  import { ActionButton, CommandPaletteDefaultProvider, Icon, Tooltip, type ActionItem } from '@immich/ui';
+  import { mdiArrowLeft, mdiArrowRight, mdiDotsVertical, mdiEyeOutline, mdiVideoOutline } from '@mdi/js';
   import { t } from 'svelte-i18n';
 
   interface Props {
@@ -68,6 +71,7 @@
   const isOwner = $derived(authManager.authenticated && asset.ownerId === authManager.user.id);
   const isAlbumOwner = $derived(authManager.authenticated && album?.albumUsers[0].user.id === authManager.user.id);
   const isLocked = $derived(asset.visibility === AssetVisibility.Locked);
+  const isCimmichSurface = $derived(isCimmichViewingSurface(page.url));
 
   const { Cast } = $derived(getGlobalActions($t));
 
@@ -97,7 +101,23 @@
 >
   <div class="dark flex items-center gap-1">
     <ActionButton action={Close} />
-    <CimmichViewingMode variant="overlay" />
+    <!-- Only on Cimmich surfaces. The Immich viewer serves its own unfiltered
+         asset stream, so offering the mode switch here would change the Cimmich
+         overlay while the photo and the swipe stream stayed visible — reading as
+         a broken privacy control rather than the Immich boundary it really is. -->
+    {#if isCimmichSurface}
+      <CimmichViewingMode variant="overlay" />
+    {:else}
+      <div
+        class="flex min-h-11 items-center gap-2 rounded-full bg-black/20 px-3 text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)] backdrop-blur-sm"
+        aria-label="Immich view. All photos are visible."
+        title="Immich view · All photos are visible"
+      >
+        <Icon icon={mdiEyeOutline} size="22" />
+        <span class="text-xs font-semibold sm:hidden">Immich · All visible</span>
+        <span class="hidden text-xs font-semibold sm:inline">Immich view · All photos visible</span>
+      </div>
+    {/if}
   </div>
 
   <div
@@ -112,6 +132,12 @@
           </div>
         {/snippet}
       </Tooltip>
+    {/if}
+    {#if isCimmichSurface}
+      <div class="flex items-center text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)]">
+        <span class="text-xs font-semibold"><span class="hidden md:inline">This </span>photo</span>
+        <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />
+      </div>
     {/if}
     <ActionButton action={Cast} />
     <ActionButton action={Actions.Share} />

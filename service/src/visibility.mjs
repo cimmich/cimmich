@@ -965,6 +965,63 @@ export const createVisibilityService = ({
     };
   };
 
+  const dropSessionsForPrincipal = (principalId) => {
+    for (const [tokenDigest, session] of sessions) {
+      if (session.principalId === principalId) sessions.delete(tokenDigest);
+    }
+    for (const [key, device] of devices) {
+      if (key.startsWith(`${principalId}`)) {
+        device.currentMode = device.saferMode;
+        devices.set(key, device);
+      }
+    }
+  };
+
+  // Owner-facing credential management for the Private presentation filter.
+  //
+  // The caller is already an authenticated Immich user on a bound Cimmich
+  // principal/device: Immich owns account access, this password only owns what
+  // Cimmich shows on screen. A forgotten filter password must therefore be
+  // resettable in one step rather than becoming a permanent lockout, so these
+  // routes deliberately do not demand the previous password. Any change drops
+  // live Private sessions so the new state applies immediately.
+  const credentialStatus = async () => {
+    const context = currentContext();
+    const principalId = context.principalId || "local-primary";
+    const record = await privateCredentialStatus({ principalId, sql });
+    return {
+      ...record,
+      privateLockMode: lockMode,
+      protectionKind: "presentation_filter",
+    };
+  };
+
+  const setCredential = async ({ actorId, password }) => {
+    const context = requireBoundContext();
+    const result = await configurePrivateCredential({
+      actorId: cleanActor(actorId || context.principalId),
+      password,
+      principalId: context.principalId,
+      source: "owner_settings",
+      sql,
+    });
+    configuredPrincipals.add(context.principalId);
+    dropSessionsForPrincipal(context.principalId);
+    return { ...result, ...(await credentialStatus()) };
+  };
+
+  const clearCredential = async ({ actorId }) => {
+    const context = requireBoundContext();
+    const result = await removePrivateCredential({
+      actorId: cleanActor(actorId || context.principalId),
+      principalId: context.principalId,
+      sql,
+    });
+    configuredPrincipals.delete(context.principalId);
+    dropSessionsForPrincipal(context.principalId);
+    return { ...result, ...(await credentialStatus()) };
+  };
+
   const beginCommand = async (
     tx,
     { actorId, commandId, commandKind, context, payload },
@@ -1596,6 +1653,8 @@ export const createVisibilityService = ({
 
   return {
     assetVisible,
+    clearCredential,
+    credentialStatus,
     currentContext,
     currentRank: () => currentContext().maxRank,
     getObject,
@@ -1611,6 +1670,7 @@ export const createVisibilityService = ({
     runForcedStandard,
     runRequest,
     schemaVersion,
+    setCredential,
     setMode,
     setObjects,
     status,

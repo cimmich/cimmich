@@ -77,6 +77,9 @@ The Private password is a local view-mode preference, not Immich login security
 or encryption. No extra password is the simplest default. If you choose one,
 any non-empty value is accepted and the prompt is hidden.
 
+You do not have to decide now. Once Cimmich is running you can set, change or
+remove it at any time from **Settings → Private view password**.
+
 The first local build can take several minutes. If it stops, read the final
 error and run `./tools/install.sh --resume` after fixing the reported issue.
 Check it at any time with `./tools/install.sh --status`. These commands remember
@@ -145,8 +148,14 @@ command line.
 
 ### Optional Private viewing password
 
-Set `CIMMICH_COMPANION_PRIVATE_LOCK_MODE=password` before `configure`, start
-Cimmich, then supply the value over standard input:
+The normal path is **Settings → Private view password** in Cimmich: one button
+to set it, reset it or turn it off. Because this password decides what is drawn
+on screen rather than who may sign in — Immich owns that — a reset does not ask
+for the previous one, so a forgotten value is never a lockout.
+
+For headless installs, scripted provisioning or recovery when the UI is
+unavailable, set `CIMMICH_COMPANION_PRIVATE_LOCK_MODE=password` before
+`configure`, start Cimmich, then supply the value over standard input:
 
 ```sh
 trusted-secret-command | ./tools/companion.sh private-password configure

@@ -397,3 +397,53 @@ test("Guided forced-Standard context ignores Personal and Private caller state",
   assert.equal(privateResult.guided.status.viewingMode, "standard");
   assert.equal(privateResult.guided.status.privateAuthorized, false);
 });
+
+test("owner can set, reset and turn off the Private filter password without the old one", async () => {
+  const fixture = createSql();
+  const service = createVisibilityService({ sql: fixture.sql });
+  await service.initialize();
+
+  const initial = await service.runRequest(request(), {}, () =>
+    service.credentialStatus(),
+  );
+  assert.equal(initial.configured, false);
+  assert.equal(initial.privateLockMode, "password");
+  assert.equal(initial.protectionKind, "presentation_filter");
+
+  const configured = await service.runRequest(request(), {}, () =>
+    service.setCredential({ actorId: "owner-test", password: "tv night" }),
+  );
+  assert.equal(configured.configured, true);
+  assert.equal(configured.operation, "configured");
+
+  const unlocked = await service.runRequest(request(), {}, () =>
+    service.unlock({ actorId: "owner-test", password: "tv night" }),
+  );
+  assert.ok(unlocked.privateSessionToken);
+
+  // A forgotten filter password is recoverable in one step: no previous
+  // password, because Immich already authenticated this owner.
+  const reset = await service.runRequest(request(), {}, () =>
+    service.setCredential({ actorId: "owner-test", password: "something new" }),
+  );
+  assert.equal(reset.configured, true);
+  assert.equal(reset.operation, "rotated");
+
+  // The reset must end the live Private session rather than leaving it open.
+  const afterReset = await service.runRequest(
+    request({ token: unlocked.privateSessionToken }),
+    {},
+    () => service.status(),
+  );
+  assert.equal(afterReset.privateAuthorized, false);
+
+  const cleared = await service.runRequest(request(), {}, () =>
+    service.clearCredential({ actorId: "owner-test" }),
+  );
+  assert.equal(cleared.configured, false);
+  assert.equal(
+    (await service.runRequest(request(), {}, () => service.status()))
+      .privateConfigured,
+    false,
+  );
+});

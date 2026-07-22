@@ -89,6 +89,11 @@ only in a mode-0600 file. Locate that file without printing its contents with:
 ./tools/public_demo.sh private-password-file
 ```
 
+If that file is missing or the value is unknown, you do not need it: set a new
+one from **Settings → Private view password** in Cimmich. A reset requires no
+previous password, because this filter governs what is shown rather than who
+may sign in.
+
 Read it directly into the trusted password-entry surface; do not pass it as a
 command argument, export it, paste it into logs or add it to shell history.
 This demo deliberately uses the password-gated Private preference. Standard or

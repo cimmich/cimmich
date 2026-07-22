@@ -19,6 +19,7 @@
     mdiDevices,
     mdiDownload,
     mdiFeatureSearchOutline,
+    mdiEyeOffOutline,
     mdiFormTextboxPassword,
     mdiKeyOutline,
     mdiLockSmart,
@@ -29,6 +30,7 @@
   import SettingAccordion from '$lib/components/shared-components/settings/SettingAccordion.svelte';
   import AppSettings from './AppSettings.svelte';
   import ChangePasswordSettings from './ChangePasswordSettings.svelte';
+  import CimmichPrivateViewSettings from './CimmichPrivateViewSettings.svelte';
   import DeviceList from './DeviceList.svelte';
   import OauthSettings from './OauthSettings.svelte';
   import PartnerSettings from './PartnerSettings.svelte';
@@ -128,6 +130,17 @@
   subtitle={$t('change_your_password')}
 >
   <ChangePasswordSettings />
+</SettingAccordion>
+
+<!-- Sits directly beneath the account password so the difference is legible:
+     that one controls who gets in, this one only controls what is shown. -->
+<SettingAccordion
+  icon={mdiEyeOffOutline}
+  key="cimmich-private-view"
+  title="Private view password"
+  subtitle="Choose what Cimmich shows on screen — not who can sign in"
+>
+  <CimmichPrivateViewSettings />
 </SettingAccordion>
 
 <SettingAccordion

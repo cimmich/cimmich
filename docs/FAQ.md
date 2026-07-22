@@ -67,6 +67,20 @@ No. Standard, Personal and Private are cumulative presentation modes inside an
 authenticated session. Private may have an additional local view lock, but it
 is not encryption, an ACL, a vault or protection from the host administrator.
 
+Think of it as deciding what is on screen, not who may sign in. It answers
+"someone is scrolling my photos beside me" and "the TV is running a slideshow".
+Immich provides the access security, and switching to Immich shows everything
+by design.
+
+## How do I set or change the Private password?
+
+**Settings → Private view password**, then one button to set it, reset it or
+turn it off. A reset never asks for the previous password: the caller has
+already signed in to Immich, and because this only filters presentation, a
+forgotten value must not become a permanent lockout. Any change immediately
+ends an open Private session. Headless and recovery paths are in
+[Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md).
+
 ## Can I try Cimmich without using my own photographs?
 
 Yes. Follow [Try Cimmich](../README.md#try-cimmich) to launch an isolated,
