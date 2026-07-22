@@ -3,6 +3,7 @@ import type { CimmichPersonAsset } from '$lib/services/cimmich.service';
 import {
   groupPersonPhotos,
   personPhotoDateLabel,
+  personPhotoDateStatus,
   personPhotoGridClass,
   photoMatchesRelation,
   preparePersonPhotos,
@@ -50,6 +51,25 @@ describe('person photo gallery', () => {
     expect(
       preparePersonPhotos([newer, older, unknown], 'all', 'oldest').map(({ sourceAssetId }) => sourceAssetId),
     ).toEqual(['older', 'newer', 'unknown']);
+  });
+
+  it('keeps impossible future dates out of normal chronology without rewriting source metadata', () => {
+    const now = new Date('2026-07-23T00:00:00.000Z').getTime();
+    const current = photo('current', ['face'], '2026-07-22T10:00:00.000Z');
+    const future = photo('future', ['face'], '2051-01-01T00:00:00.000Z');
+    const unknown = photo('unknown', ['face'], null);
+
+    expect(personPhotoDateStatus(future, now)).toBe('needs-review');
+    expect(personPhotoDateLabel(future, now)).toBe('Date needs review');
+    expect(future.capture_time).toBe('2051-01-01T00:00:00.000Z');
+    expect(
+      preparePersonPhotos([future, unknown, current], 'all', 'newest', now).map(({ sourceAssetId }) => sourceAssetId),
+    ).toEqual(['current', 'future', 'unknown']);
+    expect(groupPersonPhotos([current, future, unknown], 'year', now).map(({ label }) => label)).toEqual([
+      '2026',
+      'Date needs review',
+      'Date unknown',
+    ]);
   });
 
   it('supports filename sorting, year grouping and gallery density', () => {

@@ -4,6 +4,7 @@ export type PersonPhotoRelationFilter = 'all' | 'presence' | 'visible';
 export type PersonPhotoSort = 'filename' | 'newest' | 'oldest';
 export type PersonPhotoGroup = 'event' | 'none' | 'object' | 'place' | 'year';
 export type PersonPhotoSize = 'large' | 'medium' | 'small';
+export type PersonPhotoDateStatus = 'known' | 'needs-review' | 'unknown';
 
 export type PersonPhotoGroupResult = {
   id: string;
@@ -12,13 +13,24 @@ export type PersonPhotoGroupResult = {
   label: string | null;
 };
 
-const captureTimestamp = ({ capture_time }: CimmichPersonAsset) => {
+const rawCaptureTimestamp = ({ capture_time }: CimmichPersonAsset) => {
   if (!capture_time) {
     return null;
   }
   const timestamp = new Date(capture_time).getTime();
   return Number.isNaN(timestamp) ? null : timestamp;
 };
+
+export const personPhotoDateStatus = (asset: CimmichPersonAsset, now = Date.now()): PersonPhotoDateStatus => {
+  const timestamp = rawCaptureTimestamp(asset);
+  if (timestamp === null) {
+    return 'unknown';
+  }
+  return timestamp > now ? 'needs-review' : 'known';
+};
+
+const trustedCaptureTimestamp = (asset: CimmichPersonAsset, now: number) =>
+  personPhotoDateStatus(asset, now) === 'known' ? rawCaptureTimestamp(asset) : null;
 
 const stableAssetId = (asset: CimmichPersonAsset) => asset.sourceAssetId || asset.asset_id;
 
@@ -36,6 +48,7 @@ export const preparePersonPhotos = (
   assets: CimmichPersonAsset[],
   filter: PersonPhotoRelationFilter,
   sort: PersonPhotoSort,
+  now = Date.now(),
 ) => {
   const deduplicated = [...new Map(assets.map((asset) => [stableAssetId(asset), asset])).values()].filter((asset) =>
     photoMatchesRelation(asset, filter),
@@ -49,14 +62,14 @@ export const preparePersonPhotos = (
       );
     }
 
-    const leftTime = captureTimestamp(left);
-    const rightTime = captureTimestamp(right);
-    if (leftTime === null && rightTime !== null) {
-      return 1;
+    const leftStatus = personPhotoDateStatus(left, now);
+    const rightStatus = personPhotoDateStatus(right, now);
+    const statusOrder: Record<PersonPhotoDateStatus, number> = { known: 0, 'needs-review': 1, unknown: 2 };
+    if (leftStatus !== rightStatus) {
+      return statusOrder[leftStatus] - statusOrder[rightStatus];
     }
-    if (leftTime !== null && rightTime === null) {
-      return -1;
-    }
+    const leftTime = trustedCaptureTimestamp(left, now);
+    const rightTime = trustedCaptureTimestamp(right, now);
     if (leftTime !== null && rightTime !== null && leftTime !== rightTime) {
       return sort === 'newest' ? rightTime - leftTime : leftTime - rightTime;
     }
@@ -64,7 +77,11 @@ export const preparePersonPhotos = (
   });
 };
 
-export const groupPersonPhotos = (assets: CimmichPersonAsset[], group: PersonPhotoGroup): PersonPhotoGroupResult[] => {
+export const groupPersonPhotos = (
+  assets: CimmichPersonAsset[],
+  group: PersonPhotoGroup,
+  now = Date.now(),
+): PersonPhotoGroupResult[] => {
   if (assets.length === 0) {
     return [];
   }
@@ -75,8 +92,14 @@ export const groupPersonPhotos = (assets: CimmichPersonAsset[], group: PersonPho
   if (group === 'year') {
     const groups = new Map<string, CimmichPersonAsset[]>();
     for (const asset of assets) {
-      const timestamp = captureTimestamp(asset);
-      const label = timestamp === null ? 'Date unknown' : String(new Date(timestamp).getFullYear());
+      const status = personPhotoDateStatus(asset, now);
+      const timestamp = trustedCaptureTimestamp(asset, now);
+      const label =
+        status === 'needs-review'
+          ? 'Date needs review'
+          : timestamp === null
+            ? 'Date unknown'
+            : String(new Date(timestamp).getFullYear());
       groups.set(label, [...(groups.get(label) ?? []), asset]);
     }
     return [...groups].map(([label, items]) => ({ id: `year:${label}`, items, kindLabel: null, label }));
@@ -124,11 +147,14 @@ export const personPhotoGridClass = (size: PersonPhotoSize) => {
   return 'grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5';
 };
 
-export const personPhotoDateLabel = ({ capture_time }: CimmichPersonAsset) => {
-  if (!capture_time) {
+export const personPhotoDateLabel = (asset: CimmichPersonAsset, now = Date.now()) => {
+  if (personPhotoDateStatus(asset, now) === 'needs-review') {
+    return 'Date needs review';
+  }
+  if (!asset.capture_time) {
     return '';
   }
-  const date = new Date(capture_time);
+  const date = new Date(asset.capture_time);
   if (Number.isNaN(date.getTime())) {
     return '';
   }

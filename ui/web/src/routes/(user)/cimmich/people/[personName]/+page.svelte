@@ -478,10 +478,10 @@
   );
   const cimmichFuturePhotoDateCount = $derived(
     cimmichPerson?.photo_history?.futureCaptureDateCount ??
-      cimmichPhotoDates.filter((date) => date.getFullYear() > new Date().getFullYear()).length,
+      cimmichPhotoDates.filter((date) => date.getTime() > Date.now()).length,
   );
   const cimmichPhotoTimeframe = $derived.by(() => {
-    const currentYear = new Date().getFullYear();
+    const now = Date.now();
     const aggregate = cimmichPerson?.photo_history;
     const dates = aggregate
       ? [aggregate.minCaptureTime, aggregate.maxCaptureTime]
@@ -493,7 +493,7 @@
             return Number.isNaN(date.getTime()) ? [] : [date];
           })
           .sort((left, right) => left.getTime() - right.getTime())
-      : cimmichPhotoDates.filter((date) => date.getFullYear() <= currentYear);
+      : cimmichPhotoDates.filter((date) => date.getTime() <= now);
     const first = dates[0];
     const last = dates.at(-1);
     if (!first || !last) {
@@ -1758,14 +1758,15 @@
                             text={`${cimmichFuturePhotoDateCount.toLocaleString()} ${cimmichFuturePhotoDateCount === 1 ? 'photo has a future date' : 'photos have future dates'} and ${cimmichFuturePhotoDateCount === 1 ? 'is' : 'are'} excluded from this range.`}
                           >
                             {#snippet child({ props })}
-                              <button
+                              <span
                                 {...props}
-                                class="-my-2 -mr-2 inline-flex size-8 items-center justify-center rounded-full align-middle text-amber-200 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
-                                type="button"
+                                class="-my-1 -mr-1 inline-flex min-h-7 items-center gap-1.5 rounded-full bg-amber-300/15 px-2 text-xs font-semibold text-amber-100"
                                 aria-label={`${cimmichFuturePhotoDateCount.toLocaleString()} photo dates need review`}
                               >
-                                <Icon icon={mdiCalendarAlertOutline} size="18" />
-                              </button>
+                                <Icon icon={mdiCalendarAlertOutline} size="16" />
+                                {cimmichFuturePhotoDateCount.toLocaleString()}
+                                {cimmichFuturePhotoDateCount === 1 ? 'date needs' : 'dates need'} review
+                              </span>
                             {/snippet}
                           </Tooltip>
                         {/if}
