@@ -20,4 +20,15 @@ describe('People overview layout', () => {
     expect(source).toContain('h-6 w-px shrink-0 bg-gray-300');
     expect(source).toContain('aria-hidden="true"');
   });
+
+  it('offers only owner-meaningful reversible sorts', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain("{ id: 'photos', label: 'Photos' }");
+    expect(source).toContain("{ id: 'names', label: 'Names' }");
+    expect(source).toContain('choose again to reverse');
+    expect(source).not.toContain('Most accepted faces');
+    expect(source).not.toContain('Most candidates');
+    expect(source).not.toContain('Most reference faces');
+  });
 });
