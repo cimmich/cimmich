@@ -33,6 +33,7 @@ describe('People overview layout', () => {
     expect(source).toContain("peopleSort.direction === 'asc'");
     expect(source).toContain('sortDirectionArrow(option.id)');
     expect(source).toContain("return direction === 'asc' ? '↑' : '↓'");
+    expect(source).toContain('icon: peopleSort.key === option.id ? mdiCheck : undefined');
     expect(source).toContain('Any photo count');
     expect(source).toContain('Minimum photo count');
     expect(source).toContain('aria-label="Sort and filter people"');
