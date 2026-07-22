@@ -423,18 +423,23 @@
               <span class="text-xs opacity-65">{count}</span>
             </button>
             {#if mode.id === 'faces'}
-              <Tooltip text="Choose people categories">
-                {#snippet child({ props })}
-                  <ContextMenuButton
-                    {...props}
-                    class="size-8 border-l border-gray-200 bg-transparent text-gray-500 hover:bg-white hover:text-immich-fg sm:size-9 dark:border-gray-700 dark:hover:bg-black/25 dark:hover:text-immich-dark-fg"
-                    icon={mdiPlus}
-                    items={categoryPinActions}
-                    position="bottom-left"
-                    aria-label="Choose people categories"
-                  />
-                {/snippet}
-              </Tooltip>
+              <div
+                class="ml-1 inline-flex h-9 shrink-0 items-center rounded-lg border border-gray-200 bg-white/60 pl-2 text-xs font-semibold text-gray-500 dark:border-gray-700 dark:bg-black/15 dark:text-gray-300"
+              >
+                <span>Categories</span>
+                <Tooltip text="Choose which People categories appear as shortcuts">
+                  {#snippet child({ props })}
+                    <ContextMenuButton
+                      {...props}
+                      class="size-8 bg-transparent text-gray-500 hover:bg-white hover:text-immich-fg dark:hover:bg-black/25 dark:hover:text-immich-dark-fg"
+                      icon={mdiPlus}
+                      items={categoryPinActions}
+                      position="bottom-left"
+                      aria-label="Choose People category shortcuts"
+                    />
+                  {/snippet}
+                </Tooltip>
+              </div>
             {/if}
           {/each}
         </div>

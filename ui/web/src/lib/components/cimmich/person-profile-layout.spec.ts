@@ -44,6 +44,8 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('Tagged appearances');
     expect(source).not.toContain('Filter tagged appearances');
     expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
+    expect(source).toContain("{cimmichFuturePhotoDateCount === 1 ? 'date needs' : 'dates need'} review");
+    expect(source).toContain('date.getTime() > Date.now()');
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {
