@@ -2,7 +2,15 @@
   import { page } from '$app/state';
   import CimmichSectionHeader from '$lib/components/cimmich/CimmichSectionHeader.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
-  import { chooseInitialPeopleView, type PeopleViewMode } from '$lib/components/cimmich/people-presentation';
+  import {
+    chooseInitialPeopleView,
+    comparePeople,
+    defaultPeopleSort,
+    nextPeopleSort,
+    type PeopleSortKey,
+    type PeopleSortState,
+    type PeopleViewMode,
+  } from '$lib/components/cimmich/people-presentation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { Route } from '$lib/route';
@@ -26,7 +34,6 @@
   } from '@mdi/js';
   import { ContextMenuButton, Icon, MenuItemType, Tooltip, type ActionItem } from '@immich/ui';
   type PersonViewMode = PeopleViewMode;
-  type PersonSort = 'acceptedFaces' | 'candidates' | 'name' | 'photos' | 'references';
   type PeopleCategory =
     | 'acquaintances'
     | 'all'
@@ -54,7 +61,7 @@
   let minimumPhotos = $state(0);
   let peopleCategory = $state<PeopleCategory>('all');
   let peopleQuery = $state('');
-  let personSort = $state<PersonSort>('photos');
+  let peopleSort = $state<PeopleSortState>({ ...defaultPeopleSort });
   let viewMode = $state<PersonViewMode>('faces');
 
   const viewModes: Array<{ id: PersonViewMode; label: string }> = [
@@ -68,12 +75,9 @@
     { label: '50+ photos', value: 50 },
     { label: '100+ photos', value: 100 },
   ];
-  const sortOptions: Array<{ id: PersonSort; label: string }> = [
-    { id: 'photos', label: 'Most photos' },
-    { id: 'name', label: 'Name A–Z' },
-    { id: 'acceptedFaces', label: 'Most accepted faces' },
-    { id: 'candidates', label: 'Most candidates' },
-    { id: 'references', label: 'Most reference faces' },
+  const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
+    { id: 'photos', label: 'Photos' },
+    { id: 'names', label: 'Names' },
   ];
   const peopleCategories: Array<{ id: PeopleCategory; label: string }> = [
     { id: 'all', label: 'All' },
@@ -134,35 +138,14 @@
       )
       .filter((person) => personInCategory(person, peopleCategory))
       .filter((person) => person.asset_count >= minimumPhotos)
-      .sort((a, b) => {
-        if (personSort === 'photos') {
-          return b.asset_count - a.asset_count || a.display_name.localeCompare(b.display_name);
-        }
-        if (personSort === 'acceptedFaces') {
-          return (
-            b.accepted_faces - a.accepted_faces ||
-            b.asset_count - a.asset_count ||
-            a.display_name.localeCompare(b.display_name)
-          );
-        }
-        if (personSort === 'candidates') {
-          return b.candidate_faces - a.candidate_faces || a.display_name.localeCompare(b.display_name);
-        }
-        if (personSort === 'references') {
-          return (
-            b.prime_faces + b.secondary_faces - (a.prime_faces + a.secondary_faces) ||
-            a.display_name.localeCompare(b.display_name)
-          );
-        }
-        return a.display_name.localeCompare(b.display_name);
-      });
+      .sort((a, b) => comparePeople(a, b, peopleSort));
   });
 
   const resetPeopleControls = () => {
     minimumPhotos = 0;
     peopleCategory = 'all';
     peopleQuery = '';
-    personSort = 'photos';
+    peopleSort = { ...defaultPeopleSort };
     viewMode = chooseInitialPeopleView(cimmichPeople);
   };
 
@@ -171,9 +154,20 @@
       (option) =>
         ({
           title: option.label,
-          description: 'Sort people',
-          icon: personSort === option.id ? mdiCheck : undefined,
-          onAction: () => (personSort = option.id),
+          description:
+            peopleSort.key === option.id
+              ? option.id === 'photos'
+                ? peopleSort.direction === 'desc'
+                  ? 'Most photos first · choose again to reverse'
+                  : 'Fewest photos first · choose again to reverse'
+                : peopleSort.direction === 'asc'
+                  ? 'A–Z · choose again to reverse'
+                  : 'Z–A · choose again to reverse'
+              : option.id === 'photos'
+                ? 'Sort by photo count'
+                : 'Sort alphabetically',
+          icon: peopleSort.key === option.id ? mdiCheck : undefined,
+          onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
         }) satisfies ActionItem,
     ),
     MenuItemType.Divider,
@@ -186,7 +180,11 @@
           onAction: () => (minimumPhotos = threshold.value),
         }) satisfies ActionItem,
     ),
-    ...(peopleQuery || minimumPhotos > 0 || personSort !== 'photos' || peopleCategory !== 'all'
+    ...(peopleQuery ||
+    minimumPhotos > 0 ||
+    peopleSort.key !== defaultPeopleSort.key ||
+    peopleSort.direction !== defaultPeopleSort.direction ||
+    peopleCategory !== 'all'
       ? [
           MenuItemType.Divider,
           {

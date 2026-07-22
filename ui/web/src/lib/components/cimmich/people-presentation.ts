@@ -1,4 +1,31 @@
 export type PeopleViewMode = 'candidates' | 'faces' | 'needsFace';
+export type PeopleSortKey = 'names' | 'photos';
+export type PeopleSortDirection = 'asc' | 'desc';
+export type PeopleSortState = { direction: PeopleSortDirection; key: PeopleSortKey };
+
+type SortablePerson = {
+  asset_count: number;
+  display_name: string;
+};
+
+export const defaultPeopleSort: PeopleSortState = { direction: 'desc', key: 'photos' };
+
+export const nextPeopleSort = (current: PeopleSortState, key: PeopleSortKey): PeopleSortState => {
+  if (current.key === key) {
+    return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
+  }
+  return { key, direction: key === 'photos' ? 'desc' : 'asc' };
+};
+
+export const comparePeople = (left: SortablePerson, right: SortablePerson, sort: PeopleSortState) => {
+  if (sort.key === 'photos') {
+    const difference = left.asset_count - right.asset_count;
+    return (sort.direction === 'asc' ? difference : -difference) || left.display_name.localeCompare(right.display_name);
+  }
+
+  const difference = left.display_name.localeCompare(right.display_name);
+  return sort.direction === 'asc' ? difference : -difference;
+};
 
 type PersonViewEvidence = {
   accepted_faces: number;
