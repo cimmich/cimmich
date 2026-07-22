@@ -27,12 +27,15 @@
     mdiAccountMultipleOutline,
     mdiCheck,
     mdiClose,
+    mdiFilterVariant,
     mdiImageOffOutline,
     mdiMagnify,
-    mdiTuneVariant,
+    mdiSortVariant,
+    mdiViewGridOutline,
   } from '@mdi/js';
   import { ContextMenuButton, Icon, MenuItemType, Tooltip, type ActionItem } from '@immich/ui';
   type PersonViewMode = PeopleViewMode;
+  type PeopleThumbnailSize = 'large' | 'medium' | 'small';
   type PeopleCategory =
     | 'acquaintances'
     | 'all'
@@ -61,6 +64,7 @@
   let peopleCategory = $state<PeopleCategory>('all');
   let peopleQuery = $state('');
   let peopleSort = $state<PeopleSortState>({ ...defaultPeopleSort });
+  let peopleThumbnailSize = $state<PeopleThumbnailSize>('medium');
   let viewMode = $state<PersonViewMode>('faces');
 
   const viewModes: Array<{ id: PersonViewMode; label: string }> = [
@@ -144,8 +148,8 @@
       .sort((a, b) => comparePeople(a, b, peopleSort));
   });
 
-  const peopleControlActions = $derived.by(() => [
-    ...sortOptions.map(
+  const peopleSortActions = $derived.by(() =>
+    sortOptions.map(
       (option) =>
         ({
           title: `${option.label} ${sortDirectionArrow(option.id)}`,
@@ -163,6 +167,17 @@
                 : 'Sort alphabetically',
           icon: peopleSort.key === option.id ? mdiCheck : undefined,
           onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
+        }) satisfies ActionItem,
+    ),
+  );
+  const peopleFilterActions = $derived.by(() => [
+    ...selectablePeopleCategories.map(
+      (category) =>
+        ({
+          title: `${category.id === 'all' ? 'All categories' : category.label} (${peopleCategoryCounts[category.id]})`,
+          description: 'Category',
+          icon: peopleCategory === category.id ? mdiCheck : undefined,
+          onAction: () => (peopleCategory = category.id),
         }) satisfies ActionItem,
     ),
     MenuItemType.Divider,
@@ -344,20 +359,6 @@
             </button>
             {#if mode.id === 'faces'}
               <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-              <label class="inline-flex h-9 shrink-0 items-center gap-1.5 px-2 text-xs font-semibold text-gray-500">
-                <span class="sr-only">Category</span>
-                <select
-                  bind:value={peopleCategory}
-                  class="h-8 max-w-36 rounded-lg border border-gray-200 bg-white px-2 text-xs font-semibold text-immich-fg outline-none focus-visible:border-primary sm:max-w-44 sm:text-sm dark:border-gray-700 dark:bg-black/25 dark:text-immich-dark-fg"
-                  aria-label="People category"
-                >
-                  {#each selectablePeopleCategories as category (category.id)}
-                    <option value={category.id}>
-                      {category.id === 'all' ? 'All categories' : category.label} ({peopleCategoryCounts[category.id]})
-                    </option>
-                  {/each}
-                </select>
-              </label>
             {/if}
           {/each}
         </div>
@@ -373,18 +374,50 @@
             type="search"
           />
         </label>
-        <Tooltip text="Sort and filter people">
-          {#snippet child({ props })}
-            <ContextMenuButton
-              {...props}
-              class="size-11 border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-              icon={mdiTuneVariant}
-              items={peopleControlActions}
-              position="top-right"
-              aria-label="Sort and filter people"
-            />
-          {/snippet}
-        </Tooltip>
+        <div
+          class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+          aria-label="People view options"
+        >
+          <Tooltip text="Sort people">
+            {#snippet child({ props })}
+              <ContextMenuButton
+                {...props}
+                class="size-10"
+                icon={mdiSortVariant}
+                items={peopleSortActions}
+                position="top-right"
+                aria-label="Sort people"
+              />
+            {/snippet}
+          </Tooltip>
+          <Tooltip text="Filter people">
+            {#snippet child({ props })}
+              <ContextMenuButton
+                {...props}
+                class="size-10 border-l border-gray-200 dark:border-gray-700"
+                icon={mdiFilterVariant}
+                items={peopleFilterActions}
+                position="top-right"
+                aria-label="Filter people"
+              />
+            {/snippet}
+          </Tooltip>
+          <label
+            class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+            title="Thumbnail size"
+          >
+            <Icon icon={mdiViewGridOutline} size="19" />
+            <select
+              class="absolute inset-0 size-full cursor-pointer opacity-0"
+              bind:value={peopleThumbnailSize}
+              aria-label="Thumbnail size"
+            >
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+        </div>
       {/snippet}
     </CimmichSectionHeader>
 
@@ -485,13 +518,31 @@
     {#if !cimmichLoaded}
       <CimmichStatePanel tone="loading" title="Loading people" description="Reading the current People projection." />
     {:else if !cimmichError}
-      <section class="grid grid-cols-3 gap-x-5 gap-y-8 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7">
+      <section
+        class={[
+          'grid',
+          peopleThumbnailSize === 'small'
+            ? 'grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 xl:grid-cols-10'
+            : peopleThumbnailSize === 'large'
+              ? 'grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+              : 'grid-cols-3 gap-x-5 gap-y-8 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7',
+        ]}
+      >
         {#each visibleCimmichPeople as person (person.person_id)}
           <a
             class="group flex min-w-0 flex-col items-center gap-3 text-center"
             href={Route.cimmichPerson({ name: person.display_name, personId: person.person_id })}
           >
-            <span class="relative block w-full max-w-36 rounded-full perspective-[900px]">
+            <span
+              class={[
+                'relative block w-full rounded-full perspective-[900px]',
+                peopleThumbnailSize === 'small'
+                  ? 'max-w-24'
+                  : peopleThumbnailSize === 'large'
+                    ? 'max-w-48'
+                    : 'max-w-36',
+              ]}
+            >
               <span
                 class={[
                   'relative block aspect-square w-full rounded-full shadow-sm transition-transform duration-500 transform-3d motion-reduce:transition-none',

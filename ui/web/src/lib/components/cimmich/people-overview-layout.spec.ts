@@ -4,10 +4,10 @@ import { readFile } from 'node:fs/promises';
 const readPeopleOverview = () => readFile('src/routes/(user)/cimmich/people/+page.svelte', 'utf8');
 
 describe('People overview layout', () => {
-  it('uses one category selector with All as the reset state', async () => {
+  it('uses one category filter state with All as the reset state', async () => {
     const source = await readPeopleOverview();
 
-    expect(source).toContain('aria-label="People category"');
+    expect(source).toContain('aria-label="Filter people"');
     expect(source).toContain("category.id === 'all' ? 'All categories'");
     expect(source).not.toContain('pinnedPeopleCategories');
     expect(source).not.toContain('togglePinnedPeopleCategory');
@@ -36,6 +36,21 @@ describe('People overview layout', () => {
     expect(source).toContain('icon: peopleSort.key === option.id ? mdiCheck : undefined');
     expect(source).toContain('Any photo count');
     expect(source).toContain('Minimum photo count');
-    expect(source).toContain('aria-label="Sort and filter people"');
+    expect(source).toContain('aria-label="Sort people"');
+  });
+
+  it('reuses the compact profile control language and supports grid density', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain('aria-label="People view options"');
+    expect(source).toContain('mdiSortVariant');
+    expect(source).toContain('mdiFilterVariant');
+    expect(source).toContain('mdiViewGridOutline');
+    expect(source).toContain('bind:value={peopleThumbnailSize}');
+    expect(source).toContain('<option value="small">Small</option>');
+    expect(source).toContain('<option value="medium">Medium</option>');
+    expect(source).toContain('<option value="large">Large</option>');
+    expect(source).toContain("peopleThumbnailSize === 'small'");
+    expect(source).toContain("peopleThumbnailSize === 'large'");
   });
 });
