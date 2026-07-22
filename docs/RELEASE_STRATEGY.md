@@ -12,7 +12,7 @@ The exact judged revision is preserved in three ways:
    commit;
 2. the matching GitHub Release records its source archive, demo-package
    checksums, verification summary and submitted video link.
-3. the Devpost entry and README link judges directly to that immutable release.
+3. the Devpost entry and README link directly to that immutable release.
 
 The tag, release, release assets, submitted links and free judge-testing route
 remain unchanged and available through at least **2026-08-05 17:00 PT**.
