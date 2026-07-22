@@ -95,7 +95,7 @@ to public source, tests, contracts and reproduction paths.
   ordering regression test is included, and the corrected clean bootstrap
   reaches ready/ready/ready with the exact pristine `51:9:12:5:4:0` state.
 
-## 23 July — Owner-operable visibility controls (maintained main)
+## 23 July — Owner-operable visibility controls (v1.0.1 Public Beta)
 
 The immutable `v1.0.0-build-week` tag and release asset remain unchanged. These
 post-release improvements advance maintained `main` only.

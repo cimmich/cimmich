@@ -1,5 +1,12 @@
 # Cimmich
 
+> [!NOTE]
+> **Cimmich is now in public-beta development.** OpenAI Build Week judges can
+> always inspect the exact submitted
+> [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
+> That tag, release and its assets remain unchanged as the living project moves
+> forward.
+
 > **Complete the picture.**
 
 <p align="center">

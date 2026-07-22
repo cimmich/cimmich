@@ -6,41 +6,46 @@ competition repository.
 
 ## Build Week freeze
 
-The exact judged revision will be preserved in three ways:
+The exact judged revision is preserved in three ways:
 
-1. `main` points to the submitted revision throughout the judging period;
-2. the annotated tag `v1.0.0-build-week` permanently identifies that commit;
-3. the matching GitHub Release records its source archive, demo-package
+1. the annotated tag `v1.0.0-build-week` permanently identifies the submitted
+   commit;
+2. the matching GitHub Release records its source archive, demo-package
    checksums, verification summary and submitted video link.
+3. the Devpost entry and README link judges directly to that immutable release.
 
-The Devpost entry and README will identify the exact tag and commit SHA. The
-tag, release and free judge-testing route remain unchanged and available
-through at least **2026-08-05 17:00 PT**.
+The tag, release, release assets, submitted links and free judge-testing route
+remain unchanged and available through at least **2026-08-05 17:00 PT**.
+`main` is the living product branch and may advance without rewriting that
+submission history.
 
 ## Continued development
 
 Development does not stop after submission:
 
-- create `post-build-week` directly from `v1.0.0-build-week`;
-- make post-submission work there through small feature/fix branches and pull
-  requests;
-- do not merge those changes into `main` during judging unless an eligibility,
-  access or critical safety issue requires it;
-- identify any unavoidable correction explicitly without moving or replacing
-  the submitted tag; and
-- after judging closes, merge the accepted continuation into `main` and publish
-  the next semantic release, expected to be `v1.1.0` for compatible additions
-  or `v1.0.1` for a narrowly scoped correction release.
+- make post-submission work through small feature/fix branches and reviewed
+  pull requests into `main`;
+- label post-submission changes explicitly and never imply that they were part
+  of the judged revision;
+- never move, replace or delete the submitted tag, release, assets or judge
+  links; and
+- publish the first maintained-product milestone as the GitHub pre-release
+  **Cimmich v1.0.1 — Public Beta**, tagged `v1.0.1-beta.1`.
 
-This temporary two-branch shape protects submission reproducibility. After the
-judging freeze, `main` returns to being the normal stable public branch; ongoing
-changes arrive through short-lived branches and reviewed pull requests.
+Further beta corrections may use `v1.0.1-beta.2` and later prerelease numbers.
+A stable release comes only after the installation, compatibility, usability
+and real-library boundaries are strong enough for wider promotion.
 
 ## Release identity
 
 `v1.0.0-build-week` means “the exact Cimmich Build Week edition.” It does not
 claim that inherited Immich/Rimmich work was created during the competition.
 The [Build Week evidence index](BUILD_WEEK_EVIDENCE.md) records that boundary.
+
+`v1.0.1-beta.1` means “the first maintained Cimmich public beta after Build
+Week.” It does not replace or revise the submitted edition. The human-facing
+release title is **Cimmich v1.0.1 — Public Beta**; GitHub marks it as a
+pre-release so the Build Week release remains the latest stable release.
 
 Do not create a second Cimmich repository for later development. A second
 repository would split issues, stars, contributors, documentation and
