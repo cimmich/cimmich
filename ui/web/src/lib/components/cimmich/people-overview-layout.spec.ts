@@ -24,15 +24,15 @@ describe('People overview layout', () => {
   it('offers only owner-meaningful reversible sorts', async () => {
     const source = await readPeopleOverview();
 
-    expect(source).toContain("{ id: 'photos', label: 'Photos' }");
-    expect(source).toContain("{ id: 'names', label: 'Names' }");
+    expect(source).toContain("{ id: 'photos', label: '# of Photos' }");
+    expect(source).toContain("{ id: 'names', label: 'Names A - Z' }");
     expect(source).toContain('choose again to reverse');
     expect(source).not.toContain('Most accepted faces');
     expect(source).not.toContain('Most candidates');
     expect(source).not.toContain('Most reference faces');
     expect(source).toContain("peopleSort.direction === 'asc'");
-    expect(source).toContain('mdiArrowUp');
-    expect(source).toContain('mdiArrowDown');
+    expect(source).toContain('sortDirectionArrow(option.id)');
+    expect(source).toContain("return direction === 'asc' ? '↑' : '↓'");
     expect(source).toContain('Any photo count');
     expect(source).toContain('Minimum photo count');
     expect(source).toContain('aria-label="Sort and filter people"');

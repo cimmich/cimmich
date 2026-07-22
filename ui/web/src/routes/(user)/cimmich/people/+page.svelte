@@ -25,8 +25,6 @@
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccountMultipleOutline,
-    mdiArrowDown,
-    mdiArrowUp,
     mdiCheck,
     mdiClose,
     mdiImageOffOutline,
@@ -71,9 +69,13 @@
     { id: 'needsFace', label: 'Review list' },
   ];
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
-    { id: 'photos', label: 'Photos' },
-    { id: 'names', label: 'Names' },
+    { id: 'photos', label: '# of Photos' },
+    { id: 'names', label: 'Names A - Z' },
   ];
+  const sortDirectionArrow = (sortKey: PeopleSortKey) => {
+    const direction = peopleSort.key === sortKey ? peopleSort.direction : sortKey === 'photos' ? 'desc' : 'asc';
+    return direction === 'asc' ? '↑' : '↓';
+  };
   const photoThresholds = [
     { label: 'Any photo count', value: 0 },
     { label: '10+ photos', value: 10 },
@@ -146,7 +148,7 @@
     ...sortOptions.map(
       (option) =>
         ({
-          title: option.label,
+          title: `${option.label} ${sortDirectionArrow(option.id)}`,
           description:
             peopleSort.key === option.id
               ? option.id === 'photos'
@@ -159,7 +161,6 @@
               : option.id === 'photos'
                 ? 'Sort by photo count'
                 : 'Sort alphabetically',
-          icon: peopleSort.key === option.id ? (peopleSort.direction === 'asc' ? mdiArrowUp : mdiArrowDown) : undefined,
           onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
         }) satisfies ActionItem,
     ),
