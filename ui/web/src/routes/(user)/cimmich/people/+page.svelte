@@ -25,13 +25,15 @@
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccountMultipleOutline,
+    mdiArrowDown,
+    mdiArrowUp,
     mdiCheck,
     mdiClose,
     mdiImageOffOutline,
     mdiMagnify,
     mdiTuneVariant,
   } from '@mdi/js';
-  import { ContextMenuButton, Icon, Tooltip, type ActionItem } from '@immich/ui';
+  import { ContextMenuButton, Icon, MenuItemType, Tooltip, type ActionItem } from '@immich/ui';
   type PersonViewMode = PeopleViewMode;
   type PeopleCategory =
     | 'acquaintances'
@@ -57,6 +59,7 @@
   let cimmichPeople = $state<CimmichPerson[]>([]);
   let cimmichSavingClaimId = $state('');
   let initialViewChosen = $state(false);
+  let minimumPhotos = $state(0);
   let peopleCategory = $state<PeopleCategory>('all');
   let peopleQuery = $state('');
   let peopleSort = $state<PeopleSortState>({ ...defaultPeopleSort });
@@ -70,6 +73,12 @@
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
     { id: 'photos', label: 'Photos' },
     { id: 'names', label: 'Names' },
+  ];
+  const photoThresholds = [
+    { label: 'Any photo count', value: 0 },
+    { label: '10+ photos', value: 10 },
+    { label: '50+ photos', value: 50 },
+    { label: '100+ photos', value: 100 },
   ];
   const peopleCategories: Array<{ id: PeopleCategory; label: string }> = [
     { id: 'all', label: 'All' },
@@ -129,6 +138,7 @@
           !query || [person.display_name, ...person.aliases].some((name) => name.toLowerCase().includes(query)),
       )
       .filter((person) => personInCategory(person, peopleCategory))
+      .filter((person) => person.asset_count >= minimumPhotos)
       .sort((a, b) => comparePeople(a, b, peopleSort));
   });
 
@@ -149,8 +159,18 @@
               : option.id === 'photos'
                 ? 'Sort by photo count'
                 : 'Sort alphabetically',
-          icon: peopleSort.key === option.id ? mdiCheck : undefined,
+          icon: peopleSort.key === option.id ? (peopleSort.direction === 'asc' ? mdiArrowUp : mdiArrowDown) : undefined,
           onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
+        }) satisfies ActionItem,
+    ),
+    MenuItemType.Divider,
+    ...photoThresholds.map(
+      (threshold) =>
+        ({
+          title: threshold.label,
+          description: 'Minimum photo count',
+          icon: minimumPhotos === threshold.value ? mdiCheck : undefined,
+          onAction: () => (minimumPhotos = threshold.value),
         }) satisfies ActionItem,
     ),
   ]);
@@ -351,7 +371,7 @@
             type="search"
           />
         </label>
-        <Tooltip text="Sort people">
+        <Tooltip text="Sort and filter people">
           {#snippet child({ props })}
             <ContextMenuButton
               {...props}
@@ -359,7 +379,7 @@
               icon={mdiTuneVariant}
               items={peopleControlActions}
               position="top-right"
-              aria-label="Sort people"
+              aria-label="Sort and filter people"
             />
           {/snippet}
         </Tooltip>

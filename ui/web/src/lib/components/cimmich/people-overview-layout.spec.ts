@@ -30,8 +30,11 @@ describe('People overview layout', () => {
     expect(source).not.toContain('Most accepted faces');
     expect(source).not.toContain('Most candidates');
     expect(source).not.toContain('Most reference faces');
-    expect(source).not.toContain('Any photo count');
-    expect(source).not.toContain('Minimum photo count');
-    expect(source).toContain('aria-label="Sort people"');
+    expect(source).toContain("peopleSort.direction === 'asc'");
+    expect(source).toContain('mdiArrowUp');
+    expect(source).toContain('mdiArrowDown');
+    expect(source).toContain('Any photo count');
+    expect(source).toContain('Minimum photo count');
+    expect(source).toContain('aria-label="Sort and filter people"');
   });
 });
