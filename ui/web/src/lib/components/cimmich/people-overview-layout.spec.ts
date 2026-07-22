@@ -4,11 +4,20 @@ import { readFile } from 'node:fs/promises';
 const readPeopleOverview = () => readFile('src/routes/(user)/cimmich/people/+page.svelte', 'utf8');
 
 describe('People overview layout', () => {
-  it('names the category shortcut picker instead of presenting an unexplained plus', async () => {
+  it('uses one category selector with All as the reset state', async () => {
     const source = await readPeopleOverview();
 
-    expect(source).toContain('<span>Categories</span>');
-    expect(source).toContain('Choose which People categories appear as shortcuts');
-    expect(source).toContain('aria-label="Choose People category shortcuts"');
+    expect(source).toContain('aria-label="People category"');
+    expect(source).toContain("category.id === 'all' ? 'All categories'");
+    expect(source).not.toContain('pinnedPeopleCategories');
+    expect(source).not.toContain('togglePinnedPeopleCategory');
+    expect(source).not.toContain('>Clear<');
+  });
+
+  it('separates the primary People view from the secondary controls', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain('h-6 w-px shrink-0 bg-gray-300');
+    expect(source).toContain('aria-hidden="true"');
   });
 });
