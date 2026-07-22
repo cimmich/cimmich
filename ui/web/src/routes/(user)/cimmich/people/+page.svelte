@@ -161,6 +161,7 @@
               : option.id === 'photos'
                 ? 'Sort by photo count'
                 : 'Sort alphabetically',
+          icon: peopleSort.key === option.id ? mdiCheck : undefined,
           onAction: () => (peopleSort = nextPeopleSort(peopleSort, option.id)),
         }) satisfies ActionItem,
     ),
