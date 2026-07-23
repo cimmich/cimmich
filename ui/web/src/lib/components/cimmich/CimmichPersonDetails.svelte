@@ -28,6 +28,11 @@
     mdiContentSaveOutline,
     mdiEmailOutline,
     mdiEyeSettingsOutline,
+    mdiGenderFemale,
+    mdiGenderMale,
+    mdiGenderMaleFemaleVariant,
+    mdiGenderNonBinary,
+    mdiHelpCircleOutline,
     mdiMapMarkerOutline,
     mdiNoteTextOutline,
     mdiPencilOutline,
@@ -273,6 +278,17 @@
           : profile.profile.genderIdentityKind === 'man'
             ? 'Man'
             : null,
+  );
+  const genderIcon = $derived(
+    profile.profile.genderIdentityKind === 'woman'
+      ? mdiGenderFemale
+      : profile.profile.genderIdentityKind === 'man'
+        ? mdiGenderMale
+        : profile.profile.genderIdentityKind === 'non_binary'
+          ? mdiGenderNonBinary
+          : profile.profile.genderIdentityKind === 'self_described'
+            ? mdiGenderMaleFemaleVariant
+            : mdiHelpCircleOutline,
   );
 
   const itemHref = (item: CimmichPersonProfileItem) => {
@@ -1947,7 +1963,15 @@
               </div>
               <div>
                 <dt class="text-xs text-gray-500 dark:text-gray-400">Gender identity</dt>
-                <dd class="font-medium">{genderLabel || 'Not set'}</dd>
+                <dd class="mt-1 font-medium">
+                  <span
+                    class="inline-flex size-8 items-center justify-center rounded-full bg-black/5 dark:bg-white/8"
+                    aria-label={genderLabel || 'Not set'}
+                    title={genderLabel || 'Not set'}
+                  >
+                    <Icon icon={genderIcon} size="20" />
+                  </span>
+                </dd>
               </div>
             </dl>
           {/if}

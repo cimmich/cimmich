@@ -24,6 +24,12 @@ describe('Person profile layout', () => {
     expect(source).toContain('<CimmichObjectVisibility');
     expect(source).toContain('Merge duplicate');
     expect(source).toContain('data-testid="cimmich-person-edit"');
+    expect(source).toContain(
+      "cimmichPerson?.subject_kind === 'person' ? openCimmichDetails() : void openCimmichSetup()",
+    );
+    expect(source).not.toContain('startInEdit={cimmichProfileEditOnOpen}');
+    expect(source).toContain("field.fieldKey === 'gender_identity'");
+    expect(source).toContain('icon={cimmichGenderIcon ?? mdiGenderMaleFemaleVariant}');
   });
 
   it('keeps Photos visual controls compact and makes Tags a bucket-first matching library', async () => {
