@@ -323,12 +323,11 @@ export const createMediaOperator = ({
         }
       }
 
+      let recognitionAttempts = 0;
       let recognitions = 0;
-      for (
-        ;
-        recognitions < command.envelope.maxRecognitionJobs &&
-        Date.now() < deadline;
-        recognitions += 1
+      while (
+        recognitionAttempts < command.envelope.maxRecognitionJobs &&
+        Date.now() < deadline
       ) {
         if (remainingBudget() < 1_000) break;
         let result = recognitionWorker
@@ -341,14 +340,19 @@ export const createMediaOperator = ({
         ) {
           const scheduled = await existingRecognitionScheduler.enqueueNext();
           if (scheduled.state === "enqueued") {
-            result = await existingRecognitionWorker.runNext({
-              timeoutMs: remainingBudget(),
-            });
+            result =
+              remainingBudget() < 1_000
+                ? { state: "pending" }
+                : await existingRecognitionWorker.runNext({
+                    timeoutMs: remainingBudget(),
+                  });
           } else if (scheduled.state === "recognized") {
             result = scheduled;
           }
         }
         if (["idle", "paused"].includes(result.state)) break;
+        recognitionAttempts += 1;
+        if (result.status === "completed") recognitions += 1;
       }
 
       const candidates =

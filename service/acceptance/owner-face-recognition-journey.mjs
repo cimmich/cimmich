@@ -22,8 +22,14 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 const ids = {
   asset: "asset_owner_recognition_fixture",
   claim: "claim_owner_recognition_fixture",
+  abstainedClaim: "claim_owner_recognition_fixture_abstained",
   decision: "decision_owner_recognition_fixture",
+  abstainedDecision: "decision_owner_recognition_fixture_abstained",
   face: "face_owner_recognition_fixture",
+  abstainedFace: "face_owner_recognition_fixture_abstained",
+  importedEmbedding: "embedding_owner_recognition_fixture_imported",
+  abstainedImportedEmbedding:
+    "embedding_owner_recognition_fixture_abstained_imported",
   immichAsset: "immich_owner_recognition_fixture",
   inventoryRun: "immich_inventory_run_owner_recognition_fixture",
   person: "person_owner_recognition_fixture",
@@ -82,6 +88,10 @@ try {
       ${ids.face}, ${ids.asset}, 0.2, 0.15, 0.25, 0.35, 0.99,
       '{"quality_score":0.99,"quality_bucket":"clean_core"}',
       'valid', ${ids.producer}
+    ), (
+      ${ids.abstainedFace}, ${ids.asset}, 0.55, 0.2, 0.2, 0.3, 0.95,
+      '{"quality_score":0.95,"quality_bucket":"clean_core"}',
+      'valid', ${ids.producer}
     )
   `;
   await sql`
@@ -91,6 +101,10 @@ try {
     ) VALUES (
       ${ids.decision}, 'identity_claim', ${ids.claim}, 'accept', 'user',
       'synthetic-owner', 'inherited-owner-tag', ${ids.producer}
+    ), (
+      ${ids.abstainedDecision}, 'identity_claim', ${ids.abstainedClaim},
+      'accept', 'user', 'synthetic-owner', 'inherited-owner-tag',
+      ${ids.producer}
     )
   `;
   await sql`
@@ -100,6 +114,31 @@ try {
     ) VALUES (
       ${ids.claim}, ${ids.face}, ${ids.person}, 'trusted_import', 'accepted',
       NULL, '["inherited-owner-tag"]', ${ids.decision}, ${ids.producer}
+    ), (
+      ${ids.abstainedClaim}, ${ids.abstainedFace}, ${ids.person},
+      'trusted_import', 'accepted', NULL, '["inherited-owner-tag"]',
+      ${ids.abstainedDecision}, ${ids.producer}
+    )
+  `;
+  await sql`
+    INSERT INTO face_embedding (
+      embedding_id, face_id, model_family, model_version, config_digest,
+      dimension, normalized, embedding, vector_digest, state,
+      producer_receipt_id, privacy_class
+    ) VALUES (
+      ${ids.importedEmbedding}, ${ids.face},
+      ${manifest.recognitionSpace.modelFamily},
+      ${manifest.recognitionSpace.modelVersion},
+      ${manifest.recognitionSpaceConfigDigest}, 2, true, '[1,0]'::vector,
+      ${recognitionVectorDigest([1, 0])}, 'active', ${ids.producer},
+      'sensitive-biometric'
+    ), (
+      ${ids.abstainedImportedEmbedding}, ${ids.abstainedFace},
+      ${manifest.recognitionSpace.modelFamily},
+      ${manifest.recognitionSpace.modelVersion},
+      ${manifest.recognitionSpaceConfigDigest}, 2, true, '[0,1]'::vector,
+      ${recognitionVectorDigest([0, 1])}, 'active', ${ids.producer},
+      'sensitive-biometric'
     )
   `;
   await sql`
@@ -169,20 +208,33 @@ try {
       assert.equal(assetId, ids.asset);
       assert.deepEqual(
         observations.map((observation) => observation.observationId),
-        [ids.face],
+        [ids.face, ids.abstainedFace],
       );
-      return observations.map((observation) => ({
-        assetToken: assetId,
-        cropDigest: digest("owner-recognition-crop"),
-        observationId: observation.observationId,
-        providerConfigDigest: manifest.providerConfigDigest,
-        route: "synthetic-target-box",
-        schemaVersion: recognitionObservationSchemaVersion,
-        state: "embedded",
-        vector,
-        vectorDigest: recognitionVectorDigest(vector),
-        vectorSpaceId: manifest.vectorSpaceId,
-      }));
+      return observations.map((observation) =>
+        observation.observationId === ids.face
+          ? {
+              assetToken: assetId,
+              cropDigest: digest("owner-recognition-crop"),
+              observationId: observation.observationId,
+              providerConfigDigest: manifest.providerConfigDigest,
+              route: "synthetic-target-box",
+              schemaVersion: recognitionObservationSchemaVersion,
+              state: "embedded",
+              vector,
+              vectorDigest: recognitionVectorDigest(vector),
+              vectorSpaceId: manifest.vectorSpaceId,
+            }
+          : {
+              assetToken: assetId,
+              observationId: observation.observationId,
+              providerConfigDigest: manifest.providerConfigDigest,
+              reason: "no-face",
+              route: "synthetic-target-box",
+              schemaVersion: recognitionObservationSchemaVersion,
+              state: "abstained",
+              vectorSpaceId: manifest.vectorSpaceId,
+            },
+      );
     },
   };
   const presentationRank = () => 0;
@@ -253,19 +305,38 @@ try {
     vector_digest: recognitionVectorDigest(vector),
   });
   assert.match(truth.provider_result_digest, /^[0-9a-f]{64}$/);
+  const [abstainedTruth] = await sql`
+    SELECT
+      count(*) FILTER (WHERE state = 'active')::int AS active_count,
+      count(*) FILTER (
+        WHERE embedding_id = ${ids.abstainedImportedEmbedding}
+          AND state = 'superseded'
+      )::int AS imported_superseded
+    FROM face_embedding
+    WHERE face_id = ${ids.abstainedFace}
+      AND model_family = ${manifest.recognitionSpace.modelFamily}
+      AND model_version = ${manifest.recognitionSpace.modelVersion}
+      AND config_digest = ${manifest.recognitionSpaceConfigDigest}
+  `;
+  assert.deepEqual(abstainedTruth, {
+    active_count: 0,
+    imported_superseded: 1,
+  });
   const idle = await scheduler.enqueueNext();
   assert.deepEqual(idle, {
     schemaVersion: "cimmich.owner-face-recognition.v1",
     state: "idle",
   });
   const [{ count: claims }] = await sql`
-    SELECT count(*)::int AS count FROM identity_claim WHERE face_id = ${ids.face}
+    SELECT count(*)::int AS count FROM identity_claim
+    WHERE face_id IN (${ids.face}, ${ids.abstainedFace})
   `;
-  assert.equal(claims, 1);
+  assert.equal(claims, 2);
 
   process.stdout.write(
     `${JSON.stringify({
       acceptedIdentityRetained: true,
+      abstainedImportedEmbeddingSuperseded: true,
       automaticIdentityAuthority: "none",
       providerExecutions: executionCount,
       providerReplay: completed.replayEvidence,
