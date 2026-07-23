@@ -554,6 +554,8 @@ const projectPersonPresentation = (bridge, row) => {
     body_preview_box_y: bodyBoxY,
     body_preview_box_w: bodyBoxW,
     body_preview_box_h: bodyBoxH,
+    body_preview_height: bodyHeight,
+    body_preview_width: bodyWidth,
     ...person
   } = row;
   const bodyDisplay = bodyAssetId ? bridgeFields(bridge, bodyAssetId) : null;
@@ -569,8 +571,10 @@ const projectPersonPresentation = (bridge, row) => {
             box_w: bodyBoxW,
             box_x: bodyBoxX,
             box_y: bodyBoxY,
+            height: bodyHeight,
             schemaVersion: "cimmich.person-body-preview.v1",
             sourceAssetId: bodyDisplay.sourceAssetId,
+            width: bodyWidth,
           }
         : null,
   };
@@ -3266,12 +3270,16 @@ export const createCimmichRepository = (
         representative.box_y::float8 AS box_y,
         representative.box_w::float8 AS box_w,
         representative.box_h::float8 AS box_h,
+        representative_asset.width::int AS width,
+        representative_asset.height::int AS height,
         body.asset_id AS body_preview_asset_id,
         body.body_id AS body_preview_body_id,
         body.box_x::float8 AS body_preview_box_x,
         body.box_y::float8 AS body_preview_box_y,
         body.box_w::float8 AS body_preview_box_w,
-        body.box_h::float8 AS body_preview_box_h
+        body.box_h::float8 AS body_preview_box_h,
+        body_asset.width::int AS body_preview_width,
+        body_asset.height::int AS body_preview_height
       FROM current_person p
       LEFT JOIN claim_counts cc ON cc.person_id = p.person_id
       LEFT JOIN asset_counts ac ON ac.person_id = p.person_id
@@ -3279,7 +3287,9 @@ export const createCimmichRepository = (
       LEFT JOIN head_counts hc ON hc.person_id = p.person_id
       LEFT JOIN person_categories category ON category.person_id = p.person_id
       LEFT JOIN representatives representative ON representative.person_id = p.person_id
+      LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representatives body ON body.person_id = p.person_id
+      LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
       WHERE p.status = 'active'
         AND (p.subject_kind <> 'person'
           OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})
@@ -3480,17 +3490,23 @@ export const createCimmichRepository = (
         representative.box_y::float8 AS box_y,
         representative.box_w::float8 AS box_w,
         representative.box_h::float8 AS box_h,
+        representative_asset.width::int AS width,
+        representative_asset.height::int AS height,
         body.asset_id AS body_preview_asset_id,
         body.body_id AS body_preview_body_id,
         body.box_x::float8 AS body_preview_box_x,
         body.box_y::float8 AS body_preview_box_y,
         body.box_w::float8 AS body_preview_box_w,
-        body.box_h::float8 AS body_preview_box_h
+        body.box_h::float8 AS body_preview_box_h,
+        body_asset.width::int AS body_preview_width,
+        body_asset.height::int AS body_preview_height
       FROM target_person p
       CROSS JOIN person_categories category
       CROSS JOIN photo_history photo
       LEFT JOIN representative ON true
+      LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representative body ON true
+      LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
     `;
       if (!row) {
         throw Object.assign(new Error("Cimmich identity not found"), {
@@ -4700,7 +4716,8 @@ export const createCimmichRepository = (
       const id = String(personId || "");
       const rows = await sql`
         SELECT media.slot_kind, media.asset_id, media.observation_kind,
-          media.observation_id, media.crop, media.updated_at
+          media.observation_id, media.crop, media.updated_at,
+          source.width, source.height
         FROM person_presentation_media media
         JOIN asset source ON source.asset_id = media.asset_id AND source.state = 'active'
         WHERE media.person_id = ${id}
@@ -4717,6 +4734,8 @@ export const createCimmichRepository = (
           selectionMode: "explicit",
           slotKind: row.slot_kind,
           updatedAt: new Date(row.updated_at).toISOString(),
+          width: row.width,
+          height: row.height,
           ...bridgeFields(bridge, row.asset_id),
         };
       }
@@ -4741,6 +4760,8 @@ export const createCimmichRepository = (
           observationId,
           observationKind,
           slotKind,
+          width,
+          height,
         }) => {
           if (!assetId || !observationId) return null;
           const display = bridgeFields(bridge, assetId);
@@ -4753,13 +4774,17 @@ export const createCimmichRepository = (
             selectionMode: "automatic",
             slotKind,
             updatedAt: null,
+            width,
+            height,
             ...display,
           };
         };
         const representative = {
           assetId: person.representative_asset_id,
+          height: person.height,
           observationId: person.representative_face_id,
           observationKind: "face",
+          width: person.width,
         };
         slots.face ??= automaticMedia({
           ...representative,
@@ -4789,6 +4814,8 @@ export const createCimmichRepository = (
           observationId: person.bodyPreview?.bodyId,
           observationKind: "body",
           slotKind: "body",
+          width: person.bodyPreview?.width,
+          height: person.bodyPreview?.height,
         });
       }
       return {

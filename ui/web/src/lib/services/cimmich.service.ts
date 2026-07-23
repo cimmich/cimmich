@@ -518,8 +518,10 @@ export type CimmichPerson = {
     box_w: number;
     box_x: number;
     box_y: number;
+    height?: number;
     schemaVersion: 'cimmich.person-body-preview.v1';
     sourceAssetId: string;
+    width?: number;
   } | null;
   box_h: number | null;
   box_w: number | null;
@@ -529,6 +531,7 @@ export type CimmichPerson = {
   categories: CimmichPersonCategory[];
   display_name: string;
   filename: string;
+  height?: number | null;
   head_faces: number;
   needs_sort: boolean;
   needs_holding: boolean;
@@ -546,6 +549,7 @@ export type CimmichPerson = {
   sourceAssetId: string;
   status: 'active' | 'hidden';
   subject_kind: 'person' | 'pet';
+  width?: number | null;
 };
 
 export type CimmichPersonPresentationSlot = 'body' | 'face' | 'hero';
@@ -554,12 +558,14 @@ export type CimmichPersonPresentationMedia = {
   assetId: string;
   crop: CimmichPetCoverCrop | null;
   filename: string;
+  height: number;
   observationId: string | null;
   observationKind: 'body' | 'face' | 'presence';
   selectionMode: 'automatic' | 'explicit';
   slotKind: CimmichPersonPresentationSlot;
   sourceAssetId: string;
   updatedAt: string | null;
+  width: number;
 };
 
 export type CimmichPersonPresentation = {

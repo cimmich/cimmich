@@ -17,6 +17,8 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         body_preview_box_w: 0.3,
         body_preview_box_x: 0.2,
         body_preview_box_y: 0.1,
+        body_preview_height: 1200,
+        body_preview_width: 1800,
         box_h: 0.2,
         box_w: 0.1,
         box_x: 0.4,
@@ -24,6 +26,7 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         candidate_faces: 0,
         categories: [],
         display_name: "Person",
+        height: 1200,
         head_faces: 0,
         needs_holding: false,
         needs_sort: false,
@@ -34,6 +37,7 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         secondary_faces: 0,
         status: "active",
         subject_kind: "person",
+        width: 1800,
       },
     ];
   };
@@ -54,8 +58,10 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     box_w: 0.3,
     box_x: 0.2,
     box_y: 0.1,
+    height: 1200,
     schemaVersion: "cimmich.person-body-preview.v1",
     sourceAssetId: "source-body",
+    width: 1800,
   });
   assert.match(
     statement,
@@ -85,9 +91,12 @@ test("Person overview uses request-local evidence sets instead of global project
         body_preview_box_w: 0.4,
         body_preview_box_x: 0.1,
         body_preview_box_y: 0.2,
+        body_preview_height: 1200,
+        body_preview_width: 1800,
         candidate_faces: 0,
         categories: [],
         display_name: "Person",
+        height: 1200,
         head_faces: 0,
         needs_holding: false,
         needs_sort: false,
@@ -98,6 +107,7 @@ test("Person overview uses request-local evidence sets instead of global project
         secondary_faces: 0,
         status: "active",
         subject_kind: "person",
+        width: 1800,
       },
     ];
   };
@@ -146,9 +156,12 @@ test("Person presentation falls back to the current portrait, hero and body evid
           body_preview_box_w: 0.4,
           body_preview_box_x: 0.1,
           body_preview_box_y: 0.2,
+          body_preview_height: 1200,
+          body_preview_width: 1800,
           candidate_faces: 0,
           categories: [],
           display_name: "Person",
+          height: 1200,
           head_faces: 0,
           needs_holding: false,
           needs_sort: false,
@@ -163,6 +176,7 @@ test("Person presentation falls back to the current portrait, hero and body evid
           secondary_faces: 0,
           status: "active",
           subject_kind: "person",
+          width: 1800,
         },
       ];
     }
@@ -217,6 +231,8 @@ test("Person presentation persists only confirmed Person evidence and projects f
         observation_kind: "face",
         slot_kind: "face",
         updated_at: new Date("2026-07-23T00:00:00.000Z"),
+        height: 1200,
+        width: 1800,
       });
       return [];
     }
