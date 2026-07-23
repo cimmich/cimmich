@@ -1154,27 +1154,81 @@
         {@render inlineItemEditor([kind], sectionLabels[kind])}
       </div>
     {:else if sectionItems.length > 0}
-      <dl class="mt-4 grid gap-4 text-sm">
-        {#each sectionItems as item (item.itemId)}
-          <div>
-            <dt class="text-xs text-gray-500 dark:text-gray-400">{item.label}</dt>
-            <dd class="font-medium wrap-break-word">
+      {#if kind === 'important_date'}
+        <ol class="dossier-timeline mt-4 grid gap-4" aria-label="Important dates">
+          {#each sectionItems as item (item.itemId)}
+            <li>
+              <span class="dossier-field-label">{item.label}</span>
+              <time class="mt-1 block font-semibold" datetime={item.dateValue ?? undefined}
+                >{displayItemValue(item)}</time
+              >
+            </li>
+          {/each}
+        </ol>
+      {:else if kind === 'work'}
+        <div class="dossier-work-list mt-4 grid gap-3">
+          {#each sectionItems as item (item.itemId)}
+            <section class="dossier-work-entry" aria-label={item.label}>
+              <span class="dossier-field-label">{item.label}</span>
+              <p class="mt-1 text-base font-semibold wrap-break-word">{displayItemValue(item)}</p>
+              {#if item.secondaryValue}
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{item.secondaryValue}</p>
+              {/if}
+            </section>
+          {/each}
+        </div>
+      {:else if kind === 'social'}
+        <ul class="dossier-social-list mt-4 grid gap-2" aria-label="Social profiles">
+          {#each sectionItems as item (item.itemId)}
+            <li>
               {#if itemHref(item)}
-                <a
-                  class="text-primary underline-offset-4 hover:underline dark:text-immich-dark-primary"
-                  href={itemHref(item)}
-                  target={item.kind === 'web' || item.kind === 'social' ? '_blank' : undefined}
-                  rel={item.kind === 'web' || item.kind === 'social' ? 'noreferrer' : undefined}
-                >
-                  {displayItemValue(item)}
+                <a class="dossier-social-profile" href={itemHref(item)} target="_blank" rel="noreferrer">
+                  <span
+                    class="dossier-icon flex size-9 shrink-0 items-center justify-center rounded-full"
+                    aria-hidden="true"
+                  >
+                    <Icon icon={mdiAt} size="18" />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="dossier-field-label block">{item.label}</span>
+                    <span class="block truncate font-semibold">{displayItemValue(item)}</span>
+                  </span>
                 </a>
               {:else}
-                {displayItemValue(item)}
-              {/if}{item.secondaryValue ? ` · ${item.secondaryValue}` : ''}
-            </dd>
-          </div>
-        {/each}
-      </dl>
+                <div class="dossier-social-profile">
+                  <span
+                    class="dossier-icon flex size-9 shrink-0 items-center justify-center rounded-full"
+                    aria-hidden="true"
+                  >
+                    <Icon icon={mdiAt} size="18" />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="dossier-field-label block">{item.label}</span>
+                    <span class="block truncate font-semibold">{displayItemValue(item)}</span>
+                  </span>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {:else if kind === 'address'}
+        <div class="dossier-address-list mt-4 grid gap-3">
+          {#each sectionItems as item (item.itemId)}
+            <address class="dossier-address not-italic">
+              <span
+                class="dossier-icon flex size-9 shrink-0 items-center justify-center rounded-full"
+                aria-hidden="true"
+              >
+                <Icon icon={mdiMapMarkerOutline} size="18" />
+              </span>
+              <span>
+                <span class="dossier-field-label block">{item.label}</span>
+                <span class="mt-1 block font-semibold wrap-break-word">{displayItemValue(item)}</span>
+              </span>
+            </address>
+          {/each}
+        </div>
+      {/if}
     {:else}
       <p class="dossier-empty mt-4 text-sm text-gray-500 dark:text-gray-400">
         {dossierEmptyPrompts[kind] ?? 'Add something worth remembering.'}
@@ -1828,20 +1882,25 @@
           data-dossier-section="01"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <Icon icon={mdiNoteTextOutline} size="19" />
-              <h3 class="text-xs font-semibold tracking-wide uppercase">About</h3>
+            <div class="flex items-center gap-2">
+              <span class="dossier-icon flex size-8 items-center justify-center rounded-xl" aria-hidden="true">
+                <Icon icon={mdiNoteTextOutline} size="18" />
+              </span>
+              <h3 class="font-semibold">About</h3>
             </div>
             {#if inlineTarget !== 'about'}
               <button
-                class="flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary"
+                class={profile.profile.about
+                  ? 'flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary'
+                  : 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-immich-dark-primary'}
                 type="button"
-                aria-label="Edit About"
-                title="Edit About"
+                aria-label={`${profile.profile.about ? 'Edit' : 'Add'} About`}
+                title={`${profile.profile.about ? 'Edit' : 'Add'} About`}
                 disabled={Boolean(inlineTarget)}
                 onclick={() => void startInlineEditing('about')}
               >
                 <Icon icon={profile.profile.about ? mdiPencilOutline : mdiPlus} size="18" />
+                {#if !profile.profile.about}<span>Add</span>{/if}
               </button>
             {/if}
           </div>
@@ -1860,7 +1919,7 @@
               {@render inlineActions('About')}
             </div>
           {:else if profile.profile.about}
-            <p class="mt-3 max-w-4xl text-sm/6 whitespace-pre-wrap">{profile.profile.about}</p>
+            <p class="dossier-about-copy mt-4 max-w-4xl whitespace-pre-wrap">{profile.profile.about}</p>
           {:else}
             <p class="dossier-empty mt-3 text-sm text-gray-500 dark:text-gray-400">
               Add a short portrait of who this person is and what makes them memorable.
@@ -1952,18 +2011,18 @@
               {@render inlineActions('At a glance')}
             </div>
           {:else}
-            <dl class="mt-4 grid grid-cols-2 gap-4 text-sm">
-              <div>
+            <dl class="dossier-glance-grid mt-4 text-sm">
+              <div class="dossier-fact">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">Relationship</dt>
                 <dd class="font-medium">{profile.relationships.map(({ name }) => name).join(', ') || 'Not set'}</dd>
               </div>
-              <div>
+              <div class:fact-unset={!profile.profile.pronounsLabel} class="dossier-fact">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">Pronouns</dt>
-                <dd class="font-medium">{profile.profile.pronounsLabel || 'Not set'}</dd>
+                <dd class="font-medium">{profile.profile.pronounsLabel || 'Not added'}</dd>
               </div>
-              <div>
+              <div class="dossier-fact dossier-gender-fact">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">Gender identity</dt>
-                <dd class="mt-1 font-medium">
+                <dd class="font-medium">
                   <span
                     class="inline-flex size-8 items-center justify-center rounded-full bg-black/5 dark:bg-white/8"
                     aria-label={genderLabel || 'Not set'}
@@ -1991,7 +2050,7 @@
               >
                 <Icon icon={mdiAccountDetailsOutline} size="18" />
               </span>
-              <h3 class="font-semibold">Identity</h3>
+              <h3 class="font-semibold">Names & identity</h3>
             </div>
             <button
               class="flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary"
@@ -2002,16 +2061,20 @@
               onclick={onopenidentitysettings}><Icon icon={mdiPencilOutline} size="18" /></button
             >
           </div>
-          <dl class="mt-4 grid gap-4 text-sm">
-            <div>
-              <dt class="text-xs text-gray-500 dark:text-gray-400">Display name</dt>
-              <dd class="font-medium">{profile.person.displayName}</dd>
-            </div>
-            <div>
-              <dt class="text-xs text-gray-500 dark:text-gray-400">Aliases</dt>
-              <dd class="font-medium">{aliases.join(', ') || 'Not set'}</dd>
-            </div>
-          </dl>
+          <div class="dossier-nameplate mt-4">
+            <span class="dossier-field-label">Primary name</span>
+            <p class="dossier-primary-name">{profile.person.displayName}</p>
+            <span class="dossier-field-label mt-4">Also known as</span>
+            {#if aliases.length > 0}
+              <div class="mt-2 flex flex-wrap gap-2">
+                {#each aliases as alias (alias)}
+                  <span class="dossier-alias">{alias}</span>
+                {/each}
+              </div>
+            {:else}
+              <p class="dossier-inline-empty mt-1">No other names recorded.</p>
+            {/if}
+          </div>
         </article>
       {/if}
 
@@ -2058,25 +2121,33 @@
               {@render inlineItemEditor(contactKinds, 'Contact details')}
             </div>
           {:else if contactItems.length > 0}
-            <dl class="mt-4 grid gap-4 text-sm">
+            <ul class="dossier-contact-list mt-4 grid gap-2" aria-label="Contact details">
               {#each contactItems as item (item.itemId)}
-                <div>
-                  <dt class="text-xs text-gray-500 dark:text-gray-400">
-                    {item.kind === 'email' ? 'Email' : item.kind === 'phone' ? 'Phone' : 'Website'} · {item.label}
-                  </dt>
-                  <dd class="font-medium wrap-break-word">
-                    <a
-                      class="text-primary underline-offset-4 hover:underline dark:text-immich-dark-primary"
-                      href={itemHref(item)}
-                      target={item.kind === 'web' ? '_blank' : undefined}
-                      rel={item.kind === 'web' ? 'noreferrer' : undefined}
+                <li>
+                  <a
+                    class="dossier-contact-row"
+                    href={itemHref(item)}
+                    target={item.kind === 'web' ? '_blank' : undefined}
+                    rel={item.kind === 'web' ? 'noreferrer' : undefined}
+                  >
+                    <span
+                      class="dossier-icon flex size-9 shrink-0 items-center justify-center rounded-full"
+                      aria-hidden="true"
                     >
-                      {displayItemValue(item)}
-                    </a>
-                  </dd>
-                </div>
+                      <Icon icon={sectionIcons[item.kind]} size="18" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="dossier-field-label block">
+                        {item.kind === 'email' ? 'Email' : item.kind === 'phone' ? 'Phone' : 'Website'} · {item.label}
+                      </span>
+                      <span class="block truncate font-semibold">
+                        {displayItemValue(item)}
+                      </span>
+                    </span>
+                  </a>
+                </li>
               {/each}
-            </dl>
+            </ul>
           {:else}
             <p class="dossier-empty mt-4 text-sm text-gray-500 dark:text-gray-400">
               Add an email, phone number, or website.
@@ -2098,9 +2169,11 @@
           data-dossier-section="09"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <Icon icon={mdiNoteTextOutline} size="19" />
-              <h3 class="text-xs font-semibold tracking-wide uppercase">Notes</h3>
+            <div class="flex items-center gap-2">
+              <span class="dossier-icon flex size-8 items-center justify-center rounded-xl" aria-hidden="true">
+                <Icon icon={mdiNoteTextOutline} size="18" />
+              </span>
+              <h3 class="font-semibold">Notes</h3>
             </div>
             {#if inlineTarget !== 'private_notes'}
               <button
@@ -2139,7 +2212,7 @@
               {@render inlineActions('Notes')}
             </div>
           {:else if profile.profile.privateNotes}
-            <p class="mt-3 text-sm/6 whitespace-pre-wrap">{profile.profile.privateNotes}</p>
+            <p class="dossier-note-copy mt-4 whitespace-pre-wrap">{profile.profile.privateNotes}</p>
           {:else}
             <p class="dossier-empty mt-3 text-sm text-gray-500 dark:text-gray-400">
               Write down something worth remembering.
@@ -2256,6 +2329,14 @@
     font-size: 0.96rem;
   }
 
+  .dossier-field-label {
+    color: var(--dossier-muted);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
   .dossier-icon {
     color: var(--dossier-accent);
     background: color-mix(in srgb, var(--dossier-accent) 10%, transparent);
@@ -2271,38 +2352,136 @@
 
   .dossier-about {
     --dossier-accent: #9c6530;
-    min-height: 8.5rem;
+    min-height: 7.5rem;
+  }
+
+  .dossier-about-copy {
+    max-width: 68ch;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1rem, 1.2vw, 1.16rem);
+    line-height: 1.7;
   }
 
   .dossier-facts {
     --dossier-accent: #737843;
   }
 
+  .dossier-glance-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .dossier-fact {
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--dossier-accent) 18%, transparent);
+    border-radius: 0.8rem;
+    padding: 0.7rem 0.75rem;
+    background: color-mix(in srgb, var(--dossier-accent) 5%, transparent);
+  }
+
+  .dossier-fact.fact-unset dd,
+  .dossier-inline-empty {
+    color: var(--dossier-muted);
+    font-weight: 500;
+  }
+
+  .dossier-gender-fact dd {
+    margin-top: 0.35rem;
+  }
+
   .dossier-identity {
     --dossier-accent: #4a6e88;
+  }
+
+  .dossier-nameplate {
+    border-left: 2px solid color-mix(in srgb, var(--dossier-accent) 45%, transparent);
+    padding-left: 1rem;
+  }
+
+  .dossier-primary-name {
+    margin-top: 0.2rem;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 1.25rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+
+  .dossier-alias {
+    border: 1px solid color-mix(in srgb, var(--dossier-accent) 22%, transparent);
+    border-radius: 999px;
+    padding: 0.28rem 0.65rem;
+    background: color-mix(in srgb, var(--dossier-accent) 7%, transparent);
+    font-size: 0.82rem;
+    font-weight: 650;
   }
 
   .dossier-card--important_date {
     --dossier-accent: #9a4f4d;
   }
 
-  .dossier-card--important_date dl {
+  .dossier-timeline {
+    position: relative;
+    margin-left: 0.35rem;
     border-left: 1px solid color-mix(in srgb, var(--dossier-accent) 35%, transparent);
-    padding-left: 1rem;
+    padding-left: 1.15rem;
+  }
+
+  .dossier-timeline li {
+    position: relative;
+  }
+
+  .dossier-timeline li::before {
+    position: absolute;
+    top: 0.25rem;
+    left: -1.48rem;
+    width: 0.62rem;
+    height: 0.62rem;
+    border: 2px solid color-mix(in srgb, var(--dossier-accent) 75%, white);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--dossier-accent) 75%, transparent);
+    content: '';
   }
 
   .dossier-card--work {
     --dossier-accent: #9a6b32;
   }
 
-  .dossier-card--work dl > div,
-  .dossier-contact dl > div {
-    border-bottom: 1px solid color-mix(in srgb, var(--dossier-accent) 18%, transparent);
-    padding-bottom: 0.75rem;
+  .dossier-work-entry {
+    border-left: 2px solid color-mix(in srgb, var(--dossier-accent) 38%, transparent);
+    padding: 0.15rem 0 0.25rem 0.9rem;
   }
 
   .dossier-contact {
     --dossier-accent: #3e7772;
+  }
+
+  .dossier-contact-row,
+  .dossier-social-profile,
+  .dossier-address {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--dossier-accent) 17%, transparent);
+    border-radius: 0.85rem;
+    padding: 0.65rem 0.75rem;
+    background: color-mix(in srgb, var(--dossier-accent) 5%, transparent);
+  }
+
+  .dossier-contact-row,
+  a.dossier-social-profile {
+    transition:
+      border-color 140ms ease,
+      background 140ms ease,
+      transform 140ms ease;
+  }
+
+  .dossier-contact-row:hover,
+  a.dossier-social-profile:hover {
+    border-color: color-mix(in srgb, var(--dossier-accent) 42%, transparent);
+    background: color-mix(in srgb, var(--dossier-accent) 9%, transparent);
+    transform: translateY(-1px);
   }
 
   .dossier-card--social {
@@ -2313,9 +2492,13 @@
     --dossier-accent: #587454;
   }
 
+  .dossier-address {
+    align-items: flex-start;
+  }
+
   .dossier-notes {
     --dossier-accent: #8e6d3e;
-    min-height: 9rem;
+    min-height: 8rem;
     background:
       repeating-linear-gradient(
         0deg,
@@ -2324,6 +2507,13 @@
       ),
       linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 6%, transparent), transparent 42%),
       rgba(255, 253, 248, 0.78);
+  }
+
+  .dossier-note-copy {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 1rem;
+    font-style: italic;
+    line-height: 1.95;
   }
 
   :global(.dark) .dossier-notes {
@@ -2335,5 +2525,11 @@
       ),
       linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 12%, transparent), transparent 42%),
       rgba(28, 26, 22, 0.78);
+  }
+
+  @media (max-width: 520px) {
+    .dossier-glance-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
