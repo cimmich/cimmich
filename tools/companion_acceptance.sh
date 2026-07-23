@@ -49,7 +49,7 @@ companion_counts() {
 
 rewrite_backup_checksums() {
   backup_root=$1
-  (cd "$backup_root" && sha256sum cimmich.dump documents.tgz config.tgz manifest.json > SHA256SUMS)
+  (cd "$backup_root" && sha256sum cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
 }
 
 assert_restore_rejected_preserves_state() {
@@ -189,6 +189,7 @@ cp "$BACKUP_ROOT/manifest.json" "$SECURITY_PROOF/manifest.json"
 cp "$BACKUP_ROOT/cimmich.dump" "$SECURITY_PROOF/cimmich.dump"
 cp "$BACKUP_ROOT/documents.tgz" "$SECURITY_PROOF/documents.tgz"
 cp "$BACKUP_ROOT/config.tgz" "$SECURITY_PROOF/config.tgz"
+cp "$BACKUP_ROOT/face-provider.tgz" "$SECURITY_PROOF/face-provider.tgz"
 cp "$BACKUP_ROOT/SHA256SUMS" "$SECURITY_PROOF/SHA256SUMS"
 
 # A restore is hostile input until all archive, project, schema, checksum,

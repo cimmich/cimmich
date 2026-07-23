@@ -3,6 +3,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import {
+  createInsightFaceUserSuppliedRecognizer,
+  insightFaceUserSuppliedRecognizerVersion,
+} from "./insightface-user-supplied-recognizer.mjs";
 import { createMediaPipelineManifest } from "./media-pipeline-contract.mjs";
 import {
   createOpenCvSFaceRecognizer,
@@ -18,6 +22,8 @@ import { validateRecognitionProviderManifest } from "./recognition-provider-cont
 export const localMediaProviderRuntimeVersion =
   "cimmich.local-media-provider-runtime.v1";
 export const openCvReferenceProviderId = "opencv-yunet-sface-cpu";
+export const insightFaceUserSuppliedProviderId =
+  "insightface-user-supplied-cpu";
 
 const execFileAsync = promisify(execFile);
 const sha256Pattern = /^[0-9a-f]{64}$/;
@@ -83,6 +89,37 @@ const defaultRuntimeProbe = async (pythonPath) => {
   }
 };
 
+const defaultInsightFaceRuntimeProbe = async (pythonPath) => {
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync(
+      pythonPath,
+      [
+        "-I",
+        "-c",
+        "import insightface,json,onnxruntime,sys;print(json.dumps({'pythonVersion':'.'.join(map(str,sys.version_info[:3])),'runtime':'onnxruntime-'+onnxruntime.__version__+'+insightface-'+insightface.__version__}))",
+      ],
+      {
+        encoding: "utf8",
+        env: providerSubprocessEnvironment(),
+        maxBuffer: 64 * 1024,
+        timeout: 10_000,
+      },
+    ));
+  } catch {
+    throw runtimeError(
+      "Local InsightFace provider Python runtime is unavailable",
+    );
+  }
+  try {
+    return JSON.parse(stdout.trim());
+  } catch {
+    throw runtimeError(
+      "Local InsightFace provider runtime probe returned invalid output",
+    );
+  }
+};
+
 const assertDigest = (actual, expected, label) => {
   if (!sha256Pattern.test(actual) || actual !== expected) {
     throw runtimeError(
@@ -94,6 +131,7 @@ const assertDigest = (actual, expected, label) => {
 export const loadLocalMediaProviderRuntime = async ({
   env = process.env,
   fileDigest = defaultFileDigest,
+  insightFaceRuntimeProbe = defaultInsightFaceRuntimeProbe,
   readJson = defaultReadJson,
   runtimeProbe = defaultRuntimeProbe,
 } = {}) => {
@@ -109,11 +147,124 @@ export const loadLocalMediaProviderRuntime = async ({
       },
     };
   }
-  if (providerId !== openCvReferenceProviderId) {
+  if (
+    providerId !== openCvReferenceProviderId &&
+    providerId !== insightFaceUserSuppliedProviderId
+  ) {
     throw runtimeError("Unsupported local media provider");
   }
 
   const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+  if (providerId === insightFaceUserSuppliedProviderId) {
+    const providerRoot = String(
+      env.CIMMICH_INSIGHTFACE_PROVIDER_ROOT ||
+        `${repositoryRoot}/providers/insightface-user-supplied`,
+    ).replace(/\/+$/, "");
+    const paths = {
+      detectorModel: requiredText(
+        env.CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH,
+        "CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH",
+      ),
+      manifest: requiredText(
+        env.CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH,
+        "CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH",
+      ),
+      python: requiredText(
+        env.CIMMICH_LOCAL_PYTHON_PATH,
+        "CIMMICH_LOCAL_PYTHON_PATH",
+      ),
+      recognitionModel: requiredText(
+        env.CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH,
+        "CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH",
+      ),
+      recognitionScript: `${providerRoot}/recognize.py`,
+    };
+    const [recognitionManifestInput, probe] = await Promise.all([
+      readJson(paths.manifest),
+      insightFaceRuntimeProbe(paths.python),
+    ]);
+    const recognitionManifest = validateRecognitionProviderManifest(
+      recognitionManifestInput,
+    );
+    if (
+      String(probe.runtime || "") !==
+      String(recognitionManifest.execution?.runtime || "")
+    ) {
+      throw runtimeError(
+        "Local InsightFace provider runtime does not match its manifest",
+      );
+    }
+    const [detectorModelDigest, recognitionModelDigest, recognitionScriptDigest] =
+      await Promise.all([
+        fileDigest(paths.detectorModel),
+        fileDigest(paths.recognitionModel),
+        fileDigest(paths.recognitionScript),
+      ]);
+    assertDigest(
+      detectorModelDigest,
+      recognitionManifest.detector.artifactSha256,
+      "detector model",
+    );
+    assertDigest(
+      recognitionModelDigest,
+      recognitionManifest.recognizer.artifactSha256,
+      "recognizer model",
+    );
+    const recognizer = createInsightFaceUserSuppliedRecognizer({
+      detectorModelPath: paths.detectorModel,
+      manifest: recognitionManifest,
+      manifestPath: paths.manifest,
+      pythonPath: paths.python,
+      recognizerModelPath: paths.recognitionModel,
+      scriptPath: paths.recognitionScript,
+      timeoutMs: boundedInteger(
+        env.CIMMICH_LOCAL_RECOGNIZER_TIMEOUT_MS,
+        "recognizer timeout",
+        1_000,
+        600_000,
+        120_000,
+      ),
+    });
+    const providerReceiptCore = {
+      activationAuthority: "none",
+      detection: "upstream-inventory",
+      externalUpload: "none",
+      network: "forbidden",
+      providerId,
+      pythonVersion: String(probe.pythonVersion),
+      recognitionConfigDigest:
+        recognitionManifest.recognitionSpaceConfigDigest,
+      recognitionScriptDigest,
+      recognitionToolVersion: insightFaceUserSuppliedRecognizerVersion,
+      runtime: String(probe.runtime),
+      schemaVersion: localMediaProviderRuntimeVersion,
+      sourceMedia: "local-read-only",
+      state: "ready",
+      vectorSpaceId: recognitionManifest.vectorSpaceId,
+    };
+    return {
+      detectionEnabled: false,
+      enabled: true,
+      inventoryJob: null,
+      matchingProvider: Object.freeze({
+        configDigest: recognitionManifest.recognitionSpaceConfigDigest,
+        modelFamily: recognitionManifest.recognitionSpace.modelFamily,
+        modelVersion: recognitionManifest.recognitionSpace.modelVersion,
+        providerId,
+        vectorSpaceId: recognitionManifest.vectorSpaceId,
+      }),
+      providerReceipt: {
+        ...providerReceiptCore,
+        runtimeDigest: digestBuffer(
+          Buffer.from(JSON.stringify(providerReceiptCore)),
+        ),
+      },
+      recognitionEnabled: true,
+      recognitionManifest,
+      recognizer,
+    };
+  }
+
   const providerRoot = String(
     env.CIMMICH_OPENCV_PROVIDER_ROOT ||
       `${repositoryRoot}/providers/opencv-sface`,
@@ -244,6 +395,7 @@ export const loadLocalMediaProviderRuntime = async ({
     vectorSpaceId: recognitionManifest.vectorSpaceId,
   };
   return {
+    detectionEnabled: true,
     detector,
     detectorManifest,
     enabled: true,
@@ -274,6 +426,7 @@ export const loadLocalMediaProviderRuntime = async ({
       ),
     },
     recognitionManifest,
+    recognitionEnabled: true,
     recognizer,
   };
 };

@@ -1240,7 +1240,10 @@ const definitions = [
             referenceEvidence: { minimum: 1, type: "integer" },
             referencePeople: { minimum: 1, type: "integer" },
             reviewability: {
-              enum: ["temporal_holdout_ready", "operator_hold_required"],
+              enum: [
+                "balanced_open_set_holdout_ready",
+                "operator_hold_required",
+              ],
               type: "string",
             },
             schemaVersion: {

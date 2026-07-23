@@ -79,7 +79,9 @@ await visibility.initialize();
 const localMediaProvider = await loadLocalMediaProviderRuntime();
 const immichInventory = createImmichInventorySynchronizer({
   companion: immichCompanion,
-  job: localMediaProvider.enabled ? localMediaProvider.inventoryJob : null,
+  job: localMediaProvider.detectionEnabled
+    ? localMediaProvider.inventoryJob
+    : null,
   pageSize: Number(process.env.CIMMICH_IMMICH_PAGE_SIZE || "250"),
   onProjectionCommitted: refreshInventoryProjectionBridge,
   resolveCimmichAssetId: ({ immichAssetId }) =>
@@ -125,7 +127,7 @@ const guidedAccess = createGuidedAccess({
   uiPublicBaseUrl: runtimeConfig.guidedUiPublicUrl,
   visibilityCeiling: runtimeConfig.guidedVisibilityCeiling,
 });
-const detectionWorker = localMediaProvider.enabled
+const detectionWorker = localMediaProvider.detectionEnabled
   ? createLocalFaceDetectionWorker({
       companion: immichCompanion,
       detector: localMediaProvider.detector,
@@ -133,7 +135,7 @@ const detectionWorker = localMediaProvider.enabled
       sql,
     })
   : undefined;
-const recognitionWorker = localMediaProvider.enabled
+const recognitionWorker = localMediaProvider.detectionEnabled
   ? createLocalFaceRecognitionWorker({
       companion: immichCompanion,
       manifest: localMediaProvider.recognitionManifest,
@@ -141,7 +143,7 @@ const recognitionWorker = localMediaProvider.enabled
       sql,
     })
   : undefined;
-const existingRecognitionScheduler = localMediaProvider.enabled
+const existingRecognitionScheduler = localMediaProvider.recognitionEnabled
   ? createOwnerFaceRecognitionScheduler({
       companion: immichCompanion,
       manifest: localMediaProvider.recognitionManifest,
@@ -150,7 +152,7 @@ const existingRecognitionScheduler = localMediaProvider.enabled
       sql,
     })
   : undefined;
-const existingRecognitionWorker = localMediaProvider.enabled
+const existingRecognitionWorker = localMediaProvider.recognitionEnabled
   ? createLocalExistingFaceRecognitionWorker({
       companion: createCurrentImmichAssetReader({
         companion: immichCompanion,
@@ -163,7 +165,7 @@ const existingRecognitionWorker = localMediaProvider.enabled
     })
   : undefined;
 const mediaOperator = createMediaOperator({
-  continueDetection: localMediaProvider.enabled
+  continueDetection: localMediaProvider.detectionEnabled
     ? (detectionJobId) =>
         continueFaceDetectionPipeline(sql, {
           detectionJobId,
@@ -182,6 +184,7 @@ const mediaOperator = createMediaOperator({
   sql,
 });
 const faceMatchingOperator = createFaceMatchingOperator({
+  detectionEnabled: localMediaProvider.detectionEnabled,
   enhancedComponent,
   matchingProvider: localMediaProvider.matchingProvider,
   mediaOperator,

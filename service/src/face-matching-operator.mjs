@@ -21,6 +21,9 @@ export const faceMatchingOperatorSchemaVersion =
   "cimmich.face-matching-operator.v1";
 export const ownerSourcePackPlanSchemaVersion =
   "cimmich.owner-source-pack-plan.v1";
+const ownerPlanMinimumKnownQueriesPerSplit = 100;
+const ownerPlanMinimumUnknownQueriesPerSplit = 100;
+const ownerPlanMinimumCompletePeople = 20;
 
 const publicIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 
@@ -153,20 +156,15 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
   let selected = null;
   const isBetterCandidate = (candidate, current) =>
     !current ||
-    candidate.completePeople > current.completePeople ||
-    (candidate.completePeople === current.completePeople &&
-      (Math.min(candidate.calibrationQueries, candidate.holdoutQueries) >
-        Math.min(current.calibrationQueries, current.holdoutQueries) ||
-        (Math.min(candidate.calibrationQueries, candidate.holdoutQueries) ===
-          Math.min(current.calibrationQueries, current.holdoutQueries) &&
-          (candidate.referencePeople > current.referencePeople ||
-            (candidate.referencePeople === current.referencePeople &&
-              (candidate.referenceEvidence > current.referenceEvidence ||
-                (candidate.referenceEvidence === current.referenceEvidence &&
-                  (candidate.evidenceCutoff < current.evidenceCutoff ||
-                    (candidate.evidenceCutoff === current.evidenceCutoff &&
-                      candidate.calibrationEnd <
-                        current.calibrationEnd)))))))));
+    candidate.referenceEvidence > current.referenceEvidence ||
+    (candidate.referenceEvidence === current.referenceEvidence &&
+      (candidate.calibrationEnd < current.calibrationEnd ||
+        (candidate.calibrationEnd === current.calibrationEnd &&
+          (candidate.completePeople > current.completePeople ||
+            (candidate.completePeople === current.completePeople &&
+              (candidate.referencePeople > current.referencePeople ||
+                (candidate.referencePeople === current.referencePeople &&
+                  candidate.evidenceCutoff < current.evidenceCutoff)))))));
   for (
     let evidenceIndex = 0;
     evidenceIndex < times.length - 2;
@@ -180,7 +178,9 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
     const calibrationByPerson = new Map();
     const holdoutByPerson = new Map();
     let calibrationQueries = 0;
+    let calibrationUnknownQueries = 0;
     let holdoutQueries = 0;
+    let holdoutUnknownQueries = 0;
     let completePeople = 0;
     for (
       let futureIndex = evidenceIndex + 1;
@@ -188,9 +188,15 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
       futureIndex += 1
     ) {
       for (const personId of evidenceByTime[futureIndex]) {
-        if (!referencePeople.has(personId)) continue;
-        holdoutByPerson.set(personId, (holdoutByPerson.get(personId) || 0) + 1);
-        holdoutQueries += 1;
+        if (referencePeople.has(personId)) {
+          holdoutByPerson.set(
+            personId,
+            (holdoutByPerson.get(personId) || 0) + 1,
+          );
+          holdoutQueries += 1;
+        } else {
+          holdoutUnknownQueries += 1;
+        }
       }
     }
     for (
@@ -199,7 +205,11 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
       calibrationIndex += 1
     ) {
       for (const personId of evidenceByTime[calibrationIndex]) {
-        if (!referencePeople.has(personId)) continue;
+        if (!referencePeople.has(personId)) {
+          calibrationUnknownQueries += 1;
+          holdoutUnknownQueries -= 1;
+          continue;
+        }
         const calibrationBefore = calibrationByPerson.get(personId) || 0;
         const holdoutBefore = holdoutByPerson.get(personId) || 0;
         const wasComplete = calibrationBefore > 0 && holdoutBefore > 0;
@@ -215,13 +225,23 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
         }
       }
       const calibrationEnd = times[calibrationIndex];
-      if (calibrationQueries === 0 || holdoutQueries === 0) continue;
+      if (
+        calibrationQueries < ownerPlanMinimumKnownQueriesPerSplit ||
+        holdoutQueries < ownerPlanMinimumKnownQueriesPerSplit ||
+        calibrationUnknownQueries < ownerPlanMinimumUnknownQueriesPerSplit ||
+        holdoutUnknownQueries < ownerPlanMinimumUnknownQueriesPerSplit ||
+        completePeople < ownerPlanMinimumCompletePeople
+      ) {
+        continue;
+      }
       const candidate = {
         calibrationEnd,
         calibrationQueries,
+        calibrationUnknownQueries,
         completePeople,
         evidenceCutoff,
         holdoutQueries,
+        holdoutUnknownQueries,
         referenceEvidence,
         referencePeople: referencePeople.size,
       };
@@ -233,9 +253,9 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
       ...selected,
       evidenceRows: evidence.length,
       reason: null,
-      reviewability: "temporal_holdout_ready",
+      reviewability: "balanced_open_set_holdout_ready",
       schemaVersion: ownerSourcePackPlanSchemaVersion,
-      strategy: "deterministic_three_window",
+      strategy: "deterministic_balanced_open_set_three_window",
     };
   }
   return {
@@ -245,7 +265,9 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
     evidenceCutoff: times.at(-1),
     evidenceRows: evidence.length,
     holdoutQueries: 0,
-    reason: "INSUFFICIENT_TEMPORAL_HOLDOUT",
+    calibrationUnknownQueries: 0,
+    holdoutUnknownQueries: 0,
+    reason: "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT",
     referenceEvidence: evidence.length,
     referencePeople: new Set(evidence.map((row) => row.personId)).size,
     reviewability: "operator_hold_required",
@@ -328,6 +350,7 @@ const projectPack = (row) => ({
 });
 
 export const createFaceMatchingOperator = ({
+  detectionEnabled = true,
   enhancedComponent = null,
   matchingProvider = null,
   mediaOperator,
@@ -577,7 +600,7 @@ export const createFaceMatchingOperator = ({
       envelope: {
         candidateLimit: 0,
         leaseSeconds: 300,
-        maxDetectionJobs: limit,
+        maxDetectionJobs: detectionEnabled ? limit : 0,
         maxDurationMs: 300_000,
         maxInventoryPages: 1,
         maxPendingJobs: 10_000,
@@ -658,8 +681,10 @@ export const createFaceMatchingOperator = ({
         pack: projectPack(await loadPackRow(active.pack_id)),
         plan: {
           calibrationQueries: plan.calibrationQueries,
+          calibrationUnknownQueries: plan.calibrationUnknownQueries,
           completePeople: plan.completePeople,
           holdoutQueries: plan.holdoutQueries,
+          holdoutUnknownQueries: plan.holdoutUnknownQueries,
           reason: plan.reason,
           referenceEvidence: plan.referenceEvidence,
           referencePeople: plan.referencePeople,
@@ -678,8 +703,10 @@ export const createFaceMatchingOperator = ({
       pack: projectPack(await loadPackRow(pack.packId)),
       plan: {
         calibrationQueries: plan.calibrationQueries,
+        calibrationUnknownQueries: plan.calibrationUnknownQueries,
         completePeople: plan.completePeople,
         holdoutQueries: plan.holdoutQueries,
+        holdoutUnknownQueries: plan.holdoutUnknownQueries,
         reason: plan.reason,
         referenceEvidence: plan.referenceEvidence,
         referencePeople: plan.referencePeople,

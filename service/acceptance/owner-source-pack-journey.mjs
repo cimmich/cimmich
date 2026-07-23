@@ -16,26 +16,44 @@ const matchingProvider = {
   vectorSpaceId: "synthetic-owner-space-v1",
 };
 
+const embeddingDimension = 24;
+const basisVector = (dimension, value = 1) =>
+  Array.from(
+    { length: embeddingDimension },
+    (_, index) => (index === dimension ? value : 0),
+  );
+const knownPeople = Array.from({ length: 20 }, (_, index) => ({
+  personId: `person_owner_pack_known_${String(index).padStart(2, "0")}`,
+  vector: basisVector(index),
+}));
+const calibrationUnknownPeople = Array.from({ length: 100 }, (_, index) => ({
+  personId: `person_owner_pack_calibration_unknown_${String(index).padStart(3, "0")}`,
+  vector: basisVector(20, -1),
+}));
+const holdoutUnknownPeople = Array.from({ length: 100 }, (_, index) => ({
+  personId: `person_owner_pack_holdout_unknown_${String(index).padStart(3, "0")}`,
+  vector: basisVector(21, -1),
+}));
 const people = [
-  { personId: "person_owner_pack_a", vector: [1, 0] },
-  { personId: "person_owner_pack_b", vector: [0, 1] },
-  { personId: "person_owner_pack_unknown", vector: [-1, 0] },
-  ...Array.from({ length: 100 }, (_, index) => ({
-    personId: `person_owner_pack_unknown_${String(index).padStart(3, "0")}`,
-    vector: [-1, 0],
-  })),
+  ...knownPeople,
+  ...calibrationUnknownPeople,
+  ...holdoutUnknownPeople,
 ];
 const acceptedEvidence = [
-  { personIndex: 0, year: 2020 },
-  { personIndex: 1, year: 2020 },
-  { personIndex: 0, year: 2021 },
-  { personIndex: 1, year: 2021 },
-  { personIndex: 2, year: 2021 },
-  { personIndex: 0, year: 2022 },
-  { personIndex: 1, year: 2022 },
-  { personIndex: 2, year: 2022 },
-  ...Array.from({ length: 100 }, (_, index) => ({
-    personIndex: index + 3,
+  ...knownPeople.map((_, personIndex) => ({ personIndex, year: 2020 })),
+  ...Array.from({ length: 5 }, () =>
+    knownPeople.map((_, personIndex) => ({ personIndex, year: 2021 })),
+  ).flat(),
+  ...calibrationUnknownPeople.map((_, index) => ({
+    personIndex: knownPeople.length + index,
+    year: 2021,
+  })),
+  ...Array.from({ length: 5 }, () =>
+    knownPeople.map((_, personIndex) => ({ personIndex, year: 2022 })),
+  ).flat(),
+  ...holdoutUnknownPeople.map((_, index) => ({
+    personIndex:
+      knownPeople.length + calibrationUnknownPeople.length + index,
     year: 2022,
   })),
 ];
@@ -119,14 +137,16 @@ try {
       ) VALUES (
         ${embeddingId}, ${faceId}, ${matchingProvider.modelFamily},
         ${matchingProvider.modelVersion}, ${matchingProvider.configDigest},
-        2, true, ${`[${person.vector.join(",")}]`}::vector,
+        ${embeddingDimension}, true, ${`[${person.vector.join(",")}]`}::vector,
         ${recognitionVectorDigest(person.vector)}, 'active',
         'receipt_owner_source_pack_fixture', 'sensitive-biometric'
       )
     `;
   }
 
-  const queryVector = [0.990148, 0.140028];
+  const queryVector = basisVector(0);
+  queryVector[0] = 0.990148;
+  queryVector[1] = 0.140028;
   await sql`
     INSERT INTO asset (
       asset_id, content_hash, locator_token, media_kind, mime_type, width,
@@ -156,7 +176,7 @@ try {
     ) VALUES (
       'embedding_owner_pack_query', 'face_owner_pack_query',
       ${matchingProvider.modelFamily}, ${matchingProvider.modelVersion},
-      ${matchingProvider.configDigest}, 2, true,
+      ${matchingProvider.configDigest}, ${embeddingDimension}, true,
       ${`[${queryVector.join(",")}]`}::vector,
       ${recognitionVectorDigest(queryVector)}, 'active',
       'receipt_owner_source_pack_fixture', 'sensitive-biometric'
@@ -200,7 +220,7 @@ try {
   const initial = await operator.status();
   assert.equal(initial.state, "needs_source_pack");
   assert.equal(initial.next.action, "compile_source_pack");
-  assert.equal(initial.evidence.providerEmbeddings, 108);
+  assert.equal(initial.evidence.providerEmbeddings, 420);
 
   const recognition = await operator.runRecognition({
     actorId: "synthetic-owner",
@@ -219,9 +239,12 @@ try {
   const compiled = await operator.compile();
   assert.equal(compiled.changed, true);
   assert.equal(compiled.pack.state, "proposed");
-  assert.equal(compiled.plan.reviewability, "temporal_holdout_ready");
-  assert.equal(compiled.plan.calibrationQueries, 2);
-  assert.equal(compiled.plan.holdoutQueries, 2);
+  assert.equal(compiled.plan.reviewability, "balanced_open_set_holdout_ready");
+  assert.equal(compiled.plan.calibrationQueries, 100);
+  assert.equal(compiled.plan.calibrationUnknownQueries, 100);
+  assert.equal(compiled.plan.holdoutQueries, 100);
+  assert.equal(compiled.plan.holdoutUnknownQueries, 100);
+  assert.equal(compiled.plan.completePeople, 20);
   const compileReplay = await operator.compile();
   assert.equal(compileReplay.pack.packId, compiled.pack.packId);
   assert.equal(compileReplay.replayed, true);
@@ -230,7 +253,7 @@ try {
   assert.equal(evaluated.evaluation.status, "incomplete");
   assert.equal(evaluated.evaluation.reason, "OPERATOR_REVIEW_GATE_REQUIRED");
   assert.equal(evaluated.evaluation.leakage.passed, true);
-  assert.equal(evaluated.evaluation.reviewArtifact.verifiedUnknowns, 101);
+  assert.equal(evaluated.evaluation.reviewArtifact.verifiedUnknowns, 100);
   assert.equal(evaluated.evaluation.reviewGateReceipt.status, "passed");
   assert.equal(evaluated.evaluation.reviewGateReceiptNullReason, null);
   const evaluationReplay = await operator.evaluate({
@@ -329,7 +352,7 @@ try {
   const disabled = createOperator(null);
   const disabledStatus = await disabled.operator.status();
   assert.equal(disabledStatus.state, "provider_disabled");
-  assert.equal(disabledStatus.evidence.acceptedFaces >= 108, true);
+  assert.equal(disabledStatus.evidence.acceptedFaces >= 420, true);
   assert.equal(disabledStatus.evidence.providerEmbeddings, 0);
   assert.equal(disabledStatus.latestPack, null);
   assert.equal(disabledStatus.basicIdentityTruthRetainedWhenDisabled, true);
@@ -352,7 +375,7 @@ try {
   `;
   assert.deepEqual(
     { claims, evaluations, packs },
-    { claims: 108, evaluations: 2, packs: 1 },
+    { claims: 420, evaluations: 2, packs: 1 },
   );
   assert.equal(references > 0, true);
 
@@ -363,7 +386,7 @@ try {
       backupReadiness: "database_only_state",
       basicTruthRetainedWhenDisabled: true,
       evaluationReplayStable: true,
-      inheritedAcceptedFaces: 108,
+      inheritedAcceptedFaces: 420,
       projectedReviewGateReceipt: "server_derived",
       providerRecognitionReplayStable: true,
       representativeAccuracyClaim: "none",

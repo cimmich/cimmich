@@ -36,6 +36,10 @@ Further beta corrections may use `v1.0.1-beta.2` and later prerelease numbers.
 A stable release comes only after the installation, compatibility, usability
 and real-library boundaries are strong enough for wider promotion.
 
+## Public-beta roadmap
+
+- Polish the Details page of the People area.
+
 ## Release identity
 
 `v1.0.0-build-week` means “the exact Cimmich Build Week edition.” It does not
