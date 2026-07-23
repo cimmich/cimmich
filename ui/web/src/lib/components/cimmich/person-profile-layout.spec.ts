@@ -23,10 +23,12 @@ describe('Person profile layout', () => {
     expect(source).toContain('absolute top-5 right-5 z-10');
     expect(source).toContain('<CimmichObjectVisibility');
     expect(source).toContain('Merge duplicate');
-    expect(source).toContain('data-testid="cimmich-person-edit"');
+    expect(source).toContain('data-testid="cimmich-person-display-shortcut"');
     expect(source).toContain(
-      "cimmichPerson?.subject_kind === 'person' ? openCimmichDetails() : void openCimmichSetup()",
+      "aria-label={cimmichPerson.subject_kind === 'person' ? 'Edit display photos' : 'Edit details'}",
     );
+    expect(source).toContain('void openCimmichDisplay()');
+    expect(source).not.toContain('<span>Edit</span>');
     expect(source).not.toContain('startInEdit={cimmichProfileEditOnOpen}');
     expect(source).toContain("field.fieldKey === 'gender_identity'");
     expect(source).toContain('icon={cimmichGenderIcon ?? mdiGenderMaleFemaleVariant}');
@@ -39,14 +41,15 @@ describe('Person profile layout', () => {
     expect(source).toContain('aria-label="Thumbnail size"');
     expect(source).toContain('<option value="medium">Medium</option>');
     expect(source).toContain('<h2 class="text-xl font-semibold">Identity</h2>');
-    expect(source).toContain('Presentation photos');
+    expect(source).toContain('Display photos');
     expect(source).toContain('Face photo');
     expect(source).toContain('Body photo');
     expect(source).toContain('Hero photo');
     expect(source).toContain('Identity workspaces');
     expect(source).toContain('grid grid-cols-4 gap-2 sm:grid-cols-8');
     expect(source).not.toContain('overflow-x-auto pb-1');
-    expect(source).toContain("{ id: 'presentation', label: 'Presentation'");
+    expect(source).toContain("{ id: 'presentation', label: 'Display'");
+    expect(source).toContain('aria-label="Display photo choices"');
     expect(source).toContain("{ id: 'prime', label: 'Prime'");
     expect(source).toContain("{ id: 'secondary', label: 'Supporting'");
     expect(source).toContain('Use automatic');

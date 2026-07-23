@@ -1420,6 +1420,18 @@
     }
   };
 
+  const openCimmichDisplay = async () => {
+    await openCimmichIdentity();
+    cimmichIdentityFilter = 'presentation';
+    cimmichPresentationPickerSlot = '';
+    requestAnimationFrame(() =>
+      document.querySelector('#cimmich-identity-workspace')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      }),
+    );
+  };
+
   const refreshCimmichSetup = async () => {
     if (!cimmichPerson) {
       return;
@@ -2030,14 +2042,15 @@
           {cimmichPerson.subject_kind === 'pet' ? 'Pets & Things' : 'People'}
         </a>
         <button
-          class="absolute top-5 right-5 z-10 inline-flex h-10 items-center gap-2 rounded-full bg-white px-3.5 text-sm font-semibold text-slate-950 shadow-lg transition hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:top-7 sm:right-7"
+          class="absolute top-5 right-5 z-10 inline-flex size-9 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white/80 shadow-lg backdrop-blur-md transition hover:bg-black/55 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:top-7 sm:right-7"
           type="button"
-          data-testid="cimmich-person-edit"
-          aria-label={cimmichPerson.subject_kind === 'person' ? 'Edit profile' : 'Edit'}
-          onclick={() => (cimmichPerson?.subject_kind === 'person' ? openCimmichDetails() : void openCimmichSetup())}
+          data-testid="cimmich-person-display-shortcut"
+          aria-label={cimmichPerson.subject_kind === 'person' ? 'Edit display photos' : 'Edit details'}
+          title={cimmichPerson.subject_kind === 'person' ? 'Edit display photos' : 'Edit details'}
+          onclick={() =>
+            cimmichPerson?.subject_kind === 'person' ? void openCimmichDisplay() : void openCimmichSetup()}
         >
-          <Icon icon={mdiPencilOutline} size="17" />
-          <span>Edit</span>
+          <Icon icon={mdiPencilOutline} size="16" />
         </button>
         <div
           class="relative flex min-h-100 min-w-0 flex-col justify-end gap-5 p-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
@@ -2285,7 +2298,7 @@
       </div>
 
       {#if cimmichMode === 'photos'}
-        <section class="grid gap-4">
+        <section id="cimmich-identity-workspace" class="grid scroll-mt-4 gap-4">
           {#each groupedCimmichAssets as group (group.id)}
             {#if group.label}
               <div class="flex items-center gap-3">
@@ -2649,7 +2662,7 @@
               <fieldset class="min-w-0">
                 <legend class="mb-1 font-semibold">Identity workspaces</legend>
                 <div class="grid grid-cols-4 gap-2 sm:grid-cols-8">
-                  {#each [{ id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
+                  {#each [{ id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Display', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
                     <button
                       class={[
                         'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
@@ -2695,7 +2708,7 @@
                 <div>
                   <p class="text-sm font-semibold">
                     {cimmichIdentityFilter === 'presentation'
-                      ? 'Presentation photos'
+                      ? 'Display photos'
                       : cimmichIdentityFilter === 'candidates'
                         ? 'Awaiting confirmation'
                         : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
@@ -2723,7 +2736,7 @@
                         ? 'Confirm or reject system suggestions in bulk.'
                         : cimmichIdentityFilter === 'head'
                           ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
-                          : 'Open Review face to change its bucket, tags, identity, or presentation role.'}
+                          : 'Open Review face to change its bucket, tags, identity, or display role.'}
                 </p>
               </div>
             {/if}
@@ -2868,7 +2881,7 @@
               {/if}
             </section>
           {:else if cimmichIdentityFilter === 'presentation'}
-            <section class="grid gap-4" aria-label="Presentation photo choices">
+            <section class="grid gap-4" aria-label="Display photo choices">
               <div class="grid gap-3 sm:grid-cols-3">
                 {#each [{ id: 'face', label: 'Face photo' }, { id: 'body', label: 'Body photo' }, { id: 'hero', label: 'Hero photo' }] as slot (slot.id)}
                   {@const slotKind = slot.id as CimmichPersonPresentationSlot}
