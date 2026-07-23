@@ -41,6 +41,18 @@ test("owner SourcePack planning holds instead of inventing a holdout", () => {
   );
 });
 
+test("owner SourcePack planning remains bounded for archive-scale timestamp diversity", () => {
+  const input = Array.from({ length: 1_000 }, (_, index) =>
+    ["person-a", "person-b", "person-c"].map((personId) =>
+      face(personId, new Date(Date.UTC(2010, 0, 1, 0, 0, index)).toISOString()),
+    ),
+  ).flat();
+  const plan = deriveOwnerSourcePackPlan(input);
+  assert.equal(plan.completePeople, 3);
+  assert.equal(plan.evidenceRows, 3_000);
+  assert.equal(plan.reviewability, "temporal_holdout_ready");
+});
+
 test("provider-disabled status retains Basic truth in one total response shape", async () => {
   const sql = async (strings) => {
     assert.match(strings.join(""), /current_face_identity/);
