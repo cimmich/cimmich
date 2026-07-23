@@ -469,12 +469,48 @@
   const cimmichLowQualityFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'lq'));
   const cimmichHeadFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'head'));
   const cimmichUnclassifiedFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === null));
+  const cimmichIdentityWorkspaceGroups = $derived([
+    {
+      id: 'references',
+      label: 'Reference faces',
+      filters: [
+        { id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() },
+        { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() },
+        { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() },
+        { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() },
+      ],
+    },
+    {
+      id: 'appearance',
+      label: 'Appearance',
+      filters: [
+        { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() },
+        { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() },
+      ],
+    },
+    {
+      id: 'display',
+      label: 'Display',
+      filters: [{ id: 'presentation', label: 'Photos', count: `${cimmichPresentationSelectionCount}/3` }],
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      filters: [{ id: 'candidates', label: 'Awaiting', count: visibleCimmichCandidates.length.toLocaleString() }],
+    },
+  ]);
   const cimmichIdentitySectionLimit = (section: string) => cimmichIdentitySectionLimits[section] ?? 20;
   const showMoreCimmichIdentitySection = (section: string) => {
     cimmichIdentitySectionLimits = {
       ...cimmichIdentitySectionLimits,
       [section]: cimmichIdentitySectionLimit(section) + 20,
     };
+  };
+  const selectCimmichIdentityWorkspace = (filter: CimmichIdentityFilter) => {
+    cimmichIdentityFilter = filter;
+    if (filter !== 'presentation') {
+      cimmichPresentationPickerSlot = '';
+    }
   };
   const visibleCimmichIdentityFaces = $derived.by(() => {
     if (cimmichIdentityFilter === 'references') {
@@ -2652,56 +2688,56 @@
             {#if cimmichPerson.needs_holding}
               <p class="text-sm font-semibold">Choose a match for each held face</p>
             {:else}
-              <div>
-                <h2 class="text-xl font-semibold">Identity</h2>
-                <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-                  Review what currently defines this person, correct it directly, and clear outstanding identity
-                  questions.
-                </p>
-              </div>
-              <fieldset class="min-w-0">
-                <legend class="mb-1 font-semibold">Identity workspaces</legend>
-                <div class="grid grid-cols-4 gap-2 sm:grid-cols-8">
-                  {#each [{ id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Display', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
-                    <button
-                      class={[
-                        'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
-                        cimmichIdentityFilter === filter.id
-                          ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
-                          : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
-                      ]}
-                      type="button"
-                      aria-pressed={cimmichIdentityFilter === filter.id}
-                      onclick={() => {
-                        cimmichIdentityFilter = filter.id as CimmichIdentityFilter;
-                        if (filter.id !== 'presentation') {
-                          cimmichPresentationPickerSlot = '';
-                        }
-                      }}
-                    >
-                      <span class="truncate text-xs font-semibold sm:text-[11px] lg:text-xs">{filter.label}</span>
-                      <span class="text-xs opacity-60">{filter.count}</span>
-                    </button>
-                  {/each}
-                  <button
+              <nav class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-4 lg:grid-cols-8" aria-label="Identity tools">
+                {#each cimmichIdentityWorkspaceGroups as group (group.id)}
+                  <section
                     class={[
-                      'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
-                      cimmichIdentityFilter === 'candidates'
-                        ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
-                        : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
+                      'grid min-w-0 content-start gap-1.5',
+                      group.id === 'references'
+                        ? 'sm:col-span-4 lg:col-span-4'
+                        : group.id === 'appearance'
+                          ? 'sm:col-span-2 lg:col-span-2 lg:border-l lg:border-gray-200 lg:pl-3 dark:lg:border-immich-dark-gray'
+                          : 'sm:col-span-1 lg:col-span-1 lg:border-l lg:border-gray-200 lg:pl-3 dark:lg:border-immich-dark-gray',
                     ]}
-                    type="button"
-                    aria-pressed={cimmichIdentityFilter === 'candidates'}
-                    onclick={() => {
-                      cimmichIdentityFilter = 'candidates';
-                      cimmichPresentationPickerSlot = '';
-                    }}
+                    aria-label={group.label}
                   >
-                    <span class="truncate text-xs font-semibold sm:text-[11px] lg:text-xs">Awaiting</span>
-                    <span class="text-xs opacity-60">{visibleCimmichCandidates.length.toLocaleString()}</span>
-                  </button>
-                </div>
-              </fieldset>
+                    <p
+                      class="px-0.5 text-[10px] font-bold tracking-[0.14em] text-gray-400 uppercase dark:text-gray-500"
+                    >
+                      {group.label}
+                    </p>
+                    <div
+                      class={[
+                        'grid gap-2',
+                        group.id === 'references'
+                          ? 'grid-cols-2 sm:grid-cols-4'
+                          : group.id === 'appearance'
+                            ? 'grid-cols-2'
+                            : 'grid-cols-1',
+                      ]}
+                    >
+                      {#each group.filters as filter (filter.id)}
+                        <button
+                          class={[
+                            'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
+                            cimmichIdentityFilter === filter.id
+                              ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
+                              : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
+                          ]}
+                          type="button"
+                          aria-pressed={cimmichIdentityFilter === filter.id}
+                          onclick={() => selectCimmichIdentityWorkspace(filter.id as CimmichIdentityFilter)}
+                        >
+                          <span class="text-xs/tight font-semibold sm:text-[11px] lg:text-xs">
+                            {filter.label}
+                          </span>
+                          <span class="text-xs opacity-60">{filter.count}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </section>
+                {/each}
+              </nav>
               <div
                 class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-immich-dark-gray"
               >
