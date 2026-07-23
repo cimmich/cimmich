@@ -290,14 +290,25 @@
       width: preview.width ?? 0,
     });
 
-  const cimmichPresentationBodyCropStyle = (media: NonNullable<CimmichPerson['presentationBody']>) => {
+  const cimmichPresentationSquareCropStyle = (
+    media: NonNullable<CimmichPerson['presentationBody'] | CimmichPerson['presentationFace']>,
+    presentationAspect: number,
+  ) => {
     if (!media.width || !media.height) {
       return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
     }
     const sourceAspect = media.width / media.height;
-    const bodyBase = sourceAspect > 3 / 4 ? { h: 1, w: 3 / 4 / sourceAspect } : { h: sourceAspect / (3 / 4), w: 1 };
-    const crop = media.crop ?? { h: bodyBase.h, w: bodyBase.w, x: (1 - bodyBase.w) / 2, y: (1 - bodyBase.h) / 2 };
-    const zoom = Math.max(1, Math.max(bodyBase.w / crop.w, bodyBase.h / crop.h));
+    const presentationBase =
+      sourceAspect > presentationAspect
+        ? { h: 1, w: presentationAspect / sourceAspect }
+        : { h: sourceAspect / presentationAspect, w: 1 };
+    const crop = media.crop ?? {
+      h: presentationBase.h,
+      w: presentationBase.w,
+      x: (1 - presentationBase.w) / 2,
+      y: (1 - presentationBase.h) / 2,
+    };
+    const zoom = Math.max(1, Math.max(presentationBase.w / crop.w, presentationBase.h / crop.h));
     const squareBase = sourceAspect > 1 ? { h: 1, w: 1 / sourceAspect } : { h: sourceAspect, w: 1 };
     const cropW = squareBase.w / zoom;
     const cropH = squareBase.h / zoom;
@@ -314,6 +325,12 @@
       `top: ${(-cropY / cropH) * 100}%`,
     ].join('; ');
   };
+
+  const cimmichPresentationBodyCropStyle = (media: NonNullable<CimmichPerson['presentationBody']>) =>
+    cimmichPresentationSquareCropStyle(media, 3 / 4);
+
+  const cimmichPresentationFaceCropStyle = (media: NonNullable<CimmichPerson['presentationFace']>) =>
+    cimmichPresentationSquareCropStyle(media, 1);
 
   const loadCimmichReview = async () => {
     const generation = ++cimmichLoadGeneration;
@@ -596,11 +613,16 @@
                 <span
                   class="absolute inset-0 overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
                 >
-                  {#if person.sourceAssetId}
+                  {#if person.presentationFace?.sourceAssetId || person.sourceAssetId}
                     <img
                       class="max-w-none"
-                      src={getAssetMediaUrl({ id: person.sourceAssetId, size: AssetMediaSize.Preview })}
-                      style={cimmichPersonCropStyle(person)}
+                      src={getAssetMediaUrl({
+                        id: person.presentationFace?.sourceAssetId ?? person.sourceAssetId,
+                        size: AssetMediaSize.Preview,
+                      })}
+                      style={person.presentationFace
+                        ? cimmichPresentationFaceCropStyle(person.presentationFace)
+                        : cimmichPersonCropStyle(person)}
                       alt={person.display_name}
                       draggable="false"
                     />
@@ -613,7 +635,7 @@
                     </span>
                   {/if}
                 </span>
-                {#if !person.sourceAssetId}
+                {#if !person.presentationFace?.sourceAssetId && !person.sourceAssetId}
                   <span
                     class="absolute right-1 bottom-1 z-10 flex size-8 items-center justify-center rounded-full border-2 border-white bg-gray-800 text-white shadow-sm dark:border-gray-950"
                     title="Portrait unavailable in this viewing mode"

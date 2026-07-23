@@ -563,11 +563,21 @@ const projectPersonPresentation = (bridge, row) => {
     presentation_body_observation_kind: presentationBodyObservationKind,
     presentation_body_updated_at: presentationBodyUpdatedAt,
     presentation_body_width: presentationBodyWidth,
+    presentation_face_asset_id: presentationFaceAssetId,
+    presentation_face_crop: presentationFaceCrop,
+    presentation_face_height: presentationFaceHeight,
+    presentation_face_observation_id: presentationFaceObservationId,
+    presentation_face_observation_kind: presentationFaceObservationKind,
+    presentation_face_updated_at: presentationFaceUpdatedAt,
+    presentation_face_width: presentationFaceWidth,
     ...person
   } = row;
   const bodyDisplay = bodyAssetId ? bridgeFields(bridge, bodyAssetId) : null;
   const presentationBodyDisplay = presentationBodyAssetId
     ? bridgeFields(bridge, presentationBodyAssetId)
+    : null;
+  const presentationFaceDisplay = presentationFaceAssetId
+    ? bridgeFields(bridge, presentationFaceAssetId)
     : null;
   return {
     ...person,
@@ -601,6 +611,22 @@ const projectPersonPresentation = (bridge, row) => {
             sourceAssetId: presentationBodyDisplay.sourceAssetId,
             updatedAt: presentationBodyUpdatedAt ?? null,
             width: presentationBodyWidth,
+          }
+        : null,
+    presentationFace:
+      presentationFaceAssetId && presentationFaceDisplay?.sourceAssetId
+        ? {
+            assetId: presentationFaceAssetId,
+            crop: presentationFaceCrop ?? null,
+            filename: presentationFaceDisplay.filename,
+            height: presentationFaceHeight,
+            observationId: presentationFaceObservationId ?? null,
+            observationKind: presentationFaceObservationKind ?? "face",
+            selectionMode: "explicit",
+            slotKind: "face",
+            sourceAssetId: presentationFaceDisplay.sourceAssetId,
+            updatedAt: presentationFaceUpdatedAt ?? null,
+            width: presentationFaceWidth,
           }
         : null,
   };
@@ -3312,7 +3338,14 @@ export const createCimmichRepository = (
         presentation_body.observation_kind AS presentation_body_observation_kind,
         presentation_body.updated_at AS presentation_body_updated_at,
         presentation_body_asset.width::int AS presentation_body_width,
-        presentation_body_asset.height::int AS presentation_body_height
+        presentation_body_asset.height::int AS presentation_body_height,
+        presentation_face_asset.asset_id AS presentation_face_asset_id,
+        presentation_face.crop AS presentation_face_crop,
+        presentation_face.observation_id AS presentation_face_observation_id,
+        presentation_face.observation_kind AS presentation_face_observation_kind,
+        presentation_face.updated_at AS presentation_face_updated_at,
+        presentation_face_asset.width::int AS presentation_face_width,
+        presentation_face_asset.height::int AS presentation_face_height
       FROM current_person p
       LEFT JOIN claim_counts cc ON cc.person_id = p.person_id
       LEFT JOIN asset_counts ac ON ac.person_id = p.person_id
@@ -3330,6 +3363,13 @@ export const createCimmichRepository = (
         ON presentation_body_asset.asset_id = presentation_body.asset_id
         AND presentation_body_asset.state = 'active'
         AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
+      LEFT JOIN person_presentation_media presentation_face
+        ON presentation_face.person_id = p.person_id
+        AND presentation_face.slot_kind = 'face'
+      LEFT JOIN asset presentation_face_asset
+        ON presentation_face_asset.asset_id = presentation_face.asset_id
+        AND presentation_face_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}
       WHERE p.status = 'active'
         AND (p.subject_kind <> 'person'
           OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})
@@ -3546,7 +3586,14 @@ export const createCimmichRepository = (
         presentation_body.observation_kind AS presentation_body_observation_kind,
         presentation_body.updated_at AS presentation_body_updated_at,
         presentation_body_asset.width::int AS presentation_body_width,
-        presentation_body_asset.height::int AS presentation_body_height
+        presentation_body_asset.height::int AS presentation_body_height,
+        presentation_face_asset.asset_id AS presentation_face_asset_id,
+        presentation_face.crop AS presentation_face_crop,
+        presentation_face.observation_id AS presentation_face_observation_id,
+        presentation_face.observation_kind AS presentation_face_observation_kind,
+        presentation_face.updated_at AS presentation_face_updated_at,
+        presentation_face_asset.width::int AS presentation_face_width,
+        presentation_face_asset.height::int AS presentation_face_height
       FROM target_person p
       CROSS JOIN person_categories category
       CROSS JOIN photo_history photo
@@ -3561,6 +3608,13 @@ export const createCimmichRepository = (
         ON presentation_body_asset.asset_id = presentation_body.asset_id
         AND presentation_body_asset.state = 'active'
         AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
+      LEFT JOIN person_presentation_media presentation_face
+        ON presentation_face.person_id = p.person_id
+        AND presentation_face.slot_kind = 'face'
+      LEFT JOIN asset presentation_face_asset
+        ON presentation_face_asset.asset_id = presentation_face.asset_id
+        AND presentation_face_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}
     `;
       if (!row) {
         throw Object.assign(new Error("Cimmich identity not found"), {
