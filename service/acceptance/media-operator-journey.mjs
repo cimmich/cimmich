@@ -13,6 +13,7 @@ let inventoryOnlyCalls = 0;
 let detectionCalls = 0;
 let continuationCalls = 0;
 let recognitionCalls = 0;
+let retryingRecognitionCalls = 0;
 
 const operator = createMediaOperator({
   continueDetection: async (jobId) => {
@@ -198,6 +199,34 @@ try {
     },
   ]);
   assert.equal(inventoryOnlyCalls, 1);
+  const retryingRecognition = createMediaOperator({
+    recognitionWorker: {
+      async runNext() {
+        retryingRecognitionCalls += 1;
+        return {
+          jobId: "synthetic-operator-retrying-recognition",
+          state: "pending",
+        };
+      },
+    },
+    sql,
+    workerId: "synthetic-retrying-recognition-operator",
+  });
+  const retryingRecognitionResult = await retryingRecognition.execute({
+    actorId: "synthetic-operator",
+    commandId: "operator-retrying-recognition-0001",
+    commandKind: "run",
+    envelope: {
+      candidateLimit: 0,
+      maxDetectionJobs: 0,
+      maxDurationMs: 10_000,
+      maxInventoryPages: 0,
+      maxPendingJobs: 10,
+      maxRecognitionJobs: 1,
+    },
+  });
+  assert.equal(retryingRecognitionCalls, 1);
+  assert.equal(retryingRecognitionResult.work.recognitions, 0);
   const backlog = await ledger.enqueue({
     assetId: "asset_service_fixture",
     configDigest: "c".repeat(64),
