@@ -143,63 +143,91 @@ export const deriveOwnerSourcePackPlan = (faces = []) => {
     );
   }
   const times = [...new Set(evidence.map((row) => row.captureTime))];
-  const candidates = [];
+  const timeIndex = new Map(times.map((time, index) => [time, index]));
+  const evidenceByTime = times.map(() => []);
+  for (const row of evidence) {
+    evidenceByTime[timeIndex.get(row.captureTime)].push(row.personId);
+  }
+  const referencePeople = new Set();
+  let referenceEvidence = 0;
+  let selected = null;
+  const isBetterCandidate = (candidate, current) =>
+    !current ||
+    candidate.completePeople > current.completePeople ||
+    (candidate.completePeople === current.completePeople &&
+      (Math.min(candidate.calibrationQueries, candidate.holdoutQueries) >
+        Math.min(current.calibrationQueries, current.holdoutQueries) ||
+        (Math.min(candidate.calibrationQueries, candidate.holdoutQueries) ===
+          Math.min(current.calibrationQueries, current.holdoutQueries) &&
+          (candidate.referencePeople > current.referencePeople ||
+            (candidate.referencePeople === current.referencePeople &&
+              (candidate.referenceEvidence > current.referenceEvidence ||
+                (candidate.referenceEvidence === current.referenceEvidence &&
+                  (candidate.evidenceCutoff < current.evidenceCutoff ||
+                    (candidate.evidenceCutoff === current.evidenceCutoff &&
+                      candidate.calibrationEnd <
+                        current.calibrationEnd)))))))));
   for (
     let evidenceIndex = 0;
     evidenceIndex < times.length - 2;
     evidenceIndex += 1
   ) {
+    for (const personId of evidenceByTime[evidenceIndex]) {
+      referencePeople.add(personId);
+      referenceEvidence += 1;
+    }
     const evidenceCutoff = times[evidenceIndex];
-    const referencePeople = new Set(
-      evidence
-        .filter((row) => row.captureTime <= evidenceCutoff)
-        .map((row) => row.personId),
-    );
+    const calibrationByPerson = new Map();
+    const holdoutByPerson = new Map();
+    let calibrationQueries = 0;
+    let holdoutQueries = 0;
+    let completePeople = 0;
+    for (
+      let futureIndex = evidenceIndex + 1;
+      futureIndex < evidenceByTime.length;
+      futureIndex += 1
+    ) {
+      for (const personId of evidenceByTime[futureIndex]) {
+        if (!referencePeople.has(personId)) continue;
+        holdoutByPerson.set(personId, (holdoutByPerson.get(personId) || 0) + 1);
+        holdoutQueries += 1;
+      }
+    }
     for (
       let calibrationIndex = evidenceIndex + 1;
       calibrationIndex < times.length - 1;
       calibrationIndex += 1
     ) {
+      for (const personId of evidenceByTime[calibrationIndex]) {
+        if (!referencePeople.has(personId)) continue;
+        const calibrationBefore = calibrationByPerson.get(personId) || 0;
+        const holdoutBefore = holdoutByPerson.get(personId) || 0;
+        const wasComplete = calibrationBefore > 0 && holdoutBefore > 0;
+        const calibrationAfter = calibrationBefore + 1;
+        const holdoutAfter = holdoutBefore - 1;
+        calibrationByPerson.set(personId, calibrationAfter);
+        holdoutByPerson.set(personId, holdoutAfter);
+        calibrationQueries += 1;
+        holdoutQueries -= 1;
+        const isComplete = calibrationAfter > 0 && holdoutAfter > 0;
+        if (wasComplete !== isComplete) {
+          completePeople += isComplete ? 1 : -1;
+        }
+      }
       const calibrationEnd = times[calibrationIndex];
-      const calibration = evidence.filter(
-        (row) =>
-          referencePeople.has(row.personId) &&
-          row.captureTime > evidenceCutoff &&
-          row.captureTime <= calibrationEnd,
-      );
-      const holdout = evidence.filter(
-        (row) =>
-          referencePeople.has(row.personId) && row.captureTime > calibrationEnd,
-      );
-      const calibrationPeople = new Set(calibration.map((row) => row.personId));
-      const holdoutPeople = new Set(holdout.map((row) => row.personId));
-      const completePeople = [...calibrationPeople].filter((personId) =>
-        holdoutPeople.has(personId),
-      ).length;
-      if (calibration.length === 0 || holdout.length === 0) continue;
-      candidates.push({
+      if (calibrationQueries === 0 || holdoutQueries === 0) continue;
+      const candidate = {
         calibrationEnd,
-        calibrationQueries: calibration.length,
+        calibrationQueries,
         completePeople,
         evidenceCutoff,
-        holdoutQueries: holdout.length,
-        referenceEvidence: evidence.filter(
-          (row) => row.captureTime <= evidenceCutoff,
-        ).length,
+        holdoutQueries,
+        referenceEvidence,
         referencePeople: referencePeople.size,
-      });
+      };
+      if (isBetterCandidate(candidate, selected)) selected = candidate;
     }
   }
-  const selected = candidates.sort(
-    (left, right) =>
-      right.completePeople - left.completePeople ||
-      Math.min(right.calibrationQueries, right.holdoutQueries) -
-        Math.min(left.calibrationQueries, left.holdoutQueries) ||
-      right.referencePeople - left.referencePeople ||
-      right.referenceEvidence - left.referenceEvidence ||
-      left.evidenceCutoff.localeCompare(right.evidenceCutoff) ||
-      left.calibrationEnd.localeCompare(right.calibrationEnd),
-  )[0];
   if (selected) {
     return {
       ...selected,
