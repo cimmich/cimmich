@@ -2,13 +2,16 @@
 
 Updated: 2026-07-22
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 75/patch 1
+Current source/disposable candidate: migration-ledger schema 76/patch 1
 Publication identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 
 This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
+
+Schema 76 is the post-submission Public Beta development line. The tagged Build
+Week release and its preserved schema-75 runtime remain the submission baseline.
 
 ## Current proved baseline
 

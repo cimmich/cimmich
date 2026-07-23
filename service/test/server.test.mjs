@@ -902,6 +902,74 @@ test("Person projection pages are additive to legacy limit responses", async () 
   ]);
 });
 
+test("Person presentation routes preserve slot, evidence and framing", async () => {
+  const calls = [];
+  const presentation = {
+    body: null,
+    face: {
+      assetId: "asset-one",
+      crop: { h: 0.5, w: 0.5, x: 0.25, y: 0.2 },
+      observationId: "face-one",
+      observationKind: "face",
+      slotKind: "face",
+    },
+    hero: null,
+    personId: "person-one",
+    schemaVersion: "cimmich.person-presentation-media.v1",
+  };
+  await withServer(
+    {
+      personPresentation: async (input) => {
+        calls.push(["get", input]);
+        return presentation;
+      },
+      setPersonPresentation: async (input) => {
+        calls.push(["set", input]);
+        return presentation;
+      },
+    },
+    async (root) => {
+      const current = await fetch(`${root}/v1/people/person-one/presentation`);
+      assert.equal(current.status, 200);
+      assert.deepEqual(await current.json(), presentation);
+
+      const updated = await fetch(
+        `${root}/v1/people/person-one/presentation/face`,
+        {
+          body: JSON.stringify({
+            assetId: "asset-one",
+            crop: { h: 0.5, w: 0.5, x: 0.25, y: 0.2 },
+            observationId: "face-one",
+            observationKind: "face",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "tester",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(updated.status, 200);
+      assert.deepEqual(await updated.json(), presentation);
+    },
+  );
+  assert.deepEqual(calls, [
+    ["get", { personId: "person-one" }],
+    [
+      "set",
+      {
+        actorId: "tester",
+        assetId: "asset-one",
+        crop: { h: 0.5, w: 0.5, x: 0.25, y: 0.2 },
+        observationId: "face-one",
+        observationKind: "face",
+        personId: "person-one",
+        slotKind: "face",
+      },
+    ],
+  ]);
+});
+
 test("Holding match batch route preserves Person and bounded request shape", async () => {
   const calls = [];
   const result = {

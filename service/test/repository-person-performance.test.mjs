@@ -129,6 +129,75 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.doesNotMatch(statement, /FROM current_reference_gallery/);
 });
 
+test("Person presentation persists only confirmed Person evidence and projects framing", async () => {
+  const statements = [];
+  const rows = [];
+  const sql = async (strings, ...values) => {
+    const statement = strings.join("?");
+    statements.push({ statement, values });
+    if (statement.includes("FROM current_person")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    if (statement.includes("FROM current_face_identity")) {
+      return [{ exists: 1 }];
+    }
+    if (statement.includes("INSERT INTO person_presentation_media")) {
+      rows.splice(0, rows.length, {
+        asset_id: "asset-1",
+        crop: { h: 0.5, w: 0.5, x: 0.25, y: 0.2 },
+        observation_id: "face-1",
+        observation_kind: "face",
+        slot_kind: "face",
+        updated_at: new Date("2026-07-23T00:00:00.000Z"),
+      });
+      return [];
+    }
+    if (statement.includes("FROM person_presentation_media")) {
+      return rows;
+    }
+    return [];
+  };
+  sql.json = (value) => value;
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      [
+        "asset-1",
+        { filename: "portrait.jpg", sourceAssetId: "immich-asset-1" },
+      ],
+    ]),
+  );
+
+  const presentation = await repository.setPersonPresentation({
+    actorId: "tester",
+    assetId: "asset-1",
+    crop: { h: 0.5, w: 0.5, x: 0.25, y: 0.2 },
+    observationId: "face-1",
+    observationKind: "face",
+    personId: "person-1",
+    slotKind: "face",
+  });
+
+  assert.equal(presentation.face.filename, "portrait.jpg");
+  assert.equal(presentation.face.sourceAssetId, "immich-asset-1");
+  assert.deepEqual(presentation.face.crop, {
+    h: 0.5,
+    w: 0.5,
+    x: 0.25,
+    y: 0.2,
+  });
+  assert.ok(
+    statements.some(({ statement }) =>
+      statement.includes("FROM current_face_identity"),
+    ),
+  );
+  assert.ok(
+    statements.some(({ statement }) =>
+      statement.includes("INSERT INTO person_presentation_media"),
+    ),
+  );
+});
+
 test("Person assets resolve scoped associations without expanding person_assets", async () => {
   let statement = "";
   const sql = async (strings) => {
