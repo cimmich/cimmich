@@ -152,10 +152,10 @@ export const createOwnerFaceRecognitionScheduler = ({
   const sourceRepository = createAssetSourceRevisionRepository(sql, {
     presentationRank,
   });
-  return Object.freeze({
-    async enqueueNext() {
-      const visibleRank = presentationRank();
-      await sql`
+  let historicalEmbeddingRepairPromise = null;
+  const repairHistoricalEmbeddings = async () => {
+    if (!historicalEmbeddingRepairPromise) {
+      historicalEmbeddingRepairPromise = sql`
         UPDATE face_embedding embedding
         SET state = 'superseded'
         WHERE embedding.state = 'active'
@@ -199,6 +199,18 @@ export const createOwnerFaceRecognitionScheduler = ({
               )
           )
       `;
+    }
+    try {
+      await historicalEmbeddingRepairPromise;
+    } catch (error) {
+      historicalEmbeddingRepairPromise = null;
+      throw error;
+    }
+  };
+  return Object.freeze({
+    async enqueueNext() {
+      const visibleRank = presentationRank();
+      await repairHistoricalEmbeddings();
       const rows = await sql`
         WITH missing AS MATERIALIZED (
           SELECT face.face_id, face.asset_id,
