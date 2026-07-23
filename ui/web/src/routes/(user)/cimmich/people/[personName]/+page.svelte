@@ -123,7 +123,16 @@
   }
 
   type CountRow = { count: number; label: string };
-  type CimmichIdentityFilter = 'all' | 'head' | 'lq' | 'needs_qc' | 'non_face' | 'prime' | 'references' | 'secondary';
+  type CimmichIdentityFilter =
+    | 'all'
+    | 'head'
+    | 'lq'
+    | 'needs_qc'
+    | 'non_face'
+    | 'presentation'
+    | 'prime'
+    | 'references'
+    | 'secondary';
   type CimmichPersonMode = 'candidates' | 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
@@ -437,6 +446,9 @@
       ({ association_types }) => association_types.includes('body') || association_types.includes('presence'),
     ),
   );
+  const cimmichPresentationSelectionCount = $derived(
+    [cimmichPresentation?.face, cimmichPresentation?.body, cimmichPresentation?.hero].filter(Boolean).length,
+  );
   const cimmichPrimeFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'prime'));
   const cimmichSecondaryFaces = $derived(
     cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'secondary'),
@@ -466,7 +478,7 @@
     ) {
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === cimmichIdentityFilter);
     }
-    if (cimmichIdentityFilter === 'non_face') {
+    if (cimmichIdentityFilter === 'non_face' || cimmichIdentityFilter === 'presentation') {
       return [];
     }
     if (cimmichIdentityFilter === 'needs_qc') {
@@ -2482,111 +2494,12 @@
                   questions.
                 </p>
               </div>
-              <section class="grid gap-3" aria-labelledby="presentation-photos-heading">
-                <div>
-                  <h3 id="presentation-photos-heading" class="font-semibold">Presentation photos</h3>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
-                    Choose confirmed evidence below for the Face, Body, and Hero image.
-                  </p>
-                </div>
-                <div class="grid items-start gap-3 sm:grid-cols-3">
-                  {#each [{ id: 'face', label: 'Face photo' }, { id: 'body', label: 'Body photo' }, { id: 'hero', label: 'Hero photo' }] as slot (slot.id)}
-                    {@const media = cimmichPresentation?.[slot.id as CimmichPersonPresentationSlot] ?? null}
-                    <article class="overflow-hidden rounded-xl border border-gray-200 dark:border-immich-dark-gray">
-                      <div
-                        class="aspect-video bg-gray-100 bg-cover bg-center dark:bg-gray-800"
-                        style={cimmichPresentationPreviewStyle(slot.id as CimmichPersonPresentationSlot, media)}
-                      ></div>
-                      <div class="flex items-start justify-between gap-2 p-3">
-                        <div>
-                          <p class="text-sm font-semibold">{slot.label}</p>
-                          <p class="max-w-48 truncate text-xs text-gray-500">{media?.filename ?? 'Automatic'}</p>
-                        </div>
-                        {#if media}
-                          <button
-                            class="text-xs font-semibold text-red-600 disabled:opacity-50"
-                            type="button"
-                            disabled={Boolean(cimmichPresentationSaving)}
-                            onclick={() => void clearCimmichPresentation(slot.id as CimmichPersonPresentationSlot)}
-                            >Clear</button
-                          >
-                        {/if}
-                      </div>
-                      {#if media}
-                        <details class="border-t border-gray-200 px-3 py-2 dark:border-immich-dark-gray">
-                          <summary class="cursor-pointer text-xs font-semibold">Adjust framing</summary>
-                          <div class="mt-3 grid gap-3">
-                            <label class="grid gap-1 text-xs">
-                              <span class="flex justify-between">
-                                <span>Zoom</span>
-                                <span>{cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom.toFixed(1)}×</span>
-                              </span>
-                              <input
-                                type="range"
-                                min="1"
-                                max="4"
-                                step="0.1"
-                                value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom}
-                                oninput={(event) =>
-                                  setCimmichPresentationFrame(
-                                    slot.id as CimmichPersonPresentationSlot,
-                                    'zoom',
-                                    event.currentTarget.valueAsNumber,
-                                  )}
-                              />
-                            </label>
-                            <label class="grid gap-1 text-xs">
-                              <span>Horizontal centre</span>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerX}
-                                oninput={(event) =>
-                                  setCimmichPresentationFrame(
-                                    slot.id as CimmichPersonPresentationSlot,
-                                    'centerX',
-                                    event.currentTarget.valueAsNumber,
-                                  )}
-                              />
-                            </label>
-                            <label class="grid gap-1 text-xs">
-                              <span>Vertical centre</span>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerY}
-                                oninput={(event) =>
-                                  setCimmichPresentationFrame(
-                                    slot.id as CimmichPersonPresentationSlot,
-                                    'centerY',
-                                    event.currentTarget.valueAsNumber,
-                                  )}
-                              />
-                            </label>
-                            <button
-                              class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
-                              type="button"
-                              disabled={Boolean(cimmichPresentationSaving)}
-                              onclick={() =>
-                                void saveCimmichPresentationFrame(slot.id as CimmichPersonPresentationSlot)}
-                            >
-                              {cimmichPresentationSaving === slot.id ? 'Saving…' : 'Save framing'}
-                            </button>
-                          </div>
-                        </details>
-                      {/if}
-                    </article>
-                  {/each}
-                </div>
-              </section>
               <fieldset class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <legend class="mb-1 font-semibold">Confirmed evidence</legend>
-                {#each [{ id: 'prime', label: 'Prime faces', count: cimmichPrimeFaces.length }, { id: 'secondary', label: 'Supporting faces', count: cimmichSecondaryFaces.length }, { id: 'lq', label: 'Low-quality faces', count: cimmichLowQualityFaces.length }, { id: 'all', label: 'Unclassified faces', count: cimmichUnclassifiedFaces.length }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length }, { id: 'non_face', label: 'Body & Presence', count: cimmichBodyPresenceAssets.length }] as filter (filter.id)}
+                {#each [{ id: 'prime', label: 'Prime faces', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting faces', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low-quality faces', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified faces', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body & Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation photos', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
                   <button
                     class={[
-                      'rounded-xl border p-3 text-left transition-colors',
+                      'flex min-h-10 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
                       cimmichIdentityFilter === filter.id
                         ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
                         : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
@@ -2595,8 +2508,11 @@
                     aria-pressed={cimmichIdentityFilter === filter.id}
                     onclick={() => (cimmichIdentityFilter = filter.id as CimmichIdentityFilter)}
                   >
-                    <span class="text-sm font-semibold">{filter.label}</span>
-                    <span class="mt-1 block text-xs opacity-70">{filter.count.toLocaleString()}</span>
+                    <span class="truncate text-sm font-semibold">{filter.label}</span>
+                    <span
+                      class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
+                      >{filter.count}</span
+                    >
                   </button>
                 {/each}
               </fieldset>
@@ -2605,24 +2521,30 @@
               >
                 <div>
                   <p class="text-sm font-semibold">
-                    {[...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
-                      (filter) => filter.id === cimmichIdentityFilter,
-                    )?.label}
+                    {cimmichIdentityFilter === 'presentation'
+                      ? 'Presentation photos'
+                      : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
+                          (filter) => filter.id === cimmichIdentityFilter,
+                        )?.label}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
                     {cimmichIdentityFilter === 'non_face'
                       ? `${cimmichBodyPresenceAssets.length.toLocaleString()} loaded appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
-                      : cimmichIdentityFilter === 'all'
-                        ? `${cimmichUnclassifiedFaces.length.toLocaleString()} accepted faces without a bucket`
-                        : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
+                      : cimmichIdentityFilter === 'presentation'
+                        ? `${cimmichPresentationSelectionCount} of 3 selected`
+                        : cimmichIdentityFilter === 'all'
+                          ? `${cimmichUnclassifiedFaces.length.toLocaleString()} accepted faces without a bucket`
+                          : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
                   </p>
                 </div>
                 <p class="max-w-xl text-right text-xs text-gray-500 dark:text-gray-400">
                   {cimmichIdentityFilter === 'non_face'
                     ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
-                    : cimmichIdentityFilter === 'head'
-                      ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
-                      : 'Open Review face to change its bucket, tags, identity, or presentation role.'}
+                    : cimmichIdentityFilter === 'presentation'
+                      ? 'Choose a role from any confirmed face, then return here to frame or clear it.'
+                      : cimmichIdentityFilter === 'head'
+                        ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
+                        : 'Open Review face to change its bucket, tags, identity, or presentation role.'}
                 </p>
               </div>
             {/if}
@@ -2696,6 +2618,114 @@
 
           {#if cimmichIdentityLoading}
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
+          {:else if cimmichIdentityFilter === 'presentation'}
+            <section
+              class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+              aria-label="Presentation photo choices"
+            >
+              {#each [{ id: 'face', label: 'Face photo' }, { id: 'body', label: 'Body photo' }, { id: 'hero', label: 'Hero photo' }] as slot, index (slot.id)}
+                {@const media = cimmichPresentation?.[slot.id as CimmichPersonPresentationSlot] ?? null}
+                <article
+                  class={[
+                    'grid min-h-16 grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2',
+                    index > 0 ? 'border-t border-gray-200 dark:border-immich-dark-gray' : '',
+                  ]}
+                >
+                  <div
+                    class="size-14 rounded-lg bg-gray-100 bg-cover bg-center dark:bg-gray-800"
+                    style={cimmichPresentationPreviewStyle(slot.id as CimmichPersonPresentationSlot, media)}
+                  ></div>
+                  <div class="min-w-0">
+                    <p class="text-sm font-semibold">{slot.label}</p>
+                    <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                      {media?.filename ?? 'Not selected'}
+                    </p>
+                  </div>
+                  {#if media}
+                    <div class="flex items-center gap-1">
+                      <details class="relative">
+                        <summary
+                          class="min-h-9 cursor-pointer list-none rounded-md px-2.5 py-2 text-xs font-semibold marker:content-none hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
+                          >Adjust</summary
+                        >
+                        <div
+                          class="absolute top-11 right-0 z-10 grid w-72 gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                        >
+                          <label class="grid gap-1 text-xs">
+                            <span class="flex justify-between">
+                              <span>Zoom</span>
+                              <span
+                                >{cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom.toFixed(
+                                  1,
+                                )}×</span
+                              >
+                            </span>
+                            <input
+                              type="range"
+                              min="1"
+                              max="4"
+                              step="0.1"
+                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom}
+                              oninput={(event) =>
+                                setCimmichPresentationFrame(
+                                  slot.id as CimmichPersonPresentationSlot,
+                                  'zoom',
+                                  event.currentTarget.valueAsNumber,
+                                )}
+                            />
+                          </label>
+                          <label class="grid gap-1 text-xs">
+                            <span>Horizontal centre</span>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerX}
+                              oninput={(event) =>
+                                setCimmichPresentationFrame(
+                                  slot.id as CimmichPersonPresentationSlot,
+                                  'centerX',
+                                  event.currentTarget.valueAsNumber,
+                                )}
+                            />
+                          </label>
+                          <label class="grid gap-1 text-xs">
+                            <span>Vertical centre</span>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerY}
+                              oninput={(event) =>
+                                setCimmichPresentationFrame(
+                                  slot.id as CimmichPersonPresentationSlot,
+                                  'centerY',
+                                  event.currentTarget.valueAsNumber,
+                                )}
+                            />
+                          </label>
+                          <button
+                            class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                            type="button"
+                            disabled={Boolean(cimmichPresentationSaving)}
+                            onclick={() => void saveCimmichPresentationFrame(slot.id as CimmichPersonPresentationSlot)}
+                          >
+                            {cimmichPresentationSaving === slot.id ? 'Saving…' : 'Save framing'}
+                          </button>
+                        </div>
+                      </details>
+                      <button
+                        class="min-h-9 rounded-md px-2.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
+                        type="button"
+                        disabled={Boolean(cimmichPresentationSaving)}
+                        onclick={() => void clearCimmichPresentation(slot.id as CimmichPersonPresentationSlot)}
+                        >Clear</button
+                      >
+                    </div>
+                  {/if}
+                </article>
+              {/each}
+            </section>
           {:else if cimmichIdentityFilter === 'non_face'}
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {#each cimmichBodyPresenceAssets.slice(0, cimmichIdentitySectionLimit('non_face')) as asset (asset.asset_id)}
