@@ -556,9 +556,19 @@ const projectPersonPresentation = (bridge, row) => {
     body_preview_box_h: bodyBoxH,
     body_preview_height: bodyHeight,
     body_preview_width: bodyWidth,
+    presentation_body_asset_id: presentationBodyAssetId,
+    presentation_body_crop: presentationBodyCrop,
+    presentation_body_height: presentationBodyHeight,
+    presentation_body_observation_id: presentationBodyObservationId,
+    presentation_body_observation_kind: presentationBodyObservationKind,
+    presentation_body_updated_at: presentationBodyUpdatedAt,
+    presentation_body_width: presentationBodyWidth,
     ...person
   } = row;
   const bodyDisplay = bodyAssetId ? bridgeFields(bridge, bodyAssetId) : null;
+  const presentationBodyDisplay = presentationBodyAssetId
+    ? bridgeFields(bridge, presentationBodyAssetId)
+    : null;
   return {
     ...person,
     ...bridgeFields(bridge, row.representative_asset_id),
@@ -575,6 +585,22 @@ const projectPersonPresentation = (bridge, row) => {
             schemaVersion: "cimmich.person-body-preview.v1",
             sourceAssetId: bodyDisplay.sourceAssetId,
             width: bodyWidth,
+          }
+        : null,
+    presentationBody:
+      presentationBodyAssetId && presentationBodyDisplay?.sourceAssetId
+        ? {
+            assetId: presentationBodyAssetId,
+            crop: presentationBodyCrop ?? null,
+            filename: presentationBodyDisplay.filename,
+            height: presentationBodyHeight,
+            observationId: presentationBodyObservationId ?? null,
+            observationKind: presentationBodyObservationKind ?? "body",
+            selectionMode: "explicit",
+            slotKind: "body",
+            sourceAssetId: presentationBodyDisplay.sourceAssetId,
+            updatedAt: presentationBodyUpdatedAt ?? null,
+            width: presentationBodyWidth,
           }
         : null,
   };
@@ -3279,7 +3305,14 @@ export const createCimmichRepository = (
         body.box_w::float8 AS body_preview_box_w,
         body.box_h::float8 AS body_preview_box_h,
         body_asset.width::int AS body_preview_width,
-        body_asset.height::int AS body_preview_height
+        body_asset.height::int AS body_preview_height,
+        presentation_body_asset.asset_id AS presentation_body_asset_id,
+        presentation_body.crop AS presentation_body_crop,
+        presentation_body.observation_id AS presentation_body_observation_id,
+        presentation_body.observation_kind AS presentation_body_observation_kind,
+        presentation_body.updated_at AS presentation_body_updated_at,
+        presentation_body_asset.width::int AS presentation_body_width,
+        presentation_body_asset.height::int AS presentation_body_height
       FROM current_person p
       LEFT JOIN claim_counts cc ON cc.person_id = p.person_id
       LEFT JOIN asset_counts ac ON ac.person_id = p.person_id
@@ -3290,6 +3323,13 @@ export const createCimmichRepository = (
       LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representatives body ON body.person_id = p.person_id
       LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+      LEFT JOIN person_presentation_media presentation_body
+        ON presentation_body.person_id = p.person_id
+        AND presentation_body.slot_kind = 'body'
+      LEFT JOIN asset presentation_body_asset
+        ON presentation_body_asset.asset_id = presentation_body.asset_id
+        AND presentation_body_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
       WHERE p.status = 'active'
         AND (p.subject_kind <> 'person'
           OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})
@@ -3499,7 +3539,14 @@ export const createCimmichRepository = (
         body.box_w::float8 AS body_preview_box_w,
         body.box_h::float8 AS body_preview_box_h,
         body_asset.width::int AS body_preview_width,
-        body_asset.height::int AS body_preview_height
+        body_asset.height::int AS body_preview_height,
+        presentation_body_asset.asset_id AS presentation_body_asset_id,
+        presentation_body.crop AS presentation_body_crop,
+        presentation_body.observation_id AS presentation_body_observation_id,
+        presentation_body.observation_kind AS presentation_body_observation_kind,
+        presentation_body.updated_at AS presentation_body_updated_at,
+        presentation_body_asset.width::int AS presentation_body_width,
+        presentation_body_asset.height::int AS presentation_body_height
       FROM target_person p
       CROSS JOIN person_categories category
       CROSS JOIN photo_history photo
@@ -3507,6 +3554,13 @@ export const createCimmichRepository = (
       LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representative body ON true
       LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+      LEFT JOIN person_presentation_media presentation_body
+        ON presentation_body.person_id = p.person_id
+        AND presentation_body.slot_kind = 'body'
+      LEFT JOIN asset presentation_body_asset
+        ON presentation_body_asset.asset_id = presentation_body.asset_id
+        AND presentation_body_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
     `;
       if (!row) {
         throw Object.assign(new Error("Cimmich identity not found"), {

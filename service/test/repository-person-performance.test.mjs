@@ -32,6 +32,13 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         needs_sort: false,
         person_id: "person-1",
         prime_faces: 0,
+        presentation_body_asset_id: "asset-presentation-body",
+        presentation_body_crop: { h: 0.5, w: 0.4, x: 0.2, y: 0.25 },
+        presentation_body_height: 1600,
+        presentation_body_observation_id: "body-2",
+        presentation_body_observation_kind: "body",
+        presentation_body_updated_at: "2026-07-24T00:00:00.000Z",
+        presentation_body_width: 1200,
         representative_asset_id: "asset-face",
         representative_face_id: "face-1",
         secondary_faces: 0,
@@ -44,6 +51,13 @@ test("People project ordinary accepted Faces and accepted Body regions without m
   const bridge = new Map([
     ["asset-body", { filename: "body.jpg", sourceAssetId: "source-body" }],
     ["asset-face", { filename: "face.jpg", sourceAssetId: "source-face" }],
+    [
+      "asset-presentation-body",
+      {
+        filename: "selected-body.jpg",
+        sourceAssetId: "source-presentation-body",
+      },
+    ],
   ]);
   const repository = createCimmichRepository(sql, bridge);
 
@@ -63,6 +77,19 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     sourceAssetId: "source-body",
     width: 1800,
   });
+  assert.deepEqual(person.presentationBody, {
+    assetId: "asset-presentation-body",
+    crop: { h: 0.5, w: 0.4, x: 0.2, y: 0.25 },
+    filename: "selected-body.jpg",
+    height: 1600,
+    observationId: "body-2",
+    observationKind: "body",
+    selectionMode: "explicit",
+    slotKind: "body",
+    sourceAssetId: "source-presentation-body",
+    updatedAt: "2026-07-24T00:00:00.000Z",
+    width: 1200,
+  });
   assert.match(
     statement,
     /WHERE identity\.state = 'accepted' AND identity\.face_state = 'valid'/,
@@ -74,6 +101,7 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     /cimmich_visibility_asset_rank\(observation\.asset_id\) <=/,
   );
   assert.match(statement, /tag\.state = 'accepted'/);
+  assert.match(statement, /person_presentation_media presentation_body/);
 });
 
 test("Person overview uses request-local evidence sets instead of global projection views", async () => {

@@ -60,7 +60,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('keyCimmichPresentation');
     expect(source).toContain("slotKind === 'face'");
     expect(source).toContain("'aspect-square h-[76%] rounded-full'");
-    expect(source).toContain("'aspect-video w-[90%] rounded-lg'");
+    expect(source).toContain("'aspect-12/5 w-[94%] rounded-lg'");
+    expect(source).toContain("media?.selectionMode === 'automatic'");
     expect(source).toContain('class="max-w-none"');
     expect(source).toContain('width: ${100 / crop.w}%');
     expect(source).toContain('height: auto');

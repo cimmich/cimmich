@@ -290,6 +290,31 @@
       width: preview.width ?? 0,
     });
 
+  const cimmichPresentationBodyCropStyle = (media: NonNullable<CimmichPerson['presentationBody']>) => {
+    if (!media.width || !media.height) {
+      return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
+    }
+    const sourceAspect = media.width / media.height;
+    const bodyBase = sourceAspect > 3 / 4 ? { h: 1, w: 3 / 4 / sourceAspect } : { h: sourceAspect / (3 / 4), w: 1 };
+    const crop = media.crop ?? { h: bodyBase.h, w: bodyBase.w, x: (1 - bodyBase.w) / 2, y: (1 - bodyBase.h) / 2 };
+    const zoom = Math.max(1, Math.max(bodyBase.w / crop.w, bodyBase.h / crop.h));
+    const squareBase = sourceAspect > 1 ? { h: 1, w: 1 / sourceAspect } : { h: sourceAspect, w: 1 };
+    const cropW = squareBase.w / zoom;
+    const cropH = squareBase.h / zoom;
+    const centerX = crop.x + crop.w / 2;
+    const centerY = crop.y + crop.h / 2;
+    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
+    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
+    return [
+      'position: absolute',
+      `width: ${100 / cropW}%`,
+      'height: auto',
+      'max-width: none',
+      `left: ${(-cropX / cropW) * 100}%`,
+      `top: ${(-cropY / cropH) * 100}%`,
+    ].join('; ');
+  };
+
   const loadCimmichReview = async () => {
     const generation = ++cimmichLoadGeneration;
     cimmichLoaded = false;
@@ -563,7 +588,7 @@
               <span
                 class={[
                   'relative block aspect-square w-full rounded-full shadow-sm transition-transform duration-500 transform-3d motion-reduce:transition-none',
-                  person.bodyPreview
+                  person.presentationBody || person.bodyPreview
                     ? 'group-hover:transform-[rotateY(180deg)] group-focus-visible:transform-[rotateY(180deg)]'
                     : 'group-hover:scale-[1.02]',
                 ]}
@@ -597,7 +622,7 @@
                     <Icon icon={mdiImageOffOutline} size="16" />
                   </span>
                 {/if}
-                {#if person.bodyPreview}
+                {#if person.presentationBody || person.bodyPreview}
                   <span
                     class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
                     aria-hidden="true"
@@ -605,10 +630,12 @@
                     <img
                       class="max-w-none"
                       src={getAssetMediaUrl({
-                        id: person.bodyPreview.sourceAssetId,
+                        id: person.presentationBody?.sourceAssetId ?? person.bodyPreview?.sourceAssetId ?? '',
                         size: AssetMediaSize.Preview,
                       })}
-                      style={cimmichBodyPreviewCropStyle(person.bodyPreview)}
+                      style={person.presentationBody
+                        ? cimmichPresentationBodyCropStyle(person.presentationBody)
+                        : cimmichBodyPreviewCropStyle(person.bodyPreview!)}
                       alt=""
                       draggable="false"
                     />
