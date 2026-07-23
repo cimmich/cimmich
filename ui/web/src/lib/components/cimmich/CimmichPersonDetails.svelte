@@ -2070,7 +2070,7 @@
 
       {#if railManaged || (visibleDetailsSection('private_notes') && (!compact || profile.profile.privateNotes || inlineTarget === 'private_notes'))}
         <article
-          class="dossier-card dossier-notes rounded-2xl border border-gray-200 p-5 md:col-span-2 dark:border-immich-dark-gray"
+          class="dossier-card dossier-notes rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray"
           data-dossier-section="09"
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
