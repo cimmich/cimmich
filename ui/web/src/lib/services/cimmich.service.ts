@@ -547,6 +547,27 @@ export type CimmichPerson = {
   subject_kind: 'person' | 'pet';
 };
 
+export type CimmichPersonPresentationSlot = 'body' | 'face' | 'hero';
+
+export type CimmichPersonPresentationMedia = {
+  assetId: string;
+  crop: CimmichPetCoverCrop | null;
+  filename: string;
+  observationId: string | null;
+  observationKind: 'body' | 'face' | 'presence';
+  slotKind: CimmichPersonPresentationSlot;
+  sourceAssetId: string;
+  updatedAt: string;
+};
+
+export type CimmichPersonPresentation = {
+  body: CimmichPersonPresentationMedia | null;
+  face: CimmichPersonPresentationMedia | null;
+  hero: CimmichPersonPresentationMedia | null;
+  personId: string;
+  schemaVersion: 'cimmich.person-presentation-media.v1';
+};
+
 export type CimmichPetCoverCrop = {
   h: number;
   w: number;
@@ -3092,6 +3113,25 @@ export const getCimmichPersonSetup = (personId: string) =>
 
 export const getCimmichPersonProfile = (personId: string) =>
   request<CimmichPersonProfileProjection>(`/v1/people/${encodeURIComponent(personId)}/profile`);
+
+export const getCimmichPersonPresentation = (personId: string) =>
+  request<CimmichPersonPresentation>(`/v1/people/${encodeURIComponent(personId)}/presentation`);
+
+export const setCimmichPersonPresentation = (
+  personId: string,
+  slotKind: CimmichPersonPresentationSlot,
+  input: {
+    assetId: string | null;
+    crop?: CimmichPetCoverCrop | null;
+    observationId?: string | null;
+    observationKind?: 'body' | 'face' | 'presence';
+  },
+) =>
+  request<CimmichPersonPresentation>(`/v1/people/${encodeURIComponent(personId)}/presentation/${slotKind}`, {
+    body: JSON.stringify(input),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
 
 export const patchCimmichPersonProfile = (personId: string, input: CimmichPersonProfilePatch) =>
   request<CimmichPersonProfileMutationResult>(`/v1/people/${encodeURIComponent(personId)}/profile`, {

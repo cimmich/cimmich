@@ -2598,6 +2598,42 @@ export const createCimmichServer = ({
       const personAssetsMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/assets$/,
       );
+      const personPresentationMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/presentation$/,
+      );
+      if (request.method === "GET" && personPresentationMatch) {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.personPresentation({
+            personId: decodeURIComponent(personPresentationMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const personPresentationSlotMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/presentation\/(face|body|hero)$/,
+      );
+      if (request.method === "POST" && personPresentationSlotMatch) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.setPersonPresentation({
+            actorId: request.headers["x-cimmich-actor"],
+            assetId: body.assetId,
+            crop: body.crop,
+            observationId: body.observationId,
+            observationKind: body.observationKind,
+            personId: decodeURIComponent(personPresentationSlotMatch[1]),
+            slotKind: personPresentationSlotMatch[2],
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "GET" && personAssetsMatch) {
         requireProjection("person_assets");
         const pageSize = url.searchParams.has("pageSize")

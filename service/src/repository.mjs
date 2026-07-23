@@ -4694,6 +4694,133 @@ export const createCimmichRepository = (
       };
     },
 
+    async personPresentation({ personId }) {
+      await requireVisibleSubject(personId);
+      const id = String(personId || "");
+      const rows = await sql`
+        SELECT media.slot_kind, media.asset_id, media.observation_kind,
+          media.observation_id, media.crop, media.updated_at
+        FROM person_presentation_media media
+        JOIN asset source ON source.asset_id = media.asset_id AND source.state = 'active'
+        WHERE media.person_id = ${id}
+          AND cimmich_visibility_asset_rank(media.asset_id) <= ${presentationRank()}
+        ORDER BY media.slot_kind
+      `;
+      const slots = { body: null, face: null, hero: null };
+      for (const row of rows) {
+        slots[row.slot_kind] = {
+          assetId: row.asset_id,
+          crop: row.crop || null,
+          observationId: row.observation_id || null,
+          observationKind: row.observation_kind,
+          slotKind: row.slot_kind,
+          updatedAt: new Date(row.updated_at).toISOString(),
+          ...bridgeFields(bridge, row.asset_id),
+        };
+      }
+      return {
+        personId: id,
+        schemaVersion: "cimmich.person-presentation-media.v1",
+        ...slots,
+      };
+    },
+
+    async setPersonPresentation({
+      actorId,
+      assetId,
+      crop,
+      observationId,
+      observationKind,
+      personId,
+      slotKind,
+    }) {
+      await requireVisibleSubject(personId);
+      const id = String(personId || "");
+      const slot = String(slotKind || "");
+      if (!["face", "body", "hero"].includes(slot)) {
+        throw Object.assign(new Error("Presentation slot is invalid"), {
+          statusCode: 400,
+        });
+      }
+      const actor = cleanActor(actorId);
+      if (!actor) {
+        throw Object.assign(new Error("Missing Cimmich actor"), {
+          statusCode: 400,
+        });
+      }
+      if (assetId == null) {
+        await sql`
+          DELETE FROM person_presentation_media
+          WHERE person_id = ${id} AND slot_kind = ${slot}
+        `;
+        return this.personPresentation({ personId: id });
+      }
+      const asset = String(assetId || "");
+      const kind = String(observationKind || "");
+      const observation = observationId == null ? null : String(observationId);
+      if (!["face", "body", "presence"].includes(kind)) {
+        throw Object.assign(new Error("Presentation evidence kind is invalid"), {
+          statusCode: 400,
+        });
+      }
+      if ((slot === "face" && kind !== "face") || (slot === "body" && kind !== "body")) {
+        throw Object.assign(new Error(`${slot} presentation requires ${slot} evidence`), {
+          statusCode: 400,
+        });
+      }
+      let valid = false;
+      if (kind === "face" && observation) {
+        const [row] = await sql`
+          SELECT 1
+          FROM current_face_identity identity
+          JOIN face_observation face ON face.face_id = identity.face_id
+          WHERE identity.person_id = ${id} AND identity.state = 'accepted'
+            AND face.face_id = ${observation} AND face.asset_id = ${asset}
+            AND face.state = 'valid'
+        `;
+        valid = Boolean(row);
+      } else if (kind === "body" && observation) {
+        const [row] = await sql`
+          SELECT 1
+          FROM current_body_tag tag
+          JOIN body_observation body ON body.body_id = tag.body_id
+          WHERE tag.person_id = ${id} AND tag.state = 'accepted'
+            AND body.body_id = ${observation} AND body.asset_id = ${asset}
+            AND body.state = 'valid'
+        `;
+        valid = Boolean(row);
+      } else if (kind === "presence") {
+        const [row] = await sql`
+          SELECT 1 FROM current_presence_tag
+          WHERE person_id = ${id} AND state = 'accepted' AND asset_id = ${asset}
+        `;
+        valid = Boolean(row);
+      }
+      if (!valid) {
+        throw Object.assign(new Error("Presentation photo is not confirmed evidence for this person"), {
+          statusCode: 409,
+        });
+      }
+      const cleanCrop = cleanCoverCrop(crop);
+      await sql`
+        INSERT INTO person_presentation_media (
+          person_id, slot_kind, asset_id, observation_kind, observation_id,
+          crop, actor_id, updated_at
+        ) VALUES (
+          ${id}, ${slot}, ${asset}, ${kind}, ${observation},
+          ${cleanCrop ? sql.json(cleanCrop) : null}, ${actor}, now()
+        )
+        ON CONFLICT (person_id, slot_kind) DO UPDATE SET
+          asset_id = excluded.asset_id,
+          observation_kind = excluded.observation_kind,
+          observation_id = excluded.observation_id,
+          crop = excluded.crop,
+          actor_id = excluded.actor_id,
+          updated_at = excluded.updated_at
+      `;
+      return this.personPresentation({ personId: id });
+    },
+
     async personAssets({
       cursor = "",
       limit = 1000,

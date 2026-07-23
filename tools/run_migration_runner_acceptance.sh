@@ -65,7 +65,7 @@ fi
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_legacy_restore_test
 mkdir -p "$TMP_ROOT/through-71-migrations"
 find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0072_*' ! -name '0073_*' ! -name '0074_*' ! -name '0075_*' \
+  ! -name '0072_*' ! -name '0073_*' ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' \
   -exec cp {} "$TMP_ROOT/through-71-migrations/" \;
 mkdir -p "$TMP_ROOT/through-71-migrations/patches"
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
@@ -136,7 +136,7 @@ fi
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema73_upgrade_test
 mkdir -p "$TMP_ROOT/through-73-migrations/patches"
 find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0074_*' ! -name '0075_*' \
+  ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' \
   -exec cp {} "$TMP_ROOT/through-73-migrations/" \;
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
   "$TMP_ROOT/through-73-migrations/patches/"
@@ -153,16 +153,16 @@ if [ "$schema73_version" != "73" ]; then
 fi
 DATABASE_URL="$SCHEMA73_DATABASE_URL" npm --prefix "$ROOT/service" run migrate -- apply \
   >"$TMP_ROOT/schema74-upgrade.log"
-read -r schema75_version entity_scope entity_create entity_update scoped_inventory resolution_decision <<EOF
+read -r upgraded_schema_version entity_scope entity_create entity_update scoped_inventory resolution_decision presentation_media <<EOF
 $(docker exec "$CONTAINER" psql -U cimmich_migration_test \
   -d cimmich_schema73_upgrade_test -AtF ' ' -c \
-  "SELECT (SELECT max(version) FROM cimmich_schema_migration), position('entity' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_operation_scope_check'))) > 0, position('create' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_action_check'))) > 0, position('update' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_action_check'))) > 0, to_regprocedure('begin_scoped_immich_inventory_run(text,text,text,text[])') IS NOT NULL, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='immich_face_projection' AND column_name='resolution_decision_id')")
+  "SELECT (SELECT max(version) FROM cimmich_schema_migration), position('entity' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_operation_scope_check'))) > 0, position('create' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_action_check'))) > 0, position('update' in pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname='context_operation_action_check'))) > 0, to_regprocedure('begin_scoped_immich_inventory_run(text,text,text,text[])') IS NOT NULL, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='immich_face_projection' AND column_name='resolution_decision_id'), to_regclass('person_presentation_media') IS NOT NULL")
 EOF
-if [ "$schema75_version" != "$CURRENT_SCHEMA_VERSION" ] || \
+if [ "$upgraded_schema_version" != "$CURRENT_SCHEMA_VERSION" ] || \
   [ "$entity_scope" != "t" ] || [ "$entity_create" != "t" ] || \
   [ "$entity_update" != "t" ] || [ "$scoped_inventory" != "t" ] || \
-  [ "$resolution_decision" != "t" ]; then
-  echo "schema 73 to 75 upgrade verification failed" >&2
+  [ "$resolution_decision" != "t" ] || [ "$presentation_media" != "t" ]; then
+  echo "schema 73 to ${CURRENT_SCHEMA_VERSION} upgrade verification failed" >&2
   exit 1
 fi
 if docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
