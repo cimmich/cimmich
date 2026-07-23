@@ -246,7 +246,7 @@ describe('CimmichPersonDetails', () => {
     for (const heading of [
       'About',
       'At a glance',
-      'Identity',
+      'Names & identity',
       'Important dates',
       'Work and organisations',
       'Contact details',
@@ -265,10 +265,10 @@ describe('CimmichPersonDetails', () => {
   });
 
   it('keeps every useful compact detail discoverable without empty-card clutter', () => {
-    const { getAllByText, getByLabelText, getByRole, getByText, queryByRole } = renderDetails(false, true);
+    const { getByLabelText, getByRole, getByText, queryByRole } = renderDetails(false, true);
 
     expect(getByRole('heading', { name: 'At a glance' })).toBeInTheDocument();
-    expect(getByRole('heading', { name: 'Identity' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Names & identity' })).toBeInTheDocument();
     expect(queryByRole('button', { name: 'Add details' })).not.toBeInTheDocument();
     expect(queryByRole('heading', { name: 'About' })).not.toBeInTheDocument();
     expect(getByRole('heading', { name: 'Add to Maya Chen' })).toBeInTheDocument();
@@ -287,7 +287,7 @@ describe('CimmichPersonDetails', () => {
     }
     expect(getByText('Pronouns')).toBeInTheDocument();
     expect(getByText('Gender identity')).toBeInTheDocument();
-    expect(getAllByText('Not set')).toHaveLength(2);
+    expect(getByText('Not added')).toBeInTheDocument();
     expect(getByLabelText('Not set')).toBeInTheDocument();
   });
 
@@ -299,7 +299,7 @@ describe('CimmichPersonDetails', () => {
     for (const heading of [
       'About',
       'At a glance',
-      'Identity',
+      'Names & identity',
       'Important dates',
       'Work and organisations',
       'Contact details',
@@ -345,13 +345,13 @@ describe('CimmichPersonDetails', () => {
     }
   });
 
-  it('opens About directly from its card pencil and focuses the field', async () => {
+  it('opens About directly from its card action and focuses the field', async () => {
     const { getByRole, queryByRole } = renderDetails();
 
-    await fireEvent.click(getByRole('button', { name: 'Edit About' }));
+    await fireEvent.click(getByRole('button', { name: 'Add About' }));
 
     expect(getByRole('textbox', { name: 'About' })).toHaveFocus();
-    expect(getByRole('heading', { name: 'Identity' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Names & identity' })).toBeInTheDocument();
     expect(getByRole('heading', { name: 'Contact details' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Save About' })).toBeInTheDocument();
     expect(queryByRole('tablist', { name: 'Profile editor' })).not.toBeInTheDocument();
@@ -361,7 +361,7 @@ describe('CimmichPersonDetails', () => {
     mocks.patchProfile.mockResolvedValueOnce({ profile, replayed: false });
     const { getByRole } = renderDetails();
 
-    await fireEvent.click(getByRole('button', { name: 'Edit About' }));
+    await fireEvent.click(getByRole('button', { name: 'Add About' }));
     await fireEvent.input(getByRole('textbox', { name: 'About' }), { target: { value: 'A trusted friend.' } });
     await fireEvent.click(getByRole('button', { name: 'Save About' }));
 
