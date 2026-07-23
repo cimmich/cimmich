@@ -93,6 +93,10 @@
     mdiCalendarAlertOutline,
     mdiCalendarRange,
     mdiCheckCircleOutline,
+    mdiGenderFemale,
+    mdiGenderMale,
+    mdiGenderMaleFemaleVariant,
+    mdiGenderNonBinary,
     mdiGroup,
     mdiImageMultipleOutline,
     mdiMapMarkerOutline,
@@ -190,7 +194,6 @@
   let cimmichDetailsDisplay = $state<CimmichPersonDetailsDisplay>();
   let cimmichPersonVisibility = $state<CimmichVisibilityObject>();
   let cimmichPeopleConnections = $state<CimmichPersonConnection[]>([]);
-  let cimmichProfileEditOnOpen = $state(false);
   let cimmichProfileError = $state('');
   let cimmichSetup = $state<CimmichPersonSetup>();
   let cimmichSetupAliasDraft = $state('');
@@ -521,6 +524,17 @@
           ? 'Woman'
           : cimmichProfile?.profile.genderIdentityKind === 'man'
             ? 'Man'
+            : null,
+  );
+  const cimmichGenderIcon = $derived(
+    cimmichProfile?.profile.genderIdentityKind === 'woman'
+      ? mdiGenderFemale
+      : cimmichProfile?.profile.genderIdentityKind === 'man'
+        ? mdiGenderMale
+        : cimmichProfile?.profile.genderIdentityKind === 'non_binary'
+          ? mdiGenderNonBinary
+          : cimmichProfile?.profile.genderIdentityKind === 'self_described'
+            ? mdiGenderMaleFemaleVariant
             : null,
   );
   const cimmichHeroFields = $derived.by(() => {
@@ -1212,8 +1226,7 @@
     }
   };
 
-  const openCimmichDetails = (edit = false) => {
-    cimmichProfileEditOnOpen = edit;
+  const openCimmichDetails = () => {
     cimmichMode = 'details';
   };
 
@@ -1688,8 +1701,7 @@
           type="button"
           data-testid="cimmich-person-edit"
           aria-label={cimmichPerson.subject_kind === 'person' ? 'Edit profile' : 'Edit'}
-          onclick={() =>
-            cimmichPerson?.subject_kind === 'person' ? openCimmichDetails(true) : void openCimmichSetup()}
+          onclick={() => (cimmichPerson?.subject_kind === 'person' ? openCimmichDetails() : void openCimmichSetup())}
         >
           <Icon icon={mdiPencilOutline} size="17" />
           <span>Edit</span>
@@ -1749,10 +1761,15 @@
                           ? 'max-w-3xl text-base/7 font-normal text-pretty whitespace-pre-wrap text-white/85 sm:text-lg/8'
                           : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md'}
                       >
-                        {#if field.fieldKey !== 'about'}
+                        {#if field.fieldKey !== 'about' && field.fieldKey !== 'gender_identity'}
                           <span class="font-medium text-white/55">{field.label}</span>
                         {/if}
-                        <span>{field.value}</span>
+                        {#if field.fieldKey === 'gender_identity'}
+                          <span class="sr-only">{field.label}: {field.value}</span>
+                          <Icon icon={cimmichGenderIcon ?? mdiGenderMaleFemaleVariant} size="20" />
+                        {:else}
+                          <span>{field.value}</span>
+                        {/if}
                         {#if field.fieldKey === 'photo_history' && cimmichFuturePhotoDateCount > 0}
                           <Tooltip
                             text={`${cimmichFuturePhotoDateCount.toLocaleString()} ${cimmichFuturePhotoDateCount === 1 ? 'photo has a future date' : 'photos have future dates'} and ${cimmichFuturePhotoDateCount === 1 ? 'is' : 'are'} excluded from this range.`}
@@ -1832,7 +1849,7 @@
                 type="button"
                 role="tab"
                 aria-selected={cimmichMode === 'details'}
-                onclick={() => openCimmichDetails(false)}
+                onclick={openCimmichDetails}
               >
                 Details
               </button>
@@ -2081,7 +2098,6 @@
             display={cimmichProfileDisplay}
             profile={cimmichProfile}
             railManaged
-            startInEdit={cimmichProfileEditOnOpen}
             ondefaultschange={(value) => (cimmichProfileDefaults = value)}
             ondetailsdefaultschange={(value) => (cimmichDetailsDefaults = value)}
             ondetailsdisplaychange={(value) => (cimmichDetailsDisplay = value)}

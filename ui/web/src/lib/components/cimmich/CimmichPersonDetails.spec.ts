@@ -265,7 +265,7 @@ describe('CimmichPersonDetails', () => {
   });
 
   it('keeps every useful compact detail discoverable without empty-card clutter', () => {
-    const { getAllByText, getByRole, getByText, queryByRole } = renderDetails(false, true);
+    const { getAllByText, getByLabelText, getByRole, getByText, queryByRole } = renderDetails(false, true);
 
     expect(getByRole('heading', { name: 'At a glance' })).toBeInTheDocument();
     expect(getByRole('heading', { name: 'Identity' })).toBeInTheDocument();
@@ -287,11 +287,12 @@ describe('CimmichPersonDetails', () => {
     }
     expect(getByText('Pronouns')).toBeInTheDocument();
     expect(getByText('Gender identity')).toBeInTheDocument();
-    expect(getAllByText('Not set')).toHaveLength(3);
+    expect(getAllByText('Not set')).toHaveLength(2);
+    expect(getByLabelText('Not set')).toBeInTheDocument();
   });
 
   it('renders the rail-managed profile as a complete personal dossier', () => {
-    const { getByRole, getByText } = renderDetails(false, true, true);
+    const { getByLabelText, getByRole, getByText, queryByText } = renderDetails(false, true, true);
 
     expect(getByText('Personal archive')).toBeInTheDocument();
     expect(getByText('Profile dossier · Maya Chen')).toBeInTheDocument();
@@ -308,6 +309,9 @@ describe('CimmichPersonDetails', () => {
     ]) {
       expect(getByRole('heading', { name: heading })).toBeInTheDocument();
     }
+    expect(getByLabelText('Not set')).toBeInTheDocument();
+    expect(queryByText('Man')).not.toBeInTheDocument();
+    expect(queryByText('Woman')).not.toBeInTheDocument();
     expect(getByRole('button', { name: 'Add Important dates' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Add Contact details' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Add Notes' })).toBeInTheDocument();
