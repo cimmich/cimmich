@@ -125,6 +125,7 @@
   type CountRow = { count: number; label: string };
   type CimmichIdentityFilter =
     | 'all'
+    | 'candidates'
     | 'head'
     | 'lq'
     | 'needs_qc'
@@ -205,6 +206,7 @@
   let cimmichIdentitySavingId = $state('');
   let cimmichIdentitySectionLimits = $state<Record<string, number>>({});
   let cimmichPresentation = $state<CimmichPersonPresentation>();
+  let cimmichPresentationPickerSlot = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichPresentationFrames = $state<Record<CimmichPersonPresentationSlot, CimmichPresentationFrame>>({
     body: { centerX: 50, centerY: 50, zoom: 1 },
     face: { centerX: 50, centerY: 50, zoom: 1 },
@@ -449,6 +451,11 @@
   const cimmichPresentationSelectionCount = $derived(
     [cimmichPresentation?.face, cimmichPresentation?.body, cimmichPresentation?.hero].filter(Boolean).length,
   );
+  const cimmichPresentationPickerFaces = $derived(
+    cimmichPresentationPickerSlot === 'body'
+      ? cimmichIdentityFaces.filter((face) => Boolean(face.body_id))
+      : cimmichIdentityFaces,
+  );
   const cimmichPrimeFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'prime'));
   const cimmichSecondaryFaces = $derived(
     cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'secondary'),
@@ -478,7 +485,11 @@
     ) {
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === cimmichIdentityFilter);
     }
-    if (cimmichIdentityFilter === 'non_face' || cimmichIdentityFilter === 'presentation') {
+    if (
+      cimmichIdentityFilter === 'candidates' ||
+      cimmichIdentityFilter === 'non_face' ||
+      cimmichIdentityFilter === 'presentation'
+    ) {
       return [];
     }
     if (cimmichIdentityFilter === 'needs_qc') {
@@ -1499,6 +1510,7 @@
         observationKind,
       });
       syncCimmichPresentationFrames(cimmichPresentation);
+      cimmichPresentationPickerSlot = '';
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to update presentation photo';
     } finally {
@@ -2494,27 +2506,57 @@
                   questions.
                 </p>
               </div>
-              <fieldset class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <legend class="mb-1 font-semibold">Confirmed evidence</legend>
-                {#each [{ id: 'prime', label: 'Prime faces', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting faces', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low-quality faces', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified faces', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body & Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation photos', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
-                  <button
-                    class={[
-                      'flex min-h-10 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                      cimmichIdentityFilter === filter.id
-                        ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
-                        : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
-                    ]}
-                    type="button"
-                    aria-pressed={cimmichIdentityFilter === filter.id}
-                    onclick={() => (cimmichIdentityFilter = filter.id as CimmichIdentityFilter)}
-                  >
-                    <span class="truncate text-sm font-semibold">{filter.label}</span>
-                    <span
-                      class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
-                      >{filter.count}</span
+              <fieldset class="min-w-0">
+                <legend class="mb-1 font-semibold">Identity workspaces</legend>
+                <div class="overflow-x-auto pb-1">
+                  <div class="flex min-w-max items-center gap-2">
+                    {#each [{ id: 'prime', label: 'Prime faces', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting faces', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low-quality faces', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified faces', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body & Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation photos', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
+                      <button
+                        class={[
+                          'flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                          cimmichIdentityFilter === filter.id
+                            ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
+                            : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
+                        ]}
+                        type="button"
+                        aria-pressed={cimmichIdentityFilter === filter.id}
+                        onclick={() => {
+                          cimmichIdentityFilter = filter.id as CimmichIdentityFilter;
+                          if (filter.id !== 'presentation') {
+                            cimmichPresentationPickerSlot = '';
+                          }
+                        }}
+                      >
+                        <span class="text-sm font-semibold">{filter.label}</span>
+                        <span
+                          class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
+                          >{filter.count}</span
+                        >
+                      </button>
+                    {/each}
+                    <span class="mx-1 h-7 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></span>
+                    <button
+                      class={[
+                        'flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                        cimmichIdentityFilter === 'candidates'
+                          ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
+                          : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
+                      ]}
+                      type="button"
+                      aria-pressed={cimmichIdentityFilter === 'candidates'}
+                      onclick={() => {
+                        cimmichIdentityFilter = 'candidates';
+                        cimmichPresentationPickerSlot = '';
+                      }}
                     >
-                  </button>
-                {/each}
+                      <span class="text-sm font-semibold">Awaiting confirmation</span>
+                      <span
+                        class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
+                        >{visibleCimmichCandidates.length.toLocaleString()}</span
+                      >
+                    </button>
+                  </div>
+                </div>
               </fieldset>
               <div
                 class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-immich-dark-gray"
@@ -2523,28 +2565,34 @@
                   <p class="text-sm font-semibold">
                     {cimmichIdentityFilter === 'presentation'
                       ? 'Presentation photos'
-                      : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
-                          (filter) => filter.id === cimmichIdentityFilter,
-                        )?.label}
+                      : cimmichIdentityFilter === 'candidates'
+                        ? 'Awaiting confirmation'
+                        : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
+                            (filter) => filter.id === cimmichIdentityFilter,
+                          )?.label}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
                     {cimmichIdentityFilter === 'non_face'
                       ? `${cimmichBodyPresenceAssets.length.toLocaleString()} loaded appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
                       : cimmichIdentityFilter === 'presentation'
                         ? `${cimmichPresentationSelectionCount} of 3 selected`
-                        : cimmichIdentityFilter === 'all'
-                          ? `${cimmichUnclassifiedFaces.length.toLocaleString()} accepted faces without a bucket`
-                          : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
+                        : cimmichIdentityFilter === 'candidates'
+                          ? `${visibleCimmichCandidates.length.toLocaleString()} waiting`
+                          : cimmichIdentityFilter === 'all'
+                            ? `${cimmichUnclassifiedFaces.length.toLocaleString()} accepted faces without a bucket`
+                            : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
                   </p>
                 </div>
                 <p class="max-w-xl text-right text-xs text-gray-500 dark:text-gray-400">
                   {cimmichIdentityFilter === 'non_face'
                     ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
                     : cimmichIdentityFilter === 'presentation'
-                      ? 'Choose a role from any confirmed face, then return here to frame or clear it.'
-                      : cimmichIdentityFilter === 'head'
-                        ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
-                        : 'Open Review face to change its bucket, tags, identity, or presentation role.'}
+                      ? 'Review the current choices, replace them from confirmed evidence, or refocus their framing.'
+                      : cimmichIdentityFilter === 'candidates'
+                        ? 'Confirm or reject system suggestions in bulk.'
+                        : cimmichIdentityFilter === 'head'
+                          ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
+                          : 'Open Review face to change its bucket, tags, identity, or presentation role.'}
                 </p>
               </div>
             {/if}
@@ -2618,113 +2666,235 @@
 
           {#if cimmichIdentityLoading}
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
-          {:else if cimmichIdentityFilter === 'presentation'}
-            <section
-              class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-              aria-label="Presentation photo choices"
-            >
-              {#each [{ id: 'face', label: 'Face photo' }, { id: 'body', label: 'Body photo' }, { id: 'hero', label: 'Hero photo' }] as slot, index (slot.id)}
-                {@const media = cimmichPresentation?.[slot.id as CimmichPersonPresentationSlot] ?? null}
-                <article
-                  class={[
-                    'grid min-h-16 grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2',
-                    index > 0 ? 'border-t border-gray-200 dark:border-immich-dark-gray' : '',
-                  ]}
+          {:else if cimmichIdentityFilter === 'candidates'}
+            <section class="grid gap-3" aria-labelledby="identity-backlog-heading">
+              <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h3 id="identity-backlog-heading" class="text-lg font-semibold">Awaiting confirmation</h3>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    System-tagged faces waiting for an owner decision.
+                  </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    class="rounded-md border px-3 py-2 text-sm font-semibold"
+                    type="button"
+                    onclick={selectAllCandidates}
+                  >
+                    Select shown
+                  </button>
+                  <button
+                    class="rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                    type="button"
+                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
+                    onclick={() => void acceptSelectedCandidates()}
+                    >{cimmichCandidateConfirm
+                      ? `Confirm accept ${cimmichCandidateSelection.length}`
+                      : `Accept selected (${cimmichCandidateSelection.length})`}</button
+                  >
+                  <button
+                    class="rounded-md border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
+                    type="button"
+                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
+                    onclick={() => void rejectSelectedCandidates()}>Reject selected</button
+                  >
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {#each visibleCimmichCandidates.slice(0, cimmichIdentitySectionLimit('candidates')) as candidate (candidate.identity_claim_id)}
+                  {@const selected = candidateSelected(candidate.identity_claim_id)}
+                  <article
+                    class={[
+                      'overflow-hidden rounded-lg border-2',
+                      selected ? 'border-primary' : 'border-gray-200 dark:border-immich-dark-gray',
+                    ]}
+                  >
+                    <a
+                      href={candidate.sourceAssetId ? Route.viewAsset({ id: candidate.sourceAssetId }) : undefined}
+                      class="block aspect-4/5 bg-gray-200 bg-cover"
+                      style={cimmichCandidateCropStyle(candidate)}
+                      aria-label={`Review ${candidate.filename}`}
+                    ></a>
+                    <label class="flex min-h-11 cursor-pointer items-center gap-2 p-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onchange={() => toggleCandidate(candidate.identity_claim_id)}
+                      />
+                      <span class="min-w-0 truncate">{candidate.filename}</span>
+                    </label>
+                  </article>
+                {:else}
+                  <p class="col-span-full py-8 text-sm text-gray-500">No identity suggestions are waiting.</p>
+                {/each}
+              </div>
+              {#if visibleCimmichCandidates.length > cimmichIdentitySectionLimit('candidates')}
+                <button
+                  class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
+                  type="button"
+                  onclick={() => showMoreCimmichIdentitySection('candidates')}>Show 20 more</button
                 >
-                  <div
-                    class="size-14 rounded-lg bg-gray-100 bg-cover bg-center dark:bg-gray-800"
-                    style={cimmichPresentationPreviewStyle(slot.id as CimmichPersonPresentationSlot, media)}
-                  ></div>
-                  <div class="min-w-0">
-                    <p class="text-sm font-semibold">{slot.label}</p>
-                    <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                      {media?.filename ?? 'Not selected'}
-                    </p>
-                  </div>
-                  {#if media}
-                    <div class="flex items-center gap-1">
-                      <details class="relative">
-                        <summary
-                          class="min-h-9 cursor-pointer list-none rounded-md px-2.5 py-2 text-xs font-semibold marker:content-none hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
-                          >Adjust</summary
+              {/if}
+            </section>
+          {:else if cimmichIdentityFilter === 'presentation'}
+            <section class="grid gap-4" aria-label="Presentation photo choices">
+              <div class="grid gap-3 sm:grid-cols-3">
+                {#each [{ id: 'face', label: 'Face photo' }, { id: 'body', label: 'Body photo' }, { id: 'hero', label: 'Hero photo' }] as slot (slot.id)}
+                  {@const slotKind = slot.id as CimmichPersonPresentationSlot}
+                  {@const media = cimmichPresentation?.[slotKind] ?? null}
+                  <article
+                    class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                  >
+                    <div
+                      class="aspect-4/3 bg-gray-100 bg-cover bg-center dark:bg-gray-800"
+                      style={cimmichPresentationPreviewStyle(slotKind, media)}
+                    ></div>
+                    <div class="grid gap-2 p-3">
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold">{slot.label}</p>
+                        <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                          {media?.filename ?? 'Not selected'}
+                        </p>
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <button
+                          class={[
+                            'min-h-9 rounded-md border px-3 py-2 text-xs font-semibold',
+                            cimmichPresentationPickerSlot === slotKind
+                              ? 'border-gray-950 bg-gray-950 text-white dark:border-white dark:bg-white dark:text-black'
+                              : 'border-gray-200 hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray',
+                          ]}
+                          type="button"
+                          aria-pressed={cimmichPresentationPickerSlot === slotKind}
+                          onclick={() =>
+                            (cimmichPresentationPickerSlot =
+                              cimmichPresentationPickerSlot === slotKind ? '' : slotKind)}
                         >
-                        <div
-                          class="absolute top-11 right-0 z-10 grid w-72 gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-                        >
-                          <label class="grid gap-1 text-xs">
-                            <span class="flex justify-between">
-                              <span>Zoom</span>
-                              <span
-                                >{cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom.toFixed(
-                                  1,
-                                )}×</span
+                          {media ? 'Change' : 'Choose'}
+                        </button>
+                        {#if media}
+                          <details>
+                            <summary
+                              class="min-h-9 cursor-pointer list-none rounded-md border border-gray-200 px-3 py-2 text-center text-xs font-semibold marker:content-none hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray"
+                              >Refocus</summary
+                            >
+                            <div class="mt-3 grid gap-3 border-t border-gray-200 pt-3 dark:border-immich-dark-gray">
+                              <label class="grid gap-1 text-xs">
+                                <span class="flex justify-between">
+                                  <span>Zoom</span>
+                                  <span>{cimmichPresentationFrames[slotKind].zoom.toFixed(1)}×</span>
+                                </span>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="4"
+                                  step="0.1"
+                                  value={cimmichPresentationFrames[slotKind].zoom}
+                                  oninput={(event) =>
+                                    setCimmichPresentationFrame(slotKind, 'zoom', event.currentTarget.valueAsNumber)}
+                                />
+                              </label>
+                              <label class="grid gap-1 text-xs">
+                                <span>Move left / right</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  value={cimmichPresentationFrames[slotKind].centerX}
+                                  oninput={(event) =>
+                                    setCimmichPresentationFrame(slotKind, 'centerX', event.currentTarget.valueAsNumber)}
+                                />
+                              </label>
+                              <label class="grid gap-1 text-xs">
+                                <span>Move up / down</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  value={cimmichPresentationFrames[slotKind].centerY}
+                                  oninput={(event) =>
+                                    setCimmichPresentationFrame(slotKind, 'centerY', event.currentTarget.valueAsNumber)}
+                                />
+                              </label>
+                              <button
+                                class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                                type="button"
+                                disabled={Boolean(cimmichPresentationSaving)}
+                                onclick={() => void saveCimmichPresentationFrame(slotKind)}
                               >
-                            </span>
-                            <input
-                              type="range"
-                              min="1"
-                              max="4"
-                              step="0.1"
-                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].zoom}
-                              oninput={(event) =>
-                                setCimmichPresentationFrame(
-                                  slot.id as CimmichPersonPresentationSlot,
-                                  'zoom',
-                                  event.currentTarget.valueAsNumber,
-                                )}
-                            />
-                          </label>
-                          <label class="grid gap-1 text-xs">
-                            <span>Horizontal centre</span>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerX}
-                              oninput={(event) =>
-                                setCimmichPresentationFrame(
-                                  slot.id as CimmichPersonPresentationSlot,
-                                  'centerX',
-                                  event.currentTarget.valueAsNumber,
-                                )}
-                            />
-                          </label>
-                          <label class="grid gap-1 text-xs">
-                            <span>Vertical centre</span>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={cimmichPresentationFrames[slot.id as CimmichPersonPresentationSlot].centerY}
-                              oninput={(event) =>
-                                setCimmichPresentationFrame(
-                                  slot.id as CimmichPersonPresentationSlot,
-                                  'centerY',
-                                  event.currentTarget.valueAsNumber,
-                                )}
-                            />
-                          </label>
+                                {cimmichPresentationSaving === slotKind ? 'Saving…' : 'Save framing'}
+                              </button>
+                            </div>
+                          </details>
                           <button
-                            class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                            class="col-span-2 min-h-9 rounded-md px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
                             type="button"
                             disabled={Boolean(cimmichPresentationSaving)}
-                            onclick={() => void saveCimmichPresentationFrame(slot.id as CimmichPersonPresentationSlot)}
+                            onclick={() => void clearCimmichPresentation(slotKind)}>Clear choice</button
                           >
-                            {cimmichPresentationSaving === slot.id ? 'Saving…' : 'Save framing'}
-                          </button>
-                        </div>
-                      </details>
+                        {/if}
+                      </div>
+                    </div>
+                  </article>
+                {/each}
+              </div>
+
+              {#if cimmichPresentationPickerSlot}
+                <section
+                  class="grid gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-immich-dark-gray dark:bg-black/10"
+                  aria-labelledby="presentation-picker-heading"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 id="presentation-picker-heading" class="font-semibold">
+                        Choose
+                        {cimmichPresentationPickerSlot === 'face'
+                          ? 'Face photo'
+                          : cimmichPresentationPickerSlot === 'body'
+                            ? 'Body photo'
+                            : 'Hero photo'}
+                      </h3>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Select from this person's confirmed evidence.
+                      </p>
+                    </div>
+                    <button
+                      class="min-h-9 rounded-md px-3 text-xs font-semibold hover:bg-white dark:hover:bg-immich-dark-gray"
+                      type="button"
+                      onclick={() => (cimmichPresentationPickerSlot = '')}>Cancel</button
+                    >
+                  </div>
+                  <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+                    {#each cimmichPresentationPickerFaces.slice(0, 20) as face (face.face_id)}
                       <button
-                        class="min-h-9 rounded-md px-2.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
+                        class="group overflow-hidden rounded-lg border border-gray-200 bg-white text-left hover:border-gray-500 disabled:opacity-50 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
                         type="button"
                         disabled={Boolean(cimmichPresentationSaving)}
-                        onclick={() => void clearCimmichPresentation(slot.id as CimmichPersonPresentationSlot)}
-                        >Clear</button
+                        title={face.filename}
+                        onclick={() =>
+                          void chooseCimmichPresentation(
+                            cimmichPresentationPickerSlot as CimmichPersonPresentationSlot,
+                            face,
+                            cimmichPresentationPickerSlot === 'body' ? 'body' : 'face',
+                          )}
                       >
-                    </div>
-                  {/if}
-                </article>
-              {/each}
+                        <span
+                          class="block aspect-square bg-gray-200 bg-cover transition group-hover:scale-[1.02] dark:bg-gray-800"
+                          style={cimmichObservationCropStyle(
+                            face,
+                            cimmichPresentationPickerSlot === 'body' ? 'body' : 'face',
+                          )}
+                        ></span>
+                        <span class="block truncate px-2 py-1.5 text-[11px] font-medium">{face.filename}</span>
+                      </button>
+                    {:else}
+                      <p class="col-span-full py-6 text-center text-sm text-gray-500">
+                        No confirmed {cimmichPresentationPickerSlot === 'body' ? 'body' : 'face'} evidence is available.
+                      </p>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
             </section>
           {:else if cimmichIdentityFilter === 'non_face'}
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -3229,81 +3399,6 @@
                 Show 20 more
               </button>
             {/if}
-          {/if}
-
-          {#if !cimmichPerson.needs_holding}
-            <section
-              class="mt-4 grid gap-3 border-t border-gray-200 pt-5 dark:border-immich-dark-gray"
-              aria-labelledby="identity-backlog-heading"
-            >
-              <div class="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h3 id="identity-backlog-heading" class="text-lg font-semibold">Awaiting confirmation</h3>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    System-tagged faces waiting for an owner decision.
-                  </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <button
-                    class="rounded-md border px-3 py-2 text-sm font-semibold"
-                    type="button"
-                    onclick={selectAllCandidates}
-                  >
-                    Select shown
-                  </button>
-                  <button
-                    class="rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                    type="button"
-                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
-                    onclick={() => void acceptSelectedCandidates()}
-                    >{cimmichCandidateConfirm
-                      ? `Confirm accept ${cimmichCandidateSelection.length}`
-                      : `Accept selected (${cimmichCandidateSelection.length})`}</button
-                  >
-                  <button
-                    class="rounded-md border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
-                    type="button"
-                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
-                    onclick={() => void rejectSelectedCandidates()}>Reject selected</button
-                  >
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {#each visibleCimmichCandidates.slice(0, cimmichIdentitySectionLimit('candidates')) as candidate (candidate.identity_claim_id)}
-                  {@const selected = candidateSelected(candidate.identity_claim_id)}
-                  <article
-                    class={[
-                      'overflow-hidden rounded-lg border-2',
-                      selected ? 'border-primary' : 'border-gray-200 dark:border-immich-dark-gray',
-                    ]}
-                  >
-                    <a
-                      href={candidate.sourceAssetId ? Route.viewAsset({ id: candidate.sourceAssetId }) : undefined}
-                      class="block aspect-4/5 bg-gray-200 bg-cover"
-                      style={cimmichCandidateCropStyle(candidate)}
-                      aria-label={`Review ${candidate.filename}`}
-                    ></a>
-                    <label class="flex min-h-11 cursor-pointer items-center gap-2 p-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onchange={() => toggleCandidate(candidate.identity_claim_id)}
-                      />
-                      <span class="min-w-0 truncate">{candidate.filename}</span>
-                    </label>
-                  </article>
-                {:else}
-                  <p class="col-span-full py-8 text-sm text-gray-500">No identity suggestions are waiting.</p>
-                {/each}
-              </div>
-              {#if visibleCimmichCandidates.length > cimmichIdentitySectionLimit('candidates')}
-                <button
-                  class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
-                  type="button"
-                  onclick={() => showMoreCimmichIdentitySection('candidates')}>Show 20 more</button
-                >
-              {/if}
-            </section>
           {/if}
         </section>
       {:else}

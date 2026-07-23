@@ -43,14 +43,17 @@ describe('Person profile layout', () => {
     expect(source).toContain('Face photo');
     expect(source).toContain('Body photo');
     expect(source).toContain('Hero photo');
-    expect(source).toContain('Confirmed evidence');
-    expect(source.indexOf('Confirmed evidence')).toBeLessThan(
-      source.indexOf('aria-label="Presentation photo choices"'),
-    );
+    expect(source).toContain('Identity workspaces');
+    expect(source).toContain('flex min-w-max items-center gap-2');
     expect(source).toContain("{ id: 'presentation', label: 'Presentation photos'");
     expect(source).toContain("'Not selected'");
+    expect(source).toContain("cimmichIdentityFilter === 'candidates'");
+    expect(source).toContain("cimmichPresentationPickerSlot === slotKind ? '' : slotKind");
+    expect(source).toContain('Select from this person');
+    expect(source).toContain('Refocus');
     expect(source).not.toContain('Choose confirmed evidence below for the Face, Body, and Hero image.');
     expect(source).not.toContain("'Automatic'");
+    expect(source).not.toContain('mt-4 grid gap-3 border-t');
     expect(source).toContain('Prime faces');
     expect(source).toContain('Supporting faces');
     expect(source).toContain('Unclassified faces');
