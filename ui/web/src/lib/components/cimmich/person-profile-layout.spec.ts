@@ -44,8 +44,12 @@ describe('Person profile layout', () => {
     expect(source).toContain('Body photo');
     expect(source).toContain('Hero photo');
     expect(source).toContain('Identity workspaces');
-    expect(source).toContain('flex min-w-max items-center gap-2');
-    expect(source).toContain("{ id: 'presentation', label: 'Presentation photos'");
+    expect(source).toContain('grid grid-cols-4 gap-2 sm:grid-cols-8');
+    expect(source).not.toContain('overflow-x-auto pb-1');
+    expect(source).toContain("{ id: 'presentation', label: 'Presentation'");
+    expect(source).toContain("{ id: 'prime', label: 'Prime'");
+    expect(source).toContain("{ id: 'secondary', label: 'Supporting'");
+    expect(source).toContain('Use automatic choice');
     expect(source).toContain("'Not selected'");
     expect(source).toContain("cimmichIdentityFilter === 'candidates'");
     expect(source).toContain("cimmichPresentationPickerSlot === slotKind ? '' : slotKind");
@@ -54,9 +58,9 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('Choose confirmed evidence below for the Face, Body, and Hero image.');
     expect(source).not.toContain("'Automatic'");
     expect(source).not.toContain('mt-4 grid gap-3 border-t');
-    expect(source).toContain('Prime faces');
-    expect(source).toContain('Supporting faces');
-    expect(source).toContain('Unclassified faces');
+    expect(source).toContain("label: 'Prime'");
+    expect(source).toContain("label: 'Supporting'");
+    expect(source).toContain("label: 'Unclassified'");
     expect(source).toContain('Awaiting confirmation');
     expect(source).toContain('Show 20 more');
     expect(source).toContain('getCimmichIdentityFaces(personId, 5000)');

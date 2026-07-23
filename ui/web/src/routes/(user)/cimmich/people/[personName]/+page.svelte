@@ -2508,54 +2508,45 @@
               </div>
               <fieldset class="min-w-0">
                 <legend class="mb-1 font-semibold">Identity workspaces</legend>
-                <div class="overflow-x-auto pb-1">
-                  <div class="flex min-w-max items-center gap-2">
-                    {#each [{ id: 'prime', label: 'Prime faces', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting faces', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low-quality faces', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified faces', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body & Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation photos', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
-                      <button
-                        class={[
-                          'flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                          cimmichIdentityFilter === filter.id
-                            ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
-                            : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
-                        ]}
-                        type="button"
-                        aria-pressed={cimmichIdentityFilter === filter.id}
-                        onclick={() => {
-                          cimmichIdentityFilter = filter.id as CimmichIdentityFilter;
-                          if (filter.id !== 'presentation') {
-                            cimmichPresentationPickerSlot = '';
-                          }
-                        }}
-                      >
-                        <span class="text-sm font-semibold">{filter.label}</span>
-                        <span
-                          class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
-                          >{filter.count}</span
-                        >
-                      </button>
-                    {/each}
-                    <span class="mx-1 h-7 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></span>
+                <div class="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                  {#each [{ id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() }, { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() }, { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() }, { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() }, { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() }, { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() }, { id: 'presentation', label: 'Presentation', count: `${cimmichPresentationSelectionCount}/3` }] as filter (filter.id)}
                     <button
                       class={[
-                        'flex min-h-10 shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
-                        cimmichIdentityFilter === 'candidates'
+                        'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
+                        cimmichIdentityFilter === filter.id
                           ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
                           : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
                       ]}
                       type="button"
-                      aria-pressed={cimmichIdentityFilter === 'candidates'}
+                      aria-pressed={cimmichIdentityFilter === filter.id}
                       onclick={() => {
-                        cimmichIdentityFilter = 'candidates';
-                        cimmichPresentationPickerSlot = '';
+                        cimmichIdentityFilter = filter.id as CimmichIdentityFilter;
+                        if (filter.id !== 'presentation') {
+                          cimmichPresentationPickerSlot = '';
+                        }
                       }}
                     >
-                      <span class="text-sm font-semibold">Awaiting confirmation</span>
-                      <span
-                        class="shrink-0 rounded-full bg-black/5 px-2 py-0.5 text-xs font-semibold opacity-70 dark:bg-white/10"
-                        >{visibleCimmichCandidates.length.toLocaleString()}</span
-                      >
+                      <span class="truncate text-xs font-semibold sm:text-[11px] lg:text-xs">{filter.label}</span>
+                      <span class="text-xs opacity-60">{filter.count}</span>
                     </button>
-                  </div>
+                  {/each}
+                  <button
+                    class={[
+                      'grid min-h-14 min-w-0 content-center gap-0.5 rounded-lg border p-2 text-left transition-colors',
+                      cimmichIdentityFilter === 'candidates'
+                        ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
+                        : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
+                    ]}
+                    type="button"
+                    aria-pressed={cimmichIdentityFilter === 'candidates'}
+                    onclick={() => {
+                      cimmichIdentityFilter = 'candidates';
+                      cimmichPresentationPickerSlot = '';
+                    }}
+                  >
+                    <span class="truncate text-xs font-semibold sm:text-[11px] lg:text-xs">Awaiting</span>
+                    <span class="text-xs opacity-60">{visibleCimmichCandidates.length.toLocaleString()}</span>
+                  </button>
                 </div>
               </fieldset>
               <div
@@ -2826,12 +2817,14 @@
                               </button>
                             </div>
                           </details>
-                          <button
-                            class="col-span-2 min-h-9 rounded-md px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
-                            type="button"
-                            disabled={Boolean(cimmichPresentationSaving)}
-                            onclick={() => void clearCimmichPresentation(slotKind)}>Clear choice</button
-                          >
+                          {#if media.selectionMode === 'explicit'}
+                            <button
+                              class="col-span-2 min-h-9 rounded-md px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-immich-dark-gray"
+                              type="button"
+                              disabled={Boolean(cimmichPresentationSaving)}
+                              onclick={() => void clearCimmichPresentation(slotKind)}>Use automatic choice</button
+                            >
+                          {/if}
                         {/if}
                       </div>
                     </div>

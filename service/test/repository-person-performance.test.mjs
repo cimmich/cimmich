@@ -48,6 +48,7 @@ test("People project ordinary accepted Faces and accepted Body regions without m
   assert.equal(person.representative_face_id, "face-1");
   assert.equal(person.sourceAssetId, "source-face");
   assert.deepEqual(person.bodyPreview, {
+    assetId: "asset-body",
     bodyId: "body-1",
     box_h: 0.6,
     box_w: 0.3,
@@ -129,6 +130,73 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.doesNotMatch(statement, /FROM current_reference_gallery/);
 });
 
+test("Person presentation falls back to the current portrait, hero and body evidence", async () => {
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("FROM person_presentation_media")) return [];
+    if (statement.includes("body_representative AS MATERIALIZED")) {
+      return [
+        {
+          accepted_faces: 1,
+          aliases: [],
+          asset_count: 1,
+          body_preview_asset_id: "asset-body",
+          body_preview_body_id: "body-1",
+          body_preview_box_h: 0.7,
+          body_preview_box_w: 0.4,
+          body_preview_box_x: 0.1,
+          body_preview_box_y: 0.2,
+          candidate_faces: 0,
+          categories: [],
+          display_name: "Person",
+          head_faces: 0,
+          needs_holding: false,
+          needs_sort: false,
+          person_id: "person-1",
+          prime_faces: 1,
+          representative_asset_id: "asset-face",
+          representative_face_id: "face-1",
+          box_h: 0.2,
+          box_w: 0.1,
+          box_x: 0.4,
+          box_y: 0.3,
+          secondary_faces: 0,
+          status: "active",
+          subject_kind: "person",
+        },
+      ];
+    }
+    if (statement.includes("FROM current_person")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    return [];
+  };
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      ["asset-body", { filename: "body.jpg", sourceAssetId: "source-body" }],
+      ["asset-face", { filename: "face.jpg", sourceAssetId: "source-face" }],
+    ]),
+  );
+
+  const presentation = await repository.personPresentation({
+    personId: "person-1",
+  });
+
+  assert.equal(presentation.face.filename, "face.jpg");
+  assert.equal(presentation.face.selectionMode, "automatic");
+  assert.equal(presentation.hero.sourceAssetId, "source-face");
+  assert.equal(presentation.hero.selectionMode, "automatic");
+  assert.equal(presentation.body.filename, "body.jpg");
+  assert.equal(presentation.body.selectionMode, "automatic");
+  assert.deepEqual(presentation.body.crop, {
+    h: 0.784,
+    w: 0.44800000000000006,
+    x: 0.07600000000000001,
+    y: 0.15800000000000003,
+  });
+});
+
 test("Person presentation persists only confirmed Person evidence and projects framing", async () => {
   const statements = [];
   const rows = [];
@@ -179,6 +247,7 @@ test("Person presentation persists only confirmed Person evidence and projects f
   });
 
   assert.equal(presentation.face.filename, "portrait.jpg");
+  assert.equal(presentation.face.selectionMode, "explicit");
   assert.equal(presentation.face.sourceAssetId, "immich-asset-1");
   assert.deepEqual(presentation.face.crop, {
     h: 0.5,
