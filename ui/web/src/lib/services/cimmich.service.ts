@@ -524,6 +524,7 @@ export type CimmichPerson = {
     width?: number;
   } | null;
   presentationBody?: CimmichPersonPresentationMedia | null;
+  presentationFace?: CimmichPersonPresentationMedia | null;
   box_h: number | null;
   box_w: number | null;
   box_x: number | null;

@@ -39,6 +39,13 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         presentation_body_observation_kind: "body",
         presentation_body_updated_at: "2026-07-24T00:00:00.000Z",
         presentation_body_width: 1200,
+        presentation_face_asset_id: "asset-presentation-face",
+        presentation_face_crop: { h: 0.4, w: 0.3, x: 0.45, y: 0.2 },
+        presentation_face_height: 1600,
+        presentation_face_observation_id: "face-2",
+        presentation_face_observation_kind: "face",
+        presentation_face_updated_at: "2026-07-24T00:01:00.000Z",
+        presentation_face_width: 1200,
         representative_asset_id: "asset-face",
         representative_face_id: "face-1",
         secondary_faces: 0,
@@ -56,6 +63,13 @@ test("People project ordinary accepted Faces and accepted Body regions without m
       {
         filename: "selected-body.jpg",
         sourceAssetId: "source-presentation-body",
+      },
+    ],
+    [
+      "asset-presentation-face",
+      {
+        filename: "selected-face.jpg",
+        sourceAssetId: "source-presentation-face",
       },
     ],
   ]);
@@ -90,6 +104,19 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     updatedAt: "2026-07-24T00:00:00.000Z",
     width: 1200,
   });
+  assert.deepEqual(person.presentationFace, {
+    assetId: "asset-presentation-face",
+    crop: { h: 0.4, w: 0.3, x: 0.45, y: 0.2 },
+    filename: "selected-face.jpg",
+    height: 1600,
+    observationId: "face-2",
+    observationKind: "face",
+    selectionMode: "explicit",
+    slotKind: "face",
+    sourceAssetId: "source-presentation-face",
+    updatedAt: "2026-07-24T00:01:00.000Z",
+    width: 1200,
+  });
   assert.match(
     statement,
     /WHERE identity\.state = 'accepted' AND identity\.face_state = 'valid'/,
@@ -102,6 +129,7 @@ test("People project ordinary accepted Faces and accepted Body regions without m
   );
   assert.match(statement, /tag\.state = 'accepted'/);
   assert.match(statement, /person_presentation_media presentation_body/);
+  assert.match(statement, /person_presentation_media presentation_face/);
 });
 
 test("Person overview uses request-local evidence sets instead of global projection views", async () => {

@@ -71,4 +71,12 @@ describe('People overview layout', () => {
     expect(source).toContain('cimmichPresentationBodyCropStyle(person.presentationBody)');
     expect(source).toContain("person.presentationBody?.sourceAssetId ?? person.bodyPreview?.sourceAssetId ?? ''");
   });
+
+  it('uses the saved Face presentation selection and framing on People cards', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain('person.presentationFace?.sourceAssetId || person.sourceAssetId');
+    expect(source).toContain('cimmichPresentationFaceCropStyle(person.presentationFace)');
+    expect(source).toContain('person.presentationFace?.sourceAssetId ?? person.sourceAssetId');
+  });
 });
