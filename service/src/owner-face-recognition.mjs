@@ -181,12 +181,32 @@ export const createOwnerFaceRecognitionScheduler = ({
               person.subject_kind, identity.person_id
             ) <= ${visibleRank}
             AND NOT EXISTS (
-              SELECT 1 FROM face_embedding embedding
+              SELECT 1
+              FROM face_embedding embedding
+              JOIN media_job recognition_job
+                ON recognition_job.result_receipt_id =
+                  embedding.producer_receipt_id
+                AND recognition_job.state = 'completed'
+              JOIN media_pipeline_run pipeline
+                ON pipeline.recognition_job_id = recognition_job.job_id
+                AND pipeline.asset_id = face.asset_id
+                AND pipeline.recognizer_config_digest =
+                  embedding.config_digest
+                AND pipeline.state = 'recognized'
+              JOIN current_asset_source_revision revision
+                ON revision.revision_id = pipeline.source_revision_id
+                AND revision.asset_id = pipeline.asset_id
+                AND revision.input_revision = pipeline.input_revision
+                AND revision.source_content_digest =
+                  pipeline.source_content_digest
               WHERE embedding.face_id = face.face_id
                 AND embedding.state = 'active'
-                AND embedding.model_family = ${validatedManifest.recognitionSpace.modelFamily}
-                AND embedding.model_version = ${validatedManifest.recognitionSpace.modelVersion}
-                AND embedding.config_digest = ${validatedManifest.recognitionSpaceConfigDigest}
+                AND embedding.model_family =
+                  ${validatedManifest.recognitionSpace.modelFamily}
+                AND embedding.model_version =
+                  ${validatedManifest.recognitionSpace.modelVersion}
+                AND embedding.config_digest =
+                  ${validatedManifest.recognitionSpaceConfigDigest}
             )
           ORDER BY face.asset_id, face.face_id
         )

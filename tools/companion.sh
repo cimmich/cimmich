@@ -9,6 +9,7 @@ ENV_FILE="${STATE_ROOT:+$STATE_ROOT/runtime.env}"
 DATABASE_VOLUME="${PROJECT}-database"
 DOCUMENT_VOLUME="${PROJECT}-documents"
 CONFIG_VOLUME="${PROJECT}-config"
+FACE_PROVIDER_VOLUME="${PROJECT}-face-provider"
 ZERO_DIGEST=0000000000000000000000000000000000000000000000000000000000000000
 CURRENT_SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
@@ -188,6 +189,92 @@ sync_inventory() {
   # Arguments are generated above from validated integers and fixed public IDs.
   # shellcheck disable=SC2086
   compose exec -T cimmich-api node bin/sync-immich-inventory.mjs $args
+}
+
+face_provider() {
+  require_configured
+  action=${1:-}
+  case "$action" in
+    configure)
+      test "$#" -eq 4 ||
+        fail "usage: companion.sh face-provider configure MANIFEST DETECTOR_MODEL RECOGNIZER_MODEL"
+      manifest_path=$2
+      detector_path=$3
+      recognizer_path=$4
+      for provider_path in "$manifest_path" "$detector_path" "$recognizer_path"; do
+        case "$provider_path" in /*) ;; *) fail "Face provider paths must be absolute" ;; esac
+        test -f "$provider_path" || fail "Face provider file is missing: $provider_path"
+      done
+      compose build cimmich-api
+      compose stop cimmich-api >/dev/null 2>&1 || true
+      docker volume create "$FACE_PROVIDER_VOLUME" >/dev/null
+      docker run --rm --user 0:0 \
+        --mount "type=bind,src=$manifest_path,dst=/input/provider-manifest.json,readonly" \
+        --mount "type=bind,src=$detector_path,dst=/input/detector.onnx,readonly" \
+        --mount "type=bind,src=$recognizer_path,dst=/input/recognizer.onnx,readonly" \
+        --mount "type=volume,src=$FACE_PROVIDER_VOLUME,dst=/face-provider" \
+        "$PROJECT-api:current-source" \
+        node bin/configure-local-face-provider.mjs \
+        --manifest=/input/provider-manifest.json \
+        --detector=/input/detector.onnx \
+        --recognizer=/input/recognizer.onnx \
+        --target=/face-provider --execute
+      if grep -q '^CIMMICH_LOCAL_MEDIA_PROVIDER=' "$ENV_FILE"; then
+        sed -i.bak \
+          's/^CIMMICH_LOCAL_MEDIA_PROVIDER=.*/CIMMICH_LOCAL_MEDIA_PROVIDER=insightface-user-supplied-cpu/' \
+          "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+      else
+        printf 'CIMMICH_LOCAL_MEDIA_PROVIDER=insightface-user-supplied-cpu\n' >> "$ENV_FILE"
+      fi
+      chmod 600 "$ENV_FILE"
+      compose up --detach --no-deps --force-recreate cimmich-api
+      api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
+      i=0
+      until curl --fail --silent "http://127.0.0.1:${api_port}/health" >/dev/null 2>&1; do
+        i=$((i + 1))
+        test "$i" -lt 60 || fail "configured Face provider did not become ready"
+        sleep 2
+      done
+      curl --fail --silent --show-error \
+        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      printf '\n'
+      ;;
+    status)
+      test "$#" -eq 1 || fail "usage: companion.sh face-provider status"
+      api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
+      curl --fail --silent --show-error \
+        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      printf '\n'
+      ;;
+    *) fail "usage: companion.sh face-provider configure|status" ;;
+  esac
+}
+
+process_faces() {
+  require_configured
+  batches=${1:-10}
+  work_limit=${2:-10}
+  case "$batches:$work_limit" in
+    *[!0-9:]*|0:*|*:0) fail "process-faces batches and work limit must be positive integers" ;;
+  esac
+  test "$batches" -le 100 || fail "process-faces batches must not exceed 100"
+  test "$work_limit" -le 25 || fail "process-faces work limit must not exceed 25"
+  api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
+  batch=1
+  while test "$batch" -le "$batches"; do
+    command_id="owner-recognition-$(date +%s)-$$-$batch"
+    result=$(curl --fail --silent --show-error \
+      -H 'content-type: application/json' \
+      -H 'x-cimmich-actor: owner-operator' \
+      --data "{\"commandId\":\"$command_id\",\"workLimit\":$work_limit}" \
+      "http://127.0.0.1:${api_port}/v1/operator/face-matching/recognition")
+    printf '%s\n' "$result"
+    batch=$((batch + 1))
+  done
+  curl --fail --silent --show-error \
+    "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+  printf '\n'
 }
 
 validate_backup_path() {
@@ -383,14 +470,14 @@ validate_backup() {
   backup_path=$1
   validate_backup_path "$backup_path"
   test -d "$backup_path" || fail "backup directory does not exist"
-  for filename in cimmich.dump documents.tgz config.tgz manifest.json SHA256SUMS; do
+  for filename in cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json SHA256SUMS; do
     test -s "$backup_path/$filename" || fail "backup is incomplete: $filename"
   done
   checksum_names=$(awk 'NF == 2 && $1 ~ /^[0-9a-f]{64}$/ && $2 !~ /\// { print $2 }' \
     "$backup_path/SHA256SUMS" | sort | tr '\n' ':')
-  test "$checksum_names" = "cimmich.dump:config.tgz:documents.tgz:manifest.json:" ||
+  test "$checksum_names" = "cimmich.dump:config.tgz:documents.tgz:face-provider.tgz:manifest.json:" ||
     fail "backup checksum manifest is invalid"
-  test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" -eq 4 ||
+  test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" -eq 5 ||
     fail "backup checksum manifest is invalid"
   (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) ||
     fail "backup checksum verification failed"
@@ -415,6 +502,7 @@ validate_backup() {
   validate_semantic_counts "$BACKUP_SEMANTIC_COUNTS"
   validate_tar_archive "$backup_path" documents.tgz
   validate_tar_archive "$backup_path" config.tgz
+  validate_tar_archive "$backup_path" face-provider.tgz
   validate_config_archive "$backup_path"
   preflight_backup_database "$backup_path"
 }
@@ -448,13 +536,16 @@ backup() {
   docker run --rm -v "$CONFIG_VOLUME:/source:ro" -v "$backup_staging:/backup" \
     "$ALPINE_IMAGE" \
     tar -czf /backup/config.tgz -C /source .
+  docker run --rm -v "$FACE_PROVIDER_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" \
+    tar -czf /backup/face-provider.tgz -C /source .
   health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
   backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read companion semantic counts"
   test "$backup_counts_after" = "$backup_counts_before" ||
     fail "companion semantic counts changed during backup"
   printf '{"health":%s,"project":"%s","semanticCounts":"%s"}\n' \
     "$health" "$PROJECT" "$backup_counts_before" > "$backup_staging/manifest.json"
-  (cd "$backup_staging" && sha256sum cimmich.dump documents.tgz config.tgz manifest.json > SHA256SUMS)
+  (cd "$backup_staging" && sha256sum cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
   chmod 600 "$backup_staging"/*
   validate_backup "$backup_staging"
   mv "$backup_staging" "$backup_destination"
@@ -483,6 +574,9 @@ restore() {
   docker run --rm -v "$CONFIG_VOLUME:/target" -v "$backup_path:/backup:ro" \
     "$ALPINE_IMAGE" \
     sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/config.tgz -C /target'
+  docker run --rm -v "$FACE_PROVIDER_VOLUME:/target" -v "$backup_path:/backup:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/face-provider.tgz -C /target'
   compose up --detach --wait
   restored_counts=$(semantic_counts 2>/dev/null) || fail "unable to read restored semantic counts"
   test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
@@ -513,17 +607,19 @@ remove_companion() {
 validate_project
 
 command=${1:-}
-test -n "$command" || fail "usage: companion.sh configure|up|status|sync|private-password|backup|restore|disable|remove"
+test -n "$command" || fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|disable|remove"
 shift
 case "$command" in
   configure) configure "$@" ;;
   up) up "$@" ;;
   status) status "$@" ;;
   sync) sync_inventory "$@" ;;
+  face-provider) face_provider "$@" ;;
+  process-faces) process_faces "$@" ;;
   private-password) private_password "$@" ;;
   backup) backup "$@" ;;
   restore) restore "$@" ;;
   disable) disable "$@" ;;
   remove) remove_companion "$@" ;;
-  *) fail "usage: companion.sh configure|up|status|sync|private-password|backup|restore|disable|remove" ;;
+  *) fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|disable|remove" ;;
 esac

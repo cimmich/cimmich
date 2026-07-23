@@ -178,6 +178,42 @@ mutation. A headless operator may explicitly admit the ordinary inventory with:
 This calls supported Immich APIs through the read companion. It does not write
 the Immich database or source media and does not run an optional model.
 
+### Optional local Face recognition
+
+Cimmich does not bundle or download recognition weights. An operator who has
+compatible SCRFD and ArcFace ONNX files, and the rights to use them, can bind
+them to the weight-free local InsightFace adapter:
+
+```sh
+./tools/companion.sh face-provider configure \
+  /absolute/private/path/provider-manifest.json \
+  /absolute/private/path/detector.onnx \
+  /absolute/private/path/recognizer.onnx
+./tools/companion.sh face-provider status
+```
+
+The command validates the manifest and both model hashes before copying them
+into Cimmich's private provider volume. It never downloads weights, uploads
+photos or gives the model identity authority. Provider files are included in
+Cimmich backup/restore once configured.
+
+After importing accepted Immich Faces, run a bounded, resumable batch:
+
+```sh
+./tools/companion.sh process-faces 10 10
+```
+
+The first number is the number of batches; the second is the maximum assets per
+batch (up to 25). Each photo is read through the configured read-only Immich
+API, recognition results are provenance-bound to that exact source revision,
+and replaying a completed command does not duplicate work. SourcePack
+evaluation and activation remain governed operator-review steps; candidate
+matches still require human confirmation in Review.
+
+See
+[the user-supplied provider boundary](providers/insightface-user-supplied/README.md)
+before supplying any third-party model.
+
 ## Everyday operations
 
 Use the same `CIMMICH_COMPANION_STATE_ROOT` and project for every command:

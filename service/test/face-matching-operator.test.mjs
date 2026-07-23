@@ -9,7 +9,7 @@ import { deriveSourcePackReviewGate } from "../src/source-pack-evaluator.mjs";
 
 const face = (personId, captureTime) => ({ captureTime, personId });
 
-test("owner SourcePack planning derives a deterministic three-window split", () => {
+test("owner SourcePack planning holds a tiny library without an open-set cohort", () => {
   const input = [
     face("person-b", "2022-01-01T00:00:00Z"),
     face("person-a", "2020-01-01T00:00:00Z"),
@@ -21,10 +21,9 @@ test("owner SourcePack planning derives a deterministic three-window split", () 
   const first = deriveOwnerSourcePackPlan(input);
   const second = deriveOwnerSourcePackPlan([...input].reverse());
   assert.deepEqual(first, second);
-  assert.equal(first.evidenceCutoff, "2020-01-01T00:00:00.000Z");
-  assert.equal(first.calibrationEnd, "2021-01-01T00:00:00.000Z");
-  assert.equal(first.completePeople, 2);
-  assert.equal(first.reviewability, "temporal_holdout_ready");
+  assert.equal(first.calibrationEnd, null);
+  assert.equal(first.reason, "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT");
+  assert.equal(first.reviewability, "operator_hold_required");
 });
 
 test("owner SourcePack planning holds instead of inventing a holdout", () => {
@@ -33,7 +32,7 @@ test("owner SourcePack planning holds instead of inventing a holdout", () => {
     face("person-a", "2021-01-01T00:00:00Z"),
   ]);
   assert.equal(plan.calibrationEnd, null);
-  assert.equal(plan.reason, "INSUFFICIENT_TEMPORAL_HOLDOUT");
+  assert.equal(plan.reason, "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT");
   assert.equal(plan.reviewability, "operator_hold_required");
   assert.throws(
     () => deriveOwnerSourcePackPlan([]),
@@ -41,16 +40,30 @@ test("owner SourcePack planning holds instead of inventing a holdout", () => {
   );
 });
 
-test("owner SourcePack planning remains bounded for archive-scale timestamp diversity", () => {
-  const input = Array.from({ length: 1_000 }, (_, index) =>
-    ["person-a", "person-b", "person-c"].map((personId) =>
-      face(personId, new Date(Date.UTC(2010, 0, 1, 0, 0, index)).toISOString()),
-    ),
-  ).flat();
+test("owner SourcePack planning selects a balanced known and unknown holdout", () => {
+  const known = Array.from({ length: 20 }, (_, index) => `known-${index}`);
+  const unknown = Array.from({ length: 20 }, (_, index) => `unknown-${index}`);
+  const repeated = (people, captureTime, count) =>
+    people.flatMap((personId) =>
+      Array.from({ length: count }, () => face(personId, captureTime)),
+    );
+  const input = [
+    ...repeated(known, "2010-01-01T00:00:00Z", 1),
+    ...repeated(known, "2011-01-01T00:00:00Z", 5),
+    ...repeated(unknown, "2012-01-01T00:00:00Z", 5),
+    ...repeated(known, "2013-01-01T00:00:00Z", 5),
+    ...repeated(unknown, "2014-01-01T00:00:00Z", 5),
+  ];
   const plan = deriveOwnerSourcePackPlan(input);
-  assert.equal(plan.completePeople, 3);
-  assert.equal(plan.evidenceRows, 3_000);
-  assert.equal(plan.reviewability, "temporal_holdout_ready");
+  assert.equal(plan.evidenceCutoff, "2010-01-01T00:00:00.000Z");
+  assert.equal(plan.calibrationEnd, "2012-01-01T00:00:00.000Z");
+  assert.equal(plan.calibrationQueries, 100);
+  assert.equal(plan.calibrationUnknownQueries, 100);
+  assert.equal(plan.completePeople, 20);
+  assert.equal(plan.evidenceRows, 420);
+  assert.equal(plan.holdoutQueries, 100);
+  assert.equal(plan.holdoutUnknownQueries, 100);
+  assert.equal(plan.reviewability, "balanced_open_set_holdout_ready");
 });
 
 test("provider-disabled status retains Basic truth in one total response shape", async () => {
@@ -242,4 +255,47 @@ test("recognition run derives the provider envelope and preserves command replay
   assert.equal(calls[0].envelope.maxDetectionJobs, 3);
   assert.equal(calls[0].envelope.maxRecognitionJobs, 3);
   assert.equal(calls[0].envelope.candidateLimit, 0);
+});
+
+test("recognition-only provider skips Cimmich detection and processes imported Faces", async () => {
+  let envelope;
+  const operator = createFaceMatchingOperator({
+    detectionEnabled: false,
+    matchingProvider: {
+      configDigest: "a".repeat(64),
+      modelFamily: "synthetic-face",
+      modelVersion: "v1",
+      providerId: "synthetic-provider",
+      vectorSpaceId: "synthetic-space-v1",
+    },
+    mediaOperator: {
+      async execute(input) {
+        envelope = input.envelope;
+        return {
+          commandId: input.commandId,
+          inventory: { admittedAssetCount: 4, state: "completed" },
+          queueAfter: { failed: 0, paused: 0, pending: 0, processing: 0 },
+          replayed: false,
+          state: "completed",
+          work: { detections: 0, inventoryPages: 1, recognitions: 3 },
+        };
+      },
+    },
+    providerReceipt: { state: "ready" },
+    repository: { faceMatchingStatus: async () => ({}) },
+    sql: async () => [],
+  });
+  const result = await operator.runRecognition({
+    actorId: "owner-operator",
+    commandId: "owner-recognition-imported-0001",
+    workLimit: 3,
+  });
+  assert.equal(envelope.maxDetectionJobs, 0);
+  assert.equal(envelope.maxRecognitionJobs, 3);
+  assert.equal(envelope.maxInventoryPages, 1);
+  assert.deepEqual(result.work, {
+    detections: 0,
+    inventoryPages: 1,
+    recognitions: 3,
+  });
 });

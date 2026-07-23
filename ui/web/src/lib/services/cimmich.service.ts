@@ -1830,7 +1830,7 @@ export type CimmichFaceMatchingOperatorResult = {
     reason: string | null;
     referenceEvidence: number;
     referencePeople: number;
-    reviewability: 'operator_hold_required' | 'temporal_holdout_ready';
+    reviewability: 'balanced_open_set_holdout_ready' | 'operator_hold_required';
     schemaVersion: 'cimmich.owner-source-pack-plan.v1';
     strategy: 'all_current_evidence_proposed_only' | 'deterministic_three_window';
   };

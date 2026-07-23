@@ -32,6 +32,11 @@ services:
       CIMMICH_MEDIA_JOB_CONFIG_DIGEST: "0000000000000000000000000000000000000000000000000000000000000000"
       CIMMICH_MEDIA_JOB_OPERATION: detect_and_recognize
       CIMMICH_MEDIA_JOB_TOOL_VERSION: inventory-only-v1
+      CIMMICH_LOCAL_MEDIA_PROVIDER: ${CIMMICH_LOCAL_MEDIA_PROVIDER:-}
+      CIMMICH_LOCAL_PYTHON_PATH: /usr/bin/python3
+      CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH: /face-provider/provider-manifest.json
+      CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH: /face-provider/detector.onnx
+      CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH: /face-provider/recognizer.onnx
       CIMMICH_RUNTIME_MODE: production
       CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: ${CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE:-password}
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
@@ -47,6 +52,7 @@ services:
     volumes:
       - cimmich-config:/config
       - cimmich-documents:/documents
+      - cimmich-face-provider:/face-provider:ro
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -133,3 +139,5 @@ volumes:
     name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-documents
   cimmich-config:
     name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-config
+  cimmich-face-provider:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-face-provider
