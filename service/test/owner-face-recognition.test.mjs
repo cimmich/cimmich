@@ -16,7 +16,9 @@ test("owner recognition requires one current completed pipeline per imported fac
     sql,
   });
   assert.equal((await scheduler.enqueueNext()).state, "idle");
+  assert.equal((await scheduler.enqueueNext()).state, "idle");
   const [repair, statement] = statements;
+  assert.equal(statements.length, 3);
   assert.match(repair, /UPDATE face_embedding embedding/);
   assert.match(repair, /SET state = 'superseded'/);
   assert.match(repair, /pipeline\.run_kind = 'existing_observation_set'/);
