@@ -221,6 +221,43 @@
     ].join('; ');
   };
 
+  const cimmichSquareObservationStyle = ({
+    boxH,
+    boxW,
+    boxX,
+    boxY,
+    height,
+    padding,
+    width,
+  }: {
+    boxH: number;
+    boxW: number;
+    boxX: number;
+    boxY: number;
+    height: number;
+    padding: number;
+    width: number;
+  }) => {
+    if (!width || !height) {
+      return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
+    }
+    const cropPixels = Math.min(width, height, Math.max(boxW * width * padding, boxH * height * padding, 1));
+    const cropW = cropPixels / width;
+    const cropH = cropPixels / height;
+    const centerX = boxX + boxW / 2;
+    const centerY = boxY + boxH / 2;
+    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
+    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
+    return [
+      'position: absolute',
+      `width: ${100 / cropW}%`,
+      'height: auto',
+      'max-width: none',
+      `left: ${(-cropX / cropW) * 100}%`,
+      `top: ${(-cropY / cropH) * 100}%`,
+    ].join('; ');
+  };
+
   const cimmichPersonCropStyle = (person: CimmichPerson) => {
     if (
       !person.sourceAssetId ||
@@ -231,47 +268,27 @@
     ) {
       return '';
     }
-    return cimmichCandidateCropStyle(
-      {
-        asset_id: person.representative_asset_id ?? '',
-        box_h: person.box_h,
-        box_w: person.box_w,
-        box_x: person.box_x,
-        box_y: person.box_y,
-        calibrated_confidence: null,
-        capture_time: null,
-        detection_confidence: 1,
-        display_name: person.display_name,
-        face_id: person.representative_face_id ?? '',
-        filename: person.filename,
-        height: 1,
-        identity_claim_id: '',
-        media_kind: 'image',
-        person_id: person.person_id,
-        quality_measurements: {},
-        sourceAssetId: person.sourceAssetId,
-        source_margin: null,
-        source_score: null,
-        width: 1,
-      },
-      1.55,
-    );
+    return cimmichSquareObservationStyle({
+      boxH: person.box_h,
+      boxW: person.box_w,
+      boxX: person.box_x,
+      boxY: person.box_y,
+      height: person.height ?? 0,
+      padding: 1.55,
+      width: person.width ?? 0,
+    });
   };
 
-  const cimmichBodyPreviewCropStyle = (preview: NonNullable<CimmichPerson['bodyPreview']>) => {
-    const cropSize = Math.min(1, Math.max(preview.box_w * 1.2, preview.box_h * 1.08, 0.01));
-    const centerX = preview.box_x + preview.box_w / 2;
-    const centerY = preview.box_y + preview.box_h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropSize, centerX - cropSize / 2));
-    const cropY = Math.max(0, Math.min(1 - cropSize, centerY - cropSize / 2));
-    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropSize)) * 100);
-    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropSize)) * 100);
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: preview.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropSize}% ${100 / cropSize}%`,
-      `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
-  };
+  const cimmichBodyPreviewCropStyle = (preview: NonNullable<CimmichPerson['bodyPreview']>) =>
+    cimmichSquareObservationStyle({
+      boxH: preview.box_h,
+      boxW: preview.box_w,
+      boxX: preview.box_x,
+      boxY: preview.box_y,
+      height: preview.height ?? 0,
+      padding: 1.2,
+      width: preview.width ?? 0,
+    });
 
   const loadCimmichReview = async () => {
     const generation = ++cimmichLoadGeneration;
@@ -555,11 +572,13 @@
                   class="absolute inset-0 overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
                 >
                   {#if person.sourceAssetId}
-                    <span
-                      class="block size-full bg-cover bg-center"
+                    <img
+                      class="max-w-none"
+                      src={getAssetMediaUrl({ id: person.sourceAssetId, size: AssetMediaSize.Preview })}
                       style={cimmichPersonCropStyle(person)}
-                      aria-label={person.display_name}
-                    ></span>
+                      alt={person.display_name}
+                      draggable="false"
+                    />
                   {:else}
                     <span
                       class="flex size-full items-center justify-center text-xl font-semibold text-gray-700 dark:bg-immich-dark-gray dark:text-gray-200"
@@ -580,10 +599,20 @@
                 {/if}
                 {#if person.bodyPreview}
                   <span
-                    class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden rounded-full bg-gray-200 bg-cover bg-center backface-hidden dark:bg-gray-700"
-                    style={cimmichBodyPreviewCropStyle(person.bodyPreview)}
+                    class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
                     aria-hidden="true"
-                  ></span>
+                  >
+                    <img
+                      class="max-w-none"
+                      src={getAssetMediaUrl({
+                        id: person.bodyPreview.sourceAssetId,
+                        size: AssetMediaSize.Preview,
+                      })}
+                      style={cimmichBodyPreviewCropStyle(person.bodyPreview)}
+                      alt=""
+                      draggable="false"
+                    />
+                  </span>
                 {/if}
               </span>
             </span>

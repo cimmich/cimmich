@@ -53,4 +53,14 @@ describe('People overview layout', () => {
     expect(source).toContain("peopleThumbnailSize === 'small'");
     expect(source).toContain("peopleThumbnailSize === 'large'");
   });
+
+  it('keeps circular People portraits proportional while cropping them', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain('class="max-w-none"');
+    expect(source).toContain('cimmichSquareObservationStyle');
+    expect(source).toContain('width: ${100 / cropW}%');
+    expect(source).toContain('height: auto');
+    expect(source).not.toContain('class="block size-full bg-cover bg-center"');
+  });
 });

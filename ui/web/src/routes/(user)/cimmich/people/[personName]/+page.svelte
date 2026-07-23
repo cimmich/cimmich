@@ -74,7 +74,6 @@
     type CimmichPersonProfileDisplayDefaults,
     type CimmichPersonProfileFieldKey,
     type CimmichPersonProfileProjection,
-    type CimmichPetCoverCrop,
     type CimmichPersonPresentation,
     type CimmichPersonPresentationSlot,
     type CimmichPersonSetup,
@@ -167,6 +166,12 @@
     centerY: number;
     zoom: number;
   };
+  type CimmichPresentationDrag = {
+    pointerId: number;
+    slotKind: CimmichPersonPresentationSlot;
+    x: number;
+    y: number;
+  };
 
   let { data }: Props = $props();
   let activeTab = $state<PersonTab>('photos');
@@ -212,6 +217,7 @@
     face: { centerX: 50, centerY: 50, zoom: 1 },
     hero: { centerX: 50, centerY: 50, zoom: 1 },
   });
+  let cimmichPresentationDrag = $state<CimmichPresentationDrag>();
   let cimmichPresentationSaving = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichLoadError = $state('');
   let cimmichMode = $state<CimmichPersonMode>('photos');
@@ -968,74 +974,198 @@
     ].join('; ');
   };
 
-  const cimmichPresentationStyle = (slot: CimmichPersonPresentation['face']) => {
-    if (!slot?.sourceAssetId) {
-      return '';
-    }
-    const crop = slot.crop;
-    if (!crop) {
-      return `background-image: url("${getAssetMediaUrl({ id: slot.sourceAssetId, size: AssetMediaSize.Preview })}"); background-size: cover; background-position: center;`;
-    }
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: slot.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / crop.w}% ${100 / crop.h}%`,
-      `background-position: ${(crop.x / Math.max(0.0001, 1 - crop.w)) * 100}% ${(crop.y / Math.max(0.0001, 1 - crop.h)) * 100}%`,
-    ].join('; ');
+  const cimmichPresentationImageUrl = (slot: CimmichPersonPresentation['face']) =>
+    slot?.sourceAssetId ? getAssetMediaUrl({ id: slot.sourceAssetId, size: AssetMediaSize.Preview }) : '';
+
+  const cimmichPresentationTargetAspect: Record<CimmichPersonPresentationSlot, number> = {
+    body: 3 / 4,
+    face: 1,
+    hero: 16 / 9,
   };
 
-  const cimmichPresentationFrameFromCrop = (crop: CimmichPetCoverCrop | null): CimmichPresentationFrame => {
+  const cimmichPresentationBaseCrop = (
+    slotKind: CimmichPersonPresentationSlot,
+    media: CimmichPersonPresentation['face'],
+  ) => {
+    const sourceAspect = media?.width && media.height ? media.width / media.height : 1;
+    const targetAspect = cimmichPresentationTargetAspect[slotKind];
+    return sourceAspect > targetAspect
+      ? { h: 1, w: targetAspect / sourceAspect }
+      : { h: sourceAspect / targetAspect, w: 1 };
+  };
+
+  const cimmichPresentationFrameFromCrop = (
+    slotKind: CimmichPersonPresentationSlot,
+    media: CimmichPersonPresentation['face'],
+  ): CimmichPresentationFrame => {
+    const crop = media?.crop ?? null;
+    const observationCenter =
+      media?.observationId &&
+      media.observationId === cimmichPerson?.representative_face_id &&
+      cimmichPerson.box_x !== null &&
+      cimmichPerson.box_y !== null &&
+      cimmichPerson.box_w !== null &&
+      cimmichPerson.box_h !== null
+        ? {
+            centerX: clampPercent((cimmichPerson.box_x + cimmichPerson.box_w / 2) * 100),
+            centerY: clampPercent((cimmichPerson.box_y + cimmichPerson.box_h / 2) * 100),
+          }
+        : media?.observationId &&
+            media.observationId === cimmichPerson?.bodyPreview?.bodyId &&
+            cimmichPerson.bodyPreview
+          ? {
+              centerX: clampPercent((cimmichPerson.bodyPreview.box_x + cimmichPerson.bodyPreview.box_w / 2) * 100),
+              centerY: clampPercent((cimmichPerson.bodyPreview.box_y + cimmichPerson.bodyPreview.box_h / 2) * 100),
+            }
+          : null;
     if (!crop) {
-      return { centerX: 50, centerY: 50, zoom: 1 };
+      return { centerX: observationCenter?.centerX ?? 50, centerY: observationCenter?.centerY ?? 50, zoom: 1 };
     }
+    const base = cimmichPresentationBaseCrop(slotKind, media);
     return {
-      centerX: clampPercent((crop.x + crop.w / 2) * 100),
-      centerY: clampPercent((crop.y + crop.h / 2) * 100),
-      zoom: Math.max(1, Math.min(4, 1 / Math.max(0.25, Math.min(crop.w, crop.h)))),
+      centerX: observationCenter?.centerX ?? clampPercent((crop.x + crop.w / 2) * 100),
+      centerY: observationCenter?.centerY ?? clampPercent((crop.y + crop.h / 2) * 100),
+      zoom: Math.max(1, Math.min(4, Math.max(base.w / crop.w, base.h / crop.h))),
     };
   };
 
   const syncCimmichPresentationFrames = (presentation: CimmichPersonPresentation) => {
     cimmichPresentationFrames = {
-      body: cimmichPresentationFrameFromCrop(presentation.body?.crop ?? null),
-      face: cimmichPresentationFrameFromCrop(presentation.face?.crop ?? null),
-      hero: cimmichPresentationFrameFromCrop(presentation.hero?.crop ?? null),
+      body: cimmichPresentationFrameFromCrop('body', presentation.body),
+      face: cimmichPresentationFrameFromCrop('face', presentation.face),
+      hero: cimmichPresentationFrameFromCrop('hero', presentation.hero),
     };
   };
 
-  const cimmichPresentationCropFromFrame = (slotKind: CimmichPersonPresentationSlot) => {
-    const frame = cimmichPresentationFrames[slotKind];
-    const size = 1 / frame.zoom;
-    return {
-      h: size,
-      w: size,
-      x: Math.max(0, Math.min(1 - size, frame.centerX / 100 - size / 2)),
-      y: Math.max(0, Math.min(1 - size, frame.centerY / 100 - size / 2)),
-    };
-  };
-
-  const cimmichPresentationPreviewStyle = (
+  const cimmichPresentationCropFromFrame = (
     slotKind: CimmichPersonPresentationSlot,
     media: CimmichPersonPresentation['face'],
-  ) =>
-    media
-      ? cimmichPresentationStyle({
-          ...media,
-          crop: cimmichPresentationCropFromFrame(slotKind),
-        })
-      : '';
+  ) => {
+    const frame = cimmichPresentationFrames[slotKind];
+    const base = cimmichPresentationBaseCrop(slotKind, media);
+    const cropW = base.w / frame.zoom;
+    const cropH = base.h / frame.zoom;
+    return {
+      h: cropH,
+      w: cropW,
+      x: Math.max(0, Math.min(1 - cropW, frame.centerX / 100 - cropW / 2)),
+      y: Math.max(0, Math.min(1 - cropH, frame.centerY / 100 - cropH / 2)),
+    };
+  };
+
+  const cimmichPresentationImageStyle = (
+    slotKind: CimmichPersonPresentationSlot,
+    media: CimmichPersonPresentation['face'],
+  ) => {
+    if (!media) {
+      return '';
+    }
+    const crop = cimmichPresentationCropFromFrame(slotKind, media);
+    return [
+      'position: absolute',
+      `width: ${100 / crop.w}%`,
+      'height: auto',
+      'max-width: none',
+      `left: ${(-crop.x / crop.w) * 100}%`,
+      `top: ${(-crop.y / crop.h) * 100}%`,
+    ].join('; ');
+  };
 
   const setCimmichPresentationFrame = (
     slotKind: CimmichPersonPresentationSlot,
     field: keyof CimmichPresentationFrame,
     value: number,
   ) => {
+    const boundedValue = field === 'zoom' ? Math.max(1, Math.min(4, value)) : Math.max(0, Math.min(100, value));
     cimmichPresentationFrames = {
       ...cimmichPresentationFrames,
       [slotKind]: {
         ...cimmichPresentationFrames[slotKind],
-        [field]: value,
+        [field]: boundedValue,
       },
     };
+  };
+
+  const adjustCimmichPresentationFrame = (
+    slotKind: CimmichPersonPresentationSlot,
+    delta: Partial<CimmichPresentationFrame>,
+  ) => {
+    const frame = cimmichPresentationFrames[slotKind];
+    setCimmichPresentationFrame(slotKind, 'centerX', frame.centerX + (delta.centerX ?? 0));
+    setCimmichPresentationFrame(slotKind, 'centerY', frame.centerY + (delta.centerY ?? 0));
+    setCimmichPresentationFrame(slotKind, 'zoom', frame.zoom + (delta.zoom ?? 0));
+  };
+
+  const startCimmichPresentationDrag = (event: PointerEvent, slotKind: CimmichPersonPresentationSlot) => {
+    const button = (event.target as HTMLElement).closest('button');
+    if (button && button !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    cimmichPresentationDrag = {
+      pointerId: event.pointerId,
+      slotKind,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const moveCimmichPresentationDrag = (event: PointerEvent, slotKind: CimmichPersonPresentationSlot) => {
+    if (
+      !cimmichPresentationDrag ||
+      cimmichPresentationDrag.pointerId !== event.pointerId ||
+      cimmichPresentationDrag.slotKind !== slotKind
+    ) {
+      return;
+    }
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const frame = cimmichPresentationFrames[slotKind];
+    const deltaX = event.clientX - cimmichPresentationDrag.x;
+    const deltaY = event.clientY - cimmichPresentationDrag.y;
+    adjustCimmichPresentationFrame(slotKind, {
+      centerX: (-deltaX / Math.max(1, bounds.width) / frame.zoom) * 100,
+      centerY: (-deltaY / Math.max(1, bounds.height) / frame.zoom) * 100,
+    });
+    cimmichPresentationDrag = {
+      ...cimmichPresentationDrag,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const endCimmichPresentationDrag = (event: PointerEvent) => {
+    if (cimmichPresentationDrag?.pointerId === event.pointerId) {
+      cimmichPresentationDrag = undefined;
+    }
+  };
+
+  const zoomCimmichPresentation = (event: WheelEvent, slotKind: CimmichPersonPresentationSlot) => {
+    const button = (event.target as HTMLElement).closest('button');
+    if (button && button !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    adjustCimmichPresentationFrame(slotKind, { zoom: event.deltaY < 0 ? 0.15 : -0.15 });
+  };
+
+  const keyCimmichPresentation = (event: KeyboardEvent, slotKind: CimmichPersonPresentationSlot) => {
+    const step = event.shiftKey ? 5 : 2;
+    const deltas: Record<string, Partial<CimmichPresentationFrame>> = {
+      '+': { zoom: 0.1 },
+      '-': { zoom: -0.1 },
+      ArrowDown: { centerY: step },
+      ArrowLeft: { centerX: -step },
+      ArrowRight: { centerX: step },
+      ArrowUp: { centerY: -step },
+      '=': { zoom: 0.1 },
+    };
+    const delta = deltas[event.key];
+    if (!delta) {
+      return;
+    }
+    event.preventDefault();
+    adjustCimmichPresentationFrame(slotKind, delta);
   };
 
   const candidateSelected = (claimId: string) => cimmichCandidateSelection.includes(claimId);
@@ -1531,7 +1661,7 @@
     try {
       cimmichPresentation = await setCimmichPersonPresentation(cimmichPerson.person_id, slotKind, {
         assetId: media.assetId,
-        crop: cimmichPresentationCropFromFrame(slotKind),
+        crop: cimmichPresentationCropFromFrame(slotKind, media),
         observationId: media.observationId,
         observationKind: media.observationKind,
       });
@@ -1875,10 +2005,12 @@
         data-testid="cimmich-person-hero"
       >
         {#if cimmichPresentation?.hero}
-          <div
-            class="absolute inset-0 bg-cover bg-no-repeat"
-            style={cimmichPresentationStyle(cimmichPresentation.hero)}
-          ></div>
+          <img
+            class="absolute max-w-none"
+            src={cimmichPresentationImageUrl(cimmichPresentation.hero)}
+            style={cimmichPresentationImageStyle('hero', cimmichPresentation.hero)}
+            alt=""
+          />
         {:else if cimmichPerson.sourceAssetId}
           <div class="absolute inset-0 bg-cover bg-no-repeat" style={cimmichPersonHeroStyle(cimmichPerson)}></div>
         {:else}
@@ -1910,10 +2042,16 @@
         >
           {#if cimmichPresentation?.face}
             <span
-              class="block size-28 shrink-0 rounded-full bg-slate-700 bg-cover bg-center shadow-2xl ring-4 ring-white/90 sm:size-32"
-              style={cimmichPresentationStyle(cimmichPresentation.face)}
+              class="relative block size-28 shrink-0 overflow-hidden rounded-full bg-slate-700 shadow-2xl ring-4 ring-white/90 sm:size-32"
               aria-label={cimmichPerson.display_name}
-            ></span>
+            >
+              <img
+                class="max-w-none"
+                src={cimmichPresentationImageUrl(cimmichPresentation.face)}
+                style={cimmichPresentationImageStyle('face', cimmichPresentation.face)}
+                alt=""
+              />
+            </span>
           {:else if cimmichPerson.sourceAssetId}
             <span
               class="block size-28 shrink-0 rounded-full bg-slate-700 bg-cover bg-center shadow-2xl ring-4 ring-white/90 sm:size-32"
@@ -2578,7 +2716,7 @@
                   {cimmichIdentityFilter === 'non_face'
                     ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
                     : cimmichIdentityFilter === 'presentation'
-                      ? 'Review the current choices, replace them from confirmed evidence, or refocus their framing.'
+                      ? 'Drag each photo to frame it. Scroll or use the controls to zoom.'
                       : cimmichIdentityFilter === 'candidates'
                         ? 'Confirm or reject system suggestions in bulk.'
                         : cimmichIdentityFilter === 'head'
@@ -2737,96 +2875,130 @@
                     class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
                   >
                     <div
-                      class="aspect-4/3 bg-gray-100 bg-cover bg-center dark:bg-gray-800"
-                      style={cimmichPresentationPreviewStyle(slotKind, media)}
-                    ></div>
-                    <div class="grid gap-2 p-3">
+                      class={[
+                        'relative aspect-4/3 overflow-hidden bg-slate-950 select-none',
+                        cimmichPresentationDrag?.slotKind === slotKind ? 'cursor-grabbing' : 'cursor-grab',
+                      ]}
+                    >
+                      {#if media}
+                        <button
+                          class="absolute inset-0 size-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+                          type="button"
+                          aria-label={`${slot.label} framing editor. Drag the photo, use the mouse wheel to zoom, or use arrow and plus or minus keys.`}
+                          onpointerdown={(event) => startCimmichPresentationDrag(event, slotKind)}
+                          onpointermove={(event) => moveCimmichPresentationDrag(event, slotKind)}
+                          onpointerup={endCimmichPresentationDrag}
+                          onpointercancel={endCimmichPresentationDrag}
+                          onwheel={(event) => zoomCimmichPresentation(event, slotKind)}
+                          onkeydown={(event) => keyCimmichPresentation(event, slotKind)}
+                        >
+                          <img
+                            class="pointer-events-none absolute inset-0 size-full object-contain p-3 opacity-70"
+                            src={cimmichPresentationImageUrl(media)}
+                            alt=""
+                            draggable="false"
+                          />
+                          <span
+                            class={[
+                              'pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 overflow-hidden border-2 border-white shadow-[0_0_0_999px_rgba(2,6,23,0.62),0_0_0_1px_rgba(0,0,0,0.55)]',
+                              slotKind === 'face'
+                                ? 'aspect-square h-[76%] rounded-full'
+                                : slotKind === 'body'
+                                  ? 'aspect-3/4 h-[84%] rounded-xl'
+                                  : 'aspect-video w-[90%] rounded-lg',
+                            ]}
+                            aria-hidden="true"
+                          >
+                            <img
+                              class="max-w-none"
+                              src={cimmichPresentationImageUrl(media)}
+                              style={cimmichPresentationImageStyle(slotKind, media)}
+                              alt=""
+                              draggable="false"
+                            />
+                          </span>
+                        </button>
+                        <div class="absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
+                          <span
+                            class="rounded-md bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-sm backdrop-blur-sm"
+                          >
+                            Final {slotKind === 'face' ? 'circle' : slotKind === 'hero' ? 'banner' : 'portrait'}
+                          </span>
+                          <button
+                            class={[
+                              'min-h-9 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur-sm',
+                              cimmichPresentationPickerSlot === slotKind
+                                ? 'border-white bg-white text-gray-950'
+                                : 'border-white/30 bg-black/65 text-white hover:bg-black/80',
+                            ]}
+                            type="button"
+                            aria-pressed={cimmichPresentationPickerSlot === slotKind}
+                            onclick={() =>
+                              (cimmichPresentationPickerSlot =
+                                cimmichPresentationPickerSlot === slotKind ? '' : slotKind)}
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <div class="absolute inset-x-2 bottom-2 z-10 flex flex-wrap items-center justify-between gap-2">
+                          <span
+                            class="rounded-md bg-black/70 px-2 py-1 text-[11px] text-white/90 shadow-sm backdrop-blur-sm"
+                          >
+                            Drag · Wheel · Arrow keys
+                          </span>
+                          <div
+                            class="flex items-center overflow-hidden rounded-md border border-white/25 bg-black/70 text-white shadow-sm backdrop-blur-sm"
+                          >
+                            <button
+                              class="flex size-9 items-center justify-center text-lg hover:bg-white/15"
+                              type="button"
+                              aria-label={`Zoom ${slot.label} out`}
+                              onclick={() => adjustCimmichPresentationFrame(slotKind, { zoom: -0.1 })}>−</button
+                            >
+                            <span class="min-w-12 px-1 text-center text-[11px] font-semibold">
+                              {cimmichPresentationFrames[slotKind].zoom.toFixed(1)}×
+                            </span>
+                            <button
+                              class="flex size-9 items-center justify-center text-lg hover:bg-white/15"
+                              type="button"
+                              aria-label={`Zoom ${slot.label} in`}
+                              onclick={() => adjustCimmichPresentationFrame(slotKind, { zoom: 0.1 })}>+</button
+                            >
+                            <button
+                              class="min-h-9 border-l border-white/20 px-3 text-xs font-semibold hover:bg-white/15 disabled:opacity-50"
+                              type="button"
+                              disabled={Boolean(cimmichPresentationSaving)}
+                              onclick={() => void saveCimmichPresentationFrame(slotKind)}
+                            >
+                              {cimmichPresentationSaving === slotKind ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="flex size-full items-center justify-center p-4">
+                          <button
+                            class="min-h-10 rounded-md bg-white px-4 text-sm font-semibold text-gray-950"
+                            type="button"
+                            onclick={() => (cimmichPresentationPickerSlot = slotKind)}>Choose photo</button
+                          >
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="flex min-w-0 items-center justify-between gap-2 p-3">
                       <div class="min-w-0">
                         <p class="text-sm font-semibold">{slot.label}</p>
                         <p class="truncate text-xs text-gray-500 dark:text-gray-400">
                           {media?.filename ?? 'Not selected'}
                         </p>
                       </div>
-                      <div class="grid grid-cols-2 gap-2">
+                      {#if media?.selectionMode === 'explicit'}
                         <button
-                          class={[
-                            'min-h-9 rounded-md border px-3 py-2 text-xs font-semibold',
-                            cimmichPresentationPickerSlot === slotKind
-                              ? 'border-gray-950 bg-gray-950 text-white dark:border-white dark:bg-white dark:text-black'
-                              : 'border-gray-200 hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray',
-                          ]}
+                          class="min-h-9 shrink-0 rounded-md px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-immich-dark-gray"
                           type="button"
-                          aria-pressed={cimmichPresentationPickerSlot === slotKind}
-                          onclick={() =>
-                            (cimmichPresentationPickerSlot =
-                              cimmichPresentationPickerSlot === slotKind ? '' : slotKind)}
+                          disabled={Boolean(cimmichPresentationSaving)}
+                          onclick={() => void clearCimmichPresentation(slotKind)}>Use automatic</button
                         >
-                          {media ? 'Change' : 'Choose'}
-                        </button>
-                        {#if media}
-                          <details>
-                            <summary
-                              class="min-h-9 cursor-pointer list-none rounded-md border border-gray-200 px-3 py-2 text-center text-xs font-semibold marker:content-none hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray"
-                              >Refocus</summary
-                            >
-                            <div class="mt-3 grid gap-3 border-t border-gray-200 pt-3 dark:border-immich-dark-gray">
-                              <label class="grid gap-1 text-xs">
-                                <span class="flex justify-between">
-                                  <span>Zoom</span>
-                                  <span>{cimmichPresentationFrames[slotKind].zoom.toFixed(1)}×</span>
-                                </span>
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max="4"
-                                  step="0.1"
-                                  value={cimmichPresentationFrames[slotKind].zoom}
-                                  oninput={(event) =>
-                                    setCimmichPresentationFrame(slotKind, 'zoom', event.currentTarget.valueAsNumber)}
-                                />
-                              </label>
-                              <label class="grid gap-1 text-xs">
-                                <span>Move left / right</span>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="100"
-                                  value={cimmichPresentationFrames[slotKind].centerX}
-                                  oninput={(event) =>
-                                    setCimmichPresentationFrame(slotKind, 'centerX', event.currentTarget.valueAsNumber)}
-                                />
-                              </label>
-                              <label class="grid gap-1 text-xs">
-                                <span>Move up / down</span>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="100"
-                                  value={cimmichPresentationFrames[slotKind].centerY}
-                                  oninput={(event) =>
-                                    setCimmichPresentationFrame(slotKind, 'centerY', event.currentTarget.valueAsNumber)}
-                                />
-                              </label>
-                              <button
-                                class="rounded-lg bg-gray-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-black"
-                                type="button"
-                                disabled={Boolean(cimmichPresentationSaving)}
-                                onclick={() => void saveCimmichPresentationFrame(slotKind)}
-                              >
-                                {cimmichPresentationSaving === slotKind ? 'Saving…' : 'Save framing'}
-                              </button>
-                            </div>
-                          </details>
-                          {#if media.selectionMode === 'explicit'}
-                            <button
-                              class="col-span-2 min-h-9 rounded-md px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-immich-dark-gray"
-                              type="button"
-                              disabled={Boolean(cimmichPresentationSaving)}
-                              onclick={() => void clearCimmichPresentation(slotKind)}>Use automatic choice</button
-                            >
-                          {/if}
-                        {/if}
-                      </div>
+                      {/if}
                     </div>
                   </article>
                 {/each}
