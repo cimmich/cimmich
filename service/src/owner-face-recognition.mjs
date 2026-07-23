@@ -155,6 +155,50 @@ export const createOwnerFaceRecognitionScheduler = ({
   return Object.freeze({
     async enqueueNext() {
       const visibleRank = presentationRank();
+      await sql`
+        UPDATE face_embedding embedding
+        SET state = 'superseded'
+        WHERE embedding.state = 'active'
+          AND embedding.model_family =
+            ${validatedManifest.recognitionSpace.modelFamily}
+          AND embedding.model_version =
+            ${validatedManifest.recognitionSpace.modelVersion}
+          AND embedding.config_digest =
+            ${validatedManifest.recognitionSpaceConfigDigest}
+          AND EXISTS (
+            SELECT 1
+            FROM media_pipeline_run_observation observation
+            JOIN media_pipeline_run pipeline
+              ON pipeline.pipeline_run_id = observation.pipeline_run_id
+              AND pipeline.run_kind = 'existing_observation_set'
+              AND pipeline.recognizer_config_digest =
+                embedding.config_digest
+              AND pipeline.recognizer_provider_config_digest =
+                ${validatedManifest.providerConfigDigest}
+              AND pipeline.vector_space_id =
+                ${validatedManifest.vectorSpaceId}
+              AND pipeline.state = 'recognized'
+            JOIN media_job recognition_job
+              ON recognition_job.job_id = pipeline.recognition_job_id
+              AND recognition_job.state = 'completed'
+            JOIN current_asset_source_revision revision
+              ON revision.revision_id = pipeline.source_revision_id
+              AND revision.asset_id = pipeline.asset_id
+              AND revision.input_revision = pipeline.input_revision
+              AND revision.source_content_digest =
+                pipeline.source_content_digest
+            WHERE observation.face_id = embedding.face_id
+              AND recognition_job.result_receipt_id <>
+                embedding.producer_receipt_id
+              AND NOT EXISTS (
+                SELECT 1
+                FROM face_embedding runtime_embedding
+                WHERE runtime_embedding.face_id = embedding.face_id
+                  AND runtime_embedding.producer_receipt_id =
+                    recognition_job.result_receipt_id
+              )
+          )
+      `;
       const rows = await sql`
         WITH missing AS MATERIALIZED (
           SELECT face.face_id, face.asset_id,
@@ -182,31 +226,27 @@ export const createOwnerFaceRecognitionScheduler = ({
             ) <= ${visibleRank}
             AND NOT EXISTS (
               SELECT 1
-              FROM face_embedding embedding
-              JOIN media_job recognition_job
-                ON recognition_job.result_receipt_id =
-                  embedding.producer_receipt_id
-                AND recognition_job.state = 'completed'
+              FROM media_pipeline_run_observation observation
               JOIN media_pipeline_run pipeline
-                ON pipeline.recognition_job_id = recognition_job.job_id
+                ON pipeline.pipeline_run_id = observation.pipeline_run_id
                 AND pipeline.asset_id = face.asset_id
                 AND pipeline.recognizer_config_digest =
-                  embedding.config_digest
+                  ${validatedManifest.recognitionSpaceConfigDigest}
+                AND pipeline.recognizer_provider_config_digest =
+                  ${validatedManifest.providerConfigDigest}
+                AND pipeline.vector_space_id =
+                  ${validatedManifest.vectorSpaceId}
                 AND pipeline.state = 'recognized'
+              JOIN media_job recognition_job
+                ON recognition_job.job_id = pipeline.recognition_job_id
+                AND recognition_job.state = 'completed'
               JOIN current_asset_source_revision revision
                 ON revision.revision_id = pipeline.source_revision_id
                 AND revision.asset_id = pipeline.asset_id
                 AND revision.input_revision = pipeline.input_revision
                 AND revision.source_content_digest =
                   pipeline.source_content_digest
-              WHERE embedding.face_id = face.face_id
-                AND embedding.state = 'active'
-                AND embedding.model_family =
-                  ${validatedManifest.recognitionSpace.modelFamily}
-                AND embedding.model_version =
-                  ${validatedManifest.recognitionSpace.modelVersion}
-                AND embedding.config_digest =
-                  ${validatedManifest.recognitionSpaceConfigDigest}
+              WHERE observation.face_id = face.face_id
             )
           ORDER BY face.asset_id, face.face_id
         )

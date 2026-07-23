@@ -245,6 +245,23 @@ export const commitRecognitionJobResult = async (
 
     let inserted = 0;
     let reused = 0;
+    if (
+      pipeline?.run_kind === "existing_observation_set" &&
+      faceIds.length
+    ) {
+      await tx`
+        UPDATE face_embedding
+        SET state = 'superseded'
+        WHERE face_id = ANY(${faceIds})
+          AND model_family =
+            ${prepared.manifest.recognitionSpace.modelFamily}
+          AND model_version =
+            ${prepared.manifest.recognitionSpace.modelVersion}
+          AND config_digest =
+            ${prepared.manifest.recognitionSpaceConfigDigest}
+          AND state = 'active'
+      `;
+    }
     for (const packet of prepared.embedded) {
       const [existing] = await tx`
         SELECT embedding_id, vector_digest, producer_receipt_id
