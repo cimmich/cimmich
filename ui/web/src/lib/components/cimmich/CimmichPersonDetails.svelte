@@ -178,6 +178,20 @@
     work: 'Work and organisations',
   };
 
+  const dossierSectionNumbers: Partial<Record<CimmichPersonProfileItemKind, string>> = {
+    important_date: '04',
+    work: '05',
+    social: '07',
+    address: '08',
+  };
+
+  const dossierEmptyPrompts: Partial<Record<CimmichPersonProfileItemKind, string>> = {
+    important_date: 'Add a birthday, anniversary, or date worth remembering.',
+    work: 'Add work, study, or an organisation connected to this person.',
+    social: 'Add a social profile or online presence.',
+    address: 'Add a place connected to this person.',
+  };
+
   const visibleDetailsSection = (sectionKey: CimmichPersonDetailsSectionKey) =>
     detailsDisplay.sections.find((section) => section.sectionKey === sectionKey)?.effectiveVisible ?? true;
   const orderedDetailsDisplaySections = $derived([...detailsDisplay.sections].sort((a, b) => a.order - b.order));
@@ -1090,12 +1104,13 @@
 {#snippet itemSectionCard(kind: CimmichPersonProfileItemKind)}
   {@const sectionItems = profile.items.filter((item) => item.kind === kind)}
   <article
-    class={`rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === kind ? 'md:col-span-2' : ''}`}
+    class={`dossier-card dossier-card--${kind} rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === kind ? 'md:col-span-2' : ''}`}
+    data-dossier-section={dossierSectionNumbers[kind]}
   >
     <div class="flex items-start justify-between gap-3">
       <div class="flex items-center gap-2">
         <span
-          class="flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
+          class="dossier-icon flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
           aria-hidden="true"
         >
           <Icon icon={sectionIcons[kind]} size="18" />
@@ -1104,17 +1119,17 @@
       </div>
       {#if inlineTarget !== kind}
         <button
-          class={railManaged || sectionItems.length > 0
+          class={sectionItems.length > 0
             ? 'flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary'
             : 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-immich-dark-primary'}
           type="button"
-          aria-label={`${railManaged || sectionItems.length > 0 ? 'Edit' : 'Add'} ${sectionLabels[kind]}`}
-          title={`${railManaged || sectionItems.length > 0 ? 'Edit' : 'Add'} ${sectionLabels[kind]}`}
+          aria-label={`${sectionItems.length > 0 ? 'Edit' : 'Add'} ${sectionLabels[kind]}`}
+          title={`${sectionItems.length > 0 ? 'Edit' : 'Add'} ${sectionLabels[kind]}`}
           disabled={Boolean(inlineTarget)}
           onclick={() => void startInlineEditing(kind)}
         >
-          <Icon icon={railManaged || sectionItems.length > 0 ? mdiPencilOutline : mdiPlus} size="18" />
-          {#if !railManaged && sectionItems.length === 0}<span>Add</span>{/if}
+          <Icon icon={sectionItems.length > 0 ? mdiPencilOutline : mdiPlus} size="18" />
+          {#if sectionItems.length === 0}<span>Add</span>{/if}
         </button>
       {/if}
     </div>
@@ -1145,7 +1160,9 @@
         {/each}
       </dl>
     {:else}
-      <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Nothing added yet.</p>
+      <p class="dossier-empty mt-4 text-sm text-gray-500 dark:text-gray-400">
+        {dossierEmptyPrompts[kind] ?? 'Add something worth remembering.'}
+      </p>
     {/if}
   </article>
 {/snippet}
@@ -1782,9 +1799,18 @@
       {/if}
     </div>
   {:else}
-    <div class="grid gap-4 md:grid-cols-2">
+    <div class={['grid gap-4 md:grid-cols-2', railManaged ? 'person-dossier rounded-4xl p-4 sm:p-6' : undefined]}>
+      {#if railManaged}
+        <div class="dossier-masthead flex items-center justify-between gap-4 pb-3 md:col-span-2" aria-hidden="true">
+          <span>Personal archive</span>
+          <span>Profile dossier · {profile.person.displayName}</span>
+        </div>
+      {/if}
       {#if railManaged || (visibleDetailsSection('about') && (!compact || inlineTarget === 'about'))}
-        <article class="rounded-2xl border border-gray-200 p-5 md:col-span-2 dark:border-immich-dark-gray">
+        <article
+          class="dossier-card dossier-about rounded-2xl border border-gray-200 p-5 md:col-span-2 dark:border-immich-dark-gray"
+          data-dossier-section="01"
+        >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
               <Icon icon={mdiNoteTextOutline} size="19" />
@@ -1797,8 +1823,10 @@
                 aria-label="Edit About"
                 title="Edit About"
                 disabled={Boolean(inlineTarget)}
-                onclick={() => void startInlineEditing('about')}><Icon icon={mdiPencilOutline} size="18" /></button
+                onclick={() => void startInlineEditing('about')}
               >
+                <Icon icon={profile.profile.about ? mdiPencilOutline : mdiPlus} size="18" />
+              </button>
             {/if}
           </div>
           {#if inlineTarget === 'about'}
@@ -1818,14 +1846,17 @@
           {:else if profile.profile.about}
             <p class="mt-3 max-w-4xl text-sm/6 whitespace-pre-wrap">{profile.profile.about}</p>
           {:else}
-            <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">Not added</p>
+            <p class="dossier-empty mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Add a short portrait of who this person is and what makes them memorable.
+            </p>
           {/if}
         </article>
       {/if}
 
       {#if railManaged || visibleDetailsSection('at_a_glance')}
         <article
-          class={`rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === 'at_a_glance' ? 'md:col-span-2' : ''}`}
+          class={`dossier-card dossier-facts rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === 'at_a_glance' ? 'md:col-span-2' : ''}`}
+          data-dossier-section="02"
         >
           <div class="flex items-start justify-between gap-3">
             <h3 class="font-semibold">At a glance</h3>
@@ -1924,11 +1955,14 @@
       {/if}
 
       {#if railManaged || visibleDetailsSection('identity_summary')}
-        <article class="rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray">
+        <article
+          class="dossier-card dossier-identity rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray"
+          data-dossier-section="03"
+        >
           <div class="flex items-start justify-between gap-3">
             <div class="flex items-center gap-2">
               <span
-                class="flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
+                class="dossier-icon flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
                 aria-hidden="true"
               >
                 <Icon icon={mdiAccountDetailsOutline} size="18" />
@@ -1966,12 +2000,13 @@
 
       {#if railManaged || (visibleDetailsSection('contact_details') && (!compact || contactItems.length > 0 || inlineTarget === 'contact'))}
         <article
-          class={`rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === 'contact' ? 'md:col-span-2' : ''}`}
+          class={`dossier-card dossier-contact rounded-2xl border border-gray-200 p-5 dark:border-immich-dark-gray ${inlineTarget === 'contact' ? 'md:col-span-2' : ''}`}
+          data-dossier-section="06"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="flex items-center gap-2">
               <span
-                class="flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
+                class="dossier-icon flex size-8 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300"
                 aria-hidden="true"
               >
                 <Icon icon={mdiPhoneOutline} size="18" />
@@ -1980,17 +2015,17 @@
             </div>
             {#if inlineTarget !== 'contact'}
               <button
-                class={railManaged || contactItems.length > 0
+                class={contactItems.length > 0
                   ? 'flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary'
                   : 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-immich-dark-primary'}
                 type="button"
-                aria-label={`${railManaged || contactItems.length > 0 ? 'Edit' : 'Add'} Contact details`}
-                title={`${railManaged || contactItems.length > 0 ? 'Edit' : 'Add'} Contact details`}
+                aria-label={`${contactItems.length > 0 ? 'Edit' : 'Add'} Contact details`}
+                title={`${contactItems.length > 0 ? 'Edit' : 'Add'} Contact details`}
                 disabled={Boolean(inlineTarget)}
                 onclick={() => void startInlineEditing('contact')}
               >
-                <Icon icon={railManaged || contactItems.length > 0 ? mdiPencilOutline : mdiPlus} size="18" />
-                {#if !railManaged && contactItems.length === 0}<span>Add</span>{/if}
+                <Icon icon={contactItems.length > 0 ? mdiPencilOutline : mdiPlus} size="18" />
+                {#if contactItems.length === 0}<span>Add</span>{/if}
               </button>
             {/if}
           </div>
@@ -2019,7 +2054,9 @@
               {/each}
             </dl>
           {:else}
-            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Nothing added yet.</p>
+            <p class="dossier-empty mt-4 text-sm text-gray-500 dark:text-gray-400">
+              Add an email, phone number, or website.
+            </p>
           {/if}
         </article>
       {/if}
@@ -2032,7 +2069,10 @@
       {/if}
 
       {#if railManaged || (visibleDetailsSection('private_notes') && (!compact || profile.profile.privateNotes || inlineTarget === 'private_notes'))}
-        <article class="rounded-2xl border border-gray-200 p-5 md:col-span-2 dark:border-immich-dark-gray">
+        <article
+          class="dossier-card dossier-notes rounded-2xl border border-gray-200 p-5 md:col-span-2 dark:border-immich-dark-gray"
+          data-dossier-section="09"
+        >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
               <Icon icon={mdiNoteTextOutline} size="19" />
@@ -2040,17 +2080,17 @@
             </div>
             {#if inlineTarget !== 'private_notes'}
               <button
-                class={railManaged || profile.profile.privateNotes
+                class={profile.profile.privateNotes
                   ? 'flex size-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-immich-dark-primary'
                   : 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-immich-dark-primary'}
                 type="button"
-                aria-label={`${railManaged || profile.profile.privateNotes ? 'Edit' : 'Add'} Notes`}
-                title={`${railManaged || profile.profile.privateNotes ? 'Edit' : 'Add'} Notes`}
+                aria-label={`${profile.profile.privateNotes ? 'Edit' : 'Add'} Notes`}
+                title={`${profile.profile.privateNotes ? 'Edit' : 'Add'} Notes`}
                 disabled={Boolean(inlineTarget)}
                 onclick={() => void startInlineEditing('private_notes')}
               >
-                <Icon icon={railManaged || profile.profile.privateNotes ? mdiPencilOutline : mdiPlus} size="18" />
-                {#if !railManaged && !profile.profile.privateNotes}<span>Add</span>{/if}
+                <Icon icon={profile.profile.privateNotes ? mdiPencilOutline : mdiPlus} size="18" />
+                {#if !profile.profile.privateNotes}<span>Add</span>{/if}
               </button>
             {/if}
           </div>
@@ -2077,10 +2117,199 @@
           {:else if profile.profile.privateNotes}
             <p class="mt-3 text-sm/6 whitespace-pre-wrap">{profile.profile.privateNotes}</p>
           {:else}
-            <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">Nothing added yet.</p>
+            <p class="dossier-empty mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Write down something worth remembering.
+            </p>
           {/if}
         </article>
       {/if}
     </div>
   {/if}
 </section>
+
+<style>
+  .person-dossier {
+    --dossier-accent: #9b6a2f;
+    --dossier-border: rgba(92, 68, 39, 0.2);
+    --dossier-ink: #292217;
+    --dossier-muted: #766b5b;
+    color: var(--dossier-ink);
+    border: 1px solid var(--dossier-border);
+    background:
+      radial-gradient(circle at 12% 0%, rgba(176, 121, 52, 0.18), transparent 30%),
+      repeating-linear-gradient(0deg, rgba(96, 72, 42, 0.025) 0 1px, transparent 1px 31px),
+      linear-gradient(145deg, #f7f2e8, #eee4d4 70%, #e8dcc9);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 24px 60px rgba(69, 48, 24, 0.12);
+  }
+
+  :global(.dark) .person-dossier {
+    --dossier-border: rgba(224, 190, 137, 0.16);
+    --dossier-ink: #f1e8d9;
+    --dossier-muted: #afa28f;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(184, 128, 60, 0.14), transparent 32%),
+      repeating-linear-gradient(0deg, rgba(242, 225, 198, 0.018) 0 1px, transparent 1px 31px),
+      linear-gradient(145deg, #171512, #100f0d 72%, #0c0b0a);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 24px 70px rgba(0, 0, 0, 0.35);
+  }
+
+  .dossier-masthead {
+    border-bottom: 1px solid var(--dossier-border);
+    color: var(--dossier-muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .dossier-card {
+    --dossier-accent: #9b6a2f;
+    position: relative;
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--dossier-accent) 24%, transparent);
+    background:
+      linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 6%, transparent), transparent 42%),
+      rgba(255, 253, 248, 0.78);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.72),
+      0 10px 28px rgba(75, 53, 28, 0.075);
+  }
+
+  :global(.dark) .dossier-card {
+    background:
+      linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 12%, transparent), transparent 42%),
+      rgba(28, 26, 22, 0.78);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.045),
+      0 12px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .dossier-card::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    content: '';
+    background: linear-gradient(90deg, var(--dossier-accent), transparent 70%);
+  }
+
+  .dossier-card::after {
+    position: absolute;
+    right: 0.8rem;
+    bottom: -1.4rem;
+    z-index: 0;
+    content: attr(data-dossier-section);
+    color: var(--dossier-accent);
+    font-size: 5rem;
+    font-weight: 800;
+    line-height: 1;
+    opacity: 0.055;
+    pointer-events: none;
+  }
+
+  .dossier-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .dossier-card h3 {
+    letter-spacing: 0.025em;
+  }
+
+  .dossier-card dt {
+    color: var(--dossier-muted);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .dossier-card dd {
+    margin-top: 0.2rem;
+    font-size: 0.96rem;
+  }
+
+  .dossier-icon {
+    color: var(--dossier-accent);
+    background: color-mix(in srgb, var(--dossier-accent) 10%, transparent);
+  }
+
+  .dossier-empty {
+    max-width: 34rem;
+    border-top: 1px dashed color-mix(in srgb, var(--dossier-accent) 28%, transparent);
+    padding-top: 0.85rem;
+    color: var(--dossier-muted);
+    line-height: 1.55;
+  }
+
+  .dossier-about {
+    --dossier-accent: #9c6530;
+    min-height: 8.5rem;
+  }
+
+  .dossier-facts {
+    --dossier-accent: #737843;
+  }
+
+  .dossier-identity {
+    --dossier-accent: #4a6e88;
+  }
+
+  .dossier-card--important_date {
+    --dossier-accent: #9a4f4d;
+  }
+
+  .dossier-card--important_date dl {
+    border-left: 1px solid color-mix(in srgb, var(--dossier-accent) 35%, transparent);
+    padding-left: 1rem;
+  }
+
+  .dossier-card--work {
+    --dossier-accent: #9a6b32;
+  }
+
+  .dossier-card--work dl > div,
+  .dossier-contact dl > div {
+    border-bottom: 1px solid color-mix(in srgb, var(--dossier-accent) 18%, transparent);
+    padding-bottom: 0.75rem;
+  }
+
+  .dossier-contact {
+    --dossier-accent: #3e7772;
+  }
+
+  .dossier-card--social {
+    --dossier-accent: #765b88;
+  }
+
+  .dossier-card--address {
+    --dossier-accent: #587454;
+  }
+
+  .dossier-notes {
+    --dossier-accent: #8e6d3e;
+    min-height: 9rem;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0 30px,
+        color-mix(in srgb, var(--dossier-accent) 10%, transparent) 30px 31px
+      ),
+      linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 6%, transparent), transparent 42%),
+      rgba(255, 253, 248, 0.78);
+  }
+
+  :global(.dark) .dossier-notes {
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0 30px,
+        color-mix(in srgb, var(--dossier-accent) 12%, transparent) 30px 31px
+      ),
+      linear-gradient(115deg, color-mix(in srgb, var(--dossier-accent) 12%, transparent), transparent 42%),
+      rgba(28, 26, 22, 0.78);
+  }
+</style>

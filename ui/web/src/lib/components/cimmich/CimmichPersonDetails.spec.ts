@@ -107,7 +107,7 @@ const detailsDisplay = {
   })),
 };
 
-const renderDetails = (startInEdit = false, compact = false) =>
+const renderDetails = (startInEdit = false, compact = false, railManaged = false) =>
   render(CimmichPersonDetails, {
     aliases: [],
     compact,
@@ -122,6 +122,7 @@ const renderDetails = (startInEdit = false, compact = false) =>
     onopenidentitysettings: vi.fn(),
     onprofilechange: vi.fn(),
     profile,
+    railManaged,
     startInEdit,
   });
 
@@ -287,6 +288,31 @@ describe('CimmichPersonDetails', () => {
     expect(getByText('Pronouns')).toBeInTheDocument();
     expect(getByText('Gender identity')).toBeInTheDocument();
     expect(getAllByText('Not set')).toHaveLength(3);
+  });
+
+  it('renders the rail-managed profile as a complete personal dossier', () => {
+    const { getByRole, getByText } = renderDetails(false, true, true);
+
+    expect(getByText('Personal archive')).toBeInTheDocument();
+    expect(getByText('Profile dossier · Maya Chen')).toBeInTheDocument();
+    for (const heading of [
+      'About',
+      'At a glance',
+      'Identity',
+      'Important dates',
+      'Work and organisations',
+      'Contact details',
+      'Social profiles',
+      'Addresses',
+      'Notes',
+    ]) {
+      expect(getByRole('heading', { name: heading })).toBeInTheDocument();
+    }
+    expect(getByRole('button', { name: 'Add Important dates' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Add Contact details' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Add Notes' })).toBeInTheDocument();
+    expect(getByText('Add a birthday, anniversary, or date worth remembering.')).toBeInTheDocument();
+    expect(getByText('Write down something worth remembering.')).toBeInTheDocument();
   });
 
   it('uses a real Birthday selection and places required-date feedback at the date field', async () => {
