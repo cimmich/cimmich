@@ -63,4 +63,12 @@ describe('People overview layout', () => {
     expect(source).toContain('height: auto');
     expect(source).not.toContain('class="block size-full bg-cover bg-center"');
   });
+
+  it('uses the saved Body presentation selection and framing on People cards', async () => {
+    const source = await readPeopleOverview();
+
+    expect(source).toContain('person.presentationBody || person.bodyPreview');
+    expect(source).toContain('cimmichPresentationBodyCropStyle(person.presentationBody)');
+    expect(source).toContain("person.presentationBody?.sourceAssetId ?? person.bodyPreview?.sourceAssetId ?? ''");
+  });
 });

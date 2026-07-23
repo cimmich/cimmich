@@ -523,6 +523,7 @@ export type CimmichPerson = {
     sourceAssetId: string;
     width?: number;
   } | null;
+  presentationBody?: CimmichPersonPresentationMedia | null;
   box_h: number | null;
   box_w: number | null;
   box_x: number | null;

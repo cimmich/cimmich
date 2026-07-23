@@ -980,7 +980,7 @@
   const cimmichPresentationTargetAspect: Record<CimmichPersonPresentationSlot, number> = {
     body: 3 / 4,
     face: 1,
-    hero: 16 / 9,
+    hero: 12 / 5,
   };
 
   const cimmichPresentationBaseCrop = (
@@ -1000,7 +1000,8 @@
   ): CimmichPresentationFrame => {
     const crop = media?.crop ?? null;
     const observationCenter =
-      media?.observationId &&
+      media?.selectionMode === 'automatic' &&
+      media.observationId &&
       media.observationId === cimmichPerson?.representative_face_id &&
       cimmichPerson.box_x !== null &&
       cimmichPerson.box_y !== null &&
@@ -1010,7 +1011,8 @@
             centerX: clampPercent((cimmichPerson.box_x + cimmichPerson.box_w / 2) * 100),
             centerY: clampPercent((cimmichPerson.box_y + cimmichPerson.box_h / 2) * 100),
           }
-        : media?.observationId &&
+        : media?.selectionMode === 'automatic' &&
+            media.observationId &&
             media.observationId === cimmichPerson?.bodyPreview?.bodyId &&
             cimmichPerson.bodyPreview
           ? {
@@ -2905,7 +2907,7 @@
                                 ? 'aspect-square h-[76%] rounded-full'
                                 : slotKind === 'body'
                                   ? 'aspect-3/4 h-[84%] rounded-xl'
-                                  : 'aspect-video w-[90%] rounded-lg',
+                                  : 'aspect-12/5 w-[94%] rounded-lg',
                             ]}
                             aria-hidden="true"
                           >
