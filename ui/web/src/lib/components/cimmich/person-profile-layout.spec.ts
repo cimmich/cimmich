@@ -32,21 +32,34 @@ describe('Person profile layout', () => {
     expect(source).toContain('icon={cimmichGenderIcon ?? mdiGenderMaleFemaleVariant}');
   });
 
-  it('keeps Photos visual controls compact and makes Tags a bucket-first matching library', async () => {
+  it('keeps Photos controls compact and separates Matching from photo tags', async () => {
     const source = await readPersonProfile();
 
     expect(source).toContain('aria-label="Photo view options"');
     expect(source).toContain('aria-label="Thumbnail size"');
     expect(source).toContain('<option value="medium">Medium</option>');
-    expect(source).toContain('<h2 class="text-xl font-semibold">Face matching references</h2>');
-    expect(source).toContain('<legend class="sr-only">Choose a Face matching reference bucket</legend>');
+    expect(source).toContain('<h2 class="text-xl font-semibold">Matching</h2>');
+    expect(source).toContain('<legend class="sr-only">Choose a Matching view</legend>');
+    expect(source).toContain('1 · Identity truth');
+    expect(source).toContain('2 · Reference set');
+    expect(source).toContain('3 · Review results');
+    expect(source).toContain('Photo tags are a separate Photos workflow.');
+    expect(source).toContain(
+      "{ id: 'references', label: 'Reference set', description: 'Strong and supporting matching references' }",
+    );
+    expect(source).toContain('Advanced evidence views');
     expect(source).toContain("{ id: 'prime', label: 'Strong', description: 'Best reference photos' }");
     expect(source).toContain("{ id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' }");
-    expect(source).toContain("{ id: 'non_face', label: 'Not for matching', description: 'Body and Presence truth' }");
+    expect(source).toContain(
+      "{ id: 'non_face', label: 'Body & Presence', description: 'Appearance evidence, not matching references' }",
+    );
     expect(source).toContain('manual Head tags are not counted in this library');
     expect(source).toContain('No Face-derived Head references');
     expect(source).toContain("association_types.includes('body') || association_types.includes('presence')");
+    expect(source).toContain('Review face');
+    expect(source).toContain('loaded of');
     expect(source).not.toContain("id: 'face_only', label: 'Not used'");
+    expect(source).not.toContain('<h2 class="text-xl font-semibold">Face matching references</h2>');
     expect(source).not.toContain('Tagged appearances');
     expect(source).not.toContain('Filter tagged appearances');
     expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
