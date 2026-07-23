@@ -115,7 +115,7 @@
   }
 
   type CountRow = { count: number; label: string };
-  type CimmichIdentityFilter = 'all' | 'head' | 'lq' | 'needs_qc' | 'non_face' | 'prime' | 'secondary';
+  type CimmichIdentityFilter = 'all' | 'head' | 'lq' | 'needs_qc' | 'non_face' | 'prime' | 'references' | 'secondary';
   type CimmichPersonMode = 'candidates' | 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
@@ -230,13 +230,20 @@
     label: string;
     description: string;
   }> = [
-    { id: 'all', label: 'All Face observations', description: 'Every accepted Face' },
+    { id: 'all', label: 'Identity observations', description: 'Faces currently accepted as this person' },
+    { id: 'references', label: 'Reference set', description: 'Strong and supporting matching references' },
+    { id: 'needs_qc', label: 'Needs attention', description: 'Quality flags in the loaded observations' },
+  ];
+  const cimmichIdentityAdvancedFilters: Array<{
+    id: CimmichIdentityFilter;
+    label: string;
+    description: string;
+  }> = [
     { id: 'prime', label: 'Strong', description: 'Best reference photos' },
     { id: 'secondary', label: 'Supporting', description: 'Useful extra angles' },
     { id: 'lq', label: 'Low quality', description: 'Kept with less weight' },
     { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
-    { id: 'non_face', label: 'Not for matching', description: 'Body and Presence truth' },
-    { id: 'needs_qc', label: 'Needs review', description: 'Check before trusting' },
+    { id: 'non_face', label: 'Body & Presence', description: 'Appearance evidence, not matching references' },
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
 
@@ -412,6 +419,12 @@
     ),
   );
   const visibleCimmichIdentityFaces = $derived.by(() => {
+    if (cimmichIdentityFilter === 'references') {
+      return cimmichIdentityFaces.filter((face) => {
+        const bucket = cimmichMainBucket(face);
+        return bucket === 'prime' || bucket === 'secondary';
+      });
+    }
     if (
       cimmichIdentityFilter === 'prime' ||
       cimmichIdentityFilter === 'secondary' ||
@@ -439,6 +452,12 @@
     }
     if (filter === 'non_face') {
       return cimmichBodyPresenceAssets.length;
+    }
+    if (filter === 'references') {
+      return cimmichIdentityFaces.filter((face) => {
+        const bucket = cimmichMainBucket(face);
+        return bucket === 'prime' || bucket === 'secondary';
+      }).length;
     }
     return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === filter).length;
   };
@@ -1875,7 +1894,7 @@
               aria-selected={cimmichMode === 'identity'}
               onclick={() => void openCimmichIdentity()}
             >
-              Tags
+              Matching
             </button>
             <button
               class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
@@ -2209,7 +2228,7 @@
               Raw same-model similarity and separation margin explain the ordering; neither is an identity probability.
               Useful first hides zero-margin ties only. All preserves the complete owner queue.
             </p>
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {#each visibleCimmichCandidates as candidate, index (candidate.identity_claim_id)}
                 {@const selected = candidateSelected(candidate.identity_claim_id)}
                 <article
@@ -2302,20 +2321,71 @@
               <p class="text-sm font-semibold">Choose a match for each held face</p>
             {:else}
               <div>
-                <h2 class="text-xl font-semibold">Face matching references</h2>
-                <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-                  These buckets organise accepted Face observations for comparison. Head references are Face-derived;
-                  manual Head tags stay visible on their photos and are intentionally not counted here. Body and
-                  Presence are also not used for matching.
+                <h2 class="text-xl font-semibold">Matching</h2>
+                <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+                  Keep identity truth correct, maintain a small varied reference set, then review the suggestions it
+                  produces. Photo tags are a separate Photos workflow.
                 </p>
               </div>
-              <fieldset class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-                <legend class="sr-only">Choose a Face matching reference bucket</legend>
+              <div class="grid gap-3 md:grid-cols-3" aria-label="Matching workflow">
+                <article
+                  class="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900 dark:bg-blue-950/25"
+                >
+                  <p class="text-xs font-semibold tracking-wide text-blue-700 uppercase dark:text-blue-300">
+                    1 · Identity truth
+                  </p>
+                  <p class="mt-2 text-3xl font-semibold">{cimmichPerson.accepted_faces.toLocaleString()}</p>
+                  <p class="mt-1 text-sm font-semibold">accepted faces</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">Correct anything that is not this person.</p>
+                  <button
+                    class="mt-3 min-h-10 rounded-lg border border-blue-300 px-3 text-sm font-semibold text-blue-800 hover:bg-blue-100 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950"
+                    type="button"
+                    onclick={() => (cimmichIdentityFilter = 'all')}>Review identity</button
+                  >
+                </article>
+                <article
+                  class="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-900 dark:bg-violet-950/25"
+                >
+                  <p class="text-xs font-semibold tracking-wide text-violet-700 uppercase dark:text-violet-300">
+                    2 · Reference set
+                  </p>
+                  <p class="mt-2 text-3xl font-semibold">
+                    {(cimmichPerson.prime_faces + cimmichPerson.secondary_faces).toLocaleString()}
+                  </p>
+                  <p class="mt-1 text-sm font-semibold">matching references</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">Use a small set of clear, varied faces.</p>
+                  <button
+                    class="mt-3 min-h-10 rounded-lg border border-violet-300 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950"
+                    type="button"
+                    onclick={() => (cimmichIdentityFilter = 'references')}>View references</button
+                  >
+                </article>
+                <article
+                  class="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/25"
+                >
+                  <p class="text-xs font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+                    3 · Review results
+                  </p>
+                  <p class="mt-2 text-3xl font-semibold">{cimmichPerson.candidate_faces.toLocaleString()}</p>
+                  <p class="mt-1 text-sm font-semibold">suggested faces</p>
+                  <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">Accept or reject suggestions separately.</p>
+                  {#if cimmichPerson.candidate_faces > 0}
+                    <button
+                      class="mt-3 min-h-10 rounded-lg border border-amber-300 px-3 text-sm font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-950"
+                      type="button"
+                      onclick={() => void openCimmichCandidates()}>Review suggestions</button
+                    >
+                  {:else}
+                    <p class="mt-4 text-xs font-semibold text-gray-500 dark:text-gray-400">No suggestions waiting</p>
+                  {/if}
+                </article>
+              </div>
+              <fieldset class="grid gap-2 sm:grid-cols-3">
+                <legend class="sr-only">Choose a Matching view</legend>
                 {#each cimmichIdentityFilters as filter (filter.id)}
-                  {@const count = cimmichIdentityBucketCount(filter.id)}
                   <button
                     class={[
-                      'grid min-h-20 content-between rounded-xl border p-3 text-left transition-colors',
+                      'rounded-xl border p-3 text-left transition-colors',
                       cimmichIdentityFilter === filter.id
                         ? 'border-gray-950 bg-gray-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-black'
                         : 'border-gray-200 bg-white hover:border-gray-400 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-500',
@@ -2324,32 +2394,62 @@
                     aria-pressed={cimmichIdentityFilter === filter.id}
                     onclick={() => (cimmichIdentityFilter = filter.id)}
                   >
-                    <span class="text-2xl leading-none font-semibold">{count.toLocaleString()}</span>
-                    <span class="mt-3 grid gap-0.5">
-                      <span class="text-sm font-semibold">{filter.label}</span>
-                      <span
-                        class={[
-                          'text-[11px] leading-tight',
-                          cimmichIdentityFilter === filter.id
-                            ? 'text-white/70 dark:text-black/65'
-                            : 'text-gray-500 dark:text-gray-400',
-                        ]}>{filter.description}</span
-                      >
-                    </span>
+                    <span class="text-sm font-semibold">{filter.label}</span>
+                    <span class="mt-1 block text-[11px] opacity-70">{filter.description}</span>
                   </button>
                 {/each}
               </fieldset>
+              <details
+                class="rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+              >
+                <summary
+                  class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold marker:content-none"
+                >
+                  <span>Advanced evidence views</span>
+                  <span class="text-xs font-normal text-gray-500 dark:text-gray-400"
+                    >Quality, Head, Body & Presence</span
+                  >
+                </summary>
+                <fieldset
+                  class="grid grid-cols-2 gap-2 border-t border-gray-200 p-3 sm:grid-cols-3 lg:grid-cols-5 dark:border-immich-dark-gray"
+                >
+                  <legend class="sr-only">Choose an advanced evidence view</legend>
+                  {#each cimmichIdentityAdvancedFilters as filter (filter.id)}
+                    {@const count = cimmichIdentityBucketCount(filter.id)}
+                    <button
+                      class={[
+                        'rounded-lg border p-3 text-left transition-colors',
+                        cimmichIdentityFilter === filter.id
+                          ? 'border-gray-950 bg-gray-950 text-white dark:border-white dark:bg-white dark:text-black'
+                          : 'border-gray-200 hover:border-gray-400 dark:border-immich-dark-gray dark:hover:border-gray-500',
+                      ]}
+                      type="button"
+                      aria-pressed={cimmichIdentityFilter === filter.id}
+                      onclick={() => (cimmichIdentityFilter = filter.id)}
+                    >
+                      <span class="text-sm font-semibold">{filter.label}</span>
+                      <span class="mt-1 block text-[11px] opacity-70"
+                        >{count.toLocaleString()} loaded · {filter.description}</span
+                      >
+                    </button>
+                  {/each}
+                </fieldset>
+              </details>
               <div
                 class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-3 dark:border-immich-dark-gray"
               >
                 <div>
                   <p class="text-sm font-semibold">
-                    {cimmichIdentityFilters.find((filter) => filter.id === cimmichIdentityFilter)?.label}
+                    {[...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
+                      (filter) => filter.id === cimmichIdentityFilter,
+                    )?.label}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
                     {cimmichIdentityFilter === 'non_face'
-                      ? `${cimmichBodyPresenceAssets.length.toLocaleString()} appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
-                      : `${renderedCimmichIdentityFaces.length.toLocaleString()} face${renderedCimmichIdentityFaces.length === 1 ? '' : 's'}`}
+                      ? `${cimmichBodyPresenceAssets.length.toLocaleString()} loaded appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
+                      : cimmichIdentityFilter === 'all'
+                        ? `${renderedCimmichIdentityFaces.length.toLocaleString()} loaded of ${cimmichPerson.accepted_faces.toLocaleString()} accepted faces`
+                        : `${renderedCimmichIdentityFaces.length.toLocaleString()} in the loaded observations`}
                   </p>
                 </div>
                 <p class="max-w-xl text-right text-xs text-gray-500 dark:text-gray-400">
@@ -2357,7 +2457,7 @@
                     ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
                     : cimmichIdentityFilter === 'head'
                       ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
-                      : 'Open a face to change its matching role or record appearance notes.'}
+                      : 'Use Review face to manage matching role, appearance notes, or identity corrections.'}
                 </p>
               </div>
             {/if}
@@ -2430,9 +2530,9 @@
           {/if}
 
           {#if cimmichIdentityLoading}
-            <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading identity photos…</p>
+            <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
           {:else if cimmichIdentityFilter === 'non_face'}
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {#each cimmichBodyPresenceAssets as asset (asset.asset_id)}
                 {@const hasBody = asset.association_types.includes('body')}
                 {@const hasPresence = asset.association_types.includes('presence')}
@@ -2482,7 +2582,7 @@
               />
             {/if}
           {:else}
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {#each renderedCimmichIdentityFaces as face (face.face_id)}
                 {@const mainBucket = cimmichMainBucket(face)}
                 {@const holdingMatch = cimmichHoldingMatches[face.face_id]}
@@ -2598,7 +2698,7 @@
                         class="rounded-lg border border-gray-200 bg-gray-50 dark:border-immich-dark-gray dark:bg-black/10"
                       >
                         <summary class="flex min-h-11 cursor-pointer items-center px-3 text-xs font-semibold">
-                          Evidence details
+                          Review face
                         </summary>
                         <div class="grid gap-2 border-t border-gray-200 p-2.5 dark:border-immich-dark-gray">
                           <label
@@ -2889,7 +2989,7 @@
                     ? 'This person has no currently flagged identity evidence.'
                     : cimmichIdentityFilter === 'head'
                       ? 'Manual Head tags remain visible on photos and are intentionally not counted in this reference library.'
-                      : 'Choose another bucket or move a face here from All faces.'}
+                      : 'Choose another view or assign a matching role from Identity observations.'}
               />
             {/if}
             {#if cimmichIdentityNextCursor}
