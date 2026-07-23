@@ -512,6 +512,7 @@ export type CimmichPerson = {
   aliases: string[];
   asset_count: number;
   bodyPreview?: {
+    assetId: string;
     bodyId: string;
     box_h: number;
     box_w: number;
@@ -555,9 +556,10 @@ export type CimmichPersonPresentationMedia = {
   filename: string;
   observationId: string | null;
   observationKind: 'body' | 'face' | 'presence';
+  selectionMode: 'automatic' | 'explicit';
   slotKind: CimmichPersonPresentationSlot;
   sourceAssetId: string;
-  updatedAt: string;
+  updatedAt: string | null;
 };
 
 export type CimmichPersonPresentation = {

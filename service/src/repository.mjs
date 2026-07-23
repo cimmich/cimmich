@@ -563,6 +563,7 @@ const projectPersonPresentation = (bridge, row) => {
     bodyPreview:
       bodyId && bodyDisplay?.sourceAssetId
         ? {
+            assetId: bodyAssetId,
             bodyId,
             box_h: bodyBoxH,
             box_w: bodyBoxW,
@@ -4713,10 +4714,82 @@ export const createCimmichRepository = (
           crop: row.crop || null,
           observationId: row.observation_id || null,
           observationKind: row.observation_kind,
+          selectionMode: "explicit",
           slotKind: row.slot_kind,
           updatedAt: new Date(row.updated_at).toISOString(),
           ...bridgeFields(bridge, row.asset_id),
         };
+      }
+      if (Object.values(slots).some((slot) => slot === null)) {
+        const person = await this.person({ personId: id });
+        const cropFromBox = ({ h, padding, w, x, y }) => {
+          if (![h, w, x, y].every(Number.isFinite)) return null;
+          const cropW = Math.min(1, Math.max(w * padding, 0.01));
+          const cropH = Math.min(1, Math.max(h * padding, 0.01));
+          const centerX = x + w / 2;
+          const centerY = y + h / 2;
+          return {
+            h: cropH,
+            w: cropW,
+            x: Math.max(0, Math.min(1 - cropW, centerX - cropW / 2)),
+            y: Math.max(0, Math.min(1 - cropH, centerY - cropH / 2)),
+          };
+        };
+        const automaticMedia = ({
+          assetId,
+          crop,
+          observationId,
+          observationKind,
+          slotKind,
+        }) => {
+          if (!assetId || !observationId) return null;
+          const display = bridgeFields(bridge, assetId);
+          if (!display.sourceAssetId) return null;
+          return {
+            assetId,
+            crop,
+            observationId,
+            observationKind,
+            selectionMode: "automatic",
+            slotKind,
+            updatedAt: null,
+            ...display,
+          };
+        };
+        const representative = {
+          assetId: person.representative_asset_id,
+          observationId: person.representative_face_id,
+          observationKind: "face",
+        };
+        slots.face ??= automaticMedia({
+          ...representative,
+          crop: cropFromBox({
+            h: person.box_h,
+            padding: 2.4,
+            w: person.box_w,
+            x: person.box_x,
+            y: person.box_y,
+          }),
+          slotKind: "face",
+        });
+        slots.hero ??= automaticMedia({
+          ...representative,
+          crop: null,
+          slotKind: "hero",
+        });
+        slots.body ??= automaticMedia({
+          assetId: person.bodyPreview?.assetId,
+          crop: cropFromBox({
+            h: person.bodyPreview?.box_h,
+            padding: 1.12,
+            w: person.bodyPreview?.box_w,
+            x: person.bodyPreview?.box_x,
+            y: person.bodyPreview?.box_y,
+          }),
+          observationId: person.bodyPreview?.bodyId,
+          observationKind: "body",
+          slotKind: "body",
+        });
       }
       return {
         personId: id,
@@ -4759,14 +4832,23 @@ export const createCimmichRepository = (
       const kind = String(observationKind || "");
       const observation = observationId == null ? null : String(observationId);
       if (!["face", "body", "presence"].includes(kind)) {
-        throw Object.assign(new Error("Presentation evidence kind is invalid"), {
-          statusCode: 400,
-        });
+        throw Object.assign(
+          new Error("Presentation evidence kind is invalid"),
+          {
+            statusCode: 400,
+          },
+        );
       }
-      if ((slot === "face" && kind !== "face") || (slot === "body" && kind !== "body")) {
-        throw Object.assign(new Error(`${slot} presentation requires ${slot} evidence`), {
-          statusCode: 400,
-        });
+      if (
+        (slot === "face" && kind !== "face") ||
+        (slot === "body" && kind !== "body")
+      ) {
+        throw Object.assign(
+          new Error(`${slot} presentation requires ${slot} evidence`),
+          {
+            statusCode: 400,
+          },
+        );
       }
       let valid = false;
       if (kind === "face" && observation) {
@@ -4797,9 +4879,14 @@ export const createCimmichRepository = (
         valid = Boolean(row);
       }
       if (!valid) {
-        throw Object.assign(new Error("Presentation photo is not confirmed evidence for this person"), {
-          statusCode: 409,
-        });
+        throw Object.assign(
+          new Error(
+            "Presentation photo is not confirmed evidence for this person",
+          ),
+          {
+            statusCode: 409,
+          },
+        );
       }
       const cleanCrop = cleanCoverCrop(crop);
       await sql`
