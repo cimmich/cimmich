@@ -21,7 +21,7 @@ archive owner remains the authority on identity.
 Built for **OpenAI Build Week — Apps for Your Life** with **Codex powered by
 GPT-5.6 Sol**.
 
-[Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
+[Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich-with-fictional-data) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
 [Check release proof](docs/RELEASE_READINESS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
@@ -30,6 +30,19 @@ GPT-5.6 Sol**.
 > endorsed by Immich or OpenAI. Immich remains the base photo-management
 > product; Cimmich stores its own derived state separately and never directly
 > writes the Immich database or source media.
+
+## Start here
+
+| What you want to do | Where to begin |
+| :------------------ | :------------- |
+| **Ask an AI assistant to install and set up Cimmich** | Give it this folder and [the agent installation contract](AGENT_INSTALL.md). This is the simplest supported path. |
+| **Add Cimmich beside my existing Immich library** | Follow the [guided install](INSTALL.md#guided-install-recommended). This is the recommended real-library path. |
+| **Explore Cimmich without using my photographs** | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data). |
+| **Choose Docker paths, ports and lifecycle commands myself** | Use the [advanced install](INSTALL.md#advanced-install). |
+
+The guided installer currently supports macOS and Linux. It does not require a
+model, does not ask for an API key in Terminal and does not import anything
+until the signed-in owner has previewed the proposed scope.
 
 **Prior-work disclosure:** Cimmich began from a private Immich-derived research
 seed built before Build Week. Its archive-processing experiments,
@@ -124,7 +137,7 @@ demographic fairness or suitability for another person's archive.
 5. Open **Models & Guided** to inspect the exact local evidence and matching
    state. Optional machinery remains visibly separate from owner truth.
 
-## Try Cimmich
+## Try Cimmich with fictional data
 
 The supported public operator creates a fresh, loopback-only Immich 3.0.3
 instance, a separate Cimmich PostgreSQL/API stack and a production-built Cimmich
@@ -207,8 +220,11 @@ not target an existing Immich installation.
 
 ## Add Cimmich beside an existing Immich installation
 
-Choose the [guided or advanced install](INSTALL.md). Both create a separate
-Cimmich database, document volume, API, signed-in UI and loopback gateway.
+Start with the [installation guide](INSTALL.md). It explains which release
+bundle to download, the supported platforms and prerequisites, how to open
+Terminal in the extracted folder, and how to create the dedicated read-only
+Immich API key. Both guided and advanced paths create a separate Cimmich
+database, document volume, API, signed-in UI and loopback gateway.
 
 If Docker is unfamiliar—or an AI assistant is helping—start with:
 

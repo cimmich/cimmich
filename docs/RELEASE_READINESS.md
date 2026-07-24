@@ -2,7 +2,7 @@
 
 Updated: 2026-07-22
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 76/patch 1
+Current source/disposable candidate: migration-ledger schema 77/patch 1
 Publication identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 
@@ -10,8 +10,10 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 76 is the post-submission Public Beta development line. The tagged Build
-Week release and its preserved schema-75 runtime remain the submission baseline.
+Schema 77 is the post-submission Public Beta development line. Schema 76 added
+persisted Person display framing; schema 77 repairs unnamed-Person onboarding
+follow-up admission. The tagged Build Week release and its preserved schema-75
+runtime remain the submission baseline.
 
 ## Current proved baseline
 
@@ -178,7 +180,7 @@ deliberately not copied into this public repository.
       `937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f`.
 - [x] Public README, film and submission preserve the inherited/open-source
       disclosure and the synthetic-data/licensing boundary.
-- [x] The judge setup path is free and is intended to remain available through
+- [x] The Build Week evaluation setup path is free and is intended to remain available through
       5 August 2026 at 5:00 PM Pacific Time.
 - [x] Devpost submission completion was confirmed by the entrant; its private
       authenticated receipt remains outside the public source tree.

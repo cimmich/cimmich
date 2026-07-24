@@ -67,6 +67,7 @@ jobs:
       - name: Verify portable operator syntax
         run: |
           sh -n tools/current_schema_version.sh
+          sh -n tools/build_install_bundle.sh
           sh -n tools/install.sh
           sh -n tools/companion.sh
           sh -n tools/public_demo.sh

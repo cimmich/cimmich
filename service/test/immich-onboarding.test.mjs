@@ -4,6 +4,7 @@ import {
   IMMICH_ONBOARDING_SCHEMA_VERSION,
   createImmichOnboarding,
   duplicateImmichPersonNames,
+  isCurrentFinalPersonResolution,
   normalizeImmichOnboardingScope,
   projectUnlabelledPersonClusters,
   reconcileImmichFacesByGeometry,
@@ -188,8 +189,7 @@ test("preview counts assigned source truth without media, names or Locked leakag
   );
 });
 
-test("unlabelled Face clusters omitted from the People list still preview and block identity import", async () => {
-  let transactionCalls = 0;
+test("unlabelled Face clusters omitted from the People list still preview as held identity work", async () => {
   const anonymousPerson = {
     id: "source-person-anonymous",
     isHidden: false,
@@ -234,9 +234,6 @@ test("unlabelled Face clusters omitted from the People list still preview and bl
     verifyOnboardingPermissions: verifiedOnboardingPermissions,
   };
   const sql = async () => [];
-  sql.begin = async () => {
-    transactionCalls += 1;
-  };
   const onboarding = createImmichOnboarding({
     companion,
     immichInventory: { synchronize: async () => ({}) },
@@ -247,19 +244,311 @@ test("unlabelled Face clusters omitted from the People list still preview and bl
   assert.equal(preview.counts.people, 1);
   assert.equal(preview.counts.labelledPeople, 0);
   assert.equal(preview.counts.unlabelledPeople, 1);
-  await assert.rejects(
-    onboarding.importCurrent({
+});
+
+const createAnonymousImportHarness = ({ resolutionAction = null } = {}) => {
+  const anonymousPerson = {
+    id: "source-person-anonymous",
+    isHidden: false,
+    name: null,
+    sourceRevision: "d".repeat(64),
+  };
+  const asset = {
+    assetType: "image",
+    immichAssetId: "source-asset-1",
+    inputRevision: "c".repeat(64),
+    visibility: "timeline",
+  };
+  const face = {
+    ...sourceFace(
+      "source-face-1",
+      { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+      anonymousPerson.id,
+    ),
+    person: anonymousPerson,
+  };
+  const [cluster] = projectUnlabelledPersonClusters({
+    assets: [asset],
+    facesByAsset: new Map([[asset.immichAssetId, [face]]]),
+  });
+  const queries = [];
+  let transactionCalls = 0;
+  const run = {
+    actor_id: "owner",
+    command_id: "anonymous-import-1",
+    preview_digest: null,
+    principal_id: "owner-fixture",
+    progress: {},
+    run_id: "immich_onboarding_" + "1".repeat(32),
+    state: "importing",
+  };
+  const execute = async (strings, values = []) => {
+    const query = strings
+      .reduce(
+        (rendered, part, index) =>
+          `${rendered}${part}${index < values.length ? ` ${String(values[index])} ` : ""}`,
+        "",
+      )
+      .replaceAll(/\s+/g, " ")
+      .trim();
+    queries.push(query);
+    if (query.includes("FROM immich_person_resolution resolution")) {
+      return resolutionAction
+        ? [
+            {
+              decision_id: "decision-owner-resolution",
+              display_name: ["existing_person", "create_person"].includes(
+                resolutionAction,
+              )
+                ? "Resolved Person"
+                : null,
+              immich_person_id: anonymousPerson.id,
+              person_id: ["existing_person", "create_person"].includes(
+                resolutionAction,
+              )
+                ? "person-resolved"
+                : null,
+              resolution_action: resolutionAction,
+              snapshot_digest: cluster.snapshotDigest,
+              source_revision: cluster.sourceRevision,
+            },
+          ]
+        : [];
+    }
+    if (
+      query.includes(
+        "SELECT * FROM immich_onboarding_run WHERE command_id",
+      )
+    ) {
+      return [];
+    }
+    if (
+      query.includes("FROM immich_asset_projection") &&
+      query.includes("immich_asset_id = ANY")
+    ) {
+      return [];
+    }
+    if (
+      query.includes("FROM immich_face_projection") &&
+      query.includes("immich_face_id = ANY")
+    ) {
+      return [];
+    }
+    if (
+      query.includes("FROM immich_person_projection") &&
+      query.includes("immich_person_id = ANY")
+    ) {
+      return [];
+    }
+    if (
+      query.includes("INSERT INTO immich_onboarding_run") ||
+      (query.includes("UPDATE immich_onboarding_run SET state = 'importing'") &&
+        query.includes("RETURNING *"))
+    ) {
+      return [run];
+    }
+    if (
+      query.includes("FROM immich_asset_projection") &&
+      query.includes("FOR SHARE")
+    ) {
+      return [
+        {
+          cimmich_asset_id: "asset-fixture",
+          input_revision: asset.inputRevision,
+          state: "active",
+        },
+      ];
+    }
+    if (query.includes("SELECT DISTINCT ON (face.face_id)")) return [];
+    if (
+      query.includes(
+        "SELECT source_revision, asset_input_revision, state FROM immich_face_projection",
+      )
+    ) {
+      return [];
+    }
+    if (query.includes("SELECT claim.identity_claim_id")) return [];
+    if (
+      query.includes(
+        "count(*) FILTER (WHERE face.immich_person_id IS NOT NULL)",
+      )
+    ) {
+      const resolvedPerson = ["existing_person", "create_person"].includes(
+        resolutionAction,
+      );
+      return [
+        {
+          ambiguous: 0,
+          assigned_faces: resolutionAction ? 1 : 0,
+          exact_provider_binds: 0,
+          imported_source_faces:
+            resolutionAction === "unknown" || resolvedPerson ? 1 : 0,
+          person_conflicts: 0,
+          projected_people: resolvedPerson ? 1 : 0,
+          review_items: resolutionAction === "noise" ? 0 : 1,
+          unassigned_faces: 0,
+        },
+      ];
+    }
+    return [];
+  };
+  const sql = async (strings, ...values) => execute(strings, values);
+  sql.json = (value) => value;
+  sql.begin = async (callback) => {
+    transactionCalls += 1;
+    const tx = async (strings, ...values) => execute(strings, values);
+    tx.json = (value) => value;
+    return callback(tx);
+  };
+  const companion = {
+    listAssetFaces: async () => ({
+      assetId: asset.immichAssetId,
+      items: [face],
+    }),
+    listAssets: async () => ({ items: [asset], nextCursor: null }),
+    listPeople: async () => ({ items: [], nextCursor: null }),
+    status: async () => ({
+      capabilities: { mediaRead: true },
+      immichVersion: "3.0.3",
+      principal: { userId: "owner-fixture" },
+      state: "ready",
+    }),
+    verifyOnboardingPermissions: verifiedOnboardingPermissions,
+  };
+  const onboarding = createImmichOnboarding({
+    companion,
+    immichInventory: {
+      synchronize: async () => ({
+        run: { runId: "inventory-fixture" },
+        source: { activeAssets: 1 },
+      }),
+    },
+    sql,
+  });
+  return {
+    get transactionCalls() {
+      return transactionCalls;
+    },
+    onboarding,
+    queries,
+    run,
+  };
+};
+
+test("unnamed identity questions are recorded without blocking the import transaction", async () => {
+  const harness = createAnonymousImportHarness();
+  const preview = await harness.onboarding.preview({
+    viewingMode: "Standard",
+  });
+  harness.run.preview_digest = preview.previewDigest;
+  const result = await harness.onboarding.importCurrent({
+    actorId: "owner",
+    commandId: "anonymous-import-1",
+    previewDigest: preview.previewDigest,
+    scope: {},
+    viewingMode: "Standard",
+  });
+
+  assert.equal(harness.transactionCalls, 1);
+  assert.equal(result.state, "completed_with_review");
+  assert.equal(result.import.reviewItems, 1);
+  assert.equal(
+    harness.queries.some(
+      (query) =>
+        query.includes("INSERT INTO immich_onboarding_review_item") &&
+        query.includes("source_person_resolution_required"),
+    ),
+    true,
+  );
+  assert.equal(
+    harness.queries.some((query) => query.includes("INSERT INTO person (")),
+    false,
+  );
+  assert.equal(
+    harness.queries.some((query) =>
+      query.includes("INSERT INTO identity_claim"),
+    ),
+    false,
+  );
+});
+
+test("final owner resolutions drive the bounded anonymous import branches", async () => {
+  for (const resolutionAction of [
+    "existing_person",
+    "create_person",
+    "unknown",
+    "noise",
+  ]) {
+    const harness = createAnonymousImportHarness({ resolutionAction });
+    const preview = await harness.onboarding.preview({
+      viewingMode: "Standard",
+    });
+    harness.run.preview_digest = preview.previewDigest;
+    const result = await harness.onboarding.importCurrent({
       actorId: "owner",
       commandId: "anonymous-import-1",
       previewDigest: preview.previewDigest,
       scope: {},
       viewingMode: "Standard",
+    });
+    const identityExpected = ["existing_person", "create_person"].includes(
+      resolutionAction,
+    );
+
+    assert.equal(harness.transactionCalls, 1, resolutionAction);
+    assert.equal(result.import.assignedFaces, 1, resolutionAction);
+    assert.equal(
+      harness.queries.some((query) =>
+        query.includes("INSERT INTO identity_claim"),
+      ),
+      identityExpected,
+      resolutionAction,
+    );
+    assert.equal(
+      harness.queries.some((query) =>
+        query.includes("source_person_resolution_required"),
+      ),
+      false,
+      resolutionAction,
+    );
+  }
+});
+
+test("only an exact final owner resolution can admit unnamed identity truth", () => {
+  const cluster = {
+    immichPersonId: "source-person-anonymous",
+    snapshotDigest: "a".repeat(64),
+    sourceRevision: "b".repeat(64),
+  };
+  const current = {
+    display_name: "Fixture Person",
+    person_id: "person-fixture",
+    resolution_action: "existing_person",
+    snapshot_digest: cluster.snapshotDigest,
+    source_revision: cluster.sourceRevision,
+  };
+  assert.equal(isCurrentFinalPersonResolution(cluster, current), true);
+  assert.equal(
+    isCurrentFinalPersonResolution(cluster, {
+      ...current,
+      resolution_action: "later",
     }),
-    (error) =>
-      error.code === "IMMICH_ONBOARDING_PERSON_LABEL_REQUIRED" &&
-      error.details.unlabelledAssignedFaces === 1,
+    false,
   );
-  assert.equal(transactionCalls, 0);
+  assert.equal(
+    isCurrentFinalPersonResolution(cluster, {
+      ...current,
+      snapshot_digest: "c".repeat(64),
+    }),
+    false,
+  );
+  assert.equal(
+    isCurrentFinalPersonResolution(cluster, {
+      ...current,
+      display_name: null,
+    }),
+    false,
+  );
 });
 
 test("unnamed cluster preview is deterministic and contains only one visible representative", () => {
@@ -372,4 +661,16 @@ test("status does not advertise preview when the bounded permission probe fails"
     false,
   );
   assert.equal(JSON.stringify(status).includes("redacted"), false);
+});
+
+test("import failure diagnostics never log database values or exception messages", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/immich-onboarding.mjs", import.meta.url), "utf8"),
+  );
+  const failureLog = source.match(
+    /console\.error\(\s*JSON\.stringify\(\{[\s\S]*?IMMICH_ONBOARDING_IMPORT_FAILURE[\s\S]*?\}\),\s*\);/,
+  )?.[0];
+  assert.ok(failureLog);
+  assert.doesNotMatch(failureLog, /error\.message|String\(error\)/);
+  assert.match(failureLog, /UNEXPECTED_FAILURE/);
 });

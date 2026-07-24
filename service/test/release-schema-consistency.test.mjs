@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -56,13 +56,20 @@ test("release schema truth is derived from one contiguous migration ledger", asy
   assert.match(lifecycle, /loadMigrations/);
   assert.doesNotMatch(lifecycle, /maximumDatabaseSchemaVersion = \d+/);
   assert.match(synthetic, /current_schema_version\.sh/);
-  await assert.rejects(
-    exec("rg", [
-      "-n",
-      "health(?:\\.payload)?\\.schemaVersion, [0-9]+",
-      path.join(repositoryRoot, "service/acceptance"),
-    ]),
-    (error) => error.code === 1,
+  const acceptanceDirectory = path.join(repositoryRoot, "service/acceptance");
+  const acceptanceSources = await Promise.all(
+    (await readdir(acceptanceDirectory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) =>
+        readFile(path.join(acceptanceDirectory, entry.name), "utf8"),
+      ),
+  );
+  assert.equal(
+    acceptanceSources.some((source) =>
+      /health(?:\.payload)?\.schemaVersion, [0-9]+/.test(source),
+    ),
+    false,
+    "acceptance journeys must not hardcode the release schema version",
   );
   assert.doesNotMatch(operator, /migration_(?:count|version).*\"[0-9]+\"/);
 

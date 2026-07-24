@@ -14,11 +14,13 @@
   import {
     getCimmichContextEntities,
     getCimmichDocuments,
+    getCimmichImmichOnboardingStatus,
     getCimmichPeople,
     getCimmichPets,
     getCimmichSummary,
     type CimmichContextEntity,
     type CimmichDocument,
+    type CimmichImmichOnboardingStatus,
     type CimmichPet,
     type CimmichPerson,
     type CimmichSummary,
@@ -31,6 +33,7 @@
     mdiArrowRight,
     mdiCalendarBlankOutline,
     mdiCogOutline,
+    mdiDatabaseImportOutline,
     mdiFileDocumentOutline,
     mdiMagnify,
     mdiMapOutline,
@@ -54,6 +57,7 @@
   let loadError = $state('');
   let loaded = $state(false);
   let objects = $state<CimmichContextEntity[]>([]);
+  let onboardingStatus = $state<CimmichImmichOnboardingStatus>();
   let people = $state<CimmichPerson[]>([]);
   let petProfiles = $state<CimmichPet[]>([]);
   let places = $state<CimmichContextEntity[]>([]);
@@ -61,6 +65,9 @@
   let loadGeneration = 0;
 
   const namedPeople = $derived(people.filter((person) => person.subject_kind === 'person'));
+  const firstRunPending = $derived(
+    loaded && (summary?.assets ?? 0) === 0 && onboardingStatus?.latestRun?.state !== 'completed',
+  );
   const featuredEvent = $derived(chooseCimmichHomeFeature(events));
   const heroAssetIds = $derived(collectCimmichHomeHeroAssets(events, places, objects, people));
   const assetUrl = (sourceAssetId: string, size = AssetMediaSize.Preview) =>
@@ -164,19 +171,23 @@
       getCimmichContextEntities('objects'),
       getCimmichContextEntities('events'),
       getCimmichDocuments(),
+      getCimmichImmichOnboardingStatus().catch(() => undefined),
     ])
-      .then(([nextSummary, nextPeople, nextPets, nextPlaces, nextObjects, nextEvents, nextDocuments]) => {
-        if (generation !== loadGeneration) {
-          return;
-        }
-        summary = nextSummary;
-        people = nextPeople;
-        petProfiles = nextPets;
-        places = nextPlaces;
-        objects = nextObjects;
-        events = nextEvents;
-        documents = nextDocuments.items;
-      })
+      .then(
+        ([nextSummary, nextPeople, nextPets, nextPlaces, nextObjects, nextEvents, nextDocuments, nextOnboarding]) => {
+          if (generation !== loadGeneration) {
+            return;
+          }
+          summary = nextSummary;
+          people = nextPeople;
+          petProfiles = nextPets;
+          places = nextPlaces;
+          objects = nextObjects;
+          events = nextEvents;
+          documents = nextDocuments.items;
+          onboardingStatus = nextOnboarding;
+        },
+      )
       .catch((error) => {
         if (generation !== loadGeneration) {
           return;
@@ -209,6 +220,45 @@
         <span>{loadError}</span>
         <button class="font-semibold underline underline-offset-4" type="button" onclick={loadHome}>Try again</button>
       </div>
+    {/if}
+
+    {#if firstRunPending}
+      <section
+        class="overflow-hidden rounded-4xl border border-indigo-200 bg-[radial-gradient(circle_at_10%_10%,rgba(99,102,241,0.18),transparent_38%),linear-gradient(135deg,#ffffff,#f5f7ff)] p-6 shadow-sm sm:p-8 dark:border-indigo-900 dark:bg-[radial-gradient(circle_at_10%_10%,rgba(99,102,241,0.24),transparent_38%),linear-gradient(135deg,#111827,#11131b)]"
+        aria-labelledby="cimmich-first-run-home-heading"
+      >
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex min-w-0 items-start gap-4">
+            <span
+              class="grid size-12 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white shadow-sm dark:bg-indigo-400 dark:text-indigo-950"
+            >
+              <Icon icon={mdiDatabaseImportOutline} size="24" />
+            </span>
+            <div>
+              <p class="text-xs font-semibold tracking-[0.15em] text-indigo-700 uppercase dark:text-indigo-300">
+                First run · Connect → Preview → Import
+              </p>
+              <h2 id="cimmich-first-run-home-heading" class="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+                Bring your Immich library into Cimmich
+              </h2>
+              <p class="mt-2 max-w-3xl text-sm/6 text-gray-600 sm:text-base/7 dark:text-gray-300">
+                Connect with a dedicated read-only key, verify the account and permissions, then preview the exact
+                photos and People before importing anything. Cimmich never writes to Immich or changes your originals.
+              </p>
+            </div>
+          </div>
+          <div class="flex shrink-0 flex-col items-start gap-2 lg:items-end">
+            <a
+              class="inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-400 dark:text-indigo-950 dark:hover:bg-indigo-300"
+              href={`${Route.cimmichMaintenance()}#cimmich-first-run-title`}
+            >
+              {onboardingStatus?.connection.state === 'ready' ? 'Preview your library' : 'Connect your library'}
+              <Icon icon={mdiArrowRight} size="18" />
+            </a>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Nothing is imported until you approve the preview.</p>
+          </div>
+        </div>
+      </section>
     {/if}
 
     <div>

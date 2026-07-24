@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 76 without rewriting that release.
+Public Beta development continues on schema 77 without rewriting that release.
 
 The schema 75 source retains exact, human-review-only machine ranking while
 its representative 3,985-asset cold review request falls from 4.459 seconds to

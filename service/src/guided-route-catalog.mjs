@@ -1012,9 +1012,11 @@ const definitions = [
           additionalProperties: false,
           properties: {
             acceptedFaces: { minimum: 0, type: "integer" },
+            analysedFaces: { minimum: 0, type: "integer" },
+            eligibleFaces: { minimum: 0, type: "integer" },
             providerEmbeddings: { minimum: 0, type: "integer" },
           },
-          required: ["acceptedFaces", "providerEmbeddings"],
+          required: ["acceptedFaces", "analysedFaces", "eligibleFaces", "providerEmbeddings"],
           type: "object",
         },
         latestPack: {
@@ -1025,7 +1027,9 @@ const definitions = [
           properties: {
             action: {
               enum: [
+                "await_more_evidence",
                 "configure_provider",
+                "enable_enhanced",
                 "run_recognition",
                 "compile_source_pack",
                 "evaluate_source_pack",

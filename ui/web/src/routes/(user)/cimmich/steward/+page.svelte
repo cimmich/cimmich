@@ -4,19 +4,36 @@
   import { Route } from '$lib/route';
   import {
     acceptCimmichMachineSuggestion,
+    getCimmichFaceMatchingOperatorStatus,
+    getCimmichImmichOnboardingStatus,
     getCimmichMachineSuggestions,
     getCimmichStewardPlan,
     markCimmichMachineSuggestionUnknown,
+    type CimmichFaceMatchingOperatorStatus,
+    type CimmichImmichOnboardingStatus,
     type CimmichMachineSuggestion,
     type CimmichStewardPlan,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiArrowRight, mdiCheck, mdiEyeOutline, mdiLockOutline, mdiRefresh, mdiSkipNext } from '@mdi/js';
+  import {
+    mdiArrowRight,
+    mdiCheck,
+    mdiEyeOutline,
+    mdiImageOffOutline,
+    mdiLockOutline,
+    mdiPauseCircleOutline,
+    mdiRefresh,
+    mdiSkipNext,
+  } from '@mdi/js';
+  import CimmichImmichPersonResolution from '../maintenance/CimmichImmichPersonResolution.svelte';
+  import { emptyReviewPresentation, reviewHasVisibleEvidence } from './steward-presentation';
 
   let suggestions = $state<CimmichMachineSuggestion[]>([]);
   let plan = $state<CimmichStewardPlan>();
+  let faceOperator = $state<CimmichFaceMatchingOperatorStatus>();
+  let onboarding = $state<CimmichImmichOnboardingStatus>();
   let loading = $state(true);
   let error = $state('');
   let busyFaceId = $state('');
@@ -42,6 +59,13 @@
     active ? selectedPeople[active.face_id] || active.candidates[0]?.person_id || '' : '',
   );
   const activeCandidate = $derived(active?.candidates.find((candidate) => candidate.person_id === activePersonId));
+  const activeHasMedia = $derived(Boolean(active && reviewHasVisibleEvidence(active)));
+  const emptyReview = $derived(emptyReviewPresentation(faceOperator));
+  const emptyReviewHref = $derived(
+    `${Route.cimmichMaintenance()}#${
+      emptyReview.anchor === 'provider' ? 'face-provider-setup' : 'cimmich-face-matching-title'
+    }`,
+  );
   const planModeLabel = 'Local plan';
   const planBoundaryLabel = 'Deterministic local planning only';
 
@@ -50,18 +74,24 @@
     loading = true;
     error = '';
     plan = undefined;
+    faceOperator = undefined;
+    onboarding = undefined;
     suggestions = [];
     selectedPeople = {};
     skippedFaceIds = [];
     try {
-      const [nextPlan, nextSuggestions] = await Promise.all([
+      const [nextPlan, nextSuggestions, nextFaceOperator, nextOnboarding] = await Promise.all([
         getCimmichStewardPlan(),
         getCimmichMachineSuggestions(24),
+        getCimmichFaceMatchingOperatorStatus().catch(() => undefined),
+        getCimmichImmichOnboardingStatus().catch(() => undefined),
       ]);
       if (generation !== loadGeneration) {
         return;
       }
       plan = nextPlan;
+      faceOperator = nextFaceOperator;
+      onboarding = nextOnboarding;
       suggestions = nextSuggestions;
       skippedFaceIds = [];
       selectedPeople = Object.fromEntries(
@@ -133,8 +163,8 @@
       finishDecision(
         active.face_id,
         result.maintenancePending
-          ? `Learned ${activeCandidate.display_name}. Refreshing their matching evidence.`
-          : `Learned ${activeCandidate.display_name}.`,
+          ? `Confirmed ${activeCandidate.display_name}. Refreshing their matching evidence.`
+          : `Confirmed ${activeCandidate.display_name}.`,
       );
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'The identity could not be saved.';
@@ -182,7 +212,7 @@
             <Icon icon={mdiLockOutline} size="15" /> Local-first identity
           </div>
           <h1 class="steward-title text-3xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
-            Teach your archive. Keep the truth.
+            Review the evidence. Keep the truth.
           </h1>
           {#if !active}
             <p class="mt-4 max-w-xl text-sm/6 text-white/70 sm:text-base">
@@ -224,6 +254,10 @@
       </div>
     {/if}
 
+    {#if !loading && onboarding?.connection.state === 'ready' && onboarding.latestRun?.scope}
+      <CimmichImmichPersonResolution mode="review" scope={onboarding.latestRun.scope} />
+    {/if}
+
     {#if loading}
       <section
         class="grid min-h-120 animate-pulse overflow-hidden rounded-4xl border border-gray-200 bg-white lg:grid-cols-[1.05fr_0.95fr] dark:border-immich-dark-gray dark:bg-immich-dark-gray/30"
@@ -240,29 +274,46 @@
       <section
         class="review-stage grid overflow-hidden rounded-4xl border border-gray-200 bg-white shadow-sm lg:grid-cols-[1.05fr_0.95fr] dark:border-immich-dark-gray dark:bg-immich-dark-bg"
       >
-        <a
-          class="group relative min-h-92 overflow-hidden bg-gray-100 bg-cover bg-no-repeat lg:min-h-136 dark:bg-gray-900"
-          href={Route.viewAsset({ id: active.sourceAssetId })}
-          aria-label="Open the full photo"
-        >
-          <div
-            class="absolute inset-0 scale-[1.015] bg-cover bg-no-repeat transition duration-500 group-hover:scale-[1.05]"
-            style={cropStyle(active)}
-          ></div>
-          <div
-            class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/70 via-black/20 to-transparent p-5 pt-24 text-white"
+        {#if activeHasMedia}
+          <a
+            class="group relative min-h-92 overflow-hidden bg-gray-100 bg-cover bg-no-repeat lg:min-h-136 dark:bg-gray-900"
+            href={Route.viewAsset({ id: active.sourceAssetId })}
+            aria-label="Open the full photo"
           >
-            <div>
-              <p class="text-xs font-semibold tracking-[0.16em] text-white/60 uppercase">
-                Review {suggestions.length - visibleSuggestions.length + 1} of {suggestions.length}
-              </p>
-              <p class="mt-1 text-sm font-medium">Open full photo</p>
-            </div>
-            <span class="rounded-full bg-white/15 p-2.5 backdrop-blur-sm transition group-hover:bg-white/25"
-              ><Icon icon={mdiArrowRight} size="20" /></span
+            <div
+              class="absolute inset-0 scale-[1.015] bg-cover bg-no-repeat transition duration-500 group-hover:scale-[1.05]"
+              style={cropStyle(active)}
+            ></div>
+            <div
+              class="absolute inset-x-0 bottom-0 flex items-end justify-between bg-linear-to-t from-black/70 via-black/20 to-transparent p-5 pt-24 text-white"
             >
+              <div>
+                <p class="text-xs font-semibold tracking-[0.16em] text-white/60 uppercase">
+                  Review {suggestions.length - visibleSuggestions.length + 1} of {suggestions.length}
+                </p>
+                <p class="mt-1 text-sm font-medium">Open full photo</p>
+              </div>
+              <span class="rounded-full bg-white/15 p-2.5 backdrop-blur-sm transition group-hover:bg-white/25"
+                ><Icon icon={mdiArrowRight} size="20" /></span
+              >
+            </div>
+          </a>
+        {:else}
+          <div
+            class="flex min-h-92 flex-col items-center justify-center bg-gray-100 px-8 text-center lg:min-h-136 dark:bg-gray-900"
+          >
+            <span
+              class="flex size-16 items-center justify-center rounded-2xl bg-white text-gray-400 shadow-sm dark:bg-gray-800"
+            >
+              <Icon icon={mdiImageOffOutline} size="30" />
+            </span>
+            <p class="mt-5 text-base font-semibold text-immich-fg dark:text-immich-dark-fg">Photo unavailable</p>
+            <p class="mt-2 max-w-sm text-sm/6 text-gray-500 dark:text-gray-400">
+              Cimmich has paused this review instead of asking you to decide an identity without seeing the source
+              photo.
+            </p>
           </div>
-        </a>
+        {/if}
 
         <div class="flex flex-col p-6 sm:p-9 lg:p-10">
           <div class="flex items-center justify-between gap-3">
@@ -274,64 +325,84 @@
             <span class="text-xs text-gray-400">{Math.round(active.box_w * Math.max(1, active.width))} px face</span>
           </div>
 
-          <h2 class="mt-6 text-2xl font-semibold tracking-tight text-immich-fg dark:text-immich-dark-fg">
-            Who is this?
-          </h2>
-          <p class="mt-2 text-sm/6 text-gray-500 dark:text-gray-400">
-            Choose the best local match. Similarity helps order the options; it is not identity proof.
-          </p>
+          {#if activeHasMedia}
+            <h2 class="mt-6 text-2xl font-semibold tracking-tight text-immich-fg dark:text-immich-dark-fg">
+              Who is this?
+            </h2>
+            <p class="mt-2 text-sm/6 text-gray-500 dark:text-gray-400">
+              Choose the best local match. Similarity helps order the options; it is not identity proof.
+            </p>
 
-          <div class="mt-7 flex flex-col gap-2.5">
-            {#each active.candidates as candidate (candidate.person_id)}
-              <button
-                type="button"
-                class:selected-candidate={candidate.person_id === activePersonId}
-                class="candidate-row group flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition"
-                onclick={() => choosePerson(active.face_id, candidate.person_id)}
-              >
-                <span class="candidate-radio flex size-5 shrink-0 items-center justify-center rounded-full border-2">
-                  {#if candidate.person_id === activePersonId}<span class="size-2 rounded-full bg-current"></span>{/if}
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-sm font-semibold text-immich-fg dark:text-immich-dark-fg"
-                    >{candidate.display_name}</span
-                  >
-                  <span class="mt-1 block h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                    <span
-                      class="block h-full rounded-full bg-current opacity-50"
-                      style={`width: ${Math.max(0, Math.min(100, candidate.prime_score * 100))}%`}
-                    ></span>
+            <div class="mt-7 flex flex-col gap-2.5">
+              {#each active.candidates as candidate (candidate.person_id)}
+                <button
+                  type="button"
+                  class:selected-candidate={candidate.person_id === activePersonId}
+                  class="candidate-row group flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition"
+                  onclick={() => choosePerson(active.face_id, candidate.person_id)}
+                >
+                  <span class="candidate-radio flex size-5 shrink-0 items-center justify-center rounded-full border-2">
+                    {#if candidate.person_id === activePersonId}<span class="size-2 rounded-full bg-current"
+                      ></span>{/if}
                   </span>
-                </span>
-                <span class="text-xs text-gray-400 tabular-nums">{candidate.prime_score.toFixed(2)}</span>
-              </button>
-            {/each}
-          </div>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-semibold text-immich-fg dark:text-immich-dark-fg"
+                      >{candidate.display_name}</span
+                    >
+                    <span class="mt-1 block h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                      <span
+                        class="block h-full rounded-full bg-current opacity-50"
+                        style={`width: ${Math.max(0, Math.min(100, candidate.prime_score * 100))}%`}
+                      ></span>
+                    </span>
+                  </span>
+                  <span class="text-xs text-gray-400 tabular-nums">{candidate.prime_score.toFixed(2)}</span>
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <h2 class="mt-6 text-2xl font-semibold tracking-tight text-immich-fg dark:text-immich-dark-fg">
+              Review paused
+            </h2>
+            <p class="mt-2 text-sm/6 text-gray-500 dark:text-gray-400">
+              Identity confirmation requires visible photo evidence. Leave this item for later while Cimmich restores
+              its source reference.
+            </p>
+          {/if}
 
           <div class="mt-auto pt-8">
-            <button
-              type="button"
-              class="flex w-full items-center justify-center gap-2 rounded-2xl bg-immich-primary px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-immich-dark-primary"
-              disabled={!activeCandidate || busyFaceId === active.face_id}
-              onclick={() => void confirmActive()}
-            >
-              <Icon icon={mdiCheck} size="19" />
-              {busyFaceId === active.face_id ? 'Saving…' : `Confirm ${activeCandidate?.display_name ?? 'person'}`}
-            </button>
-            <div class="mt-3 grid grid-cols-2 gap-2">
+            {#if activeHasMedia}
               <button
                 type="button"
-                class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-200 dark:hover:bg-gray-900"
-                disabled={Boolean(busyFaceId)}
-                onclick={() => void markUnknown()}><Icon icon={mdiEyeOutline} size="18" /> Unknown</button
+                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-immich-primary px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-immich-dark-primary"
+                disabled={!activeCandidate || busyFaceId === active.face_id}
+                onclick={() => void confirmActive()}
               >
+                <Icon icon={mdiCheck} size="19" />
+                {busyFaceId === active.face_id ? 'Saving…' : `Confirm ${activeCandidate?.display_name ?? 'person'}`}
+              </button>
+              <div class="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  class="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-200 dark:hover:bg-gray-900"
+                  disabled={Boolean(busyFaceId)}
+                  onclick={() => void markUnknown()}><Icon icon={mdiEyeOutline} size="18" /> Unknown</button
+                >
+                <button
+                  type="button"
+                  class="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-900"
+                  disabled={Boolean(busyFaceId)}
+                  onclick={skipActive}><Icon icon={mdiSkipNext} size="18" /> Later</button
+                >
+              </div>
+            {:else}
               <button
                 type="button"
-                class="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-900"
+                class="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
                 disabled={Boolean(busyFaceId)}
                 onclick={skipActive}><Icon icon={mdiSkipNext} size="18" /> Later</button
               >
-            </div>
+            {/if}
           </div>
         </div>
       </section>
@@ -357,25 +428,37 @@
         class="flex min-h-96 flex-col items-center justify-center rounded-4xl border border-dashed border-gray-300 bg-white px-6 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
       >
         <span
-          class="flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-          ><Icon icon={mdiCheck} size="28" /></span
+          class={`flex size-14 items-center justify-center rounded-2xl ${
+            emptyReview.state === 'held'
+              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+              : emptyReview.state === 'quiet'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+          }`}><Icon icon={emptyReview.state === 'held' ? mdiPauseCircleOutline : mdiCheck} size="28" /></span
         >
         <h2 class="mt-5 text-xl font-semibold text-immich-fg dark:text-immich-dark-fg">
-          No identity reviews are ready.
+          {emptyReview.title}
         </h2>
         <p class="mt-2 max-w-md text-sm/6 text-gray-500 dark:text-gray-400">
-          No compatible provider may be enabled, processing may still be pending, evidence may have abstained, or no
-          result met the review threshold. Cimmich has not inferred or accepted an identity.
+          {emptyReview.summary}
         </p>
-        <button
-          type="button"
-          class="mt-6 flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold dark:border-immich-dark-gray"
-          onclick={() => void load()}><Icon icon={mdiRefresh} size="18" /> Check again</button
-        >
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-2">
+          {#if emptyReview.actionLabel}
+            <a
+              class="flex items-center gap-2 rounded-xl bg-immich-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 dark:bg-immich-dark-primary"
+              href={emptyReviewHref}>{emptyReview.actionLabel} <Icon icon={mdiArrowRight} size="18" /></a
+            >
+          {/if}
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold dark:border-immich-dark-gray"
+            onclick={() => void load()}><Icon icon={mdiRefresh} size="18" /> Check again</button
+          >
+        </div>
       </section>
     {/if}
 
-    {#if plan}
+    {#if plan && active}
       <footer
         class="grid gap-4 rounded-2xl bg-gray-50 px-5 py-4 text-xs text-gray-500 sm:grid-cols-[1fr_auto] sm:items-center dark:bg-gray-900/50 dark:text-gray-400"
       >

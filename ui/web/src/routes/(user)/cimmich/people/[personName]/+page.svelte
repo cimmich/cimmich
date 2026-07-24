@@ -485,7 +485,7 @@
       label: 'Appearance',
       filters: [
         { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() },
-        { id: 'non_face', label: 'Body/Presence', count: cimmichBodyPresenceAssets.length.toLocaleString() },
+        { id: 'non_face', label: 'Body', count: cimmichBodyPresenceAssets.length.toLocaleString() },
       ],
     },
     {
@@ -2089,7 +2089,7 @@
           <Icon icon={mdiPencilOutline} size="16" />
         </button>
         <div
-          class="relative flex min-h-100 min-w-0 flex-col justify-end gap-5 p-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
+          class="relative flex min-h-100 min-w-0 flex-col justify-end gap-5 px-5 pt-20 pb-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
         >
           {#if cimmichPresentation?.face}
             <span
@@ -2133,7 +2133,7 @@
                   >
                 {:else if cimmichPerson.needs_sort}
                   <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-950"
-                    >On review list</span
+                    >Needs sorting</span
                   >
                 {/if}
               </div>
@@ -3739,7 +3739,7 @@
                   onclick={() => void toggleSetupCategory(category.category_id)}
                 >
                   <span>
-                    <span class="block font-semibold">Review list</span>
+                    <span class="block font-semibold">Needs sorting</span>
                     <span class="block text-xs opacity-70"
                       >Keep matches visible, but treat this identity as review-only.</span
                     >

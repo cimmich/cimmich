@@ -188,8 +188,10 @@ const faceMatchingOperator = createFaceMatchingOperator({
   enhancedComponent,
   matchingProvider: localMediaProvider.matchingProvider,
   mediaOperator,
+  presentationRank: visibility.currentRank,
   providerReceipt: localMediaProvider.providerReceipt,
   repository,
+  sourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
   sql,
 });
 const memorySteward = createMemorySteward({

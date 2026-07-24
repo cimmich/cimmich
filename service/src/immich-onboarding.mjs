@@ -325,6 +325,18 @@ export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
     );
 };
 
+export const isCurrentFinalPersonResolution = (cluster, resolution) =>
+  Boolean(
+    resolution &&
+      resolution.resolution_action !== "later" &&
+      resolution.source_revision === cluster.sourceRevision &&
+      resolution.snapshot_digest === cluster.snapshotDigest &&
+      (!new Set(["existing_person", "create_person"]).has(
+        resolution.resolution_action,
+      ) ||
+        (resolution.person_id && resolution.display_name)),
+  );
+
 const normalizedResolutionAction = (value) => {
   const action = String(value || "");
   if (!PERSON_RESOLUTION_ACTIONS.has(action)) {
@@ -1542,33 +1554,19 @@ export const createImmichOnboarding = ({
     const resolutionByPerson = new Map(
       resolutionRows.map((row) => [row.immich_person_id, row]),
     );
-    const unresolvedClusters = unlabelledClusters.filter((cluster) => {
-      const resolution = resolutionByPerson.get(cluster.immichPersonId);
-      return (
-        !resolution ||
-        resolution.resolution_action === "later" ||
-        resolution.source_revision !== cluster.sourceRevision ||
-        resolution.snapshot_digest !== cluster.snapshotDigest ||
-        (new Set(["existing_person", "create_person"]).has(
-          resolution.resolution_action,
-        ) &&
-          (!resolution.person_id || !resolution.display_name))
-      );
-    });
-    if (scope.importPeople && unresolvedClusters.length > 0) {
-      throw typedError(
-        "IMMICH_ONBOARDING_PERSON_LABEL_REQUIRED",
-        "Assigned Immich Faces require explicit owner resolution before identity import",
-        409,
-        {
-          unlabelledAssignedFaces: unresolvedClusters.reduce(
-            (count, cluster) => count + cluster.faceCount,
-            0,
+    const usableResolutionByPerson = new Map(
+      unlabelledClusters
+        .filter((cluster) =>
+          isCurrentFinalPersonResolution(
+            cluster,
+            resolutionByPerson.get(cluster.immichPersonId),
           ),
-          unlabelledPeople: unresolvedClusters.length,
-        },
-      );
-    }
+        )
+        .map((cluster) => [
+          cluster.immichPersonId,
+          resolutionByPerson.get(cluster.immichPersonId),
+        ]),
+    );
     const scopeDigest = digest(scope);
     const requestDigest = digest({ previewDigest, scope, viewingMode });
     let [run] = await sql`
@@ -1664,7 +1662,7 @@ export const createImmichOnboarding = ({
       });
       const peopleCurrent = [...scannedPeople.values()].every((person) => {
         const anonymousResolution = !person.name
-          ? resolutionByPerson.get(person.id)
+          ? usableResolutionByPerson.get(person.id)
           : null;
         if (
           anonymousResolution &&
@@ -1875,7 +1873,18 @@ export const createImmichOnboarding = ({
             counters.assignedFaces += 1;
             const ownerResolution = face.person.name
               ? null
-              : resolutionByPerson.get(face.person.id);
+              : usableResolutionByPerson.get(face.person.id);
+            if (!face.person.name && !ownerResolution) {
+              await recordReviewItem(tx, {
+                assetId: projection.cimmich_asset_id,
+                faceId: face.id,
+                reason: "source_person_resolution_required",
+                runId: run.run_id,
+                sourceId: normalizedSourceId,
+              });
+              counters.reviewItems += 1;
+              continue;
+            }
             if (
               ownerResolution &&
               ["unknown", "noise"].includes(ownerResolution.resolution_action)
@@ -2124,7 +2133,18 @@ export const createImmichOnboarding = ({
         WHERE run_id = ${run.run_id} AND state = 'importing'
       `;
       return result;
-    } catch {
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          code: "IMMICH_ONBOARDING_IMPORT_FAILURE",
+          runId: run.run_id,
+          causeCode:
+            typeof error?.code === "string" &&
+            /^[A-Z][A-Z0-9_]{0,119}$/.test(error.code)
+              ? error.code
+              : "UNEXPECTED_FAILURE",
+        }),
+      );
       await sql`
         UPDATE immich_onboarding_run SET state = 'interrupted',
           progress = progress || ${sql.json({

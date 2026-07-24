@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import postgres from "postgres";
 import { createFaceMatchingOperator } from "../src/face-matching-operator.mjs";
 import { createCimmichRepository } from "../src/repository.mjs";
@@ -12,15 +13,19 @@ const matchingProvider = {
   configDigest: "7".repeat(64),
   modelFamily: "synthetic-owner-face",
   modelVersion: "v1",
+  providerConfigDigest: "8".repeat(64),
   providerId: "synthetic-owner-provider",
   vectorSpaceId: "synthetic-owner-space-v1",
 };
+const sourceId = "immich-owner-source-pack-fixture";
+const inventoryRunId = "immich_inventory_run_owner_source_pack_fixture";
+const digest = (value) =>
+  createHash("sha256").update(String(value)).digest("hex");
 
 const embeddingDimension = 24;
 const basisVector = (dimension, value = 1) =>
-  Array.from(
-    { length: embeddingDimension },
-    (_, index) => (index === dimension ? value : 0),
+  Array.from({ length: embeddingDimension }, (_, index) =>
+    index === dimension ? value : 0,
   );
 const knownPeople = Array.from({ length: 20 }, (_, index) => ({
   personId: `person_owner_pack_known_${String(index).padStart(2, "0")}`,
@@ -52,13 +57,24 @@ const acceptedEvidence = [
     knownPeople.map((_, personIndex) => ({ personIndex, year: 2022 })),
   ).flat(),
   ...holdoutUnknownPeople.map((_, index) => ({
-    personIndex:
-      knownPeople.length + calibrationUnknownPeople.length + index,
+    personIndex: knownPeople.length + calibrationUnknownPeople.length + index,
     year: 2022,
   })),
 ];
 
 try {
+  await sql`
+    INSERT INTO source_snapshot (
+      snapshot_id, input_schema_version, source_digest, locator_root_token,
+      started_at, completed_at, declared_asset_count, observed_asset_count,
+      state, privacy_class
+    ) VALUES (
+      'snapshot_owner_source_pack_fixture', 'synthetic-v1',
+      ${digest("owner-source-pack-snapshot")}, 'owner-source-pack-fixture',
+      now(), now(), ${acceptedEvidence.length}, ${acceptedEvidence.length},
+      'complete', 'private'
+    )
+  `;
   await sql`
     INSERT INTO producer_receipt (
       producer_receipt_id, producer_kind, producer_name, producer_version,
@@ -67,6 +83,30 @@ try {
       'receipt_owner_source_pack_fixture', 'trusted_import',
       'owner-source-pack-fixture', 'v1', now(), now(), 'private'
     )
+  `;
+  await sql`
+    INSERT INTO immich_inventory_source (
+      source_id, principal_digest, companion_schema_version, immich_version,
+      state
+    ) VALUES (
+      ${sourceId}, ${digest("owner-source-pack-principal")},
+      'cimmich.immich-companion.v1', 'synthetic', 'active'
+    )
+  `;
+  await sql`
+    INSERT INTO immich_inventory_run (
+      run_id, source_id, snapshot_id, immich_version, principal_digest,
+      state, observed_asset_count, page_count, started_at, completed_at
+    ) VALUES (
+      ${inventoryRunId}, ${sourceId}, 'snapshot_owner_source_pack_fixture',
+      'synthetic', ${digest("owner-source-pack-principal")}, 'completed',
+      ${acceptedEvidence.length}, 1, now(), now()
+    )
+  `;
+  await sql`
+    UPDATE immich_inventory_source
+    SET last_completed_run_id = ${inventoryRunId}
+    WHERE source_id = ${sourceId}
   `;
   for (const [personIndex, person] of people.entries()) {
     await sql`
@@ -86,6 +126,7 @@ try {
     const decisionId = `decision_owner_pack_${suffix}`;
     const claimId = `claim_owner_pack_${suffix}`;
     const embeddingId = `embedding_owner_pack_${suffix}`;
+    const inputRevision = digest(`owner-source-pack-input:${suffix}`);
     await sql`
       INSERT INTO asset (
         asset_id, content_hash, locator_token, media_kind, mime_type, width,
@@ -95,6 +136,21 @@ try {
         ${`locator_owner_pack_${suffix}`}, 'image', 'image/jpeg', 1200, 900,
         ${`${evidence.year}-06-01T00:00:00.000Z`},
         'snapshot_service_acceptance', 'active'
+      )
+    `;
+    await sql`
+      INSERT INTO immich_asset_projection (
+        source_id, immich_asset_id, cimmich_asset_id, owner_digest,
+        input_revision, checksum, asset_type, visibility, original_mime_type,
+        capture_time, source_updated_at, width, height, state,
+        first_seen_run_id, last_seen_run_id
+      ) VALUES (
+        ${sourceId}, ${`immich_owner_pack_${suffix}`}, ${assetId},
+        ${digest("owner-source-pack-owner")}, ${inputRevision},
+        ${`synthetic-owner-pack-${suffix}`}, 'image', 'timeline',
+        'image/jpeg', ${`${evidence.year}-06-01T00:00:00.000Z`},
+        ${`${evidence.year}-06-01T00:00:00.000Z`}, 1200, 900, 'active',
+        ${inventoryRunId}, ${inventoryRunId}
       )
     `;
     await sql`
@@ -206,10 +262,12 @@ try {
     });
     return {
       operator: createFaceMatchingOperator({
+        enhancedComponent: { isEnabled: async () => true },
         matchingProvider: provider,
         mediaOperator,
         providerReceipt: provider ? { state: "ready" } : null,
         repository,
+        sourceId,
         sql,
       }),
       repository,
@@ -219,7 +277,9 @@ try {
 
   const initial = await operator.status();
   assert.equal(initial.state, "needs_source_pack");
-  assert.equal(initial.next.action, "compile_source_pack");
+  assert.equal(initial.next.action, "run_recognition");
+  assert.equal(initial.evidence.analysedFaces, 0);
+  assert.equal(initial.evidence.eligibleFaces, 420);
   assert.equal(initial.evidence.providerEmbeddings, 420);
 
   const recognition = await operator.runRecognition({

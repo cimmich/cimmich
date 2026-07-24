@@ -7,7 +7,7 @@ reviewer. It is intentionally an index, not another product narrative.
 
 1. Read the root [README](../README.md) for the problem, product boundaries and
    five-minute journey.
-2. Follow [Try Cimmich](../README.md#try-cimmich) for the isolated synthetic
+2. Follow [Try Cimmich](../README.md#try-cimmich-with-fictional-data) for the isolated synthetic
    demo. It does not require a private photo library.
 3. Read the [Build Week evidence index](BUILD_WEEK_EVIDENCE.md) for what existed
    before the event, what was built during it and where each claim is proved.

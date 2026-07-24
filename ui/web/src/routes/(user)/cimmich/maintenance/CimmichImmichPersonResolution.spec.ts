@@ -113,6 +113,26 @@ describe('Immich unnamed Person resolution', () => {
     expect(getByText(/separate upstream Immich face groups/)).toBeInTheDocument();
   });
 
+  it('shows only the first 20 identity questions until the owner asks for more', async () => {
+    mocks.preview.mockResolvedValue({
+      clusters: Array.from({ length: 25 }, (_, index) => ({
+        ...cluster,
+        immichPersonId: `immich-person-${index + 1}`,
+        representative: {
+          ...cluster.representative,
+          faceId: `immich-face-${index + 1}`,
+        },
+      })),
+      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      scope,
+    });
+    const { getAllByText, getByRole } = render(CimmichImmichPersonResolution, { scope });
+
+    await waitFor(() => expect(getAllByText('Unnamed face group')).toHaveLength(20));
+    await fireEvent.click(getByRole('button', { name: 'Show 20 more · 5 remaining' }));
+    await waitFor(() => expect(getAllByText('Unnamed face group')).toHaveLength(25));
+  });
+
   it('reports import readiness only after every Face group has a final resolution', async () => {
     const onreadiness = vi.fn();
     const { rerender } = render(CimmichImmichPersonResolution, { onreadiness, scope });
@@ -173,5 +193,97 @@ describe('Immich unnamed Person resolution', () => {
       'decision-1',
       expect.objectContaining({ commandId: expect.stringMatching(/^immich-person\.undo\./), scope }),
     );
+  });
+
+  it('turns Review into the live queue by hiding final decisions and retaining Later', async () => {
+    const oncount = vi.fn();
+    mocks.preview.mockResolvedValue({
+      clusters: [
+        cluster,
+        {
+          ...cluster,
+          immichPersonId: 'immich-person-later',
+          resolution: {
+            action: 'later',
+            decisionId: 'decision-later',
+            personId: null,
+            resolutionId: 'resolution-later',
+            state: 'later',
+          },
+        },
+        {
+          ...cluster,
+          immichPersonId: 'immich-person-final',
+          resolution: {
+            action: 'unknown',
+            decisionId: 'decision-final',
+            personId: null,
+            resolutionId: 'resolution-final',
+            state: 'resolved',
+          },
+        },
+      ],
+      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      scope,
+    });
+    const { getAllByText, getByRole, getByText, queryByText } = render(CimmichImmichPersonResolution, {
+      mode: 'review',
+      oncount,
+      scope,
+    });
+
+    await waitFor(() => expect(getByRole('heading', { name: 'Review unnamed Face groups' })).toBeInTheDocument());
+    expect(getAllByText('Unnamed face group')).toHaveLength(2);
+    expect(getByText('2 unresolved groups')).toBeInTheDocument();
+    expect(getByText(/remains in Review until you make a final decision/)).toBeInTheDocument();
+    expect(queryByText('Kept as an explicit unknown Person without identity.')).not.toBeInTheDocument();
+    expect(oncount).toHaveBeenLastCalledWith(2);
+  });
+
+  it('disappears from Review when no live owner decisions remain', async () => {
+    mocks.preview.mockResolvedValue({
+      clusters: [],
+      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      scope,
+    });
+    const { queryByRole } = render(CimmichImmichPersonResolution, { mode: 'review', scope });
+
+    await waitFor(() => expect(queryByRole('heading', { name: 'Review unnamed Face groups' })).not.toBeInTheDocument());
+  });
+
+  it('keeps post-decision import application explicit inside Review', async () => {
+    mocks.resolve.mockResolvedValue({
+      changed: true,
+      replayed: false,
+      resolution: {
+        action: 'existing_person',
+        decisionId: 'decision-1',
+        personId: 'person-1',
+        resolutionId: 'resolution-1',
+        state: 'resolved',
+      },
+      schemaVersion: 'cimmich.immich-person-resolution.v1',
+    });
+    mocks.preview
+      .mockResolvedValueOnce({
+        clusters: [cluster],
+        schemaVersion: 'cimmich.immich-person-resolution.v1',
+        scope,
+      })
+      .mockResolvedValue({
+        clusters: [],
+        schemaVersion: 'cimmich.immich-person-resolution.v1',
+        scope,
+      });
+    const { getByRole, getByText } = render(CimmichImmichPersonResolution, { mode: 'review', scope });
+
+    await waitFor(() => expect(getByText('Unnamed face group')).toBeInTheDocument());
+    await fireEvent.change(getByRole('combobox', { name: 'Map to an existing Person' }), {
+      target: { value: 'person-1' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Use selected Person' }));
+
+    await waitFor(() => expect(getByText(/Decision saved. Update the import/)).toBeInTheDocument());
+    expect(getByRole('link', { name: 'Update import' })).toHaveAttribute('href', '/cimmich/maintenance');
   });
 });

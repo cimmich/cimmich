@@ -70,7 +70,7 @@
   const viewModes: Array<{ id: PersonViewMode; label: string }> = [
     { id: 'faces', label: 'People' },
     { id: 'candidates', label: 'Suggestions' },
-    { id: 'needsFace', label: 'Review list' },
+    { id: 'needsFace', label: 'Needs attention' },
   ];
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
     { id: 'photos', label: '# of Photos' },
@@ -95,7 +95,7 @@
     { id: 'co-workers', label: 'Co-workers' },
     { id: 'me', label: 'Me' },
     { id: 'others', label: 'Others' },
-    { id: 'sort', label: 'Review list' },
+    { id: 'sort', label: 'Needs sorting' },
     { id: 'holding', label: '↳ Holding' },
   ];
   const selectablePeopleCategories = peopleCategories.filter(
@@ -674,7 +674,7 @@
             {:else if viewMode === 'needsFace' && person.needs_sort}
               <span
                 class="-mt-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100"
-                >Review list</span
+                >Needs sorting</span
               >
             {:else if viewMode === 'candidates' && person.candidate_faces > 0}
               <span
@@ -708,7 +708,7 @@
                 : viewMode === 'candidates'
                   ? 'New ranked suggestions will appear here when they are ready.'
                   : viewMode === 'needsFace'
-                    ? 'No one is currently waiting in Review list or Holding.'
+                    ? 'No one currently needs sorting or Holding.'
                     : 'People will appear here when the current projection contains them.'}
             />
           </div>

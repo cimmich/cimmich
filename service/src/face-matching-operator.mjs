@@ -333,6 +333,14 @@ const projectPack = (row) => ({
   },
   packId: row.pack_id,
   predecessorPackId: row.predecessor_pack_id || null,
+  reviewability: {
+    reason: row.manifest?.evaluationContext?.reason || null,
+    state:
+      row.manifest?.evaluationContext?.reviewability ||
+      (row.manifest?.evaluationContext?.calibrationEnd
+        ? "balanced_open_set_holdout_ready"
+        : "operator_hold_required"),
+  },
   ...projectSourcePackReviewGate({
     currentGateReceipt:
       row.evaluation_summary?.schemaVersion === sourcePackGateSchemaVersion
@@ -349,16 +357,44 @@ const projectPack = (row) => ({
   state: row.state,
 });
 
+export const deriveSourcePackReviewNext = (latestPack) => {
+  if (
+    latestPack?.state === "proposed" &&
+    latestPack.evaluation.status === "passed" &&
+    latestPack.evaluation.reason === null
+  ) {
+    return {
+      action: "activate_source_pack",
+      reason: "SOURCE_PACK_READY_FOR_ACTIVATION",
+    };
+  }
+  return {
+    action:
+      latestPack?.evaluation.status === "untested" &&
+      latestPack?.reviewability.state === "operator_hold_required"
+        ? "await_more_evidence"
+        : latestPack?.evaluation.status === "untested"
+          ? "evaluate_source_pack"
+          : "record_operator_review",
+    reason:
+      latestPack?.reviewability.reason ||
+      latestPack?.evaluation.reason ||
+      "OPERATOR_REVIEW_GATE_REQUIRED",
+  };
+};
+
 export const createFaceMatchingOperator = ({
   detectionEnabled = true,
   enhancedComponent = null,
   matchingProvider = null,
   mediaOperator,
+  presentationRank = () => 3,
   providerReceipt = null,
   repository,
+  sourceId = "immich-primary",
   sql,
 } = {}) => {
-  if (!sql || !repository) {
+  if (!sql || !repository || typeof presentationRank !== "function") {
     throw new Error("Face matching operator requires repository and database");
   }
 
@@ -373,7 +409,7 @@ export const createFaceMatchingOperator = ({
     return matchingProvider;
   };
   const requireEnhanced = async () => {
-    if (enhancedComponent && !(await enhancedComponent.isEnabled())) {
+    if (!enhancedComponent || !(await enhancedComponent.isEnabled())) {
       throw typedError(
         "Cimmich Enhanced is disabled by the owner",
         "FACE_MATCHING_ENHANCED_DISABLED",
@@ -392,7 +428,7 @@ export const createFaceMatchingOperator = ({
       : matchingProvider;
     const [row] = await sql`
       SELECT pack.pack_id, pack.predecessor_pack_id, pack.state,
-        pack.evaluation_status, pack.evaluation_summary,
+        pack.evaluation_status, pack.evaluation_summary, pack.manifest,
         pack.evaluation_summary->>'evaluationId' AS evaluation_id,
         evaluator.evaluator_version, evaluator.metrics AS evaluator_metrics,
         CASE
@@ -458,6 +494,8 @@ export const createFaceMatchingOperator = ({
         ...matching,
         evidence: {
           acceptedFaces: Number(evidence?.accepted_faces || 0),
+          analysedFaces: 0,
+          eligibleFaces: Number(evidence?.accepted_faces || 0),
           providerEmbeddings: 0,
         },
         latestPack: null,
@@ -470,23 +508,72 @@ export const createFaceMatchingOperator = ({
       };
     }
     const provider = requireProvider();
+    const visibleRank = boundedInteger(
+      presentationRank(),
+      3,
+      0,
+      3,
+      "presentation rank",
+    );
     const [evidence] = await sql`
       WITH accepted AS (
-        SELECT identity.face_id
+        SELECT identity.face_id, identity.person_id, face.asset_id
         FROM current_face_identity identity
         JOIN face_observation face ON face.face_id = identity.face_id
           AND face.state = 'valid'
         WHERE identity.state = 'accepted'
+      ),
+      eligible AS (
+        SELECT accepted.face_id
+        FROM accepted
+        JOIN person ON person.person_id = accepted.person_id
+          AND person.status = 'active'
+        JOIN asset ON asset.asset_id = accepted.asset_id
+          AND asset.state = 'active'
+        JOIN immich_asset_projection projection
+          ON projection.cimmich_asset_id = accepted.asset_id
+          AND projection.source_id = ${sourceId}
+          AND projection.state = 'active'
+        WHERE cimmich_visibility_asset_rank(accepted.asset_id) <= ${visibleRank}
+          AND cimmich_visibility_subject_rank(
+            person.subject_kind, accepted.person_id
+          ) <= ${visibleRank}
       )
-      SELECT count(*)::int AS accepted_faces,
-        count(*) FILTER (WHERE embedding.embedding_id IS NOT NULL)::int
-          AS provider_embeddings
-      FROM accepted
-      LEFT JOIN face_embedding embedding ON embedding.face_id = accepted.face_id
+      SELECT (SELECT count(*)::int FROM accepted) AS accepted_faces,
+        count(DISTINCT eligible.face_id)::int AS eligible_faces,
+        count(DISTINCT eligible.face_id) FILTER (
+          WHERE analysis.face_id IS NOT NULL
+        )::int AS analysed_faces,
+        count(DISTINCT eligible.face_id) FILTER (
+          WHERE embedding.embedding_id IS NOT NULL
+        )::int AS provider_embeddings
+      FROM eligible
+      LEFT JOIN face_embedding embedding ON embedding.face_id = eligible.face_id
         AND embedding.state = 'active'
         AND embedding.model_family = ${provider.modelFamily}
         AND embedding.model_version = ${provider.modelVersion}
         AND embedding.config_digest = ${provider.configDigest}
+      LEFT JOIN LATERAL (
+        SELECT observation.face_id
+        FROM media_pipeline_run_observation observation
+        JOIN media_pipeline_run pipeline
+          ON pipeline.pipeline_run_id = observation.pipeline_run_id
+          AND pipeline.recognizer_config_digest = ${provider.configDigest}
+          AND pipeline.recognizer_provider_config_digest =
+            ${provider.providerConfigDigest}
+          AND pipeline.vector_space_id = ${provider.vectorSpaceId}
+          AND pipeline.state = 'recognized'
+        JOIN media_job recognition_job
+          ON recognition_job.job_id = pipeline.recognition_job_id
+          AND recognition_job.state = 'completed'
+        JOIN current_asset_source_revision revision
+          ON revision.revision_id = pipeline.source_revision_id
+          AND revision.asset_id = pipeline.asset_id
+          AND revision.input_revision = pipeline.input_revision
+          AND revision.source_content_digest = pipeline.source_content_digest
+        WHERE observation.face_id = eligible.face_id
+        LIMIT 1
+      ) analysis ON true
     `;
     const [latest] = await sql`
       SELECT pack_id
@@ -502,12 +589,17 @@ export const createFaceMatchingOperator = ({
     const latestPack = latest
       ? projectPack(await loadPackRow(latest.pack_id))
       : null;
+    const acceptedFaces = Number(evidence?.accepted_faces || 0);
+    const analysedFaces = Number(evidence?.analysed_faces || 0);
+    const eligibleFaces = Number(evidence?.eligible_faces || 0);
     const providerEmbeddings = Number(evidence?.provider_embeddings || 0);
     if (matching.enhanced?.enabled === false) {
       return {
         ...matching,
         evidence: {
-          acceptedFaces: Number(evidence?.accepted_faces || 0),
+          acceptedFaces,
+          analysedFaces,
+          eligibleFaces,
           providerEmbeddings,
         },
         latestPack,
@@ -528,37 +620,29 @@ export const createFaceMatchingOperator = ({
     let next = { action: "review_suggestions", reason: "MATCHING_READY" };
     if (matching.state === "needs_source_pack") {
       next =
-        latestPack?.evaluation.status === "failed"
+        eligibleFaces === 0
+          ? {
+              action: "await_more_evidence",
+              reason: "NO_ELIGIBLE_ACCEPTED_FACES",
+            }
+          : analysedFaces < eligibleFaces
+          ? {
+              action: "run_recognition",
+              reason: "PROVIDER_EVIDENCE_INCOMPLETE",
+            }
+          : providerEmbeddings === 0
+            ? {
+                action: "await_more_evidence",
+                reason: "NO_USABLE_PROVIDER_EMBEDDINGS",
+              }
+          : latestPack?.evaluation.status === "failed"
           ? {
               action: "compile_source_pack",
               reason: "SOURCE_PACK_REVIEW_REJECTED",
             }
-          : providerEmbeddings === 0
-            ? {
-                action: "run_recognition",
-                reason: "PROVIDER_EVIDENCE_NOT_READY",
-              }
-            : { action: "compile_source_pack", reason: "NO_SOURCE_PACK" };
+          : { action: "compile_source_pack", reason: "NO_SOURCE_PACK" };
     } else if (matching.state === "needs_operator_review") {
-      if (
-        latestPack?.state === "proposed" &&
-        latestPack.evaluation.status === "passed" &&
-        latestPack.evaluation.reason === null
-      ) {
-        next = {
-          action: "activate_source_pack",
-          reason: "SOURCE_PACK_READY_FOR_ACTIVATION",
-        };
-      } else {
-        next = {
-          action:
-            latestPack?.evaluation.status === "untested"
-              ? "evaluate_source_pack"
-              : "record_operator_review",
-          reason:
-            latestPack?.evaluation.reason || "OPERATOR_REVIEW_GATE_REQUIRED",
-        };
-      }
+      next = deriveSourcePackReviewNext(latestPack);
     } else if (matching.state === "needs_review_policy") {
       next = {
         action: "record_operator_review",
@@ -568,7 +652,9 @@ export const createFaceMatchingOperator = ({
     return {
       ...matching,
       evidence: {
-        acceptedFaces: Number(evidence?.accepted_faces || 0),
+        acceptedFaces,
+        analysedFaces,
+        eligibleFaces,
         providerEmbeddings,
       },
       latestPack,
@@ -584,6 +670,7 @@ export const createFaceMatchingOperator = ({
   };
 
   const runRecognition = async ({ actorId, commandId, workLimit } = {}) => {
+    await requireEnhanced();
     requireProvider();
     if (!mediaOperator) {
       throw typedError(

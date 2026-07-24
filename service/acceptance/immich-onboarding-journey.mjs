@@ -213,18 +213,6 @@ try {
   });
   assert.equal(preview.counts.assignedFaces, 5);
   assert.equal(preview.counts.unlabelledPeople, 1);
-  await assert.rejects(
-    onboarding.importCurrent({
-      actorId: "onboarding-acceptance",
-      commandId: "onboarding.import.acceptance.blocked",
-      previewDigest: preview.previewDigest,
-      scope: { providerMode: "configured", visibilities: ["timeline"] },
-      viewingMode: "Standard",
-    }),
-    (error) =>
-      error.code === "IMMICH_ONBOARDING_PERSON_LABEL_REQUIRED" &&
-      error.details.unlabelledPeople === 1,
-  );
   let clusterPreview = await onboarding.personClusters({
     scope: { providerMode: "configured", visibilities: ["timeline"] },
     viewingMode: "Standard",

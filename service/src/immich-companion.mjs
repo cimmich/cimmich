@@ -56,6 +56,17 @@ const finiteInteger = (value, name) => {
   return value;
 };
 
+const finiteSignedInteger = (value, name) => {
+  if (!Number.isInteger(value)) {
+    throw companionError(
+      "IMMICH_COMPANION_PROTOCOL_INVALID",
+      `Immich response has invalid ${name}`,
+      502,
+    );
+  }
+  return value;
+};
+
 export const normalizeImmichApiBaseUrl = (value) => {
   const input = String(value || "").trim();
   if (!input) return "";
@@ -249,17 +260,22 @@ export const projectImmichFace = (value) => {
   const id = requiredText(value.id, "face.id");
   const imageWidth = finiteInteger(value.imageWidth, "face.imageWidth");
   const imageHeight = finiteInteger(value.imageHeight, "face.imageHeight");
-  const x1 = finiteInteger(value.boundingBoxX1, "face.boundingBoxX1");
-  const y1 = finiteInteger(value.boundingBoxY1, "face.boundingBoxY1");
-  const x2 = finiteInteger(value.boundingBoxX2, "face.boundingBoxX2");
-  const y2 = finiteInteger(value.boundingBoxY2, "face.boundingBoxY2");
+  const rawX1 = finiteSignedInteger(value.boundingBoxX1, "face.boundingBoxX1");
+  const rawY1 = finiteSignedInteger(value.boundingBoxY1, "face.boundingBoxY1");
+  const rawX2 = finiteSignedInteger(value.boundingBoxX2, "face.boundingBoxX2");
+  const rawY2 = finiteSignedInteger(value.boundingBoxY2, "face.boundingBoxY2");
+  // Immich 3.0.3 preserves detector boxes that extend slightly beyond an
+  // image edge. Clip that valid upstream evidence to the actual frame while
+  // retaining strict integer and non-degenerate geometry checks.
+  const x1 = Math.max(0, rawX1);
+  const y1 = Math.max(0, rawY1);
+  const x2 = Math.min(imageWidth, rawX2);
+  const y2 = Math.min(imageHeight, rawY2);
   if (
     imageWidth < 1 ||
     imageHeight < 1 ||
     x2 <= x1 ||
-    y2 <= y1 ||
-    x2 > imageWidth ||
-    y2 > imageHeight
+    y2 <= y1
   ) {
     throw companionError(
       "IMMICH_COMPANION_PROTOCOL_INVALID",

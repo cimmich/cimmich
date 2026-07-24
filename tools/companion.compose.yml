@@ -17,6 +17,35 @@ services:
       retries: 30
     networks: [cimmich-internal]
 
+  cimmich-storage-init:
+    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        chown -R 1000:1000 /config /documents &&
+        chmod 700 /config /documents
+    volumes:
+      - cimmich-config:/config
+      - cimmich-documents:/documents
+    restart: "no"
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+
+  cimmich-face-provider-init:
+    profiles: [face-provider]
+    image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-api:current-source
+    command: ["/bin/sh", "/app/providers/opencv-sface/install-models.sh", "/face-provider"]
+    user: "0:0"
+    volumes:
+      - cimmich-face-provider:/face-provider
+    restart: "no"
+    network_mode: bridge
+
   cimmich-api:
     build:
       context: ..
@@ -37,6 +66,8 @@ services:
       CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH: /face-provider/provider-manifest.json
       CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH: /face-provider/detector.onnx
       CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH: /face-provider/recognizer.onnx
+      CIMMICH_OPENCV_DETECTOR_MODEL_PATH: /face-provider/face_detection_yunet_2023mar.onnx
+      CIMMICH_OPENCV_RECOGNIZER_MODEL_PATH: /face-provider/face_recognition_sface_2021dec.onnx
       CIMMICH_RUNTIME_MODE: production
       CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: ${CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE:-password}
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
@@ -47,6 +78,8 @@ services:
     depends_on:
       cimmich-database:
         condition: service_healthy
+      cimmich-storage-init:
+        condition: service_completed_successfully
     ports:
       - 127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}:3101
     volumes:
@@ -79,6 +112,8 @@ services:
       args:
         PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}
     image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-ui:current-source
+    environment:
+      PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}
     depends_on:
       cimmich-api:
         condition: service_healthy

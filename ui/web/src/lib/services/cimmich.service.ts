@@ -1724,6 +1724,12 @@ export type CimmichSourcePackProjection = {
   };
   packId: string;
   predecessorPackId: string | null;
+  reviewability: {
+    reason: string | null;
+    state: 'balanced_open_set_holdout_ready' | 'operator_hold_required';
+  };
+  reviewGateReceipt: CimmichSourcePackGateReceipt | null;
+  reviewGateReceiptNullReason: CimmichSourcePackReviewGateNullReason | null;
   rollbackAvailable: boolean;
   state: 'active' | 'proposed' | 'rejected' | 'retired' | 'shadow';
 };
@@ -1768,6 +1774,8 @@ export type CimmichSourcePackReviewGateNullReason =
 export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMatching'] & {
   evidence: {
     acceptedFaces: number;
+    analysedFaces: number;
+    eligibleFaces: number;
     providerEmbeddings: number;
   };
   latestPack: CimmichSourcePackProjection | null;
@@ -1778,6 +1786,7 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
       | 'enable_enhanced'
       | 'evaluate_source_pack'
       | 'activate_source_pack'
+      | 'await_more_evidence'
       | 'record_operator_review'
       | 'review_suggestions'
       | 'run_recognition';
@@ -1793,8 +1802,6 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
         state: 'ready';
         vectorSpaceId: string;
       };
-  reviewGateReceipt: CimmichSourcePackGateReceipt | null;
-  reviewGateReceiptNullReason: CimmichSourcePackReviewGateNullReason | null;
 };
 
 export type CimmichFaceMatchingOperatorResult = {
@@ -1820,6 +1827,8 @@ export type CimmichFaceMatchingOperatorResult = {
       split: Record<string, unknown>;
       verifiedUnknowns: number;
     };
+    reviewGateReceipt: CimmichSourcePackGateReceipt | null;
+    reviewGateReceiptNullReason: CimmichSourcePackReviewGateNullReason | null;
     status: 'failed' | 'incomplete' | 'passed' | 'untested';
   };
   pack?: CimmichSourcePackProjection;
@@ -1835,8 +1844,6 @@ export type CimmichFaceMatchingOperatorResult = {
     strategy: 'all_current_evidence_proposed_only' | 'deterministic_three_window';
   };
   replayed: boolean;
-  reviewGateReceipt?: CimmichSourcePackGateReceipt | null;
-  reviewGateReceiptNullReason?: CimmichSourcePackReviewGateNullReason | null;
   schemaVersion: 'cimmich.face-matching-operator.v1';
 };
 
