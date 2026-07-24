@@ -195,6 +195,31 @@ face_provider() {
   require_configured
   action=${1:-}
   case "$action" in
+    install-recommended)
+      test "$#" -eq 1 || fail "usage: companion.sh face-provider install-recommended"
+      compose build cimmich-api
+      compose --profile face-provider run --rm cimmich-face-provider-init
+      if grep -q '^CIMMICH_LOCAL_MEDIA_PROVIDER=' "$ENV_FILE"; then
+        sed -i.bak \
+          's/^CIMMICH_LOCAL_MEDIA_PROVIDER=.*/CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu/' \
+          "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+      else
+        printf 'CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu\n' >> "$ENV_FILE"
+      fi
+      chmod 600 "$ENV_FILE"
+      compose up --detach --no-deps --force-recreate cimmich-api
+      api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
+      i=0
+      until curl --fail --silent "http://127.0.0.1:${api_port}/health" >/dev/null 2>&1; do
+        i=$((i + 1))
+        test "$i" -lt 60 || fail "recommended Face provider did not become ready"
+        sleep 2
+      done
+      curl --fail --silent --show-error \
+        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      printf '\n'
+      ;;
     configure)
       test "$#" -eq 4 ||
         fail "usage: companion.sh face-provider configure MANIFEST DETECTOR_MODEL RECOGNIZER_MODEL"
@@ -247,7 +272,7 @@ face_provider() {
         "http://127.0.0.1:${api_port}/v1/operator/face-matching"
       printf '\n'
       ;;
-    *) fail "usage: companion.sh face-provider configure|status" ;;
+    *) fail "usage: companion.sh face-provider install-recommended|configure|status" ;;
   esac
 }
 

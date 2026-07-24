@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createFaceMatchingOperator,
   deriveOwnerSourcePackPlan,
+  deriveSourcePackReviewNext,
   projectSourcePackReviewGate,
 } from "../src/face-matching-operator.mjs";
 import { deriveSourcePackReviewGate } from "../src/source-pack-evaluator.mjs";
@@ -66,6 +67,31 @@ test("owner SourcePack planning selects a balanced known and unknown holdout", (
   assert.equal(plan.reviewability, "balanced_open_set_holdout_ready");
 });
 
+test("review routing never offers an impossible safety check", () => {
+  const held = deriveSourcePackReviewNext({
+    evaluation: { reason: "SOURCE_PACK_EVALUATION_REQUIRED", status: "untested" },
+    reviewability: {
+      reason: "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT",
+      state: "operator_hold_required",
+    },
+    state: "proposed",
+  });
+  assert.deepEqual(held, {
+    action: "await_more_evidence",
+    reason: "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT",
+  });
+
+  const checkable = deriveSourcePackReviewNext({
+    evaluation: { reason: "SOURCE_PACK_EVALUATION_REQUIRED", status: "untested" },
+    reviewability: {
+      reason: null,
+      state: "balanced_open_set_holdout_ready",
+    },
+    state: "proposed",
+  });
+  assert.equal(checkable.action, "evaluate_source_pack");
+});
+
 test("provider-disabled status retains Basic truth in one total response shape", async () => {
   const sql = async (strings) => {
     assert.match(strings.join(""), /current_face_identity/);
@@ -96,10 +122,126 @@ test("provider-disabled status retains Basic truth in one total response shape",
   const status = await operator.status();
   assert.deepEqual(status.evidence, {
     acceptedFaces: 7,
+    analysedFaces: 0,
+    eligibleFaces: 7,
     providerEmbeddings: 0,
   });
   assert.equal(status.latestPack, null);
   assert.equal(status.next.action, "configure_provider");
+});
+
+test("provider status separates eligible analysis from usable embeddings", async () => {
+  const makeOperator = (analysedFaces, eligibleFaces = 7) =>
+    createFaceMatchingOperator({
+      matchingProvider: {
+        configDigest: "a".repeat(64),
+        modelFamily: "synthetic-face",
+        modelVersion: "v1",
+        providerConfigDigest: "b".repeat(64),
+        providerId: "synthetic-provider",
+        vectorSpaceId: "synthetic-space-v1",
+      },
+      providerReceipt: { state: "ready" },
+      repository: {
+        async faceMatchingStatus() {
+          return {
+            enhanced: { enabled: true },
+            sourcePack: { activePassed: 0, awaitingReview: 0 },
+            state: "needs_source_pack",
+          };
+        },
+      },
+      sql: async (strings) => {
+        const query = strings.join("");
+        if (query.includes("WITH accepted AS")) {
+          return [
+            {
+              accepted_faces: 7,
+              analysed_faces: analysedFaces,
+              eligible_faces: eligibleFaces,
+              provider_embeddings: 4,
+            },
+          ];
+        }
+        if (query.includes("FROM source_pack")) {
+          return [];
+        }
+        throw new Error(`Unexpected status query: ${query}`);
+      },
+    });
+
+  const partial = await makeOperator(6).status();
+  assert.deepEqual(partial.evidence, {
+    acceptedFaces: 7,
+    analysedFaces: 6,
+    eligibleFaces: 7,
+    providerEmbeddings: 4,
+  });
+  assert.equal(partial.next.action, "run_recognition");
+
+  const complete = await makeOperator(7).status();
+  assert.deepEqual(complete.evidence, {
+    acceptedFaces: 7,
+    analysedFaces: 7,
+    eligibleFaces: 7,
+    providerEmbeddings: 4,
+  });
+  assert.equal(complete.next.action, "compile_source_pack");
+
+  const scopedComplete = await makeOperator(6, 6).status();
+  assert.deepEqual(scopedComplete.evidence, {
+    acceptedFaces: 7,
+    analysedFaces: 6,
+    eligibleFaces: 6,
+    providerEmbeddings: 4,
+  });
+  assert.equal(scopedComplete.next.action, "compile_source_pack");
+
+  const noEligibleEvidence = await makeOperator(0, 0).status();
+  assert.deepEqual(noEligibleEvidence.next, {
+    action: "await_more_evidence",
+    reason: "NO_ELIGIBLE_ACCEPTED_FACES",
+  });
+
+  const allAbstained = createFaceMatchingOperator({
+    matchingProvider: {
+      configDigest: "a".repeat(64),
+      modelFamily: "synthetic-face",
+      modelVersion: "v1",
+      providerConfigDigest: "b".repeat(64),
+      providerId: "synthetic-provider",
+      vectorSpaceId: "synthetic-space-v1",
+    },
+    providerReceipt: { state: "ready" },
+    repository: {
+      async faceMatchingStatus() {
+        return {
+          enhanced: { enabled: true },
+          sourcePack: { activePassed: 0, awaitingReview: 0 },
+          state: "needs_source_pack",
+        };
+      },
+    },
+    sql: async (strings) => {
+      const query = strings.join("");
+      if (query.includes("WITH accepted AS")) {
+        return [
+          {
+            accepted_faces: 7,
+            analysed_faces: 7,
+            eligible_faces: 7,
+            provider_embeddings: 0,
+          },
+        ];
+      }
+      if (query.includes("FROM source_pack")) return [];
+      throw new Error(`Unexpected status query: ${query}`);
+    },
+  });
+  assert.deepEqual((await allAbstained.status()).next, {
+    action: "await_more_evidence",
+    reason: "NO_USABLE_PROVIDER_EMBEDDINGS",
+  });
 });
 
 const openSetRows = ({ holdoutWinner = "person-a" } = {}) => [
@@ -217,6 +359,7 @@ test("review receipt projection returns failed evidence and rejects tampered art
 test("recognition run derives the provider envelope and preserves command replay", async () => {
   const calls = [];
   const operator = createFaceMatchingOperator({
+    enhancedComponent: { isEnabled: async () => true },
     matchingProvider: {
       configDigest: "a".repeat(64),
       modelFamily: "synthetic-face",
@@ -261,6 +404,7 @@ test("recognition-only provider skips Cimmich detection and processes imported F
   let envelope;
   const operator = createFaceMatchingOperator({
     detectionEnabled: false,
+    enhancedComponent: { isEnabled: async () => true },
     matchingProvider: {
       configDigest: "a".repeat(64),
       modelFamily: "synthetic-face",
@@ -298,4 +442,43 @@ test("recognition-only provider skips Cimmich detection and processes imported F
     inventoryPages: 1,
     recognitions: 3,
   });
+});
+
+test("recognition fails closed before provider inference when Enhanced is disabled or unavailable", async () => {
+  for (const enhancedComponent of [
+    { isEnabled: async () => false },
+    null,
+  ]) {
+    let inferenceCalls = 0;
+    const operator = createFaceMatchingOperator({
+      enhancedComponent,
+      matchingProvider: {
+        configDigest: "a".repeat(64),
+        modelFamily: "synthetic-face",
+        modelVersion: "v1",
+        providerId: "synthetic-provider",
+        vectorSpaceId: "synthetic-space-v1",
+      },
+      mediaOperator: {
+        async execute() {
+          inferenceCalls += 1;
+          throw new Error("inference must remain gated");
+        },
+      },
+      providerReceipt: { state: "ready" },
+      repository: { faceMatchingStatus: async () => ({}) },
+      sql: async () => [],
+    });
+    await assert.rejects(
+      operator.runRecognition({
+        actorId: "owner-operator",
+        commandId: "owner-recognition-gated-0001",
+        workLimit: 3,
+      }),
+      (error) =>
+        error.code === "FACE_MATCHING_ENHANCED_DISABLED" &&
+        error.statusCode === 409,
+    );
+    assert.equal(inferenceCalls, 0);
+  }
 });

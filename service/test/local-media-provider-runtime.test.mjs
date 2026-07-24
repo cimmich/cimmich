@@ -96,6 +96,7 @@ test("OpenCV runtime binds verified provider stages and redacted receipt", async
     configDigest: runtime.recognitionManifest.recognitionSpaceConfigDigest,
     modelFamily: "SFace-MobileFaceNet",
     modelVersion: "2021dec",
+    providerConfigDigest: runtime.recognitionManifest.providerConfigDigest,
     providerId: openCvReferenceProviderId,
     vectorSpaceId: runtime.recognitionManifest.vectorSpaceId,
   });
@@ -138,6 +139,7 @@ test("InsightFace runtime recognizes upstream inventory without owning detection
     configDigest: runtime.recognitionManifest.recognitionSpaceConfigDigest,
     modelFamily: "private_insightface_buffalo_l",
     modelVersion: "cimmich-target-centric-v2",
+    providerConfigDigest: runtime.recognitionManifest.providerConfigDigest,
     providerId: insightFaceUserSuppliedProviderId,
     vectorSpaceId: runtime.recognitionManifest.vectorSpaceId,
   });

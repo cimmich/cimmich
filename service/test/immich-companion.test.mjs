@@ -234,6 +234,23 @@ test("People and assigned Face discovery is geometry-bounded and path-free", asy
   assert.equal(faces.items[0].person.name, "Audit Fresh Person");
   assert.match(faces.items[0].sourceRevision, /^[0-9a-f]{64}$/);
   assert.equal(JSON.stringify(faces).includes("thumbnailPath"), false);
+  assert.deepEqual(
+    projectImmichFace({
+      boundingBoxX1: -20,
+      boundingBoxX2: 220,
+      boundingBoxY1: -10,
+      boundingBoxY2: 120,
+      id: "clipped-face",
+      imageHeight: 100,
+      imageWidth: 200,
+    }).box,
+    {
+      h: 1,
+      w: 1,
+      x: 0,
+      y: 0,
+    },
+  );
   assert.throws(
     () =>
       projectImmichFace({

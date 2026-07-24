@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { faceMatchingPresentation, faceMatchingReviewHoldCopy } from './face-matching-presentation';
+import type { CimmichFaceMatchingOperatorStatus } from '$lib/services/cimmich.service';
+import {
+  faceMatchingPresentation,
+  faceMatchingReviewHoldCopy,
+  referenceLibraryJourney,
+  sourcePackReviewGate,
+} from './face-matching-presentation';
 
 describe('Face matching owner presentation', () => {
   it('keeps a disabled provider distinct from missing identity truth', () => {
@@ -92,5 +98,124 @@ describe('Face matching owner presentation', () => {
       'The evaluation found evidence leakage or invalid provenance.',
     );
     expect(faceMatchingReviewHoldCopy(null)).toBe('This evaluation is not ready for human review.');
+  });
+
+  it('ends an uncheckable proposal at a visible safety hold', () => {
+    const status = {
+      provider: {
+        configured: true,
+        modelFamily: 'opencv-sface',
+        modelVersion: '2021dec',
+        providerId: 'opencv-yunet-sface-cpu',
+      },
+      next: { action: 'await_more_evidence', reason: 'INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT' },
+      latestPack: {
+        packId: 'pack-held',
+      },
+      sourcePack: { activePassed: 0, awaitingReview: 1 },
+      state: 'needs_operator_review',
+    } as CimmichFaceMatchingOperatorStatus;
+
+    expect(referenceLibraryJourney(status)).toMatchObject({
+      activeIndex: 2,
+      headline: 'Safety check unavailable — proposal held',
+      held: true,
+      steps: [
+        { label: 'Analyse', state: 'complete' },
+        { label: 'Build', state: 'complete' },
+        { label: 'Check', state: 'held' },
+        { label: 'Decide', state: 'upcoming' },
+        { label: 'Use', state: 'upcoming' },
+      ],
+    });
+    expect(faceMatchingPresentation(status)).toMatchObject({
+      label: 'Safely held',
+      ready: false,
+    });
+  });
+
+  it('does not invent a held proposal when a clean library only needs evidence', () => {
+    const status = {
+      provider: {
+        configured: true,
+        modelFamily: 'opencv-sface',
+        modelVersion: '2021dec',
+        providerId: 'opencv-yunet-sface-cpu',
+      },
+      next: { action: 'await_more_evidence', reason: 'NO_ELIGIBLE_ACCEPTED_FACES' },
+      sourcePack: { activePassed: 0, awaitingReview: 0 },
+      state: 'needs_source_pack',
+    } as CimmichFaceMatchingOperatorStatus;
+
+    expect(referenceLibraryJourney(status)).toMatchObject({
+      activeIndex: 0,
+      headline: 'Analyse',
+      held: false,
+    });
+    expect(faceMatchingPresentation(status)).toMatchObject({
+      awaitingReviewLabel: '0 builds awaiting review',
+      label: 'Build references',
+      ready: false,
+    });
+  });
+
+  it('reads the frozen review receipt from the projected SourcePack', () => {
+    const receipt = { status: 'passed' } as const;
+    const status = {
+      latestPack: {
+        reviewGateReceipt: receipt,
+        reviewGateReceiptNullReason: null,
+      },
+    } as CimmichFaceMatchingOperatorStatus;
+
+    expect(sourcePackReviewGate(status)).toEqual({ receipt, reason: null });
+  });
+
+  it('distinguishes a reviewed proposal from one still needing a decision', () => {
+    const base = {
+      provider: {
+        configured: true,
+        modelFamily: 'opencv-sface',
+        modelVersion: '2021dec',
+        providerId: 'opencv-yunet-sface-cpu',
+      },
+      sourcePack: { activePassed: 0, awaitingReview: 1 },
+      state: 'needs_operator_review',
+    };
+
+    expect(
+      faceMatchingPresentation({
+        ...base,
+        latestPack: { reviewGateReceipt: { status: 'passed' } },
+        next: { action: 'record_operator_review' },
+      } as CimmichFaceMatchingOperatorStatus),
+    ).toMatchObject({ label: 'Decision needed' });
+    expect(
+      faceMatchingPresentation({
+        ...base,
+        next: { action: 'activate_source_pack' },
+      } as CimmichFaceMatchingOperatorStatus),
+    ).toMatchObject({
+      label: 'Ready to use',
+      nextAction: 'Put the reviewed reference library into use when you are ready.',
+    });
+  });
+
+  it('marks every journey step complete once the reviewed library is in use', () => {
+    expect(
+      referenceLibraryJourney({
+        next: { action: 'review_suggestions', reason: 'MATCHING_READY' },
+      } as CimmichFaceMatchingOperatorStatus),
+    ).toMatchObject({
+      complete: true,
+      headline: 'Reference library in use',
+      steps: [
+        { state: 'complete' },
+        { state: 'complete' },
+        { state: 'complete' },
+        { state: 'complete' },
+        { state: 'complete' },
+      ],
+    });
   });
 });

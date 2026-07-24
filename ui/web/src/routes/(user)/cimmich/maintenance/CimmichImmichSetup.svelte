@@ -13,10 +13,16 @@
   } from '$lib/services/cimmich.service';
   import { Route } from '$lib/route';
   import { Icon } from '@immich/ui';
-  import { mdiCheckCircleOutline, mdiDatabaseImportOutline, mdiRefresh } from '@mdi/js';
+  import { mdiArrowRight, mdiCheckCircleOutline, mdiCogOutline, mdiDatabaseImportOutline, mdiRefresh } from '@mdi/js';
   import { onMount } from 'svelte';
   import CimmichImmichPersonResolution from './CimmichImmichPersonResolution.svelte';
 
+  interface Props {
+    onChanged?: () => void | Promise<void>;
+    refreshRevision?: number;
+  }
+
+  let { onChanged = () => {}, refreshRevision = 0 }: Props = $props();
   let status = $state<CimmichImmichOnboardingStatus>();
   let preview = $state<CimmichImmichOnboardingPreview>();
   let result = $state<CimmichImmichOnboardingImportResult>();
@@ -24,10 +30,11 @@
   let busy = $state<'connect' | 'import' | 'preview' | ''>('');
   let error = $state('');
   let notice = $state('');
-  let personResolutionReady = $state(true);
+  let showImportControls = $state(false);
   let existingCimmichPeopleCount = $state(0);
   let apiBaseUrl = $state('');
   let credential = $state('');
+  let observedRefreshRevision = $state(refreshRevision);
   let scope = $state<CimmichImmichOnboardingScope>({
     importPeople: true,
     includeHiddenPeople: false,
@@ -49,13 +56,7 @@
     visibilities: [...value.visibilities],
   });
 
-  const messageFor = (error_: unknown, fallback: string) => {
-    if (error_ instanceof CimmichServiceError && error_.code === 'IMMICH_ONBOARDING_PERSON_LABEL_REQUIRED') {
-      const count = Number(error_.details?.unlabelledAssignedFaces || 0);
-      return `${count} assigned Immich ${count === 1 ? 'Face belongs' : 'Faces belong'} to unnamed People. Name or explicitly resolve those clusters before importing identity truth.`;
-    }
-    return error_ instanceof Error ? error_.message : fallback;
-  };
+  const messageFor = (error_: unknown, fallback: string) => (error_ instanceof Error ? error_.message : fallback);
 
   const loadStatus = async () => {
     loading = true;
@@ -94,6 +95,7 @@
       credential = '';
       notice = 'Immich is connected. The credential was stored privately and is not returned to this page.';
       await loadStatus();
+      await onChanged();
     } catch (error_) {
       credential = '';
       error = messageFor(error_, 'Cimmich could not connect to Immich.');
@@ -140,7 +142,6 @@
       const currentPreview = await previewCimmichImmichOnboarding(scope);
       preview = currentPreview;
       scope = copyScope(currentPreview.scope);
-      personResolutionReady = !scope.importPeople || currentPreview.counts.unlabelledPeople === 0;
       notice = 'Preview is current. Nothing has been imported yet.';
     } catch (error_) {
       preview = undefined;
@@ -189,6 +190,7 @@
           ? 'Everything in this exact preview was already current. No People, Faces or assets were duplicated.'
           : 'Import complete. Accepted source labels are presentable now; matching remains separately governed.';
       await loadStatus();
+      await onChanged();
     } catch (error_) {
       const importError = messageFor(error_, 'Cimmich could not complete this import.');
       await loadStatus();
@@ -198,10 +200,25 @@
     }
   };
 
+  const cancelUpdate = () => {
+    showImportControls = false;
+    preview = undefined;
+    error = '';
+    notice = '';
+  };
+
+  $effect(() => {
+    if (refreshRevision !== observedRefreshRevision) {
+      observedRefreshRevision = refreshRevision;
+      void loadStatus();
+    }
+  });
+
   onMount(loadStatus);
 </script>
 
 <section
+  id="library-connection"
   aria-labelledby="cimmich-first-run-title"
   class="rounded-[1.75rem] border border-gray-200 bg-white p-6 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
 >
@@ -213,11 +230,16 @@
         <Icon icon={mdiDatabaseImportOutline} size="23" />
       </span>
       <div>
-        <p class="text-xs font-semibold tracking-[0.14em] text-indigo-700 uppercase dark:text-indigo-300">First run</p>
-        <h2 id="cimmich-first-run-title" class="mt-1 text-xl font-semibold">Connect your existing Immich library</h2>
+        <p class="text-xs font-semibold tracking-[0.14em] text-indigo-700 uppercase dark:text-indigo-300">
+          {completed ? 'Library connection' : 'First run'}
+        </p>
+        <h2 id="cimmich-first-run-title" class="mt-1 text-xl font-semibold">
+          {completed ? 'Your Immich library is connected' : 'Connect your existing Immich library'}
+        </h2>
         <p class="mt-1 max-w-3xl text-sm/6 text-gray-600 dark:text-gray-300">
-          Preview first, choose what Cimmich may admit, then import current Immich names as source-proven human truth.
-          Core remains useful if you do this later. Cimmich never writes to the Immich database or source files.
+          {completed
+            ? 'Core is ready now. Optional local matching is a separate, owner-controlled step and never changes a name automatically.'
+            : 'Preview first, choose what Cimmich may admit, then import current Immich names as source-proven human truth. Core remains useful if you do this later. Cimmich never writes to the Immich database or source files.'}
         </p>
       </div>
     </div>
@@ -245,7 +267,78 @@
     </div>
   {/if}
 
-  {#if !loading && !connectionReady}
+  {#if !loading && completed && result && !showImportControls}
+    <div
+      class="mt-6 overflow-hidden rounded-3xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20"
+    >
+      <div class="flex flex-col gap-5 p-5 sm:p-6">
+        <div class="flex items-start gap-3">
+          <span
+            class="grid size-10 shrink-0 place-items-center rounded-full bg-emerald-600 text-white dark:bg-emerald-300 dark:text-emerald-950"
+          >
+            <Icon icon={mdiCheckCircleOutline} size="22" />
+          </span>
+          <div>
+            <h3 class="text-lg font-semibold">Core library ready</h3>
+            <p class="mt-1 max-w-3xl text-sm/6 text-emerald-950 dark:text-emerald-100">
+              Your imported library is available now. Nothing is waiting on a model, and optional matching does not run
+              until you choose and configure it.
+            </p>
+          </div>
+        </div>
+
+        <dl class="grid gap-3 text-sm sm:grid-cols-3">
+          <div class="rounded-2xl bg-white/75 p-4 dark:bg-emerald-950/45">
+            <dt class="text-xs text-emerald-800 dark:text-emerald-300">Library</dt>
+            <dd class="mt-1 text-lg font-semibold">
+              {(result.inventory?.activeAssets ?? 0).toLocaleString()} media ready
+            </dd>
+          </div>
+          <div class="rounded-2xl bg-white/75 p-4 dark:bg-emerald-950/45">
+            <dt class="text-xs text-emerald-800 dark:text-emerald-300">Imported names</dt>
+            <dd class="mt-1 text-lg font-semibold">
+              {(result.import.projectedPeople ?? 0).toLocaleString()} People
+            </dd>
+          </div>
+          <div class="rounded-2xl bg-white/75 p-4 dark:bg-emerald-950/45">
+            <dt class="text-xs text-emerald-800 dark:text-emerald-300">Import receipt</dt>
+            <dd class="mt-1 text-lg font-semibold">
+              {(result.import.reviewItems ?? 0).toLocaleString()} recorded
+              {(result.import.reviewItems ?? 0) === 1 ? 'exception' : 'exceptions'}
+            </dd>
+          </div>
+        </dl>
+
+        <div class="flex flex-wrap gap-3">
+          <a
+            class="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-900 px-5 text-sm font-semibold text-white hover:bg-emerald-800 dark:bg-emerald-100 dark:text-emerald-950"
+            href={Route.cimmichHome()}
+          >
+            Open Cimmich <Icon icon={mdiArrowRight} size="18" />
+          </a>
+          <a
+            class="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 px-5 text-sm font-semibold hover:bg-white/70 dark:border-emerald-800 dark:hover:bg-emerald-950/40"
+            href="#cimmich-face-matching-title"
+          >
+            <Icon icon={mdiCogOutline} size="18" /> Optional matching
+          </a>
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold underline underline-offset-4"
+            onclick={() => {
+              showImportControls = true;
+            }}
+          >
+            Update import
+          </button>
+        </div>
+        <p class="text-xs/5 text-emerald-800 dark:text-emerald-300">
+          Cimmich remains read-only toward Immich. No reference library was activated and automatic identity remains
+          off.
+        </p>
+      </div>
+    </div>
+  {:else if !loading && !connectionReady}
     <form
       class="mt-6 grid gap-4 md:grid-cols-2"
       onsubmit={(event) => {
@@ -371,7 +464,9 @@
               {lane}
             </label>
           {/each}
-          <p class="mt-3 text-xs/5 text-gray-500 dark:text-gray-400">Locked is not available to background setup.</p>
+          <p class="mt-3 text-xs/5 text-gray-500 dark:text-gray-400">
+            Locked requires an active elevated Immich session and is not available in this setup flow.
+          </p>
         </div>
         <div class="rounded-2xl border border-gray-200 p-4 dark:border-immich-dark-gray">
           <p class="text-sm font-semibold">Identity and analysis</p>
@@ -414,12 +509,22 @@
         <Icon icon={mdiRefresh} size="18" class={busy === 'preview' ? 'animate-spin' : ''} />
         {busy === 'preview' ? 'Reading…' : 'Preview this scope'}
       </button>
-      <a
-        class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-immich-dark-gray"
-        href={Route.cimmichHome()}
-      >
-        Not now — continue using Cimmich
-      </a>
+      {#if completed}
+        <button
+          type="button"
+          class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-immich-dark-gray"
+          onclick={cancelUpdate}
+        >
+          Cancel update
+        </button>
+      {:else}
+        <a
+          class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-immich-dark-gray"
+          href={Route.cimmichHome()}
+        >
+          Not now — continue using Cimmich
+        </a>
+      {/if}
       <span class="self-center text-xs/5 text-gray-500 dark:text-gray-400">Nothing changes until you import.</span>
     </div>
 
@@ -462,30 +567,24 @@
         <button
           type="button"
           class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-950 px-5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-indigo-100 dark:text-indigo-950"
-          disabled={Boolean(busy) || !personResolutionReady}
+          disabled={Boolean(busy)}
           onclick={() => void runImport()}
         >
           <Icon icon={mdiDatabaseImportOutline} size="18" />
           {busy === 'import' ? 'Importing…' : 'Import this preview'}
         </button>
-        {#if !personResolutionReady}
-          <p class="mt-2 text-sm/6 font-medium text-indigo-950 dark:text-indigo-100">
-            Import stays safely unavailable until every upstream face group below is explicitly resolved. You can leave
-            this setup now and continue using your existing Cimmich People.
-          </p>
-        {/if}
         {#if preview.counts.unlabelledPeople > 0 && scope.importPeople}
-          <CimmichImmichPersonResolution
-            {scope}
-            onreadiness={(ready) => {
-              personResolutionReady = ready;
-            }}
-          />
+          <p class="mt-2 text-sm/6 font-medium text-indigo-950 dark:text-indigo-100">
+            {preview.counts.unlabelledPeople.toLocaleString()} unnamed
+            {preview.counts.unlabelledPeople === 1 ? 'group will' : 'groups will'} remain unresolved. Media and labelled People
+            can import now; return to Review later to resolve these groups. Cimmich will not guess who the Faces belong to.
+          </p>
+          <CimmichImmichPersonResolution {scope} />
         {/if}
       </div>
     {/if}
 
-    {#if result}
+    {#if result && !completed}
       <div
         class="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/20"
       >

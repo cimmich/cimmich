@@ -247,6 +247,16 @@ test("Guided publishes the governed owner SourcePack journey without caller poli
     ),
     true,
   );
+  assert.equal(
+    status.properties.next.properties.action.enum.includes(
+      "await_more_evidence",
+    ),
+    true,
+  );
+  assert.equal(
+    status.properties.next.properties.action.enum.includes("enable_enhanced"),
+    true,
+  );
   const compile = byId.get("face_matching.source_pack_compile");
   assert.deepEqual(compile.requestSchema.required, []);
   assert.deepEqual(compile.requestSchema.properties, {});

@@ -351,3 +351,18 @@ test("schema 75 separates owner cluster decisions from identity decisions", asyn
   );
   assert.match(source, /= \(resolution_decision_id IS NOT NULL\)/);
 });
+
+test("schema 77 admits every explicit unnamed-Person review outcome", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0077_immich_onboarding_resolution_review_reasons_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /source_person_unlabelled/);
+  assert.match(source, /source_person_resolution_required/);
+  assert.match(source, /immich_onboarding_review_item_reason_check/);
+});

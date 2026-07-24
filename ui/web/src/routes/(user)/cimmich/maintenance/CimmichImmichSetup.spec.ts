@@ -138,6 +138,7 @@ describe('Cimmich first-run Immich setup', () => {
   });
 
   it('previews before mutation and imports the exact digest and scope', async () => {
+    const onChanged = vi.fn();
     mocks.getStatus.mockResolvedValue(readyStatus);
     mocks.preview.mockResolvedValue(preview);
     mocks.importCurrent.mockResolvedValue({
@@ -164,7 +165,7 @@ describe('Cimmich first-run Immich setup', () => {
       schemaVersion: 'cimmich.immich-onboarding.v1',
       state: 'completed',
     });
-    const { getAllByText, getByRole, getByText } = render(CimmichImmichSetup);
+    const { getAllByText, getByRole, getByText } = render(CimmichImmichSetup, { onChanged });
 
     await waitFor(() => expect(getByRole('button', { name: 'Preview this scope' })).toBeInTheDocument());
     await fireEvent.click(getByRole('button', { name: 'Preview this scope' }));
@@ -177,9 +178,10 @@ describe('Cimmich first-run Immich setup', () => {
     await fireEvent.click(getByRole('button', { name: 'Import this preview' }));
     await waitFor(() => expect(mocks.importCurrent).toHaveBeenCalledOnce());
     expect(mocks.importCurrent.mock.calls[0][0]).toMatchObject({ previewDigest: 'a'.repeat(64), scope });
+    expect(onChanged).toHaveBeenCalledOnce();
   });
 
-  it('separates preserved Cimmich People from optional unnamed upstream face groups', async () => {
+  it('holds unnamed upstream face groups for review without blocking the safe first import', async () => {
     mocks.getPeople.mockResolvedValue([
       { person_id: 'person-1', subject_kind: 'person' },
       { person_id: 'person-2', subject_kind: 'person' },
@@ -205,7 +207,71 @@ describe('Cimmich first-run Immich setup', () => {
     await waitFor(() => expect(getByText(/0 labelled Immich People/)).toBeInTheDocument());
     expect(getByText(/8 unnamed Immich face groups/)).toBeInTheDocument();
     expect(getByText(/53 Faces assigned upstream/)).toBeInTheDocument();
-    expect(getByRole('button', { name: 'Import this preview' })).toBeDisabled();
-    expect(getByText(/continue using your existing Cimmich People/)).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Import this preview' })).toBeEnabled();
+    expect(getByText(/groups will remain unresolved/)).toBeInTheDocument();
+    expect(getByText(/Media and labelled People can import now/)).toBeInTheDocument();
+  });
+
+  it('turns a completed import into a clear ready state with optional next steps', async () => {
+    mocks.getStatus.mockResolvedValue({
+      ...readyStatus,
+      latestRun: {
+        commandId: 'onboarding.import.completed',
+        completedAt: '2026-07-24T00:00:01.000Z',
+        previewDigest: 'a'.repeat(64),
+        progress: { processedAssets: 56 },
+        result: {
+          changed: true,
+          commandId: 'onboarding.import.completed',
+          import: {
+            assignedFaces: 12,
+            projectedPeople: 6,
+            reviewItems: 8,
+          },
+          inventory: { activeAssets: 56, runId: 'inventory-fixture' },
+          next: {
+            action: 'configure_provider_or_build_when_ready',
+            automaticIdentityAuthority: 'none',
+            sourcePackActivation: 'not_performed',
+          },
+          replayed: false,
+          runId: 'onboarding-fixture',
+          schemaVersion: 'cimmich.immich-onboarding.v1',
+          state: 'completed_with_review',
+        },
+        runId: 'onboarding-fixture',
+        scope,
+        startedAt: '2026-07-24T00:00:00.000Z',
+        state: 'completed',
+        updatedAt: '2026-07-24T00:00:01.000Z',
+      },
+      next: 'review_summary',
+    });
+    const { getByRole, getByText, queryByRole } = render(CimmichImmichSetup);
+
+    await waitFor(() => expect(getByRole('heading', { name: 'Core library ready' })).toBeInTheDocument());
+    expect(getByText('56 media ready')).toBeInTheDocument();
+    expect(getByText('6 People')).toBeInTheDocument();
+    expect(getByText('8 recorded exceptions')).toBeInTheDocument();
+    expect(getByRole('link', { name: 'Open Cimmich' })).toHaveAttribute('href', '/cimmich/home');
+    expect(getByRole('link', { name: 'Optional matching' })).toHaveAttribute('href', '#cimmich-face-matching-title');
+    expect(queryByRole('button', { name: 'Preview this scope' })).not.toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Update import' }));
+    expect(getByRole('button', { name: 'Preview this scope' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Cancel update' })).toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Cancel update' }));
+    expect(getByRole('heading', { name: 'Core library ready' })).toBeInTheDocument();
+    expect(queryByRole('button', { name: 'Preview this scope' })).not.toBeInTheDocument();
+  });
+
+  it('reloads its independently owned setup status when the page refreshes', async () => {
+    mocks.getStatus.mockResolvedValue(readyStatus);
+    const { rerender } = render(CimmichImmichSetup, { refreshRevision: 0 });
+
+    await waitFor(() => expect(mocks.getStatus).toHaveBeenCalledOnce());
+    await rerender({ refreshRevision: 1 });
+    await waitFor(() => expect(mocks.getStatus).toHaveBeenCalledTimes(2));
   });
 });

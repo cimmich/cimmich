@@ -83,7 +83,7 @@ ends an open Private session. Headless and recovery paths are in
 
 ## Can I try Cimmich without using my own photographs?
 
-Yes. Follow [Try Cimmich](../README.md#try-cimmich) to launch an isolated,
+Yes. Follow [Try Cimmich](../README.md#try-cimmich-with-fictional-data) to launch an isolated,
 loopback-only Immich 3.0.3 and Cimmich demonstration using the fictional Cedar
 House archive. The optional six-image Space Trip extension demonstrates a
 Guided album-organisation journey. Both packs include licensing, attribution,
@@ -100,6 +100,23 @@ accuracy, demographic fairness or real-person consistency.
 The current release candidate is proved against exact Immich 3.0.3. Later
 Immich versions need their own compatibility proof before being claimed as
 supported.
+
+## How do I install Cimmich beside my library?
+
+Use the [guided installation](../INSTALL.md#guided-install-recommended) on
+macOS or Linux. Download the named Cimmich install bundle from the newest
+Public Beta release, extract it, start Docker, then run:
+
+```sh
+./tools/install.sh --check
+./tools/install.sh
+```
+
+The check explains prerequisites without changing the computer. Installation
+creates Cimmich's separate Docker project but does not ask for an Immich API key
+or import any library state. The signed-in setup screen handles the dedicated
+read-only key and exact preview later. Native Windows PowerShell is not
+currently supported.
 
 ## How long does installation take?
 

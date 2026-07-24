@@ -65,7 +65,7 @@ fi
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_legacy_restore_test
 mkdir -p "$TMP_ROOT/through-71-migrations"
 find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0072_*' ! -name '0073_*' ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' \
+  ! -name '0072_*' ! -name '0073_*' ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' ! -name '0077_*' \
   -exec cp {} "$TMP_ROOT/through-71-migrations/" \;
 mkdir -p "$TMP_ROOT/through-71-migrations/patches"
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
@@ -136,7 +136,7 @@ fi
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema73_upgrade_test
 mkdir -p "$TMP_ROOT/through-73-migrations/patches"
 find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' \
+  ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' ! -name '0077_*' \
   -exec cp {} "$TMP_ROOT/through-73-migrations/" \;
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
   "$TMP_ROOT/through-73-migrations/patches/"
