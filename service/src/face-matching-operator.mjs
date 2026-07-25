@@ -24,6 +24,7 @@ export const ownerSourcePackPlanSchemaVersion =
 const ownerPlanMinimumKnownQueriesPerSplit = 100;
 const ownerPlanMinimumUnknownQueriesPerSplit = 100;
 const ownerPlanMinimumCompletePeople = 20;
+const maximumSuccessorCoverageRegressionPercent = 5;
 
 const publicIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 
@@ -383,6 +384,42 @@ export const deriveSourcePackReviewNext = (latestPack) => {
   };
 };
 
+export const deriveSourcePackSuccessorNext = (
+  latestPack,
+  activePack = null,
+) => {
+  const next = deriveSourcePackReviewNext(latestPack);
+  if (
+    next.action !== "activate_source_pack" ||
+    !activePack?.reviewGateReceipt ||
+    !latestPack?.reviewGateReceipt
+  ) {
+    return next;
+  }
+  const activeCoverage = Number(
+    activePack.reviewGateReceipt.metrics.knownCorrectCoveragePercent,
+  );
+  const candidateCoverage = Number(
+    latestPack.reviewGateReceipt.metrics.knownCorrectCoveragePercent,
+  );
+  const coverageRegression = Number(
+    (activeCoverage - candidateCoverage).toFixed(6),
+  );
+  if (coverageRegression <= maximumSuccessorCoverageRegressionPercent) {
+    return next;
+  }
+  return {
+    action: "hold_source_pack",
+    comparison: {
+      activeCoverage,
+      candidateCoverage,
+      coverageRegression,
+      maximumCoverageRegression: maximumSuccessorCoverageRegressionPercent,
+    },
+    reason: "SOURCE_PACK_COVERAGE_REGRESSION",
+  };
+};
+
 export const createFaceMatchingOperator = ({
   detectionEnabled = true,
   enhancedComponent = null,
@@ -575,20 +612,47 @@ export const createFaceMatchingOperator = ({
         LIMIT 1
       ) analysis ON true
     `;
-    const [latest] = await sql`
-      SELECT pack_id
-      FROM source_pack
-      WHERE model_family = ${provider.modelFamily}
-        AND model_version = ${provider.modelVersion}
-        AND config_digest = ${provider.configDigest}
-      ORDER BY CASE state
-        WHEN 'active' THEN 0 WHEN 'proposed' THEN 1 WHEN 'shadow' THEN 2
-        WHEN 'retired' THEN 3 ELSE 4 END, created_at DESC, pack_id
-      LIMIT 1
+    const [heads] = await sql`
+      WITH active AS (
+        SELECT pack_id
+        FROM source_pack
+        WHERE model_family = ${provider.modelFamily}
+          AND model_version = ${provider.modelVersion}
+          AND config_digest = ${provider.configDigest}
+          AND state = 'active'
+        ORDER BY created_at DESC, pack_id DESC
+        LIMIT 1
+      )
+      SELECT
+        (SELECT pack_id FROM active) AS active_pack_id,
+        (
+          SELECT pack_id
+          FROM source_pack candidate
+          WHERE candidate.model_family = ${provider.modelFamily}
+            AND candidate.model_version = ${provider.modelVersion}
+            AND candidate.config_digest = ${provider.configDigest}
+            AND candidate.state = 'proposed'
+            AND candidate.predecessor_pack_id IS NOT DISTINCT FROM
+              (SELECT pack_id FROM active)
+          ORDER BY candidate.created_at DESC, candidate.pack_id DESC
+          LIMIT 1
+        ) AS proposed_pack_id,
+        (
+          SELECT count(*)::int
+          FROM source_pack_rebuild_request request
+          WHERE request.state = 'pending'
+            AND (request.model_family IS NULL OR request.model_family = ${provider.modelFamily})
+            AND (request.model_version IS NULL OR request.model_version = ${provider.modelVersion})
+            AND (request.config_digest IS NULL OR request.config_digest = ${provider.configDigest})
+        ) AS pending_rebuilds
     `;
-    const latestPack = latest
-      ? projectPack(await loadPackRow(latest.pack_id))
+    const activePack = heads?.active_pack_id
+      ? projectPack(await loadPackRow(heads.active_pack_id))
       : null;
+    const latestPack = heads?.proposed_pack_id
+      ? projectPack(await loadPackRow(heads.proposed_pack_id))
+      : activePack;
+    const pendingRebuilds = Number(heads?.pending_rebuilds || 0);
     const acceptedFaces = Number(evidence?.accepted_faces || 0);
     const analysedFaces = Number(evidence?.analysed_faces || 0);
     const eligibleFaces = Number(evidence?.eligible_faces || 0);
@@ -596,6 +660,7 @@ export const createFaceMatchingOperator = ({
     if (matching.enhanced?.enabled === false) {
       return {
         ...matching,
+        activePack,
         evidence: {
           acceptedFaces,
           analysedFaces,
@@ -608,6 +673,7 @@ export const createFaceMatchingOperator = ({
           reason: "ENHANCED_DISABLED",
           settings: "/v1/operator/enhanced",
         },
+        rebuildQueue: { pending: pendingRebuilds },
         providerValidation: {
           modelFamily: provider.modelFamily,
           modelVersion: provider.modelVersion,
@@ -618,7 +684,14 @@ export const createFaceMatchingOperator = ({
       };
     }
     let next = { action: "review_suggestions", reason: "MATCHING_READY" };
-    if (matching.state === "needs_source_pack") {
+    if (pendingRebuilds > 0 && activePack) {
+      next = {
+        action: "compile_source_pack",
+        reason: "SOURCE_PACK_REBUILD_PENDING",
+      };
+    } else if (latestPack?.state === "proposed") {
+      next = deriveSourcePackSuccessorNext(latestPack, activePack);
+    } else if (matching.state === "needs_source_pack") {
       next =
         eligibleFaces === 0
           ? {
@@ -626,21 +699,21 @@ export const createFaceMatchingOperator = ({
               reason: "NO_ELIGIBLE_ACCEPTED_FACES",
             }
           : analysedFaces < eligibleFaces
-          ? {
-              action: "run_recognition",
-              reason: "PROVIDER_EVIDENCE_INCOMPLETE",
-            }
-          : providerEmbeddings === 0
             ? {
-                action: "await_more_evidence",
-                reason: "NO_USABLE_PROVIDER_EMBEDDINGS",
+                action: "run_recognition",
+                reason: "PROVIDER_EVIDENCE_INCOMPLETE",
               }
-          : latestPack?.evaluation.status === "failed"
-          ? {
-              action: "compile_source_pack",
-              reason: "SOURCE_PACK_REVIEW_REJECTED",
-            }
-          : { action: "compile_source_pack", reason: "NO_SOURCE_PACK" };
+            : providerEmbeddings === 0
+              ? {
+                  action: "await_more_evidence",
+                  reason: "NO_USABLE_PROVIDER_EMBEDDINGS",
+                }
+              : latestPack?.evaluation.status === "failed"
+                ? {
+                    action: "compile_source_pack",
+                    reason: "SOURCE_PACK_REVIEW_REJECTED",
+                  }
+                : { action: "compile_source_pack", reason: "NO_SOURCE_PACK" };
     } else if (matching.state === "needs_operator_review") {
       next = deriveSourcePackReviewNext(latestPack);
     } else if (matching.state === "needs_review_policy") {
@@ -651,6 +724,7 @@ export const createFaceMatchingOperator = ({
     }
     return {
       ...matching,
+      activePack,
       evidence: {
         acceptedFaces,
         analysedFaces,
@@ -659,6 +733,7 @@ export const createFaceMatchingOperator = ({
       },
       latestPack,
       next,
+      rebuildQueue: { pending: pendingRebuilds },
       providerValidation: {
         modelFamily: provider.modelFamily,
         modelVersion: provider.modelVersion,
@@ -725,6 +800,21 @@ export const createFaceMatchingOperator = ({
   const compile = async () => {
     await requireEnhanced();
     const provider = requireProvider();
+    const [queueHead] = await sql`SELECT now() AS cutoff`;
+    const completePendingRebuilds = async (packId) =>
+      sql`
+        UPDATE source_pack_rebuild_request request
+        SET state = 'completed', result_pack_id = ${packId},
+          started_at = coalesce(request.started_at, now()),
+          completed_at = now(), lease_owner = NULL, lease_expires_at = NULL,
+          last_error = NULL
+        WHERE request.state = 'pending'
+          AND request.requested_at <= ${queueHead.cutoff}
+          AND (request.model_family IS NULL OR request.model_family = ${provider.modelFamily})
+          AND (request.model_version IS NULL OR request.model_version = ${provider.modelVersion})
+          AND (request.config_digest IS NULL OR request.config_digest = ${provider.configDigest})
+        RETURNING request.rebuild_request_id
+      `;
     const faces = await loadSourcePackFaces(sql, {
       configDigest: provider.configDigest,
       modelFamily: provider.modelFamily,
@@ -762,6 +852,7 @@ export const createFaceMatchingOperator = ({
       active.source_revision_digest === pack.sourceRevisionDigest &&
       isoTime(active.evidence_cutoff) === pack.evidenceCutoff
     ) {
+      const completedRebuilds = await completePendingRebuilds(active.pack_id);
       return {
         automaticIdentityAuthority: "none",
         changed: false,
@@ -780,10 +871,12 @@ export const createFaceMatchingOperator = ({
           strategy: plan.strategy,
         },
         replayed: true,
+        rebuildsCompleted: completedRebuilds.length,
         schemaVersion: faceMatchingOperatorSchemaVersion,
       };
     }
     const persistence = await persistSourcePack(sql, pack, { execute: true });
+    const completedRebuilds = await completePendingRebuilds(pack.packId);
     return {
       automaticIdentityAuthority: "none",
       changed: persistence.created,
@@ -802,6 +895,7 @@ export const createFaceMatchingOperator = ({
         strategy: plan.strategy,
       },
       replayed: !persistence.created,
+      rebuildsCompleted: completedRebuilds.length,
       schemaVersion: faceMatchingOperatorSchemaVersion,
     };
   };

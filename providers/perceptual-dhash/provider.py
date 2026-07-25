@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare two encoded images with a bounded local 64-bit difference hash."""
+"""Detect same-photo derivatives with local perceptual and feature evidence."""
 
 from __future__ import annotations
 
@@ -12,12 +12,16 @@ import struct
 import sys
 from typing import Any
 
+import cv2
+import numpy as np
 from PIL import Image, ImageOps, __version__ as PILLOW_VERSION
 
 
 PROVIDER_SCHEMA = "cimmich.asset-similarity-provider.v1"
 MAX_PIXELS = 200_000_000
-REQUIRED_PILLOW_VERSION = "12.2.0"
+REQUIRED_PILLOW_VERSION = "12.3.0"
+REQUIRED_NUMPY_VERSION = "1.26.4"
+REQUIRED_OPENCV_VERSION = "4.11.0"
 
 
 def canonical_json(value: object) -> str:
@@ -54,10 +58,17 @@ def validate_manifest(value: dict[str, Any], script_path: Path) -> None:
         raise ValueError("asset-similarity manifest is invalid")
     if value.get("execution", {}).get("network") != "forbidden":
         raise ValueError("asset-similarity networking must be forbidden")
-    if value.get("execution", {}).get("runtimeId") != "python-pillow-12.2.0":
+    if (
+        value.get("execution", {}).get("runtimeId")
+        != "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4"
+    ):
         raise ValueError("asset-similarity runtime identity is invalid")
-    if PILLOW_VERSION != REQUIRED_PILLOW_VERSION:
-        raise ValueError("asset-similarity Pillow runtime does not match")
+    if (
+        PILLOW_VERSION != REQUIRED_PILLOW_VERSION
+        or cv2.__version__ != REQUIRED_OPENCV_VERSION
+        or np.__version__ != REQUIRED_NUMPY_VERSION
+    ):
+        raise ValueError("asset-similarity image runtime does not match")
     if value.get("privacy") != {
         "externalUpload": "none",
         "sourceMedia": "local-read-only",
@@ -111,9 +122,128 @@ def difference_hash(encoded: bytes) -> int:
     return bits
 
 
+def decoded_image(encoded: bytes) -> tuple[Image.Image, np.ndarray[Any, Any]]:
+    Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+    with Image.open(BytesIO(encoded)) as source:
+        if source.width * source.height > MAX_PIXELS:
+            raise ValueError("asset-similarity image exceeds its pixel bound")
+        image = ImageOps.exif_transpose(source).convert("RGB")
+    gray = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2GRAY)
+    return image, gray
+
+
+def directional_correspondence(
+    left: np.ndarray[Any, Any],
+    right: np.ndarray[Any, Any],
+) -> tuple[int, int, float]:
+    detector = cv2.ORB_create(nfeatures=3000)
+    left_points, left_descriptors = detector.detectAndCompute(left, None)
+    right_points, right_descriptors = detector.detectAndCompute(right, None)
+    if left_descriptors is None or right_descriptors is None:
+        return 0, 0, 0
+    matches = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(
+        left_descriptors,
+        right_descriptors,
+        k=2,
+    )
+    good = [
+        first
+        for first, second in matches
+        if first.distance < 0.75 * second.distance
+    ]
+    if len(good) < 4:
+        return len(good), 0, 0
+    left_xy = np.float32([left_points[item.queryIdx].pt for item in good]).reshape(
+        -1, 1, 2
+    )
+    right_xy = np.float32([right_points[item.trainIdx].pt for item in good]).reshape(
+        -1, 1, 2
+    )
+    _, mask = cv2.findHomography(left_xy, right_xy, cv2.RANSAC, 5.0)
+    inliers = int(mask.sum()) if mask is not None else 0
+    return len(good), inliers, inliers / len(good)
+
+
+def directional_scale_invariant_correspondence(
+    left: np.ndarray[Any, Any],
+    right: np.ndarray[Any, Any],
+) -> tuple[int, int, float]:
+    detector = cv2.SIFT_create(nfeatures=3000)
+    left_points, left_descriptors = detector.detectAndCompute(left, None)
+    right_points, right_descriptors = detector.detectAndCompute(right, None)
+    if left_descriptors is None or right_descriptors is None:
+        return 0, 0, 0
+    matches = cv2.BFMatcher(cv2.NORM_L2).knnMatch(
+        left_descriptors,
+        right_descriptors,
+        k=2,
+    )
+    good = [
+        first
+        for first, second in matches
+        if first.distance < 0.75 * second.distance
+    ]
+    if len(good) < 4:
+        return len(good), 0, 0
+    left_xy = np.float32([left_points[item.queryIdx].pt for item in good]).reshape(
+        -1, 1, 2
+    )
+    right_xy = np.float32([right_points[item.trainIdx].pt for item in good]).reshape(
+        -1, 1, 2
+    )
+    _, mask = cv2.findHomography(left_xy, right_xy, cv2.RANSAC, 5.0)
+    inliers = int(mask.sum()) if mask is not None else 0
+    return len(good), inliers, inliers / len(good)
+
+
+def bounded_correspondence_score(
+    good: int,
+    inliers: int,
+    inlier_ratio: float,
+) -> float:
+    broad_support = min(good / 30, inliers / 10, inlier_ratio / 0.25)
+    return max(0, min(1, broad_support))
+
+
 def similarity(left: bytes, right: bytes) -> float:
+    left_image, left_gray = decoded_image(left)
+    right_image, right_gray = decoded_image(right)
     distance = bin(difference_hash(left) ^ difference_hash(right)).count("1")
-    return round(1 - distance / 64, 6)
+    hash_similarity = 1 - distance / 64
+    forward = directional_correspondence(left_gray, right_gray)
+    reverse = directional_correspondence(right_gray, left_gray)
+    good = min(forward[0], reverse[0])
+    inliers = min(forward[1], reverse[1])
+    inlier_ratio = min(forward[2], reverse[2])
+    broad_support = bounded_correspondence_score(good, inliers, inlier_ratio)
+    sift_forward = directional_scale_invariant_correspondence(
+        left_gray,
+        right_gray,
+    )
+    sift_reverse = directional_scale_invariant_correspondence(
+        right_gray,
+        left_gray,
+    )
+    sift_support = max(
+        0,
+        min(
+            1,
+            min(sift_forward[0], sift_reverse[0]) / 60,
+            min(sift_forward[1], sift_reverse[1]) / 20,
+            min(sift_forward[2], sift_reverse[2]) / 0.25,
+        ),
+    )
+    low_texture_support = min(
+        hash_similarity / 0.95,
+        good / 10,
+        inliers / 5,
+    )
+    left_image.close()
+    right_image.close()
+    return round(
+        max(broad_support, sift_support, min(1, low_texture_support)),
+        6,
+    )
 
 
 def main() -> None:

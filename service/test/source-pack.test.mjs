@@ -338,3 +338,63 @@ test("SourcePack requires one embedding configuration", () => {
     /exactly one embedding configuration/,
   );
 });
+
+test("diagnostic Person Core selection is exact and permanently non-activating", () => {
+  const diagnostic = compileSourcePack(fixture, {
+    cutoff: "2020-12-31T23:59:59Z",
+    diagnosticPrimeFaceIdsByPerson: {
+      alice: ["a1", "a3"],
+    },
+    evaluationContext: {
+      authority: { activation: "none" },
+      challengerPolicyVersion: "cimmich-person-core-challenger-v1",
+      evaluatorVersion: "cimmich-context-isolated-holdout-v2",
+    },
+    primeOptions: { maxPrime: 2, minPrime: 1 },
+  });
+  const alice = diagnostic.manifest.people.find(
+    (person) => person.personId === "alice",
+  );
+  assert.deepEqual(alice.primeFaceIds, ["a1", "a3"]);
+  assert.equal(
+    diagnostic.manifest.policy.personCoreChallenger.activationAuthority,
+    "none",
+  );
+  assert.equal(
+    diagnostic.references
+      .filter(
+        (reference) =>
+          reference.personId === "alice" &&
+          reference.bucketKind === "prime" &&
+          reference.referenceKind === "face",
+      )
+      .every(
+        (reference) =>
+          reference.provenance.reason === "diagnostic_person_core_challenger",
+      ),
+    true,
+  );
+
+  assert.throws(
+    () =>
+      compileSourcePack(fixture, {
+        cutoff: "2020-12-31T23:59:59Z",
+        diagnosticPrimeFaceIdsByPerson: { alice: ["a1", "a3"] },
+      }),
+    /authority-free challenger context/,
+  );
+  assert.throws(
+    () =>
+      compileSourcePack(fixture, {
+        cutoff: "2020-12-31T23:59:59Z",
+        diagnosticPrimeFaceIdsByPerson: {
+          alice: ["a1", "missing_face"],
+        },
+        evaluationContext: {
+          authority: { activation: "none" },
+          challengerPolicyVersion: "cimmich-person-core-challenger-v1",
+        },
+      }),
+    /unavailable evidence/,
+  );
+});

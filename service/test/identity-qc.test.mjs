@@ -109,6 +109,31 @@ test("asset evidence removes a centre-aligned machine face nested inside accepte
   );
 });
 
+test("asset evidence removes a weaker offset duplicate detection of the same head", () => {
+  const faces = dedupeAssetFaces([
+    {
+      box_h: 0.0611111111,
+      box_w: 0.0361111111,
+      box_x: 0.6916666667,
+      box_y: 0.5351851852,
+      detection_confidence: 0.3219,
+      face_id: "weaker_noise_detection",
+    },
+    {
+      box_h: 0.0648148148,
+      box_w: 0.0347222222,
+      box_x: 0.6777777778,
+      box_y: 0.5425925926,
+      detection_confidence: 0.8694,
+      face_id: "real_face",
+    },
+  ]);
+  assert.deepEqual(
+    faces.map((face) => face.face_id),
+    ["real_face"],
+  );
+});
+
 test("asset evidence retains nearby faces whose centres and boxes are distinct", () => {
   const faces = dedupeAssetFaces([
     {

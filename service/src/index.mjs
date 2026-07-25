@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createAddressGeocoder } from "./address-geocoding.mjs";
 import {
@@ -17,6 +18,7 @@ import { createEnhancedComponent } from "./enhanced-component.mjs";
 import { createLocalFaceDetectionWorker } from "./local-face-detection-worker.mjs";
 import { createLocalFaceRecognitionWorker } from "./local-face-recognition-worker.mjs";
 import { createLocalExistingFaceRecognitionWorker } from "./local-existing-face-recognition-worker.mjs";
+import { createLocalDHashSimilarityProvider } from "./local-dhash-similarity-provider.mjs";
 import { loadLocalMediaProviderRuntime } from "./local-media-provider-runtime.mjs";
 import { createMemorySteward } from "./memory-steward.mjs";
 import { createMediaOperator } from "./media-operator.mjs";
@@ -77,6 +79,20 @@ const visibility = createVisibilityService({
 });
 await visibility.initialize();
 const localMediaProvider = await loadLocalMediaProviderRuntime();
+const derivativeProviderRoot = path.resolve(
+  serviceDirectory,
+  "../providers/perceptual-dhash",
+);
+const derivativeProviderManifestPath = path.join(
+  derivativeProviderRoot,
+  "provider-manifest.json",
+);
+const derivativeProvider = createLocalDHashSimilarityProvider({
+  manifest: JSON.parse(await readFile(derivativeProviderManifestPath, "utf8")),
+  manifestPath: derivativeProviderManifestPath,
+  pythonPath: process.env.CIMMICH_LOCAL_PYTHON_PATH || "/usr/bin/python3",
+  scriptPath: path.join(derivativeProviderRoot, "provider.py"),
+});
 const immichInventory = createImmichInventorySynchronizer({
   companion: immichCompanion,
   job: localMediaProvider.detectionEnabled
@@ -92,6 +108,9 @@ const immichInventory = createImmichInventorySynchronizer({
 const immichOnboarding = createImmichOnboarding({
   companion: immichCompanion,
   immichInventory,
+  presentationRank: visibility.currentRank,
+  resolveCimmichAssetId: ({ immichAssetId }) =>
+    resolveCimmichAssetIdFromDisplayBridge(bridge, immichAssetId),
   sourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
   sql,
 });
@@ -110,6 +129,7 @@ const repository = createCimmichRepository(sql, bridge, visibility, {
   documentMaxFileBytes: runtimeConfig.documentMaxFileBytes,
   documentMaxStoreBytes: runtimeConfig.documentMaxStoreBytes,
   documentStoreRoot: runtimeConfig.documentStoreRoot,
+  identityAuditDerivativeProvider: derivativeProvider,
   enhancedComponent,
   expectedSchemaPatchCount: releasePatches.length,
   expectedSchemaVersion,

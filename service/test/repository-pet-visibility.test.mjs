@@ -167,3 +167,64 @@ test("Pet-bearing identity, search, document and context surfaces use the subjec
     /WHERE person_id = \$\{id\} AND subject_kind = 'pet'/,
   );
 });
+
+test("Pet media projects accepted Pet face geometry for automatic presentation focus", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    if (statement.includes("WITH visible_connections")) return [];
+    if (statement.includes("FROM current_person pet")) {
+      return [petRow("pet-cafe", "Cafe")];
+    }
+    if (statement.includes("FROM person_assets association")) {
+      return [
+        {
+          asset_id: "asset-cafe",
+          association_types: ["face"],
+          capture_time: "2018-01-27T12:00:00Z",
+          height: 3024,
+          media_kind: "image",
+          pet_face: {
+            box_h: 0.1,
+            box_w: 0.06,
+            box_x: 0.86,
+            box_y: 0.78,
+            face_id: "face-cafe",
+          },
+          width: 4032,
+        },
+      ];
+    }
+    throw new Error(`Unexpected SQL: ${statement}`);
+  };
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      [
+        "asset-cafe",
+        { filename: "cafe.jpg", sourceAssetId: "source-cafe" },
+      ],
+    ]),
+    { currentRank: () => 0 },
+  );
+
+  const [media] = await repository.petMedia({
+    limit: 1,
+    petId: "pet-cafe",
+  });
+
+  assert.deepEqual(media.pet_face, {
+    box_h: 0.1,
+    box_w: 0.06,
+    box_x: 0.86,
+    box_y: 0.78,
+    face_id: "face-cafe",
+  });
+  const mediaStatement = statements.find((statement) =>
+    statement.includes("AS pet_face"),
+  );
+  assert.match(mediaStatement, /face_association\.person_id =/);
+  assert.match(mediaStatement, /face_association\.asset_id = asset\.asset_id/);
+  assert.match(mediaStatement, /face_association\.authority_state = 'accepted'/);
+});

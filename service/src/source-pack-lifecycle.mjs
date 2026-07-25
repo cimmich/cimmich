@@ -387,13 +387,21 @@ export const activateSourcePack = async (
   return sql.begin(async (tx) => {
     const [candidate] = await tx`
       SELECT pack_id, model_family, model_version, config_digest, state,
-        evaluation_status, evaluation_summary
+        evaluation_status, evaluation_summary, manifest
       FROM source_pack WHERE pack_id = ${packId} FOR UPDATE
     `;
     if (!candidate) throw new Error(`SourcePack not found: ${packId}`);
     if (!["proposed", "shadow", "retired"].includes(candidate.state)) {
       throw new Error(
         `SourcePack state ${candidate.state} cannot be activated`,
+      );
+    }
+    if (
+      candidate.manifest?.policy?.personCoreChallenger?.activationAuthority ===
+      "none"
+    ) {
+      throw new Error(
+        "Diagnostic Person Core challenger packs cannot be activated",
       );
     }
     if (candidate.evaluation_status !== "passed") {

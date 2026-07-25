@@ -104,7 +104,6 @@
     mdiAccountOutline,
     mdiAccountTagOutline,
     mdiCheck,
-    mdiChevronDown,
     mdiClose,
     mdiImageOutline,
     mdiPawOutline,
@@ -163,6 +162,7 @@
   let isTaggingHintVisible = $state(false);
   let manualTagQuery = $state('');
   let manualTagSelectedSubjectId = $state('');
+  let manualTagSourceLocatorId = $state('');
   let manualTagType = $state<CimmichManualSubjectTagType | ''>('');
   let manualTagSubjects = $state<ManualPhotoTagSubject[]>([]);
   let manualPetIcons = $state<Record<string, string>>({});
@@ -228,7 +228,7 @@
   let showLinkedBodies = $state(true);
   let showUnlinkedBodies = $state(true);
   let summaryMode = $state<SummaryMode>('enhanced');
-  let overlayView = $state<OverlayView>('off');
+  let overlayView = $state<OverlayView>(page.url.searchParams.get('cimmichOverlay') === 'people' ? 'people' : 'off');
   const isPeopleSurfaceActive = $derived(
     (overlayView === 'people' || overlayView === 'machinery') && !isSidecarVisible,
   );
@@ -613,7 +613,7 @@
     faceMatchesError = '';
     faceMatchesLoading = true;
     try {
-      const matches = await getCimmichFaceMatches(face.id, 6);
+      const matches = await getCimmichFaceMatches(face.id, 5);
       if (faceMatchesForId === face.id) {
         faceMatches = matches;
       }
@@ -922,6 +922,17 @@
     const width = ((bbox.x2 - bbox.x1) / imageMetrics.imageWidth) * imageMetrics.width;
     const height = ((bbox.y2 - bbox.y1) / imageMetrics.imageHeight) * imageMetrics.height;
     return `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`;
+  };
+
+  const sourcePresenceMarkerStyle = (presence: (typeof sourcePresenceOverlays)[number]) => {
+    if (!imageMetrics) {
+      return '';
+    }
+    const centerX = (presence.bbox.x1 + presence.bbox.x2) / 2;
+    const centerY = (presence.bbox.y1 + presence.bbox.y2) / 2;
+    const left = imageMetrics.offsetX + (centerX / imageMetrics.imageWidth) * imageMetrics.width;
+    const top = imageMetrics.offsetY + (centerY / imageMetrics.imageHeight) * imageMetrics.height;
+    return `left: ${left}px; top: ${top}px;`;
   };
 
   const bodyBoxStyle = (body: CimmichBodyOverlay) => {
@@ -1556,11 +1567,11 @@
   );
   const faceBucketOwnerLabel = (bucket: FaceBucketDraft) =>
     ({
-      face_only: 'Not used for matching',
+      face_only: 'Supporting evidence only',
       head: 'Head only',
-      lq: 'Difficult reference photo',
-      prime: 'Best reference photo',
-      secondary: 'Useful reference photo',
+      lq: 'Low-quality Face evidence',
+      prime: 'Core matching evidence',
+      secondary: 'Supporting matcher reference',
     })[bucket];
   const bulkNameSuggestion = (face: CimmichFaceOverlay) => closestName(bulkNameDrafts[face.id] ?? '', face.name);
   const sameDrafts = (left: Record<string, string>, right: Record<string, string>) => {
@@ -2677,6 +2688,7 @@
 
   const cancelManualTagDraft = () => {
     manualTagDraft = undefined;
+    manualTagSourceLocatorId = '';
     manualTagQuery = '';
     manualPersonCreateIntent = undefined;
     manualTagSelectedSubjectId = '';
@@ -2740,6 +2752,7 @@
 
   const selectSavedManualTag = (tag: CimmichManualSubjectTag) => {
     manualTagDraft = undefined;
+    manualTagSourceLocatorId = '';
     selectedManualTagId = tag.tagId;
     manualTagEditGeometry = { ...tag.geometry };
     manualTagSelectedSubjectId = tag.subject.subjectId;
@@ -2749,6 +2762,26 @@
     isTaggingHintVisible = false;
     manualTagRemoveConfirmId = '';
     manualTagSaveError = '';
+    void loadManualTagSubjects();
+  };
+
+  const editImportedIdentityLocator = (locator: (typeof sourcePresenceOverlays)[number]) => {
+    assetViewerManager.closeDetailPanel();
+    isTaggingMode = true;
+    isTaggingHintVisible = false;
+    isFacesVisible = true;
+    isBodiesVisible = true;
+    manualTagDraft = { ...locator.geometry };
+    manualTagSourceLocatorId = locator.id;
+    manualTagSelectedSubjectId = locator.personIdentityKey;
+    manualTagQuery = locator.name;
+    manualTagType = locator.geometry.h <= 0.35 ? 'head' : locator.intendedTagType;
+    manualTagSaveError = '';
+    selectedManualTagId = '';
+    manualTagRemoveConfirmId = '';
+    selectedFaceId = '';
+    selectedBodyId = '';
+    isEditingFaceName = false;
     void loadManualTagSubjects();
   };
 
@@ -2896,6 +2929,7 @@
     try {
       const result = await attachCimmichManualSubjectTag(stableAssetId, {
         commandId: createCimmichManualSubjectTagCommandId('photo-tag'),
+        ...(manualTagSourceLocatorId ? { locatorId: manualTagSourceLocatorId } : {}),
         region: manualTagDraft,
         subjectId: manualTagSelectedSubject.id,
         subjectKind: manualTagSelectedSubject.kind,
@@ -3216,7 +3250,7 @@
     }
     if (sourcePresenceOverlays.length > 0) {
       lines.push(
-        `Source-tagged presence needing localization: ${sourcePresenceOverlays.map((presence) => presence.name).join(', ')}.`,
+        `Imported identity locators awaiting type resolution: ${sourcePresenceOverlays.map((presence) => presence.name).join(', ')}.`,
       );
     }
     if (bodyPeople.length > 0) {
@@ -3437,15 +3471,9 @@
       </div>
     </div>
   {/if}
-  <datalist id="cimmich-known-face-names">
-    {#each knownNameOptions as name (name)}
-      <option value={name}></option>
-    {/each}
-  </datalist>
-
   <Portal target="body">
     <div
-      class="pointer-events-auto fixed top-17 left-3 z-100 flex max-w-[calc(100%-1.5rem)] items-center gap-1 overflow-x-auto sm:top-2 sm:left-28 sm:max-w-[calc(100%-8rem)]"
+      class="pointer-events-auto fixed top-17 left-1/2 z-100 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-full border border-white/15 bg-black/85 p-1 shadow-xl backdrop-blur-md sm:top-2 sm:left-28 sm:max-w-[calc(100%-8rem)] sm:translate-x-0 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none"
       data-testid="cimmich-top-bar"
     >
       <div class="flex shrink-0 items-center gap-1 text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)]">
@@ -3466,7 +3494,7 @@
               data-testid="cimmich-people-view"
             >
               <Icon icon={mdiAccountMultipleOutline} size="20" />
-              <span class="text-sm font-medium">People</span>
+              <span class="hidden text-sm font-medium sm:inline">People</span>
             </button>
           {/snippet}
         </Tooltip>
@@ -3488,7 +3516,7 @@
               data-testid="cimmich-context-view"
             >
               <Icon icon={mdiImageOutline} size="20" />
-              <span class="text-sm font-medium">Context</span>
+              <span class="hidden text-sm font-medium sm:inline">Context</span>
             </button>
           {/snippet}
         </Tooltip>
@@ -3513,7 +3541,9 @@
                   data-testid="cimmich-add-tag-action"
                 >
                   <Icon icon={mdiAccountTagOutline} size="18" />
-                  <span class="text-sm font-medium">{isTaggingMode ? 'Cancel adding' : 'Add person or pet'}</span>
+                  <span class="hidden text-sm font-medium sm:inline"
+                    >{isTaggingMode ? 'Cancel adding' : 'Add person or pet'}</span
+                  >
                 </button>
               {/snippet}
             </Tooltip>
@@ -3535,7 +3565,7 @@
                 data-testid="cimmich-add-presence-action"
               >
                 <Icon icon={mdiAccountOutline} size="18" />
-                <span class="text-sm font-medium">Presence</span>
+                <span class="hidden text-sm font-medium sm:inline">Presence</span>
               </button>
             {/snippet}
           </Tooltip>
@@ -3556,7 +3586,8 @@
                 data-testid="cimmich-detailed-view"
               >
                 <Icon icon={mdiTargetAccount} size="18" />
-                <span class="text-sm font-medium">{overlayView === 'machinery' ? 'Done' : 'Edit'}</span>
+                <span class="hidden text-sm font-medium sm:inline">{overlayView === 'machinery' ? 'Done' : 'Edit'}</span
+                >
               </button>
             {/snippet}
           </Tooltip>
@@ -3581,7 +3612,7 @@
             }}
           >
             <Icon icon={mdiTagOutline} size="17" />
-            {isObjectTaggingMode ? 'Cancel' : 'Add object'}</button
+            <span class="hidden sm:inline">{isObjectTaggingMode ? 'Cancel' : 'Add object'}</span></button
           >
           <button
             class={[
@@ -3595,7 +3626,7 @@
             onclick={toggleContextEditing}
           >
             <Icon icon={mdiPencilOutline} size="17" />
-            {isContextEditing ? 'Done' : 'Edit'}</button
+            <span class="hidden sm:inline">{isContextEditing ? 'Done' : 'Edit'}</span></button
           >
         {/if}
       </div>
@@ -4062,6 +4093,23 @@
           <span>{manualTagTypeLabel(tag.tagType)} · {tag.subject.displayName}</span>
         </button>
       {/each}
+      {#each sourcePresenceOverlays as presence (presence.id)}
+        <button
+          class="cimmich-matching-unknown cimmich-tagging-dot cimmich-tagging-dot--named cimmich-tagging-dot--tagged pointer-events-auto"
+          style={sourcePresenceMarkerStyle(presence)}
+          title={`Tagged · ${presence.name}`}
+          aria-label={`Edit Tagged · ${presence.name}`}
+          data-testid="cimmich-imported-identity-locator"
+          type="button"
+          onpointerdown={(event) => event.stopPropagation()}
+          onclick={(event) => {
+            event.stopPropagation();
+            editImportedIdentityLocator(presence);
+          }}
+        >
+          <span>Tagged · {presence.name}</span>
+        </button>
+      {/each}
     </div>
   {/if}
 
@@ -4222,6 +4270,50 @@
     </div>
   {/if}
 
+  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'people' && !isTaggingMode && imageMetrics}
+    <div class="pointer-events-none absolute inset-0 z-35" style={spatialOverlayStyle}>
+      {#each sourcePresenceOverlays as presence (presence.id)}
+        <div
+          class={[
+            'cimmich-person-tag',
+            'cimmich-person-tag--actionable',
+            'cimmich-person-tag--confirmed',
+            matchesCimmichPersonPhotoContext(personPhotoContext, presence.name) ? 'cimmich-person-tag--context' : '',
+          ]}
+          style={sourcePresenceMarkerStyle(presence)}
+          data-testid="cimmich-imported-identity-locator"
+          title={`${presence.name} · tagged on this photo`}
+        >
+          <a
+            class="cimmich-person-tag__name"
+            href={Route.cimmichPerson({
+              name: presence.name,
+              personId: presence.personIdentityKey,
+            })}
+            title={`Open ${presence.name}'s profile`}
+            onpointerdown={(event) => event.stopPropagation()}
+            onclick={(event) => event.stopPropagation()}
+          >
+            <span>{presence.name}</span>
+          </a>
+          <button
+            class="cimmich-person-tag__edit"
+            type="button"
+            aria-label={`Edit ${presence.name}'s imported tag on this photo`}
+            title={`Edit ${presence.name}'s tag`}
+            onpointerdown={(event) => event.stopPropagation()}
+            onclick={(event) => {
+              event.stopPropagation();
+              editImportedIdentityLocator(presence);
+            }}
+          >
+            <Icon icon={mdiPencilOutline} size="15" />
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'people' && (namedPhotoPresence.length > 0 || primaryLocalizedManualPresenceTags.length > 0 || primaryRegionlessPresenceItems.length > 0)}
     <div
       class="pointer-events-none absolute inset-x-3 bottom-6 z-30 flex flex-wrap justify-center gap-2"
@@ -4338,6 +4430,27 @@
           <span>{manualTagTypeLabel(tag.tagType)} · {tag.subject.displayName}</span>
         </button>
       {/each}
+      {#each sourcePresenceOverlays as presence (presence.id)}
+        <button
+          class={[
+            'cimmich-matching-unknown cimmich-tagging-dot cimmich-tagging-dot--named cimmich-tagging-dot--tagged',
+            manualTagSourceLocatorId === presence.id ? 'cimmich-matching-unknown--selected' : '',
+          ]}
+          style={sourcePresenceMarkerStyle(presence)}
+          title={`Tagged · ${presence.name}`}
+          aria-label={`Tagged · ${presence.name}`}
+          data-testid="cimmich-imported-identity-locator"
+          type="button"
+          onpointerdown={(event) => event.stopPropagation()}
+          onclick={(event) => {
+            event.stopPropagation();
+            isTaggingHintVisible = false;
+            editImportedIdentityLocator(presence);
+          }}
+        >
+          <span>Tagged · {presence.name}</span>
+        </button>
+      {/each}
       {#each taggableFaceOverlays as face (face.id)}
         <button
           class={[
@@ -4414,25 +4527,31 @@
     {/if}
 
     {#if manualTagDraft}
-      <div
-        class="cimmich-manual-tag-region pointer-events-none absolute z-30"
-        style={manualTagDraftStyle}
-        data-testid="cimmich-manual-tag-region"
-        aria-hidden="true"
-      >
-        <span></span>
-      </div>
+      {#if !manualTagSourceLocatorId}
+        <div
+          class="cimmich-manual-tag-region pointer-events-none absolute z-30"
+          style={manualTagDraftStyle}
+          data-testid="cimmich-manual-tag-region"
+          aria-hidden="true"
+        >
+          <span></span>
+        </div>
+      {/if}
 
       <section
         class="pointer-events-auto absolute z-40 grid gap-3 overflow-y-auto overscroll-contain rounded-xl border border-white/20 bg-black/88 p-3 text-xs text-white shadow-2xl backdrop-blur-md"
         style={manualTagPanelStyle}
-        aria-label="New manual tag"
+        aria-label={manualTagSourceLocatorId ? 'Imported person tag' : 'New manual tag'}
         data-testid="cimmich-manual-tag-panel"
       >
         <div class="flex items-start justify-between gap-3">
           <div>
-            <p class="text-sm font-semibold text-white">Who is here?</p>
-            <p class="text-white/55">Choose a type, then a person or pet</p>
+            <p class="text-sm font-semibold text-white">
+              {manualTagSourceLocatorId ? 'Edit tagged person' : 'Who is here?'}
+            </p>
+            <p class="text-white/55">
+              {manualTagSourceLocatorId ? 'Choose what this tag represents' : 'Choose a type, then a person or pet'}
+            </p>
           </div>
           <button
             class="flex min-h-9 items-center rounded-lg px-2 text-white/65 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
@@ -4837,7 +4956,6 @@
               >
               <input
                 class="rounded-sm border border-white/15 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-white/60"
-                list="cimmich-known-face-names"
                 placeholder="Waiting to be named"
                 type="text"
                 value={bulkNameDrafts[face.id] ?? ''}
@@ -5045,22 +5163,13 @@
         >
           <label class="grid gap-1">
             <span class="font-semibold text-white/65">Person</span>
-            <span class="relative">
-              <input
-                bind:value={faceNameDraft}
-                class="cimmich-person-choice w-full rounded-sm border border-white/20 bg-white/10 py-2 pr-8 pl-2 text-sm text-white outline-none focus:border-white/60"
-                list="cimmich-known-face-names"
-                placeholder="Choose or create a Person"
-                type="text"
-                oninput={() => (faceSelectedPersonId = '')}
-              />
-              <span
-                class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-white/45"
-                aria-hidden="true"
-              >
-                <Icon icon={mdiChevronDown} size="18" />
-              </span>
-            </span>
+            <input
+              bind:value={faceNameDraft}
+              class="w-full rounded-sm border border-white/20 bg-white/10 p-2 text-sm text-white outline-none focus:border-white/60"
+              placeholder="Type a name or choose a match"
+              type="text"
+              oninput={() => (faceSelectedPersonId = '')}
+            />
           </label>
           {#if isManualTagSubjectsLoading}
             <p class="text-white/50">Checking People…</p>
@@ -5121,7 +5230,7 @@
                   {/each}
                 </div>
                 <p class="border-t border-white/10 px-2 py-1.5 text-[10px] text-white/40">
-                  Raw same-model similarity; higher is closer. This is not a confidence percentage.
+                  Up to five strongest matches. Type any other name above.
                 </p>
               {:else}
                 <p class="p-2 text-white/50">No compatible reference photos yet.</p>
@@ -5168,15 +5277,15 @@
               </label>
               {#if faceBucketDraft !== 'head'}
                 <label class="grid gap-1">
-                  <span class="font-semibold text-white/65">Reference quality</span>
+                  <span class="font-semibold text-white/65">Machinery role</span>
                   <select
                     bind:value={faceBucketDraft}
                     class="min-h-10 rounded-sm border border-white/20 bg-black/80 px-2 text-white outline-none focus:border-white/60"
                   >
-                    <option value="face_only">Don't use this photo for matching</option>
-                    <option value="prime">Best reference photo</option>
-                    <option value="secondary">Useful reference photo</option>
-                    <option value="lq">Difficult but useful reference</option>
+                    <option value="face_only">Supporting evidence only</option>
+                    <option value="prime">Core matching evidence</option>
+                    <option value="secondary">Supporting matcher reference</option>
+                    <option value="lq">Low-quality Face evidence</option>
                   </select>
                 </label>
               {:else}
@@ -5830,15 +5939,6 @@
 </div>
 
 <style>
-  .cimmich-person-choice {
-    appearance: none;
-  }
-
-  .cimmich-person-choice::-webkit-calendar-picker-indicator {
-    display: none !important;
-    opacity: 0;
-  }
-
   .cimmich-step2-region {
     position: absolute;
     border: 2px solid rgb(52 211 153 / 0.94);
@@ -6373,6 +6473,10 @@
     transition: opacity 120ms ease;
   }
 
+  .cimmich-matching-unknown.cimmich-tagging-dot--tagged span {
+    opacity: 1;
+  }
+
   .cimmich-matching-unknown:hover,
   .cimmich-matching-unknown:focus-visible,
   .cimmich-matching-unknown--selected {
@@ -6614,16 +6718,6 @@
     outline: none;
   }
 
-  .cimmich-source-presence-box {
-    position: absolute;
-    border: 2px dashed rgb(251 191 36 / 0.94);
-    border-radius: 8px;
-    background: rgb(251 191 36 / 0.08);
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.55),
-      0 10px 24px rgb(0 0 0 / 0.22);
-  }
-
   .cimmich-source-presence-label {
     position: absolute;
     transform: translate(-50%, -100%);
@@ -6640,6 +6734,12 @@
     text-overflow: ellipsis;
     text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
     white-space: nowrap;
+  }
+
+  .cimmich-source-presence-label--context {
+    border-color: rgb(255 255 255 / 0.92);
+    background: rgb(120 53 15 / 0.92);
+    color: white;
   }
 
   .cimmich-face-box {

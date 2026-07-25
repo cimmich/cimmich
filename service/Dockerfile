@@ -12,13 +12,15 @@ COPY --from=postgres-client /usr/lib/postgresql/17/bin/psql /usr/local/bin/psql
 
 COPY providers/opencv-sface/requirements.txt /tmp/cimmich-opencv-requirements.txt
 COPY providers/insightface-user-supplied/requirements.txt /tmp/cimmich-insightface-requirements.txt
+COPY providers/perceptual-dhash/requirements.txt /tmp/cimmich-dhash-requirements.txt
 RUN python3 -m pip install --break-system-packages --no-cache-dir \
   -r /tmp/cimmich-opencv-requirements.txt \
   -r /tmp/cimmich-insightface-requirements.txt \
+  -r /tmp/cimmich-dhash-requirements.txt \
   && python3 -m pip uninstall --break-system-packages --yes opencv-python \
   && python3 -m pip install --break-system-packages --no-cache-dir \
     --force-reinstall --no-deps opencv-python-headless==4.11.0.86 \
-  && rm /tmp/cimmich-opencv-requirements.txt /tmp/cimmich-insightface-requirements.txt
+  && rm /tmp/cimmich-opencv-requirements.txt /tmp/cimmich-insightface-requirements.txt /tmp/cimmich-dhash-requirements.txt
 
 WORKDIR /app/service
 COPY service/package.json service/package-lock.json ./
@@ -29,6 +31,7 @@ COPY service/bin ./bin
 COPY service/enhanced ./enhanced
 COPY providers/opencv-sface /app/providers/opencv-sface
 COPY providers/insightface-user-supplied /app/providers/insightface-user-supplied
+COPY providers/perceptual-dhash /app/providers/perceptual-dhash
 COPY migrations /app/migrations
 
 ENV HOST=0.0.0.0

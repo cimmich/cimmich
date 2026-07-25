@@ -48,7 +48,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('Hero photo');
     expect(source).not.toContain('Identity workspaces');
     expect(source).toContain('aria-label="Identity tools"');
-    expect(source).toContain("label: 'Reference faces'");
+    expect(source).toContain("label: 'Face evidence'");
     expect(source).toContain("label: 'Appearance'");
     expect(source).toContain("label: 'Display'");
     expect(source).toContain("label: 'Review'");
@@ -56,7 +56,7 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('overflow-x-auto pb-1');
     expect(source).toContain("{ id: 'presentation', label: 'Photos'");
     expect(source).toContain('aria-label="Display photo choices"');
-    expect(source).toContain("{ id: 'prime', label: 'Prime'");
+    expect(source).toContain("{ id: 'prime', label: 'Core matching set'");
     expect(source).toContain("{ id: 'secondary', label: 'Supporting'");
     expect(source).toContain('Use automatic');
     expect(source).toContain("'Not selected'");
@@ -78,25 +78,74 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('Choose confirmed evidence below for the Face, Body, and Hero image.');
     expect(source).not.toContain("'Automatic'");
     expect(source).not.toContain('mt-4 grid gap-3 border-t');
-    expect(source).toContain("label: 'Prime'");
+    expect(source).toContain("label: 'Core'");
     expect(source).toContain("label: 'Supporting'");
-    expect(source).toContain("label: 'Unclassified'");
+    expect(source).toContain("label: 'All confirmed'");
+    expect(source).not.toContain("label: 'Unclassified'");
+    expect(source).not.toContain('Classification maintenance is incomplete:');
+    expect(source).toContain('Supporting evidence only');
+    expect(source).toContain('Supporting matcher reference');
+    expect(source).toContain('face.matching_reference_tier');
     expect(source).toContain('Awaiting confirmation');
+    expect(source).toContain("title: 'New matches'");
+    expect(source).toContain("title: 'Possible mistags'");
+    expect(source).toContain('cimmichIdentityAuditTotals.untagged_match');
+    expect(source).toContain('cimmichIdentityAuditTotals.accepted_contradiction');
+    expect(source).toContain('showMoreCimmichIdentityAudit');
+    expect(source).toContain('Previously untagged');
+    expect(source).toContain('Existing tag disputed');
     expect(source).toContain('Show 20 more');
-    expect(source).toContain('getCimmichIdentityFaces(personId, 5000)');
+    expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
+    expect(source).toContain('getCimmichPersonAssetsPage(personId, 120)');
+    expect(source).toContain('refreshCimmichIdentityAfterReview');
+    expect(source).toContain('cimmichIdentityAuditProgress.completed');
+    expect(source).toContain('Route.viewCimmichPersonAsset');
+    expect(source).toContain("overlay: 'people'");
+    expect(source).toContain('getCimmichFaceMatches(item.faceId, 5)');
+    expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
+    expect(source).toContain("'Mark as Head'");
+    expect(source).toContain("markAsHead && item.kind !== 'accepted_contradiction'");
+    expect(source).toMatch(/\{#if item\.kind === 'accepted_contradiction'\}[\s\S]{0,800}'Mark as Head'/);
+    expect(source).toContain("item.kind === 'untagged_match' ? 'col-span-2' : ''");
+    expect(source).toContain("'Change to…'");
+    expect(source).toContain("item.kind === 'untagged_match'");
+    expect(source).toContain("[item.faceId]: ''");
+    expect(source).toContain("{#if item.kind !== 'untagged_match'}");
+    expect(source).not.toContain('onclick={() => void dismissCimmichAuditMatch(item)}');
+    expect(source).toContain('aria-label="Likely identity matches"');
+    expect(source).toContain('placeholder="Type a name"');
+    expect(source).toContain('cimmichAuditPersonSearchResults(item)');
+    expect(source).toContain("'Rescan Heads'");
+    expect(source).toContain("await loadCimmichIdentityBucket('head')");
+    expect(source).toContain('!cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor');
+    expect(source).not.toContain('border-red-200 bg-red-50/40');
+    expect(source).not.toContain('bg-red-50/60');
+    expect(source).toContain("setCimmichFaceBucket(personId, item.faceId, 'head')");
+    expect(source).not.toContain("'Confirm move'");
     expect(source).toContain('setCimmichPersonPresentation(cimmichPerson.person_id, slotKind');
     expect(source).toContain("chooseCimmichPresentation('face', face, 'face')");
     expect(source).toContain("chooseCimmichPresentation('body', face, 'body')");
     expect(source).toContain("chooseCimmichPresentation('hero', face, 'face')");
     expect(source).toContain('Reject selected');
-    expect(source).toContain("{ id: 'prime', label: 'Strong', description: 'Best reference photos' }");
+    expect(source).toContain(
+      "{ id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' }",
+    );
     expect(source).toContain("{ id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' }");
     expect(source).toContain(
-      "{ id: 'non_face', label: 'Body & Presence', description: 'Appearance evidence, not matching references' }",
+      "{ id: 'body', label: 'Body', description: 'Body-only evidence without a usable Face or Head' }",
     );
-    expect(source).toContain('manual Head tags are not counted in this library');
+    expect(source).toContain(
+      "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
+    );
+    expect(source).toContain("{ id: 'body', label: 'Body', count: cimmichBodyAssets.length.toLocaleString() }");
+    expect(source).toContain(
+      "{ id: 'presence', label: 'Presence', count: cimmichPresenceAssets.length.toLocaleString() }",
+    );
+    expect(source).toContain("association_types.includes('body_candidate')");
+    expect(source).toContain('Body placement needed');
+    expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
     expect(source).toContain('No Face-derived Head references');
-    expect(source).toContain("association_types.includes('body') || association_types.includes('presence')");
+    expect(source).toContain("association_types.includes('body') || association_types.includes('body_candidate')");
     expect(source).toContain('Review face');
     expect(source).not.toContain("id: 'face_only', label: 'Not used'");
     expect(source).not.toContain('<h2 class="text-xl font-semibold">Matching</h2>');

@@ -21,7 +21,9 @@ const sql = postgres(databaseUrl, { max: 1, prepare: true });
 
 try {
   const faces = await loadPrimeCuratorFaces(sql, personId);
-  const curations = buildPrimeCurations(faces);
+  const curations = buildPrimeCurations(faces, {
+    evidenceCutoff: new Date().toISOString(),
+  });
   const summary = await applyPrimeCurations(sql, curations, { execute });
   process.stdout.write(
     `${JSON.stringify({ execute, policyVersion: primeCuratorPolicyVersion, sourceFaces: faces.length, ...summary })}\n`,

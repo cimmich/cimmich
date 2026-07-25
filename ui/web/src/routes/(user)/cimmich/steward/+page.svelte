@@ -28,6 +28,7 @@
     mdiSkipNext,
   } from '@mdi/js';
   import CimmichImmichPersonResolution from '../maintenance/CimmichImmichPersonResolution.svelte';
+  import IdentityAuditPanel from './IdentityAuditPanel.svelte';
   import { emptyReviewPresentation, reviewHasVisibleEvidence } from './steward-presentation';
 
   let suggestions = $state<CimmichMachineSuggestion[]>([]);
@@ -257,6 +258,8 @@
     {#if !loading && onboarding?.connection.state === 'ready' && onboarding.latestRun?.scope}
       <CimmichImmichPersonResolution mode="review" scope={onboarding.latestRun.scope} />
     {/if}
+
+    <IdentityAuditPanel />
 
     {#if loading}
       <section

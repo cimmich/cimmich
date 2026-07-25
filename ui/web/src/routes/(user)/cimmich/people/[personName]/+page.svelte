@@ -8,6 +8,7 @@
     rawSimilarityLabel,
     type PersonCandidateReviewMode,
   } from '$lib/components/cimmich/person-candidate-review';
+  import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
   import {
     groupPersonPhotos,
     personPhotoDateLabel,
@@ -21,6 +22,7 @@
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { Route } from '$lib/route';
   import {
+    acceptCimmichMachineSuggestion,
     addCimmichPersonAlias,
     bulkAcceptCimmichPersonCandidates,
     CimmichServiceError,
@@ -28,18 +30,19 @@
     createCimmichPersonMergeIntentTracker,
     decideCimmichFaceModifierProposal,
     decideCimmichIdentityCandidate,
+    dismissCimmichIdentityAuditItem,
     getCimmichFaceMatches,
     getCimmichContextEntity,
     getCimmichHoldingMatchesBatch,
-    getCimmichIdentityFaces,
     getCimmichIdentityFacesPage,
     getCimmichIdentityCorrectionDiscovery,
     getCimmichIdentityCorrectionHistory,
+    getCimmichIdentityAuditItems,
     getCimmichMergePreview,
+    getCimmichMachineSuggestions,
     getCimmichPeople,
     getCimmichPersonDetailsDisplay,
     getCimmichPersonDetailsDisplayDefaults,
-    getCimmichPersonAssets,
     getCimmichPersonAssetsPage,
     getCimmichPersonByName,
     getCimmichPersonCandidates,
@@ -52,6 +55,7 @@
     mergeCimmichPeople,
     moveCimmichIdentityFace,
     rejectCimmichAcceptedIdentity,
+    rescanCimmichHeadEvidence,
     removeCimmichPersonAlias,
     setCimmichFaceBucket,
     setCimmichFaceModifier,
@@ -61,11 +65,14 @@
     unmergeCimmichPeople,
     undoCimmichIdentityCorrection,
     type CimmichIdentityCandidate,
+    type CimmichIdentityAuditItem,
     type CimmichIdentityCorrectionDiscovery,
     type CimmichIdentityFace,
+    type CimmichIdentityFaceSummary,
     type CimmichFaceMatch,
     type CimmichFaceOwnerReviewMatch,
     type CimmichMergePreview,
+    type CimmichMachineSuggestion,
     type CimmichPerson,
     type CimmichPersonAsset,
     type CimmichPersonDetailsDisplay,
@@ -100,6 +107,7 @@
     mdiCalendarAlertOutline,
     mdiCalendarRange,
     mdiCheckCircleOutline,
+    mdiChevronRight,
     mdiGenderFemale,
     mdiGenderMale,
     mdiGenderMaleFemaleVariant,
@@ -124,12 +132,13 @@
   type CountRow = { count: number; label: string };
   type CimmichIdentityFilter =
     | 'all'
+    | 'body'
     | 'candidates'
     | 'head'
     | 'lq'
     | 'needs_qc'
-    | 'non_face'
     | 'presentation'
+    | 'presence'
     | 'prime'
     | 'references'
     | 'secondary';
@@ -182,6 +191,7 @@
   let cimmichAssetsLoadingMore = $state(false);
   let cimmichAssetsNextCursor = $state<string | null>(null);
   let cimmichCandidateConfirm = $state(false);
+  let cimmichCandidateRejectConfirm = $state(false);
   let cimmichCandidateError = $state('');
   let cimmichCandidateLoading = $state(false);
   let cimmichCandidateMessage = $state('');
@@ -190,10 +200,36 @@
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
   let cimmichCandidateReviewMode = $state<PersonCandidateReviewMode>('useful');
   let cimmichIdentityError = $state('');
+  let cimmichIdentityAuditEvidenceExpanded = $state<string[]>([]);
+  let cimmichIdentityAuditChangeFaceId = $state('');
+  let cimmichIdentityAuditChangeQueries = $state<Record<string, string>>({});
+  let cimmichIdentityAuditConfirmAction = $state<'' | 'accept' | 'dismiss'>('');
+  let cimmichIdentityAuditItems = $state<CimmichIdentityAuditItem[]>([]);
+  let cimmichIdentityAuditMatches = $state<Record<string, CimmichFaceOwnerReviewMatch[]>>({});
+  let cimmichIdentityAuditMatchesLoading = $state<Record<string, boolean>>({});
+  let cimmichIdentityAuditTargetPersonIds = $state<Record<string, string>>({});
+  let cimmichIdentityAuditLoadingKind = $state<CimmichIdentityAuditItem['kind'] | ''>('');
+  let cimmichIdentityAuditProgress = $state({ completed: 0, total: 0 });
+  let cimmichIdentityAuditSavingId = $state('');
+  let cimmichIdentityAuditSelection = $state<string[]>([]);
+  let cimmichIdentityAuditTotals = $state<Record<CimmichIdentityAuditItem['kind'], number>>({
+    accepted_contradiction: 0,
+    untagged_match: 0,
+  });
   let cimmichIdentityMessage = $state('');
   let cimmichIdentityUndoDecisionId = $state('');
   let cimmichIdentityCorrections = $state<CimmichIdentityCorrectionDiscovery['items']>([]);
   let cimmichIdentityFaces = $state<CimmichIdentityFace[]>([]);
+  let cimmichIdentityBucketLoading = $state<CimmichIdentityFilter | ''>('');
+  let cimmichIdentityBucketNextCursors = $state<Record<string, string | null>>({});
+  let cimmichIdentityFacesLoadingMore = $state(false);
+  let cimmichIdentityFaceSummary = $state<CimmichIdentityFaceSummary>({
+    all: 0,
+    head: 0,
+    lowQuality: 0,
+    prime: 0,
+    secondary: 0,
+  });
   let cimmichHoldingMatches = $state<Record<string, CimmichFaceMatch | CimmichFaceOwnerReviewMatch | undefined>>({});
   let cimmichHoldingMatchesLoading = $state<Record<string, boolean>>({});
   let cimmichIdentityFilter = $state<CimmichIdentityFilter>('all');
@@ -209,7 +245,12 @@
   let cimmichIdentityMoveQuery = $state('');
   let cimmichIdentityMoveSuggestion = $state<CimmichFaceMatch | CimmichFaceOwnerReviewMatch>();
   let cimmichIdentitySavingId = $state('');
+  let cimmichHeadRescanSaving = $state(false);
   let cimmichIdentitySectionLimits = $state<Record<string, number>>({});
+  let cimmichMachineSuggestionConfirm = $state(false);
+  let cimmichMachineSuggestionSaving = $state(false);
+  let cimmichMachineSuggestionSelection = $state<string[]>([]);
+  let cimmichMachineSuggestions = $state<CimmichMachineSuggestion[]>([]);
   let cimmichPresentation = $state<CimmichPersonPresentation>();
   let cimmichPresentationPickerSlot = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichPresentationFrames = $state<Record<CimmichPersonPresentationSlot, CimmichPresentationFrame>>({
@@ -222,6 +263,8 @@
   let cimmichLoadError = $state('');
   let cimmichMode = $state<CimmichPersonMode>('photos');
   let cimmichPerson = $state<CimmichPerson>();
+  let cimmichTabsCanScrollRight = $state(false);
+  let cimmichTabsScroller = $state<HTMLDivElement>();
   let personProjectionGeneration = 0;
   let cimmichProfile = $state<CimmichPersonProfileProjection>();
   let cimmichProfileDefaults = $state<CimmichPersonProfileDisplayDefaults>();
@@ -261,13 +304,68 @@
     { id: 'body', label: 'Body' },
     { id: 'needs', label: 'Needs check' },
   ];
+
+  const updateCimmichTabsOverflow = () => {
+    if (!cimmichTabsScroller) {
+      return;
+    }
+    const visibleRight = cimmichTabsScroller.scrollLeft + cimmichTabsScroller.clientWidth;
+    cimmichTabsCanScrollRight = [...cimmichTabsScroller.querySelectorAll<HTMLElement>('[data-person-tab]')].some(
+      (tab) => tab.offsetLeft + tab.offsetWidth > visibleRight + 4,
+    );
+  };
+
+  const scrollCimmichTabIntoView = (tab: HTMLElement) => {
+    if (!cimmichTabsScroller) {
+      return;
+    }
+    const visibleLeft = cimmichTabsScroller.scrollLeft;
+    const visibleRight = visibleLeft + cimmichTabsScroller.clientWidth;
+    const tabRight = tab.offsetLeft + tab.offsetWidth;
+    const left =
+      tab.offsetLeft < visibleLeft
+        ? tab.offsetLeft
+        : tabRight > visibleRight
+          ? tabRight - cimmichTabsScroller.clientWidth
+          : visibleLeft;
+    cimmichTabsScroller.scrollTo({ behavior: 'smooth', left });
+  };
+
+  const scrollCimmichTabs = () => {
+    if (!cimmichTabsScroller) {
+      return;
+    }
+    const visibleRight = cimmichTabsScroller.scrollLeft + cimmichTabsScroller.clientWidth;
+    const nextTab = [...cimmichTabsScroller.querySelectorAll<HTMLElement>('[data-person-tab]')].find(
+      (tab) => tab.offsetLeft + tab.offsetWidth > visibleRight + 4,
+    );
+    if (nextTab) {
+      scrollCimmichTabIntoView(nextTab);
+    }
+  };
+
+  $effect(() => {
+    const mode = cimmichMode;
+    const personId = cimmichPerson?.person_id;
+    const scroller = cimmichTabsScroller;
+    if (!personId || !scroller) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const selectedTab = scroller.querySelector<HTMLElement>(`[data-person-tab="${mode}"]`);
+      if (selectedTab) {
+        scrollCimmichTabIntoView(selectedTab);
+      }
+      updateCimmichTabsOverflow();
+    });
+  });
   const cimmichIdentityFilters: Array<{
     id: CimmichIdentityFilter;
     label: string;
     description: string;
   }> = [
     { id: 'all', label: 'Identity observations', description: 'Faces currently accepted as this person' },
-    { id: 'references', label: 'Reference set', description: 'Strong and supporting matching references' },
+    { id: 'references', label: 'Face evidence', description: 'Core and supporting identity evidence' },
     { id: 'needs_qc', label: 'Needs attention', description: 'Quality flags in the loaded observations' },
   ];
   const cimmichIdentityAdvancedFilters: Array<{
@@ -275,11 +373,12 @@
     label: string;
     description: string;
   }> = [
-    { id: 'prime', label: 'Strong', description: 'Best reference photos' },
-    { id: 'secondary', label: 'Supporting', description: 'Useful extra angles' },
-    { id: 'lq', label: 'Low quality', description: 'Kept with less weight' },
+    { id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' },
+    { id: 'secondary', label: 'Supporting', description: 'Remaining usable Face evidence' },
+    { id: 'lq', label: 'Low quality', description: 'Condition-routed Face evidence' },
     { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
-    { id: 'non_face', label: 'Body & Presence', description: 'Appearance evidence, not matching references' },
+    { id: 'body', label: 'Body', description: 'Body-only evidence without a usable Face or Head' },
+    { id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' },
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
 
@@ -412,6 +511,41 @@
     return [...linked.values()].sort((left, right) => left.displayName.localeCompare(right.displayName));
   };
   const visibleCimmichCandidates = $derived(preparePersonCandidates(cimmichCandidates, cimmichCandidateReviewMode));
+  const cimmichIdentityAuditFaceIds = $derived(new Set(cimmichIdentityAuditItems.map(({ faceId }) => faceId)));
+  const visibleCimmichMachineSuggestions = $derived(
+    machineSuggestionsForPerson(cimmichMachineSuggestions, cimmichPerson?.person_id ?? '', cimmichCandidates).filter(
+      ({ face_id }) => !cimmichIdentityAuditFaceIds.has(face_id),
+    ),
+  );
+  const cimmichUntaggedAuditItems = $derived(cimmichIdentityAuditItems.filter(({ kind }) => kind === 'untagged_match'));
+  const cimmichContradictionAuditItems = $derived(
+    cimmichIdentityAuditItems.filter(({ kind }) => kind === 'accepted_contradiction'),
+  );
+  const cimmichNewMatchCount = $derived(
+    cimmichIdentityAuditTotals.untagged_match +
+      visibleCimmichCandidates.length +
+      visibleCimmichMachineSuggestions.length,
+  );
+  const cimmichPossibleMistagCount = $derived(cimmichIdentityAuditTotals.accepted_contradiction);
+  const cimmichAwaitingCount = $derived(cimmichNewMatchCount + cimmichPossibleMistagCount);
+  const cimmichIdentityAuditGroups = $derived([
+    {
+      description: `Previously untagged faces the matcher thinks may be ${cimmichPerson?.display_name ?? 'this person'}.`,
+      id: 'new-matches',
+      items: cimmichUntaggedAuditItems,
+      kind: 'untagged_match' as const,
+      title: 'New matches',
+      total: cimmichIdentityAuditTotals.untagged_match,
+    },
+    {
+      description: `Existing identity tags the matcher disputes because it sees a stronger match to a different person.`,
+      id: 'possible-mistags',
+      items: cimmichContradictionAuditItems,
+      kind: 'accepted_contradiction' as const,
+      title: 'Possible mistags',
+      total: cimmichIdentityAuditTotals.accepted_contradiction,
+    },
+  ]);
   const groupedCimmichAssets = $derived(groupPersonPhotos(visibleCimmichAssets, cimmichPhotoGroup));
   const cimmichMergeOptions = $derived(
     cimmichSetupPeople.filter(
@@ -447,12 +581,22 @@
       .filter((row) => [row.display_name, ...row.aliases].join(' ').toLocaleLowerCase().includes(query))
       .slice(0, 8);
   });
-  const cimmichMainBucket = (face: CimmichIdentityFace) =>
-    face.main_evidence_tier === 'face_only' ? null : face.main_evidence_tier;
-  const cimmichBodyPresenceAssets = $derived(
+  const cimmichMainBucket = (face: CimmichIdentityFace) => face.main_evidence_tier;
+  const cimmichMatchingBucket = (face: CimmichIdentityFace) => face.matching_reference_tier;
+  const cimmichBodyAssets = $derived(
     cimmichAssets.filter(
-      ({ association_types }) => association_types.includes('body') || association_types.includes('presence'),
+      ({ association_types }) => association_types.includes('body') || association_types.includes('body_candidate'),
     ),
+  );
+  const cimmichPresenceAssets = $derived(
+    cimmichAssets.filter(({ association_types }) => association_types.includes('presence')),
+  );
+  const cimmichSelectedAppearanceAssets = $derived(
+    cimmichIdentityFilter === 'body'
+      ? cimmichBodyAssets
+      : cimmichIdentityFilter === 'presence'
+        ? cimmichPresenceAssets
+        : [],
   );
   const cimmichPresentationSelectionCount = $derived(
     [cimmichPresentation?.face, cimmichPresentation?.body, cimmichPresentation?.hero].filter(Boolean).length,
@@ -462,30 +606,24 @@
       ? cimmichIdentityFaces.filter((face) => Boolean(face.body_id))
       : cimmichIdentityFaces,
   );
-  const cimmichPrimeFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'prime'));
-  const cimmichSecondaryFaces = $derived(
-    cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'secondary'),
-  );
-  const cimmichLowQualityFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'lq'));
-  const cimmichHeadFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'head'));
-  const cimmichUnclassifiedFaces = $derived(cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === null));
   const cimmichIdentityWorkspaceGroups = $derived([
     {
       id: 'references',
-      label: 'Reference faces',
+      label: 'Face evidence',
       filters: [
-        { id: 'prime', label: 'Prime', count: cimmichPrimeFaces.length.toLocaleString() },
-        { id: 'secondary', label: 'Supporting', count: cimmichSecondaryFaces.length.toLocaleString() },
-        { id: 'lq', label: 'Low quality', count: cimmichLowQualityFaces.length.toLocaleString() },
-        { id: 'all', label: 'Unclassified', count: cimmichUnclassifiedFaces.length.toLocaleString() },
+        { id: 'all', label: 'All confirmed', count: cimmichIdentityFaceSummary.all.toLocaleString() },
+        { id: 'prime', label: 'Core matching set', count: cimmichIdentityFaceSummary.prime.toLocaleString() },
+        { id: 'secondary', label: 'Supporting', count: cimmichIdentityFaceSummary.secondary.toLocaleString() },
+        { id: 'lq', label: 'Low quality', count: cimmichIdentityFaceSummary.lowQuality.toLocaleString() },
       ],
     },
     {
       id: 'appearance',
       label: 'Appearance',
       filters: [
-        { id: 'head', label: 'Head', count: cimmichHeadFaces.length.toLocaleString() },
-        { id: 'non_face', label: 'Body', count: cimmichBodyPresenceAssets.length.toLocaleString() },
+        { id: 'head', label: 'Head', count: cimmichIdentityFaceSummary.head.toLocaleString() },
+        { id: 'body', label: 'Body', count: cimmichBodyAssets.length.toLocaleString() },
+        { id: 'presence', label: 'Presence', count: cimmichPresenceAssets.length.toLocaleString() },
       ],
     },
     {
@@ -496,7 +634,13 @@
     {
       id: 'review',
       label: 'Review',
-      filters: [{ id: 'candidates', label: 'Awaiting', count: visibleCimmichCandidates.length.toLocaleString() }],
+      filters: [
+        {
+          id: 'candidates',
+          label: 'Checks',
+          count: `${cimmichNewMatchCount.toLocaleString()} new · ${cimmichPossibleMistagCount.toLocaleString()} mistags`,
+        },
+      ],
     },
   ]);
   const cimmichIdentitySectionLimit = (section: string) => cimmichIdentitySectionLimits[section] ?? 20;
@@ -506,10 +650,51 @@
       [section]: cimmichIdentitySectionLimit(section) + 20,
     };
   };
+  const cimmichIdentityServerBucket = (
+    filter: CimmichIdentityFilter,
+  ): 'head' | 'lq' | 'prime' | 'secondary' | undefined =>
+    filter === 'head' || filter === 'lq' || filter === 'prime' || filter === 'secondary' ? filter : undefined;
+  const loadCimmichIdentityBucket = async (filter: CimmichIdentityFilter, append = false) => {
+    const bucket = cimmichIdentityServerBucket(filter);
+    if (!bucket || !cimmichPerson || cimmichIdentityBucketLoading) {
+      return;
+    }
+    const cursor = append ? (cimmichIdentityBucketNextCursors[bucket] ?? undefined) : undefined;
+    cimmichIdentityBucketLoading = filter;
+    cimmichIdentityError = '';
+    try {
+      const page = await getCimmichIdentityFacesPage(cimmichPerson.person_id, 120, cursor, bucket);
+      const retained = append
+        ? cimmichIdentityFaces
+        : cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) !== bucket);
+      const merged = new SvelteMap(retained.map((face) => [face.face_id, face]));
+      for (const face of page.items) {
+        merged.set(face.face_id, face);
+      }
+      cimmichIdentityFaces = [...merged.values()];
+      cimmichIdentityFaceSummary = page.summary;
+      cimmichIdentityBucketNextCursors = {
+        ...cimmichIdentityBucketNextCursors,
+        [bucket]: page.nextCursor,
+      };
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : `Unable to load ${bucket} evidence`;
+    } finally {
+      cimmichIdentityBucketLoading = '';
+    }
+  };
   const selectCimmichIdentityWorkspace = (filter: CimmichIdentityFilter) => {
     cimmichIdentityFilter = filter;
     if (filter !== 'presentation') {
       cimmichPresentationPickerSlot = '';
+    }
+    const bucket = cimmichIdentityServerBucket(filter);
+    if (
+      bucket &&
+      cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === bucket).length <
+        (bucket === 'lq' ? cimmichIdentityFaceSummary.lowQuality : cimmichIdentityFaceSummary[bucket])
+    ) {
+      void loadCimmichIdentityBucket(filter);
     }
   };
   const visibleCimmichIdentityFaces = $derived.by(() => {
@@ -529,7 +714,8 @@
     }
     if (
       cimmichIdentityFilter === 'candidates' ||
-      cimmichIdentityFilter === 'non_face' ||
+      cimmichIdentityFilter === 'body' ||
+      cimmichIdentityFilter === 'presence' ||
       cimmichIdentityFilter === 'presentation'
     ) {
       return [];
@@ -537,7 +723,7 @@
     if (cimmichIdentityFilter === 'needs_qc') {
       return cimmichIdentityFaces.filter((face) => cimmichMainBucket(face) === 'head' || face.qc_flags.length > 0);
     }
-    return cimmichUnclassifiedFaces;
+    return cimmichIdentityFaces;
   });
   const renderedCimmichIdentityFaces = $derived(
     visibleCimmichIdentityFaces.slice(0, cimmichIdentitySectionLimit(cimmichIdentityFilter)),
@@ -545,10 +731,10 @@
   const cimmichIdentityBucketLabel = (face: CimmichIdentityFace) => {
     const bucket = cimmichMainBucket(face);
     if (bucket === 'prime') {
-      return 'Strong reference';
+      return 'Core matching evidence';
     }
     if (bucket === 'secondary') {
-      return 'Supporting reference';
+      return cimmichMatchingBucket(face) === 'secondary' ? 'Supporting matcher reference' : 'Supporting evidence only';
     }
     if (bucket === 'lq') {
       return 'Low quality';
@@ -556,7 +742,7 @@
     if (bucket === 'head') {
       return 'Head reference';
     }
-    return 'Not used for matching';
+    return 'Supporting evidence only';
   };
 
   const visibleCimmichAliases = $derived(
@@ -1010,6 +1196,63 @@
     ].join('; ');
   };
 
+  const cimmichMachineSuggestionCropStyle = (suggestion: CimmichMachineSuggestion) => {
+    if (!suggestion.sourceAssetId) {
+      return '';
+    }
+    const cropW = Math.min(1, Math.max(suggestion.box_w * 2.8, 0.01));
+    const cropH = Math.min(1, Math.max(suggestion.box_h * 2.8, 0.01));
+    const centerX = suggestion.box_x + suggestion.box_w / 2;
+    const centerY = suggestion.box_y + suggestion.box_h / 2;
+    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
+    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
+    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropW)) * 100);
+    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropH)) * 100);
+    return [
+      `background-image: url("${getAssetMediaUrl({ id: suggestion.sourceAssetId, size: AssetMediaSize.Preview })}")`,
+      `background-size: ${100 / cropW}% ${100 / cropH}%`,
+      `background-position: ${positionX}% ${positionY}%`,
+    ].join('; ');
+  };
+
+  const cimmichAuditCropStyle = (
+    item:
+      | Pick<CimmichIdentityAuditItem, 'box' | 'sourceAssetId'>
+      | CimmichIdentityAuditItem['suggestedPerson']['reference'],
+  ) => {
+    if (!item?.sourceAssetId) {
+      return '';
+    }
+    const cropW = Math.min(1, Math.max(item.box.w * 2.8, 0.01));
+    const cropH = Math.min(1, Math.max(item.box.h * 2.8, 0.01));
+    const centerX = item.box.x + item.box.w / 2;
+    const centerY = item.box.y + item.box.h / 2;
+    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
+    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
+    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropW)) * 100);
+    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropH)) * 100);
+    return [
+      `background-image: url("${getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview })}")`,
+      `background-size: ${100 / cropW}% ${100 / cropH}%`,
+      `background-position: ${positionX}% ${positionY}%`,
+    ].join('; ');
+  };
+
+  const cimmichAuditFaceOutlineStyle = (item: CimmichIdentityAuditItem) => {
+    const cropW = Math.min(1, Math.max(item.box.w * 2.8, 0.01));
+    const cropH = Math.min(1, Math.max(item.box.h * 2.8, 0.01));
+    const centerX = item.box.x + item.box.w / 2;
+    const centerY = item.box.y + item.box.h / 2;
+    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
+    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
+    return [
+      `left: ${clampPercent(((item.box.x - cropX) / cropW) * 100)}%`,
+      `top: ${clampPercent(((item.box.y - cropY) / cropH) * 100)}%`,
+      `width: ${clampPercent((item.box.w / cropW) * 100)}%`,
+      `height: ${clampPercent((item.box.h / cropH) * 100)}%`,
+    ].join('; ');
+  };
+
   const cimmichPresentationImageUrl = (slot: CimmichPersonPresentation['face']) =>
     slot?.sourceAssetId ? getAssetMediaUrl({ id: slot.sourceAssetId, size: AssetMediaSize.Preview }) : '';
 
@@ -1213,11 +1456,116 @@
       ? cimmichCandidateSelection.filter((id) => id !== claimId)
       : [...cimmichCandidateSelection, claimId];
     cimmichCandidateConfirm = false;
+    cimmichCandidateRejectConfirm = false;
   };
 
   const selectAllCandidates = () => {
     cimmichCandidateSelection = visibleCimmichCandidates.map((candidate) => candidate.identity_claim_id);
     cimmichCandidateConfirm = false;
+    cimmichCandidateRejectConfirm = false;
+  };
+
+  const machineSuggestionSelected = (faceId: string) => cimmichMachineSuggestionSelection.includes(faceId);
+
+  const toggleCimmichAuditEvidence = (faceId: string) => {
+    cimmichIdentityAuditEvidenceExpanded = cimmichIdentityAuditEvidenceExpanded.includes(faceId)
+      ? cimmichIdentityAuditEvidenceExpanded.filter((id) => id !== faceId)
+      : [...cimmichIdentityAuditEvidenceExpanded, faceId];
+  };
+
+  const cimmichAuditSelected = (faceId: string) => cimmichIdentityAuditSelection.includes(faceId);
+
+  const toggleCimmichAuditSelection = (faceId: string) => {
+    const item = cimmichIdentityAuditItems.find((candidate) => candidate.faceId === faceId);
+    const sameQueueSelection = item
+      ? cimmichIdentityAuditSelection.filter((selectedFaceId) =>
+          cimmichIdentityAuditItems.some(
+            (candidate) => candidate.faceId === selectedFaceId && candidate.kind === item.kind,
+          ),
+        )
+      : cimmichIdentityAuditSelection;
+    cimmichIdentityAuditSelection = cimmichAuditSelected(faceId)
+      ? sameQueueSelection.filter((id) => id !== faceId)
+      : [...sameQueueSelection, faceId];
+    cimmichIdentityAuditConfirmAction = '';
+  };
+
+  const cimmichAuditSelectionCount = (kind: CimmichIdentityAuditItem['kind']) =>
+    cimmichIdentityAuditItems.filter(
+      (item) => item.kind === kind && cimmichIdentityAuditSelection.includes(item.faceId),
+    ).length;
+
+  const selectShownCimmichAuditItems = (kind: CimmichIdentityAuditItem['kind'], items: CimmichIdentityAuditItem[]) => {
+    const sectionId = `identity-audit:${kind}`;
+    cimmichIdentityAuditSelection = items.slice(0, cimmichIdentitySectionLimit(sectionId)).map(({ faceId }) => faceId);
+    cimmichIdentityAuditConfirmAction = '';
+  };
+
+  const clearCimmichAuditSelection = () => {
+    cimmichIdentityAuditSelection = [];
+    cimmichIdentityAuditConfirmAction = '';
+  };
+
+  const loadCimmichIdentityAuditQueues = async (personId: string) => {
+    const [untaggedAudit, contradictionAudit] = await Promise.all([
+      getCimmichIdentityAuditItems('untagged_match', 0, 50, personId),
+      getCimmichIdentityAuditItems('accepted_contradiction', 0, 50, personId),
+    ]);
+    cimmichIdentityAuditItems = [...untaggedAudit.items, ...contradictionAudit.items];
+    cimmichIdentityAuditTotals = {
+      accepted_contradiction: contradictionAudit.total,
+      untagged_match: untaggedAudit.total,
+    };
+  };
+
+  const showMoreCimmichIdentityAudit = async (
+    kind: CimmichIdentityAuditItem['kind'],
+    loadedItems: CimmichIdentityAuditItem[],
+    total: number,
+  ) => {
+    if (!cimmichPerson || cimmichIdentityAuditLoadingKind) {
+      return;
+    }
+    const sectionId = `identity-audit:${kind}`;
+    const nextLimit = cimmichIdentitySectionLimit(sectionId) + 20;
+    if (nextLimit > loadedItems.length && loadedItems.length < total) {
+      cimmichIdentityAuditLoadingKind = kind;
+      try {
+        const page = await getCimmichIdentityAuditItems(
+          kind,
+          loadedItems.length,
+          Math.min(50, total - loadedItems.length),
+          cimmichPerson.person_id,
+        );
+        const seen = new Set(cimmichIdentityAuditItems.map((item) => `${item.kind}:${item.faceId}`));
+        cimmichIdentityAuditItems = [
+          ...cimmichIdentityAuditItems,
+          ...page.items.filter((item) => !seen.has(`${item.kind}:${item.faceId}`)),
+        ];
+        cimmichIdentityAuditTotals = { ...cimmichIdentityAuditTotals, [kind]: page.total };
+      } catch (error) {
+        cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load more identity checks';
+        return;
+      } finally {
+        cimmichIdentityAuditLoadingKind = '';
+      }
+    }
+    cimmichIdentitySectionLimits = {
+      ...cimmichIdentitySectionLimits,
+      [sectionId]: nextLimit,
+    };
+  };
+
+  const toggleMachineSuggestion = (faceId: string) => {
+    cimmichMachineSuggestionSelection = machineSuggestionSelected(faceId)
+      ? cimmichMachineSuggestionSelection.filter((id) => id !== faceId)
+      : [...cimmichMachineSuggestionSelection, faceId];
+    cimmichMachineSuggestionConfirm = false;
+  };
+
+  const selectAllMachineSuggestions = () => {
+    cimmichMachineSuggestionSelection = visibleCimmichMachineSuggestions.map((suggestion) => suggestion.face_id);
+    cimmichMachineSuggestionConfirm = false;
   };
 
   const resetCimmichAssetsPagination = async (personId: string, generation = personProjectionGeneration) => {
@@ -1258,12 +1606,50 @@
     }
   };
 
+  const loadMoreCimmichIdentityFaces = async () => {
+    if (!cimmichPerson || !cimmichIdentityNextCursor || cimmichIdentityFacesLoadingMore) {
+      return;
+    }
+    const personId = cimmichPerson.person_id;
+    const generation = personProjectionGeneration;
+    const cursor = cimmichIdentityNextCursor;
+    cimmichIdentityFacesLoadingMore = true;
+    cimmichIdentityError = '';
+    try {
+      const page = await getCimmichIdentityFacesPage(personId, 120, cursor);
+      if (generation !== personProjectionGeneration) {
+        return;
+      }
+      const seen = new Set(cimmichIdentityFaces.map(({ face_id }) => face_id));
+      cimmichIdentityFaces = [...cimmichIdentityFaces, ...page.items.filter(({ face_id }) => !seen.has(face_id))];
+      cimmichIdentityFaceSummary = page.summary;
+      cimmichIdentityNextCursor = page.nextCursor;
+    } catch (error) {
+      if (error instanceof CimmichServiceError && error.code === 'PERSON_PAGE_CURSOR_INVALID') {
+        const page = await getCimmichIdentityFacesPage(personId, 120);
+        if (generation === personProjectionGeneration) {
+          cimmichIdentityFaces = page.items;
+          cimmichIdentityFaceSummary = page.summary;
+          cimmichIdentityNextCursor = page.nextCursor;
+          cimmichIdentityError = 'Identity evidence changed. Loaded the latest results.';
+        }
+      } else {
+        cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load more identity evidence';
+      }
+    } finally {
+      if (generation === personProjectionGeneration) {
+        cimmichIdentityFacesLoadingMore = false;
+      }
+    }
+  };
+
   const acceptSelectedCandidates = async () => {
     if (!cimmichPerson || cimmichCandidateSelection.length === 0) {
       return;
     }
     if (!cimmichCandidateConfirm) {
       cimmichCandidateConfirm = true;
+      cimmichCandidateRejectConfirm = false;
       return;
     }
     const personId = cimmichPerson.person_id;
@@ -1275,6 +1661,7 @@
       cimmichCandidateMessage = `${result.acceptedCount} ${result.acceptedCount === 1 ? 'face' : 'faces'} accepted.`;
       cimmichCandidateSelection = [];
       cimmichCandidateConfirm = false;
+      cimmichCandidateRejectConfirm = false;
       const [candidates, assetsPage, people] = await Promise.all([
         getCimmichPersonCandidates(personId),
         getCimmichPersonAssetsPage(personId, 120),
@@ -1285,6 +1672,7 @@
       cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichIdentityLoaded = false;
       cimmichIdentityFaces = [];
+      cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
       cimmichIdentityNextCursor = null;
       cimmichHoldingMatches = {};
       cimmichHoldingMatchesLoading = {};
@@ -1304,7 +1692,9 @@
     if (!cimmichPerson || cimmichCandidateSelection.length === 0) {
       return;
     }
-    if (!globalThis.confirm(`Reject ${cimmichCandidateSelection.length} selected identity suggestions?`)) {
+    if (!cimmichCandidateRejectConfirm) {
+      cimmichCandidateRejectConfirm = true;
+      cimmichCandidateConfirm = false;
       return;
     }
     cimmichCandidateSaving = true;
@@ -1313,11 +1703,283 @@
       await Promise.all(cimmichCandidateSelection.map((claimId) => decideCimmichIdentityCandidate(claimId, 'reject')));
       cimmichCandidates = await getCimmichPersonCandidates(cimmichPerson.person_id);
       cimmichCandidateSelection = [];
+      cimmichCandidateRejectConfirm = false;
       cimmichCandidateMessage = 'Selected suggestions rejected.';
     } catch (error) {
+      cimmichCandidateRejectConfirm = false;
       cimmichCandidateError = error instanceof Error ? error.message : 'Unable to reject selected suggestions';
     } finally {
       cimmichCandidateSaving = false;
+    }
+  };
+
+  const confirmSelectedMachineSuggestions = async () => {
+    if (!cimmichPerson || cimmichMachineSuggestionSelection.length === 0) {
+      return;
+    }
+    if (!cimmichMachineSuggestionConfirm) {
+      cimmichMachineSuggestionConfirm = true;
+      return;
+    }
+    const generation = personProjectionGeneration;
+    const personId = cimmichPerson.person_id;
+    const selectedFaceIds = [...cimmichMachineSuggestionSelection];
+    cimmichMachineSuggestionSaving = true;
+    cimmichCandidateError = '';
+    cimmichCandidateMessage = '';
+    try {
+      for (const faceId of selectedFaceIds) {
+        await acceptCimmichMachineSuggestion(faceId, personId);
+      }
+      const [machineSuggestions, candidates, assetsPage, people] = await Promise.all([
+        getCimmichMachineSuggestions(80, personId),
+        getCimmichPersonCandidates(personId),
+        getCimmichPersonAssetsPage(personId, 120),
+        getCimmichPeople(500),
+      ]);
+      if (generation !== personProjectionGeneration) {
+        return;
+      }
+      cimmichMachineSuggestions = machineSuggestions;
+      cimmichCandidates = candidates;
+      cimmichAssets = assetsPage.items;
+      cimmichAssetsNextCursor = assetsPage.nextCursor;
+      cimmichMachineSuggestionSelection = [];
+      cimmichMachineSuggestionConfirm = false;
+      cimmichCandidateMessage = `${selectedFaceIds.length} matching ${selectedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} confirmed as ${cimmichPerson.display_name}.`;
+      cimmichIdentityLoaded = false;
+      cimmichIdentityFaces = [];
+      cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
+      cimmichIdentityNextCursor = null;
+      cimmichHoldingMatches = {};
+      cimmichHoldingMatchesLoading = {};
+      const refreshed = people.find((row) => row.person_id === personId);
+      if (refreshed) {
+        cimmichPerson = refreshed;
+      }
+      await openCimmichIdentity(generation);
+      cimmichIdentityFilter = 'candidates';
+    } catch (error) {
+      cimmichMachineSuggestionConfirm = false;
+      cimmichCandidateError = error instanceof Error ? error.message : 'Unable to confirm the matching suggestions';
+    } finally {
+      if (generation === personProjectionGeneration) {
+        cimmichMachineSuggestionSaving = false;
+      }
+    }
+  };
+
+  const loadCimmichAuditMatches = async (item: CimmichIdentityAuditItem) => {
+    if (cimmichIdentityAuditMatches[item.faceId] || cimmichIdentityAuditMatchesLoading[item.faceId]) {
+      return;
+    }
+    cimmichIdentityAuditMatchesLoading = { ...cimmichIdentityAuditMatchesLoading, [item.faceId]: true };
+    try {
+      cimmichIdentityAuditMatches = {
+        ...cimmichIdentityAuditMatches,
+        [item.faceId]: await getCimmichFaceMatches(item.faceId, 5),
+      };
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load the closest People';
+    } finally {
+      cimmichIdentityAuditMatchesLoading = { ...cimmichIdentityAuditMatchesLoading, [item.faceId]: false };
+    }
+  };
+
+  const cimmichAuditTargetPersonId = (item: CimmichIdentityAuditItem) =>
+    cimmichIdentityAuditTargetPersonIds[item.faceId] === undefined
+      ? item.suggestedPerson.personId
+      : cimmichIdentityAuditTargetPersonIds[item.faceId];
+
+  const cimmichAuditAlternativeMatches = (item: CimmichIdentityAuditItem) => {
+    const matches = cimmichIdentityAuditMatches[item.faceId] ?? [];
+    return matches.filter(
+      ({ person_id }, index) =>
+        person_id !== item.suggestedPerson.personId &&
+        matches.findIndex((candidate) => candidate.person_id === person_id) === index,
+    );
+  };
+  const cimmichAuditPersonSearchResults = (item: CimmichIdentityAuditItem) => {
+    const query = (cimmichIdentityAuditChangeQueries[item.faceId] ?? '').trim().toLocaleLowerCase();
+    if (!query) {
+      return [];
+    }
+    return cimmichSetupPeople
+      .filter(
+        (person) =>
+          person.subject_kind === 'person' &&
+          person.person_id !== cimmichPerson?.person_id &&
+          [person.display_name, ...person.aliases].join(' ').toLocaleLowerCase().includes(query),
+      )
+      .slice(0, 5);
+  };
+
+  const finishCimmichAuditDecision = (item: CimmichIdentityAuditItem) => {
+    if (!cimmichPerson) {
+      return;
+    }
+    cimmichIdentityAuditItems = cimmichIdentityAuditItems.filter(({ faceId }) => faceId !== item.faceId);
+    cimmichIdentityAuditTotals = {
+      ...cimmichIdentityAuditTotals,
+      [item.kind]: Math.max(0, cimmichIdentityAuditTotals[item.kind] - 1),
+    };
+    cimmichIdentityAuditSelection = cimmichIdentityAuditSelection.filter((faceId) => faceId !== item.faceId);
+    cimmichIdentityAuditTargetPersonIds = Object.fromEntries(
+      Object.entries(cimmichIdentityAuditTargetPersonIds).filter(([faceId]) => faceId !== item.faceId),
+    );
+    cimmichIdentityAuditChangeFaceId =
+      cimmichIdentityAuditChangeFaceId === item.faceId ? '' : cimmichIdentityAuditChangeFaceId;
+    cimmichIdentityAuditChangeQueries = Object.fromEntries(
+      Object.entries(cimmichIdentityAuditChangeQueries).filter(([faceId]) => faceId !== item.faceId),
+    );
+    void Promise.all([
+      refreshCimmichIdentityAfterReview(),
+      loadCimmichIdentityAuditQueues(cimmichPerson.person_id),
+    ]).catch((error) => {
+      cimmichIdentityError =
+        error instanceof Error ? error.message : 'Saved the decision, but could not refresh the review queue';
+    });
+  };
+
+  const confirmCimmichAuditPerson = async (item: CimmichIdentityAuditItem, markAsHead = false) => {
+    if (!cimmichPerson || cimmichIdentityAuditSavingId) {
+      return;
+    }
+    if (markAsHead && item.kind !== 'accepted_contradiction') {
+      return;
+    }
+    const personId = cimmichPerson.person_id;
+    const personName = cimmichPerson.display_name;
+    cimmichIdentityAuditSavingId = `${markAsHead ? 'head' : 'confirm'}:${item.faceId}`;
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      await (item.assignedPerson?.personId === personId
+        ? dismissCimmichIdentityAuditItem(item.kind, item.faceId)
+        : acceptCimmichMachineSuggestion(item.faceId, personId));
+      if (markAsHead) {
+        await setCimmichFaceBucket(personId, item.faceId, 'head');
+      }
+      cimmichIdentityMessage = markAsHead
+        ? `Confirmed this as ${personName} and marked it as Head evidence.`
+        : `Confirmed this face as ${personName}.`;
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this identity decision';
+    } finally {
+      cimmichIdentityAuditSavingId = '';
+    }
+  };
+
+  const changeCimmichAuditPerson = async (item: CimmichIdentityAuditItem) => {
+    if (!cimmichPerson || cimmichIdentityAuditSavingId) {
+      return;
+    }
+    const targetPersonId = cimmichAuditTargetPersonId(item);
+    const target =
+      cimmichIdentityAuditMatches[item.faceId]?.find(({ person_id }) => person_id === targetPersonId) ??
+      cimmichSetupPeople.find(({ person_id }) => person_id === targetPersonId) ??
+      (targetPersonId === item.suggestedPerson.personId
+        ? {
+            display_name: item.suggestedPerson.displayName,
+          }
+        : undefined);
+    if (!targetPersonId || !target) {
+      cimmichIdentityError = 'Choose one of the closest People before changing this identity.';
+      return;
+    }
+    cimmichIdentityAuditSavingId = `change:${item.faceId}`;
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      await (item.assignedPerson?.personId === targetPersonId
+        ? dismissCimmichIdentityAuditItem(item.kind, item.faceId)
+        : acceptCimmichMachineSuggestion(item.faceId, targetPersonId));
+      cimmichIdentityMessage = `Changed this face to ${target.display_name}.`;
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to change this identity';
+    } finally {
+      cimmichIdentityAuditSavingId = '';
+    }
+  };
+
+  const decideSelectedCimmichAuditItems = async (
+    kind: CimmichIdentityAuditItem['kind'],
+    action: 'accept' | 'dismiss',
+  ) => {
+    const selectedItems = cimmichIdentityAuditItems.filter(
+      (item) => item.kind === kind && cimmichIdentityAuditSelection.includes(item.faceId),
+    );
+    if (!cimmichPerson || selectedItems.length === 0 || cimmichIdentityAuditSavingId) {
+      return;
+    }
+    if (cimmichIdentityAuditConfirmAction !== action) {
+      cimmichIdentityAuditConfirmAction = action;
+      return;
+    }
+    cimmichIdentityAuditConfirmAction = '';
+    cimmichIdentityAuditSavingId = `bulk:${action}`;
+    cimmichIdentityAuditProgress = { completed: 0, total: selectedItems.length };
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    const completedFaceIds: string[] = [];
+    try {
+      for (const item of selectedItems) {
+        await (action === 'accept'
+          ? acceptCimmichMachineSuggestion(item.faceId, item.suggestedPerson.personId)
+          : dismissCimmichIdentityAuditItem(item.kind, item.faceId));
+        completedFaceIds.push(item.faceId);
+        cimmichIdentityAuditProgress = {
+          completed: completedFaceIds.length,
+          total: selectedItems.length,
+        };
+      }
+      cimmichIdentityMessage =
+        action === 'accept'
+          ? `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'match' : 'matches'} confirmed.`
+          : `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} dismissed.`;
+      if (action === 'accept') {
+        await refreshCimmichIdentityAfterReview();
+      }
+    } catch (error) {
+      cimmichIdentityError =
+        error instanceof Error ? error.message : 'Unable to finish the selected identity decisions';
+    } finally {
+      if (completedFaceIds.length > 0) {
+        try {
+          await loadCimmichIdentityAuditQueues(cimmichPerson.person_id);
+        } catch (error) {
+          cimmichIdentityError ||= error instanceof Error ? error.message : 'Unable to refresh identity checks';
+        }
+      }
+      cimmichIdentityAuditSelection = cimmichIdentityAuditSelection.filter(
+        (faceId) => !completedFaceIds.includes(faceId),
+      );
+      cimmichIdentityAuditConfirmAction = '';
+      cimmichIdentityAuditProgress = { completed: 0, total: 0 };
+      cimmichIdentityAuditSavingId = '';
+    }
+  };
+
+  const refreshCimmichIdentityAfterReview = async () => {
+    if (!cimmichPerson) {
+      return;
+    }
+    const generation = personProjectionGeneration;
+    const [page, row] = await Promise.all([
+      getCimmichIdentityFacesPage(cimmichPerson.person_id, 120),
+      getCimmichPersonByName(data.personName, data.personId),
+    ]);
+    if (generation !== personProjectionGeneration) {
+      return;
+    }
+    cimmichIdentityFaces = page.items;
+    cimmichIdentityFaceSummary = page.summary;
+    cimmichIdentityNextCursor = page.nextCursor;
+    cimmichIdentityLoaded = true;
+    if (row) {
+      cimmichPerson = row;
     }
   };
 
@@ -1335,6 +1997,7 @@
       return;
     }
     cimmichIdentityFaces = page.items;
+    cimmichIdentityFaceSummary = page.summary;
     cimmichIdentityNextCursor = page.nextCursor;
     cimmichIdentityLoaded = true;
     cimmichIdentityCorrections = corrections.items;
@@ -1422,21 +2085,42 @@
     cimmichIdentityError = '';
     try {
       const personId = cimmichPerson.person_id;
-      const [faces, assets, candidates, presentation] = await Promise.all([
-        getCimmichIdentityFaces(personId, 5000),
-        getCimmichPersonAssets(personId, 5000),
+      const [facesPage, assetsPage, candidates, presentation, untaggedAudit, contradictionAudit] = await Promise.all([
+        getCimmichIdentityFacesPage(personId, 120),
+        getCimmichPersonAssetsPage(personId, 120),
         getCimmichPersonCandidates(personId),
         getCimmichPersonPresentation(personId),
+        getCimmichIdentityAuditItems('untagged_match', 0, 50, personId),
+        getCimmichIdentityAuditItems('accepted_contradiction', 0, 50, personId),
       ]);
+      const machineSuggestions =
+        untaggedAudit.run?.state === 'completed' ? [] : await getCimmichMachineSuggestions(80, personId);
       if (generation !== personProjectionGeneration) {
         return;
       }
-      cimmichIdentityFaces = faces;
-      cimmichIdentityNextCursor = null;
+      cimmichIdentityFaces = facesPage.items;
+      cimmichIdentityFaceSummary = facesPage.summary;
+      cimmichIdentityNextCursor = facesPage.nextCursor;
       cimmichIdentityLoaded = true;
-      cimmichAssets = assets;
-      cimmichAssetsNextCursor = null;
+      cimmichAssets = assetsPage.items;
+      cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichCandidates = candidates;
+      cimmichMachineSuggestions = machineSuggestions;
+      cimmichIdentityAuditItems = [...untaggedAudit.items, ...contradictionAudit.items];
+      cimmichIdentityAuditTotals = {
+        accepted_contradiction: contradictionAudit.total,
+        untagged_match: untaggedAudit.total,
+      };
+      cimmichIdentityAuditEvidenceExpanded = [];
+      cimmichIdentityAuditSelection = [];
+      cimmichIdentityAuditConfirmAction = '';
+      cimmichIdentityAuditMatches = {};
+      cimmichIdentityAuditMatchesLoading = {};
+      cimmichIdentityAuditTargetPersonIds = {};
+      cimmichIdentityAuditChangeFaceId = '';
+      cimmichIdentityAuditChangeQueries = {};
+      cimmichMachineSuggestionSelection = [];
+      cimmichMachineSuggestionConfirm = false;
       cimmichPresentation = presentation;
       syncCimmichPresentationFrames(presentation);
       cimmichIdentitySectionLimits = {};
@@ -1485,7 +2169,25 @@
     cimmichIdentityLoaded = false;
     cimmichIdentityLoading = false;
     cimmichIdentityFaces = [];
+    cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
     cimmichIdentityNextCursor = null;
+    cimmichMachineSuggestions = [];
+    cimmichIdentityAuditItems = [];
+    cimmichIdentityAuditTotals = { accepted_contradiction: 0, untagged_match: 0 };
+    cimmichIdentityAuditLoadingKind = '';
+    cimmichIdentityAuditEvidenceExpanded = [];
+    cimmichIdentityAuditSelection = [];
+    cimmichIdentityAuditConfirmAction = '';
+    cimmichIdentityAuditMatches = {};
+    cimmichIdentityAuditMatchesLoading = {};
+    cimmichIdentityAuditTargetPersonIds = {};
+    cimmichIdentityAuditChangeFaceId = '';
+    cimmichIdentityAuditChangeQueries = {};
+    cimmichIdentityAuditSavingId = '';
+    cimmichMachineSuggestionSelection = [];
+    cimmichMachineSuggestionConfirm = false;
+    cimmichCandidateRejectConfirm = false;
+    cimmichMachineSuggestionSaving = false;
     cimmichHoldingMatches = {};
     cimmichHoldingMatchesLoading = {};
     if (cimmichPerson.subject_kind === 'person') {
@@ -1653,7 +2355,7 @@
     face: CimmichIdentityFace,
     bucketKind: 'head' | 'lq' | 'prime' | 'secondary' | null,
   ) => {
-    if (!cimmichPerson || cimmichMainBucket(face) === bucketKind) {
+    if (!cimmichPerson || cimmichMatchingBucket(face) === bucketKind) {
       return;
     }
     cimmichIdentitySavingId = `face:${face.face_id}`;
@@ -1665,6 +2367,36 @@
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to update face bucket';
     } finally {
       cimmichIdentitySavingId = '';
+    }
+  };
+
+  const rescanCimmichHeads = async () => {
+    if (!cimmichPerson || cimmichHeadRescanSaving) {
+      return;
+    }
+    cimmichHeadRescanSaving = true;
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      const result = await rescanCimmichHeadEvidence(cimmichPerson.person_id);
+      if (result.totalCount === 0) {
+        cimmichIdentityMessage = 'There are no Head references to rescan.';
+      } else if (result.movedCount === 0) {
+        cimmichIdentityMessage = `Checked ${result.totalCount.toLocaleString()} Head ${result.totalCount === 1 ? 'reference' : 'references'}. None yet match ${cimmichPerson.display_name} strongly enough to re-enter matching evidence.`;
+      } else {
+        const destinations = [
+          result.tierCounts.prime ? `${result.tierCounts.prime} Core` : '',
+          result.tierCounts.secondary ? `${result.tierCounts.secondary} Supporting` : '',
+          result.tierCounts.lq ? `${result.tierCounts.lq} Low quality` : '',
+        ].filter(Boolean);
+        cimmichIdentityMessage = `Rescanned ${result.totalCount.toLocaleString()} Head ${result.totalCount === 1 ? 'reference' : 'references'} and moved ${result.movedCount.toLocaleString()} to ${destinations.join(', ')}.`;
+      }
+      await refreshCimmichIdentityAfterReview();
+      await loadCimmichIdentityBucket('head');
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to rescan Head evidence';
+    } finally {
+      cimmichHeadRescanSaving = false;
     }
   };
 
@@ -1933,6 +2665,10 @@
       cimmichPerson = row;
       const assetsPromise = getCimmichPersonAssetsPage(row.person_id, 120);
       const peoplePromise = getCimmichPeople(500);
+      const machineSuggestionsPromise =
+        row.subject_kind === 'person'
+          ? getCimmichMachineSuggestions(80, row.person_id).catch(() => [])
+          : Promise.resolve([]);
       const correctionsPromise = getCimmichIdentityCorrectionDiscovery({ personId: row.person_id }, { limit: 12 });
       const presentationPromise =
         row.subject_kind === 'person'
@@ -1957,15 +2693,23 @@
               return null;
             })
           : Promise.resolve(null);
-      const [assetsPage, profileProjection, corrections, personVisibility, setupPeople, presentation] =
-        await Promise.all([
-          assetsPromise,
-          profilePromise,
-          correctionsPromise,
-          visibilityPromise,
-          peoplePromise,
-          presentationPromise,
-        ]);
+      const [
+        assetsPage,
+        profileProjection,
+        corrections,
+        personVisibility,
+        setupPeople,
+        presentation,
+        machineSuggestions,
+      ] = await Promise.all([
+        assetsPromise,
+        profilePromise,
+        correctionsPromise,
+        visibilityPromise,
+        peoplePromise,
+        presentationPromise,
+        machineSuggestionsPromise,
+      ]);
       if (generation !== personProjectionGeneration) {
         return;
       }
@@ -1974,6 +2718,7 @@
         return;
       }
       cimmichAssets = assetsPage.items;
+      cimmichMachineSuggestions = machineSuggestions;
       cimmichSetupPeople = setupPeople;
       cimmichPeopleConnections = peopleConnections;
       cimmichAssetsNextCursor = assetsPage.nextCursor;
@@ -2017,6 +2762,7 @@
     cimmichIdentityLoaded = false;
     cimmichIdentityLoading = false;
     cimmichIdentityFaces = [];
+    cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
     cimmichIdentityNextCursor = null;
     cimmichHoldingMatches = {};
     cimmichHoldingMatchesLoading = {};
@@ -2046,6 +2792,8 @@
     });
   });
 </script>
+
+<svelte:window onresize={updateCimmichTabsOverflow} />
 
 <UserPageLayout>
   <div class="mx-auto flex w-full max-w-7xl flex-col gap-3 p-4 text-immich-fg sm:p-5 dark:text-immich-dark-fg">
@@ -2208,129 +2956,160 @@
         </div>
       </section>
 
-      <div class="min-w-0 overflow-x-auto border-b border-gray-200 dark:border-immich-dark-gray">
-        <div class="flex min-w-max items-stretch sm:min-w-full">
-          <div class="flex shrink-0" role="tablist" aria-label="Person content">
-            <button
-              class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-              type="button"
-              role="tab"
-              aria-selected={cimmichMode === 'photos'}
-              onclick={() => (cimmichMode = 'photos')}
-            >
-              Photos
-              <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray"
-                >{cimmichPerson.asset_count.toLocaleString()}</span
-              >
-            </button>
-            {#if cimmichPerson.subject_kind === 'person'}
+      <div class="relative min-w-0 border-b border-gray-200 dark:border-immich-dark-gray">
+        <div
+          class="min-w-0 overflow-x-auto"
+          class:mr-20={cimmichTabsCanScrollRight}
+          bind:this={cimmichTabsScroller}
+          onscroll={updateCimmichTabsOverflow}
+        >
+          <div class="flex min-w-max items-stretch sm:min-w-full">
+            <div class="flex shrink-0" role="tablist" aria-label="Person content">
               <button
-                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                data-person-tab="photos"
                 type="button"
                 role="tab"
-                aria-selected={cimmichMode === 'details'}
-                onclick={openCimmichDetails}
+                aria-selected={cimmichMode === 'photos'}
+                onclick={() => (cimmichMode = 'photos')}
               >
-                Details
+                Photos
+                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray"
+                  >{cimmichPerson.asset_count.toLocaleString()}</span
+                >
               </button>
+              {#if cimmichPerson.subject_kind === 'person'}
+                <button
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  data-person-tab="details"
+                  type="button"
+                  role="tab"
+                  aria-selected={cimmichMode === 'details'}
+                  onclick={openCimmichDetails}
+                >
+                  Details
+                </button>
+                <button
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'connections' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  data-person-tab="connections"
+                  type="button"
+                  role="tab"
+                  aria-selected={cimmichMode === 'connections'}
+                  onclick={() => (cimmichMode = 'connections')}
+                >
+                  Connections
+                  {#if cimmichPeopleConnections.length + cimmichPersonConnections.length > 0}
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray">
+                      {(cimmichPeopleConnections.length + cimmichPersonConnections.length).toLocaleString()}
+                    </span>
+                  {/if}
+                </button>
+              {/if}
               <button
-                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'connections' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'identity' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                data-person-tab="identity"
                 type="button"
                 role="tab"
-                aria-selected={cimmichMode === 'connections'}
-                onclick={() => (cimmichMode = 'connections')}
+                aria-selected={cimmichMode === 'identity'}
+                onclick={() => void openCimmichIdentity()}
               >
-                Connections
-                {#if cimmichPeopleConnections.length + cimmichPersonConnections.length > 0}
-                  <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray">
-                    {(cimmichPeopleConnections.length + cimmichPersonConnections.length).toLocaleString()}
+                Identity
+                {#if cimmichNewMatchCount > 0}
+                  <span
+                    class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+                  >
+                    {cimmichNewMatchCount.toLocaleString()} new
+                  </span>
+                {/if}
+                {#if cimmichPossibleMistagCount > 0}
+                  <span
+                    class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-950 dark:text-red-200"
+                  >
+                    {cimmichPossibleMistagCount.toLocaleString()} mistags
                   </span>
                 {/if}
               </button>
-            {/if}
-            <button
-              class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'identity' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-              type="button"
-              role="tab"
-              aria-selected={cimmichMode === 'identity'}
-              onclick={() => void openCimmichIdentity()}
-            >
-              Identity
-              {#if cimmichPerson.candidate_faces > 0}
-                <span
-                  class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-                >
-                  {cimmichPerson.candidate_faces.toLocaleString()}
-                </span>
-              {/if}
-            </button>
-            <button
-              class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-              type="button"
-              role="tab"
-              aria-selected={cimmichMode === 'documents'}
-              onclick={() => (cimmichMode = 'documents')}
-            >
-              Documents
-            </button>
-          </div>
-
-          {#if cimmichMode === 'photos'}
-            <div class="my-2 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></div>
-            <div
-              class="ml-auto flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
-              aria-label="Photo view options"
-            >
-              <label
-                class="relative inline-flex size-10 cursor-pointer items-center justify-center text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-                title="Sort photos"
+              <button
+                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                data-person-tab="documents"
+                type="button"
+                role="tab"
+                aria-selected={cimmichMode === 'documents'}
+                onclick={() => (cimmichMode = 'documents')}
               >
-                <Icon icon={mdiSortVariant} size="19" />
-                <select
-                  class="absolute inset-0 size-full cursor-pointer opacity-0"
-                  bind:value={cimmichPhotoSort}
-                  aria-label="Sort photos"
-                >
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                  <option value="filename">Filename</option>
-                </select>
-              </label>
-              <label
-                class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-                title="Group photos"
-              >
-                <Icon icon={mdiGroup} size="19" />
-                <select
-                  class="absolute inset-0 size-full cursor-pointer opacity-0"
-                  bind:value={cimmichPhotoGroup}
-                  aria-label="Group photos"
-                >
-                  <option value="none">No grouping</option>
-                  <option value="year">Year</option>
-                  <option value="place">Place</option>
-                  <option value="event">Event</option>
-                  <option value="object">Thing</option>
-                </select>
-              </label>
-              <label
-                class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-                title="Thumbnail size"
-              >
-                <Icon icon={mdiViewGridOutline} size="19" />
-                <select
-                  class="absolute inset-0 size-full cursor-pointer opacity-0"
-                  bind:value={cimmichPhotoSize}
-                  aria-label="Thumbnail size"
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </label>
+                Documents
+              </button>
             </div>
-          {/if}
+
+            {#if cimmichMode === 'photos'}
+              <div class="my-2 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></div>
+              <div
+                class="ml-auto flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+                aria-label="Photo view options"
+              >
+                <label
+                  class="relative inline-flex size-10 cursor-pointer items-center justify-center text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title="Sort photos"
+                >
+                  <Icon icon={mdiSortVariant} size="19" />
+                  <select
+                    class="absolute inset-0 size-full cursor-pointer opacity-0"
+                    bind:value={cimmichPhotoSort}
+                    aria-label="Sort photos"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="filename">Filename</option>
+                  </select>
+                </label>
+                <label
+                  class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title="Group photos"
+                >
+                  <Icon icon={mdiGroup} size="19" />
+                  <select
+                    class="absolute inset-0 size-full cursor-pointer opacity-0"
+                    bind:value={cimmichPhotoGroup}
+                    aria-label="Group photos"
+                  >
+                    <option value="none">No grouping</option>
+                    <option value="year">Year</option>
+                    <option value="place">Place</option>
+                    <option value="event">Event</option>
+                    <option value="object">Thing</option>
+                  </select>
+                </label>
+                <label
+                  class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title="Thumbnail size"
+                >
+                  <Icon icon={mdiViewGridOutline} size="19" />
+                  <select
+                    class="absolute inset-0 size-full cursor-pointer opacity-0"
+                    bind:value={cimmichPhotoSize}
+                    aria-label="Thumbnail size"
+                  >
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                  </select>
+                </label>
+              </div>
+            {/if}
+          </div>
         </div>
+
+        {#if cimmichTabsCanScrollRight}
+          <button
+            class="absolute top-1/2 right-1 z-10 inline-flex min-h-9 -translate-y-1/2 items-center gap-1 rounded-full border border-gray-200 bg-white/95 px-2.5 text-xs font-semibold shadow-md backdrop-blur-sm sm:hidden dark:border-gray-700 dark:bg-immich-dark-bg/95"
+            type="button"
+            aria-label="Show more person sections"
+            onclick={scrollCimmichTabs}
+          >
+            More
+            <Icon icon={mdiChevronRight} size="17" />
+          </button>
+        {/if}
       </div>
 
       {#if cimmichMode === 'photos'}
@@ -2524,6 +3303,7 @@
                       cimmichCandidateReviewMode = option.id as PersonCandidateReviewMode;
                       cimmichCandidateSelection = [];
                       cimmichCandidateConfirm = false;
+                      cimmichCandidateRejectConfirm = false;
                     }}>{option.label}</button
                   >
                 {/each}
@@ -2543,6 +3323,7 @@
                   onclick={() => {
                     cimmichCandidateSelection = [];
                     cimmichCandidateConfirm = false;
+                    cimmichCandidateRejectConfirm = false;
                   }}
                   type="button"
                 >
@@ -2608,7 +3389,14 @@
                   ]}
                 >
                   <a
-                    href={candidate.sourceAssetId ? Route.viewAsset({ id: candidate.sourceAssetId }) : undefined}
+                    href={candidate.sourceAssetId
+                      ? Route.viewCimmichPersonAsset({
+                          id: candidate.sourceAssetId,
+                          overlay: 'people',
+                          personId: cimmichPerson.person_id,
+                          personName: cimmichPerson.display_name,
+                        })
+                      : undefined}
                     class="relative block aspect-4/5 overflow-hidden bg-gray-200 dark:bg-gray-800"
                     title={candidate.filename}
                   >
@@ -2752,28 +3540,46 @@
                           )?.label}
                   </p>
                   <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-                    {cimmichIdentityFilter === 'non_face'
-                      ? `${cimmichBodyPresenceAssets.length.toLocaleString()} loaded appearance${cimmichBodyPresenceAssets.length === 1 ? '' : 's'}`
+                    {cimmichIdentityFilter === 'body' || cimmichIdentityFilter === 'presence'
+                      ? `${cimmichSelectedAppearanceAssets.length.toLocaleString()} confirmed`
                       : cimmichIdentityFilter === 'presentation'
                         ? `${cimmichPresentationSelectionCount} of 3 selected`
                         : cimmichIdentityFilter === 'candidates'
-                          ? `${visibleCimmichCandidates.length.toLocaleString()} waiting`
+                          ? `${cimmichNewMatchCount.toLocaleString()} new matches · ${cimmichPossibleMistagCount.toLocaleString()} possible mistags`
                           : cimmichIdentityFilter === 'all'
-                            ? `${cimmichUnclassifiedFaces.length.toLocaleString()} accepted faces without a bucket`
+                            ? `${cimmichIdentityFaces.length.toLocaleString()} accepted Face observations`
                             : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
                   </p>
                 </div>
-                <p class="max-w-xl text-right text-xs text-gray-500 dark:text-gray-400">
-                  {cimmichIdentityFilter === 'non_face'
-                    ? 'Open an appearance to inspect Body or Presence. Manual Head tags remain on the photo.'
-                    : cimmichIdentityFilter === 'presentation'
-                      ? 'Drag each photo to frame it. Scroll or use the controls to zoom.'
-                      : cimmichIdentityFilter === 'candidates'
-                        ? 'Confirm or reject system suggestions in bulk.'
-                        : cimmichIdentityFilter === 'head'
-                          ? 'Face-derived Head references only; manual Head tags are not counted in this library.'
-                          : 'Open Review face to change its bucket, tags, identity, or display role.'}
-                </p>
+                <div class="flex max-w-xl flex-wrap items-center justify-end gap-2">
+                  <p class="text-left text-xs text-gray-500 sm:text-right dark:text-gray-400">
+                    {cimmichIdentityFilter === 'body'
+                      ? 'Body-only evidence is used when no usable Face or Head represents this person.'
+                      : cimmichIdentityFilter === 'presence'
+                        ? 'Presence records that the person is known to appear without usable Face, Head, or Body geometry.'
+                        : cimmichIdentityFilter === 'presentation'
+                          ? 'Drag each photo to frame it. Scroll or use the controls to zoom.'
+                          : cimmichIdentityFilter === 'candidates'
+                            ? 'Suggestions are evidence only. Nothing changes until you confirm.'
+                            : cimmichIdentityFilter === 'prime'
+                              ? 'Selected by the machinery to cover different appearances for matching; this is not a best-photo gallery.'
+                              : cimmichIdentityFilter === 'secondary'
+                                ? 'Accepted Face evidence outside Core. Cards distinguish evidence-only photos from guarded matcher references.'
+                                : cimmichIdentityFilter === 'head'
+                                  ? 'Faces retained as identity evidence but excluded from matching.'
+                                  : 'Audit what the machinery believes. Open Review face to correct its class, tags, identity, or display role.'}
+                  </p>
+                  {#if cimmichIdentityFilter === 'head'}
+                    <button
+                      class="min-h-9 shrink-0 rounded-md border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                      type="button"
+                      disabled={cimmichHeadRescanSaving || cimmichIdentityFaceSummary.head === 0}
+                      onclick={() => void rescanCimmichHeads()}
+                    >
+                      {cimmichHeadRescanSaving ? 'Rescanning…' : 'Rescan Heads'}
+                    </button>
+                  {/if}
+                </div>
               </div>
             {/if}
           </div>
@@ -2847,73 +3653,557 @@
           {#if cimmichIdentityLoading}
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
           {:else if cimmichIdentityFilter === 'candidates'}
-            <section class="grid gap-3" aria-labelledby="identity-backlog-heading">
-              <div class="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h3 id="identity-backlog-heading" class="text-lg font-semibold">Awaiting confirmation</h3>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    System-tagged faces waiting for an owner decision.
-                  </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <button
-                    class="rounded-md border px-3 py-2 text-sm font-semibold"
-                    type="button"
-                    onclick={selectAllCandidates}
-                  >
-                    Select shown
-                  </button>
-                  <button
-                    class="rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                    type="button"
-                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
-                    onclick={() => void acceptSelectedCandidates()}
-                    >{cimmichCandidateConfirm
-                      ? `Confirm accept ${cimmichCandidateSelection.length}`
-                      : `Accept selected (${cimmichCandidateSelection.length})`}</button
-                  >
-                  <button
-                    class="rounded-md border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
-                    type="button"
-                    disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
-                    onclick={() => void rejectSelectedCandidates()}>Reject selected</button
-                  >
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {#each visibleCimmichCandidates.slice(0, cimmichIdentitySectionLimit('candidates')) as candidate (candidate.identity_claim_id)}
-                  {@const selected = candidateSelected(candidate.identity_claim_id)}
-                  <article
+            <section class="grid gap-6" aria-label="Awaiting confirmation">
+              {#each cimmichIdentityAuditGroups as auditGroup (auditGroup.kind)}
+                {#if auditGroup.total > 0}
+                  <section
                     class={[
-                      'overflow-hidden rounded-lg border-2',
-                      selected ? 'border-primary' : 'border-gray-200 dark:border-immich-dark-gray',
+                      'grid gap-4 rounded-2xl border p-4',
+                      auditGroup.kind === 'untagged_match'
+                        ? 'border-violet-200 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/15'
+                        : 'border-gray-200 bg-gray-50/60 dark:border-immich-dark-gray dark:bg-immich-dark-gray/15',
                     ]}
+                    aria-labelledby={`${auditGroup.id}-heading`}
                   >
-                    <a
-                      href={candidate.sourceAssetId ? Route.viewAsset({ id: candidate.sourceAssetId }) : undefined}
-                      class="block aspect-4/5 bg-gray-200 bg-cover"
-                      style={cimmichCandidateCropStyle(candidate)}
-                      aria-label={`Review ${candidate.filename}`}
-                    ></a>
-                    <label class="flex min-h-11 cursor-pointer items-center gap-2 p-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onchange={() => toggleCandidate(candidate.identity_claim_id)}
-                      />
-                      <span class="min-w-0 truncate">{candidate.filename}</span>
-                    </label>
-                  </article>
-                {:else}
-                  <p class="col-span-full py-8 text-sm text-gray-500">No identity suggestions are waiting.</p>
-                {/each}
-              </div>
-              {#if visibleCimmichCandidates.length > cimmichIdentitySectionLimit('candidates')}
-                <button
-                  class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
-                  type="button"
-                  onclick={() => showMoreCimmichIdentitySection('candidates')}>Show 20 more</button
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                          <h4 id={`${auditGroup.id}-heading`} class="font-semibold">{auditGroup.title}</h4>
+                          <span
+                            class={[
+                              'rounded-full px-2 py-0.5 text-xs font-semibold',
+                              auditGroup.kind === 'untagged_match'
+                                ? 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100'
+                                : 'bg-gray-200 text-gray-700 dark:bg-immich-dark-gray dark:text-gray-200',
+                            ]}
+                          >
+                            {auditGroup.total.toLocaleString()}
+                          </span>
+                        </div>
+                        <p class="mt-0.5 max-w-2xl text-xs/5 text-gray-600 dark:text-gray-300">
+                          {auditGroup.description}
+                        </p>
+                      </div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          class="min-h-10 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold disabled:opacity-40 dark:border-gray-600"
+                          type="button"
+                          disabled={Boolean(cimmichIdentityAuditSavingId)}
+                          onclick={() => selectShownCimmichAuditItems(auditGroup.kind, auditGroup.items)}
+                          >Select shown</button
+                        >
+                        {#if cimmichAuditSelectionCount(auditGroup.kind) > 0}
+                          <button
+                            class="min-h-10 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold disabled:opacity-40 dark:border-gray-600"
+                            type="button"
+                            disabled={Boolean(cimmichIdentityAuditSavingId)}
+                            onclick={clearCimmichAuditSelection}>Clear</button
+                          >
+                          <button
+                            class={[
+                              'min-h-10 rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-40',
+                              cimmichIdentityAuditConfirmAction === 'accept' ? 'bg-amber-600' : 'bg-immich-primary',
+                            ]}
+                            type="button"
+                            disabled={Boolean(cimmichIdentityAuditSavingId)}
+                            onclick={() => void decideSelectedCimmichAuditItems(auditGroup.kind, 'accept')}
+                          >
+                            {cimmichIdentityAuditSavingId === 'bulk:accept'
+                              ? `Saving ${cimmichIdentityAuditProgress.completed} of ${cimmichIdentityAuditProgress.total}…`
+                              : cimmichIdentityAuditConfirmAction === 'accept'
+                                ? auditGroup.kind === 'untagged_match'
+                                  ? `Confirm ${cimmichAuditSelectionCount(auditGroup.kind)} as ${cimmichPerson.display_name}`
+                                  : `Move ${cimmichAuditSelectionCount(auditGroup.kind)} to suggested People`
+                                : auditGroup.kind === 'untagged_match'
+                                  ? `Confirm as ${cimmichPerson.display_name} (${cimmichAuditSelectionCount(auditGroup.kind)})`
+                                  : `Apply suggested changes (${cimmichAuditSelectionCount(auditGroup.kind)})`}
+                          </button>
+                          <button
+                            class={[
+                              'min-h-10 rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-40',
+                              cimmichIdentityAuditConfirmAction === 'dismiss'
+                                ? auditGroup.kind === 'untagged_match'
+                                  ? 'border-red-700 bg-red-700 text-white'
+                                  : 'border-gray-800 bg-gray-800 text-white dark:border-gray-200 dark:bg-gray-200 dark:text-gray-900'
+                                : auditGroup.kind === 'untagged_match'
+                                  ? 'border-red-300 text-red-700 dark:border-red-900 dark:text-red-300'
+                                  : 'border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-200',
+                            ]}
+                            type="button"
+                            disabled={Boolean(cimmichIdentityAuditSavingId)}
+                            onclick={() => void decideSelectedCimmichAuditItems(auditGroup.kind, 'dismiss')}
+                          >
+                            {cimmichIdentityAuditSavingId === 'bulk:dismiss'
+                              ? `Dismissing ${cimmichIdentityAuditProgress.completed} of ${cimmichIdentityAuditProgress.total}…`
+                              : cimmichIdentityAuditConfirmAction === 'dismiss'
+                                ? auditGroup.kind === 'untagged_match'
+                                  ? `Confirm not ${cimmichPerson.display_name}`
+                                  : `Keep ${cimmichAuditSelectionCount(auditGroup.kind)} current identities`
+                                : auditGroup.kind === 'untagged_match'
+                                  ? `Not ${cimmichPerson.display_name} (${cimmichAuditSelectionCount(auditGroup.kind)})`
+                                  : `Keep current identities (${cimmichAuditSelectionCount(auditGroup.kind)})`}
+                          </button>
+                        {/if}
+                        <a
+                          class="min-h-10 rounded-md px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30"
+                          href={Route.cimmichSteward()}>Open full review</a
+                        >
+                      </div>
+                    </div>
+                    <div class="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {#each auditGroup.items.slice(0, cimmichIdentitySectionLimit(`identity-audit:${auditGroup.kind}`)) as item (`${item.kind}:${item.faceId}`)}
+                        <article
+                          class={[
+                            'flex h-full min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm dark:bg-immich-dark-bg',
+                            cimmichAuditSelected(item.faceId)
+                              ? 'border-immich-primary'
+                              : 'border-gray-200 dark:border-immich-dark-gray',
+                          ]}
+                        >
+                          <div class="relative">
+                            <a
+                              href={item.sourceAssetId
+                                ? Route.viewCimmichPersonAsset({
+                                    id: item.sourceAssetId,
+                                    overlay: 'people',
+                                    personId: cimmichPerson.person_id,
+                                    personName: cimmichPerson.display_name,
+                                  })
+                                : undefined}
+                              class="block aspect-4/3 bg-gray-200 bg-cover"
+                              style={cimmichAuditCropStyle(item)}
+                              aria-label={`Open ${item.filename}`}
+                            ></a>
+                            <span
+                              class="pointer-events-none absolute border-2 border-dotted border-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"
+                              style={cimmichAuditFaceOutlineStyle(item)}
+                              aria-hidden="true"
+                            ></span>
+                            <span
+                              class="absolute bottom-2 left-2 rounded-sm bg-black/70 px-2 py-1 text-[11px] font-semibold text-white"
+                              >Photo to review</span
+                            >
+                            <label
+                              class="absolute top-2 right-2 grid size-10 cursor-pointer place-items-center rounded-full bg-black/70 shadow-sm"
+                            >
+                              <span class="sr-only">Select {item.filename}</span>
+                              <input
+                                class="size-5 accent-immich-primary"
+                                type="checkbox"
+                                checked={cimmichAuditSelected(item.faceId)}
+                                disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                onchange={() => toggleCimmichAuditSelection(item.faceId)}
+                              />
+                            </label>
+                          </div>
+                          <div class="flex min-w-0 flex-1 flex-col gap-3 p-3">
+                            <div class="min-w-0">
+                              <div class="flex flex-wrap items-center gap-2">
+                                <span
+                                  class="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-800 dark:bg-violet-900 dark:text-violet-100"
+                                >
+                                  {item.kind === 'untagged_match' ? 'Previously untagged' : 'Existing tag disputed'}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin.toFixed(2)} ahead of the next
+                                  person
+                                </span>
+                              </div>
+                              <p class="mt-2 line-clamp-2 min-w-0 text-sm/5 font-semibold break-all">{item.filename}</p>
+                              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {item.kind === 'accepted_contradiction'
+                                  ? `Currently ${item.assignedPerson?.displayName ?? 'another person'} · Matcher suggests ${item.suggestedPerson.displayName}`
+                                  : `Matcher suggests ${item.suggestedPerson.displayName}`}
+                              </p>
+                            </div>
+                            {#if item.suggestedPerson.reference}
+                              <button
+                                class="w-fit text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300"
+                                type="button"
+                                aria-expanded={cimmichIdentityAuditEvidenceExpanded.includes(item.faceId)}
+                                onclick={() => toggleCimmichAuditEvidence(item.faceId)}
+                              >
+                                {cimmichIdentityAuditEvidenceExpanded.includes(item.faceId)
+                                  ? 'Hide matching evidence'
+                                  : 'Why this match?'}
+                              </button>
+                              {#if cimmichIdentityAuditEvidenceExpanded.includes(item.faceId)}
+                                <div
+                                  class="grid grid-cols-[5rem_1fr] items-center gap-3 rounded-lg bg-violet-50 p-2 dark:bg-violet-950/30"
+                                >
+                                  <a
+                                    href={Route.viewAsset({ id: item.suggestedPerson.reference.sourceAssetId })}
+                                    class="block aspect-square rounded-md bg-gray-200 bg-cover"
+                                    style={cimmichAuditCropStyle(item.suggestedPerson.reference)}
+                                    aria-label={`Open confirmed reference for ${item.suggestedPerson.displayName}`}
+                                  ></a>
+                                  <p class="text-xs/5 text-gray-600 dark:text-gray-300">
+                                    Compared with a confirmed {item.suggestedPerson.displayName} photo.
+                                  </p>
+                                </div>
+                              {/if}
+                            {/if}
+                            <div class="mt-auto grid min-w-0 grid-cols-2 gap-2">
+                              <button
+                                class={[
+                                  'min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40',
+                                  item.kind === 'untagged_match' ? 'col-span-2' : '',
+                                ]}
+                                type="button"
+                                disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                onclick={() => void confirmCimmichAuditPerson(item)}
+                              >
+                                {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
+                                  ? 'Saving…'
+                                  : `Confirm ${cimmichPerson.display_name}`}
+                              </button>
+                              {#if item.kind === 'accepted_contradiction'}
+                                <button
+                                  class="min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
+                                  type="button"
+                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                  onclick={() => void confirmCimmichAuditPerson(item, true)}
+                                >
+                                  {cimmichIdentityAuditSavingId === `head:${item.faceId}` ? 'Saving…' : 'Mark as Head'}
+                                </button>
+                              {/if}
+                              <button
+                                class="col-span-2 min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+                                type="button"
+                                aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
+                                disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                onclick={() => {
+                                  const opening = cimmichIdentityAuditChangeFaceId !== item.faceId;
+                                  cimmichIdentityAuditChangeFaceId = opening ? item.faceId : '';
+                                  if (opening) {
+                                    if (item.kind === 'untagged_match') {
+                                      cimmichIdentityAuditTargetPersonIds = {
+                                        ...cimmichIdentityAuditTargetPersonIds,
+                                        [item.faceId]: '',
+                                      };
+                                      cimmichIdentityAuditChangeQueries = {
+                                        ...cimmichIdentityAuditChangeQueries,
+                                        [item.faceId]: '',
+                                      };
+                                    }
+                                    void loadCimmichAuditMatches(item);
+                                  }
+                                }}
+                              >
+                                {cimmichIdentityAuditChangeFaceId === item.faceId
+                                  ? 'Close change'
+                                  : item.kind === 'untagged_match'
+                                    ? `Not ${cimmichPerson.display_name}`
+                                    : 'Change to…'}
+                              </button>
+                              {#if cimmichIdentityAuditChangeFaceId === item.faceId}
+                                <div
+                                  class="col-span-2 grid min-w-0 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-black/10"
+                                >
+                                  <label class="grid min-w-0 gap-1 text-[11px] font-semibold text-gray-500">
+                                    Likely matches
+                                    <select
+                                      aria-label="Likely identity matches"
+                                      class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
+                                      value={cimmichAuditTargetPersonId(item)}
+                                      disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                      onchange={(event) => {
+                                        cimmichIdentityAuditTargetPersonIds = {
+                                          ...cimmichIdentityAuditTargetPersonIds,
+                                          [item.faceId]: event.currentTarget.value,
+                                        };
+                                        cimmichIdentityAuditChangeQueries = {
+                                          ...cimmichIdentityAuditChangeQueries,
+                                          [item.faceId]: '',
+                                        };
+                                      }}
+                                    >
+                                      {#if !cimmichAuditTargetPersonId(item)}
+                                        <option value="">Choose a person</option>
+                                      {/if}
+                                      {#if item.kind !== 'untagged_match'}
+                                        <option value={item.suggestedPerson.personId}>
+                                          {item.suggestedPerson.displayName} · likely match
+                                        </option>
+                                      {/if}
+                                      {#each cimmichAuditAlternativeMatches(item) as match (match.person_id)}
+                                        <option value={match.person_id}>
+                                          {match.display_name}{match.current_identity ? ' · current' : ''}
+                                        </option>
+                                      {/each}
+                                    </select>
+                                  </label>
+                                  <label class="grid min-w-0 gap-1 text-[11px] font-semibold text-gray-500">
+                                    Someone else
+                                    <input
+                                      class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
+                                      value={cimmichIdentityAuditChangeQueries[item.faceId] ?? ''}
+                                      placeholder="Type a name"
+                                      disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                      oninput={(event) => {
+                                        cimmichIdentityAuditChangeQueries = {
+                                          ...cimmichIdentityAuditChangeQueries,
+                                          [item.faceId]: event.currentTarget.value,
+                                        };
+                                        cimmichIdentityAuditTargetPersonIds = {
+                                          ...cimmichIdentityAuditTargetPersonIds,
+                                          [item.faceId]: '',
+                                        };
+                                      }}
+                                    />
+                                  </label>
+                                  {#if cimmichAuditPersonSearchResults(item).length > 0}
+                                    <div class="grid gap-1" aria-label="Matching People">
+                                      {#each cimmichAuditPersonSearchResults(item) as person (person.person_id)}
+                                        <button
+                                          class="min-h-9 rounded-md bg-white px-3 text-left text-sm font-medium hover:bg-gray-100 dark:bg-immich-dark-gray dark:hover:bg-gray-700"
+                                          type="button"
+                                          onclick={() => {
+                                            cimmichIdentityAuditTargetPersonIds = {
+                                              ...cimmichIdentityAuditTargetPersonIds,
+                                              [item.faceId]: person.person_id,
+                                            };
+                                            cimmichIdentityAuditChangeQueries = {
+                                              ...cimmichIdentityAuditChangeQueries,
+                                              [item.faceId]: person.display_name,
+                                            };
+                                          }}
+                                        >
+                                          {person.display_name}
+                                        </button>
+                                      {/each}
+                                    </div>
+                                  {:else if (cimmichIdentityAuditChangeQueries[item.faceId] ?? '').trim()}
+                                    <p class="text-xs text-gray-500">No matching Person. Try another spelling.</p>
+                                  {/if}
+                                  <div
+                                    class="flex items-center justify-end gap-2 border-t border-gray-200 pt-2 dark:border-gray-700"
+                                  >
+                                    <button
+                                      class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                      type="button"
+                                      onclick={() => (cimmichIdentityAuditChangeFaceId = '')}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      class="min-h-9 rounded-md bg-gray-900 px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-gray-900"
+                                      type="button"
+                                      disabled={Boolean(cimmichIdentityAuditSavingId) ||
+                                        !cimmichAuditTargetPersonId(item)}
+                                      onclick={() => void changeCimmichAuditPerson(item)}
+                                    >
+                                      {cimmichIdentityAuditSavingId === `change:${item.faceId}`
+                                        ? 'Saving…'
+                                        : 'Apply change'}
+                                    </button>
+                                  </div>
+                                  {#if cimmichIdentityAuditMatchesLoading[item.faceId]}
+                                    <p class="text-[11px] text-gray-500 dark:text-gray-400">
+                                      Loading the closest matches…
+                                    </p>
+                                  {/if}
+                                </div>
+                              {/if}
+                            </div>
+                          </div>
+                        </article>
+                      {/each}
+                    </div>
+                    {#if auditGroup.total > cimmichIdentitySectionLimit(`identity-audit:${auditGroup.kind}`)}
+                      <button
+                        class="mx-auto min-h-11 rounded-md bg-white px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
+                        type="button"
+                        disabled={Boolean(cimmichIdentityAuditLoadingKind)}
+                        onclick={() =>
+                          void showMoreCimmichIdentityAudit(auditGroup.kind, auditGroup.items, auditGroup.total)}
+                      >
+                        {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 20 more'}
+                      </button>
+                    {/if}
+                  </section>
+                {/if}
+              {/each}
+
+              {#if visibleCimmichMachineSuggestions.length > 0}
+                <section
+                  class="grid gap-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-900 dark:bg-sky-950/20"
+                  aria-labelledby="matching-suggestions-heading"
                 >
+                  <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h4 id="matching-suggestions-heading" class="font-semibold">Suggested by matching</h4>
+                      <p class="mt-0.5 text-xs/5 text-gray-600 dark:text-gray-300">
+                        The local matcher ranks {cimmichPerson.display_name} first. Similarity orders the evidence; it is
+                        not identity proof.
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <a
+                        class="min-h-10 rounded-md border border-sky-300 px-3 py-2 text-sm font-semibold hover:bg-white dark:border-sky-800 dark:hover:bg-black/20"
+                        href={Route.cimmichSteward()}>Review alternatives</a
+                      >
+                      <button
+                        class="min-h-10 rounded-md border border-sky-300 px-3 py-2 text-sm font-semibold disabled:opacity-40 dark:border-sky-800"
+                        type="button"
+                        disabled={cimmichMachineSuggestionSaving}
+                        onclick={selectAllMachineSuggestions}
+                      >
+                        Select matching
+                      </button>
+                      <button
+                        class="min-h-10 rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                        type="button"
+                        disabled={cimmichMachineSuggestionSelection.length === 0 || cimmichMachineSuggestionSaving}
+                        onclick={() => void confirmSelectedMachineSuggestions()}
+                      >
+                        {cimmichMachineSuggestionSaving
+                          ? 'Confirming…'
+                          : cimmichMachineSuggestionConfirm
+                            ? `Confirm ${cimmichMachineSuggestionSelection.length} as ${cimmichPerson.display_name}`
+                            : `Confirm selected (${cimmichMachineSuggestionSelection.length})`}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {#each visibleCimmichMachineSuggestions.slice(0, cimmichIdentitySectionLimit('machine-suggestions')) as suggestion (suggestion.face_id)}
+                      {@const selected = machineSuggestionSelected(suggestion.face_id)}
+                      {@const lead = suggestion.candidates[0]}
+                      <article
+                        class={[
+                          'overflow-hidden rounded-xl border-2 bg-white dark:bg-immich-dark-bg',
+                          selected ? 'border-primary' : 'border-sky-200 dark:border-sky-900',
+                        ]}
+                      >
+                        <a
+                          href={suggestion.sourceAssetId
+                            ? Route.viewCimmichPersonAsset({
+                                id: suggestion.sourceAssetId,
+                                overlay: 'people',
+                                personId: cimmichPerson.person_id,
+                                personName: cimmichPerson.display_name,
+                              })
+                            : undefined}
+                          class="block aspect-4/5 bg-gray-200 bg-cover"
+                          style={cimmichMachineSuggestionCropStyle(suggestion)}
+                          aria-label={`Open matching suggestion in ${suggestion.filename}`}
+                        ></a>
+                        <label class="grid min-h-16 cursor-pointer grid-cols-[auto_1fr] items-start gap-2 p-3 text-sm">
+                          <input
+                            class="mt-0.5 size-4 accent-immich-primary"
+                            type="checkbox"
+                            checked={selected}
+                            disabled={cimmichMachineSuggestionSaving}
+                            onchange={() => toggleMachineSuggestion(suggestion.face_id)}
+                          />
+                          <span class="min-w-0">
+                            <span class="block truncate font-semibold">{suggestion.filename}</span>
+                            <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                              Similarity {lead?.prime_score.toFixed(2) ?? '—'} ·
+                              {suggestion.candidates.length - 1}
+                              {suggestion.candidates.length === 2 ? ' alternative' : ' alternatives'}
+                            </span>
+                          </span>
+                        </label>
+                      </article>
+                    {/each}
+                  </div>
+                  {#if visibleCimmichMachineSuggestions.length > cimmichIdentitySectionLimit('machine-suggestions')}
+                    <button
+                      class="mx-auto min-h-11 rounded-md bg-white px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
+                      type="button"
+                      onclick={() => showMoreCimmichIdentitySection('machine-suggestions')}>Show 20 more</button
+                    >
+                  {/if}
+                </section>
+              {/if}
+
+              {#if visibleCimmichCandidates.length > 0}
+                <section class="grid gap-3" aria-labelledby="candidate-claims-heading">
+                  <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h4 id="candidate-claims-heading" class="font-semibold">Candidate identity claims</h4>
+                      <p class="mt-0.5 text-xs/5 text-gray-500 dark:text-gray-400">
+                        Imported or previously recorded candidate tags that still need an owner decision.
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <button
+                        class="rounded-md border px-3 py-2 text-sm font-semibold"
+                        type="button"
+                        onclick={selectAllCandidates}
+                      >
+                        Select shown
+                      </button>
+                      <button
+                        class="rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                        type="button"
+                        disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
+                        onclick={() => void acceptSelectedCandidates()}
+                        >{cimmichCandidateConfirm
+                          ? `Confirm accept ${cimmichCandidateSelection.length}`
+                          : `Accept selected (${cimmichCandidateSelection.length})`}</button
+                      >
+                      <button
+                        class="rounded-md border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-40"
+                        type="button"
+                        disabled={cimmichCandidateSelection.length === 0 || cimmichCandidateSaving}
+                        onclick={() => void rejectSelectedCandidates()}
+                        >{cimmichCandidateRejectConfirm
+                          ? `Confirm reject ${cimmichCandidateSelection.length}`
+                          : 'Reject selected'}</button
+                      >
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {#each visibleCimmichCandidates.slice(0, cimmichIdentitySectionLimit('candidates')) as candidate (candidate.identity_claim_id)}
+                      {@const selected = candidateSelected(candidate.identity_claim_id)}
+                      <article
+                        class={[
+                          'overflow-hidden rounded-lg border-2',
+                          selected ? 'border-primary' : 'border-gray-200 dark:border-immich-dark-gray',
+                        ]}
+                      >
+                        <a
+                          href={candidate.sourceAssetId
+                            ? Route.viewCimmichPersonAsset({
+                                id: candidate.sourceAssetId,
+                                overlay: 'people',
+                                personId: cimmichPerson.person_id,
+                                personName: cimmichPerson.display_name,
+                              })
+                            : undefined}
+                          class="block aspect-4/5 bg-gray-200 bg-cover"
+                          style={cimmichCandidateCropStyle(candidate)}
+                          aria-label={`Review ${candidate.filename}`}
+                        ></a>
+                        <label class="flex min-h-11 cursor-pointer items-center gap-2 p-3 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onchange={() => toggleCandidate(candidate.identity_claim_id)}
+                          />
+                          <span class="min-w-0 truncate">{candidate.filename}</span>
+                        </label>
+                      </article>
+                    {/each}
+                  </div>
+                  {#if visibleCimmichCandidates.length > cimmichIdentitySectionLimit('candidates')}
+                    <button
+                      class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
+                      type="button"
+                      onclick={() => showMoreCimmichIdentitySection('candidates')}>Show 20 more</button
+                    >
+                  {/if}
+                </section>
+              {/if}
+
+              {#if cimmichAwaitingCount === 0}
+                <p
+                  class="rounded-xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-500 dark:border-gray-700"
+                >
+                  No suggestions for {cimmichPerson.display_name} are waiting.
+                </p>
               {/if}
             </section>
           {:else if cimmichIdentityFilter === 'presentation'}
@@ -3112,10 +4402,11 @@
                 </section>
               {/if}
             </section>
-          {:else if cimmichIdentityFilter === 'non_face'}
+          {:else if cimmichIdentityFilter === 'body' || cimmichIdentityFilter === 'presence'}
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {#each cimmichBodyPresenceAssets.slice(0, cimmichIdentitySectionLimit('non_face')) as asset (asset.asset_id)}
+              {#each cimmichSelectedAppearanceAssets.slice(0, cimmichIdentitySectionLimit(cimmichIdentityFilter)) as asset (asset.asset_id)}
                 {@const hasBody = asset.association_types.includes('body')}
+                {@const needsBodyPlacement = asset.association_types.includes('body_candidate')}
                 {@const hasPresence = asset.association_types.includes('presence')}
                 <article
                   class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
@@ -3123,6 +4414,7 @@
                   <a
                     href={Route.viewCimmichPersonAsset({
                       id: asset.sourceAssetId,
+                      overlay: 'people',
                       personId: cimmichPerson.person_id,
                       personName: cimmichPerson.display_name,
                     })}
@@ -3137,6 +4429,10 @@
                     <div class="pointer-events-none absolute right-2 bottom-2 flex flex-wrap justify-end gap-1">
                       {#if hasBody}
                         <span class="rounded-sm bg-black/75 px-2 py-1 text-[10px] font-semibold text-white">Body</span>
+                      {:else if needsBodyPlacement}
+                        <span class="rounded-sm bg-amber-950/80 px-2 py-1 text-[10px] font-semibold text-white"
+                          >Place body</span
+                        >
                       {/if}
                       {#if hasPresence}
                         <span class="rounded-sm bg-black/75 px-2 py-1 text-[10px] font-semibold text-white"
@@ -3147,7 +4443,13 @@
                   </a>
                   <div class="grid gap-1 p-2.5">
                     <p class="text-xs font-semibold">
-                      {[hasBody ? 'Body' : '', hasPresence ? 'Presence' : ''].filter(Boolean).join(' · ')}
+                      {[
+                        hasBody ? 'Body' : '',
+                        needsBodyPlacement ? 'Body placement needed' : '',
+                        hasPresence ? 'Presence' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </p>
                     <p class="truncate text-[11px] text-gray-500 dark:text-gray-400" title={asset.filename}>
                       {asset.filename}
@@ -3156,23 +4458,24 @@
                 </article>
               {/each}
             </div>
-            {#if cimmichBodyPresenceAssets.length === 0}
+            {#if cimmichSelectedAppearanceAssets.length === 0}
               <CimmichStatePanel
-                title="No Body or Presence evidence"
-                description="Body and whole-photo Presence tags for this person will appear here."
+                title={cimmichIdentityFilter === 'body' ? 'No Body evidence' : 'No Presence evidence'}
+                description={cimmichIdentityFilter === 'body'
+                  ? 'Body-only tags for this person will appear here.'
+                  : 'Whole-photo Presence tags for this person will appear here.'}
               />
             {/if}
-            {#if cimmichBodyPresenceAssets.length > cimmichIdentitySectionLimit('non_face')}
+            {#if cimmichSelectedAppearanceAssets.length > cimmichIdentitySectionLimit(cimmichIdentityFilter)}
               <button
                 class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
                 type="button"
-                onclick={() => showMoreCimmichIdentitySection('non_face')}>Show 20 more</button
+                onclick={() => showMoreCimmichIdentitySection(cimmichIdentityFilter)}>Show 20 more</button
               >
             {/if}
           {:else}
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {#each renderedCimmichIdentityFaces as face (face.face_id)}
-                {@const mainBucket = cimmichMainBucket(face)}
                 {@const holdingMatch = cimmichHoldingMatches[face.face_id]}
                 {@const bodyOwnedElsewhere = Boolean(
                   face.body_assigned_person_id && face.body_assigned_person_id !== cimmichPerson.person_id,
@@ -3184,6 +4487,7 @@
                     href={face.sourceAssetId
                       ? Route.viewCimmichPersonAsset({
                           id: face.sourceAssetId,
+                          overlay: 'people',
                           personId: cimmichPerson.person_id,
                           personName: cimmichPerson.display_name,
                         })
@@ -3295,7 +4599,7 @@
                             Face matching role
                             <select
                               class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm font-medium tracking-normal text-immich-fg normal-case outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
-                              value={mainBucket ?? ''}
+                              value={cimmichMatchingBucket(face) ?? ''}
                               disabled={cimmichIdentitySavingId === `face:${face.face_id}`}
                               onchange={(event) => {
                                 const value = event.currentTarget.value;
@@ -3307,10 +4611,10 @@
                                 );
                               }}
                             >
-                              <option value="">Not a matching reference</option>
-                              <option value="prime">Strong reference</option>
-                              <option value="secondary">Supporting reference</option>
-                              <option value="lq">Low-quality reference</option>
+                              <option value="">Supporting evidence only</option>
+                              <option value="prime">Core matching set</option>
+                              <option value="secondary">Supporting matcher reference</option>
+                              <option value="lq">Low-quality Face evidence</option>
                               <option value="head">Head reference (Face-derived)</option>
                             </select>
                           </label>
@@ -3590,20 +4894,24 @@
             </div>
             {#if renderedCimmichIdentityFaces.length === 0}
               <CimmichStatePanel
-                title={cimmichIdentityNextCursor
-                  ? 'Nothing in the loaded results'
-                  : cimmichIdentityFilter === 'needs_qc'
-                    ? 'Nothing needs review'
-                    : cimmichIdentityFilter === 'head'
-                      ? 'No Face-derived Head references'
-                      : 'This bucket is empty'}
-                description={cimmichIdentityNextCursor
-                  ? 'Load more identity faces to continue checking this filter.'
-                  : cimmichIdentityFilter === 'needs_qc'
-                    ? 'This person has no currently flagged identity evidence.'
-                    : cimmichIdentityFilter === 'head'
-                      ? 'Manual Head tags remain visible on photos and are intentionally not counted in this reference library.'
-                      : 'Choose another view or assign a matching role from Identity observations.'}
+                title={cimmichIdentityBucketLoading === cimmichIdentityFilter
+                  ? 'Loading matching evidence…'
+                  : !cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor
+                    ? 'Nothing in the loaded results'
+                    : cimmichIdentityFilter === 'needs_qc'
+                      ? 'Nothing needs review'
+                      : cimmichIdentityFilter === 'head'
+                        ? 'No Face-derived Head references'
+                        : 'This bucket is empty'}
+                description={cimmichIdentityBucketLoading === cimmichIdentityFilter
+                  ? 'Loading this complete evidence category from the archive.'
+                  : !cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor
+                    ? 'Load more identity faces to continue checking this filter.'
+                    : cimmichIdentityFilter === 'needs_qc'
+                      ? 'This person has no currently flagged identity evidence.'
+                      : cimmichIdentityFilter === 'head'
+                        ? 'Manual Head tags remain visible on photos and are intentionally not counted in this reference library.'
+                        : 'Choose another view or assign a matching role from Identity observations.'}
               />
             {/if}
             {#if visibleCimmichIdentityFaces.length > renderedCimmichIdentityFaces.length}
@@ -3613,6 +4921,24 @@
                 onclick={() => showMoreCimmichIdentitySection(cimmichIdentityFilter)}
               >
                 Show 20 more
+              </button>
+            {:else if cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityBucketNextCursors[cimmichIdentityFilter]}
+              <button
+                class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-immich-dark-gray dark:text-gray-200"
+                type="button"
+                disabled={Boolean(cimmichIdentityBucketLoading)}
+                onclick={() => void loadCimmichIdentityBucket(cimmichIdentityFilter, true)}
+              >
+                {cimmichIdentityBucketLoading === cimmichIdentityFilter ? 'Loading…' : 'Load 120 more'}
+              </button>
+            {:else if !cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor}
+              <button
+                class="mx-auto min-h-11 rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-immich-dark-gray dark:text-gray-200"
+                type="button"
+                disabled={cimmichIdentityFacesLoadingMore}
+                onclick={() => void loadMoreCimmichIdentityFaces()}
+              >
+                {cimmichIdentityFacesLoadingMore ? 'Loading…' : 'Load 120 more'}
               </button>
             {/if}
           {/if}
@@ -3804,7 +5130,7 @@
                   </p>
                   <p class="mt-1 text-xs opacity-80">
                     {cimmichSetupSubjectConfirm === 'pet'
-                      ? 'Human Prime, Secondary and LQ matching references will be retired. Modifiers and existing evidence stay recoverable.'
+                      ? 'Human core, supporting and low-quality matching references will be retired. Modifiers and existing evidence stay recoverable.'
                       : 'Human reference galleries will be rebuilt from accepted face evidence.'}
                   </p>
                   <div class="mt-3 flex gap-2">

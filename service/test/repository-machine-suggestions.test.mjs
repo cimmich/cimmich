@@ -48,6 +48,76 @@ test("matching status requires one policy-bound active passed SourcePack", async
   assert.equal(status.automaticIdentityAuthority, "none");
 });
 
+test("Head rescan retains evidence unless the governed winner is the current Person", async () => {
+  let rescanStatement = "";
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (
+      statement.includes("SELECT person_id, subject_kind FROM current_person")
+    ) {
+      return [{ person_id: "person-current", subject_kind: "person" }];
+    }
+    if (statement.includes("FROM current_person_category")) {
+      return [{ holding: false }];
+    }
+    if (statement.includes("FROM source_pack")) {
+      return [
+        {
+          active_passed: 1,
+          active_ready: 1,
+          awaiting_review: 0,
+          margin_floor: 0.21,
+          score_floor: 0,
+        },
+      ];
+    }
+    if (statement.includes("head_faces AS MATERIALIZED")) {
+      rescanStatement = statement;
+      return [
+        {
+          box_h: 0.2,
+          box_w: 0.2,
+          detection_confidence: 0.9,
+          face_id: "face-wrong-winner",
+          height: 1000,
+          margin_floor: 0.21,
+          quality_measurements: { quality_score: 0.9 },
+          quality_score: 0.9,
+          runner_up_score: 0.4,
+          score: 0.7,
+          score_floor: 0,
+          width: 1000,
+          winner_display_name: "Different Person",
+          winner_person_id: "person-other",
+        },
+      ];
+    }
+    throw new Error(`Unexpected repository query: ${statement.slice(0, 120)}`);
+  };
+  const repository = createCimmichRepository(sql, new Map(), null, {
+    matchingProvider,
+  });
+  repository.setFaceBucket = async () => {
+    throw new Error("A failed Head rescan must not move evidence");
+  };
+
+  const result = await repository.rescanHeadEvidence({
+    actorId: "owner",
+    personId: "person-current",
+  });
+
+  assert.equal(result.schemaVersion, "cimmich.head-rescan.v1");
+  assert.equal(result.totalCount, 1);
+  assert.equal(result.evaluatedCount, 1);
+  assert.equal(result.movedCount, 0);
+  assert.equal(result.retainedCount, 1);
+  assert.equal(result.items[0].passed, false);
+  assert.equal(result.items[0].winnerDisplayName, "Different Person");
+  assert.match(rescanStatement, /JOIN matching_gallery gallery/);
+  assert.match(rescanStatement, /gallery\.bucket_kind = 'prime'/);
+  assert.match(rescanStatement, /runner_up_score/);
+});
+
 test("simultaneous machine review consumers share one best-Prime scoring snapshot", async () => {
   let calls = 0;
   let release;
@@ -175,6 +245,14 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
 
   const small = await repository.machineSuggestions({ limit: 3 });
   const large = await repository.machineSuggestions({ limit: 24 });
+  const personTwo = await repository.machineSuggestions({
+    leadPersonId: "person-2",
+    limit: 24,
+  });
+  const missingPerson = await repository.machineSuggestions({
+    leadPersonId: "person-missing",
+    limit: 24,
+  });
   const summary = await repository.summary();
 
   assert.deepEqual(
@@ -182,6 +260,11 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
     large.slice(0, 3).map((item) => item.face_id),
   );
   assert.equal(large.length, 4);
+  assert.deepEqual(
+    personTwo.map((item) => item.face_id),
+    ["face-2"],
+  );
+  assert.deepEqual(missingPerson, []);
   assert.equal(summary.suggestions_ready, large.length);
   assert.equal(scoringCalls, 1);
   assert.equal(summaryCalls, 1);

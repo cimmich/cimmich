@@ -21,6 +21,12 @@ test("service Dockerfile build context is an explicit backend allowlist", async 
     "!providers/opencv-sface/*.json",
     "!providers/opencv-sface/requirements.txt",
     "!providers/opencv-sface/install-models.sh",
+    "!providers/insightface-user-supplied/*.py",
+    "!providers/insightface-user-supplied/*.json",
+    "!providers/insightface-user-supplied/requirements.txt",
+    "!providers/perceptual-dhash/*.py",
+    "!providers/perceptual-dhash/*.json",
+    "!providers/perceptual-dhash/requirements.txt",
   ]) {
     assert.ok(ignore.split("\n").includes(required), required);
   }
@@ -49,9 +55,11 @@ test("public-demo API build context admits the reference adapter but no weights 
     /opencv-python-headless|cimmich-opencv-requirements/,
   );
   assert.match(dockerfile, /COPY providers\/opencv-sface/);
+  assert.match(dockerfile, /COPY providers\/perceptual-dhash/);
   assert.match(dockerfile, /COPY service\/enhanced \.\/enhanced/);
   assert.match(ignore, /^\*\*$/m);
   assert.ok(ignore.split("\n").includes("!providers/opencv-sface/*.py"));
+  assert.ok(ignore.split("\n").includes("!providers/perceptual-dhash/*.py"));
   assert.ok(ignore.split("\n").includes("!service/enhanced/**"));
   assert.ok(
     ignore.split("\n").includes("!providers/opencv-sface/install-models.sh"),

@@ -876,7 +876,7 @@ test("Person projection pages are additive to legacy limit responses", async () 
       assert.deepEqual(await assets.json(), page);
 
       const identity = await fetch(
-        `${root}/v1/people/person-one/identity?pageSize=24`,
+        `${root}/v1/people/person-one/identity?pageSize=24&bucket=head`,
       );
       assert.deepEqual(await identity.json(), page);
     },
@@ -897,8 +897,50 @@ test("Person projection pages are additive to legacy limit responses", async () 
     ],
     [
       "identity",
-      { cursor: "", limit: null, pageSize: "24", personId: "person-one" },
+      {
+        bucketKind: "head",
+        cursor: "",
+        limit: null,
+        pageSize: "24",
+        personId: "person-one",
+      },
     ],
+  ]);
+});
+
+test("Head rescan route preserves Person scope and operator authority", async () => {
+  const calls = [];
+  const result = {
+    evaluatedCount: 4,
+    items: [],
+    maintenancePending: false,
+    movedCount: 0,
+    retainedCount: 4,
+    schemaVersion: "cimmich.head-rescan.v1",
+    tierCounts: { lq: 0, prime: 0, secondary: 0 },
+    totalCount: 4,
+  };
+  await withServer(
+    {
+      rescanHeadEvidence: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/people/person%2Fone/identity/head:rescan`,
+        {
+          headers: { "x-cimmich-actor": "head-reviewer" },
+          method: "POST",
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [
+    { actorId: "head-reviewer", personId: "person/one" },
   ]);
 });
 
@@ -965,6 +1007,74 @@ test("Person presentation routes preserve slot, evidence and framing", async () 
         observationKind: "face",
         personId: "person-one",
         slotKind: "face",
+      },
+    ],
+  ]);
+});
+
+test("Pet presentation routes preserve independent profile and hero slots", async () => {
+  const calls = [];
+  const presentation = {
+    body: null,
+    face: null,
+    hero: {
+      assetId: "asset-pet",
+      crop: { h: 0.4, w: 1, x: 0, y: 0.3 },
+      observationId: "face-pet",
+      observationKind: "face",
+      slotKind: "hero",
+    },
+    personId: "pet-one",
+    schemaVersion: "cimmich.person-presentation-media.v1",
+  };
+  await withServer(
+    {
+      petPresentation: async (input) => {
+        calls.push(["get", input]);
+        return presentation;
+      },
+      setPetPresentation: async (input) => {
+        calls.push(["set", input]);
+        return presentation;
+      },
+    },
+    async (root) => {
+      const current = await fetch(`${root}/v1/pets/pet-one/presentation`);
+      assert.equal(current.status, 200);
+      assert.deepEqual(await current.json(), presentation);
+
+      const updated = await fetch(
+        `${root}/v1/pets/pet-one/presentation/hero`,
+        {
+          body: JSON.stringify({
+            assetId: "asset-pet",
+            crop: { h: 0.4, w: 1, x: 0, y: 0.3 },
+            observationId: "face-pet",
+            observationKind: "face",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "tester",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(updated.status, 200);
+      assert.deepEqual(await updated.json(), presentation);
+    },
+  );
+  assert.deepEqual(calls, [
+    ["get", { petId: "pet-one" }],
+    [
+      "set",
+      {
+        actorId: "tester",
+        assetId: "asset-pet",
+        crop: { h: 0.4, w: 1, x: 0, y: 0.3 },
+        observationId: "face-pet",
+        observationKind: "face",
+        petId: "pet-one",
+        slotKind: "hero",
       },
     ],
   ]);
@@ -3027,8 +3137,8 @@ test("machine review and Memory Steward routes preserve their distinct authority
   const calls = [];
   await withServer(
     {
-      machineSuggestions: async ({ limit }) => {
-        calls.push(["machine", limit]);
+      machineSuggestions: async ({ leadPersonId, limit }) => {
+        calls.push(["machine", limit, leadPersonId]);
         return [{ face_id: "face-one" }];
       },
     },
@@ -3041,7 +3151,19 @@ test("machine review and Memory Steward routes preserve their distinct authority
       assert.deepEqual(await suggestions.json(), {
         items: [{ face_id: "face-one" }],
       });
-      assert.deepEqual(calls, [["machine", "7"]]);
+      assert.deepEqual(calls, [["machine", "7", null]]);
+
+      const personSuggestions = await fetch(
+        `${root}/v1/review/machine-suggestions?limit=9&leadPersonId=person%2Fone`,
+      );
+      assert.equal(personSuggestions.status, 200);
+      assert.deepEqual(await personSuggestions.json(), {
+        items: [{ face_id: "face-one" }],
+      });
+      assert.deepEqual(calls, [
+        ["machine", "7", null],
+        ["machine", "9", "person/one"],
+      ]);
 
       const steward = await fetch(`${root}/v1/steward/plan`, {
         body: JSON.stringify({ goal: "Help" }),
@@ -3054,6 +3176,125 @@ test("machine review and Memory Steward routes preserve their distinct authority
       });
     },
   );
+});
+
+test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
+  const calls = [];
+  const run = {
+    auditRunId: "audit-one",
+    schemaVersion: "cimmich.identity-audit.v2",
+    state: "completed",
+  };
+  await withServer(
+    {
+      dismissIdentityAuditItem: async (input) => {
+        calls.push(["dismiss", input]);
+        return {
+          changed: true,
+          faceId: input.faceId,
+          kind: input.kind,
+          schemaVersion: "cimmich.identity-audit.v2",
+          state: "dismissed",
+        };
+      },
+      identityAuditItems: async (input) => {
+        calls.push(["items", input]);
+        return {
+          hasMore: false,
+          items: [{ faceId: "face/one" }],
+          kind: input.kind,
+          limit: 20,
+          offset: 40,
+          run,
+          schemaVersion: "cimmich.identity-audit.v2",
+          total: 1,
+        };
+      },
+      identityAuditLeads: async () => {
+        calls.push(["leads"]);
+        return {
+          items: [
+            {
+              displayName: "Maya Chen",
+              personId: "person.maya",
+              suggestionCount: 4,
+            },
+          ],
+          run,
+          schemaVersion: "cimmich.identity-audit.v2",
+          total: 1,
+        };
+      },
+      identityAuditLatest: async () => {
+        calls.push(["latest"]);
+        return run;
+      },
+      startIdentityAudit: async (input) => {
+        calls.push(["start", input]);
+        return { ...run, state: "running" };
+      },
+    },
+    async (root) => {
+      const status = await fetch(`${root}/v1/review/identity-audit`);
+      assert.equal(status.status, 200);
+      assert.deepEqual(await status.json(), { run });
+
+      const started = await fetch(`${root}/v1/review/identity-audit`, {
+        headers: { "x-cimmich-actor": "synthetic-owner" },
+        method: "POST",
+      });
+      assert.equal(started.status, 202);
+      assert.equal((await started.json()).run.state, "running");
+
+      const leads = await fetch(`${root}/v1/review/identity-audit/leads`);
+      assert.equal(leads.status, 200);
+      assert.deepEqual((await leads.json()).items, [
+        {
+          displayName: "Maya Chen",
+          personId: "person.maya",
+          suggestionCount: 4,
+        },
+      ]);
+
+      const page = await fetch(
+        `${root}/v1/review/identity-audit/items?kind=accepted_contradiction&limit=20&offset=40&personId=person.one`,
+      );
+      assert.equal(page.status, 200);
+      assert.equal((await page.json()).items[0].faceId, "face/one");
+
+      const dismissed = await fetch(
+        `${root}/v1/review/identity-audit/items/accepted_contradiction/face%2Fone/dismiss`,
+        {
+          headers: { "x-cimmich-actor": "synthetic-owner" },
+          method: "POST",
+        },
+      );
+      assert.equal(dismissed.status, 200);
+      assert.equal((await dismissed.json()).state, "dismissed");
+    },
+  );
+  assert.deepEqual(calls, [
+    ["latest"],
+    ["start", { actorId: "synthetic-owner" }],
+    ["leads"],
+    [
+      "items",
+      {
+        kind: "accepted_contradiction",
+        limit: "20",
+        offset: "40",
+        personId: "person.one",
+      },
+    ],
+    [
+      "dismiss",
+      {
+        actorId: "synthetic-owner",
+        faceId: "face/one",
+        kind: "accepted_contradiction",
+      },
+    ],
+  ]);
 });
 
 test("Guided V1 routes authenticate discovery and keep access read/propose-only", async () => {

@@ -311,6 +311,31 @@ test("curator retains an explicit larger minimum only when a caller requests it"
   assert.equal(result.selected.length, 2);
 });
 
+test("future-dated evidence cannot remain in Core even when previously preserved", () => {
+  const [curation] = buildPrimeCurations(
+    [
+      face("current", [1, 0, 0, 0], 0.9, "asset_current", {
+        captureTime: "2025-01-01T00:00:00Z",
+        preservedPrime: true,
+      }),
+      face("future", [0, 1, 0, 0], 0.95, "asset_future", {
+        captureTime: "2050-01-01T00:00:00Z",
+        pinnedPrime: true,
+        preservedPrime: true,
+      }),
+    ],
+    { evidenceCutoff: "2026-07-25T00:00:00Z" },
+  );
+  assert.deepEqual(
+    curation.selected.map((row) => row.faceId),
+    ["current"],
+  );
+  assert.equal(
+    curation.lowQualityFaces.some((row) => row.faceId === "future"),
+    false,
+  );
+});
+
 test("repository curator fails closed when one Person has multiple embedding configurations", () => {
   const base = {
     configDigest: "config_a",

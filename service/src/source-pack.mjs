@@ -227,10 +227,63 @@ const modePrototypeReference = (personId, mode) => {
   };
 };
 
+const exactDiagnosticPrimeSelection = (group, faceIds, primeOptions) => {
+  const requested = [...new Set((faceIds || []).map(String))].sort();
+  if (requested.length === 0 || requested.length !== (faceIds || []).length) {
+    throw new Error(
+      "Diagnostic Person Core selection requires unique Face IDs",
+    );
+  }
+  const byFaceId = new Map(group.map((face) => [face.faceId, face]));
+  if (requested.some((faceId) => !byFaceId.has(faceId))) {
+    throw new Error(
+      "Diagnostic Person Core selection contains unavailable evidence",
+    );
+  }
+  const assets = requested.map((faceId) => byFaceId.get(faceId).assetId);
+  if (new Set(assets).size !== assets.length) {
+    throw new Error(
+      "Diagnostic Person Core selection requires one Face per photo",
+    );
+  }
+  const requestedSet = new Set(requested);
+  const curation = curatePrimeSet(
+    group.map((face) => ({
+      ...face,
+      blockedPrime: !requestedSet.has(face.faceId),
+      pinnedPrime: requestedSet.has(face.faceId),
+      preservedPrime: false,
+    })),
+    {
+      ...primeOptions,
+      maxPrime: requested.length,
+      minPrime: requested.length,
+    },
+  );
+  const selected = curation.selected.map((face) => face.faceId).sort();
+  if (
+    selected.length !== requested.length ||
+    selected.some((faceId, index) => faceId !== requested[index])
+  ) {
+    throw new Error(
+      "Diagnostic Person Core selection could not reproduce the requested Core",
+    );
+  }
+  return {
+    ...curation,
+    selected: curation.selected.map((face) => ({
+      ...face,
+      coverageGain: 0,
+      reason: "diagnostic_person_core_challenger",
+    })),
+  };
+};
+
 export const compileSourcePack = (
   rawSourceFaces,
   {
     cutoff,
+    diagnosticPrimeFaceIdsByPerson = null,
     predecessorPackId = null,
     primeOptions = {},
     evaluationContext = null,
@@ -270,6 +323,23 @@ export const compileSourcePack = (
     );
   }
 
+  const diagnosticSelections =
+    diagnosticPrimeFaceIdsByPerson &&
+    typeof diagnosticPrimeFaceIdsByPerson === "object" &&
+    !Array.isArray(diagnosticPrimeFaceIdsByPerson)
+      ? diagnosticPrimeFaceIdsByPerson
+      : {};
+  if (
+    Object.keys(diagnosticSelections).length > 0 &&
+    (evaluationContext?.challengerPolicyVersion !==
+      "cimmich-person-core-challenger-v1" ||
+      evaluationContext?.authority?.activation !== "none")
+  ) {
+    throw new Error(
+      "Diagnostic Person Core selection requires an authority-free challenger context",
+    );
+  }
+
   const groups = new Map();
   for (const face of eligible) {
     const key = groupKey(face);
@@ -280,10 +350,15 @@ export const compileSourcePack = (
 
   const references = [];
   const people = [];
+  const diagnosticPeopleSeen = new Set();
   for (const group of [...groups.values()].sort((left, right) =>
     left[0].personId.localeCompare(right[0].personId),
   )) {
-    const selected = curatePrimeSet(group, primeOptions);
+    const diagnosticFaceIds = diagnosticSelections[group[0].personId];
+    const selected = diagnosticFaceIds
+      ? exactDiagnosticPrimeSelection(group, diagnosticFaceIds, primeOptions)
+      : curatePrimeSet(group, primeOptions);
+    if (diagnosticFaceIds) diagnosticPeopleSeen.add(group[0].personId);
     const selectedIds = new Set(selected.selected.map((face) => face.faceId));
     const selectedAssetIds = new Set(
       selected.selected.map((face) => face.assetId),
@@ -457,6 +532,15 @@ export const compileSourcePack = (
       selectionMetrics: selected.metrics,
     });
   }
+  if (
+    Object.keys(diagnosticSelections).some(
+      (personId) => !diagnosticPeopleSeen.has(personId),
+    )
+  ) {
+    throw new Error(
+      "Diagnostic Person Core selection targets an unavailable Person",
+    );
+  }
 
   const first = eligible[0];
   const sourceRevisionDigest = digestValue(
@@ -489,6 +573,24 @@ export const compileSourcePack = (
     people,
     policy: {
       prime: { ...primeOptions, policyVersion: primeCuratorPolicyVersion },
+      ...(diagnosticPeopleSeen.size > 0
+        ? {
+            personCoreChallenger: {
+              activationAuthority: "none",
+              policyVersion: "cimmich-person-core-challenger-v1",
+              selectionDigest: digestValue(
+                Object.fromEntries(
+                  [...diagnosticPeopleSeen]
+                    .sort()
+                    .map((personId) => [
+                      personId,
+                      [...diagnosticSelections[personId]].sort(),
+                    ]),
+                ),
+              ),
+            },
+          }
+        : {}),
       ...(Number(primeModeOptions.maxModes) >= 2
         ? {
             primeModes: {

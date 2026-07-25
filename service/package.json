@@ -15,6 +15,7 @@
     "body-detector-review": "node bin/validate-body-detector.mjs",
     "commit-recognition-job": "node bin/commit-recognition-job.mjs",
     "document-lifecycle": "node bin/document-lifecycle.mjs",
+    "diagnose-person-core-challenger": "node bin/diagnose-person-core-challenger.mjs",
     "guided-local-conformance": "node bin/guided-local-conformance.mjs",
     "link-face-bodies": "node bin/link-face-bodies.mjs",
     "media-job": "node bin/media-job.mjs",

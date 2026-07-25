@@ -212,12 +212,15 @@ export type CimmichSourcePresenceOverlay = {
     y2: number;
   };
   id: string;
+  geometry: { h: number; w: number; x: number; y: number };
   image?: {
     height: number;
     width: number;
   } | null;
+  intendedTagType: 'body' | 'head';
   label: string;
   name: string;
+  personIdentityKey: string;
   rawName?: string;
   reason: string;
   source: string;
@@ -2350,6 +2353,25 @@ const evidenceFromCimmichAsset = (asset: CimmichAssetEvidence): CimmichPhotoEvid
   });
   const sourcePeople = [...new Set(asset.faces.map((face) => face.display_name).filter(isNonEmptyString))];
   const candidatePeople = [...new Set(asset.faces.map((face) => face.candidate_display_name).filter(isNonEmptyString))];
+  const sourcePresenceOverlays: CimmichSourcePresenceOverlay[] = (asset.identity_locators ?? []).map((locator) => ({
+    bbox: toBox(locator),
+    geometry: { h: locator.box_h, w: locator.box_w, x: locator.box_x, y: locator.box_y },
+    id: locator.locator_id,
+    image,
+    intendedTagType: locator.intended_tag_type,
+    label: locator.display_name,
+    name: locator.display_name,
+    personIdentityKey: locator.person_id,
+    rawName: locator.source_instance_suffix
+      ? `${locator.display_name} ${locator.source_instance_suffix}`
+      : locator.display_name,
+    reason:
+      locator.geometry_role === 'head_locator'
+        ? `Original metadata localises the head; resolve as ${locator.intended_tag_type === 'body' ? 'Body or Head' : 'Head'}.`
+        : 'Original metadata locator',
+    source: locator.source_kind,
+    status: 'source_presence',
+  }));
   return {
     bodyOverlays,
     contexts: (asset.contexts ?? []).map((context) => ({
@@ -2368,7 +2390,7 @@ const evidenceFromCimmichAsset = (asset: CimmichAssetEvidence): CimmichPhotoEvid
     ownerSummary: asset.ownerSummary,
     packetItems: [],
     provider: 'cimmich',
-    sourcePresenceOverlays: [],
+    sourcePresenceOverlays,
     stateRows: asset.presence.map((presence) => ({
       bucket: 'presence',
       confidence: '',

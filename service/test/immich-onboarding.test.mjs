@@ -592,6 +592,99 @@ test("unnamed cluster preview is deterministic and contains only one visible rep
   assert.equal(JSON.stringify(projected).includes("name"), false);
 });
 
+test("unnamed cluster evidence summarizes recurring photos across admitted time and place context", () => {
+  const person = {
+    id: "source-person-recurring",
+    isHidden: false,
+    name: null,
+    sourceRevision: "d".repeat(64),
+  };
+  const assets = [
+    {
+      assetType: "image",
+      captureTime: "2018-05-10T12:00:00.000Z",
+      immichAssetId: "source-asset-early",
+      inputRevision: "a".repeat(64),
+      locationNames: ["Athens"],
+      visibility: "timeline",
+    },
+    {
+      assetType: "image",
+      captureTime: "2024-08-22T12:00:00.000Z",
+      immichAssetId: "source-asset-late",
+      inputRevision: "b".repeat(64),
+      locationNames: ["Athens", "London"],
+      visibility: "timeline",
+    },
+  ];
+  const facesByAsset = new Map(
+    assets.map((asset, index) => [
+      asset.immichAssetId,
+      [
+        {
+          ...sourceFace(
+            `source-face-${index}`,
+            { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+            person.id,
+          ),
+          person,
+        },
+      ],
+    ]),
+  );
+
+  const [cluster] = projectUnlabelledPersonClusters({
+    assets,
+    facesByAsset,
+  });
+
+  assert.deepEqual(cluster.evidence, {
+    distinctYears: 2,
+    firstCaptureTime: "2018-05-10T12:00:00.000Z",
+    lastCaptureTime: "2024-08-22T12:00:00.000Z",
+    locationCount: 2,
+    locations: ["Athens", "London"],
+    photoCount: 2,
+    timeSpanDays: 2296,
+  });
+});
+
+test("possible people exclude unnamed source clusters already tagged to a known Person", () => {
+  const person = {
+    id: "source-person-already-tagged",
+    isHidden: false,
+    name: null,
+    sourceRevision: "d".repeat(64),
+  };
+  const asset = {
+    assetType: "image",
+    immichAssetId: "source-asset-tagged",
+    inputRevision: "a".repeat(64),
+    visibility: "timeline",
+  };
+  const face = {
+    ...sourceFace(
+      "source-face-tagged",
+      { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+      person.id,
+    ),
+    person,
+  };
+
+  const projected = projectUnlabelledPersonClusters({
+    acceptedFacesByAsset: new Map([
+      [
+        asset.immichAssetId,
+        [{ box: { h: 0.22, w: 0.22, x: 0.09, y: 0.09 } }],
+      ],
+    ]),
+    assets: [asset],
+    facesByAsset: new Map([[asset.immichAssetId, [face]]]),
+  });
+
+  assert.deepEqual(projected, []);
+});
+
 test("status exposes only non-secret exact resume bindings", async () => {
   const sql = async () => [
     {

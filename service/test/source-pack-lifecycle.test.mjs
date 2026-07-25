@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  activateSourcePack,
   sourcePackGateSchemaVersion,
   validateSourcePackConditionRejection,
   validateSourcePackGateReceipt,
@@ -92,6 +93,39 @@ test("SourcePack gate refuses autoauthority, leakage, and threshold spin", () =>
         matcherPolicy: { ...receipt.matcherPolicy, scoreFloor: 2 },
       }),
     /must be in \[0, 1\]/,
+  );
+});
+
+test("diagnostic Person Core challenger packs cannot be activated", async () => {
+  const sql = (strings) => {
+    const query = strings.join("?");
+    if (query.includes("FROM source_pack WHERE pack_id")) {
+      return [
+        {
+          config_digest: "config",
+          evaluation_status: "passed",
+          evaluation_summary: receipt,
+          manifest: {
+            policy: {
+              personCoreChallenger: { activationAuthority: "none" },
+            },
+          },
+          model_family: "family",
+          model_version: "version",
+          pack_id: "sourcepack-fixture",
+          state: "proposed",
+        },
+      ];
+    }
+    throw new Error(`Unexpected SQL in test: ${query}`);
+  };
+  sql.begin = async (callback) => callback(sql);
+  await assert.rejects(
+    () =>
+      activateSourcePack(sql, "sourcepack-fixture", {
+        execute: true,
+      }),
+    /challenger packs cannot be activated/,
   );
 });
 

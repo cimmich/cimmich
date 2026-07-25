@@ -9,19 +9,33 @@ describe('Pet profile layout', () => {
 
     expect(source).toContain('{#if !selectedPet}\n      <CimmichSectionHeader');
     expect(source).toContain('onclick={closePet}');
-    expect(source).toContain('<Icon icon={mdiArrowLeft} size="17" />');
-    expect(source).toContain('aria-label={`Edit ${selectedPet.displayName}`}');
+    expect(source).toContain('<Icon icon={mdiArrowLeft} size="16" />');
+    expect(source).toContain('onclick={beginEdit}>Edit profile</button');
+    expect(source).toContain('aria-label="Edit display photos"');
     expect(source).not.toContain('onfocus={() => selectedPet && closePet()}');
   });
 
-  it('keeps cover maintenance in the profile menu and gallery actions', async () => {
+  it('opens with the same immersive identity-hero rhythm as People', async () => {
     const source = await readPetWorkspace();
 
+    expect(source).toContain('data-testid="cimmich-pet-hero"');
     expect(source).toContain(
-      "actions.push({ title: 'Adjust cover', icon: mdiCrop, onAction: openCurrentCoverEditor });",
+      'class="relative min-h-100 overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-2xl ring-1 ring-white/10"',
     );
-    expect(source).toContain("title: selectedPet?.cover ? 'Change cover' : 'Choose cover'");
-    expect(source).not.toContain('class="absolute bottom-3 left-3 flex flex-wrap gap-2"');
+    expect(source).toContain('bg-linear-to-r from-black/92 via-black/60 to-black/18');
+    expect(source).toContain('rounded-full bg-slate-700 bg-cover bg-center shadow-2xl ring-4 ring-white/90');
+    expect(source).toContain('text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl');
+    expect(source.indexOf('data-testid="cimmich-pet-hero"')).toBeLessThan(source.indexOf('aria-label="Pet content"'));
+    expect(source).not.toContain('sm:grid-cols-[minmax(15rem,42%)_minmax(0,1fr)]');
+  });
+
+  it('keeps display-photo maintenance in the hero shortcut and gallery actions', async () => {
+    const source = await readPetWorkspace();
+
+    expect(source).toContain("onclick={() => selectPetContent('display')}");
+    expect(source).toContain("'Current profile photo' : 'Use as profile photo'");
+    expect(source).toContain("'Current hero photo' : 'Use as hero photo'");
+    expect(source).not.toContain("title: selectedPet?.cover ? 'Change cover' : 'Choose cover'");
   });
 
   it('makes photos navigable while keeping evidence machinery out of the gallery', async () => {
@@ -104,7 +118,7 @@ describe('Pet profile layout', () => {
     expect(source).toContain('min-w-0 flex-1 overflow-x-auto');
     expect(source).toContain("aria-label={$t('add_photos')}");
     expect(source).toContain('<span class="hidden sm:inline">{$t(\'add_photos\')}</span>');
-    expect(source).toContain('<span class="sm:hidden">Docs</span><span class="hidden sm:inline">Documents</span>');
+    expect(source).toContain('>\n                  Documents\n                </button>');
     expect(source).toContain("onkeydown={(event) => handlePetContentKeydown(event, 'photos')}");
     expect(source).toContain("tabindex={activePetContent === 'documents' ? 0 : -1}");
     expect(source).toContain('bind:this={photosTab}');

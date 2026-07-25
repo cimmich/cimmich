@@ -29,6 +29,15 @@ const scope = {
 };
 
 const cluster = {
+  evidence: {
+    distinctYears: 1,
+    firstCaptureTime: '2025-01-01T00:00:00.000Z',
+    lastCaptureTime: '2025-01-01T00:00:00.000Z',
+    locationCount: 0,
+    locations: [],
+    photoCount: 5,
+    timeSpanDays: 0,
+  },
   faceCount: 5,
   immichPersonId: 'immich-person-1',
   representative: {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
+  import { Route } from '$lib/route';
   import {
     activateCimmichSourcePack,
     compileCimmichSourcePack,
@@ -8,6 +9,7 @@
     getCimmichFaceMatchingOperatorStatus,
     getCimmichIntegrationSettingsPack,
     getCimmichIntegrationStatus,
+    getCimmichMachineSuggestions,
     reviewCimmichSourcePack,
     rollbackCimmichSourcePack,
     updateCimmichEnhancedComponent,
@@ -52,9 +54,11 @@
   let enhancedActionMessage = $state('');
   let faceActionBusy = $state(false);
   let faceActionMessage = $state('');
+  let faceReviewArmed = $state(false);
   let faceOperator = $state<CimmichFaceMatchingOperatorStatus>();
   let faceOperatorAvailable = $state(false);
   let loading = $state(true);
+  let machineSuggestionCount = $state(0);
   let setupRefreshRevision = $state(0);
   let settings = $state<CimmichIntegrationSettingsPack>();
   let status = $state<CimmichIntegrationStatus>();
@@ -87,7 +91,14 @@
     loading = true;
     error = '';
     try {
-      [status, settings] = await Promise.all([getCimmichIntegrationStatus(), getCimmichIntegrationSettingsPack()]);
+      const [nextStatus, nextSettings, machineSuggestions] = await Promise.all([
+        getCimmichIntegrationStatus(),
+        getCimmichIntegrationSettingsPack(),
+        getCimmichMachineSuggestions(80).catch(() => []),
+      ]);
+      status = nextStatus;
+      settings = nextSettings;
+      machineSuggestionCount = machineSuggestions.length;
       await refreshFaceOperator();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Cimmich could not read integration status.';
@@ -179,11 +190,9 @@
     }
     if (faceOperator.next.action === 'record_operator_review' && reviewGate.receipt) {
       const disposition = reviewGate.receipt.status === 'passed' ? 'approve' : 'hold';
-      if (
-        !globalThis.confirm(
-          `Record this frozen evaluation as ${disposition}? This records the human review but does not put the reference library into use or change accepted names.`,
-        )
-      ) {
+      if (!faceReviewArmed) {
+        faceReviewArmed = true;
+        faceActionMessage = `Review the frozen result above, then click Confirm ${disposition} below. This records your decision but does not put the library into use or change accepted names.`;
         return;
       }
     }
@@ -224,6 +233,7 @@
           ? 'The reviewed reference library is in use. Suggestions remain human-review only.'
           : 'This reviewed reference library was already in use; no library state changed.';
       }
+      faceReviewArmed = false;
       await load();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Cimmich could not complete this matching step.';
@@ -243,7 +253,12 @@
       return 'Check reference library';
     }
     if (faceOperator.next.action === 'record_operator_review' && reviewGate.receipt) {
-      return reviewGate.receipt.status === 'passed' ? 'Approve checked reference library' : 'Record evaluation hold';
+      const disposition = reviewGate.receipt.status === 'passed' ? 'approval' : 'hold';
+      return faceReviewArmed
+        ? `Confirm ${disposition}`
+        : reviewGate.receipt.status === 'passed'
+          ? 'Approve checked reference library'
+          : 'Record evaluation hold';
     }
     if (faceOperator.next.action === 'activate_source_pack') {
       return 'Use reviewed reference library';
@@ -514,8 +529,29 @@
                   </p>
                   <p class="mt-0.5 text-base font-semibold">{referenceJourney.headline}</p>
                   <p class="mt-1">{faceNextAction}</p>
+                  {#if machineSuggestionCount > 0}
+                    <a
+                      class="mt-3 inline-flex min-h-10 items-center rounded-full bg-sky-950 px-4 text-sm font-semibold text-white hover:bg-sky-900 dark:bg-sky-100 dark:text-sky-950 dark:hover:bg-white"
+                      href={Route.cimmichSteward()}
+                    >
+                      Review {machineSuggestionCount.toLocaleString()}
+                      {machineSuggestionCount === 1 ? 'suggestion' : 'suggestions'}
+                    </a>
+                  {/if}
                 </div>
               </div>
+              {#if faceOperator?.next.action === 'hold_source_pack' && faceOperator.next.comparison}
+                <div class="mt-4 rounded-xl border border-amber-300/70 bg-white/70 p-3 text-xs/5 dark:bg-black/20">
+                  <p class="font-semibold">Why this candidate was held</p>
+                  <p class="mt-1">
+                    It recognised {faceOperator.next.comparison.candidateCoverage.toFixed(2)}% of verified known
+                    examples, versus {faceOperator.next.comparison.activeCoverage.toFixed(2)}% for the library currently
+                    in use—a {faceOperator.next.comparison.coverageRegression.toFixed(2)}-point drop. Cimmich permits at
+                    most a {faceOperator.next.comparison.maximumCoverageRegression.toFixed(0)}-point drop.
+                  </p>
+                  <p class="mt-1 font-medium">The current reviewed library remains active. No names or tags changed.</p>
+                </div>
+              {/if}
               {#if faceOperator?.next.action === 'record_operator_review' && reviewGate.receipt}
                 <details class="mt-4 rounded-xl bg-white/70 p-3 text-xs dark:bg-black/20">
                   <summary class="cursor-pointer font-semibold">How Cimmich checked this</summary>
@@ -616,7 +652,9 @@
               <dt class="text-xs text-gray-500 dark:text-gray-400">Prepared library</dt>
               <dd class="mt-1 font-semibold">
                 {referenceJourney.held && faceOperator?.latestPack
-                  ? '1 proposal safely held'
+                  ? faceOperator.next.action === 'hold_source_pack'
+                    ? '1 weaker candidate held'
+                    : '1 proposal safely held'
                   : faceOperator?.next.action === 'activate_source_pack'
                     ? '1 reviewed proposal ready'
                     : faceMatching.awaitingReviewLabel}
@@ -639,6 +677,13 @@
                 <dd class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
                   {faceOperator.evidence?.providerEmbeddings ?? 0} currently usable matching embeddings.
                 </dd>
+                {#if faceOperator.rebuildQueue.pending > 0}
+                  <dd class="mt-1 font-medium text-amber-700 dark:text-amber-300">
+                    {faceOperator.rebuildQueue.pending.toLocaleString()} accepted
+                    {faceOperator.rebuildQueue.pending === 1 ? ' change is' : ' changes are'} waiting to be included in the
+                    next build.
+                  </dd>
+                {/if}
                 {#if faceOperator.evidence.acceptedFaces > faceOperator.evidence.eligibleFaces}
                   <dd class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
                     {faceOperator.evidence.acceptedFaces - faceOperator.evidence.eligibleFaces} accepted Faces are outside

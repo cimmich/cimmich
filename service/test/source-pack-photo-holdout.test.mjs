@@ -154,6 +154,46 @@ test("context-isolated packs deterministically remove every face from each ungro
   }
 });
 
+test("fixed Core challengers exclude every compared reference from query selection", () => {
+  const result = buildPhotoIsolatedPacks(fixture, {
+    cutoff: "2020-12-31T23:59:59Z",
+    excludedQueryFaceIds: ["a1", "b1"],
+    primeOptions: { maxPrime: 2, minPrime: 1 },
+    seed: "fixed-core-query-exclusion",
+  });
+  const queryIds = [
+    ...result.calibration.queries,
+    ...result.holdout.queries,
+  ].map((query) => query.faceId);
+  assert.equal(queryIds.includes("a1"), false);
+  assert.equal(queryIds.includes("b1"), false);
+  assert.equal(result.stats.excludedQueryFaces, 2);
+});
+
+test("fixed Core challengers protect their complete connected capture contexts", () => {
+  const contextFixture = [
+    ...fixture,
+    face("a4", "alice", "asset_a4", "2020-04-01T00:00:00Z", [0.97, 0.03, 0], {
+      captureContexts: [{ contextId: "alice_reference_context" }],
+    }),
+    face("a5", "alice", "asset_a5", "2020-05-01T00:00:00Z", [0.96, 0.04, 0], {
+      captureContexts: [{ contextId: "alice_reference_context" }],
+    }),
+  ];
+  const result = buildPhotoIsolatedPacks(contextFixture, {
+    cutoff: "2020-12-31T23:59:59Z",
+    excludedQueryFaceIds: ["a4"],
+    primeOptions: { maxPrime: 2, minPrime: 1 },
+    seed: "fixed-core-context-exclusion",
+  });
+  const queryIds = [
+    ...result.calibration.queries,
+    ...result.holdout.queries,
+  ].map((query) => query.faceId);
+  assert.equal(queryIds.includes("a5"), false);
+  assert.equal(result.stats.excludedReferenceContexts, 1);
+});
+
 test("context isolation keeps connected Burst and Same-moment siblings out of the source pack", () => {
   const connectedContextFixture = [
     ...fixture,

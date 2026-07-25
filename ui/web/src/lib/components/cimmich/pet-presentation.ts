@@ -2,9 +2,9 @@ import { mdiBird, mdiCat, mdiDog, mdiFish, mdiPawOutline, mdiRabbit, mdiRodent, 
 import type { CimmichPet, CimmichPetConnection, CimmichPetMedia } from '$lib/services/cimmich.service';
 
 export type PetSortMode = 'media-asc' | 'media-desc' | 'name-asc' | 'name-desc';
-export type PetContentView = 'connections' | 'details' | 'documents' | 'photos';
+export type PetContentView = 'connections' | 'details' | 'display' | 'documents' | 'photos' | 'review';
 
-const petContentViews: PetContentView[] = ['photos', 'details', 'connections', 'documents'];
+const petContentViews: PetContentView[] = ['photos', 'review', 'details', 'connections', 'display', 'documents'];
 const petContentViewSet = new Set(petContentViews);
 
 const presentations = {
@@ -28,13 +28,6 @@ const keywordKinds: Array<[PetPresentationKind, RegExp]> = [
   ['fish', /\b(fish|goldfish|betta)\b/],
 ];
 
-// Presentation-only compatibility for the current schema-29 records. A typed
-// species field should replace these confirmed name fallbacks when available.
-const nameFallbacks: Record<string, PetPresentationKind> = {
-  cafe: 'dog',
-  'freya hart': 'cat',
-};
-
 export const getPetPresentation = (pet: CimmichPet) => {
   if (pet.speciesKind) {
     const presentation = presentations[pet.speciesKind];
@@ -45,7 +38,7 @@ export const getPetPresentation = (pet: CimmichPet) => {
 
   const hint = [pet.description, ...pet.aliases].join(' ').toLocaleLowerCase();
   const keywordMatch = keywordKinds.find(([, pattern]) => pattern.test(hint))?.[0];
-  return presentations[keywordMatch || nameFallbacks[pet.displayName.toLocaleLowerCase()] || 'other'];
+  return presentations[keywordMatch || 'other'];
 };
 
 export const getVisiblePetAliases = (pet: CimmichPet) => {
@@ -96,6 +89,37 @@ export const getPetMediaTimeframe = (media: CimmichPetMedia[], locale?: string) 
   }
 
   return `${first.getFullYear()}–${last.getFullYear()}`;
+};
+
+export const getPetMediaFocusCrop = (media: CimmichPetMedia) => {
+  const face = media.pet_face;
+  if (!face || media.width <= 0 || media.height <= 0) {
+    return null;
+  }
+
+  const sourceAspect = media.width / media.height;
+  const targetAspect = 4 / 3;
+  const normalizedAspect = targetAspect / sourceAspect;
+  let width = Math.max(0.32, face.box_w * 3.2, face.box_h * 2.6 * normalizedAspect);
+  let height = width / normalizedAspect;
+
+  if (height > 1) {
+    height = 1;
+    width = normalizedAspect;
+  }
+  if (width > 1) {
+    width = 1;
+    height = 1 / normalizedAspect;
+  }
+
+  const centerX = face.box_x + face.box_w / 2;
+  const centerY = face.box_y + face.box_h / 2;
+  return {
+    h: height,
+    w: width,
+    x: Math.min(1 - width, Math.max(0, centerX - width / 2)),
+    y: Math.min(1 - height, Math.max(0, centerY - height / 2)),
+  };
 };
 
 export const getPetDetailHref = (currentUrl: URL, petId: string) => {

@@ -5,11 +5,32 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 77. Schema 76 adds
+patch level 1. Current post-submission source is schema 83. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
-interrupting the import. Both leave the preserved Build Week runtime unchanged.
+interrupting the import. Schema 78 adds owner-started, provenance-bound
+full-library identity audits with separate untagged-match and accepted-tag
+double-check queues. Audit results are derived review evidence only: they cannot
+accept or rewrite an identity without a later explicit owner command. Schema 79
+suppresses a winning Prime comparison when it is the same file, exact export
+metadata, or a conservative multi-face geometry-preserving derivative of the
+query photo, so a copied photo cannot masquerade as independent evidence. Schema
+80 records the exact Prime reference behind each audit suggestion and verifies
+the higher-confidence untagged queue and every accepted-tag contradiction with
+replay-consistent local perceptual and image-correspondence evidence. Same-photo
+derivatives are withheld and counted before review; no identity is changed.
+Schema 81 preserves imported Body- and Head-intended spatial metadata as
+unresolved identity locators when the source box localises a head but is not
+enough to grant a typed identity association. It prevents usable coordinates
+from being silently reduced to regionless Presence while keeping the owner as
+the resolution authority. Schema 82 binds an owner’s imported-locator correction atomically to
+the resulting typed tag, subject and decision, so editing a retained locator
+cannot leave duplicate unresolved evidence. Schema 83 adds same-species,
+vector-space-bound Pet match proposals, an explicit Unknown Pet state, and
+user-confirmed realization as Face or Whole-animal evidence. A model proposal
+has no identity authority. All eight leave the preserved
+Build Week runtime unchanged.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
