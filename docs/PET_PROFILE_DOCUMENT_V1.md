@@ -68,3 +68,22 @@ Person/Pet isolation, exact document kinds, attach/read/no-change/detach/undo,
 replay/conflict, stale undo, restart persistence and cumulative
 Standard/Personal/Private no-leak behavior. Live deployment followed a
 checksum-backed separate-Cimmich backup; disposable live data was fully removed.
+
+## Schema 83 Pet matching extension
+
+Migration 0083 adds review-only Pet matching without changing the V1 document
+contract:
+
+- one run is bound to one species, provider configuration and vector space;
+- a proposal records its closest confirmed Pet evidence but grants no identity
+  authority;
+- proposals that do not safely identify a known Pet remain Unknown Pet;
+- the owner may assign an Unknown observation to a known same-species Pet,
+  realizing Face or Whole-animal evidence exactly once; or
+- the owner may reject only the detector observation when the species
+  detection is wrong.
+
+The global Unknown Pets workspace and per-Pet Review projection apply
+visibility before returning media or counts. Cimmich ships provider contracts
+and weight-free adapters only. Model weights, their licences and installation
+remain separate operator choices.

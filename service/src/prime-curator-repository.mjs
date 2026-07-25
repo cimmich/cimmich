@@ -32,7 +32,7 @@ const prototypeId = (curation, memberFaceIds) =>
 
 export const loadPrimeCuratorFaces = async (sql, personId = "") => {
   const rows = await sql`
-    SELECT cfi.person_id, fo.face_id, fo.asset_id,
+    SELECT cfi.person_id, fo.face_id, fo.asset_id, a.capture_time,
       round(a.width * fo.box_w)::int AS face_pixel_width,
       round(a.height * fo.box_h)::int AS face_pixel_height,
       fo.detection_confidence::float8 AS detection,
@@ -124,6 +124,7 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
       assetId: row.asset_id,
       autoLowQuality,
       blockedPrime: row.blocked_prime,
+      captureTime: row.capture_time,
       configDigest: row.config_digest,
       currentBucketActorKind: row.current_bucket_actor_kind,
       currentBucketKind: row.current_bucket_kind,
@@ -156,6 +157,10 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
 
 export const buildPrimeCurations = (faces, options = {}) => {
   faces = applyBiometricAuthority(faces, options.biometricAuthority);
+  const evidenceCutoff = new Date(options.evidenceCutoff || new Date());
+  if (!Number.isFinite(evidenceCutoff.getTime())) {
+    throw new Error("Prime curator requires a valid evidence cutoff");
+  }
   const groups = new Map();
   const configsByPerson = new Map();
   for (const face of faces) {
@@ -183,11 +188,21 @@ export const buildPrimeCurations = (faces, options = {}) => {
     );
   }
   return [...groups.values()].map((group) => {
+    const futureDated = (face) => {
+      if (face.captureTime == null) return false;
+      const captureTime = new Date(face.captureTime);
+      return (
+        !Number.isFinite(captureTime.getTime()) ||
+        captureTime.getTime() > evidenceCutoff.getTime()
+      );
+    };
     const automaticLowQuality = group.filter(
-      (face) => face.autoLowQuality && !face.userMainOverride,
+      (face) =>
+        face.autoLowQuality && !face.userMainOverride && !futureDated(face),
     );
     const hasGeneralAnchor = group.some(
       (face) =>
+        !futureDated(face) &&
         !face.autoLowQuality &&
         !face.blockedPrime &&
         face.primeEligible !== false &&
@@ -225,6 +240,7 @@ export const buildPrimeCurations = (faces, options = {}) => {
     const curatedGroup = group.map((face) => ({
       ...face,
       blockedPrime:
+        futureDated(face) ||
         face.blockedPrime ||
         ((hasGeneralAnchor ||
           (automaticLowQualityFallback &&
@@ -235,16 +251,19 @@ export const buildPrimeCurations = (faces, options = {}) => {
         !hasGeneralAnchor && face.autoLowQuality && !face.userMainOverride
           ? "allowed"
           : face.galleryPermission,
-      primeEligible:
-        automaticLowQualityFallback &&
-        face.autoLowQuality &&
-        !face.userMainOverride
+      primeEligible: futureDated(face)
+        ? false
+        : automaticLowQualityFallback &&
+            face.autoLowQuality &&
+            !face.userMainOverride
           ? face.faceId === temporaryLowQualityAnchor?.faceId
           : face.primeEligible,
-      preservedPrime:
-        automaticLowQualityFallback &&
-        face.autoLowQuality &&
-        !face.userMainOverride
+      pinnedPrime: futureDated(face) ? false : face.pinnedPrime,
+      preservedPrime: futureDated(face)
+        ? false
+        : automaticLowQualityFallback &&
+            face.autoLowQuality &&
+            !face.userMainOverride
           ? face.faceId === temporaryLowQualityAnchor?.faceId &&
             face.preservedPrime
           : face.preservedPrime,
@@ -302,6 +321,7 @@ export const applyPrimeCurations = async (
     lowQualityRouted: 0,
     people: curations.length,
     prototypesChanged: 0,
+    rebuildsEnqueued: 0,
     selected: curations.reduce((total, row) => total + row.selected.length, 0),
   };
   if (!execute) {
@@ -321,6 +341,18 @@ export const applyPrimeCurations = async (
     `;
 
     for (const curation of curations) {
+      let sourcePackChanged = false;
+      const enqueueSourcePackIfChanged = async () => {
+        if (!sourcePackChanged) {
+          return;
+        }
+        await tx`
+          SELECT enqueue_source_pack_rebuild(
+            ${curation.personId}, 'prime_curation_changed', 'person', ${curation.personId}
+          )
+        `;
+        summary.rebuildsEnqueued += 1;
+      };
       // A newly split Person has identity evidence before it has ever had a
       // biometric gallery. Establish the two main buckets here so every
       // curator caller gets the same invariant, including post-command
@@ -368,7 +400,6 @@ export const applyPrimeCurations = async (
       const lowQualityIds = new Set(
         (curation.lowQualityFaces || []).map((face) => face.faceId),
       );
-
       for (const face of curation.lowQualityFaces || []) {
         const memberships = currentByFace.get(face.faceId) || [];
         if (
@@ -407,6 +438,7 @@ export const applyPrimeCurations = async (
           )
         `;
         summary.lowQualityRouted += 1;
+        sourcePackChanged = true;
       }
 
       for (const face of curation.selected) {
@@ -447,6 +479,7 @@ export const applyPrimeCurations = async (
           )
         `;
         summary.activated += 1;
+        sourcePackChanged = true;
       }
 
       for (const row of current.filter(
@@ -487,6 +520,7 @@ export const applyPrimeCurations = async (
           `;
         }
         summary.demoted += 1;
+        sourcePackChanged = true;
       }
 
       if (!curation.prototype || curation.selected.length === 0) {
@@ -503,7 +537,9 @@ export const applyPrimeCurations = async (
         if (currentPrototype) {
           await tx`UPDATE reference_prototype SET state = 'retired' WHERE prototype_id = ${currentPrototype.prototype_id}`;
           summary.prototypesChanged += 1;
+          sourcePackChanged = true;
         }
+        await enqueueSourcePackIfChanged();
         continue;
       }
 
@@ -520,25 +556,48 @@ export const applyPrimeCurations = async (
         FOR UPDATE
       `;
       if (currentPrototype?.prototype_id === nextPrototypeId) {
+        await enqueueSourcePackIfChanged();
         continue;
       }
       if (currentPrototype) {
         await tx`UPDATE reference_prototype SET state = 'superseded' WHERE prototype_id = ${currentPrototype.prototype_id}`;
       }
-      await tx`
-        INSERT INTO reference_prototype (
-          prototype_id, person_id, bucket_id, model_family, model_version, config_digest,
-          dimension, normalized, embedding, member_face_ids, member_count, selection_metrics,
-          policy_version, state, supersedes_prototype_id, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${nextPrototypeId}, ${curation.personId}, ${buckets.prime_bucket_id}, ${curation.modelFamily},
-          ${curation.modelVersion}, ${curation.configDigest}, ${curation.dimension}, true,
-          ${vectorText(curation.prototype)}::vector, ${memberFaceIds}, ${memberFaceIds.length},
-          ${tx.json(curation.metrics)}, ${policyVersion}, 'active', ${currentPrototype?.prototype_id || null},
-          ${receiptId}, 'sensitive-biometric'
-        )
+      const [existingPrototype] = await tx`
+        SELECT prototype_id
+        FROM reference_prototype
+        WHERE prototype_id = ${nextPrototypeId}
+        FOR UPDATE
       `;
+      if (existingPrototype) {
+        // Deterministic prototypes may legitimately recur after a later
+        // candidate is retired or a reversible curator experiment is undone.
+        // Reactivate the exact same artifact instead of manufacturing a new ID
+        // or failing the entire curation transaction.
+        await tx`
+          UPDATE reference_prototype
+          SET state = 'active',
+              selection_metrics = ${tx.json(curation.metrics)},
+              producer_receipt_id = ${receiptId}
+          WHERE prototype_id = ${nextPrototypeId}
+        `;
+      } else {
+        await tx`
+          INSERT INTO reference_prototype (
+            prototype_id, person_id, bucket_id, model_family, model_version, config_digest,
+            dimension, normalized, embedding, member_face_ids, member_count, selection_metrics,
+            policy_version, state, supersedes_prototype_id, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${nextPrototypeId}, ${curation.personId}, ${buckets.prime_bucket_id}, ${curation.modelFamily},
+            ${curation.modelVersion}, ${curation.configDigest}, ${curation.dimension}, true,
+            ${vectorText(curation.prototype)}::vector, ${memberFaceIds}, ${memberFaceIds.length},
+            ${tx.json(curation.metrics)}, ${policyVersion}, 'active', ${currentPrototype?.prototype_id || null},
+            ${receiptId}, 'sensitive-biometric'
+          )
+        `;
+      }
       summary.prototypesChanged += 1;
+      sourcePackChanged = true;
+      await enqueueSourcePackIfChanged();
     }
   });
   return summary;

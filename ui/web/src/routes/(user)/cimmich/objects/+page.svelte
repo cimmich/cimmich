@@ -14,6 +14,7 @@
     getPetContentKeyboardTarget,
     getPetContentView,
     getPetDetailHref,
+    getPetMediaFocusCrop,
     getPetMediaTimeframe,
     getPetRelatedConnectionsHref,
     getVisiblePetAliases,
@@ -30,20 +31,29 @@
     createCimmichCommandId,
     createCimmichPet,
     getCimmichAssetEvidence,
+    getCimmichPetMatchUnknown,
+    getCimmichPetMatchSuggestions,
     getCimmichPetMedia,
+    getCimmichPetPresentation,
     getCimmichPets,
+    reviewCimmichPetMatchUnknown,
+    reviewCimmichPetMatch,
     setCimmichPetMedia,
+    setCimmichPetPresentation,
     undoCimmichPetDecision,
     updateCimmichPet,
     type CimmichPet,
+    type CimmichPetMatchSuggestion,
+    type CimmichPetMatchUnknown,
     type CimmichPetMedia,
+    type CimmichPetPresentation,
+    type CimmichPetPresentationSlot,
     type CimmichPetSpeciesKind,
+    type CimmichPersonPresentationMedia,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import {
-    mdiAccountGroupOutline,
-    mdiArchiveOutline,
     mdiArrowLeft,
     mdiCalendarBlankOutline,
     mdiCheck,
@@ -52,7 +62,6 @@
     mdiImageMultipleOutline,
     mdiImageEditOutline,
     mdiImagePlusOutline,
-    mdiInformationOutline,
     mdiLinkOff,
     mdiMagnify,
     mdiMapMarkerOutline,
@@ -87,6 +96,13 @@
 
   type RetryCommand = { id: string; payload: string } | null;
   type UndoReceipt = { decisionId: string; petName: string } | null;
+  type PetPresentationFrame = { centerX: number; centerY: number; zoom: number };
+  type PetPresentationDrag = {
+    pointerId: number;
+    slotKind: CimmichPetPresentationSlot;
+    x: number;
+    y: number;
+  };
 
   let aboutCommand = $state<RetryCommand>(null);
   let aboutDescription = $state('');
@@ -122,8 +138,25 @@
   let mediaLoaded = $state(false);
   let mediaCommand = $state<RetryCommand>(null);
   let detailsTab = $state<HTMLButtonElement | null>(null);
+  let displayTab = $state<HTMLButtonElement | null>(null);
   let documentsTab = $state<HTMLButtonElement | null>(null);
   let petMedia = $state<CimmichPetMedia[]>([]);
+  let petMatchError = $state<CimmichServiceError | null>(null);
+  let petMatches = $state<CimmichPetMatchSuggestion[]>([]);
+  let petMatchesLoaded = $state(false);
+  let petMatchReviewing = $state('');
+  let petUnknown = $state<CimmichPetMatchUnknown[]>([]);
+  let petUnknownError = $state<CimmichServiceError | null>(null);
+  let petUnknownLoaded = $state(false);
+  let petUnknownReviewing = $state('');
+  let petPresentation = $state<CimmichPetPresentation>();
+  let petPresentationDrag = $state<PetPresentationDrag>();
+  let petPresentationFrames = $state<Record<CimmichPetPresentationSlot, PetPresentationFrame>>({
+    face: { centerX: 50, centerY: 50, zoom: 1 },
+    hero: { centerX: 50, centerY: 50, zoom: 1 },
+  });
+  let petPresentationPickerSlot = $state<CimmichPetPresentationSlot | ''>('');
+  let petPresentationSaving = $state<CimmichPetPresentationSlot | ''>('');
   let petPreviewMedia = $state<Record<string, CimmichPetMedia>>({});
   let pets = $state<CimmichPet[]>([]);
   let petsLoadGeneration = 0;
@@ -131,6 +164,7 @@
   let pickerError = $state('');
   let pickerSelectedIds = $state<string[]>([]);
   let photosTab = $state<HTMLButtonElement | null>(null);
+  let reviewTab = $state<HTMLButtonElement | null>(null);
   let query = $state('');
   let selectedPet = $state<CimmichPet | null>(null);
   let showCoverEditor = $state(false);
@@ -138,6 +172,7 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let showMediaPicker = $state(false);
+  let showUnknownPets = $state(false);
   let sortMode = $state<PetSortMode>('name-asc');
   let undoReceipt = $state<UndoReceipt>(null);
   let undoCommand = $state<RetryCommand>(null);
@@ -230,6 +265,9 @@
 
   const attachedSourceIds = $derived(new Set(petMedia.map((item) => item.sourceAssetId)));
   const photoTimeframe = $derived(getPetMediaTimeframe(petMedia));
+  const selectablePetPresentationMedia = $derived(
+    petMedia.filter((item) => Boolean(item.pet_face || item.pet_body) || item.association_types.includes('presence')),
+  );
 
   const parseLabels = (value: string) =>
     [
@@ -318,6 +356,12 @@
       case 'PET_UPDATE_EMPTY': {
         return 'Change at least one field before saving.';
       }
+      case 'PET_MATCH_ALREADY_REVIEWED': {
+        return 'That suggestion was already reviewed. The current queue has been refreshed.';
+      }
+      case 'PET_MATCH_SUGGESTION_NOT_FOUND': {
+        return 'That suggestion is no longer in the review queue.';
+      }
       default: {
         return `The local service declined this action (${value.code}).`;
       }
@@ -338,15 +382,170 @@
     return `${image}; background-size: ${100 / crop.w}% ${100 / crop.h}%; background-position: ${positionX}% ${positionY}%`;
   };
 
-  const mediaBackgroundStyle = (sourceAssetId: string) =>
-    `background-image: url("${getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Preview })}"); background-size: cover; background-position: center`;
+  const mediaBackgroundStyle = (sourceAssetId: string, crop: NonNullable<CimmichPet['cover']>['crop'] = null) => {
+    const image = `background-image: url("${getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Preview })}")`;
+    if (!crop) {
+      return `${image}; background-size: cover; background-position: center`;
+    }
+    const positionX = crop.w >= 1 ? 50 : (crop.x / Math.max(0.0001, 1 - crop.w)) * 100;
+    const positionY = crop.h >= 1 ? 50 : (crop.y / Math.max(0.0001, 1 - crop.h)) * 100;
+    return `${image}; background-size: ${100 / crop.w}% ${100 / crop.h}%; background-position: ${positionX}% ${positionY}%`;
+  };
 
   const petVisualStyle = (pet: CimmichPet) => {
     if (pet.cover?.sourceAssetId) {
       return petCoverStyle(pet);
     }
     const preview = petPreviewMedia[pet.petId];
-    return preview?.sourceAssetId ? mediaBackgroundStyle(preview.sourceAssetId) : '';
+    return preview?.sourceAssetId ? mediaBackgroundStyle(preview.sourceAssetId, getPetMediaFocusCrop(preview)) : '';
+  };
+
+  const petPresentationImageUrl = (media: CimmichPersonPresentationMedia | null | undefined) =>
+    media?.sourceAssetId ? getAssetMediaUrl({ id: media.sourceAssetId, size: AssetMediaSize.Preview }) : '';
+
+  const petPresentationTargetAspect: Record<CimmichPetPresentationSlot, number> = {
+    face: 1,
+    hero: 12 / 5,
+  };
+
+  const petPresentationBaseCrop = (
+    slotKind: CimmichPetPresentationSlot,
+    media: CimmichPersonPresentationMedia | null,
+  ) => {
+    const sourceAspect = media?.width && media.height ? media.width / media.height : 1;
+    const targetAspect = petPresentationTargetAspect[slotKind];
+    return sourceAspect > targetAspect
+      ? { h: 1, w: targetAspect / sourceAspect }
+      : { h: sourceAspect / targetAspect, w: 1 };
+  };
+
+  const petPresentationFrameFromCrop = (
+    slotKind: CimmichPetPresentationSlot,
+    media: CimmichPersonPresentationMedia | null,
+  ): PetPresentationFrame => {
+    const crop = media?.crop ?? null;
+    if (!crop) {
+      const source = petMedia.find((item) => item.asset_id === media?.assetId);
+      const face = source?.pet_face;
+      const body = source?.pet_body;
+      const focus = face ?? body;
+      return {
+        centerX: focus ? Math.max(0, Math.min(100, (focus.box_x + focus.box_w / 2) * 100)) : 50,
+        centerY: focus ? Math.max(0, Math.min(100, (focus.box_y + focus.box_h / 2) * 100)) : 50,
+        zoom: 1,
+      };
+    }
+    const base = petPresentationBaseCrop(slotKind, media);
+    return {
+      centerX: Math.max(0, Math.min(100, (crop.x + crop.w / 2) * 100)),
+      centerY: Math.max(0, Math.min(100, (crop.y + crop.h / 2) * 100)),
+      zoom: Math.max(1, Math.min(4, Math.max(base.w / crop.w, base.h / crop.h))),
+    };
+  };
+
+  const syncPetPresentationFrames = (presentation: CimmichPetPresentation) => {
+    petPresentationFrames = {
+      face: petPresentationFrameFromCrop('face', presentation.face),
+      hero: petPresentationFrameFromCrop('hero', presentation.hero),
+    };
+  };
+
+  const petPresentationCropFromFrame = (
+    slotKind: CimmichPetPresentationSlot,
+    media: CimmichPersonPresentationMedia | null,
+  ) => {
+    const frame = petPresentationFrames[slotKind];
+    const base = petPresentationBaseCrop(slotKind, media);
+    const w = base.w / frame.zoom;
+    const h = base.h / frame.zoom;
+    return {
+      h,
+      w,
+      x: Math.max(0, Math.min(1 - w, frame.centerX / 100 - w / 2)),
+      y: Math.max(0, Math.min(1 - h, frame.centerY / 100 - h / 2)),
+    };
+  };
+
+  const petPresentationImageStyle = (
+    slotKind: CimmichPetPresentationSlot,
+    media: CimmichPersonPresentationMedia | null,
+  ) => {
+    if (!media) {
+      return '';
+    }
+    const crop = petPresentationCropFromFrame(slotKind, media);
+    return [
+      'position: absolute',
+      `width: ${100 / crop.w}%`,
+      'height: auto',
+      'max-width: none',
+      `left: ${(-crop.x / crop.w) * 100}%`,
+      `top: ${(-crop.y / crop.h) * 100}%`,
+    ].join('; ');
+  };
+
+  const adjustPetPresentationFrame = (slotKind: CimmichPetPresentationSlot, delta: Partial<PetPresentationFrame>) => {
+    const frame = petPresentationFrames[slotKind];
+    petPresentationFrames = {
+      ...petPresentationFrames,
+      [slotKind]: {
+        centerX: Math.max(0, Math.min(100, frame.centerX + (delta.centerX ?? 0))),
+        centerY: Math.max(0, Math.min(100, frame.centerY + (delta.centerY ?? 0))),
+        zoom: Math.max(1, Math.min(4, frame.zoom + (delta.zoom ?? 0))),
+      },
+    };
+  };
+
+  const startPetPresentationDrag = (event: PointerEvent, slotKind: CimmichPetPresentationSlot) => {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    petPresentationDrag = { pointerId: event.pointerId, slotKind, x: event.clientX, y: event.clientY };
+  };
+
+  const movePetPresentationDrag = (event: PointerEvent, slotKind: CimmichPetPresentationSlot) => {
+    if (
+      !petPresentationDrag ||
+      petPresentationDrag.pointerId !== event.pointerId ||
+      petPresentationDrag.slotKind !== slotKind
+    ) {
+      return;
+    }
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const frame = petPresentationFrames[slotKind];
+    adjustPetPresentationFrame(slotKind, {
+      centerX: (-(event.clientX - petPresentationDrag.x) / Math.max(1, bounds.width) / frame.zoom) * 100,
+      centerY: (-(event.clientY - petPresentationDrag.y) / Math.max(1, bounds.height) / frame.zoom) * 100,
+    });
+    petPresentationDrag = { ...petPresentationDrag, x: event.clientX, y: event.clientY };
+  };
+
+  const endPetPresentationDrag = (event: PointerEvent) => {
+    if (petPresentationDrag?.pointerId === event.pointerId) {
+      petPresentationDrag = undefined;
+    }
+  };
+
+  const zoomPetPresentation = (event: WheelEvent, slotKind: CimmichPetPresentationSlot) => {
+    event.preventDefault();
+    adjustPetPresentationFrame(slotKind, { zoom: event.deltaY < 0 ? 0.15 : -0.15 });
+  };
+
+  const keyPetPresentation = (event: KeyboardEvent, slotKind: CimmichPetPresentationSlot) => {
+    const step = event.shiftKey ? 5 : 2;
+    const delta: Record<string, Partial<PetPresentationFrame>> = {
+      '+': { zoom: 0.1 },
+      '-': { zoom: -0.1 },
+      '=': { zoom: 0.1 },
+      ArrowDown: { centerY: step },
+      ArrowLeft: { centerX: -step },
+      ArrowRight: { centerX: step },
+      ArrowUp: { centerY: -step },
+    };
+    if (!delta[event.key]) {
+      return;
+    }
+    event.preventDefault();
+    adjustPetPresentationFrame(slotKind, delta[event.key]);
   };
 
   const formatCaptureDate = (value: string | null) => {
@@ -357,9 +556,6 @@
       new Date(value),
     );
   };
-
-  const currentCoverMedia = () =>
-    petMedia.find((item) => item.asset_id === selectedPet?.cover?.assetId) || petMedia[0] || null;
 
   const cropForEditor = () => {
     if (!coverEditorMedia) {
@@ -447,11 +643,16 @@
     mediaError = null;
     petMedia = [];
     try {
-      const nextMedia = await getCimmichPetMedia(pet.petId);
+      const [nextMedia, nextPresentation] = await Promise.all([
+        getCimmichPetMedia(pet.petId),
+        getCimmichPetPresentation(pet.petId),
+      ]);
       if (generation !== mediaLoadGeneration || selectedPet?.petId !== pet.petId) {
         return;
       }
       petMedia = nextMedia;
+      petPresentation = nextPresentation;
+      syncPetPresentationFrames(nextPresentation);
       if (nextMedia[0]) {
         petPreviewMedia = { ...petPreviewMedia, [pet.petId]: nextMedia[0] };
       }
@@ -467,12 +668,111 @@
     }
   };
 
+  const loadPetMatches = async (pet: CimmichPet) => {
+    petMatchesLoaded = false;
+    petMatchError = null;
+    try {
+      const result = await getCimmichPetMatchSuggestions(pet.petId);
+      if (selectedPet?.petId !== pet.petId) {
+        return;
+      }
+      petMatches = result.items;
+    } catch (error_) {
+      if (selectedPet?.petId !== pet.petId) {
+        return;
+      }
+      petMatchError = asServiceError(error_);
+    } finally {
+      if (selectedPet?.petId === pet.petId) {
+        petMatchesLoaded = true;
+      }
+    }
+  };
+
+  const loadUnknownPets = async () => {
+    petUnknownLoaded = false;
+    petUnknownError = null;
+    try {
+      const result = await getCimmichPetMatchUnknown(200);
+      petUnknown = result.items;
+      if (result.items.length > 0) {
+        showUnknownPets = true;
+      }
+    } catch (error_) {
+      petUnknownError = asServiceError(error_);
+    } finally {
+      petUnknownLoaded = true;
+    }
+  };
+
+  const reviewUnknownPet = async (observation: CimmichPetMatchUnknown, action: 'assign' | 'reject', petId?: string) => {
+    if (petUnknownReviewing) {
+      return;
+    }
+    petUnknownReviewing = observation.observationId;
+    petUnknownError = null;
+    try {
+      await reviewCimmichPetMatchUnknown(
+        observation.observationId,
+        action,
+        createCimmichCommandId(`pet-unknown-${action}`),
+        petId,
+      );
+      petUnknown = petUnknown.filter((item) => item.observationId !== observation.observationId);
+      if (action === 'assign' && petId) {
+        const pet = pets.find((item) => item.petId === petId);
+        if (pet) {
+          const nextPets = await getCimmichPets({ limit: 500 });
+          pets = nextPets;
+          void loadPetPreviews(nextPets, petsLoadGeneration);
+        }
+      }
+    } catch (error_) {
+      petUnknownError = asServiceError(error_);
+      if (
+        petUnknownError.code === 'PET_MATCH_ALREADY_REVIEWED' ||
+        petUnknownError.code === 'PET_MATCH_UNKNOWN_NOT_FOUND'
+      ) {
+        await loadUnknownPets();
+      }
+    } finally {
+      petUnknownReviewing = '';
+    }
+  };
+
+  const reviewPetMatch = async (suggestion: CimmichPetMatchSuggestion, action: 'confirm' | 'reject') => {
+    if (!selectedPet || petMatchReviewing) {
+      return;
+    }
+    petMatchReviewing = suggestion.suggestionId;
+    petMatchError = null;
+    try {
+      await reviewCimmichPetMatch(suggestion.suggestionId, action, createCimmichCommandId(`pet-match-${action}`));
+      petMatches = petMatches.filter((item) => item.suggestionId !== suggestion.suggestionId);
+      if (action === 'confirm') {
+        await loadMedia(selectedPet);
+      }
+    } catch (error_) {
+      petMatchError = asServiceError(error_);
+      if (
+        petMatchError.code === 'PET_MATCH_ALREADY_REVIEWED' ||
+        petMatchError.code === 'PET_MATCH_SUGGESTION_NOT_FOUND'
+      ) {
+        await loadPetMatches(selectedPet);
+      }
+    } finally {
+      petMatchReviewing = '';
+    }
+  };
+
   const openPet = (pet: CimmichPet) => {
     selectedPet = pet;
     activePetContent = 'photos';
     isEditingAbout = false;
     aboutCommand = null;
     showEdit = false;
+    petPresentation = undefined;
+    petPresentationPickerSlot = '';
     undoReceipt = null;
     attachCommand = null;
     archiveCommand = null;
@@ -481,6 +781,7 @@
     const href = getPetDetailHref(page.url, pet.petId);
     if (`${page.url.pathname}${page.url.search}` === href) {
       void loadMedia(pet);
+      void loadPetMatches(pet);
     } else {
       void goto(href);
     }
@@ -503,9 +804,14 @@
     event.preventDefault();
     selectPetContent(target);
     requestAnimationFrame(() => {
-      ({ connections: connectionsTab, details: detailsTab, documents: documentsTab, photos: photosTab })[
-        target
-      ]?.focus();
+      ({
+        connections: connectionsTab,
+        details: detailsTab,
+        display: displayTab,
+        documents: documentsTab,
+        photos: photosTab,
+        review: reviewTab,
+      })[target]?.focus();
     });
   };
 
@@ -518,6 +824,11 @@
     isEditingAbout = false;
     aboutCommand = null;
     petMedia = [];
+    petMatches = [];
+    petMatchesLoaded = false;
+    petMatchError = null;
+    petPresentation = undefined;
+    petPresentationPickerSlot = '';
     mediaError = null;
     undoReceipt = null;
     archiveCommand = null;
@@ -671,31 +982,16 @@
     }
   };
 
-  const getPetActions = (): ActionItem[] => {
-    const actions: ActionItem[] = [];
-    if (petMedia.length > 0) {
-      if (selectedPet?.cover && currentCoverMedia()) {
-        actions.push({ title: 'Adjust cover', icon: mdiCrop, onAction: openCurrentCoverEditor });
-      }
-      actions.push({
-        title: selectedPet?.cover ? 'Change cover' : 'Choose cover',
-        icon: mdiImageEditOutline,
-        onAction: openCoverPicker,
-      });
-    }
-    actions.push({
-      title: selectedPet ? `Hide ${selectedPet.displayName}` : 'Hide pet',
-      icon: mdiArchiveOutline,
-      onAction: archivePet,
-    });
-    return actions;
-  };
-
   const getMediaActions = (item: CimmichPetMedia): ActionItem[] => [
     {
-      title: selectedPet?.cover?.assetId === item.asset_id ? 'Adjust cover' : 'Use as cover',
+      title: petPresentation?.face?.assetId === item.asset_id ? 'Current profile photo' : 'Use as profile photo',
       icon: mdiCrop,
-      onAction: () => openCoverEditor(item),
+      onAction: () => void choosePetPresentation('face', item),
+    },
+    {
+      title: petPresentation?.hero?.assetId === item.asset_id ? 'Current hero photo' : 'Use as hero photo',
+      icon: mdiImageEditOutline,
+      onAction: () => void choosePetPresentation('hero', item),
     },
     {
       title: 'Remove from Pet',
@@ -820,23 +1116,9 @@
     showCoverEditor = true;
   };
 
-  const openCoverPicker = () => {
-    if (petMedia.length === 0) {
-      return;
-    }
-    showCoverPicker = true;
-  };
-
   const chooseCoverMedia = (item: CimmichPetMedia) => {
     showCoverPicker = false;
     openCoverEditor(item);
-  };
-
-  const openCurrentCoverEditor = () => {
-    const item = currentCoverMedia();
-    if (item) {
-      openCoverEditor(item);
-    }
   };
 
   const saveCover = async () => {
@@ -868,6 +1150,85 @@
     }
   };
 
+  const petPresentationEvidence = (item: CimmichPetMedia) => {
+    if (item.pet_face) {
+      return { observationId: item.pet_face.face_id, observationKind: 'face' as const };
+    }
+    if (item.pet_body) {
+      return { observationId: item.pet_body.body_id, observationKind: 'body' as const };
+    }
+    if (item.association_types.includes('presence')) {
+      return { observationId: null, observationKind: 'presence' as const };
+    }
+    return null;
+  };
+
+  const choosePetPresentation = async (slotKind: CimmichPetPresentationSlot, item: CimmichPetMedia) => {
+    if (!selectedPet) {
+      return;
+    }
+    const evidence = petPresentationEvidence(item);
+    if (!evidence) {
+      return;
+    }
+    petPresentationSaving = slotKind;
+    mediaError = null;
+    try {
+      petPresentation = await setCimmichPetPresentation(selectedPet.petId, slotKind, {
+        assetId: item.asset_id,
+        crop: slotKind === 'face' ? getPetMediaFocusCrop(item) : null,
+        ...evidence,
+      });
+      syncPetPresentationFrames(petPresentation);
+      petPresentationPickerSlot = '';
+    } catch (error_) {
+      mediaError = asServiceError(error_);
+    } finally {
+      petPresentationSaving = '';
+    }
+  };
+
+  const savePetPresentationFrame = async (slotKind: CimmichPetPresentationSlot) => {
+    if (!selectedPet) {
+      return;
+    }
+    const media = petPresentation?.[slotKind] ?? null;
+    if (!media) {
+      return;
+    }
+    petPresentationSaving = slotKind;
+    mediaError = null;
+    try {
+      petPresentation = await setCimmichPetPresentation(selectedPet.petId, slotKind, {
+        assetId: media.assetId,
+        crop: petPresentationCropFromFrame(slotKind, media),
+        observationId: media.observationId,
+        observationKind: media.observationKind,
+      });
+      syncPetPresentationFrames(petPresentation);
+    } catch (error_) {
+      mediaError = asServiceError(error_);
+    } finally {
+      petPresentationSaving = '';
+    }
+  };
+
+  const clearPetPresentation = async (slotKind: CimmichPetPresentationSlot) => {
+    if (!selectedPet) {
+      return;
+    }
+    petPresentationSaving = slotKind;
+    mediaError = null;
+    try {
+      petPresentation = await setCimmichPetPresentation(selectedPet.petId, slotKind, { assetId: null });
+      syncPetPresentationFrames(petPresentation);
+    } catch (error_) {
+      mediaError = asServiceError(error_);
+    } finally {
+      petPresentationSaving = '';
+    }
+  };
+
   const undoLastMediaChange = async () => {
     if (!undoReceipt || !selectedPet) {
       return;
@@ -896,6 +1257,9 @@
       untrack(() => {
         mediaLoadGeneration += 1;
         petMedia = [];
+        petMatches = [];
+        petMatchesLoaded = false;
+        petMatchError = null;
         libraryAssets = [];
         pickerSelectedIds = [];
         if (showMediaPicker) {
@@ -907,6 +1271,9 @@
         void loadPets(petId).then((pet) => {
           if (pet) {
             void loadMedia(pet);
+            void loadPetMatches(pet);
+          } else {
+            void loadUnknownPets();
           }
         });
       });
@@ -915,7 +1282,7 @@
 </script>
 
 <UserPageLayout>
-  <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-5 text-immich-fg sm:p-7 dark:text-immich-dark-fg">
+  <div class="mx-auto flex w-full max-w-7xl flex-col gap-3 p-4 text-immich-fg sm:p-5 dark:text-immich-dark-fg">
     {#if !selectedPet}
       <CimmichSectionHeader
         icon={mdiPawOutline}
@@ -948,6 +1315,18 @@
               />
             {/snippet}
           </Tooltip>
+          <button
+            class="inline-flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold hover:border-primary hover:text-primary dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+            class:border-primary={showUnknownPets}
+            class:text-primary={showUnknownPets}
+            type="button"
+            onclick={() => (showUnknownPets = !showUnknownPets)}
+          >
+            Unknown
+            {#if petUnknownLoaded}
+              <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{petUnknown.length}</span>
+            {/if}
+          </button>
           <button
             class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
             type="button"
@@ -990,153 +1369,184 @@
     {#if selectedPet}
       <section class="min-w-0" data-testid="cimmich-pet-detail">
         <div class="flex min-w-0 flex-col gap-5">
-          <div
-            class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+          <section
+            class="relative min-h-100 overflow-hidden rounded-[1.75rem] bg-slate-950 text-white shadow-2xl ring-1 ring-white/10"
+            data-testid="cimmich-pet-hero"
           >
-            <div class="grid sm:grid-cols-[minmax(15rem,42%)_minmax(0,1fr)]">
-              <div
-                class="group relative aspect-4/3 overflow-hidden bg-linear-to-br from-primary/20 via-violet-100 to-amber-50 sm:aspect-auto sm:min-h-72 dark:from-primary/20 dark:via-violet-950 dark:to-immich-dark-gray"
+            {#if petPresentation?.hero}
+              <span
+                class="absolute inset-x-0 top-0 block aspect-12/5 overflow-hidden"
+                data-testid="cimmich-pet-hero-photo-frame"
+                aria-hidden="true"
               >
-                {#if petVisualStyle(selectedPet)}
-                  <span
-                    class="block size-full bg-cover bg-center transition-transform duration-500 group-hover:scale-[1.015] motion-reduce:transform-none motion-reduce:transition-none"
-                    style={petVisualStyle(selectedPet)}
-                  ></span>
-                {:else}
-                  <span class="flex size-full flex-col items-center justify-center gap-2 text-gray-500">
-                    <Icon icon={mdiPawOutline} size="62" />
-                    <span class="text-sm">Add photos to bring {selectedPet.displayName} to life</span>
-                  </span>
-                {/if}
+                <img
+                  class="max-w-none"
+                  src={petPresentationImageUrl(petPresentation.hero)}
+                  style={petPresentationImageStyle('hero', petPresentation.hero)}
+                  alt=""
+                />
+              </span>
+            {:else if petVisualStyle(selectedPet)}
+              <span
+                class="absolute inset-0 block bg-cover bg-center"
+                style={petVisualStyle(selectedPet)}
+                aria-hidden="true"
+              ></span>
+            {:else}
+              <span
+                class="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgb(91_80_125),rgb(30_41_59)_58%,rgb(2_6_23))]"
+                aria-hidden="true"
+              ></span>
+            {/if}
+            <div class="absolute inset-0 bg-linear-to-r from-black/92 via-black/60 to-black/18"></div>
+            <div class="absolute inset-0 bg-linear-to-t from-black/92 via-transparent to-black/45"></div>
+
+            <button
+              class="absolute top-5 left-5 z-10 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 text-sm font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/55 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:top-7 sm:left-7"
+              type="button"
+              onclick={closePet}
+            >
+              <Icon icon={mdiArrowLeft} size="16" />
+              Pets
+            </button>
+
+            <button
+              class="absolute top-5 right-5 z-10 inline-flex size-9 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white/80 shadow-lg backdrop-blur-md transition hover:bg-black/55 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:top-7 sm:right-7"
+              type="button"
+              data-testid="cimmich-pet-display-shortcut"
+              onclick={() => selectPetContent('display')}
+              aria-label="Edit display photos"
+              title="Edit display photos"
+            >
+              <Icon icon={mdiPencilOutline} size="16" />
+            </button>
+
+            <div
+              class="relative flex min-h-100 min-w-0 flex-col justify-end gap-5 px-5 pt-20 pb-5 sm:flex-row sm:items-end sm:p-7 lg:p-8"
+            >
+              {#if petPresentation?.face}
                 <span
-                  class="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white shadow-sm backdrop-blur-sm"
-                  aria-label={`${selectedPet.confirmedMediaCount} photos`}
+                  class="relative block size-28 shrink-0 overflow-hidden rounded-full bg-slate-700 shadow-2xl ring-4 ring-white/90 sm:size-32"
+                  aria-label={selectedPet.displayName}
                 >
-                  <Icon icon={mdiImageMultipleOutline} size="15" />
-                  {selectedPet.confirmedMediaCount.toLocaleString()}
+                  <img
+                    class="max-w-none"
+                    src={petPresentationImageUrl(petPresentation.face)}
+                    style={petPresentationImageStyle('face', petPresentation.face)}
+                    alt=""
+                  />
                 </span>
-              </div>
-              <div class="flex min-w-0 flex-col p-6 sm:p-8">
-                <button
-                  class="mb-4 inline-flex min-h-9 w-fit items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-gray-500 hover:bg-gray-100 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:text-gray-400 dark:hover:bg-immich-dark-gray"
-                  type="button"
-                  onclick={closePet}
+              {:else if petVisualStyle(selectedPet)}
+                <span
+                  class="block size-28 shrink-0 rounded-full bg-slate-700 bg-cover bg-center shadow-2xl ring-4 ring-white/90 sm:size-32"
+                  style={petVisualStyle(selectedPet)}
+                  role="img"
+                  aria-label={selectedPet.displayName}
+                ></span>
+              {:else}
+                <span
+                  class="flex size-28 shrink-0 items-center justify-center rounded-full bg-white/15 text-white shadow-2xl ring-4 ring-white/70 backdrop-blur-md sm:size-32"
+                  role="img"
+                  aria-label={selectedPet.displayName}
                 >
-                  <Icon icon={mdiArrowLeft} size="17" />
-                  Pets
-                </button>
-                <div class="flex flex-col items-start justify-between gap-4 sm:flex-row">
-                  <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                      <h1 class="truncate text-3xl font-semibold tracking-tight sm:text-4xl">
-                        {selectedPet.displayName}
-                      </h1>
-                      <span
-                        class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
-                        role="img"
-                        aria-label={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
-                        title={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
-                      >
-                        <Icon
-                          icon={selectedPet.speciesKind ? getPetPresentation(selectedPet).icon : mdiPawOutline}
-                          size="18"
-                        />
-                      </span>
-                    </div>
-                    <p class="mt-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      {selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
-                      {#if selectedPet.breedLabel}
-                        <span class="px-1.5 text-gray-300 dark:text-gray-600" aria-hidden="true">·</span>
-                        {selectedPet.breedLabel}
-                      {/if}
-                    </p>
-                    {#if getVisiblePetAliases(selectedPet).length > 0}
-                      <p class="mt-2 truncate text-sm text-gray-500 dark:text-gray-400">
-                        Also known as {getVisiblePetAliases(selectedPet).join(', ')}
-                      </p>
-                    {/if}
-                  </div>
-                  <div class="flex w-full shrink-0 items-center justify-between gap-1 sm:w-auto sm:justify-start">
-                    <CimmichObjectVisibility
-                      object={selectedPet.visibility}
-                      objectLabel="Pet"
-                      onChange={(visibility) => {
-                        const nextPet = { ...selectedPet!, visibility };
-                        selectedPet = nextPet;
-                        pets = pets.map((pet) => (pet.petId === nextPet.petId ? nextPet : pet));
-                      }}
-                    />
-                    <button
-                      class="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-300 px-3 text-sm font-semibold hover:border-primary dark:border-immich-dark-gray"
-                      type="button"
-                      onclick={beginEdit}
-                      aria-label={`Edit ${selectedPet.displayName}`}
-                    >
-                      <Icon icon={mdiPencilOutline} size="17" />
-                      <span class="hidden sm:inline">Edit profile</span>
-                    </button>
-                    <ContextMenuButton
-                      class="size-11"
-                      items={getPetActions()}
-                      position="top-right"
-                      aria-label={`More actions for ${selectedPet.displayName}`}
-                    />
-                  </div>
+                  <Icon icon={mdiPawOutline} size="52" />
+                </span>
+              {/if}
+
+              <div class="min-w-0 flex-1">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <h1
+                    class="max-w-full text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl"
+                  >
+                    {selectedPet.displayName}
+                  </h1>
                 </div>
 
-                <div class="mt-6 min-w-0 border-t border-gray-200 pt-5 dark:border-immich-dark-gray">
-                  <div class="flex items-center justify-between gap-3">
-                    <h2 class="text-sm font-semibold">About</h2>
-                    {#if !isEditingAbout && selectedPet.description}
+                {#if getVisiblePetAliases(selectedPet).length > 0}
+                  <p class="mt-2 truncate text-sm text-white/65">
+                    Also known as {getVisiblePetAliases(selectedPet).join(', ')}
+                  </p>
+                {/if}
+
+                <div class="mt-4 flex flex-wrap items-center gap-2 text-sm text-white">
+                  <span
+                    class="inline-flex min-h-9 items-center rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                    role="img"
+                    aria-label={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
+                    title={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
+                  >
+                    <Icon
+                      icon={selectedPet.speciesKind ? getPetPresentation(selectedPet).icon : mdiPawOutline}
+                      size="20"
+                    />
+                  </span>
+                  {#if selectedPet.breedLabel}
+                    <span
+                      class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                    >
+                      <span class="font-medium text-white/55">Breed</span>
+                      {selectedPet.breedLabel}
+                    </span>
+                  {/if}
+                  <span
+                    class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                  >
+                    <span class="font-medium text-white/55">Photo history</span>
+                    {photoTimeframe || 'Date unavailable'}
+                  </span>
+                </div>
+
+                {#if isEditingAbout}
+                  <form
+                    class="mt-4 max-w-3xl rounded-2xl border border-white/15 bg-black/35 p-3 backdrop-blur-md"
+                    onsubmit={submitAbout}
+                  >
+                    <Textarea
+                      bind:value={aboutDescription}
+                      bind:ref={aboutInput}
+                      maxlength={2000}
+                      placeholder={`What makes ${selectedPet.displayName} special?`}
+                    />
+                    <div class="mt-2 flex justify-end gap-2">
                       <button
-                        class="flex size-11 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-primary dark:hover:bg-immich-dark-gray"
+                        class="h-9 rounded-lg px-3 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white"
                         type="button"
-                        onclick={beginAboutEdit}
-                        aria-label={`Edit About for ${selectedPet.displayName}`}
+                        onclick={cancelAboutEdit}>Cancel</button
                       >
-                        <Icon icon={mdiPencilOutline} size="16" />
-                      </button>
-                    {/if}
-                  </div>
-                  {#if isEditingAbout}
-                    <form class="mt-2" onsubmit={submitAbout}>
-                      <Textarea
-                        bind:value={aboutDescription}
-                        bind:ref={aboutInput}
-                        maxlength={2000}
-                        placeholder={`What makes ${selectedPet.displayName} special?`}
-                      />
-                      <div class="mt-2 flex justify-end gap-2">
-                        <button
-                          class="h-9 rounded-lg px-3 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
-                          type="button"
-                          onclick={cancelAboutEdit}>Cancel</button
-                        >
-                        <button
-                          class="h-9 rounded-lg bg-primary px-3 text-sm font-semibold text-white disabled:opacity-50"
-                          type="submit"
-                          disabled={isUpdating}>{isUpdating ? 'Saving…' : 'Save'}</button
-                        >
-                      </div>
-                    </form>
-                  {:else if selectedPet.description}
-                    <p class="mt-2 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
+                      <button
+                        class="h-9 rounded-lg bg-white px-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+                        type="submit"
+                        disabled={isUpdating}>{isUpdating ? 'Saving…' : 'Save'}</button
+                      >
+                    </div>
+                  </form>
+                {:else if selectedPet.description}
+                  <div class="mt-4 flex max-w-3xl items-start gap-2">
+                    <p class="text-base/7 text-pretty whitespace-pre-wrap text-white/85 sm:text-lg/8">
                       {selectedPet.description}
                     </p>
-                  {:else}
                     <button
-                      class="mt-3 inline-flex h-11 items-center gap-2 rounded-lg border border-dashed border-gray-300 px-3 text-sm font-semibold text-gray-600 hover:border-primary hover:text-primary dark:border-immich-dark-gray dark:text-gray-300"
+                      class="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-white/55 hover:bg-white/10 hover:text-white"
                       type="button"
-                      onclick={beginAboutEdit}><Icon icon={mdiPlus} size="17" /> Add about</button
+                      onclick={beginAboutEdit}
+                      aria-label={`Edit About for ${selectedPet.displayName}`}
                     >
-                  {/if}
-                </div>
+                      <Icon icon={mdiPencilOutline} size="15" />
+                    </button>
+                  </div>
+                {:else}
+                  <button
+                    class="mt-4 inline-flex min-h-9 items-center gap-2 rounded-full border border-dashed border-white/25 bg-black/25 px-3 text-sm font-semibold text-white/70 backdrop-blur-md hover:bg-black/45 hover:text-white"
+                    type="button"
+                    onclick={beginAboutEdit}><Icon icon={mdiPlus} size="16" /> Add about</button
+                  >
+                {/if}
               </div>
             </div>
-          </div>
+          </section>
 
           {#if undoReceipt}
-            <section
+            <div
               class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-100"
               aria-live="polite"
               role="status"
@@ -1153,7 +1563,7 @@
               >
                 <Icon icon={mdiUndoVariant} size="17" /> Undo
               </button>
-            </section>
+            </div>
           {/if}
 
           <div class="flex min-w-0 items-center border-b border-gray-200 dark:border-immich-dark-gray">
@@ -1161,7 +1571,7 @@
               <div class="flex w-max min-w-full" role="tablist" aria-label="Pet content">
                 <button
                   bind:this={photosTab}
-                  class={`inline-flex h-12 items-center gap-2 border-b-2 px-2 text-sm font-semibold sm:px-4 ${activePetContent === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
                   type="button"
                   role="tab"
                   id="pet-photos-tab"
@@ -1171,15 +1581,33 @@
                   onclick={() => selectPetContent('photos')}
                   onkeydown={(event) => handlePetContentKeydown(event, 'photos')}
                 >
-                  <span class="hidden sm:inline-flex"><Icon icon={mdiImageMultipleOutline} size="18" /></span>
                   Photos
-                  <span class="hidden rounded-full bg-gray-100 px-2 py-0.5 text-xs sm:inline dark:bg-immich-dark-gray"
+                  <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray"
                     >{selectedPet.confirmedMediaCount.toLocaleString()}</span
                   >
                 </button>
                 <button
+                  bind:this={reviewTab}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'review' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  type="button"
+                  role="tab"
+                  id="pet-review-tab"
+                  aria-controls="pet-review-panel"
+                  aria-selected={activePetContent === 'review'}
+                  tabindex={activePetContent === 'review' ? 0 : -1}
+                  onclick={() => selectPetContent('review')}
+                  onkeydown={(event) => handlePetContentKeydown(event, 'review')}
+                >
+                  Review
+                  {#if petMatches.length > 0}
+                    <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                      >{petMatches.length.toLocaleString()}</span
+                    >
+                  {/if}
+                </button>
+                <button
                   bind:this={detailsTab}
-                  class={`inline-flex h-12 items-center gap-2 border-b-2 px-2 text-sm font-semibold sm:px-4 ${activePetContent === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
                   type="button"
                   role="tab"
                   id="pet-details-tab"
@@ -1189,12 +1617,11 @@
                   onclick={() => selectPetContent('details')}
                   onkeydown={(event) => handlePetContentKeydown(event, 'details')}
                 >
-                  <span class="hidden sm:inline-flex"><Icon icon={mdiInformationOutline} size="18" /></span>
                   Details
                 </button>
                 <button
                   bind:this={connectionsTab}
-                  class={`inline-flex h-12 items-center gap-2 border-b-2 px-2 text-sm font-semibold sm:px-4 ${activePetContent === 'connections' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'connections' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
                   type="button"
                   role="tab"
                   id="pet-connections-tab"
@@ -1204,12 +1631,25 @@
                   onclick={() => selectPetContent('connections')}
                   onkeydown={(event) => handlePetContentKeydown(event, 'connections')}
                 >
-                  <span class="hidden sm:inline-flex"><Icon icon={mdiAccountGroupOutline} size="18" /></span>
                   Connections
                 </button>
                 <button
+                  bind:this={displayTab}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'display' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  type="button"
+                  role="tab"
+                  id="pet-display-tab"
+                  aria-controls="pet-display-panel"
+                  aria-selected={activePetContent === 'display'}
+                  tabindex={activePetContent === 'display' ? 0 : -1}
+                  onclick={() => selectPetContent('display')}
+                  onkeydown={(event) => handlePetContentKeydown(event, 'display')}
+                >
+                  Display
+                </button>
+                <button
                   bind:this={documentsTab}
-                  class={`inline-flex h-12 items-center gap-2 border-b-2 px-2 text-sm font-semibold sm:px-4 ${activePetContent === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
+                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${activePetContent === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
                   type="button"
                   role="tab"
                   id="pet-documents-tab"
@@ -1219,8 +1659,7 @@
                   onclick={() => selectPetContent('documents')}
                   onkeydown={(event) => handlePetContentKeydown(event, 'documents')}
                 >
-                  <span class="hidden sm:inline-flex"><Icon icon={mdiFileDocumentOutline} size="18" /></span>
-                  <span class="sm:hidden">Docs</span><span class="hidden sm:inline">Documents</span>
+                  Documents
                 </button>
               </div>
             </div>
@@ -1310,10 +1749,15 @@
                             loading="lazy"
                           />
                         </a>
-                        {#if selectedPet.cover?.assetId === item.asset_id}
+                        {#if petPresentation?.face?.assetId === item.asset_id || petPresentation?.hero?.assetId === item.asset_id}
                           <span
                             class="absolute top-2 left-2 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm"
-                            >Cover</span
+                            >{petPresentation?.face?.assetId === item.asset_id &&
+                            petPresentation?.hero?.assetId === item.asset_id
+                              ? 'Profile + Hero'
+                              : petPresentation?.face?.assetId === item.asset_id
+                                ? 'Profile'
+                                : 'Hero'}</span
                           >
                         {/if}
                         <ContextMenuButton
@@ -1331,6 +1775,122 @@
                         >
                           {item.filename || item.asset_id}
                         </p>
+                      </div>
+                    </article>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {:else if activePetContent === 'review'}
+            <div class="grid gap-5" role="tabpanel" id="pet-review-panel" aria-labelledby="pet-review-tab" tabindex="0">
+              <header class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 class="text-xl font-semibold">Is this {selectedPet.displayName}?</h2>
+                  <p class="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
+                    These are model suggestions, not existing tags. Confirming one adds it to
+                    {selectedPet.displayName}’s photos; rejecting it only removes this suggestion.
+                  </p>
+                </div>
+                {#if petMatchesLoaded && petMatches.length > 0}
+                  <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                    {petMatches.length.toLocaleString()} to review
+                  </p>
+                {/if}
+              </header>
+
+              {#if petMatchError}
+                <CimmichStatePanel
+                  tone="error"
+                  title="Pet suggestions could not be updated"
+                  description={errorCopy(petMatchError)}
+                >
+                  {#snippet action()}
+                    <button
+                      class="rounded-md border border-current px-3 py-1.5 text-sm font-semibold"
+                      type="button"
+                      onclick={() => selectedPet && loadPetMatches(selectedPet)}>Refresh suggestions</button
+                    >
+                  {/snippet}
+                </CimmichStatePanel>
+              {:else if !petMatchesLoaded}
+                <CimmichStatePanel
+                  tone="loading"
+                  title="Loading Pet suggestions"
+                  description="Reading non-authoritative model evidence."
+                />
+              {:else if petMatches.length === 0}
+                <CimmichStatePanel
+                  title={`Nothing waiting for ${selectedPet.displayName}`}
+                  description="No model suggestions currently need your decision. Existing Pet photos remain in Photos."
+                />
+              {:else}
+                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {#each petMatches as suggestion (suggestion.suggestionId)}
+                    <article
+                      class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                    >
+                      <a
+                        class="group relative block aspect-4/3 overflow-hidden bg-gray-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary dark:bg-immich-dark-gray"
+                        href={Route.viewCimmichPetAsset({
+                          id: suggestion.sourceAssetId,
+                          petId: selectedPet.petId,
+                          petName: selectedPet.displayName,
+                        })}
+                        aria-label={`Open suggested photo of ${selectedPet.displayName}`}
+                      >
+                        <img
+                          class="size-full object-contain transition-transform duration-300 group-hover:scale-[1.015] motion-reduce:transition-none"
+                          src={getAssetMediaUrl({ id: suggestion.sourceAssetId, size: AssetMediaSize.Preview })}
+                          alt={suggestion.filename || `Suggested ${selectedPet.displayName} photo`}
+                          loading="lazy"
+                        />
+                        <span
+                          class="pointer-events-none absolute rounded-lg border-2 border-dashed border-white/90 bg-primary/5 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+                          style={`left:${suggestion.box.x * 100}%;top:${suggestion.box.y * 100}%;width:${suggestion.box.w * 100}%;height:${suggestion.box.h * 100}%`}
+                          aria-hidden="true"
+                        ></span>
+                        <span
+                          class="absolute top-3 left-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm"
+                        >
+                          {suggestion.lane === 'face' ? 'Face match' : 'Whole-animal match'}
+                        </span>
+                      </a>
+                      <div class="grid gap-3 p-4">
+                        <div class="flex items-start justify-between gap-3">
+                          <div>
+                            <p class="font-semibold">Suggested as {selectedPet.displayName}</p>
+                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                              Compared with {suggestion.galleryCount.toLocaleString()}
+                              {suggestion.galleryCount === 1 ? ' confirmed photo' : ' confirmed photos'}
+                            </p>
+                          </div>
+                          <span
+                            class="shrink-0 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-immich-dark-gray dark:text-gray-300"
+                            title={`${suggestion.modelFamily} ${suggestion.modelVersion}`}
+                          >
+                            Similarity {suggestion.score.toFixed(2)}
+                          </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <button
+                            class="min-h-11 rounded-xl bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                            type="button"
+                            disabled={Boolean(petMatchReviewing)}
+                            onclick={() => reviewPetMatch(suggestion, 'confirm')}
+                          >
+                            {petMatchReviewing === suggestion.suggestionId
+                              ? 'Saving…'
+                              : `Confirm ${selectedPet.displayName}`}
+                          </button>
+                          <button
+                            class="min-h-11 rounded-xl border border-gray-300 px-3 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-60 dark:border-immich-dark-gray"
+                            type="button"
+                            disabled={Boolean(petMatchReviewing)}
+                            onclick={() => reviewPetMatch(suggestion, 'reject')}
+                          >
+                            Not {selectedPet.displayName}
+                          </button>
+                        </div>
                       </div>
                     </article>
                   {/each}
@@ -1398,6 +1958,39 @@
               </section>
 
               <aside class="grid content-start gap-4">
+                <section
+                  class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 class="font-semibold">Profile controls</h2>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Edit details or change who can see this Pet.
+                      </p>
+                    </div>
+                    <CimmichObjectVisibility
+                      object={selectedPet.visibility}
+                      objectLabel="Pet"
+                      onChange={(visibility) => {
+                        const nextPet = { ...selectedPet!, visibility };
+                        selectedPet = nextPet;
+                        pets = pets.map((pet) => (pet.petId === nextPet.petId ? nextPet : pet));
+                      }}
+                    />
+                  </div>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <button
+                      class="min-h-10 rounded-lg border border-gray-300 px-3 text-sm font-semibold hover:border-primary hover:text-primary dark:border-immich-dark-gray"
+                      type="button"
+                      onclick={beginEdit}>Edit profile</button
+                    >
+                    <button
+                      class="min-h-10 rounded-lg px-3 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                      type="button"
+                      onclick={archivePet}>Hide pet</button
+                    >
+                  </div>
+                </section>
                 <section
                   class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
                 >
@@ -1490,6 +2083,194 @@
                 </div>
               {/if}
             </div>
+          {:else if activePetContent === 'display'}
+            <div
+              class="grid gap-4"
+              role="tabpanel"
+              id="pet-display-panel"
+              aria-labelledby="pet-display-tab"
+              tabindex="0"
+              aria-label="Display photo choices"
+            >
+              <div class="grid gap-3 sm:grid-cols-2">
+                {#each [{ id: 'face', label: 'Profile photo' }, { id: 'hero', label: 'Hero photo' }] as slot (slot.id)}
+                  {@const slotKind = slot.id as CimmichPetPresentationSlot}
+                  {@const media = petPresentation?.[slotKind] ?? null}
+                  <article
+                    class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                  >
+                    <div
+                      class={[
+                        'relative aspect-4/3 overflow-hidden bg-slate-950 select-none',
+                        petPresentationDrag?.slotKind === slotKind ? 'cursor-grabbing' : 'cursor-grab',
+                      ]}
+                    >
+                      {#if media}
+                        <button
+                          class="absolute inset-0 size-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+                          type="button"
+                          aria-label={`${slot.label} framing editor. Drag the photo, use the mouse wheel to zoom, or use arrow and plus or minus keys.`}
+                          onpointerdown={(event) => startPetPresentationDrag(event, slotKind)}
+                          onpointermove={(event) => movePetPresentationDrag(event, slotKind)}
+                          onpointerup={endPetPresentationDrag}
+                          onpointercancel={endPetPresentationDrag}
+                          onwheel={(event) => zoomPetPresentation(event, slotKind)}
+                          onkeydown={(event) => keyPetPresentation(event, slotKind)}
+                        >
+                          <img
+                            class="pointer-events-none absolute inset-0 size-full object-contain p-3 opacity-70"
+                            src={petPresentationImageUrl(media)}
+                            alt=""
+                            draggable="false"
+                          />
+                          <span
+                            class={[
+                              'pointer-events-none absolute top-1/2 left-1/2 -translate-1/2 overflow-hidden border-2 border-white shadow-[0_0_0_999px_rgba(2,6,23,0.62),0_0_0_1px_rgba(0,0,0,0.55)]',
+                              slotKind === 'face'
+                                ? 'aspect-square h-[76%] rounded-full'
+                                : 'aspect-12/5 w-[94%] rounded-lg',
+                            ]}
+                            aria-hidden="true"
+                          >
+                            <img
+                              class="max-w-none"
+                              src={petPresentationImageUrl(media)}
+                              style={petPresentationImageStyle(slotKind, media)}
+                              alt=""
+                              draggable="false"
+                            />
+                          </span>
+                        </button>
+                        <div class="absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-2">
+                          <span
+                            class="rounded-md bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-sm backdrop-blur-sm"
+                          >
+                            Final {slotKind === 'face' ? 'circle' : 'banner'}
+                          </span>
+                          <button
+                            class={[
+                              'min-h-9 rounded-md border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur-sm',
+                              petPresentationPickerSlot === slotKind
+                                ? 'border-white bg-white text-gray-950'
+                                : 'border-white/30 bg-black/65 text-white hover:bg-black/80',
+                            ]}
+                            type="button"
+                            aria-pressed={petPresentationPickerSlot === slotKind}
+                            onclick={() =>
+                              (petPresentationPickerSlot = petPresentationPickerSlot === slotKind ? '' : slotKind)}
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <div class="absolute inset-x-2 bottom-2 z-10 flex flex-wrap items-center justify-between gap-2">
+                          <span
+                            class="rounded-md bg-black/70 px-2 py-1 text-[11px] text-white/90 shadow-sm backdrop-blur-sm"
+                          >
+                            Drag · Wheel · Arrow keys
+                          </span>
+                          <div
+                            class="flex items-center overflow-hidden rounded-md border border-white/25 bg-black/70 text-white shadow-sm backdrop-blur-sm"
+                          >
+                            <button
+                              class="flex size-9 items-center justify-center text-lg hover:bg-white/15"
+                              type="button"
+                              aria-label={`Zoom ${slot.label} out`}
+                              onclick={() => adjustPetPresentationFrame(slotKind, { zoom: -0.1 })}>−</button
+                            >
+                            <span class="min-w-12 px-1 text-center text-[11px] font-semibold">
+                              {petPresentationFrames[slotKind].zoom.toFixed(1)}×
+                            </span>
+                            <button
+                              class="flex size-9 items-center justify-center text-lg hover:bg-white/15"
+                              type="button"
+                              aria-label={`Zoom ${slot.label} in`}
+                              onclick={() => adjustPetPresentationFrame(slotKind, { zoom: 0.1 })}>+</button
+                            >
+                            <button
+                              class="min-h-9 border-l border-white/20 px-3 text-xs font-semibold hover:bg-white/15 disabled:opacity-50"
+                              type="button"
+                              disabled={Boolean(petPresentationSaving)}
+                              onclick={() => void savePetPresentationFrame(slotKind)}
+                            >
+                              {petPresentationSaving === slotKind ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="flex size-full items-center justify-center p-4">
+                          <button
+                            class="min-h-10 rounded-md bg-white px-4 text-sm font-semibold text-gray-950"
+                            type="button"
+                            onclick={() => (petPresentationPickerSlot = slotKind)}>Choose photo</button
+                          >
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="flex min-w-0 items-center justify-between gap-2 p-3">
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold">{slot.label}</p>
+                        <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                          {media?.filename ?? 'Not selected'}
+                        </p>
+                      </div>
+                      {#if media?.selectionMode === 'explicit'}
+                        <button
+                          class="min-h-9 shrink-0 rounded-md px-3 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-immich-dark-gray"
+                          type="button"
+                          disabled={Boolean(petPresentationSaving)}
+                          onclick={() => void clearPetPresentation(slotKind)}>Use automatic</button
+                        >
+                      {/if}
+                    </div>
+                  </article>
+                {/each}
+              </div>
+
+              {#if petPresentationPickerSlot}
+                <section
+                  class="grid gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-immich-dark-gray dark:bg-black/10"
+                  aria-labelledby="pet-presentation-picker-heading"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 id="pet-presentation-picker-heading" class="font-semibold">
+                        Choose {petPresentationPickerSlot === 'face' ? 'Profile photo' : 'Hero photo'}
+                      </h3>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Select from {selectedPet.displayName}’s confirmed photos.
+                      </p>
+                    </div>
+                    <button
+                      class="min-h-9 rounded-md px-3 text-xs font-semibold hover:bg-white dark:hover:bg-immich-dark-gray"
+                      type="button"
+                      onclick={() => (petPresentationPickerSlot = '')}>Cancel</button
+                    >
+                  </div>
+                  <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
+                    {#each selectablePetPresentationMedia.slice(0, 20) as item (item.asset_id)}
+                      <button
+                        class="group overflow-hidden rounded-lg border border-gray-200 bg-white text-left hover:border-gray-500 disabled:opacity-50 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                        type="button"
+                        disabled={Boolean(petPresentationSaving)}
+                        title={item.filename}
+                        onclick={() =>
+                          void choosePetPresentation(petPresentationPickerSlot as CimmichPetPresentationSlot, item)}
+                      >
+                        <span
+                          class="block aspect-square bg-gray-200 bg-cover bg-center transition group-hover:scale-[1.02] dark:bg-gray-800"
+                          style={mediaBackgroundStyle(item.sourceAssetId, getPetMediaFocusCrop(item))}
+                        ></span>
+                        <span class="block truncate px-2 py-1.5 text-[11px] font-medium">{item.filename}</span>
+                      </button>
+                    {:else}
+                      <p class="col-span-full py-6 text-center text-sm text-gray-500">
+                        No confirmed Pet photos are available.
+                      </p>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+            </div>
           {:else}
             <div
               class="grid gap-5"
@@ -1509,6 +2290,113 @@
         </div>
       </section>
     {:else}
+      {#if showUnknownPets}
+        <section
+          class="grid gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4 sm:p-5 dark:border-immich-dark-gray dark:bg-immich-dark-bg/50"
+          aria-labelledby="unknown-pets-heading"
+        >
+          <header class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="unknown-pets-heading" class="text-xl font-semibold">Unknown pets</h2>
+              <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                The detector found an animal, but matching did not find a safe identity. Assign only the ones you know.
+              </p>
+            </div>
+            {#if petUnknownLoaded && petUnknown.length > 0}
+              <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                {petUnknown.length.toLocaleString()} to review
+              </p>
+            {/if}
+          </header>
+
+          {#if petUnknownError}
+            <CimmichStatePanel
+              tone="error"
+              title="Unknown pets could not be updated"
+              description={errorCopy(petUnknownError)}
+            >
+              {#snippet action()}
+                <button
+                  class="rounded-md border border-current px-3 py-1.5 text-sm font-semibold"
+                  type="button"
+                  onclick={loadUnknownPets}>Refresh unknown pets</button
+                >
+              {/snippet}
+            </CimmichStatePanel>
+          {:else if !petUnknownLoaded}
+            <CimmichStatePanel
+              tone="loading"
+              title="Loading unknown pets"
+              description="Reading animal detections that did not clear the identity threshold."
+            />
+          {:else if petUnknown.length === 0}
+            <CimmichStatePanel
+              title="No unknown pets waiting"
+              description="Every imported animal detection has been classified or dismissed."
+            />
+          {:else}
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {#each petUnknown as observation (observation.observationId)}
+                <article
+                  class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                >
+                  <a
+                    class="group relative block aspect-4/3 overflow-hidden bg-gray-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary dark:bg-immich-dark-gray"
+                    href={`/photos/${observation.sourceAssetId}`}
+                    aria-label={`Open ${observation.filename || 'unknown Pet photo'}`}
+                  >
+                    <img
+                      class="size-full object-contain transition-transform duration-300 group-hover:scale-[1.015] motion-reduce:transition-none"
+                      src={getAssetMediaUrl({ id: observation.sourceAssetId, size: AssetMediaSize.Preview })}
+                      alt={observation.filename || 'Unknown Pet candidate'}
+                      loading="lazy"
+                    />
+                    <span
+                      class="pointer-events-none absolute rounded-lg border-2 border-dashed border-white/90 bg-primary/5 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+                      style={`left:${observation.box.x * 100}%;top:${observation.box.y * 100}%;width:${observation.box.w * 100}%;height:${observation.box.h * 100}%`}
+                      aria-hidden="true"
+                    ></span>
+                    <span
+                      class="absolute top-3 left-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white capitalize backdrop-blur-sm"
+                    >
+                      Possible {observation.speciesKind.replace('_', ' ')}
+                    </span>
+                  </a>
+                  <div class="grid gap-3 p-4">
+                    <div>
+                      <p class="truncate font-semibold">{observation.filename || 'Photo'}</p>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        No identity cleared the matching threshold
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      {#each pets.filter((pet) => pet.speciesKind === observation.speciesKind) as pet (pet.petId)}
+                        <button
+                          class="min-h-10 flex-1 rounded-xl bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                          type="button"
+                          disabled={Boolean(petUnknownReviewing)}
+                          onclick={() => reviewUnknownPet(observation, 'assign', pet.petId)}
+                        >
+                          {petUnknownReviewing === observation.observationId ? 'Saving…' : `This is ${pet.displayName}`}
+                        </button>
+                      {/each}
+                      <button
+                        class="min-h-10 rounded-xl border border-gray-300 px-3 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-60 dark:border-immich-dark-gray"
+                        type="button"
+                        disabled={Boolean(petUnknownReviewing)}
+                        onclick={() => reviewUnknownPet(observation, 'reject')}
+                      >
+                        Not a {observation.speciesKind.replace('_', ' ')}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/if}
+
       {#if !loaded}
         <CimmichStatePanel
           tone="loading"

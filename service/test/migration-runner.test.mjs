@@ -64,6 +64,25 @@ test("the current source chain is contiguous and preserves schema-48 adoption", 
   );
 });
 
+test("Pet matching migration keeps model proposals non-authoritative", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0083_pet_matching_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(
+    migration,
+    /state IN \('pending', 'confirmed', 'rejected', 'unknown', 'superseded'\)/,
+  );
+  assert.match(migration, /pet_match_one_confirmed_suggestion/);
+  assert.match(migration, /must compare within one species/);
+  assert.match(
+    migration,
+    /never becomes a Pet tag without an explicit user decision/,
+  );
+});
+
 test("schema 72 retains restored reconciliation history while enforcing every new row", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
@@ -365,4 +384,77 @@ test("schema 77 admits every explicit unnamed-Person review outcome", async () =
   assert.match(source, /source_person_unlabelled/);
   assert.match(source, /source_person_resolution_required/);
   assert.match(source, /immich_onboarding_review_item_reason_check/);
+});
+
+test("schema 78 keeps exhaustive identity audit evidence separate from identity authority", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0078_identity_audit_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE identity_audit_run/);
+  assert.match(source, /CREATE TABLE identity_audit_item/);
+  assert.match(source, /untagged_match','accepted_contradiction/);
+  assert.match(source, /review_state IN \('open','dismissed'\)/);
+  assert.doesNotMatch(
+    source,
+    /UPDATE identity_claim|INSERT INTO identity_claim/,
+  );
+});
+
+test("schema 80 records independent-photo verification without granting identity authority", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0080_identity_audit_independent_evidence_v2.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /derivative_candidates_suppressed/);
+  assert.match(source, /independence_provider_config_digest/);
+  assert.match(source, /suggested_reference_asset_id/);
+  assert.doesNotMatch(
+    source,
+    /UPDATE identity_claim|INSERT INTO identity_claim/,
+  );
+});
+
+test("schema 81 preserves imported spatial identity metadata without granting typed identity authority", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0081_imported_identity_locator_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE imported_identity_locator/);
+  assert.match(source, /intended_tag_type IN \('body', 'head'\)/);
+  assert.match(source, /geometry_role IN \('head_locator'\)/);
+  assert.match(source, /state IN \('unresolved', 'resolved', 'ignored'\)/);
+  assert.match(source, /producer_receipt_id/);
+  assert.doesNotMatch(
+    source,
+    /INSERT INTO (?:face_association|head_association|body_association)/,
+  );
+});
+
+test("schema 82 binds owner locator resolution to the resulting typed tag decision", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0082_imported_identity_locator_resolution_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /resolution_kind IN \('stronger_existing_truth', 'owner_typed_tag'\)/);
+  assert.match(source, /resolution_decision_id text REFERENCES decision/);
+  assert.match(source, /resolved_subject_id text REFERENCES person/);
+  assert.match(source, /resolved_tag_type IN \('face', 'body', 'head', 'presence'\)/);
 });

@@ -7,6 +7,17 @@ memory and evidence layer for People, Pets, Places, Things, Events, Documents,
 search, viewing modes and owner-controlled matching. Immich remains the photo
 management system.
 
+## What does Public Beta mean?
+
+The maintained product is installable and its owner-controlled workflows are
+actively being tested on real libraries, but compatibility, model/provider
+setup and matching quality still need broader evidence. Public Beta releases
+may change workflows and schemas between patches. Back up Cimmich before
+upgrading and read the [Public Beta changelog](PUBLIC_BETA_CHANGELOG.md).
+
+The immutable `v1.0.0-build-week` release remains the exact competition
+submission; later beta patches do not rewrite it.
+
 ## Is Cimmich part of Immich?
 
 No. Cimmich is an unofficial independent project and is not affiliated with or
@@ -32,6 +43,19 @@ No. Enhanced can rank possible matches from compatible, owner-confirmed
 evidence, but the archive owner remains the identity authority. Cimmich can
 abstain, and no released SourcePack or model can accept an identity
 automatically.
+
+When Cimmich suggests the wrong Person, choosing `Not <name>` opens a
+replacement picker. Merely opening that picker does not dismiss, accept or
+reassign the face; the owner must select a Person and apply the change.
+
+## Can Cimmich match Pets?
+
+The schema-83 Public Beta can ingest proposals from separately configured,
+same-species Pet providers. PetFace-style face/head evidence and MiewID-style
+whole-animal evidence remain distinct vector spaces. Cimmich may abstain and
+place a detector observation in Unknown Pets. Only an owner assignment creates
+Pet identity evidence; rejecting an item rejects that detector observation,
+not the source photo or Pet.
 
 ## Do I need an AI model to use Cimmich?
 

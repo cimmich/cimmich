@@ -578,6 +578,12 @@ export type CimmichPersonPresentation = {
   schemaVersion: 'cimmich.person-presentation-media.v1';
 };
 
+export type CimmichPetPresentationSlot = 'face' | 'hero';
+
+export type CimmichPetPresentation = Omit<CimmichPersonPresentation, 'body'> & {
+  body: null;
+};
+
 export type CimmichPetCoverCrop = {
   h: number;
   w: number;
@@ -624,13 +630,104 @@ export type CimmichPet = {
 
 export type CimmichPetMedia = {
   asset_id: string;
-  association_types: Array<'body' | 'face' | 'head' | 'presence'>;
+  association_types: Array<'body' | 'body_candidate' | 'face' | 'head' | 'presence'>;
   capture_time: string | null;
   filename: string;
   height: number;
   media_kind: 'image' | 'video';
+  pet_body?: {
+    body_id: string;
+    box_h: number;
+    box_w: number;
+    box_x: number;
+    box_y: number;
+  } | null;
+  pet_face?: {
+    box_h: number;
+    box_w: number;
+    box_x: number;
+    box_y: number;
+    face_id: string;
+  } | null;
   sourceAssetId: string;
   width: number;
+};
+
+export type CimmichPetMatchSuggestion = {
+  assetId: string;
+  box: CimmichPetCoverCrop;
+  createdAt: string;
+  detectionConfidence: number;
+  filename: string;
+  galleryCount: number;
+  lane: 'face' | 'whole_animal';
+  modelFamily: string;
+  modelVersion: string;
+  observationId: string;
+  petId: string;
+  petName: string;
+  providerId: string;
+  rank: number;
+  score: number;
+  sourceAssetId: string;
+  speciesKind: CimmichPetSpeciesKind;
+  state: 'pending';
+  suggestionId: string;
+  vectorSpaceId: string;
+};
+
+export type CimmichPetMatchStatus = {
+  confirmed: number;
+  pending: number;
+  rejected: number;
+  runs: number;
+  schemaVersion: 'cimmich.pet-matching.v1';
+  unknown: number;
+};
+
+export type CimmichPetMatchUnknown = {
+  assetId: string;
+  box: CimmichPetCoverCrop;
+  createdAt: string;
+  detectionConfidence: number;
+  filename: string;
+  lane: 'face' | 'whole_animal';
+  modelFamily: string;
+  modelVersion: string;
+  observationId: string;
+  providerId: string;
+  sourceAssetId: string;
+  speciesKind: CimmichPetSpeciesKind;
+  vectorSpaceId: string;
+};
+
+export type CimmichPetMatchUnknownReviewResult = {
+  action: 'assign' | 'reject';
+  changed: boolean;
+  decisionId: string;
+  lane?: 'face' | 'whole_animal';
+  observationId: string;
+  petId?: string;
+  petName?: string;
+  realizedAssociationId?: string;
+  realizedObservationId?: string;
+  replayed?: boolean;
+  schemaVersion: 'cimmich.pet-matching.v1';
+};
+
+export type CimmichPetMatchReviewResult = {
+  action: 'confirm' | 'reject';
+  changed: boolean;
+  decisionId: string;
+  lane?: 'face' | 'whole_animal';
+  observationId: string;
+  petId: string;
+  petName?: string;
+  realizedAssociationId?: string;
+  realizedObservationId?: string;
+  replayed?: boolean;
+  schemaVersion: 'cimmich.pet-matching.v1';
+  suggestionId: string;
 };
 
 export type CimmichPetDocumentKind =
@@ -927,6 +1024,18 @@ export type CimmichPersonProjectionPage<T> = {
   schemaVersion: 'cimmich.person-projection-page.v1';
 };
 
+export type CimmichIdentityFaceSummary = {
+  all: number;
+  head: number;
+  lowQuality: number;
+  prime: number;
+  secondary: number;
+};
+
+export type CimmichIdentityFacePage = CimmichPersonProjectionPage<CimmichIdentityFace> & {
+  summary: CimmichIdentityFaceSummary;
+};
+
 export type CimmichMergePreview = {
   conflicts: { duplicate_presence: number; shared_assets: number };
   source: {
@@ -952,7 +1061,7 @@ export type CimmichMergePreview = {
 export type CimmichPersonAsset = {
   asset_id: string;
   asset_head_evidence: boolean;
-  association_types: Array<'body' | 'face' | 'head' | 'presence'>;
+  association_types: Array<'body' | 'body_candidate' | 'face' | 'head' | 'presence'>;
   capture_time: string | null;
   contexts: Array<{
     displayName: string;
@@ -1038,7 +1147,8 @@ export type CimmichIdentityFace = {
   filename: string;
   height: number;
   identity_claim_id: string;
-  main_evidence_tier: 'face_only' | 'head' | 'lq' | 'prime' | 'secondary';
+  main_evidence_tier: 'head' | 'lq' | 'prime' | 'secondary';
+  matching_reference_tier: 'head' | 'lq' | 'prime' | 'secondary' | null;
   media_kind: 'image' | 'video';
   modifiers: CimmichFaceModifier[];
   modifier_proposals: CimmichFaceModifierProposal[];
@@ -1062,6 +1172,27 @@ export type CimmichIdentitySelectionResult = {
   proposalId?: string;
   state?: 'accept' | 'reject';
   specialtyName?: string;
+};
+
+export type CimmichHeadRescanResult = {
+  evaluatedCount: number;
+  items: Array<{
+    faceId: string;
+    margin: number | null;
+    marginFloor: number;
+    passed: boolean;
+    score: number | null;
+    scoreFloor: number;
+    targetBucket: 'lq' | 'secondary' | null;
+    winnerDisplayName: string | null;
+    winnerPersonId: string | null;
+  }>;
+  maintenancePending: boolean;
+  movedCount: number;
+  retainedCount: number;
+  schemaVersion: 'cimmich.head-rescan.v1';
+  tierCounts: { lq: number; prime: number; secondary: number };
+  totalCount: number;
 };
 
 export type CimmichDecisionResult = {
@@ -1293,6 +1424,19 @@ export type CimmichAssetEvidence = {
   filename: string;
   height: number;
   known_people: Array<{ display_name: string; needs_holding: boolean; person_id: string }>;
+  identity_locators?: Array<{
+    box_h: number;
+    box_w: number;
+    box_x: number;
+    box_y: number;
+    display_name: string;
+    geometry_role: 'head_locator';
+    intended_tag_type: 'body' | 'head';
+    locator_id: string;
+    person_id: string;
+    source_instance_suffix: string | null;
+    source_kind: string;
+  }>;
   media_kind: 'image' | 'video';
   mime_type: string;
   ownerSummary?: CimmichAssetOwnerSummary;
@@ -1364,6 +1508,7 @@ export type CimmichManualSubjectTagResult = {
   assetId: string;
   changed: boolean;
   replayed: boolean;
+  resolvedLocatorId?: string;
   schemaVersion: 'cimmich.typed-manual-subject-tag.v1' | 'cimmich.typed-manual-subject-tag.v2';
   status: 'applied' | 'no_change' | 'replaced' | 'restored' | 'reverted';
   supersedesDecisionId?: string;
@@ -1455,6 +1600,90 @@ export type CimmichMachineSuggestionDecision = {
   personId?: string;
   personName?: string;
   state: 'accepted' | 'ignored';
+};
+
+export type CimmichIdentityAuditRun = {
+  acceptedComparableFaces: number;
+  acceptedEmbeddedFaces: number;
+  auditRunId: string;
+  completedAt: string | null;
+  contradictionCandidates: number;
+  derivativeCandidatesSuppressed: number;
+  errorCode: string | null;
+  independenceProviderConfigDigest: string | null;
+  independenceScoreFloor: number;
+  marginFloor: number;
+  packId: string;
+  policyVersion: string;
+  schemaVersion: 'cimmich.identity-audit.v2';
+  stale: boolean;
+  startedAt: string;
+  state: 'completed' | 'failed' | 'running';
+  scoreFloor: number;
+  untaggedCandidates: number;
+  untaggedEmbeddedFaces: number;
+};
+
+export type CimmichIdentityAuditReference = {
+  assetId: string;
+  box: { h: number; w: number; x: number; y: number };
+  faceId: string;
+  height: number;
+  score: number;
+  sourceAssetId: string;
+  width: number;
+};
+
+export type CimmichIdentityAuditItem = {
+  assetId: string;
+  assignedPerson: null | {
+    displayName: string;
+    personId: string;
+    reference: CimmichIdentityAuditReference | null;
+    score: number;
+  };
+  box: { h: number; w: number; x: number; y: number };
+  captureTime: string | null;
+  detectionConfidence: number;
+  faceId: string;
+  filename: string;
+  height: number;
+  kind: 'accepted_contradiction' | 'untagged_match';
+  margin: number;
+  mediaKind: 'image' | 'video';
+  qualityMeasurements: Record<string, number | string>;
+  sourceAssetId: string;
+  suggestedPerson: {
+    displayName: string;
+    personId: string;
+    reference: CimmichIdentityAuditReference | null;
+    score: number;
+  };
+  width: number;
+};
+
+export type CimmichIdentityAuditPage = {
+  hasMore: boolean;
+  items: CimmichIdentityAuditItem[];
+  kind: CimmichIdentityAuditItem['kind'];
+  limit: number;
+  offset: number;
+  run: CimmichIdentityAuditRun | null;
+  schemaVersion: 'cimmich.identity-audit.v2';
+  total: number;
+};
+
+export type CimmichIdentityAuditLead = {
+  displayName: string;
+  personId: string;
+  suggestionCount: number;
+};
+
+export type CimmichIdentityAuditLeads = {
+  items: CimmichIdentityAuditLead[];
+  run: CimmichIdentityAuditRun | null;
+  schemaVersion: 'cimmich.identity-audit.v2';
+  total: number;
 };
 
 export type CimmichEnhancedComponentStatus = {
@@ -1658,6 +1887,15 @@ export type CimmichImmichOnboardingImportResult = {
 export type CimmichImmichPersonResolutionAction = 'create_person' | 'existing_person' | 'later' | 'noise' | 'unknown';
 
 export type CimmichImmichPersonCluster = {
+  evidence: {
+    distinctYears: number;
+    firstCaptureTime: string | null;
+    lastCaptureTime: string | null;
+    locationCount: number;
+    locations: string[];
+    photoCount: number;
+    timeSpanDays: number;
+  };
   faceCount: number;
   immichPersonId: string;
   representative: {
@@ -1772,6 +2010,7 @@ export type CimmichSourcePackReviewGateNullReason =
   | 'REVIEW_GATE_NOT_DERIVED';
 
 export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMatching'] & {
+  activePack: CimmichSourcePackProjection | null;
   evidence: {
     acceptedFaces: number;
     analysedFaces: number;
@@ -1787,10 +2026,17 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
       | 'evaluate_source_pack'
       | 'activate_source_pack'
       | 'await_more_evidence'
+      | 'hold_source_pack'
       | 'record_operator_review'
       | 'review_suggestions'
       | 'run_recognition';
     reason: string;
+    comparison?: {
+      activeCoverage: number;
+      candidateCoverage: number;
+      coverageRegression: number;
+      maximumCoverageRegression: number;
+    };
     settings?: string;
   };
   providerValidation:
@@ -1802,11 +2048,13 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
         state: 'ready';
         vectorSpaceId: string;
       };
+  rebuildQueue: { pending: number };
 };
 
 export type CimmichFaceMatchingOperatorResult = {
   automaticIdentityAuthority: 'none';
   changed?: boolean;
+  rebuildsCompleted?: number;
   evaluation?: {
     evaluationId: string | null;
     gateContract: string;
@@ -2324,12 +2572,62 @@ export const getCimmichIdentityCandidates = async (limit = 5) => {
   return result.items;
 };
 
-export const getCimmichMachineSuggestions = async (limit = 24) => {
+export const getCimmichMachineSuggestions = async (limit = 24, leadPersonId = '') => {
+  const search = new URLSearchParams({ limit: String(Math.max(1, Math.min(80, limit))) });
+  if (leadPersonId) {
+    search.set('leadPersonId', leadPersonId);
+  }
   const result = await request<{ items: CimmichMachineSuggestion[] }>(
-    `/v1/review/machine-suggestions?limit=${Math.max(1, Math.min(80, limit))}`,
+    `/v1/review/machine-suggestions?${search.toString()}`,
   );
   return result.items;
 };
+
+export const getCimmichIdentityAudit = async () => {
+  const result = await request<{ run: CimmichIdentityAuditRun | null }>('/v1/review/identity-audit');
+  return result.run;
+};
+
+export const getCimmichIdentityAuditLeads = () => request<CimmichIdentityAuditLeads>('/v1/review/identity-audit/leads');
+
+export const startCimmichIdentityAudit = async () => {
+  const result = await request<{ run: CimmichIdentityAuditRun }>('/v1/review/identity-audit', {
+    body: '{}',
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+  return result.run;
+};
+
+export const getCimmichIdentityAuditItems = (
+  kind: CimmichIdentityAuditItem['kind'],
+  offset = 0,
+  limit = 20,
+  personId?: string,
+) => {
+  const search = new URLSearchParams({
+    kind,
+    limit: String(Math.max(1, Math.min(50, limit))),
+    offset: String(Math.max(0, offset)),
+  });
+  if (personId) {
+    search.set('personId', personId);
+  }
+  return request<CimmichIdentityAuditPage>(`/v1/review/identity-audit/items?${search.toString()}`);
+};
+
+export const dismissCimmichIdentityAuditItem = (kind: CimmichIdentityAuditItem['kind'], faceId: string) =>
+  request<{
+    changed: boolean;
+    faceId: string;
+    kind: CimmichIdentityAuditItem['kind'];
+    schemaVersion: 'cimmich.identity-audit.v2';
+    state: 'dismissed' | 'unchanged';
+  }>(`/v1/review/identity-audit/items/${kind}/${encodeURIComponent(faceId)}/dismiss`, {
+    body: '{}',
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
 
 export const getCimmichStewardPlan = (goal = 'Find the few identity decisions with the highest value.') =>
   request<CimmichStewardPlan>('/v1/steward/plan', {
@@ -3034,6 +3332,42 @@ export const getCimmichPetMedia = async (petId: string, limit = 500) => {
   return result.items;
 };
 
+export const getCimmichPetMatchSuggestions = (petId: string, limit = 100) =>
+  request<{
+    items: CimmichPetMatchSuggestion[];
+    petId: string;
+    schemaVersion: 'cimmich.pet-matching.v1';
+  }>(`/v1/pets/${encodeURIComponent(petId)}/matching/suggestions?limit=${Math.max(1, Math.min(200, limit))}`);
+
+export const getCimmichPetMatchStatus = () => request<CimmichPetMatchStatus>('/v1/pets/matching/status');
+
+export const getCimmichPetMatchUnknown = (limit = 100) =>
+  request<{ items: CimmichPetMatchUnknown[]; schemaVersion: 'cimmich.pet-matching.v1' }>(
+    `/v1/pets/matching/unknown?limit=${Math.max(1, Math.min(200, limit))}`,
+  );
+
+export const reviewCimmichPetMatchUnknown = (
+  observationId: string,
+  action: 'assign' | 'reject',
+  commandId: string,
+  petId?: string,
+) =>
+  request<CimmichPetMatchUnknownReviewResult>(
+    `/v1/pets/matching/unknown/${encodeURIComponent(observationId)}/${action}`,
+    {
+      body: JSON.stringify({ commandId, petId }),
+      headers: { 'x-cimmich-actor': 'local-operator' },
+      method: 'POST',
+    },
+  );
+
+export const reviewCimmichPetMatch = (suggestionId: string, action: 'confirm' | 'reject', commandId: string) =>
+  request<CimmichPetMatchReviewResult>(`/v1/pets/matching/suggestions/${encodeURIComponent(suggestionId)}/${action}`, {
+    body: JSON.stringify({ commandId }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
 export const getCimmichPetDocuments = (petId: string) =>
   request<{ items: CimmichPetDocument[]; petId: string; schemaVersion: 'cimmich.pet-document.v1' }>(
     `/v1/pets/${encodeURIComponent(petId)}/documents`,
@@ -3145,6 +3479,25 @@ export const setCimmichPersonPresentation = (
   },
 ) =>
   request<CimmichPersonPresentation>(`/v1/people/${encodeURIComponent(personId)}/presentation/${slotKind}`, {
+    body: JSON.stringify(input),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
+export const getCimmichPetPresentation = (petId: string) =>
+  request<CimmichPetPresentation>(`/v1/pets/${encodeURIComponent(petId)}/presentation`);
+
+export const setCimmichPetPresentation = (
+  petId: string,
+  slotKind: CimmichPetPresentationSlot,
+  input: {
+    assetId: string | null;
+    crop?: CimmichPetCoverCrop | null;
+    observationId?: string | null;
+    observationKind?: 'body' | 'face' | 'presence';
+  },
+) =>
+  request<CimmichPetPresentation>(`/v1/pets/${encodeURIComponent(petId)}/presentation/${slotKind}`, {
     body: JSON.stringify(input),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
@@ -3311,9 +3664,14 @@ export const getCimmichIdentityFaces = async (personId: string, limit = 5000) =>
   return result.items;
 };
 
-export const getCimmichIdentityFacesPage = (personId: string, pageSize = 24, cursor?: string) =>
-  request<CimmichPersonProjectionPage<CimmichIdentityFace>>(
-    `/v1/people/${encodeURIComponent(personId)}/identity?pageSize=${Math.max(1, Math.min(120, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+export const getCimmichIdentityFacesPage = (
+  personId: string,
+  pageSize = 24,
+  cursor?: string,
+  bucketKind?: 'head' | 'lq' | 'prime' | 'secondary',
+) =>
+  request<CimmichIdentityFacePage>(
+    `/v1/people/${encodeURIComponent(personId)}/identity?pageSize=${Math.max(1, Math.min(120, pageSize))}${bucketKind ? `&bucket=${encodeURIComponent(bucketKind)}` : ''}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
   );
 
 export const getCimmichAssetEvidence = (sourceAssetId: string) =>
@@ -3481,6 +3839,7 @@ export const attachCimmichManualSubjectTag = (
   assetId: string,
   input: {
     commandId: string;
+    locatorId?: string;
     region: { h: number; w: number; x: number; y: number };
     subjectId: string;
     subjectKind: 'person' | 'pet';
@@ -3518,10 +3877,11 @@ export const undoCimmichManualSubjectTag = (decisionId: string, commandId: strin
   });
 
 export const getCimmichFaceMatches = async (faceId: string, limit = 5) => {
+  const boundedLimit = Math.max(1, Math.min(12, limit));
   const result = await request<{ items: CimmichFaceOwnerReviewMatch[] }>(
-    `/v1/faces/${encodeURIComponent(faceId)}/matches?limit=${Math.max(1, Math.min(12, limit))}`,
+    `/v1/faces/${encodeURIComponent(faceId)}/matches?limit=${boundedLimit}`,
   );
-  return result.items;
+  return result.items.slice(0, boundedLimit);
 };
 
 export const getCimmichHoldingMatchesBatch = (personId: string, faceIds: string[], limitPerFace = 1) =>
@@ -3543,6 +3903,12 @@ export const setCimmichFaceBucket = (
       method: 'POST',
     },
   );
+
+export const rescanCimmichHeadEvidence = (personId: string) =>
+  request<CimmichHeadRescanResult>(`/v1/people/${encodeURIComponent(personId)}/identity/head:rescan`, {
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
 
 export const setCimmichFaceModifier = (personId: string, faceId: string, modifierName: string, selected: boolean) =>
   request<CimmichIdentitySelectionResult>(

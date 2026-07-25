@@ -46,29 +46,37 @@ export const faceMatchingPresentation = (status: FaceMatchingStatus) => {
   const action = operatorStatus?.next?.action;
   const hasPreparedLibrary = Boolean(operatorStatus?.latestPack);
   const copy =
-    action === 'await_more_evidence' && hasPreparedLibrary
+    action === 'hold_source_pack'
       ? {
-          label: 'Safely held',
+          label: 'Current library protected',
           nextAction:
-            'Keep this proposal held. Confirm more Faces across different dates and people, then build a new reference library.',
+            'Keep using the proven reference library. This candidate needs better coverage before it can replace it.',
           summary:
-            'Cimmich built a proposal, but this library is not yet varied enough for an honest safety check. It remains inactive.',
+            'The candidate passed the minimum safety gate, but recognised materially fewer known people. Cimmich held it instead of weakening matching.',
         }
-      : action === 'record_operator_review' && operatorStatus?.latestPack?.reviewGateReceipt
+      : action === 'await_more_evidence' && hasPreparedLibrary
         ? {
-            label: 'Decision needed',
-            nextAction: 'Review the frozen safety result, then explicitly approve this proposal or keep it held.',
+            label: 'Safely held',
+            nextAction:
+              'Keep this proposal held. Confirm more Faces across different dates and people, then build a new reference library.',
             summary:
-              'The safety check is complete. Nothing changes unless you approve this exact result, and approval still does not put it into use.',
+              'Cimmich built a proposal, but this library is not yet varied enough for an honest safety check. It remains inactive.',
           }
-        : action === 'activate_source_pack'
+        : action === 'record_operator_review' && operatorStatus?.latestPack?.reviewGateReceipt
           ? {
-              label: 'Ready to use',
-              nextAction: 'Put the reviewed reference library into use when you are ready.',
+              label: 'Decision needed',
+              nextAction: 'Review the frozen safety result, then explicitly approve this proposal or keep it held.',
               summary:
-                'You approved the frozen safety result. The reference library remains inactive until you explicitly choose Use.',
+                'The safety check is complete. Nothing changes unless you approve this exact result, and approval still does not put it into use.',
             }
-          : stateCopy[state];
+          : action === 'activate_source_pack'
+            ? {
+                label: 'Ready to use',
+                nextAction: 'Put the reviewed reference library into use when you are ready.',
+                summary:
+                  'You approved the frozen safety result. The reference library remains inactive until you explicitly choose Use.',
+              }
+            : stateCopy[state];
   const providerLabel =
     status?.provider.configured === true
       ? `${status.provider.providerId} · ${status.provider.modelVersion}`
@@ -100,13 +108,16 @@ const journeyActions = [
 
 export const referenceLibraryJourney = (status: CimmichFaceMatchingOperatorStatus | undefined) => {
   const action = status?.next.action;
-  const held = action === 'await_more_evidence' && Boolean(status?.latestPack);
+  const coverageHold = action === 'hold_source_pack';
+  const held = coverageHold || (action === 'await_more_evidence' && Boolean(status?.latestPack));
   const complete = action === 'review_suggestions';
   const activeIndex = complete
     ? 4
-    : held
-      ? 2
-      : Math.max(0, journeyActions.indexOf(action as (typeof journeyActions)[number]));
+    : coverageHold
+      ? 4
+      : held
+        ? 2
+        : Math.max(0, journeyActions.indexOf(action as (typeof journeyActions)[number]));
   const labels = ['Analyse', 'Build', 'Check', 'Decide', 'Use'];
 
   return {
@@ -114,9 +125,11 @@ export const referenceLibraryJourney = (status: CimmichFaceMatchingOperatorStatu
     complete,
     headline: complete
       ? 'Reference library in use'
-      : held
-        ? 'Safety check unavailable — proposal held'
-        : labels[activeIndex],
+      : coverageHold
+        ? 'Current library remains in use — weaker candidate held'
+        : held
+          ? 'Safety check unavailable — proposal held'
+          : labels[activeIndex],
     held,
     steps: labels.map((label, index) => ({
       label,

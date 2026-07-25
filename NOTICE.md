@@ -13,6 +13,10 @@ governed by those terms. In particular:
 - `demo/cedar-house-v1` and `demo/space-trip-v1` contain independent synthetic
   media rights, attribution and provenance bundles;
 - provider directories may contain `THIRD_PARTY.md` or model-specific terms;
+- the optional PetFace publisher limits its repository, data and pretrained
+  models to non-commercial research use, while the MiewID-msv3 model card does
+  not currently declare a model licence; their weight-free adapters grant no
+  rights to those external models;
 - Cimmich does not redistribute model weights merely because an adapter exists.
 
 No licence in this repository grants rights to third-party names, marks,

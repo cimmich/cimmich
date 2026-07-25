@@ -7,6 +7,7 @@ import {
   getPetContentView,
   getPetDetailHref,
   getPetMediaEvidence,
+  getPetMediaFocusCrop,
   getPetMediaTimeframe,
   getPetPresentation,
   getPetRelatedConnectionsHref,
@@ -40,9 +41,9 @@ const pet = (displayName: string, aliases: string[] = [], description = ''): Cim
 });
 
 describe('Pet presentation', () => {
-  it('uses the confirmed name fallbacks for the current Pets', () => {
-    expect(getPetPresentation(pet('Cafe')).label).toBe('Dog');
-    expect(getPetPresentation(pet('Freya Hart')).label).toBe('Cat');
+  it('does not infer species from a Pet name', () => {
+    expect(getPetPresentation(pet('Cafe')).label).toBe('Pet');
+    expect(getPetPresentation(pet('Freya Hart')).label).toBe('Pet');
   });
 
   it('prefers an explicit descriptive species hint', () => {
@@ -92,6 +93,7 @@ describe('Pet presentation', () => {
       filename: 'pet.jpg',
       height: 100,
       media_kind: 'image',
+      pet_face: null,
       sourceAssetId: `source-${capture_time}`,
       width: 100,
     });
@@ -101,6 +103,33 @@ describe('Pet presentation', () => {
       '2018–2024',
     );
     expect(getPetMediaTimeframe([media(null)], 'en-AU')).toBeNull();
+  });
+
+  it('turns accepted Pet face geometry into a padded 4:3 presentation crop', () => {
+    const media: CimmichPetMedia = {
+      asset_id: 'asset-cafe',
+      association_types: ['face'],
+      capture_time: '2018-01-27T12:00:00Z',
+      filename: 'cafe.jpg',
+      height: 3024,
+      media_kind: 'image',
+      pet_face: {
+        box_h: 0.1,
+        box_w: 0.06,
+        box_x: 0.86,
+        box_y: 0.78,
+        face_id: 'face-cafe',
+      },
+      sourceAssetId: 'source-cafe',
+      width: 4032,
+    };
+
+    const crop = getPetMediaFocusCrop(media);
+    expect(crop?.h).toBeCloseTo(0.32);
+    expect(crop?.w).toBeCloseTo(0.32);
+    expect(crop?.x).toBeCloseTo(0.68);
+    expect(crop?.y).toBeCloseTo(0.67);
+    expect(getPetMediaFocusCrop({ ...media, pet_face: null })).toBeNull();
   });
 
   it('binds Pet detail navigation to a stable query while preserving collection context', () => {
@@ -117,6 +146,9 @@ describe('Pet presentation', () => {
     const details = getPetContentHref(profile, 'details');
     expect(details).toBe('/cimmich/pets?entityId=pet-juniper&tab=details');
     expect(getPetContentView(new URL(details, profile))).toBe('details');
+    const display = getPetContentHref(profile, 'display');
+    expect(display).toBe('/cimmich/pets?entityId=pet-juniper&tab=display');
+    expect(getPetContentView(new URL(display, profile))).toBe('display');
     expect(getPetContentHref(new URL(details, profile), 'photos')).toBe('/cimmich/pets?entityId=pet-juniper');
     expect(getPetContentView(new URL('/cimmich/pets?entityId=pet-juniper&tab=unknown', profile))).toBe('photos');
   });
@@ -129,10 +161,12 @@ describe('Pet presentation', () => {
   });
 
   it('supports the complete keyboard model for the Pet profile tablist', () => {
-    expect(getPetContentKeyboardTarget('photos', 'ArrowRight')).toBe('details');
+    expect(getPetContentKeyboardTarget('photos', 'ArrowRight')).toBe('review');
     expect(getPetContentKeyboardTarget('photos', 'ArrowLeft')).toBe('documents');
     expect(getPetContentKeyboardTarget('connections', 'Home')).toBe('photos');
     expect(getPetContentKeyboardTarget('details', 'End')).toBe('documents');
+    expect(getPetContentKeyboardTarget('connections', 'ArrowRight')).toBe('display');
+    expect(getPetContentKeyboardTarget('display', 'ArrowRight')).toBe('documents');
     expect(getPetContentKeyboardTarget('details', 'Enter')).toBeNull();
   });
 

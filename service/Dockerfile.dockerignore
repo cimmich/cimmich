@@ -21,3 +21,13 @@
 !providers/opencv-sface/*.md
 !providers/opencv-sface/requirements.txt
 !providers/opencv-sface/install-models.sh
+!providers/insightface-user-supplied/
+!providers/insightface-user-supplied/*.py
+!providers/insightface-user-supplied/*.json
+!providers/insightface-user-supplied/*.md
+!providers/insightface-user-supplied/requirements.txt
+!providers/perceptual-dhash/
+!providers/perceptual-dhash/*.py
+!providers/perceptual-dhash/*.json
+!providers/perceptual-dhash/*.md
+!providers/perceptual-dhash/requirements.txt

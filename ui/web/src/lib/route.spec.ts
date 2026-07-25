@@ -29,13 +29,21 @@ describe('Route', () => {
       expect(Route.viewCimmichPersonAsset({ id: 'asset-1', personId: 'person-1', personName: 'Rupert BP' })).toBe(
         '/photos/asset-1?cimmichPersonId=person-1&cimmichPersonName=Rupert%20BP',
       );
+      expect(
+        Route.viewCimmichPersonAsset({
+          id: 'asset-1',
+          personId: 'person-1',
+          personName: 'Rupert BP',
+          overlay: 'people',
+        }),
+      ).toBe('/photos/asset-1?cimmichOverlay=people&cimmichPersonId=person-1&cimmichPersonName=Rupert%20BP');
     });
   });
 
   describe(Route.viewCimmichPetAsset.name, () => {
     it('preserves the Pet viewer context with encoded stable identity', () => {
-      expect(Route.viewCimmichPetAsset({ id: 'asset-1', petId: 'pet-1', petName: 'Captain Moss' })).toBe(
-        '/photos/asset-1?cimmichPetId=pet-1&cimmichPetName=Captain%20Moss',
+      expect(Route.viewCimmichPetAsset({ id: 'asset-1', petId: 'pet-1', petName: 'Juniper' })).toBe(
+        '/photos/asset-1?cimmichPetId=pet-1&cimmichPetName=Juniper',
       );
       expect(Route.cimmichPet({ petId: 'pet-1' })).toBe('/cimmich/pets?entityId=pet-1');
     });

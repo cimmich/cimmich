@@ -55,7 +55,7 @@ jobs:
       - name: Audit pinned provider dependencies
         run: |
           python3 -m venv /tmp/cimmich-pip-audit
-          /tmp/cimmich-pip-audit/bin/python -m pip install --disable-pip-version-check --no-cache-dir pip-audit==2.10.1
+          /tmp/cimmich-pip-audit/bin/python -m pip install --disable-pip-version-check --no-cache-dir pip-audit==2.9.0
           for requirements in providers/*/requirements.txt; do
             /tmp/cimmich-pip-audit/bin/pip-audit --no-deps --disable-pip --requirement "$requirements"
           done

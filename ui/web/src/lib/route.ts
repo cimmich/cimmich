@@ -121,8 +121,19 @@ export const Route = {
   // photos
   photos: (params?: { at?: string }) => '/photos' + asQueryString(params),
   viewAsset: ({ id }: { id: string }) => `/photos/${id}`,
-  viewCimmichPersonAsset: ({ id, personId, personName }: { id: string; personId: string; personName: string }) =>
-    `/photos/${id}` + asQueryString({ cimmichPersonId: personId, cimmichPersonName: personName }),
+  viewCimmichPersonAsset: ({
+    id,
+    personId,
+    personName,
+    overlay,
+  }: {
+    id: string;
+    personId: string;
+    personName: string;
+    overlay?: 'people';
+  }) =>
+    `/photos/${id}` +
+    asQueryString({ cimmichOverlay: overlay, cimmichPersonId: personId, cimmichPersonName: personName }),
   viewCimmichPetAsset: ({ id, petId, petName }: { id: string; petId: string; petName: string }) =>
     `/photos/${id}` + asQueryString({ cimmichPetId: petId, cimmichPetName: petName }),
   archive: () => '/archive',

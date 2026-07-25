@@ -357,6 +357,7 @@ test("Person assets resolve scoped associations without expanding person_assets"
           },
         ],
         has_body: false,
+        has_body_candidate: false,
         has_face: true,
         has_head: false,
         has_linked_body: false,
@@ -399,6 +400,42 @@ test("Person assets resolve scoped associations without expanding person_assets"
   assert.doesNotMatch(statement, /FROM current_reference_gallery/);
 });
 
+test("legacy Body-lane imports project as placement candidates rather than Presence", async () => {
+  let statement = "";
+  const sql = async (strings) => {
+    statement = strings.join("?");
+    return [
+      {
+        asset_head_evidence: false,
+        asset_id: "asset-body-candidate",
+        capture_time: null,
+        contexts: [],
+        has_body: false,
+        has_body_candidate: true,
+        has_face: false,
+        has_head: false,
+        has_linked_body: false,
+        has_presence: false,
+        height: 100,
+        media_kind: "image",
+        mime_type: "image/jpeg",
+        presence_evidence: false,
+        width: 100,
+      },
+    ];
+  };
+  const repository = createCimmichRepository(sql);
+
+  const assets = await repository.personAssets({
+    limit: 100,
+    personId: "person-1",
+  });
+
+  assert.deepEqual(assets[0].association_types, ["body_candidate"]);
+  assert.match(statement, /legacy_non_gallery_person_presence/);
+  assert.match(statement, /legacy_body_placement_pending/);
+});
+
 test("Person asset pages return an opaque subject-bound continuation", async () => {
   const rows = ["asset-1", "asset-2", "asset-3"].map((assetId, index) => ({
     asset_head_evidence: false,
@@ -406,6 +443,7 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
     capture_time: new Date(Date.UTC(2026, 0, 3 - index)),
     contexts: [],
     has_body: false,
+    has_body_candidate: false,
     has_face: true,
     has_head: false,
     has_linked_body: false,
@@ -441,7 +479,19 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
 test("Identity pages limit accepted faces before per-face enrichment", async () => {
   let statement = "";
   const sql = async (strings) => {
-    statement = strings.join("?");
+    const currentStatement = strings.join("?");
+    statement = currentStatement;
+    if (currentStatement.includes("AS all_count")) {
+      return [
+        {
+          all_count: 2,
+          head_count: 0,
+          low_quality_count: 0,
+          prime_count: 1,
+          secondary_count: 1,
+        },
+      ];
+    }
     return [
       {
         asset_id: "asset-1",
@@ -468,11 +518,21 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
   const repository = createCimmichRepository(sql);
 
   const page = await repository.identityFaces({
+    bucketKind: "head",
     pageSize: 1,
     personId: "person-1",
   });
 
   assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].main_evidence_tier, "secondary");
+  assert.equal(page.items[0].matching_reference_tier, null);
+  assert.deepEqual(page.summary, {
+    all: 2,
+    head: 0,
+    lowQuality: 0,
+    prime: 1,
+    secondary: 1,
+  });
   assert.ok(page.nextCursor);
   assert.match(statement, /page_faces AS MATERIALIZED/);
   assert.ok(
@@ -480,6 +540,7 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
     "Page limit must precede per-face enrichment",
   );
   assert.match(statement, /cimmich_visibility_asset_rank/);
+  assert.match(statement, /filtered_gallery\.bucket_kind =/);
 });
 
 test("Holding match batches are Person-scoped, ordered and concurrency-bounded", async () => {
@@ -559,8 +620,10 @@ test("single-face matching gates the query asset at the current visibility rank"
 
 test("owner Face review comparisons are visible same-space evidence without SourcePack authority", async () => {
   let statement = "";
-  const sql = async (strings) => {
+  let parameters = [];
+  const sql = async (strings, ...values) => {
     statement = strings.join("?");
+    parameters = values;
     return [
       {
         accepted_example_count: 3,
@@ -624,6 +687,8 @@ test("owner Face review comparisons are visible same-space evidence without Sour
     result.items[2].unavailable_reason,
     "no_independent_compatible_reference_face",
   );
+  assert.match(statement, /LIMIT \?/);
+  assert.doesNotMatch(statement, /LIMIT greatest/);
   assert.match(statement, /reference\.model_family = query\.model_family/);
   assert.match(statement, /reference\.model_version = query\.model_version/);
   assert.match(statement, /reference\.config_digest = query\.config_digest/);
@@ -639,7 +704,7 @@ test("owner Face review comparisons are visible same-space evidence without Sour
     /LEFT JOIN best_per_person best ON best\.person_id = person\.person_id/,
   );
   assert.match(statement, /similarity DESC NULLS LAST/);
-  assert.match(statement, /SELECT count\(\*\) FROM visible_people/);
+  assert.equal(parameters.at(-1), 12);
   assert.match(
     statement,
     /cimmich_visibility_asset_rank\(reference_asset\.asset_id\)/,
@@ -648,12 +713,11 @@ test("owner Face review comparisons are visible same-space evidence without Sour
     statement,
     /cimmich_visibility_person_rank\(person\.person_id\)/,
   );
-  assert.match(statement, /LIMIT greatest\(/);
   assert.doesNotMatch(statement, /matching_gallery/);
   assert.doesNotMatch(statement, /source_pack/i);
 });
 
-test("owner Face review comparisons keep all visible People while withholding unavailable evidence detail", async () => {
+test("owner Face review comparisons bound visible People while withholding unavailable evidence detail", async () => {
   const standardRows = [
     ["person-alex", "Alex", 0.91, true],
     ["person-maya", "Maya", 0.83, false],
@@ -682,33 +746,34 @@ test("owner Face review comparisons keep all visible People while withholding un
     unavailable_reason: null,
   }));
   let rows = standardRows;
-  const repository = createCimmichRepository(async () => rows, new Map(), {
-    currentRank: () => 1,
-  });
+  const repository = createCimmichRepository(
+    async (_strings, ...parameters) => rows.slice(0, Number(parameters.at(-1))),
+    new Map(),
+    {
+      currentRank: () => 1,
+    },
+  );
 
   const standard = await repository.faceReviewComparisons({
     faceId: "face-cha-023",
     limit: 5,
   });
-  assert.equal(standard.items.length, 6);
+  assert.equal(standard.items.length, 5);
   assert.equal(
     standard.items.filter((row) => row.similarity !== null).length,
     4,
   );
   assert.equal(
     standard.items.filter((row) => row.similarity === null).length,
-    2,
+    1,
   );
   assert.equal(
     new Set(standard.items.map((row) => row.person_id)).size,
     standard.items.length,
   );
   assert.deepEqual(
-    standard.items.slice(-2).map((row) => row.unavailable_reason),
-    [
-      "no_independent_compatible_reference_face",
-      "no_independent_compatible_reference_face",
-    ],
+    standard.items.slice(-1).map((row) => row.unavailable_reason),
+    ["no_independent_compatible_reference_face"],
   );
   assert.equal(standard.items.filter((row) => row.current_identity).length, 1);
 
@@ -717,7 +782,7 @@ test("owner Face review comparisons keep all visible People while withholding un
     faceId: "face-cha-023",
     limit: 5,
   });
-  assert.equal(personal.items.length, 6);
+  assert.equal(personal.items.length, 5);
   assert.equal(
     personal.items.every((row) => row.similarity !== null),
     true,
@@ -736,7 +801,7 @@ test("owner Face review comparisons keep all visible People while withholding un
       faceId,
       limit: 5,
     });
-    assert.equal(stranger.items.length, 6);
+    assert.equal(stranger.items.length, 5);
     assert.equal(
       stranger.items.every((row) => row.similarity !== null),
       true,

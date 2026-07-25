@@ -20,10 +20,12 @@ import { projectBodyPose, stripBodyPoseStorage } from "./body-pose.mjs";
 import { createPersonProfileStore } from "./person-profile.mjs";
 import { createPersonDetailsDisplayStore } from "./person-details-display.mjs";
 import { createPetDocumentStore } from "./pet-documents.mjs";
+import { createPetMatchingStore } from "./pet-matching.mjs";
 import { createContextEntityStore } from "./context-entities.mjs";
 import { createBasicSmartSearch } from "./basic-smart-search.mjs";
 import { createDocumentStore } from "./documents.mjs";
 import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
+import { createIdentityAudit } from "./identity-audit.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -669,7 +671,9 @@ const refreshPrimeAfterCommand = async (sql, personId) => {
       return false;
     }
     const faces = await loadPrimeCuratorFaces(sql, personId);
-    const curations = buildPrimeCurations(faces);
+    const curations = buildPrimeCurations(faces, {
+      evidenceCutoff: new Date().toISOString(),
+    });
     if (curations.length > 0) {
       await applyPrimeCurations(sql, curations, { execute: true });
     } else {
@@ -686,6 +690,20 @@ const refreshPrimeAfterCommand = async (sql, personId) => {
     );
     return true;
   }
+};
+
+// Head classification is an operator-facing correction, while Prime curation
+// is a derived convenience projection. Start that maintenance immediately but
+// do not hold the correction response open for a full gallery rebuild.
+const deferPrimeAfterCommand = (sql, personId) => {
+  if (!personId) return false;
+  void refreshPrimeAfterCommand(sql, personId).catch((error) => {
+    console.error("Cimmich deferred Prime maintenance failed", {
+      error: error instanceof Error ? error.message : String(error),
+      personId,
+    });
+  });
+  return true;
 };
 
 const refreshPrimeForPeople = async (sql, personIds) => {
@@ -751,8 +769,8 @@ const samePhysicalFaceGeometry = (left, right) => {
   const overlap = boxOverlap(left, right);
   return (
     overlap.iou >= 0.62 ||
-    (overlap.containment >= 0.85 &&
-      overlap.centerDx <= 0.25 &&
+    (overlap.containment >= 0.5 &&
+      overlap.centerDx <= 0.45 &&
       overlap.centerDy <= 0.25)
   );
 };
@@ -843,6 +861,9 @@ export const createCimmichRepository = (
   options = {},
 ) => {
   const mediaJobs = createMediaJobLedger(sql);
+  const petMatching = createPetMatchingStore(sql, {
+    bridgeFields: (assetId) => bridgeFields(bridge, assetId),
+  });
   const matchingProvider = normalizeMatchingProvider(options.matchingProvider);
   const machineReviewConfigured = matchingProvider !== null;
   const enhancedComponent = options.enhancedComponent || null;
@@ -971,6 +992,12 @@ export const createCimmichRepository = (
     storeRoot: options.documentStoreRoot,
   });
   const documentLegacyPets = createDocumentLegacyPetStore(sql, {
+    presentationRank,
+  });
+  const identityAudit = createIdentityAudit(sql, {
+    bridgeFields: (assetId) => bridgeFields(bridge, assetId),
+    companion: options.immichCompanion,
+    derivativeProvider: options.identityAuditDerivativeProvider,
     presentationRank,
   });
   let machineSuggestionCache = null;
@@ -2520,7 +2547,46 @@ export const createCimmichRepository = (
       const rows = await sql`
       SELECT asset.asset_id, asset.media_kind, asset.width, asset.height,
         asset.capture_time,
-        array_agg(DISTINCT association.association_type ORDER BY association.association_type) AS association_types
+        array_agg(DISTINCT association.association_type ORDER BY association.association_type) AS association_types,
+        (
+          SELECT jsonb_build_object(
+            'face_id', face.face_id,
+            'box_x', face.box_x,
+            'box_y', face.box_y,
+            'box_w', face.box_w,
+            'box_h', face.box_h
+          )
+          FROM person_assets face_association
+          JOIN face_observation face
+            ON face.face_id = face_association.geometry_id
+              AND face.state = 'valid'
+          WHERE face_association.person_id = ${String(petId || "")}
+            AND face_association.asset_id = asset.asset_id
+            AND face_association.association_type IN ('face', 'head')
+            AND face_association.authority_state = 'accepted'
+          ORDER BY (face_association.association_type = 'face') DESC,
+            face.face_id
+          LIMIT 1
+        ) AS pet_face,
+        (
+          SELECT jsonb_build_object(
+            'body_id', body.body_id,
+            'box_x', body.box_x,
+            'box_y', body.box_y,
+            'box_w', body.box_w,
+            'box_h', body.box_h
+          )
+          FROM person_assets body_association
+          JOIN body_observation body
+            ON body.body_id = body_association.geometry_id
+              AND body.state = 'valid'
+          WHERE body_association.person_id = ${String(petId || "")}
+            AND body_association.asset_id = asset.asset_id
+            AND body_association.association_type = 'body'
+            AND body_association.authority_state = 'accepted'
+          ORDER BY body.body_id
+          LIMIT 1
+        ) AS pet_body
       FROM person_assets association
       JOIN asset ON asset.asset_id = association.asset_id AND asset.state = 'active'
       WHERE association.person_id = ${String(petId || "")}
@@ -2624,11 +2690,20 @@ export const createCimmichRepository = (
       return this.unmergePeople({ actorId, commandId, mergeOperationId });
     },
 
-    async machineSuggestions({ limit = 24 } = {}) {
+    async machineSuggestions({ leadPersonId = "", limit = 24 } = {}) {
       if (enhancedComponent && !(await enhancedComponent.isEnabled())) {
         return [];
       }
       const boundedLimit = cleanLimit(limit, 24, 80);
+      const exactLeadPersonId = String(leadPersonId || "");
+      const projectSuggestions = (suggestions) =>
+        suggestions
+          .filter(
+            (suggestion) =>
+              !exactLeadPersonId ||
+              suggestion.candidates[0]?.person_id === exactLeadPersonId,
+          )
+          .slice(0, boundedLimit);
       const visibleRank = presentationRank();
       const createReviewCandidateSets = (query) =>
         createVisualCandidateSetRepository(query, {
@@ -2684,7 +2759,7 @@ export const createCimmichRepository = (
         machineSuggestionCache?.expiresAt > Date.now() &&
         machineSuggestionCache.visibleRank === visibleRank
       ) {
-        return (await machineSuggestionCache.promise).slice(0, boundedLimit);
+        return projectSuggestions(await machineSuggestionCache.promise);
       }
       const promise = (async () => {
         // Score one stable bounded front for every consumer. The caller's output
@@ -3140,7 +3215,7 @@ export const createCimmichRepository = (
         if (machineSuggestionCache?.promise === promise) {
           machineSuggestionCache.expiresAt = Date.now() + 5000;
         }
-        return result.slice(0, boundedLimit);
+        return projectSuggestions(result);
       } catch (error) {
         if (machineSuggestionCache?.promise === promise) {
           machineSuggestionCache = null;
@@ -4942,7 +5017,7 @@ export const createCimmichRepository = (
       personId,
       slotKind,
     }) {
-      await requireVisibleSubject(personId);
+      const subject = await requireVisibleSubject(personId);
       const id = String(personId || "");
       const slot = String(slotKind || "");
       if (!["face", "body", "hero"].includes(slot)) {
@@ -4975,7 +5050,9 @@ export const createCimmichRepository = (
         );
       }
       if (
-        (slot === "face" && kind !== "face") ||
+        (slot === "face" &&
+          kind !== "face" &&
+          subject.subject_kind !== "pet") ||
         (slot === "body" && kind !== "body")
       ) {
         throw Object.assign(
@@ -5043,6 +5120,106 @@ export const createCimmichRepository = (
       return this.personPresentation({ personId: id });
     },
 
+    async petPresentation({ petId }) {
+      const pet = await this.pet({ petId });
+      const presentation = await this.personPresentation({
+        personId: pet.petId,
+      });
+      if (presentation.face && presentation.hero) {
+        return { ...presentation, body: null };
+      }
+
+      const media = await this.petMedia({ limit: 100, petId: pet.petId });
+      const coverMedia = pet.cover?.assetId
+        ? media.find((item) => item.asset_id === pet.cover.assetId)
+        : null;
+      const cropFromBox = ({ h, padding, w, x, y }) => {
+        if (![h, w, x, y].every(Number.isFinite)) return null;
+        const cropW = Math.min(1, Math.max(w * padding, 0.01));
+        const cropH = Math.min(1, Math.max(h * padding, 0.01));
+        const centerX = x + w / 2;
+        const centerY = y + h / 2;
+        return {
+          h: cropH,
+          w: cropW,
+          x: Math.max(0, Math.min(1 - cropW, centerX - cropW / 2)),
+          y: Math.max(0, Math.min(1 - cropH, centerY - cropH / 2)),
+        };
+      };
+      const automaticPetMedia = (item, slotKind, preferredCrop = null) => {
+        if (!item?.asset_id || !item.sourceAssetId) return null;
+        const observation = item.pet_face
+          ? {
+              id: item.pet_face.face_id,
+              kind: "face",
+              crop: cropFromBox({
+                h: item.pet_face.box_h,
+                padding: 2.1,
+                w: item.pet_face.box_w,
+                x: item.pet_face.box_x,
+                y: item.pet_face.box_y,
+              }),
+            }
+          : item.pet_body
+            ? {
+                id: item.pet_body.body_id,
+                kind: "body",
+                crop: cropFromBox({
+                  h: item.pet_body.box_h,
+                  padding: 1.16,
+                  w: item.pet_body.box_w,
+                  x: item.pet_body.box_x,
+                  y: item.pet_body.box_y,
+                }),
+              }
+            : { id: null, kind: "presence", crop: null };
+        return {
+          assetId: item.asset_id,
+          crop: preferredCrop ?? (slotKind === "face" ? observation.crop : null),
+          observationId: observation.id,
+          observationKind: observation.kind,
+          selectionMode: "automatic",
+          slotKind,
+          updatedAt: null,
+          width: item.width,
+          height: item.height,
+          ...bridgeFields(bridge, item.asset_id),
+        };
+      };
+      const faceMedia =
+        media.find((item) => item.pet_face) ||
+        media.find((item) => item.pet_body) ||
+        coverMedia ||
+        media[0];
+      const heroMedia = coverMedia || media[0];
+
+      return {
+        ...presentation,
+        body: null,
+        face:
+          presentation.face ||
+          automaticPetMedia(faceMedia, "face", pet.cover?.crop || null),
+        hero:
+          presentation.hero ||
+          automaticPetMedia(heroMedia, "hero", pet.cover?.crop || null),
+      };
+    },
+
+    async setPetPresentation({ petId, slotKind, ...input }) {
+      await this.pet({ petId });
+      if (!["face", "hero"].includes(String(slotKind || ""))) {
+        throw Object.assign(new Error("Pet presentation slot is invalid"), {
+          statusCode: 400,
+        });
+      }
+      const presentation = await this.setPersonPresentation({
+        ...input,
+        personId: petId,
+        slotKind,
+      });
+      return { ...presentation, body: null };
+    },
+
     async personAssets({
       cursor = "",
       limit = 1000,
@@ -5103,7 +5280,14 @@ export const createCimmichRepository = (
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
         UNION ALL
         SELECT tag.asset_id, tag.person_id,
-          CASE WHEN tag.reason_code = 'head_evidence' THEN 'head'::text ELSE 'presence'::text END,
+          CASE
+            WHEN tag.reason_code = 'head_evidence' THEN 'head'::text
+            WHEN tag.reason_code IN (
+              'legacy_non_gallery_person_presence',
+              'legacy_body_placement_pending'
+            ) THEN 'body_candidate'::text
+            ELSE 'presence'::text
+          END,
           NULL::text
         FROM current_presence_tag tag
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
@@ -5117,6 +5301,7 @@ export const createCimmichRepository = (
         bool_or(association.association_type = 'face') AS has_face,
         bool_or(association.association_type = 'head') AS has_head,
         bool_or(association.association_type = 'body') AS has_body,
+        bool_or(association.association_type = 'body_candidate') AS has_body_candidate,
         bool_or(association.association_type = 'body_link') AS has_linked_body,
         bool_or(association.association_type = 'presence') AS has_presence,
         bool_or(association.association_type = 'head' AND association.geometry_id IS NULL) AS asset_head_evidence,
@@ -5175,10 +5360,17 @@ export const createCimmichRepository = (
           ...(row.has_face ? ["face"] : []),
           ...(row.has_head ? ["head"] : []),
           ...(row.has_body && !row.has_face && !row.has_head ? ["body"] : []),
-          ...(row.has_presence &&
+          ...(row.has_body_candidate &&
           !row.has_face &&
           !row.has_head &&
           !row.has_body
+            ? ["body_candidate"]
+            : []),
+          ...(row.has_presence &&
+          !row.has_face &&
+          !row.has_head &&
+          !row.has_body &&
+          !row.has_body_candidate
             ? ["presence"]
             : []),
         ],
@@ -5515,10 +5707,7 @@ export const createCimmichRepository = (
           current_identity, accepted_example_count, unavailable_reason
         FROM selected
         ORDER BY rank
-        LIMIT greatest(
-          ${boundedLimit},
-          (SELECT count(*) FROM visible_people)
-        )
+        LIMIT ${boundedLimit}
       `;
       return {
         automaticIdentityAuthority: "none",
@@ -5641,6 +5830,7 @@ export const createCimmichRepository = (
         headRows,
         bodyRows,
         presenceRows,
+        locatorRows,
         peopleRows,
         contextRows,
         manualContext,
@@ -5777,6 +5967,21 @@ export const createCimmichRepository = (
           AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
             <= ${presentationRank()}
         ORDER BY p.display_name, pt.person_id
+      `,
+        sql`
+        SELECT locator.locator_id, locator.person_id, person.display_name,
+          locator.intended_tag_type, locator.geometry_role,
+          locator.box_x::float8, locator.box_y::float8,
+          locator.box_w::float8, locator.box_h::float8,
+          locator.source_instance_suffix, locator.source_kind
+        FROM imported_identity_locator locator
+        JOIN person ON person.person_id = locator.person_id
+        WHERE locator.asset_id = ${linked.assetId}
+          AND locator.state = 'unresolved'
+          AND cimmich_visibility_subject_rank(
+            person.subject_kind, person.person_id
+          ) <= ${presentationRank()}
+        ORDER BY lower(person.display_name), locator.locator_id
       `,
         sql`
         SELECT person.person_id, person.display_name,
@@ -5930,6 +6135,7 @@ export const createCimmichRepository = (
         faces: detailedFaces,
         heads: headRows,
         known_people: peopleRows,
+        identity_locators: locatorRows,
         presence: presenceRows,
         contexts: contextRows,
         ownerSummary: manualContext.ownerSummary,
@@ -5938,12 +6144,24 @@ export const createCimmichRepository = (
     },
 
     async identityFaces({
+      bucketKind = "",
       cursor = "",
       limit = 5000,
       pageSize = null,
       personId,
     }) {
       await requireVisibleSubject(personId);
+      const bucketFilter = String(bucketKind || "").trim();
+      if (
+        bucketFilter &&
+        !["head", "lq", "prime", "secondary"].includes(bucketFilter)
+      ) {
+        throw typedError(
+          "Identity bucket filter is invalid",
+          400,
+          "PERSON_IDENTITY_BUCKET_INVALID",
+        );
+      }
       const paged = pageSize !== null || Boolean(cursor);
       const boundedLimit = paged
         ? cleanPageSize(pageSize, 24, 120)
@@ -5951,7 +6169,7 @@ export const createCimmichRepository = (
       const id = String(personId || "");
       const visibleRank = presentationRank();
       const decodedCursor = decodePersonPageCursor(cursor, {
-        kind: "identity",
+        kind: bucketFilter ? `identity:${bucketFilter}` : "identity",
         personId: id,
         visibleRank,
       });
@@ -5963,6 +6181,45 @@ export const createCimmichRepository = (
           ? null
           : Number(decodedCursor.quality);
       const cursorFaceId = String(decodedCursor?.faceId || "");
+      const [summaryRow] = paged
+        ? await sql`
+          WITH accepted_faces AS MATERIALIZED (
+            SELECT identity.person_id, identity.face_id
+            FROM current_face_identity identity
+            JOIN face_observation face
+              ON face.face_id = identity.face_id AND face.state = 'valid'
+            JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
+            WHERE identity.person_id = ${id}
+              AND identity.state = 'accepted'
+              AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+          ),
+          classified_faces AS (
+            SELECT accepted.face_id, main_bucket.bucket_kind
+            FROM accepted_faces accepted
+            LEFT JOIN LATERAL (
+              SELECT gallery.bucket_kind
+              FROM current_reference_gallery gallery
+              WHERE gallery.person_id = accepted.person_id
+                AND gallery.face_id = accepted.face_id
+                AND gallery.membership_state = 'active'
+              ORDER BY CASE gallery.bucket_kind
+                WHEN 'prime' THEN 0
+                WHEN 'secondary' THEN 1
+                ELSE 2
+              END, gallery.bucket_name
+              LIMIT 1
+            ) main_bucket ON true
+          )
+          SELECT count(*)::int AS all_count,
+            count(*) FILTER (WHERE bucket_kind = 'prime')::int AS prime_count,
+            count(*) FILTER (
+              WHERE bucket_kind = 'secondary' OR bucket_kind IS NULL
+            )::int AS secondary_count,
+            count(*) FILTER (WHERE bucket_kind = 'lq')::int AS low_quality_count,
+            count(*) FILTER (WHERE bucket_kind = 'head')::int AS head_count
+          FROM classified_faces
+        `
+        : [];
       const rows = await sql`
       WITH page_faces AS MATERIALIZED (
         SELECT cfi.identity_claim_id, cfi.person_id, fo.face_id, fo.asset_id,
@@ -5974,6 +6231,38 @@ export const createCimmichRepository = (
         JOIN asset a ON a.asset_id = fo.asset_id AND a.state = 'active'
         WHERE cfi.person_id = ${id} AND cfi.state = 'accepted'
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
+          AND (
+            ${bucketFilter} = ''
+            OR (
+              ${bucketFilter} = 'secondary'
+              AND (
+                EXISTS (
+                  SELECT 1 FROM current_reference_gallery filtered_gallery
+                  WHERE filtered_gallery.person_id = cfi.person_id
+                    AND filtered_gallery.face_id = cfi.face_id
+                    AND filtered_gallery.membership_state = 'active'
+                    AND filtered_gallery.bucket_kind = 'secondary'
+                )
+                OR NOT EXISTS (
+                  SELECT 1 FROM current_reference_gallery filtered_gallery
+                  WHERE filtered_gallery.person_id = cfi.person_id
+                    AND filtered_gallery.face_id = cfi.face_id
+                    AND filtered_gallery.membership_state = 'active'
+                    AND filtered_gallery.bucket_kind IN ('prime','secondary','lq','head')
+                )
+              )
+            )
+            OR (
+              ${bucketFilter} <> 'secondary'
+              AND EXISTS (
+                SELECT 1 FROM current_reference_gallery filtered_gallery
+                WHERE filtered_gallery.person_id = cfi.person_id
+                  AND filtered_gallery.face_id = cfi.face_id
+                  AND filtered_gallery.membership_state = 'active'
+                  AND filtered_gallery.bucket_kind = ${bucketFilter}
+              )
+            )
+          )
           AND (
             ${decodedCursor === null}
             OR (
@@ -6185,7 +6474,11 @@ export const createCimmichRepository = (
         );
         return {
           ...row,
-          main_evidence_tier: mainBucket?.bucket_kind || "face_only",
+          // Evidence classification is exhaustive for the audit surface.
+          // A Face without a gallery bucket is still Supporting identity
+          // evidence; matcher membership remains an independent nullable fact.
+          main_evidence_tier: mainBucket?.bucket_kind || "secondary",
+          matching_reference_tier: mainBucket?.bucket_kind || null,
           ...identityQcFields(row),
           ...bridgeFields(bridge, row.asset_id),
         };
@@ -6202,7 +6495,7 @@ export const createCimmichRepository = (
                   ? new Date(last.capture_time).toISOString()
                   : null,
                 faceId: last.face_id,
-                kind: "identity",
+                kind: bucketFilter ? `identity:${bucketFilter}` : "identity",
                 personId: id,
                 quality: Number.isFinite(lastQuality) ? lastQuality : null,
                 visibleRank,
@@ -6210,14 +6503,27 @@ export const createCimmichRepository = (
             : null,
         pageSize: boundedLimit,
         schemaVersion: personPageSchemaVersion,
+        summary: {
+          all: Number(summaryRow?.all_count || 0),
+          head: Number(summaryRow?.head_count || 0),
+          lowQuality: Number(summaryRow?.low_quality_count || 0),
+          prime: Number(summaryRow?.prime_count || 0),
+          secondary: Number(summaryRow?.secondary_count || 0),
+        },
       };
     },
 
-    async setFaceBucket({ actorId, bucketKind, faceId, personId }) {
+    async setFaceBucket({
+      actorId,
+      bucketKind,
+      faceId,
+      personId,
+      skipPrimeMaintenance = false,
+    }) {
       if (![null, "prime", "secondary", "lq", "head"].includes(bucketKind)) {
         throw Object.assign(
           new Error(
-            "Face evidence must be prime, secondary, LQ, head, or face only",
+            "Face evidence must be Core, Supporting, Low quality, Head, or Supporting evidence only",
           ),
           { statusCode: 400 },
         );
@@ -6389,12 +6695,234 @@ export const createCimmichRepository = (
         return { bucketKind, changed: true, decisionId, faceId, personId };
       });
       const maintenancePending = result.changed
-        ? await refreshPrimeAfterCommand(sql, personId)
+        ? skipPrimeMaintenance
+          ? true
+          : bucketKind === "head"
+            ? deferPrimeAfterCommand(sql, personId)
+            : await refreshPrimeAfterCommand(sql, personId)
         : false;
       if (result.changed) {
         invalidateMachineSuggestions();
       }
       return { ...result, maintenancePending };
+    },
+
+    async rescanHeadEvidence({ actorId, personId }) {
+      const actor = cleanActor(actorId);
+      if (!actor) {
+        throw Object.assign(new Error("Missing Cimmich actor"), {
+          statusCode: 400,
+        });
+      }
+      const id = String(personId || "").trim();
+      await requireVisibleSubject(id);
+      if (await isHoldingPerson(sql, id)) {
+        throw typedError(
+          "Holding evidence must be assigned to a real Person before rescanning",
+          409,
+          "PERSON_HOLDING_REQUIRED",
+        );
+      }
+      const matchingStatus = await repository.faceMatchingStatus();
+      if (!matchingStatus.review.enabled || !matchingProvider) {
+        throw typedError(
+          "Face matching must have one active reviewed SourcePack before Head evidence can be rescanned",
+          409,
+          "PERSON_HEAD_RESCAN_UNAVAILABLE",
+        );
+      }
+
+      const rows = await sql`
+        WITH pack AS MATERIALIZED (
+          SELECT pack.model_family, pack.model_version, pack.config_digest,
+            (pack.evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8 AS score_floor,
+            (pack.evaluation_summary->'matcherPolicy'->>'marginFloor')::float8 AS margin_floor
+          FROM current_source_pack pack
+          WHERE pack.evaluation_status = 'passed'
+            AND pack.model_family = ${matchingProvider.modelFamily}
+            AND pack.model_version = ${matchingProvider.modelVersion}
+            AND pack.config_digest = ${matchingProvider.configDigest}
+            AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion'
+              = ${machineMatcherPolicyVersion}
+            AND pack.evaluation_summary->'matcherPolicy'->>'scorer'
+              = 'best_individual_prime'
+          LIMIT 1
+        ), head_faces AS MATERIALIZED (
+          SELECT identity.person_id, face.face_id, face.asset_id,
+            face.box_w::float8, face.box_h::float8,
+            face.detection_confidence::float8,
+            face.quality_measurements, asset.width, asset.height,
+            coalesce(
+              (face.quality_measurements->>'quality_score')::float8,
+              0
+            ) AS quality_score
+          FROM current_face_identity identity
+          JOIN face_observation face ON face.face_id = identity.face_id
+            AND face.state = 'valid'
+          JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
+          JOIN current_reference_gallery head
+            ON head.person_id = identity.person_id
+            AND head.face_id = identity.face_id
+            AND head.bucket_kind = 'head'
+            AND head.membership_state = 'active'
+          WHERE identity.person_id = ${id} AND identity.state = 'accepted'
+            AND cimmich_visibility_asset_rank(asset.asset_id)
+              <= ${presentationRank()}
+        ), queries AS MATERIALIZED (
+          SELECT head.*, embedding.embedding, embedding.model_family,
+            embedding.model_version, embedding.config_digest,
+            coalesce((
+              SELECT array_agg(context.context_id ORDER BY context.context_id)
+              FROM current_face_capture_context context
+              WHERE context.face_id = head.face_id
+            ), ARRAY[]::text[]) AS query_context_ids
+          FROM head_faces head
+          CROSS JOIN pack
+          JOIN LATERAL (
+            SELECT candidate.*
+            FROM face_embedding candidate
+            WHERE candidate.face_id = head.face_id
+              AND candidate.state = 'active'
+              AND candidate.model_family = pack.model_family
+              AND candidate.model_version = pack.model_version
+              AND candidate.config_digest = pack.config_digest
+            ORDER BY candidate.created_at DESC, candidate.embedding_id
+            LIMIT 1
+          ) embedding ON true
+        ), person_scores AS MATERIALIZED (
+          SELECT query.face_id, gallery.person_id,
+            max(1 - (gallery.embedding <=> query.embedding))::float8 AS score
+          FROM queries query
+          JOIN matching_gallery gallery
+            ON gallery.bucket_kind = 'prime'
+            AND gallery.model_family = query.model_family
+            AND gallery.model_version = query.model_version
+            AND gallery.config_digest = query.config_digest
+          JOIN face_observation reference_face
+            ON reference_face.face_id = gallery.face_id
+            AND reference_face.state = 'valid'
+            AND reference_face.asset_id <> query.asset_id
+          WHERE cimmich_visibility_asset_rank(reference_face.asset_id)
+              <= ${presentationRank()}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_capture_context reference_context
+              WHERE reference_context.face_id = gallery.face_id
+                AND reference_context.context_id = ANY(query.query_context_ids)
+            )
+          GROUP BY query.face_id, gallery.person_id
+        ), ranked AS MATERIALIZED (
+          SELECT score.*,
+            row_number() OVER (
+              PARTITION BY score.face_id
+              ORDER BY score.score DESC, score.person_id
+            )::int AS rank,
+            lead(score.score) OVER (
+              PARTITION BY score.face_id
+              ORDER BY score.score DESC, score.person_id
+            )::float8 AS runner_up_score
+          FROM person_scores score
+        ), winner AS (
+          SELECT * FROM ranked WHERE rank = 1
+        )
+        SELECT head.face_id, head.box_w, head.box_h,
+          head.detection_confidence, head.quality_measurements,
+          head.quality_score, head.width, head.height,
+          winner.person_id AS winner_person_id,
+          person.display_name AS winner_display_name,
+          winner.score, winner.runner_up_score,
+          pack.score_floor, pack.margin_floor
+        FROM head_faces head
+        CROSS JOIN pack
+        LEFT JOIN winner ON winner.face_id = head.face_id
+        LEFT JOIN current_person person ON person.person_id = winner.person_id
+        ORDER BY head.face_id
+      `;
+
+      const evaluated = rows.map((row) => {
+        const score = row.score == null ? null : Number(row.score);
+        const runnerUpScore =
+          row.runner_up_score == null ? null : Number(row.runner_up_score);
+        const margin =
+          score == null
+            ? null
+            : runnerUpScore == null
+              ? score
+              : score - runnerUpScore;
+        const scoreFloor = Number(row.score_floor);
+        const marginFloor = Number(row.margin_floor);
+        const passed =
+          row.winner_person_id === id &&
+          score !== null &&
+          margin !== null &&
+          score >= scoreFloor &&
+          margin >= marginFloor;
+        const facePixelWidth = Math.round(
+          Number(row.width || 0) * Number(row.box_w || 0),
+        );
+        const facePixelHeight = Math.round(
+          Number(row.height || 0) * Number(row.box_h || 0),
+        );
+        const lowQuality =
+          Number(row.quality_score || 0) < 0.68 ||
+          Number(row.detection_confidence || 0) < 0.75 ||
+          Math.min(facePixelWidth, facePixelHeight) < 64;
+        return {
+          faceId: row.face_id,
+          margin,
+          marginFloor,
+          passed,
+          score,
+          scoreFloor,
+          targetBucket: passed ? (lowQuality ? "lq" : "secondary") : null,
+          winnerDisplayName: row.winner_display_name || null,
+          winnerPersonId: row.winner_person_id || null,
+        };
+      });
+
+      const movedFaceIds = [];
+      for (const item of evaluated) {
+        if (!item.targetBucket) continue;
+        const result = await repository.setFaceBucket({
+          actorId: actor,
+          bucketKind: item.targetBucket,
+          faceId: item.faceId,
+          personId: id,
+          skipPrimeMaintenance: true,
+        });
+        if (result.changed) movedFaceIds.push(item.faceId);
+      }
+
+      let maintenancePending = false;
+      if (movedFaceIds.length > 0) {
+        maintenancePending = await refreshPrimeAfterCommand(sql, id);
+      }
+      const finalBuckets =
+        movedFaceIds.length === 0
+          ? []
+          : await sql`
+            SELECT face_id, bucket_kind
+            FROM current_reference_gallery
+            WHERE person_id = ${id}
+              AND face_id = ANY(${movedFaceIds})
+              AND membership_state = 'active'
+              AND bucket_kind IN ('prime','secondary','lq')
+            ORDER BY face_id
+          `;
+      const tierCounts = { lq: 0, prime: 0, secondary: 0 };
+      for (const row of finalBuckets) {
+        if (row.bucket_kind in tierCounts) tierCounts[row.bucket_kind] += 1;
+      }
+      return {
+        evaluatedCount: evaluated.filter((item) => item.score !== null).length,
+        items: evaluated,
+        maintenancePending,
+        movedCount: movedFaceIds.length,
+        retainedCount: evaluated.length - movedFaceIds.length,
+        schemaVersion: "cimmich.head-rescan.v1",
+        tierCounts,
+        totalCount: evaluated.length,
+      };
     },
 
     async setFaceModifier({
@@ -8653,5 +9181,20 @@ export const createCimmichRepository = (
     },
   };
   Object.assign(repository, observationCorrections);
+  Object.assign(repository, {
+    petMatchImport: petMatching.importBatch,
+    petMatchStatus: petMatching.status,
+    petMatchSuggestions: petMatching.suggestions,
+    petMatchUnknown: petMatching.unknown,
+    resolvePetMatchUnknown: petMatching.resolveUnknown,
+    reviewPetMatch: petMatching.review,
+  });
+  Object.assign(repository, {
+    dismissIdentityAuditItem: identityAudit.dismiss,
+    identityAuditItems: identityAudit.items,
+    identityAuditLatest: identityAudit.latest,
+    identityAuditLeads: identityAudit.leads,
+    startIdentityAudit: identityAudit.start,
+  });
   return repository;
 };

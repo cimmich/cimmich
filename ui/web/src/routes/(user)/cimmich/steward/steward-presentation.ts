@@ -57,6 +57,14 @@ const presentations: Record<CimmichFaceMatchingOperatorStatus['next']['action'],
       'A proposed reference library exists, but it must pass a frozen safety check before it can be reviewed or used.',
     title: 'Your reference library needs checking.',
   },
+  hold_source_pack: {
+    actionLabel: 'Review the protected update',
+    anchor: 'face-matching',
+    state: 'held',
+    summary:
+      'The current reviewed library remains active. Cimmich held its proposed replacement because the candidate recognised materially fewer verified people.',
+    title: 'A weaker matching update was safely held.',
+  },
   record_operator_review: {
     actionLabel: 'Review safety result',
     anchor: 'face-matching',

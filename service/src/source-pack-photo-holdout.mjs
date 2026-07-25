@@ -136,7 +136,19 @@ const buildFold = (sourceFaces, queryFaces, split, options) => {
   );
   const pack = compileSourcePack(trainingFaces, {
     cutoff: options.cutoff,
+    diagnosticPrimeFaceIdsByPerson:
+      options.diagnosticPrimeFaceIdsByPerson || null,
     evaluationContext: {
+      authority:
+        options.diagnosticPrimeFaceIdsByPerson &&
+        Object.keys(options.diagnosticPrimeFaceIdsByPerson).length > 0
+          ? { activation: "none" }
+          : undefined,
+      challengerPolicyVersion:
+        options.diagnosticPrimeFaceIdsByPerson &&
+        Object.keys(options.diagnosticPrimeFaceIdsByPerson).length > 0
+          ? "cimmich-person-core-challenger-v1"
+          : undefined,
       evaluatorVersion: photoHoldoutEvaluatorVersion,
       queryDigest: digestValue(
         queryFaces.map((face) => ({
@@ -174,6 +186,8 @@ export const buildPhotoIsolatedPacks = (
   rawSourceFaces,
   {
     cutoff,
+    diagnosticPrimeFaceIdsByPerson = null,
+    excludedQueryFaceIds = [],
     primeOptions = {},
     primeModeOptions = {},
     lowQualityLimit = 24,
@@ -182,8 +196,25 @@ export const buildPhotoIsolatedPacks = (
   } = {},
 ) => {
   const queryAuthorityFaces = applyBiometricAuthority(rawSourceFaces);
+  const excludedQueries = new Set(excludedQueryFaceIds.map(String));
+  const excludedReferenceFaces = queryAuthorityFaces.filter((row) =>
+    excludedQueries.has(row.faceId),
+  );
+  const {
+    heldOutAssets: excludedReferenceAssets,
+    heldOutContexts: excludedReferenceContexts,
+  } = heldOutContextClosure(queryAuthorityFaces, excludedReferenceFaces);
   const byPerson = new Map();
-  for (const face of queryAuthorityFaces.filter(queryEligible)) {
+  for (const face of queryAuthorityFaces
+    .filter(queryEligible)
+    .filter(
+      (row) =>
+        !excludedQueries.has(row.faceId) &&
+        !excludedReferenceAssets.has(row.assetId) &&
+        !contextIds(row).some((contextId) =>
+          excludedReferenceContexts.has(contextId),
+        ),
+    )) {
     const group = byPerson.get(face.personId) || [];
     group.push(face);
     byPerson.set(face.personId, group);
@@ -218,6 +249,7 @@ export const buildPhotoIsolatedPacks = (
 
   const options = {
     cutoff,
+    diagnosticPrimeFaceIdsByPerson,
     lowQualityLimit,
     primeModeOptions,
     primeOptions,
@@ -241,6 +273,9 @@ export const buildPhotoIsolatedPacks = (
     holdout: holdoutFold,
     stats: {
       evaluablePeople: calibration.length,
+      excludedReferenceAssets: excludedReferenceAssets.size,
+      excludedReferenceContexts: excludedReferenceContexts.size,
+      excludedQueryFaces: excludedQueries.size,
       singleIndependentContextPeople,
       // Compatibility alias for older diagnostics. Its meaning is now the
       // stronger independent-context count, not raw photo count.

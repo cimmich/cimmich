@@ -50,6 +50,7 @@ import {
   lockCimmichPrivateMode,
   createCimmichPerson,
   mergeCimmichPeople,
+  rescanCimmichHeadEvidence,
   markCimmichBodyNotBody,
   markCimmichFaceNotFace,
   importCimmichDocument,
@@ -828,11 +829,45 @@ describe('Cimmich Person projection page client contract', () => {
       nextCursor: null,
       pageSize: 24,
       schemaVersion: 'cimmich.person-projection-page.v1',
+      summary: { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 },
     } as const;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(page));
 
     await expect(getCimmichIdentityFacesPage('person_1')).resolves.toEqual(page);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('http://127.0.0.1:3101/v1/people/person_1/identity?pageSize=24');
+    fetchMock.mockRestore();
+  });
+
+  it('requests a server-filtered Head page and the governed Person rescan', async () => {
+    const page = {
+      items: [],
+      nextCursor: null,
+      pageSize: 120,
+      schemaVersion: 'cimmich.person-projection-page.v1',
+      summary: { all: 4, head: 4, lowQuality: 0, prime: 0, secondary: 0 },
+    } as const;
+    const rescan = {
+      evaluatedCount: 4,
+      items: [],
+      maintenancePending: false,
+      movedCount: 0,
+      retainedCount: 4,
+      schemaVersion: 'cimmich.head-rescan.v1',
+      tierCounts: { lq: 0, prime: 0, secondary: 0 },
+      totalCount: 4,
+    } as const;
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(page))
+      .mockResolvedValueOnce(Response.json(rescan));
+
+    await expect(getCimmichIdentityFacesPage('person_1', 120, undefined, 'head')).resolves.toEqual(page);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:3101/v1/people/person_1/identity?pageSize=120&bucket=head',
+    );
+    await expect(rescanCimmichHeadEvidence('person_1')).resolves.toEqual(rescan);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://127.0.0.1:3101/v1/people/person_1/identity/head:rescan');
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
     fetchMock.mockRestore();
   });
 

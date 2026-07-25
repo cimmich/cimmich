@@ -5,7 +5,8 @@
 > submission remains preserved in the
 > [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
 > That tag, release and its assets remain unchanged as the living project moves
-> forward.
+> forward. See the [Public Beta changelog](docs/PUBLIC_BETA_CHANGELOG.md) for
+> maintained-product updates made after submission.
 
 > **Complete the picture.**
 

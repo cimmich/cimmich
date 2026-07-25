@@ -32,6 +32,15 @@ describe('Cimmich visibility projection boundary', () => {
     );
   });
 
+  it('keeps the photo controls compact below the desktop toolbar breakpoint', () => {
+    const contents = source('src/lib/components/cimmich/CimmichPhotoOverlay.svelte');
+    expect(contents).toContain('left-1/2');
+    expect(contents).toContain('-translate-x-1/2');
+    expect(contents).toContain('rounded-full border border-white/15 bg-black/85');
+    expect(contents).toContain('hidden text-sm font-medium sm:inline');
+    expect(contents).toContain('sm:translate-x-0');
+  });
+
   it('requests archived detail only for a row already disclosed by the archived collection', () => {
     expect(source('src/lib/components/cimmich/CimmichContextBrowser.svelte')).toContain(
       "includeArchived: entity.status === 'archived'",

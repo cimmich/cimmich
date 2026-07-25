@@ -269,16 +269,28 @@ const batches = (items, size) => {
   return groups;
 };
 
-export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
+export const projectUnlabelledPersonClusters = ({
+  acceptedFacesByAsset = new Map(),
+  assets,
+  facesByAsset,
+}) => {
   const assetsById = new Map(
     assets.map((asset) => [asset.immichAssetId, asset]),
   );
   const clusters = new Map();
+  const alreadyTaggedPersonIds = new Set();
   for (const [sourceAssetId, faces] of facesByAsset) {
     const asset = assetsById.get(sourceAssetId);
     if (!asset) continue;
     for (const face of faces) {
       if (!face.person || face.person.name) continue;
+      if (
+        (acceptedFacesByAsset.get(sourceAssetId) || []).some(
+          (acceptedFace) => iou(face.box, acceptedFace.box) >= 0.5,
+        )
+      ) {
+        alreadyTaggedPersonIds.add(face.person.id);
+      }
       if (!clusters.has(face.person.id)) {
         clusters.set(face.person.id, {
           faces: [],
@@ -289,6 +301,7 @@ export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
     }
   }
   return [...clusters.values()]
+    .filter(({ person }) => !alreadyTaggedPersonIds.has(person.id))
     .map(({ faces, person }) => {
       const ordered = faces.toSorted(
         (left, right) =>
@@ -296,6 +309,34 @@ export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
           left.asset.immichAssetId.localeCompare(right.asset.immichAssetId),
       );
       const representative = ordered[0];
+      const distinctAssetIds = new Set(
+        ordered.map(({ asset }) => asset.immichAssetId),
+      );
+      const captureTimes = ordered
+        .map(({ asset }) => {
+          const value = Date.parse(String(asset.captureTime || ""));
+          return Number.isFinite(value) && value <= Date.now() ? value : null;
+        })
+        .filter((value) => value !== null)
+        .toSorted((left, right) => left - right);
+      const firstCaptureTime =
+        captureTimes.length > 0
+          ? new Date(captureTimes[0]).toISOString()
+          : null;
+      const lastCaptureTime =
+        captureTimes.length > 0
+          ? new Date(captureTimes.at(-1)).toISOString()
+          : null;
+      const distinctYears = new Set(
+        captureTimes.map((value) => new Date(value).getUTCFullYear()),
+      ).size;
+      const locations = [
+        ...new Set(
+          ordered.flatMap(({ asset }) =>
+            Array.isArray(asset.locationNames) ? asset.locationNames : [],
+          ),
+        ),
+      ].toSorted((left, right) => left.localeCompare(right));
       const snapshot = {
         faces: ordered.map(({ asset, face }) => ({
           assetInputRevision: asset.inputRevision,
@@ -309,6 +350,24 @@ export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
       };
       return {
         faceCount: ordered.length,
+        evidence: {
+          distinctYears,
+          firstCaptureTime,
+          lastCaptureTime,
+          locationCount: locations.length,
+          locations: locations.slice(0, 3),
+          photoCount: distinctAssetIds.size,
+          timeSpanDays:
+            captureTimes.length > 1
+              ? Math.max(
+                  0,
+                  Math.round(
+                    (captureTimes.at(-1) - captureTimes[0]) /
+                      (24 * 60 * 60 * 1000),
+                  ),
+                )
+              : 0,
+        },
         immichPersonId: person.id,
         representative: {
           assetInputRevision: representative.asset.inputRevision,
@@ -328,13 +387,13 @@ export const projectUnlabelledPersonClusters = ({ assets, facesByAsset }) => {
 export const isCurrentFinalPersonResolution = (cluster, resolution) =>
   Boolean(
     resolution &&
-      resolution.resolution_action !== "later" &&
-      resolution.source_revision === cluster.sourceRevision &&
-      resolution.snapshot_digest === cluster.snapshotDigest &&
-      (!new Set(["existing_person", "create_person"]).has(
-        resolution.resolution_action,
-      ) ||
-        (resolution.person_id && resolution.display_name)),
+    resolution.resolution_action !== "later" &&
+    resolution.source_revision === cluster.sourceRevision &&
+    resolution.snapshot_digest === cluster.snapshotDigest &&
+    (!new Set(["existing_person", "create_person"]).has(
+      resolution.resolution_action,
+    ) ||
+      (resolution.person_id && resolution.display_name)),
   );
 
 const normalizedResolutionAction = (value) => {
@@ -766,6 +825,8 @@ const acceptImportedIdentity = async (
 export const createImmichOnboarding = ({
   companion,
   immichInventory,
+  presentationRank = () => 0,
+  resolveCimmichAssetId = null,
   sourceId = "immich-primary",
   sql,
 } = {}) => {
@@ -785,6 +846,16 @@ export const createImmichOnboarding = ({
     );
   }
   const normalizedSourceId = boundedId(sourceId, "sourceId", 120);
+  if (
+    typeof presentationRank !== "function" ||
+    (resolveCimmichAssetId !== null &&
+      typeof resolveCimmichAssetId !== "function")
+  ) {
+    throw new Error(
+      "Immich onboarding visibility and asset resolution options are invalid",
+    );
+  }
+  let unlabelledClusterCache = null;
 
   const connect = async ({
     actorId,
@@ -885,9 +956,108 @@ export const createImmichOnboarding = ({
   const scanUnlabelledClusters = async ({ inputScope, viewingMode }) => {
     const scope = normalizeImmichOnboardingScope(inputScope);
     enforceViewingMode(scope, viewingMode);
+    const visibleRank = presentationRank();
+    const cacheKey = digest({ scope, viewingMode, visibleRank });
+    if (
+      unlabelledClusterCache?.key === cacheKey &&
+      unlabelledClusterCache.expiresAt > Date.now()
+    ) {
+      return {
+        clusters: unlabelledClusterCache.clusters,
+        scope,
+      };
+    }
     const scanned = await scanSource({ companion, scope });
+    const cimmichAssetBySourceId = new Map(
+      resolveCimmichAssetId === null
+        ? []
+        : scanned.assets
+            .map((asset) => [
+              asset.immichAssetId,
+              resolveCimmichAssetId({
+                immichAssetId: asset.immichAssetId,
+              }),
+            ])
+            .filter(([, assetId]) => Boolean(assetId)),
+    );
+    const cimmichAssetIds = [...new Set(cimmichAssetBySourceId.values())];
+    const placeRows =
+      cimmichAssetIds.length > 0
+        ? await sql`
+            SELECT link.asset_id, entity.display_name
+            FROM current_context_asset link
+            JOIN context_entity entity ON entity.entity_id = link.entity_id
+            WHERE link.asset_id = ANY(${cimmichAssetIds})
+              AND entity.entity_kind = 'place'
+              AND entity.status = 'active'
+              AND cimmich_visibility_context_entity_rank(entity.entity_id)
+                <= ${visibleRank}
+            ORDER BY link.asset_id, lower(entity.display_name), entity.entity_id
+          `
+        : [];
+    const acceptedFaceRows =
+      cimmichAssetIds.length > 0
+        ? await sql`
+            SELECT association.asset_id, face.box_x, face.box_y,
+              face.box_w, face.box_h
+            FROM asset_people association
+            JOIN face_observation face
+              ON face.face_id = association.geometry_id
+            WHERE association.asset_id = ANY(${cimmichAssetIds})
+              AND association.association_type IN ('face', 'head')
+              AND association.authority_state = 'accepted'
+              AND face.state = 'valid'
+          `
+        : [];
+    const sourceAssetIdByCimmichAssetId = new Map(
+      [...cimmichAssetBySourceId.entries()].map(
+        ([sourceAssetId, cimmichAssetId]) => [
+          cimmichAssetId,
+          sourceAssetId,
+        ],
+      ),
+    );
+    const acceptedFacesByAsset = new Map();
+    for (const row of acceptedFaceRows) {
+      const sourceAssetId = sourceAssetIdByCimmichAssetId.get(row.asset_id);
+      if (!sourceAssetId) continue;
+      if (!acceptedFacesByAsset.has(sourceAssetId)) {
+        acceptedFacesByAsset.set(sourceAssetId, []);
+      }
+      acceptedFacesByAsset.get(sourceAssetId).push({
+        box: {
+          h: Number(row.box_h),
+          w: Number(row.box_w),
+          x: Number(row.box_x),
+          y: Number(row.box_y),
+        },
+      });
+    }
+    const placeNamesByAssetId = new Map();
+    for (const row of placeRows) {
+      if (!placeNamesByAssetId.has(row.asset_id)) {
+        placeNamesByAssetId.set(row.asset_id, []);
+      }
+      placeNamesByAssetId.get(row.asset_id).push(row.display_name);
+    }
+    const clusters = projectUnlabelledPersonClusters({
+      ...scanned,
+      acceptedFacesByAsset,
+      assets: scanned.assets.map((asset) => ({
+        ...asset,
+        locationNames:
+          placeNamesByAssetId.get(
+            cimmichAssetBySourceId.get(asset.immichAssetId),
+          ) || [],
+      })),
+    });
+    unlabelledClusterCache = {
+      clusters,
+      expiresAt: Date.now() + 20_000,
+      key: cacheKey,
+    };
     return {
-      clusters: projectUnlabelledPersonClusters(scanned),
+      clusters,
       scope,
     };
   };

@@ -2,7 +2,7 @@
   "execution": {
     "device": "cpu",
     "network": "forbidden",
-    "runtimeId": "python-pillow-12.2.0",
+    "runtimeId": "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4",
     "threads": 1
   },
   "licensing": {
@@ -12,17 +12,17 @@
   },
   "preprocessing": {
     "colorSpace": "gray",
-    "inputHeight": 8,
-    "inputWidth": 9,
-    "resizeMode": "stretch"
+    "inputHeight": 8192,
+    "inputWidth": 8192,
+    "resizeMode": "fit"
   },
   "privacy": {
     "externalUpload": "none",
     "sourceMedia": "local-read-only"
   },
   "provider": {
-    "providerId": "pillow-dhash",
-    "versionId": "v1"
+    "providerId": "pillow-opencv-derivative",
+    "versionId": "v3"
   },
   "resources": {
     "maxMemoryMiB": 512,
@@ -30,11 +30,11 @@
   },
   "schemaVersion": "cimmich.asset-similarity-provider.v1",
   "similarity": {
-    "artifactDigest": "74e7cd596c856a8a22ae6a21f544603ec94c4141ef711f463b02323ead9e0af2",
-    "modelId": "difference-hash-64",
-    "modelVersionId": "v1",
+    "artifactDigest": "7ea0c9e8246666852a8fe015c597eec2cae31a5de527aa783177e5afa555bda0",
+    "modelId": "dhash-orb-sift-correspondence",
+    "modelVersionId": "v3",
     "scoreSemantics": "symmetric_unit_similarity"
   },
-  "featureSpaceId": "feature_space_cafd16a1f86df1a8b94724735dc2e43d1bbec50c51e44d177dec19d60f84a806",
-  "providerConfigDigest": "99b42b00b294d3ae75e76c901fa5a213c45ca4d3f8dfae218b2ac07d3d47e286"
+  "featureSpaceId": "feature_space_e25781ae19e0c5848e171faa72c1a86a4e6373095027b51b8bc08e9ceb1b7847",
+  "providerConfigDigest": "99ef2bc108cd7acfb73677dc68df267c1bf0cfd240166508a7cd698cc2a63b01"
 }

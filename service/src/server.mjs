@@ -58,13 +58,13 @@ const sendBinary = (
   response.end(bytes);
 };
 
-const readJsonBody = async (request) => {
+const readJsonBody = async (request, maximumBytes = 32_768) => {
   let body = "";
   let bytes = 0;
   for await (const chunk of request) {
     bytes += Buffer.byteLength(chunk);
     body += chunk;
-    if (bytes > 32_768) {
+    if (bytes > maximumBytes) {
       throw Object.assign(new Error("Request body too large"), {
         code: "REQUEST_BODY_TOO_LARGE",
         statusCode: 413,
@@ -1533,6 +1533,100 @@ export const createCimmichServer = ({
         return;
       }
       if (
+        request.method === "POST" &&
+        url.pathname === "/v1/pets/matching:import"
+      ) {
+        const body = await readJsonBody(request, 524_288);
+        sendJson(
+          response,
+          200,
+          await repository.petMatchImport({
+            actorId: request.headers["x-cimmich-actor"],
+            packet: body,
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/pets/matching/status"
+      ) {
+        sendJson(
+          response,
+          200,
+          await repository.petMatchStatus(),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/pets/matching/unknown"
+      ) {
+        sendJson(
+          response,
+          200,
+          await repository.petMatchUnknown({
+            limit: url.searchParams.get("limit"),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const petMatchUnknownReview = url.pathname.match(
+        /^\/v1\/pets\/matching\/unknown\/([^/]+)\/(assign|reject)$/,
+      );
+      if (request.method === "POST" && petMatchUnknownReview) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.resolvePetMatchUnknown({
+            action: petMatchUnknownReview[2],
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+            observationId: decodeURIComponent(petMatchUnknownReview[1]),
+            petId: body.petId,
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const petMatchReview = url.pathname.match(
+        /^\/v1\/pets\/matching\/suggestions\/([^/]+)\/(confirm|reject)$/,
+      );
+      if (request.method === "POST" && petMatchReview) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.reviewPetMatch({
+            action: petMatchReview[2],
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+            suggestionId: decodeURIComponent(petMatchReview[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const petMatchSuggestions = url.pathname.match(
+        /^\/v1\/pets\/([^/]+)\/matching\/suggestions$/,
+      );
+      if (request.method === "GET" && petMatchSuggestions) {
+        sendJson(
+          response,
+          200,
+          await repository.petMatchSuggestions({
+            limit: url.searchParams.get("limit"),
+            petId: decodeURIComponent(petMatchSuggestions[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
         request.method === "GET" &&
         url.pathname === "/v1/pets/merge-preview"
       ) {
@@ -2634,6 +2728,42 @@ export const createCimmichServer = ({
         );
         return;
       }
+      const petPresentationMatch = url.pathname.match(
+        /^\/v1\/pets\/([^/]+)\/presentation$/,
+      );
+      if (request.method === "GET" && petPresentationMatch) {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.petPresentation({
+            petId: decodeURIComponent(petPresentationMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const petPresentationSlotMatch = url.pathname.match(
+        /^\/v1\/pets\/([^/]+)\/presentation\/(face|hero)$/,
+      );
+      if (request.method === "POST" && petPresentationSlotMatch) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.setPetPresentation({
+            actorId: request.headers["x-cimmich-actor"],
+            assetId: body.assetId,
+            crop: body.crop,
+            observationId: body.observationId,
+            observationKind: body.observationKind,
+            petId: decodeURIComponent(petPresentationSlotMatch[1]),
+            slotKind: petPresentationSlotMatch[2],
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "GET" && personAssetsMatch) {
         requireProjection("person_assets");
         const pageSize = url.searchParams.has("pageSize")
@@ -2699,6 +2829,7 @@ export const createCimmichServer = ({
           : null;
         const cursor = url.searchParams.get("cursor") || "";
         const result = await repository.identityFaces({
+          bucketKind: url.searchParams.get("bucket") || "",
           cursor,
           limit: url.searchParams.get("limit"),
           pageSize,
@@ -2708,6 +2839,21 @@ export const createCimmichServer = ({
           response,
           200,
           pageSize !== null || cursor ? result : { items: result },
+          allowedOrigin,
+        );
+        return;
+      }
+      const headRescanMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/identity\/head:rescan$/,
+      );
+      if (request.method === "POST" && headRescanMatch) {
+        sendJson(
+          response,
+          200,
+          await repository.rescanHeadEvidence({
+            actorId: request.headers["x-cimmich-actor"],
+            personId: decodeURIComponent(headRescanMatch[1]),
+          }),
           allowedOrigin,
         );
         return;
@@ -2871,9 +3017,90 @@ export const createCimmichServer = ({
           200,
           {
             items: await repository.machineSuggestions({
+              leadPersonId: url.searchParams.get("leadPersonId"),
               limit: url.searchParams.get("limit"),
             }),
           },
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/review/identity-audit"
+      ) {
+        requireProjection("machine_suggestions");
+        sendJson(
+          response,
+          200,
+          {
+            run: await repository.identityAuditLatest(),
+          },
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/review/identity-audit"
+      ) {
+        requireProjection("machine_suggestions");
+        sendJson(
+          response,
+          202,
+          {
+            run: await repository.startIdentityAudit({
+              actorId: request.headers["x-cimmich-actor"],
+            }),
+          },
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/review/identity-audit/leads"
+      ) {
+        requireProjection("machine_suggestions");
+        sendJson(
+          response,
+          200,
+          await repository.identityAuditLeads(),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/review/identity-audit/items"
+      ) {
+        requireProjection("machine_suggestions");
+        sendJson(
+          response,
+          200,
+          await repository.identityAuditItems({
+            kind: url.searchParams.get("kind"),
+            limit: url.searchParams.get("limit"),
+            offset: url.searchParams.get("offset"),
+            personId: url.searchParams.get("personId"),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const identityAuditDismissMatch = url.pathname.match(
+        /^\/v1\/review\/identity-audit\/items\/(untagged_match|accepted_contradiction)\/([^/]+)\/dismiss$/,
+      );
+      if (request.method === "POST" && identityAuditDismissMatch) {
+        requireProjection("machine_suggestions");
+        sendJson(
+          response,
+          200,
+          await repository.dismissIdentityAuditItem({
+            actorId: request.headers["x-cimmich-actor"],
+            faceId: decodeURIComponent(identityAuditDismissMatch[2]),
+            kind: identityAuditDismissMatch[1],
+          }),
           allowedOrigin,
         );
         return;

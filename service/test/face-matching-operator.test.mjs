@@ -4,6 +4,7 @@ import {
   createFaceMatchingOperator,
   deriveOwnerSourcePackPlan,
   deriveSourcePackReviewNext,
+  deriveSourcePackSuccessorNext,
   projectSourcePackReviewGate,
 } from "../src/face-matching-operator.mjs";
 import { deriveSourcePackReviewGate } from "../src/source-pack-evaluator.mjs";
@@ -69,7 +70,10 @@ test("owner SourcePack planning selects a balanced known and unknown holdout", (
 
 test("review routing never offers an impossible safety check", () => {
   const held = deriveSourcePackReviewNext({
-    evaluation: { reason: "SOURCE_PACK_EVALUATION_REQUIRED", status: "untested" },
+    evaluation: {
+      reason: "SOURCE_PACK_EVALUATION_REQUIRED",
+      status: "untested",
+    },
     reviewability: {
       reason: "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT",
       state: "operator_hold_required",
@@ -82,7 +86,10 @@ test("review routing never offers an impossible safety check", () => {
   });
 
   const checkable = deriveSourcePackReviewNext({
-    evaluation: { reason: "SOURCE_PACK_EVALUATION_REQUIRED", status: "untested" },
+    evaluation: {
+      reason: "SOURCE_PACK_EVALUATION_REQUIRED",
+      status: "untested",
+    },
     reviewability: {
       reason: null,
       state: "balanced_open_set_holdout_ready",
@@ -90,6 +97,45 @@ test("review routing never offers an impossible safety check", () => {
     state: "proposed",
   });
   assert.equal(checkable.action, "evaluate_source_pack");
+});
+
+test("successor routing holds a passed pack when known coverage materially regresses", () => {
+  const reviewedPack = (coverage) => ({
+    evaluation: { reason: null, status: "passed" },
+    reviewGateReceipt: {
+      metrics: { knownCorrectCoveragePercent: coverage },
+      status: "passed",
+    },
+    reviewability: {
+      reason: null,
+      state: "balanced_open_set_holdout_ready",
+    },
+    state: "proposed",
+  });
+  assert.deepEqual(
+    deriveSourcePackSuccessorNext(
+      reviewedPack(55.882353),
+      reviewedPack(68.613139),
+    ),
+    {
+      action: "hold_source_pack",
+      comparison: {
+        activeCoverage: 68.613139,
+        candidateCoverage: 55.882353,
+        coverageRegression: 12.730786,
+        maximumCoverageRegression: 5,
+      },
+      reason: "SOURCE_PACK_COVERAGE_REGRESSION",
+    },
+  );
+  assert.equal(
+    deriveSourcePackSuccessorNext(reviewedPack(64), reviewedPack(68)).action,
+    "activate_source_pack",
+  );
+  assert.equal(
+    deriveSourcePackSuccessorNext(reviewedPack(55.882353)).action,
+    "activate_source_pack",
+  );
 });
 
 test("provider-disabled status retains Basic truth in one total response shape", async () => {
@@ -445,10 +491,7 @@ test("recognition-only provider skips Cimmich detection and processes imported F
 });
 
 test("recognition fails closed before provider inference when Enhanced is disabled or unavailable", async () => {
-  for (const enhancedComponent of [
-    { isEnabled: async () => false },
-    null,
-  ]) {
+  for (const enhancedComponent of [{ isEnabled: async () => false }, null]) {
     let inferenceCalls = 0;
     const operator = createFaceMatchingOperator({
       enhancedComponent,
