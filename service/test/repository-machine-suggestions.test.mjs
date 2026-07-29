@@ -57,7 +57,7 @@ test("Head rescan retains evidence unless the governed winner is the current Per
     ) {
       return [{ person_id: "person-current", subject_kind: "person" }];
     }
-    if (statement.includes("FROM current_person_category")) {
+    if (statement.includes("slug = 'holding'")) {
       return [{ holding: false }];
     }
     if (statement.includes("FROM source_pack")) {
@@ -116,6 +116,16 @@ test("Head rescan retains evidence unless the governed winner is the current Per
   assert.match(rescanStatement, /JOIN matching_gallery gallery/);
   assert.match(rescanStatement, /gallery\.bucket_kind = 'prime'/);
   assert.match(rescanStatement, /runner_up_score/);
+  assert.match(
+    rescanStatement,
+    /cimmich_visibility_person_rank\(gallery_person\.person_id\)/,
+  );
+  assert.match(rescanStatement, /gallery_person\.status = 'active'/);
+  assert.match(rescanStatement, /category\.slug IN \('sort', 'holding'\)/);
+  assert.match(
+    rescanStatement,
+    /LEFT JOIN current_person person ON person\.person_id = winner\.person_id\s+AND person\.status = 'active'\s+AND cimmich_visibility_person_rank\(person\.person_id\)/,
+  );
 });
 
 test("simultaneous machine review consumers share one best-Prime scoring snapshot", async () => {

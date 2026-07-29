@@ -862,9 +862,6 @@ export const createCimmichRepository = (
   options = {},
 ) => {
   const mediaJobs = createMediaJobLedger(sql);
-  const petMatching = createPetMatchingStore(sql, {
-    bridgeFields: (assetId) => bridgeFields(bridge, assetId),
-  });
   const matchingProvider = normalizeMatchingProvider(options.matchingProvider);
   const machineReviewConfigured = matchingProvider !== null;
   const enhancedComponent = options.enhancedComponent || null;
@@ -951,6 +948,10 @@ export const createCimmichRepository = (
         projection?.source_asset_id || legacy?.sourceAssetId || requestedId,
     };
   };
+  const petMatching = createPetMatchingStore(sql, {
+    bridgeFields: (assetId) => bridgeFields(bridge, assetId),
+    presentationRank,
+  });
   const manualSubjectPresences = createManualSubjectPresenceStore(sql, {
     presentationRank,
   });
@@ -5182,9 +5183,12 @@ export const createCimmichRepository = (
           SELECT 1
           FROM current_face_identity identity
           JOIN face_observation face ON face.face_id = identity.face_id
+          JOIN asset source ON source.asset_id = face.asset_id
+            AND source.state = 'active'
           WHERE identity.person_id = ${id} AND identity.state = 'accepted'
             AND face.face_id = ${observation} AND face.asset_id = ${asset}
             AND face.state = 'valid'
+            AND cimmich_visibility_asset_rank(face.asset_id) <= ${presentationRank()}
         `;
         valid = Boolean(row);
       } else if (kind === "body" && observation) {
@@ -5192,15 +5196,22 @@ export const createCimmichRepository = (
           SELECT 1
           FROM current_body_tag tag
           JOIN body_observation body ON body.body_id = tag.body_id
+          JOIN asset source ON source.asset_id = body.asset_id
+            AND source.state = 'active'
           WHERE tag.person_id = ${id} AND tag.state = 'accepted'
             AND body.body_id = ${observation} AND body.asset_id = ${asset}
             AND body.state = 'valid'
+            AND cimmich_visibility_asset_rank(body.asset_id) <= ${presentationRank()}
         `;
         valid = Boolean(row);
       } else if (kind === "presence") {
         const [row] = await sql`
-          SELECT 1 FROM current_presence_tag
-          WHERE person_id = ${id} AND state = 'accepted' AND asset_id = ${asset}
+          SELECT 1 FROM current_presence_tag tag
+          JOIN asset source ON source.asset_id = tag.asset_id
+            AND source.state = 'active'
+          WHERE tag.person_id = ${id} AND tag.state = 'accepted'
+            AND tag.asset_id = ${asset}
+            AND cimmich_visibility_asset_rank(tag.asset_id) <= ${presentationRank()}
         `;
         valid = Boolean(row);
       }
@@ -6912,12 +6923,23 @@ export const createCimmichRepository = (
             AND gallery.model_family = query.model_family
             AND gallery.model_version = query.model_version
             AND gallery.config_digest = query.config_digest
+          JOIN current_person gallery_person
+            ON gallery_person.person_id = gallery.person_id
+            AND gallery_person.status = 'active'
+            AND gallery_person.subject_kind = 'person'
+            AND cimmich_visibility_person_rank(gallery_person.person_id)
+              <= ${presentationRank()}
           JOIN face_observation reference_face
             ON reference_face.face_id = gallery.face_id
             AND reference_face.state = 'valid'
             AND reference_face.asset_id <> query.asset_id
           WHERE cimmich_visibility_asset_rank(reference_face.asset_id)
               <= ${presentationRank()}
+            AND NOT EXISTS (
+              SELECT 1 FROM current_person_category category
+              WHERE category.person_id = gallery.person_id
+                AND category.slug IN ('sort', 'holding')
+            )
             AND NOT EXISTS (
               SELECT 1
               FROM current_face_capture_context reference_context
@@ -6950,6 +6972,9 @@ export const createCimmichRepository = (
         CROSS JOIN pack
         LEFT JOIN winner ON winner.face_id = head.face_id
         LEFT JOIN current_person person ON person.person_id = winner.person_id
+          AND person.status = 'active'
+          AND cimmich_visibility_person_rank(person.person_id)
+            <= ${presentationRank()}
         ORDER BY head.face_id
       `;
 

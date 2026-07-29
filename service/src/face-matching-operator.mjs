@@ -425,7 +425,7 @@ export const createFaceMatchingOperator = ({
   enhancedComponent = null,
   matchingProvider = null,
   mediaOperator,
-  presentationRank = () => 3,
+  presentationRank = () => 0,
   providerReceipt = null,
   repository,
   sourceId = "immich-primary",

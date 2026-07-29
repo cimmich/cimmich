@@ -3930,3 +3930,33 @@ test("browser preflight permits every method the UI actually uses", async () => 
     { allowedOrigins: new Set([origin]) },
   );
 });
+
+test("Pet matching routes require the enforced Pets visibility projection", async () => {
+  const calls = [];
+  const repository = {
+    petMatchUnknown: async (input) => {
+      calls.push(["unknown", input]);
+      return { items: [], schemaVersion: "cimmich.pet-matching.v1" };
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const response = await fetch(`${root}/v1/pets/matching/unknown?limit=10`);
+      assert.equal(response.status, 200);
+      assert.equal(
+        (await response.json()).schemaVersion,
+        "cimmich.pet-matching.v1",
+      );
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "pets"],
+    ["unknown", { limit: "10" }],
+  ]);
+});

@@ -116,6 +116,37 @@ test("an interrupted audit is failed once when the service resumes", async () =>
   assert.equal(recoveryWrites, 1);
 });
 
+test("a failed interrupted-run reconcile retries instead of pinning every audit call", async () => {
+  let updateAttempts = 0;
+  const sql = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("UPDATE identity_audit_run")) {
+      updateAttempts += 1;
+      if (updateAttempts === 1) throw new Error("connection lost");
+      return [];
+    }
+    if (query.includes("FROM current_source_pack")) {
+      return [{ pack_id: "pack.active" }];
+    }
+    if (query.includes("SELECT * FROM identity_audit_run")) return [];
+    throw new Error(`Unexpected identity audit query: ${query}`);
+  };
+  const audit = createIdentityAudit(sql);
+
+  await assert.rejects(audit.latest(), /connection lost/);
+  assert.equal(await audit.latest(), null);
+  assert.equal(updateAttempts, 2);
+
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /WHERE state = 'running'\s+AND started_at < now\(\) - interval '15 minutes'/,
+  );
+});
+
 test("a completed audit is stale when no passed SourcePack remains active", async () => {
   const sql = async (strings) => {
     const query = strings.join(" ");

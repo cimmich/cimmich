@@ -970,7 +970,7 @@ export const createVisibilityService = ({
       if (session.principalId === principalId) sessions.delete(tokenDigest);
     }
     for (const [key, device] of devices) {
-      if (key.startsWith(`${principalId}`)) {
+      if (key.startsWith(`${principalId}\u001f`)) {
         device.currentMode = device.saferMode;
         devices.set(key, device);
       }
