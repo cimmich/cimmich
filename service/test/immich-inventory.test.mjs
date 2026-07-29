@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cimmichAssetIdForImmich,
+  createImmichInventorySynchronizer,
   normalizeInventoryJob,
   normalizeInventoryPage,
   projectInventoryCoverage,
+  selectReusableByteFingerprints,
 } from "../src/immich-inventory.mjs";
 
 const asset = (overrides = {}) => ({
@@ -52,6 +54,97 @@ test("provider-disabled inventory admits projections without manufacturing media
       }),
     /job.configDigest/,
   );
+  assert.throws(
+    () =>
+      createImmichInventorySynchronizer({
+        companion: {
+          listAssets: async () => ({}),
+          status: async () => ({ state: "ready" }),
+        },
+        reuseVerifiedFingerprints: true,
+        sql: {},
+      }),
+    /fingerprint reuse requires byte verification/,
+  );
+});
+
+test("bounded current-job batches re-scan assets with existing faces but skip exact detector work", async () => {
+  const queries = [];
+  const transaction = async (strings, ...values) => {
+    queries.push({
+      text: strings.join("?"),
+      values,
+    });
+    if (queries.length === 1) {
+      return [
+        {
+          accepted_association_count: 2,
+          accepted_person_count: 1,
+          asset_id: "asset-new",
+          human_observation_count: 3,
+          input_revision: "8".repeat(64),
+          priority_tier: 0,
+        },
+      ];
+    }
+    return [];
+  };
+  const sql = {
+    begin: async (callback) => callback(transaction),
+  };
+  const inventory = createImmichInventorySynchronizer({
+    companion: {
+      listAssets: async () => ({
+        accessState: "available",
+        items: [],
+        nextCursor: null,
+      }),
+      status: async () => ({ state: "ready" }),
+    },
+    job: {
+      configDigest: "7".repeat(64),
+      maxAttempts: 3,
+      operation: "detect_faces",
+      toolVersion: "synthetic-provider-v1",
+    },
+    sourceId: "archive-source",
+    sql,
+  });
+
+  assert.deepEqual(
+    await inventory.ensureCurrentJobs({
+      limit: 25,
+      priorityTierMax: 1,
+    }),
+    {
+    eligibleAssets: 1,
+    ensuredJobs: 1,
+    },
+  );
+  assert.doesNotMatch(queries[0].text, /FROM face_observation/);
+  assert.match(queries[0].text, /projection\.asset_type = 'image'/);
+  assert.match(queries[0].text, /JOIN media_asset_triage triage/);
+  assert.match(queries[0].text, /triage\.priority_tier/);
+  assert.match(queries[0].text, /DISTINCT ON/);
+  assert.match(queries[0].text, /NOT EXISTS[\s\S]+face_detection_result/);
+  assert.match(queries[0].text, /NOT EXISTS[\s\S]+media_job/);
+  assert.deepEqual(queries[0].values, [
+    "archive-source",
+    "7".repeat(64),
+    "detect_faces",
+    "7".repeat(64),
+    1,
+    25,
+  ]);
+  assert.match(queries[1].text, /enqueue_media_job/);
+  assert.deepEqual(queries[1].values, [
+    "asset-new",
+    "detect_faces",
+    "synthetic-provider-v1",
+    "7".repeat(64),
+    "8".repeat(64),
+    3,
+  ]);
 });
 
 test("stable Cimmich asset IDs isolate source and upstream asset identity", () => {
@@ -68,6 +161,60 @@ test("stable Cimmich asset IDs isolate source and upstream asset identity", () =
     cimmichAssetIdForImmich({ immichAssetId: "asset-1", sourceId: "source-b" }),
   );
   assert.match(first, /^asset_immich_[0-9a-f]{40}$/);
+});
+
+test("inventory reuses one exact byte-verified binding only while the source checksum is unchanged", () => {
+  const contentDigest = "9".repeat(64);
+  const normalizedAsset = (overrides = {}) => {
+    const value = asset(overrides);
+    return {
+      ...value,
+      sourceUpdatedAt: new Date(value.updatedAt).toISOString(),
+    };
+  };
+  const matching = {
+    byte_length: "1234",
+    checksum: "synthetic-checksum",
+    content_digest: contentDigest,
+    hash_algorithm: "sha256",
+    immich_asset_id: "immich-asset-1",
+    source_updated_at: "2026-01-02T00:00:00.000Z",
+    verification: "byte_verified",
+  };
+  const reusable = selectReusableByteFingerprints({
+    assets: [
+      normalizedAsset(),
+      normalizedAsset({ immichAssetId: "changed", checksum: "new" }),
+    ],
+    rows: [
+      matching,
+      { ...matching },
+      {
+        ...matching,
+        checksum: "old",
+        immich_asset_id: "changed",
+      },
+    ],
+  });
+  assert.deepEqual(reusable.get("immich-asset-1"), {
+    byteLength: 1234,
+    contentDigest,
+    hashAlgorithm: "sha256",
+    verification: "byte_verified",
+  });
+  assert.equal(reusable.has("changed"), false);
+
+  const sourceRevisionChanged = selectReusableByteFingerprints({
+    assets: [normalizedAsset({ updatedAt: "2026-01-03T00:00:00.000Z" })],
+    rows: [matching],
+  });
+  assert.equal(sourceRevisionChanged.has("immich-asset-1"), false);
+
+  const ambiguous = selectReusableByteFingerprints({
+    assets: [normalizedAsset()],
+    rows: [matching, { ...matching, content_digest: "8".repeat(64) }],
+  });
+  assert.equal(ambiguous.has("immich-asset-1"), false);
 });
 
 test("inventory pages minimize owners and produce deterministic receipts", () => {
@@ -88,6 +235,33 @@ test("inventory pages minimize owners and produce deterministic receipts", () =>
   );
   assert.equal(first.items[0].ownerDigest.length, 64);
   assert.equal(JSON.stringify(first).includes("synthetic-owner"), false);
+});
+
+test("inventory treats upstream zero dimensions as unknown", () => {
+  const normalized = normalizeInventoryPage({
+    cursor: "",
+    page: {
+      items: [asset({ height: 0, width: 0 })],
+      nextCursor: null,
+      visibility: "timeline",
+    },
+    visibility: "timeline",
+  });
+  assert.equal(normalized.items[0].height, null);
+  assert.equal(normalized.items[0].width, null);
+  assert.throws(
+    () =>
+      normalizeInventoryPage({
+        cursor: "",
+        page: {
+          items: [asset({ height: -1 })],
+          nextCursor: null,
+          visibility: "timeline",
+        },
+        visibility: "timeline",
+      }),
+    /asset.height must be a non-negative integer/,
+  );
 });
 
 test("inventory pages reject visibility crossing, duplicate assets and cursor loops", () => {

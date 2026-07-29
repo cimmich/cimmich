@@ -10,6 +10,7 @@
     type CimmichImmichPersonCluster,
     type CimmichPerson,
   } from '$lib/services/cimmich.service';
+  import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import { mdiArrowUDownLeft, mdiCheck, mdiHelpCircleOutline, mdiRefresh } from '@mdi/js';
@@ -141,7 +142,7 @@
     try {
       const result = await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
         action,
-        commandId: `immich-person.resolve.${crypto.randomUUID()}`,
+        commandId: `immich-person.resolve.${createCimmichUuid()}`,
         expectedSourceRevision: cluster.sourceRevision,
         ...(action === 'existing_person' ? { personId } : {}),
         ...(action === 'create_person' ? { newPersonName } : {}),
@@ -179,7 +180,7 @@
     applyImportNeeded = false;
     try {
       await undoCimmichImmichPersonClusterResolution(cluster.resolution.decisionId, {
-        commandId: `immich-person.undo.${crypto.randomUUID()}`,
+        commandId: `immich-person.undo.${createCimmichUuid()}`,
         scope,
       });
       notice = 'Cluster decision undone. Imported identity dependencies would have blocked this action as stale.';

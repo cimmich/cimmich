@@ -29,6 +29,7 @@ export const createLocalFaceRecognitionWorker = ({
   manifest: manifestInput,
   recognizer,
   sql,
+  toolVersion,
   workerId = "cimmich-local-face-recognizer",
 } = {}) => {
   if (!sql)
@@ -46,6 +47,10 @@ export const createLocalFaceRecognitionWorker = ({
     );
   }
   const manifest = validateRecognitionProviderManifest(manifestInput);
+  const normalizedToolVersion = String(toolVersion || "").trim();
+  if (!normalizedToolVersion) {
+    throw new Error("Local face recognition worker requires toolVersion");
+  }
   const normalizedWorkerId = String(workerId || "").trim();
   if (!normalizedWorkerId)
     throw new Error("Local face recognition worker requires workerId");
@@ -63,7 +68,12 @@ export const createLocalFaceRecognitionWorker = ({
         };
       }
       const rows = await sql`
-        SELECT * FROM claim_face_recognition_jobs(${normalizedWorkerId}, 300, 1)
+        SELECT * FROM claim_exact_face_recognition_jobs(
+          ${normalizedWorkerId}, ${normalizedToolVersion},
+          ${manifest.providerConfigDigest},
+          ${manifest.recognitionSpaceConfigDigest},
+          ${manifest.vectorSpaceId}, 300, 1
+        )
       `;
       if (!rows.length) {
         return {

@@ -9,6 +9,7 @@
     type CimmichPerson,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
@@ -121,7 +122,7 @@
     try {
       const result = await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
         action: 'later',
-        commandId: `possible-person.ignore.${crypto.randomUUID()}`,
+        commandId: `possible-person.ignore.${createCimmichUuid()}`,
         expectedSourceRevision: cluster.sourceRevision,
         scope,
         snapshotDigest: cluster.snapshotDigest,
@@ -186,7 +187,7 @@
       const nextActiveCount = Math.max(0, activeClusters.length - 1);
       await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
         action,
-        commandId: `possible-person.resolve.${crypto.randomUUID()}`,
+        commandId: `possible-person.resolve.${createCimmichUuid()}`,
         expectedSourceRevision: cluster.sourceRevision,
         ...(action === 'existing_person' ? { personId } : { newPersonName }),
         scope,
@@ -215,7 +216,7 @@
     notice = '';
     try {
       await undoCimmichImmichPersonClusterResolution(cluster.resolution.decisionId, {
-        commandId: `possible-person.restore.${crypto.randomUUID()}`,
+        commandId: `possible-person.restore.${createCimmichUuid()}`,
         scope,
       });
       const nextActiveCount = activeClusters.length + 1;

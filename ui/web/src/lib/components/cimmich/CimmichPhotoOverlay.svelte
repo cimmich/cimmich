@@ -106,6 +106,7 @@
     mdiCheck,
     mdiClose,
     mdiImageOutline,
+    mdiInformationOutline,
     mdiPawOutline,
     mdiPencilOutline,
     mdiTagOutline,
@@ -124,6 +125,7 @@
   type FaceBoxDragMode = 'e' | 'move' | 'n' | 'ne' | 'nw' | 's' | 'se' | 'sw' | 'w';
   type BodyIdentityMode = 'face_match' | 'implied' | 'unlinked' | 'user_tag';
   type FaceBucketDraft = 'face_only' | 'head' | 'lq' | 'prime' | 'secondary';
+  type FaceEvidenceKindDraft = 'body' | 'face' | 'head';
   type FaceBoxDragState = {
     faceId: string;
     image: { height: number; width: number };
@@ -228,7 +230,14 @@
   let showLinkedBodies = $state(true);
   let showUnlinkedBodies = $state(true);
   let summaryMode = $state<SummaryMode>('enhanced');
-  let overlayView = $state<OverlayView>(page.url.searchParams.get('cimmichOverlay') === 'people' ? 'people' : 'off');
+  const requestedFaceId = $derived(page.url.searchParams.get('cimmichFaceId')?.trim() ?? '');
+  let overlayView = $state<OverlayView>(
+    page.url.searchParams.get('cimmichOverlay') === 'machinery' || requestedFaceId
+      ? 'machinery'
+      : page.url.searchParams.get('cimmichOverlay') === 'people'
+        ? 'people'
+        : 'off',
+  );
   const isPeopleSurfaceActive = $derived(
     (overlayView === 'people' || overlayView === 'machinery') && !isSidecarVisible,
   );
@@ -261,6 +270,8 @@
   let observationUndoDecisionId = $state('');
   let isObservationActionSaving = $state(false);
   let faceBucketDraft = $state<FaceBucketDraft>('face_only');
+  let lastFaceBucketDraft = $state<Exclude<FaceBucketDraft, 'head'>>('face_only');
+  let faceEvidenceKindDraft = $state<FaceEvidenceKindDraft>('face');
   let isLaterPickerOpen = $state(false);
   let isEditingFaceName = $state(false);
   let faceMatches = $state<CimmichFaceOwnerReviewMatch[]>([]);
@@ -1450,6 +1461,8 @@
     const bucket = face.bucket.replace(/^face_/, '');
     return bucket === 'head' || bucket === 'lq' || bucket === 'prime' || bucket === 'secondary' ? bucket : 'face_only';
   };
+  const faceEvidenceKindFromOverlay = (face: CimmichFaceOverlay): FaceEvidenceKindDraft =>
+    faceBucketFromOverlay(face) === 'head' ? 'head' : 'face';
   const faceBucketValue = (bucket: FaceBucketDraft) => (bucket === 'face_only' ? null : bucket);
   const candidateFaceName = (face: CimmichFaceOverlay) => normalizeName(face.candidateName);
   const reviewCandidateFaceName = (face: CimmichFaceOverlay) => normalizeName(face.reviewCandidateName);
@@ -1541,6 +1554,17 @@
         normalizeName(subject.name).toLocaleLowerCase() === normalizedFaceNameDraft.toLocaleLowerCase(),
     ),
   );
+  const faceDraftReclassificationPerson = $derived(
+    manualTagSubjects.find((subject) => subject.kind === 'person' && subject.id === faceSelectedPersonId) ??
+      (personPhotoContext &&
+      normalizeName(personPhotoContext.personName).toLocaleLowerCase() === normalizedFaceNameDraft.toLocaleLowerCase()
+        ? ({
+            id: personPhotoContext.personId,
+            kind: 'person',
+            name: personPhotoContext.personName,
+          } satisfies ManualPhotoTagSubject)
+        : faceDraftExistingPerson),
+  );
   const faceDraftKnownPersonName = $derived(
     faceDraftExistingPerson?.name ||
       knownNameOptions.find(
@@ -1560,7 +1584,12 @@
     ),
   );
   const faceDraftHasChanges = $derived(
-    Boolean(selectedFace && (faceDraftNameChanged || faceBucketDraft !== faceBucketFromOverlay(selectedFace))),
+    Boolean(
+      selectedFace &&
+      (faceDraftNameChanged ||
+        faceEvidenceKindDraft !== faceEvidenceKindFromOverlay(selectedFace) ||
+        faceBucketDraft !== faceBucketFromOverlay(selectedFace)),
+    ),
   );
   const showFaceDraftIdentityCue = $derived(
     Boolean(normalizedFaceNameDraft && (!selectedFace?.name || faceDraftNameChanged)),
@@ -1897,6 +1926,10 @@
     clearIdentityConfirmId = '';
     rejectCandidateConfirmId = '';
     faceBucketDraft = faceBucketFromOverlay(face);
+    if (faceBucketDraft !== 'head') {
+      lastFaceBucketDraft = faceBucketDraft;
+    }
+    faceEvidenceKindDraft = faceEvidenceKindFromOverlay(face);
     isLaterPickerOpen = false;
     isEditingFaceName = Boolean(options.editName);
     if (options.editName) {
@@ -1945,6 +1978,103 @@
     } finally {
       isBodyIdentitySaving = false;
     }
+  };
+
+  const selectFaceEvidenceKind = (kind: FaceEvidenceKindDraft) => {
+    faceEvidenceKindDraft = kind;
+    if (kind === 'head') {
+      if (faceBucketDraft !== 'head') {
+        lastFaceBucketDraft = faceBucketDraft;
+      }
+      faceBucketDraft = 'head';
+    } else if (kind === 'face' && faceBucketDraft === 'head') {
+      faceBucketDraft = lastFaceBucketDraft;
+    }
+    if (!normalizedFaceNameDraft && personPhotoContext) {
+      faceNameDraft = personPhotoContext.personName;
+      faceSelectedPersonId = personPhotoContext.personId;
+    }
+    isEditingFaceName = true;
+    faceActionError = '';
+    void loadManualTagSubjects();
+  };
+
+  const reclassifySelectedFaceAsBody = async () => {
+    const currentRevision = selectedFace?.currentRevision;
+    if (
+      !selectedFace ||
+      !currentRevision ||
+      !evidence?.summary?.searchRowId ||
+      !faceDraftReclassificationPerson ||
+      isFaceActionSaving
+    ) {
+      return;
+    }
+
+    const face = selectedFace;
+    const stableAssetId = evidence.summary.searchRowId;
+    const image = face.image || {
+      width: imageMetrics?.imageWidth || 0,
+      height: imageMetrics?.imageHeight || 0,
+    };
+    if (!image.width || !image.height) {
+      faceActionError = 'The photo dimensions are unavailable, so this box cannot be reclassified safely.';
+      return;
+    }
+    const region = observationRegion(faceBox(face), image);
+    let attachedBody: Awaited<ReturnType<typeof attachCimmichManualSubjectTag>> | undefined;
+    let conversionCommitted = false;
+
+    isFaceActionSaving = true;
+    faceActionMessage = '';
+    faceActionError = '';
+    manualTagActionMessage = '';
+    manualTagSaveError = '';
+    try {
+      attachedBody = await attachCimmichManualSubjectTag(stableAssetId, {
+        commandId: createCimmichManualSubjectTagCommandId('reclassify-face-body'),
+        region,
+        subjectId: faceDraftReclassificationPerson.id,
+        subjectKind: 'person',
+        tagType: 'body',
+      });
+      const rejectedFace = await markCimmichFaceNotFace(face.id, {
+        commandId: createCimmichObservationCorrectionCommandId('reclassify-face-body'),
+        expectedDecisionId: face.currentDecisionId ?? null,
+        expectedRevision: currentRevision,
+      });
+      conversionCommitted = true;
+      manualTagUndoDecisionId =
+        attachedBody.changed && attachedBody.tag.undo.eligible ? attachedBody.tag.undo.decisionId || '' : '';
+      observationUndoDecisionId = rejectedFace.decisionId || '';
+      await loadManualSubjectTagReadback(stableAssetId);
+      await refreshDetailedEvidence();
+      selectedFaceId = '';
+      isEditingFaceName = false;
+      manualTagActionMessage = `${faceDraftReclassificationPerson.name} saved as Body. The original Face observation was retired.`;
+    } catch (error) {
+      if (!conversionCommitted && attachedBody?.changed && attachedBody.tag.undo.eligible) {
+        try {
+          await undoCimmichManualSubjectTag(
+            attachedBody.tag.undo.decisionId || '',
+            createCimmichManualSubjectTagCommandId('reclassify-face-body-rollback'),
+          );
+        } catch {
+          // Keep the primary conversion error visible; the durable operation remains auditable.
+        }
+      }
+      faceActionError = error instanceof Error ? error.message : 'Unable to reclassify this Face as a Body';
+    } finally {
+      isFaceActionSaving = false;
+    }
+  };
+
+  const saveSelectedFaceCorrection = async () => {
+    if (faceEvidenceKindDraft === 'body') {
+      await reclassifySelectedFaceAsBody();
+      return;
+    }
+    await runFaceAction('rename');
   };
 
   const runFaceAction = async (
@@ -3288,6 +3418,11 @@
       await loadManualSubjectTagReadback(result.evidence?.summary?.searchRowId ?? '');
       isFacesVisible = true;
       isBodiesVisible = true;
+      const requestedFace = result.evidence?.faceOverlays?.find((face) => face.id === requestedFaceId);
+      if (requestedFace) {
+        overlayView = 'machinery';
+        setSelectedFace(requestedFace, { editName: requestedFace.status !== 'named' });
+      }
     } catch (error) {
       if (generation !== evidenceLoadGeneration || asset.id !== assetId) {
         return;
@@ -4237,7 +4372,7 @@
           <a
             class="cimmich-person-tag__name"
             href={tag.subject.subjectKind === 'pet'
-              ? Route.cimmichPet({ petId: tag.subject.subjectId })
+              ? Route.cimmichPet({ name: tag.subject.displayName, petId: tag.subject.subjectId })
               : Route.cimmichPerson({
                   name: tag.subject.displayName,
                   personId: tag.subject.subjectId,
@@ -5086,7 +5221,13 @@
       <div class="flex items-start justify-between gap-3">
         {#if isEditingFaceName}
           <div class="min-w-0">
-            <h2 class="text-base font-semibold text-white">Edit Face</h2>
+            <h2 class="text-base font-semibold text-white">
+              {faceEvidenceKindDraft === 'face'
+                ? 'Edit Face'
+                : faceEvidenceKindDraft === 'head'
+                  ? 'Reclassify as Head'
+                  : 'Reclassify as Body'}
+            </h2>
           </div>
         {:else if selectedFace.name}
           <a
@@ -5147,18 +5288,54 @@
         </div>
       </div>
 
-      <p
-        class="w-fit rounded-full bg-white/12 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/75 uppercase"
-      >
-        {faceEvidenceKindLabel(selectedFace)} evidence
-      </p>
+      {#if isCimmichEvidence && overlayView === 'machinery'}
+        <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Treat selected box as">
+          <span class="mr-0.5 text-[10px] font-semibold tracking-wide text-white/45 uppercase">This box is</span>
+          {#each ['face', 'head', 'body'] as evidenceKind (evidenceKind)}
+            {@const typedEvidenceKind = evidenceKind as FaceEvidenceKindDraft}
+            <button
+              class={[
+                'min-h-7 rounded-full border px-2.5 text-[11px] font-semibold transition',
+                faceEvidenceKindDraft === typedEvidenceKind
+                  ? 'border-white/65 bg-white text-black'
+                  : 'border-white/20 text-white/65 hover:bg-white/10 hover:text-white',
+              ]}
+              type="button"
+              aria-pressed={faceEvidenceKindDraft === typedEvidenceKind}
+              onclick={() => selectFaceEvidenceKind(typedEvidenceKind)}
+            >
+              {typedEvidenceKind === 'face' ? 'Face' : typedEvidenceKind === 'head' ? 'Head' : 'Body'}
+            </button>
+          {/each}
+          <Tooltip
+            text="Reclassifies this same highlighted box. Drag it or its handles to correct the region; choosing Head or Body removes it from Face matching when saved."
+          >
+            {#snippet child({ props })}
+              <button
+                {...props}
+                class="flex size-7 items-center justify-center rounded-full text-white/55 transition hover:bg-white/10 hover:text-white"
+                type="button"
+                aria-label="Face correction help"
+              >
+                <Icon icon={mdiInformationOutline} size="18" />
+              </button>
+            {/snippet}
+          </Tooltip>
+        </div>
+      {:else}
+        <p
+          class="w-fit rounded-full bg-white/12 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-white/75 uppercase"
+        >
+          {faceEvidenceKindLabel(selectedFace)} evidence
+        </p>
+      {/if}
 
       {#if isEditingFaceName}
         <form
           class="grid gap-2"
           onsubmit={(event) => {
             event.preventDefault();
-            void runFaceAction('rename');
+            void saveSelectedFaceCorrection();
           }}
         >
           <label class="grid gap-1">
@@ -5184,7 +5361,7 @@
               {/if}
             </p>
           {/if}
-          {#if isCimmichEvidence}
+          {#if isCimmichEvidence && faceEvidenceKindDraft === 'face'}
             <div class="overflow-hidden rounded-sm border border-white/15 bg-black/35">
               <p
                 class="flex items-center justify-between gap-3 border-b border-white/10 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/45 uppercase"
@@ -5249,33 +5426,20 @@
               Use {faceNameSuggestion}
             </button>
           {/if}
-          <details class="group rounded-sm border border-white/15 bg-white/5">
-            <summary
-              class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-white/80 marker:content-none"
-            >
-              <span>Matching reference</span>
-              <span class="text-right text-[10px] font-normal tracking-wide text-white/45 uppercase"
-                >{faceBucketOwnerLabel(faceBucketDraft)}</span
+          {#if faceEvidenceKindDraft === 'face'}
+            <details class="group rounded-sm border border-white/15 bg-white/5">
+              <summary
+                class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 font-semibold text-white/80 marker:content-none"
               >
-            </summary>
-            <div class="grid gap-2 border-t border-white/10 p-3">
-              <p class="text-white/55">
-                Choose whether this photo should help compare future Faces. It never changes anyone automatically.
-              </p>
-              <label class="grid gap-1">
-                <span class="font-semibold text-white/65">Evidence kind</span>
-                <select
-                  class="min-h-10 rounded-sm border border-white/20 bg-black/80 px-2 text-white outline-none focus:border-white/60"
-                  value={faceBucketDraft === 'head' ? 'head' : 'face'}
-                  onchange={(event) => {
-                    faceBucketDraft = event.currentTarget.value === 'head' ? 'head' : 'face_only';
-                  }}
+                <span>Matching reference</span>
+                <span class="text-right text-[10px] font-normal tracking-wide text-white/45 uppercase"
+                  >{faceBucketOwnerLabel(faceBucketDraft)}</span
                 >
-                  <option value="face">Face</option>
-                  <option value="head">Head · no usable Face</option>
-                </select>
-              </label>
-              {#if faceBucketDraft !== 'head'}
+              </summary>
+              <div class="grid gap-2 border-t border-white/10 p-3">
+                <p class="text-white/55">
+                  Choose whether this photo should help compare future Faces. It never changes anyone automatically.
+                </p>
                 <label class="grid gap-1">
                   <span class="font-semibold text-white/65">Machinery role</span>
                   <select
@@ -5288,13 +5452,9 @@
                     <option value="lq">Low-quality Face evidence</option>
                   </select>
                 </label>
-              {:else}
-                <p class="text-white/55">
-                  Head evidence is kept as identity truth but is not used as a Face reference.
-                </p>
-              {/if}
-            </div>
-          </details>
+              </div>
+            </details>
+          {/if}
           {#if selectedFace.reviewDisposition === 'later'}
             <p class="rounded-sm bg-sky-400/15 px-2 py-1 text-sky-100">Saved for later review.</p>
           {:else if selectedFace.reviewDisposition === 'unknown'}
@@ -5318,81 +5478,92 @@
                 !normalizedFaceNameDraft ||
                 !faceDraftHasChanges ||
                 isManualTagSubjectsLoading ||
-                Boolean(manualTagSubjectsError)}
+                Boolean(manualTagSubjectsError) ||
+                (faceEvidenceKindDraft === 'body' && !faceDraftReclassificationPerson)}
               type="submit"
             >
-              {isFaceActionSaving ? 'Saving...' : faceDraftCreatesPerson ? 'Create Person and save' : 'Save changes'}
+              {isFaceActionSaving
+                ? 'Saving...'
+                : faceEvidenceKindDraft === 'body'
+                  ? 'Save as Body'
+                  : faceEvidenceKindDraft === 'head'
+                    ? 'Save as Head'
+                    : faceDraftCreatesPerson
+                      ? 'Create Person and save'
+                      : 'Save changes'}
             </button>
-            <button
-              class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
-              disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'later'}
-              type="button"
-              onclick={() => void applyFaceReviewDisposition(selectedFace, 'later')}>Review later</button
-            >
-            {#if holdingPeople.length > 0}
-              <div class="relative">
-                <button
-                  class="min-h-10 w-full rounded-sm border border-violet-300/50 bg-violet-400/15 px-3 font-semibold text-violet-100 hover:bg-violet-400/25"
-                  type="button"
-                  aria-expanded={isLaterPickerOpen}
-                  onclick={() => (isLaterPickerOpen = !isLaterPickerOpen)}
-                >
-                  Keep in Holding…
-                </button>
-                {#if isLaterPickerOpen}
-                  <div
-                    class="absolute bottom-full left-0 z-10 mb-1 grid min-w-52 overflow-hidden rounded-lg border border-white/15 bg-slate-950 p-1 shadow-xl"
-                    aria-label="Choose where to keep this face"
-                  >
-                    {#each holdingPeople as name (name)}
-                      <button
-                        class="min-h-10 rounded-md px-3 text-left text-white/80 hover:bg-white/10 hover:text-white"
-                        type="button"
-                        onclick={() => {
-                          faceNameDraft = name;
-                          faceSelectedPersonId = '';
-                          faceBucketDraft = 'face_only';
-                          isLaterPickerOpen = false;
-                        }}
-                      >
-                        {name}
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/if}
-            <button
-              class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
-              disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'unknown'}
-              type="button"
-              onclick={() => void applyFaceReviewDisposition(selectedFace, 'unknown')}>Unknown person</button
-            >
-            {#if selectedFace.reviewDisposition && selectedFace.reviewDisposition !== 'active'}
+            {#if faceEvidenceKindDraft === 'face'}
               <button
                 class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
-                disabled={isFaceActionSaving}
+                disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'later'}
                 type="button"
-                onclick={() => void applyFaceReviewDisposition(selectedFace, 'active')}>Resume review</button
+                onclick={() => void applyFaceReviewDisposition(selectedFace, 'later')}>Review later</button
               >
-            {/if}
-            {#if !selectedFace.name && selectedFace.candidateClaimId}
+              {#if holdingPeople.length > 0}
+                <div class="relative">
+                  <button
+                    class="min-h-10 w-full rounded-sm border border-violet-300/50 bg-violet-400/15 px-3 font-semibold text-violet-100 hover:bg-violet-400/25"
+                    type="button"
+                    aria-expanded={isLaterPickerOpen}
+                    onclick={() => (isLaterPickerOpen = !isLaterPickerOpen)}
+                  >
+                    Keep in Holding…
+                  </button>
+                  {#if isLaterPickerOpen}
+                    <div
+                      class="absolute bottom-full left-0 z-10 mb-1 grid min-w-52 overflow-hidden rounded-lg border border-white/15 bg-slate-950 p-1 shadow-xl"
+                      aria-label="Choose where to keep this face"
+                    >
+                      {#each holdingPeople as name (name)}
+                        <button
+                          class="min-h-10 rounded-md px-3 text-left text-white/80 hover:bg-white/10 hover:text-white"
+                          type="button"
+                          onclick={() => {
+                            faceNameDraft = name;
+                            faceSelectedPersonId = '';
+                            faceBucketDraft = 'face_only';
+                            isLaterPickerOpen = false;
+                          }}
+                        >
+                          {name}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
               <button
-                class="rounded-sm border border-amber-300/50 px-3 py-1.5 font-semibold text-amber-100 disabled:opacity-50"
-                disabled={isFaceActionSaving}
+                class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'unknown'}
                 type="button"
-                onclick={() => {
-                  if (rejectCandidateConfirmId === selectedFace.id) {
-                    void runFaceAction('reject_name_candidate');
-                  } else {
-                    rejectCandidateConfirmId = selectedFace.id;
-                  }
-                }}
+                onclick={() => void applyFaceReviewDisposition(selectedFace, 'unknown')}>Unknown person</button
               >
-                {rejectCandidateConfirmId === selectedFace.id
-                  ? 'Confirm reject suggestion'
-                  : `Reject ${selectedFace.candidateName || 'suggestion'}`}
-              </button>
+              {#if selectedFace.reviewDisposition && selectedFace.reviewDisposition !== 'active'}
+                <button
+                  class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                  disabled={isFaceActionSaving}
+                  type="button"
+                  onclick={() => void applyFaceReviewDisposition(selectedFace, 'active')}>Resume review</button
+                >
+              {/if}
+              {#if !selectedFace.name && selectedFace.candidateClaimId}
+                <button
+                  class="rounded-sm border border-amber-300/50 px-3 py-1.5 font-semibold text-amber-100 disabled:opacity-50"
+                  disabled={isFaceActionSaving}
+                  type="button"
+                  onclick={() => {
+                    if (rejectCandidateConfirmId === selectedFace.id) {
+                      void runFaceAction('reject_name_candidate');
+                    } else {
+                      rejectCandidateConfirmId = selectedFace.id;
+                    }
+                  }}
+                >
+                  {rejectCandidateConfirmId === selectedFace.id
+                    ? 'Confirm reject suggestion'
+                    : `Reject ${selectedFace.candidateName || 'suggestion'}`}
+                </button>
+              {/if}
             {/if}
           </div>
         </form>
@@ -5411,7 +5582,7 @@
       {/if}
 
       <div class="flex flex-wrap gap-2">
-        {#if isCimmichEvidence && overlayView === 'machinery'}
+        {#if isCimmichEvidence && overlayView === 'machinery' && faceEvidenceKindDraft === 'face'}
           <button
             class="rounded-sm border border-red-300/40 px-2 py-1 text-red-100 disabled:opacity-50"
             disabled={isObservationActionSaving}

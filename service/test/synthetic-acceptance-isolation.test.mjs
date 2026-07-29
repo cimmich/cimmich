@@ -16,5 +16,7 @@ test("full synthetic acceptance isolates concurrent disposable runs", async () =
   assert.match(source, /-p 127\.0\.0\.1::5432/);
   assert.match(source, /docker port "\$CONTAINER" 5432\/tcp/);
   assert.match(source, /127\.0\.0\.1:\$HOST_PORT\/cimmich_test/);
+  assert.match(source, /docker rm -fv "\$CONTAINER"/);
+  assert.match(source, /docker image rm "\$SERVICE_IMAGE"/);
   assert.doesNotMatch(source, /127\.0\.0\.1:55432/);
 });

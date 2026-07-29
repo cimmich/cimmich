@@ -147,6 +147,7 @@ try {
     manifest: runtime.recognitionManifest,
     recognizer: runtime.recognizer,
     sql,
+    toolVersion: runtime.pipelineManifest.recognizer.toolVersion,
     workerId: "stock-provider-recognizer",
   });
   const operator = createMediaOperator({

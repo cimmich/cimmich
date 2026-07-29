@@ -43,6 +43,7 @@ test("guided install stops at signed-in preview and documentation separates both
     publicDemoScript,
     bundleScript,
     agentInstall,
+    gateway,
   ] =
     await Promise.all([
       readFile(installer, "utf8"),
@@ -53,6 +54,7 @@ test("guided install stops at signed-in preview and documentation separates both
       readFile(join(root, "tools/public_demo.sh"), "utf8"),
       readFile(bundleBuilder, "utf8"),
       readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
+      readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
     ]);
 
   assert.doesNotMatch(script, /["']?\$COMPANION["']? sync/);
@@ -64,8 +66,20 @@ test("guided install stops at signed-in preview and documentation separates both
     /CIMMICH_MEDIA_JOB_CONFIG_DIGEST: "0{64}"/,
     "YAML must not coerce the canonical zero digest into a numeric zero",
   );
+  assert.match(
+    compose,
+    /CIMMICH_IMMICH_SOURCE_ID: \$\{CIMMICH_IMMICH_SOURCE_ID:-immich-primary\}/,
+  );
+  assert.match(
+    companionScript,
+    /source_id=\$\(configured_value CIMMICH_IMMICH_SOURCE_ID\)[\s\S]*--source-id=\$source_id/,
+  );
   assert.match(companionScript, /compose build cimmich-api/);
   assert.match(companionScript, /compose build cimmich-ui/);
+  assert.match(
+    companionScript,
+    /docker image rm "\$PROJECT-api:current-source" "\$PROJECT-ui:current-source"/,
+  );
   assert.doesNotMatch(companionScript, /compose build --no-deps/);
   const providerInstall = publicDemoScript.match(
     /install_face_provider\(\) \{(?<body>[\s\S]*?)\n\}/,
@@ -115,6 +129,10 @@ test("guided install stops at signed-in preview and documentation separates both
     script,
     /installation_ui_port[\s\S]*CIMMICH_COMPANION_UI_PORT[\s\S]*runtime\.env/,
   );
+  assert.match(
+    companionScript,
+    /CIMMICH_COMPANION_UI_BIND_ADDRESS[\s\S]*must name one trusted interface/,
+  );
   assert.match(script, /Checking that Docker can reach Immich/);
   assert.match(script, /No Cimmich state was created/);
   assert.match(script, /command -v lsof/);
@@ -123,7 +141,15 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(script, /Docker storage may be elsewhere/);
   assert.match(
     compose,
-    /environment:\s+PUBLIC_CIMMICH_API_URL: http:\/\/127\.0\.0\.1:\$\{CIMMICH_COMPANION_API_PORT:-3411\}/,
+    /environment:\s+PUBLIC_CIMMICH_API_URL: \/cimmich-api/,
+  );
+  assert.match(
+    compose,
+    /CIMMICH_COMPANION_UI_BIND_ADDRESS:-127\.0\.0\.1/,
+  );
+  assert.match(
+    gateway,
+    /location \/cimmich-api\/[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
   );
   assert.match(
     compose,

@@ -100,6 +100,10 @@ def validate_manifest(manifest: dict[str, Any]) -> tuple[str, str]:
         raise ValueError("provider network access must be forbidden")
     if manifest.get("execution", {}).get("threads") != 1:
         raise ValueError("user-supplied provider execution.threads must be 1")
+    if manifest.get("execution", {}).get("device") not in {"cpu", "coreml"}:
+        raise ValueError(
+            "user-supplied provider execution.device must be cpu or coreml"
+        )
     if manifest.get("privacy") != {
         "externalUpload": "none",
         "sourceMedia": "local-read-only",
@@ -157,16 +161,30 @@ def confined_path(media_root: Path, raw_path: str) -> Path:
     return candidate
 
 
-def validate_box(raw: Any) -> tuple[float, float, float, float]:
+def validate_box(
+    raw: Any, *, boundary_epsilon: float = 0.00001
+) -> tuple[float, float, float, float]:
     if not isinstance(raw, dict) or raw.get("coordinateSpace") != "normalized":
         raise ValueError("targetBox must use normalized coordinates")
     box = tuple(float(raw[key]) for key in ("x", "y", "w", "h"))
     if not all(math.isfinite(value) for value in box):
         raise ValueError("targetBox must be finite")
     x, y, width, height = box
-    if width <= 0 or height <= 0 or x < 0 or y < 0 or x + width > 1 or y + height > 1:
+    right, bottom = x + width, y + height
+    if (
+        width <= 0
+        or height <= 0
+        or x < -boundary_epsilon
+        or y < -boundary_epsilon
+        or right > 1 + boundary_epsilon
+        or bottom > 1 + boundary_epsilon
+    ):
         raise ValueError("targetBox must fit inside the source image")
-    return box
+    x, y = max(0.0, x), max(0.0, y)
+    right, bottom = min(1.0, right), min(1.0, bottom)
+    if right <= x or bottom <= y:
+        raise ValueError("targetBox must fit inside the source image")
+    return x, y, right - x, bottom - y
 
 
 def crop_geometry(
@@ -209,14 +227,26 @@ def select_target_face(
     return scored[0][3]
 
 
-def inference_session(path: Path, threads: int) -> ort.InferenceSession:
+def execution_providers(device: str) -> list[str]:
+    if device == "cpu":
+        return ["CPUExecutionProvider"]
+    if device == "coreml":
+        if "CoreMLExecutionProvider" not in ort.get_available_providers():
+            raise ValueError("CoreML execution provider is unavailable")
+        return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+    raise ValueError("execution device must be cpu or coreml")
+
+
+def inference_session(
+    path: Path, threads: int, device: str
+) -> ort.InferenceSession:
     options = ort.SessionOptions()
     options.intra_op_num_threads = threads
     options.inter_op_num_threads = 1
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     return ort.InferenceSession(
-        str(path), sess_options=options, providers=["CPUExecutionProvider"]
+        str(path), sess_options=options, providers=execution_providers(device)
     )
 
 
@@ -227,9 +257,10 @@ class UserSuppliedInsightFaceProvider:
         recognizer_path: Path,
         score_threshold: float,
         threads: int,
+        device: str = "cpu",
     ):
-        detector_session = inference_session(detector_path, threads)
-        recognizer_session = inference_session(recognizer_path, threads)
+        detector_session = inference_session(detector_path, threads, device)
+        recognizer_session = inference_session(recognizer_path, threads, device)
         self.detector = SCRFD(model_file=str(detector_path), session=detector_session)
         self.detector.prepare(
             ctx_id=0,
@@ -241,6 +272,45 @@ class UserSuppliedInsightFaceProvider:
             model_file=str(recognizer_path), session=recognizer_session
         )
         self.recognizer.prepare(ctx_id=0)
+
+    def detect_faces(self, image: np.ndarray) -> list[dict[str, Any]]:
+        boxes, landmarks = self.detector.detect(
+            image, input_size=DETECTOR_INPUT_SIZE, max_num=0
+        )
+        if boxes is None or len(boxes) == 0:
+            return []
+        image_height, image_width = image.shape[:2]
+        observations = []
+        for index, raw_box in enumerate(boxes):
+            left = max(0.0, min(float(image_width), float(raw_box[0])))
+            top = max(0.0, min(float(image_height), float(raw_box[1])))
+            right = max(left, min(float(image_width), float(raw_box[2])))
+            bottom = max(top, min(float(image_height), float(raw_box[3])))
+            if right - left < 1 or bottom - top < 1:
+                continue
+            landmark_digest = None
+            if landmarks is not None and index < len(landmarks):
+                normalized = np.asarray(landmarks[index], dtype="<f4").copy()
+                normalized[:, 0] /= max(1, image_width)
+                normalized[:, 1] /= max(1, image_height)
+                landmark_digest = hashlib.sha256(normalized.tobytes()).hexdigest()
+            observations.append(
+                {
+                    "box": {
+                        "h": (bottom - top) / image_height,
+                        "w": (right - left) / image_width,
+                        "x": left / image_width,
+                        "y": top / image_height,
+                    },
+                    "confidence": float(raw_box[4]),
+                    "landmarkDigest": landmark_digest,
+                    "quality": {
+                        "detector": "scrfd-10g",
+                        "pixelArea": int(round((right - left) * (bottom - top))),
+                    },
+                }
+            )
+        return observations
 
     def _embed_crop(
         self,
@@ -386,6 +456,24 @@ def terminal_packet(
     }
 
 
+def failed_packet(
+    request: dict[str, Any],
+    vector_space_id: str,
+    config_digest: str,
+    error: Exception,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": OBSERVATION_SCHEMA,
+        "observationId": str(request.get("observationId", "invalid")),
+        "assetToken": str(request.get("assetToken", "invalid")),
+        "providerConfigDigest": config_digest,
+        "vectorSpaceId": vector_space_id,
+        "route": "not-run",
+        "state": "failed",
+        "reason": public_failure_reason(error),
+    }
+
+
 def public_failure_reason(error: Exception) -> str:
     if isinstance(error, OSError):
         return "source-read-failed"
@@ -449,6 +537,7 @@ def main() -> None:
         args.recognizer_model,
         manifest_score_threshold,
         int(manifest["execution"]["threads"]),
+        str(manifest["execution"]["device"]),
     )
     packets = []
     cached_source: Path | None = None
@@ -480,16 +569,9 @@ def main() -> None:
                 provider.embed(image, box),
             )
         except Exception as error:
-            packet = {
-                "schemaVersion": OBSERVATION_SCHEMA,
-                "observationId": str(request.get("observationId", "invalid")),
-                "assetToken": str(request.get("assetToken", "invalid")),
-                "providerConfigDigest": config_digest,
-                "vectorSpaceId": vector_space_id,
-                "route": "not-run",
-                "state": "failed",
-                "reason": public_failure_reason(error),
-            }
+            packet = failed_packet(
+                request, vector_space_id, config_digest, error
+            )
         packets.append(packet)
 
     body = "".join(canonical_json(packet) + "\n" for packet in packets)

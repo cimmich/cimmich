@@ -89,6 +89,19 @@ describe('Person profile layout', () => {
     expect(source).toContain('Awaiting confirmation');
     expect(source).toContain("title: 'New matches'");
     expect(source).toContain("title: 'Possible mistags'");
+    expect(source).toContain('const cimmichCandidateReviewItems');
+    expect(source).toContain('const cimmichPersonReviewItems');
+    expect(source).toContain('candidateClaimId: candidate.identity_claim_id');
+    expect(source).toContain('candidateEvidence');
+    expect(source).toContain('fitIdentityReviewCrop(item)');
+    expect(source).toMatch(
+      /Matched against \{item\.suggestedPerson\.displayName\}’s current Core reference[\s\n]+library\./,
+    );
+    expect(source).toContain("decideCimmichIdentityCandidate(item.candidateClaimId, 'accept')");
+    expect(source).toContain("decideCimmichIdentityCandidate(item.candidateClaimId, 'reject')");
+    expect(source).toContain('candidateItems.map((item) => item.candidateClaimId)');
+    expect(source).toContain('bulkAcceptCimmichPersonCandidates(');
+    expect(source).not.toContain('Candidate identity claims');
     expect(source).toContain('cimmichIdentityAuditTotals.untagged_match');
     expect(source).toContain('cimmichIdentityAuditTotals.accepted_contradiction');
     expect(source).toContain('showMoreCimmichIdentityAudit');
@@ -126,7 +139,7 @@ describe('Person profile layout', () => {
     expect(source).toContain("chooseCimmichPresentation('face', face, 'face')");
     expect(source).toContain("chooseCimmichPresentation('body', face, 'body')");
     expect(source).toContain("chooseCimmichPresentation('hero', face, 'face')");
-    expect(source).toContain('Reject selected');
+    expect(source).toContain('`Confirm not ${cimmichPerson.display_name}`');
     expect(source).toContain(
       "{ id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' }",
     );
@@ -154,6 +167,23 @@ describe('Person profile layout', () => {
     expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
     expect(source).toContain("{cimmichFuturePhotoDateCount === 1 ? 'date needs' : 'dates need'} review");
     expect(source).toContain('date.getTime() > Date.now()');
+  });
+
+  it('renders the primary photo page without waiting for matching or secondary profile data', async () => {
+    const source = await readPersonProfile();
+    const projectionStart = source.indexOf('const loadPersonProjection = async');
+    const projectionEnd = source.indexOf('\n  $effect(() => {', projectionStart);
+    const projection = source.slice(projectionStart, projectionEnd);
+
+    expect(projectionStart).toBeGreaterThan(-1);
+    expect(projectionEnd).toBeGreaterThan(projectionStart);
+    expect(projection).not.toContain('getCimmichMachineSuggestions');
+    expect(projection.indexOf('cimmichAssets = assetsPage.items')).toBeLessThan(
+      projection.indexOf('] = await Promise.all(['),
+    );
+    expect(source).toMatch(
+      /const openCimmichIdentity = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
+    );
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {

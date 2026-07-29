@@ -124,40 +124,68 @@ describe('Pet presentation', () => {
       width: 4032,
     };
 
+    // Default target is square, for the circular portraits and the picker.
     const crop = getPetMediaFocusCrop(media);
-    expect(crop?.h).toBeCloseTo(0.32);
     expect(crop?.w).toBeCloseTo(0.32);
+    expect(crop?.h).toBeCloseTo(0.4267, 3);
     expect(crop?.x).toBeCloseTo(0.68);
-    expect(crop?.y).toBeCloseTo(0.67);
+    expect(crop?.y).toBeCloseTo(0.5733, 3);
+
+    // The invariant that actually matters: the crop must be square in PIXELS for
+    // a square frame, otherwise the background axes scale unequally and the
+    // animal is stretched. Normalised w and h differ precisely because the
+    // source is 4:3.
+    expect(crop!.w * media.width).toBeCloseTo(crop!.h * media.height, 0);
+
+    // The hero banner is 12/5, so its crop must be wider than tall in pixels.
+    const banner = getPetMediaFocusCrop(media, 12 / 5);
+    expect((banner!.w * media.width) / (banner!.h * media.height)).toBeCloseTo(12 / 5, 1);
+
     expect(getPetMediaFocusCrop({ ...media, pet_face: null })).toBeNull();
   });
 
-  it('binds Pet detail navigation to a stable query while preserving collection context', () => {
+  it('names the Pet in its own route the way People does, while preserving collection context', () => {
     const collection = new URL('http://localhost/cimmich/pets?relatedIds=pet-juniper%2Cpet-pixel');
-    const detail = getPetDetailHref(collection, 'pet-juniper');
+    const detail = getPetDetailHref(collection, 'pet-juniper', 'Juniper');
 
-    expect(detail).toBe('/cimmich/pets?relatedIds=pet-juniper%2Cpet-pixel&entityId=pet-juniper');
+    expect(detail).toBe('/cimmich/pets/Juniper?relatedIds=pet-juniper%2Cpet-pixel&petId=pet-juniper');
     expect(getPetCollectionHref(new URL(detail, collection))).toBe('/cimmich/pets?relatedIds=pet-juniper%2Cpet-pixel');
   });
 
+  it('encodes Pet names that are not URL-safe', () => {
+    const collection = new URL('http://localhost/cimmich/pets');
+
+    expect(getPetDetailHref(collection, 'pet-1', 'Mr Bigglesworth III/IV')).toBe(
+      '/cimmich/pets/Mr%20Bigglesworth%20III%2FIV?petId=pet-1',
+    );
+  });
+
   it('makes every Pet profile tab reloadable without polluting the default Photos URL', () => {
-    const profile = new URL('http://localhost/cimmich/pets?entityId=pet-juniper');
+    const profile = new URL('http://localhost/cimmich/pets/Juniper?petId=pet-juniper');
 
     const details = getPetContentHref(profile, 'details');
-    expect(details).toBe('/cimmich/pets?entityId=pet-juniper&tab=details');
+    expect(details).toBe('/cimmich/pets/Juniper?petId=pet-juniper&tab=details');
     expect(getPetContentView(new URL(details, profile))).toBe('details');
     const display = getPetContentHref(profile, 'display');
-    expect(display).toBe('/cimmich/pets?entityId=pet-juniper&tab=display');
+    expect(display).toBe('/cimmich/pets/Juniper?petId=pet-juniper&tab=display');
     expect(getPetContentView(new URL(display, profile))).toBe('display');
-    expect(getPetContentHref(new URL(details, profile), 'photos')).toBe('/cimmich/pets?entityId=pet-juniper');
-    expect(getPetContentView(new URL('/cimmich/pets?entityId=pet-juniper&tab=unknown', profile))).toBe('photos');
+    expect(getPetContentHref(new URL(details, profile), 'photos')).toBe('/cimmich/pets/Juniper?petId=pet-juniper');
+    expect(getPetContentView(new URL('/cimmich/pets/Juniper?petId=pet-juniper&tab=unknown', profile))).toBe('photos');
   });
 
   it('clears stale tab state when opening or closing a Pet profile', () => {
-    const details = new URL('http://localhost/cimmich/pets?entityId=pet-old&tab=details&relatedFrom=Maya');
+    const details = new URL('http://localhost/cimmich/pets/Old?petId=pet-old&tab=details&relatedFrom=Maya');
 
-    expect(getPetDetailHref(details, 'pet-juniper')).toBe('/cimmich/pets?entityId=pet-juniper&relatedFrom=Maya');
+    expect(getPetDetailHref(details, 'pet-juniper', 'Juniper')).toBe(
+      '/cimmich/pets/Juniper?petId=pet-juniper&relatedFrom=Maya',
+    );
     expect(getPetCollectionHref(details)).toBe('/cimmich/pets?relatedFrom=Maya');
+  });
+
+  it('still returns to the collection from a pre-route ?entityId= link', () => {
+    const legacy = new URL('http://localhost/cimmich/pets?entityId=pet-juniper&tab=details&relatedFrom=Maya');
+
+    expect(getPetCollectionHref(legacy)).toBe('/cimmich/pets?relatedFrom=Maya');
   });
 
   it('supports the complete keyboard model for the Pet profile tablist', () => {

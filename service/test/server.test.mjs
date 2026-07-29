@@ -1928,6 +1928,72 @@ test("Person creation preserves exact selector and visibility-before-write", asy
   ]);
 });
 
+test("XMP name review lists and resolves only behind People visibility", async () => {
+  const calls = [];
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    {
+      resolveXmpUnresolvedName: async (input) => {
+        calls.push(["resolve", input]);
+        return {
+          resolvedFaceCount: 12,
+          schemaVersion: "cimmich.xmp-sidecar-name-review.v1",
+        };
+      },
+      xmpUnresolvedNames: async (input) => {
+        calls.push(["list", input]);
+        return {
+          items: [],
+          remainingGroupCount: 224,
+          schemaVersion: "cimmich.xmp-sidecar-name-review.v1",
+        };
+      },
+    },
+    async (root) => {
+      const list = await fetch(
+        `${root}/v1/xmp-sidecar/unresolved-names?limit=24`,
+      );
+      assert.equal(list.status, 200);
+      assert.equal((await list.json()).remainingGroupCount, 224);
+
+      const resolve = await fetch(
+        `${root}/v1/xmp-sidecar/unresolved-names/xmp_name_${"a".repeat(64)}/resolve`,
+        {
+          body: JSON.stringify({
+            commandId: "xmp-owner-resolution-browser-001",
+            personId: "person_target",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "person-editor",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(resolve.status, 200);
+      assert.equal((await resolve.json()).resolvedFaceCount, 12);
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "people"],
+    ["list", { limit: "24" }],
+    ["visibility", "people"],
+    [
+      "resolve",
+      {
+        actorId: "person-editor",
+        commandId: "xmp-owner-resolution-browser-001",
+        groupId: `xmp_name_${"a".repeat(64)}`,
+        personId: "person_target",
+      },
+    ],
+  ]);
+});
+
 test("Pet V1 routes preserve typed scope, command IDs and named-route precedence", async () => {
   const calls = [];
   await withServer(
@@ -3295,6 +3361,39 @@ test("full identity audit routes expose background status, bounded queues and ex
       },
     ],
   ]);
+});
+
+test("People candidate summary exposes active SourcePack claims without identity-audit routing", async () => {
+  const calls = [];
+  const summary = {
+    items: [
+      {
+        assetCount: 3,
+        bestMargin: 0.42,
+        bestScore: 0.81,
+        displayName: "Maya Chen",
+        personId: "person.maya",
+        suggestionCount: 4,
+      },
+    ],
+    schemaVersion: "cimmich.person-candidate-summary.v1",
+    totalCandidates: 4,
+    totalPeople: 1,
+  };
+  await withServer(
+    {
+      personCandidateSummary: async () => {
+        calls.push("summary");
+        return summary;
+      },
+    },
+    async (root) => {
+      const response = await fetch(`${root}/v1/people/candidate-summary`);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), summary);
+    },
+  );
+  assert.deepEqual(calls, ["summary"]);
 });
 
 test("Guided V1 routes authenticate discovery and keep access read/propose-only", async () => {

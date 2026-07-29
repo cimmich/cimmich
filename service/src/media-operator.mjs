@@ -32,6 +32,17 @@ const projectCommand = (row) => ({
 const queueDepth = (summary = {}) =>
   Number(summary.pending || 0) + Number(summary.processing || 0);
 
+export const shouldContinueDetectionPipeline = ({
+  continuationAvailable,
+  maxRecognitionJobs,
+  resultStatus,
+}) =>
+  Boolean(
+    continuationAvailable &&
+      Number(maxRecognitionJobs) > 0 &&
+      resultStatus === "completed",
+  );
+
 export const createMediaOperator = ({
   continueDetection,
   detectionWorker,
@@ -268,7 +279,9 @@ export const createMediaOperator = ({
       if (
         (command.envelope.maxInventoryPages > 0 && !inventory) ||
         (command.envelope.maxDetectionJobs > 0 &&
-          (!detectionWorker || !continueDetection)) ||
+          (!detectionWorker ||
+            (command.envelope.maxRecognitionJobs > 0 &&
+              !continueDetection))) ||
         (command.envelope.maxRecognitionJobs > 0 &&
           !recognitionWorker &&
           !(existingRecognitionScheduler && existingRecognitionWorker))
@@ -318,7 +331,13 @@ export const createMediaOperator = ({
           timeoutMs: remainingBudget(),
         });
         if (["idle", "paused"].includes(result.state)) break;
-        if (result.status === "completed" && continueDetection) {
+        if (
+          shouldContinueDetectionPipeline({
+            continuationAvailable: Boolean(continueDetection),
+            maxRecognitionJobs: command.envelope.maxRecognitionJobs,
+            resultStatus: result.status,
+          })
+        ) {
           await continueDetection(result.jobId);
         }
       }

@@ -3,6 +3,7 @@ name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 services:
   cimmich-database:
     image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
+    shm_size: 512mb
     environment:
       POSTGRES_DB: cimmich
       POSTGRES_PASSWORD: ${CIMMICH_DB_PASSWORD:?configure the companion first}
@@ -56,12 +57,13 @@ services:
       CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}
       CIMMICH_DOCUMENT_STORE_ROOT: /documents
       CIMMICH_GUIDED_ENABLED: "false"
-      CIMMICH_IMMICH_SOURCE_ID: immich-primary
+      CIMMICH_IMMICH_SOURCE_ID: ${CIMMICH_IMMICH_SOURCE_ID:-immich-primary}
       CIMMICH_IMMICH_CREDENTIAL_FILE: /config/immich-credential.json
       CIMMICH_MEDIA_JOB_CONFIG_DIGEST: "0000000000000000000000000000000000000000000000000000000000000000"
       CIMMICH_MEDIA_JOB_OPERATION: detect_and_recognize
       CIMMICH_MEDIA_JOB_TOOL_VERSION: inventory-only-v1
       CIMMICH_LOCAL_MEDIA_PROVIDER: ${CIMMICH_LOCAL_MEDIA_PROVIDER:-}
+      CIMMICH_MATCHING_PROVIDER_MANIFEST_PATH: ${CIMMICH_MATCHING_PROVIDER_MANIFEST_PATH:-}
       CIMMICH_LOCAL_PYTHON_PATH: /usr/bin/python3
       CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH: /face-provider/provider-manifest.json
       CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH: /face-provider/detector.onnx
@@ -110,10 +112,10 @@ services:
       context: ..
       dockerfile: tools/cimmich_ui.Dockerfile
       args:
-        PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}
+        PUBLIC_CIMMICH_API_URL: /cimmich-api
     image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-ui:current-source
     environment:
-      PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}
+      PUBLIC_CIMMICH_API_URL: /cimmich-api
     depends_on:
       cimmich-api:
         condition: service_healthy
@@ -151,7 +153,7 @@ services:
       cimmich-ui:
         condition: service_healthy
     ports:
-      - 127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413}:80
+      - ${CIMMICH_COMPANION_UI_BIND_ADDRESS:-127.0.0.1}:${CIMMICH_COMPANION_UI_PORT:-3413}:80
     volumes:
       - ./cimmich_gateway.conf.template:/template/default.conf.template:ro
     restart: unless-stopped

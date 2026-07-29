@@ -36,6 +36,12 @@ DATABASE_URL=postgres://... npm run migrate -- apply
 Create and verify a separate Cimmich database backup before an upgrade. Never
 point `DATABASE_URL` at the Immich database.
 
+Schema 84 introduces the hash-linked archive-mobility registry. It preserves
+opaque Cimmich asset IDs and all derived foreign keys, backfills recognized
+SHA-1/SHA-256 content fingerprints, changes Immich projections from one-to-one
+to many-to-one source bindings, and adds append-only binding history. It does
+not read media, rewrite Faces/People/identity decisions or modify Immich.
+
 ## One-time adoption of a pre-ledger schema-48 database
 
 1. Stop the Cimmich API while leaving Immich untouched.

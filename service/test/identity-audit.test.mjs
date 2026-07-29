@@ -20,7 +20,22 @@ test("untagged audit suppresses weaker duplicate detections before matching", as
     /coalesce\(stronger\.detection_confidence, 0\) >\s+coalesce\(candidate\.detection_confidence, 0\)/,
   );
   assert.match(source, /overlap\.intersection[\s\S]*>= 0\.5/);
-  assert.match(source, /least\(candidate\.box_w, stronger\.box_w\)[\s\S]*<= 0\.45/);
+  assert.match(
+    source,
+    /least\(candidate\.box_w, stronger\.box_w\)[\s\S]*<= 0\.45/,
+  );
+});
+
+test("incremental audit carries its completed base and scopes expensive work", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /prior\.face_id <> ALL\(\$\{incrementalFaceIds\}\)/);
+  assert.match(source, /face\.face_id = ANY\(\$\{incrementalFaceIds\}\)/);
+  assert.match(source, /item\.face_id = ANY\(\$\{exactFaceIds\}\)/);
+  assert.match(source, /IDENTITY_AUDIT_INCREMENTAL_BASE_STALE/);
+  assert.match(source, /result\.detector_config_digest/);
 });
 
 test("exact prior dismissals carry forward without broadening identity scope", async () => {
@@ -37,7 +52,10 @@ test("exact prior dismissals carry forward without broadening identity scope", a
     runId: "identity-audit.current",
   });
 
-  assert.match(query, /prior\.suggested_person_id = current\.suggested_person_id/);
+  assert.match(
+    query,
+    /prior\.suggested_person_id = current\.suggested_person_id/,
+  );
   assert.match(
     query,
     /prior\.assigned_person_id IS NOT DISTINCT FROM\s+current\.assigned_person_id/,
@@ -196,7 +214,9 @@ test("audit items expose the exact trusted references needed for visual review",
           suggested_reference_box_y: 0.42,
           suggested_reference_face_id: "face.suggested-reference",
           suggested_reference_height: 900,
+          suggested_reference_count: 4,
           suggested_reference_score: 0.9,
+          suggested_top3_average_score: 0.82,
           suggested_reference_width: 1600,
           suggested_score: 0.9,
           audit_kind: "accepted_contradiction",
@@ -225,6 +245,11 @@ test("audit items expose the exact trusted references needed for visual review",
     "immich.asset.current-reference",
   );
   assert.equal(result.items[0].suggestedPerson.reference.score, 0.9);
+  assert.equal(result.items[0].suggestedPerson.confidenceBand, "high");
+  assert.deepEqual(result.items[0].suggestedPerson.reviewEvidence, {
+    independentReferenceCount: 4,
+    top3AverageScore: 0.82,
+  });
   assert.equal(
     result.items[0].suggestedPerson.reference.sourceAssetId,
     "immich.asset.suggested-reference",
@@ -233,6 +258,8 @@ test("audit items expose the exact trusted references needed for visual review",
   assert.match(itemQuery, /current_face_capture_context/);
   assert.match(itemQuery, /item\.suggested_person_id/);
   assert.match(itemQuery, /item\.assigned_person_id/);
+  assert.match(itemQuery, /suggested_support\.reference_count/);
+  assert.match(itemQuery, /ranked\.evidence_rank <= 3/);
 });
 
 test("audit leads group all open untagged matches by known Person", async () => {
@@ -300,7 +327,10 @@ test("audit leads group all open untagged matches by known Person", async () => 
   assert.equal(result.run.stale, false);
   assert.match(leadsQuery, /item\.audit_kind = 'untagged_match'/);
   assert.match(leadsQuery, /item\.review_state = 'open'/);
-  assert.match(leadsQuery, /NOT EXISTS \(\s+SELECT 1 FROM current_face_identity/);
+  assert.match(
+    leadsQuery,
+    /NOT EXISTS \(\s+SELECT 1 FROM current_face_identity/,
+  );
   assert.match(leadsQuery, /ORDER BY suggestion_count DESC/);
 });
 
@@ -375,10 +405,13 @@ test("independent evidence suppresses only replay-consistent same-photo candidat
     },
     provider,
     runId: "audit.test",
+    sourceId: "x1-archive-immich",
   });
 
   assert.deepEqual(deleted, ["face.same"]);
   assert.equal(comparisons.length, 4);
   assert.equal(completed, true);
   assert.match(candidateQuery, /audit_kind = 'accepted_contradiction'/);
+  assert.match(candidateQuery, /query_projection\.source_id/);
+  assert.match(candidateQuery, /reference_projection\.source_id/);
 });

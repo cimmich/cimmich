@@ -223,7 +223,12 @@ export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none
 `configure` writes generated database credentials into a mode-`0600`
 `runtime.env` under the state root. Ports default to loopback-only API `3411`
 and UI `3413`; set `CIMMICH_COMPANION_API_PORT` and
-`CIMMICH_COMPANION_UI_PORT` before `configure` to change them.
+`CIMMICH_COMPANION_UI_PORT` before `configure` to change them. The browser UI
+uses the gateway's same-origin `/cimmich-api` route; the API port remains an
+operator-only loopback listener. A private installation may bind only the UI
+gateway to a trusted interface with `CIMMICH_COMPANION_UI_BIND_ADDRESS`.
+Do not bind it to `0.0.0.0` unless the host's network access is independently
+restricted.
 
 The recommended first-run path is still the signed-in Settings journey: enter
 the Immich API key there, verify permissions, preview the scope and then import.
@@ -355,6 +360,20 @@ Restore is state-changing and requires the exact project confirmation:
 ```sh
 ./tools/companion.sh restore /safe/cimmich-backup --confirm=cimmich-companion
 ```
+
+To move Cimmich intelligence to another configured installation without
+copying media, credentials or provider artifacts:
+
+```sh
+./tools/companion.sh portable-export /safe/new/cimmich-portable
+./tools/companion.sh portable-restore \
+  /safe/cimmich-portable \
+  --confirm=cimmich-companion
+```
+
+Use a distinct `CIMMICH_IMMICH_SOURCE_ID` for the new Immich installation.
+Exact content hashes reconnect moved files and new Immich UUIDs to stable
+Cimmich assets. See [archive mobility](docs/ARCHIVE_MOBILITY.md).
 
 Permanent removal deletes only the named Cimmich Compose project's containers,
 volumes and recognized runtime file. Back up first and type the exact project

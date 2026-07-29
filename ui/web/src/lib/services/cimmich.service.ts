@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/public';
+import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 
 export type CimmichSummary = {
   accepted_presence: number;
@@ -505,6 +506,22 @@ export type CimmichIdentityCandidate = {
   source_margin: number | null;
   source_score: number | null;
   width: number;
+};
+
+export type CimmichPersonCandidateSummaryItem = {
+  assetCount: number;
+  bestMargin: number | null;
+  bestScore: number | null;
+  displayName: string;
+  personId: string;
+  suggestionCount: number;
+};
+
+export type CimmichPersonCandidateSummary = {
+  items: CimmichPersonCandidateSummaryItem[];
+  schemaVersion: 'cimmich.person-candidate-summary.v1';
+  totalCandidates: number;
+  totalPeople: number;
 };
 
 export type CimmichPerson = {
@@ -1591,6 +1608,45 @@ export type CimmichStewardPlan = {
   summary: string;
 };
 
+export type CimmichXmpNamePreview = {
+  assetId: string;
+  box: { h: number; w: number; x: number; y: number };
+  faceId: string;
+  height: number;
+  sourceAssetId: string;
+  width: number;
+};
+
+export type CimmichXmpUnresolvedName = {
+  assetCount: number;
+  conflictingIdentityCount: number;
+  faceCount: number;
+  firstCaptureTime: string | null;
+  groupId: string;
+  lastCaptureTime: string | null;
+  normalizedName: string;
+  previews: CimmichXmpNamePreview[];
+  rawNameVariants: string[];
+  sourceId: string;
+};
+
+export type CimmichXmpNameResolutionResult = {
+  aliasAdded: boolean;
+  commandId: string;
+  createdClaimCount: number;
+  createdPerson: boolean;
+  decisionId: string;
+  groupId: string;
+  maintenancePending: boolean;
+  personId: string;
+  personName: string;
+  replayed: boolean;
+  resolvedFaceCount: number;
+  reusedClaimCount: number;
+  schemaVersion: 'cimmich.xmp-sidecar-name-review.v1';
+  state: 'resolved';
+};
+
 export type CimmichMachineSuggestionDecision = {
   changed: boolean;
   decisionId?: string;
@@ -2273,7 +2329,7 @@ const visibilityDeviceId = () => {
   } catch {
     // Storage may be unavailable in SSR or privacy-restricted browsers.
   }
-  cimmichVisibilityDeviceId = crypto.randomUUID();
+  cimmichVisibilityDeviceId = createCimmichUuid();
   try {
     globalThis.localStorage?.setItem(visibilityDeviceStorageKey, cimmichVisibilityDeviceId);
   } catch {
@@ -2410,7 +2466,7 @@ export const getCimmichIntegrationStatus = () => request<CimmichIntegrationStatu
 export const getCimmichEnhancedComponentStatus = () => request<CimmichEnhancedComponentStatus>('/v1/operator/enhanced');
 
 export const createCimmichEnhancedCommandId = (action: 'disable' | 'enable' | 'rollback' | 'update') =>
-  `enhanced.${action}.${crypto.randomUUID()}`;
+  `enhanced.${action}.${createCimmichUuid()}`;
 
 export const updateCimmichEnhancedComponent = (input: {
   action: 'disable' | 'enable' | 'rollback' | 'update';
@@ -2504,7 +2560,7 @@ export const getCimmichFaceMatchingOperatorStatus = () =>
 
 export const runCimmichFaceRecognition = (workLimit = 10) =>
   request<CimmichFaceRecognitionRun>('/v1/operator/face-matching/recognition', {
-    body: JSON.stringify({ commandId: `face-matching.recognition.${crypto.randomUUID()}`, workLimit }),
+    body: JSON.stringify({ commandId: `face-matching.recognition.${createCimmichUuid()}`, workLimit }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });
@@ -2658,37 +2714,40 @@ export const getCimmichPeople = async (limit = 500, query = '') => {
   return result.items;
 };
 
+export const getCimmichPersonCandidateSummary = () =>
+  request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary');
+
 export const createCimmichCommandId = (kind: string) =>
-  `pet.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 32)}.${crypto.randomUUID()}`;
+  `pet.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 32)}.${createCimmichUuid()}`;
 
 export const createCimmichPersonProfileCommandId = (kind: string) =>
-  `profile.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 28)}.${crypto.randomUUID()}`;
+  `profile.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 28)}.${createCimmichUuid()}`;
 
-export const createCimmichPersonProfileItemId = () => `profile-item.${crypto.randomUUID()}`;
+export const createCimmichPersonProfileItemId = () => `profile-item.${createCimmichUuid()}`;
 
 export const createCimmichVisibilityCommandId = (kind: string) =>
-  `visibility.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${crypto.randomUUID()}`;
+  `visibility.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${createCimmichUuid()}`;
 
 export const createCimmichManualPresenceCommandId = (kind: string) =>
-  `presence.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 26)}.${crypto.randomUUID()}`;
+  `presence.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 26)}.${createCimmichUuid()}`;
 
 export const createCimmichManualSubjectTagCommandId = (kind: string) =>
-  `manual-tag.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${crypto.randomUUID()}`;
+  `manual-tag.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${createCimmichUuid()}`;
 
 export const createCimmichObservationCorrectionCommandId = (kind: string) =>
-  `observation.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 22)}.${crypto.randomUUID()}`;
+  `observation.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 22)}.${createCimmichUuid()}`;
 
 export const createCimmichIdentityCorrectionCommandId = (kind: string) =>
-  `identity.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 25)}.${crypto.randomUUID()}`;
+  `identity.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 25)}.${createCimmichUuid()}`;
 
 export const createCimmichContextCommandId = (kind: string) =>
-  `context.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 26)}.${crypto.randomUUID()}`;
+  `context.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 26)}.${createCimmichUuid()}`;
 
 export const createCimmichDocumentCommandId = (kind: string) =>
-  `document.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${crypto.randomUUID()}`;
+  `document.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${createCimmichUuid()}`;
 
 export const createCimmichPersonMergeCommandId = (kind: 'merge' | 'unmerge') =>
-  `person-merge.${kind}.${crypto.randomUUID()}`;
+  `person-merge.${kind}.${createCimmichUuid()}`;
 
 export const createCimmichPersonMergeIntentTracker = (
   createCommandId: (kind: 'merge' | 'unmerge') => string = createCimmichPersonMergeCommandId,
@@ -2728,7 +2787,7 @@ export const createCimmichPersonMergeIntentTracker = (
 };
 
 export const createCimmichPersonCommandId = (kind: 'create' | 'reconcile') =>
-  `person-create.${kind}.${crypto.randomUUID()}`;
+  `person-create.${kind}.${createCimmichUuid()}`;
 
 export const createCimmichPerson = (commandId: string, selector: CimmichPersonCreateSelector) =>
   request<CimmichPersonCreateResult>('/v1/people', {
@@ -3428,6 +3487,23 @@ export const getCimmichPersonByName = async (name: string, personId = '') => {
   return people.find((person) => person.display_name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0);
 };
 
+export const getCimmichXmpUnresolvedNames = (limit = 24) =>
+  request<{
+    items: CimmichXmpUnresolvedName[];
+    remainingGroupCount: number;
+    schemaVersion: 'cimmich.xmp-sidecar-name-review.v1';
+  }>(`/v1/xmp-sidecar/unresolved-names?limit=${Math.max(1, Math.min(100, limit))}`);
+
+export const resolveCimmichXmpUnresolvedName = (
+  groupId: string,
+  input: { commandId: string; newPersonName?: string; personId?: string },
+) =>
+  request<CimmichXmpNameResolutionResult>(`/v1/xmp-sidecar/unresolved-names/${encodeURIComponent(groupId)}/resolve`, {
+    body: JSON.stringify(input),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
 export const getCimmichPersonAssets = async (personId: string, limit = 5000) => {
   const result = await request<{ items: CimmichPersonAsset[] }>(
     `/v1/people/${encodeURIComponent(personId)}/assets?limit=${Math.max(1, Math.min(5000, limit))}`,
@@ -3678,7 +3754,7 @@ export const getCimmichAssetEvidence = (sourceAssetId: string) =>
   request<CimmichAssetEvidence>(`/v1/assets/evidence?sourceAssetId=${encodeURIComponent(sourceAssetId)}`);
 
 export const createCimmichManualPhotoContextCommandId = (kind: string) =>
-  `manual-photo-context-${kind}-${crypto.randomUUID()}`;
+  `manual-photo-context-${kind}-${createCimmichUuid()}`;
 
 export const attachCimmichManualObjectRegion = (
   assetId: string,

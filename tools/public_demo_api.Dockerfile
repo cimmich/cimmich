@@ -32,6 +32,7 @@ COPY service/enhanced ./enhanced
 COPY providers/opencv-sface /app/providers/opencv-sface
 COPY providers/insightface-user-supplied /app/providers/insightface-user-supplied
 COPY providers/perceptual-dhash /app/providers/perceptual-dhash
+COPY providers/xmp-sidecar-reader /app/providers/xmp-sidecar-reader
 COPY migrations /app/migrations
 
 ENV HOST=0.0.0.0

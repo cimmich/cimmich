@@ -109,7 +109,7 @@ if test "$COMMAND" = pose; then
   exit 0
 fi
 
-node -e 'process.stdout.write(JSON.stringify({action:"list"}))' |
+node -e 'process.stdout.write(JSON.stringify({action:"list",detectorConfigDigest:process.argv[1]}))' "$config_digest" |
   compose exec -T cimmich-api node bin/body-detection-operator.mjs > "$tmp/list.json"
 node -e 'const fs=require("fs");for(const id of JSON.parse(fs.readFileSync(process.argv[1],"utf8")).items)console.log(id)' "$tmp/list.json" > "$tmp/assets.txt"
 if test -n "$SOURCE_ASSET_ID"; then

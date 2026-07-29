@@ -40,7 +40,7 @@ function currentUrlWithoutAsset() {
     const cimmichPetId = page.url.searchParams.get('cimmichPetId');
     const cimmichPetName = page.url.searchParams.get('cimmichPetName');
     if (cimmichPetId && cimmichPetName) {
-      return Route.cimmichPet({ petId: cimmichPetId });
+      return Route.cimmichPet({ name: cimmichPetName, petId: cimmichPetId });
     }
     return Route.photos() + page.url.search;
   } else if (isSharedLinkSlugRoute(page.route.id)) {

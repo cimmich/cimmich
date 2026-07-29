@@ -2,6 +2,63 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createCimmichRepository } from "../src/repository.mjs";
 
+test("Person candidate summary is grouped from the active SourcePack without audit data", async () => {
+  let statement = "";
+  const sql = async (strings) => {
+    statement = strings.join("?");
+    return [
+      {
+        asset_count: 3,
+        best_margin: 0.42,
+        best_score: 0.81,
+        display_name: "Maya Chen",
+        person_id: "person-maya",
+        suggestion_count: 4,
+      },
+      {
+        asset_count: 2,
+        best_margin: 0.31,
+        best_score: 0.72,
+        display_name: "Noah Chen",
+        person_id: "person-noah",
+        suggestion_count: 2,
+      },
+    ];
+  };
+  const repository = createCimmichRepository(sql);
+
+  const summary = await repository.personCandidateSummary();
+
+  assert.deepEqual(summary, {
+    items: [
+      {
+        assetCount: 3,
+        bestMargin: 0.42,
+        bestScore: 0.81,
+        displayName: "Maya Chen",
+        personId: "person-maya",
+        suggestionCount: 4,
+      },
+      {
+        assetCount: 2,
+        bestMargin: 0.31,
+        bestScore: 0.72,
+        displayName: "Noah Chen",
+        personId: "person-noah",
+        suggestionCount: 2,
+      },
+    ],
+    schemaVersion: "cimmich.person-candidate-summary.v1",
+    totalCandidates: 6,
+    totalPeople: 2,
+  });
+  assert.match(statement, /JOIN current_source_pack pack/);
+  assert.match(statement, /claim\.origin = 'prime_match'/);
+  assert.match(statement, /source_pack_prime_match/);
+  assert.match(statement, /claim\.state = 'candidate'/);
+  assert.doesNotMatch(statement, /identity_audit/);
+});
+
 test("People project ordinary accepted Faces and accepted Body regions without matching authority", async () => {
   let statement = "";
   const sql = async (strings) => {

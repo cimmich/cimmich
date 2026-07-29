@@ -264,6 +264,19 @@ confirmed removal:
 ./tools/companion.sh remove --confirm=cimmich-companion
 ```
 
+For a move to another disk, machine or Immich installation, export only
+Cimmich-owned portable state:
+
+```sh
+./tools/companion.sh portable-export /safe/new/cimmich-portable
+./tools/companion.sh portable-restore /safe/cimmich-portable --confirm=cimmich-companion
+```
+
+Portable export excludes original media, Immich credentials and provider
+artifacts. After restore, inventory reconnects exact content hashes to the same
+Cimmich assets even when paths and Immich UUIDs changed. See
+[archive mobility](docs/ARCHIVE_MOBILITY.md).
+
 See [release readiness](docs/RELEASE_READINESS.md) for the exact supported
 baseline and current lifecycle proof.
 

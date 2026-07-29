@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -488,6 +489,99 @@ test("original image reads are bounded, read-only and return no upstream path", 
   );
 });
 
+test("original image and video fingerprints stream exact bytes without returning media", async () => {
+  for (const upstreamAsset of [
+    asset(),
+    asset({ type: "VIDEO", originalMimeType: "video/mp4" }),
+  ]) {
+    const bytes = Buffer.from(`byte-authority-${upstreamAsset.type}`);
+    const companion = createImmichCompanion({
+      apiBaseUrl: "http://immich.test",
+      apiKey: "synthetic-secret-key",
+      fetchImpl: async (url) => {
+        if (url.endsWith("/server/version")) {
+          return jsonResponse({
+            major: 3,
+            minor: 0,
+            patch: 3,
+            prerelease: null,
+          });
+        }
+        if (url.endsWith("/users/me")) {
+          return jsonResponse({ id: upstreamAsset.ownerId, isAdmin: false });
+        }
+        if (url.endsWith("/original")) {
+          return new Response(bytes, {
+            headers: {
+              "content-length": String(bytes.length),
+              "content-type": upstreamAsset.originalMimeType,
+            },
+          });
+        }
+        return jsonResponse(upstreamAsset);
+      },
+    });
+    const fingerprint = await companion.readAssetFingerprint({
+      assetId: upstreamAsset.id,
+    });
+    assert.equal(fingerprint.byteLength, bytes.length);
+    assert.equal(
+      fingerprint.contentDigest,
+      createHash("sha256").update(bytes).digest("hex"),
+    );
+    assert.equal(fingerprint.hashAlgorithm, "sha256");
+    assert.equal(fingerprint.verification, "byte_verified");
+    assert.equal(fingerprint.sourceAccess, "immich-api-read-only");
+    assert.equal("bytes" in fingerprint, false);
+  }
+});
+
+test("fingerprint reads reject unsupported, unavailable and oversized originals", async () => {
+  const unsupported = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    fetchImpl: readyFetch([], [asset({ type: "AUDIO" })]),
+  });
+  await assert.rejects(
+    unsupported.readAssetFingerprint({ assetId: asset().id }),
+    (error) => error.code === "IMMICH_COMPANION_MEDIA_UNSUPPORTED",
+  );
+
+  const unavailable = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    fetchImpl: readyFetch([], [asset({ isOffline: true })]),
+  });
+  await assert.rejects(
+    unavailable.readAssetFingerprint({ assetId: asset().id }),
+    (error) => error.code === "IMMICH_COMPANION_MEDIA_UNAVAILABLE",
+  );
+
+  const oversized = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    maxFingerprintBytes: 1024 * 1024,
+    fetchImpl: async (url) => {
+      if (url.endsWith("/server/version")) {
+        return jsonResponse({ major: 3, minor: 0, patch: 3 });
+      }
+      if (url.endsWith("/users/me")) {
+        return jsonResponse({ id: asset().ownerId });
+      }
+      if (url.endsWith("/original")) {
+        return new Response(Buffer.from("small"), {
+          headers: { "content-length": String(2 * 1024 * 1024) },
+        });
+      }
+      return jsonResponse(asset());
+    },
+  });
+  await assert.rejects(
+    oversized.readAssetFingerprint({ assetId: asset().id }),
+    (error) => error.code === "IMMICH_COMPANION_MEDIA_TOO_LARGE",
+  );
+});
+
 test("media reads reject non-images and declared oversized bodies before buffering", async () => {
   const videoCompanion = createImmichCompanion({
     apiBaseUrl: "http://immich.test",
@@ -704,6 +798,7 @@ test("companion operator config is data-only and UI builds exclude local env fil
           ...process.env,
           CIMMICH_COMPANION_PROJECT: "cimmich-config-adversarial",
           CIMMICH_COMPANION_STATE_ROOT: stateRoot,
+          CIMMICH_IMMICH_SOURCE_ID: "synthetic-x1-archive",
         },
       },
     );
@@ -711,6 +806,7 @@ test("companion operator config is data-only and UI builds exclude local env fil
     const envPath = join(stateRoot, "runtime.env");
     const runtime = await readFile(envPath, "utf8");
     assert.match(runtime, /^CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=none$/m);
+    assert.match(runtime, /^CIMMICH_IMMICH_SOURCE_ID=synthetic-x1-archive$/m);
     assert.equal(runtime.includes("synthetic_read_only_key"), true);
     assert.equal(
       runtime.includes("CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=password"),
@@ -733,6 +829,27 @@ test("companion operator config is data-only and UI builds exclude local env fil
       },
     });
     assert.notEqual(status.status, 0);
+    await assert.rejects(readFile(marker), { code: "ENOENT" });
+
+    const invalidSourceState = join(stage, "invalid-source-state");
+    const invalidSource = spawnSync(
+      operator,
+      ["configure", "http://host.docker.internal:2283"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CIMMICH_COMPANION_PROJECT: "cimmich-source-adversarial",
+          CIMMICH_COMPANION_STATE_ROOT: invalidSourceState,
+          CIMMICH_IMMICH_SOURCE_ID: `x1\$(touch\$IFS${marker})`,
+        },
+      },
+    );
+    assert.notEqual(invalidSource.status, 0);
+    assert.match(invalidSource.stderr, /Immich source ID must use only/);
+    await assert.rejects(readFile(join(invalidSourceState, "runtime.env")), {
+      code: "ENOENT",
+    });
     await assert.rejects(readFile(marker), { code: "ENOENT" });
   } finally {
     await rm(stage, { force: true, recursive: true });

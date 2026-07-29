@@ -4,13 +4,18 @@ import { readFile } from 'node:fs/promises';
 const readPeoplePage = () => readFile('src/routes/(user)/cimmich/people/+page.svelte', 'utf8');
 
 describe('People suggestions layout', () => {
-  it('uses full-library audit totals for known People and keeps possible People separate', async () => {
+  it('uses current SourcePack candidate totals for known People and keeps possible People separate', async () => {
     const source = await readPeoplePage();
 
-    expect(source).toContain('getCimmichIdentityAuditLeads()');
-    expect(source).toContain('new Map(cimmichIdentityAuditLeads.map');
+    expect(source).toContain('getCimmichPersonCandidateSummary()');
+    expect(source).toContain('new Map((cimmichCandidateSummary?.items ?? [])');
     expect(source).toContain('personMachineSuggestionCount(person.person_id)');
-    expect(source).toContain('Full-library audit suggestions grouped by the known Person');
+    expect(source).toContain('matched faces from the current reference');
+    expect(source).toMatch(/Nothing\s+changes until you confirm/);
+    expect(source).not.toContain('getCimmichIdentityAuditLeads()');
+    expect(source).not.toContain('getCimmichMachineSuggestions(80)');
+    expect(source).not.toContain('Full-library audit suggestions');
+    expect(source).not.toContain('latest full-library audit');
     expect(source).toContain('<CimmichPossiblePeople mode="active"');
     expect(source).toContain("viewMode === 'candidates'");
   });

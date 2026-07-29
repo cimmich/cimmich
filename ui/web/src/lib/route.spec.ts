@@ -31,12 +31,15 @@ describe('Route', () => {
       );
       expect(
         Route.viewCimmichPersonAsset({
+          faceId: 'face-1',
           id: 'asset-1',
           personId: 'person-1',
           personName: 'Rupert BP',
-          overlay: 'people',
+          overlay: 'machinery',
         }),
-      ).toBe('/photos/asset-1?cimmichOverlay=people&cimmichPersonId=person-1&cimmichPersonName=Rupert%20BP');
+      ).toBe(
+        '/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery&cimmichPersonId=person-1&cimmichPersonName=Rupert%20BP',
+      );
     });
   });
 
@@ -45,13 +48,30 @@ describe('Route', () => {
       expect(Route.viewCimmichPetAsset({ id: 'asset-1', petId: 'pet-1', petName: 'Juniper' })).toBe(
         '/photos/asset-1?cimmichPetId=pet-1&cimmichPetName=Juniper',
       );
-      expect(Route.cimmichPet({ petId: 'pet-1' })).toBe('/cimmich/pets?entityId=pet-1');
+      expect(Route.cimmichPet({ name: 'Juniper', petId: 'pet-1' })).toBe('/cimmich/pets/Juniper?petId=pet-1');
+      expect(Route.cimmichPet({ name: 'Juniper' })).toBe('/cimmich/pets/Juniper');
     });
   });
 
   describe(Route.cimmichThings.name, () => {
     it('opens the Things family in the shared Places and Objects workspace', () => {
       expect(Route.cimmichThings()).toBe('/cimmich/places?family=objects');
+    });
+  });
+
+  describe(Route.cimmichPlace.name, () => {
+    it('names the place in the path and pins it with placeId, like Person and Pet', () => {
+      expect(Route.cimmichPlace({ name: "Parent's Home", placeId: 'place-1' })).toBe(
+        "/cimmich/places/Parent's%20Home?placeId=place-1",
+      );
+      expect(Route.cimmichPlace({ name: "Parent's Home" })).toBe("/cimmich/places/Parent's%20Home");
+    });
+  });
+
+  describe(Route.cimmichThing.name, () => {
+    it('names the thing in the path and pins it with thingId, so the id states the family', () => {
+      expect(Route.cimmichThing({ name: 'ATV', thingId: 'object-1' })).toBe('/cimmich/places/ATV?thingId=object-1');
+      expect(Route.cimmichThing({ name: 'ATV' })).toBe('/cimmich/places/ATV');
     });
   });
 

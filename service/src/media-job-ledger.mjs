@@ -4,6 +4,7 @@ export const mediaJobContractVersion = "cimmich.media-job.v1";
 
 const operations = new Set([
   "detect_faces",
+  "detect_bodies",
   "recognize_faces",
   "detect_and_recognize",
   "recognize_manual_face",

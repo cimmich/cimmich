@@ -18,11 +18,6 @@ import {
   validateBodyPoseEvidence,
 } from "../src/body-pose-provider-contract.mjs";
 import { bodyDetectionDigest } from "../src/body-detector-contract.mjs";
-import {
-  applyFaceBodyLinks,
-  buildFaceBodyLinks,
-  loadFaceBodyLinkAssets,
-} from "../src/face-body-linker-repository.mjs";
 import { createImmichCompanion } from "../src/immich-companion.mjs";
 import {
   assembleLocalBodyDetectionResult,
@@ -49,7 +44,7 @@ const readInput = async () => {
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 if (!databaseUrl) throw new Error("BODY_OPERATOR_DATABASE_UNAVAILABLE");
 const sql = postgres(databaseUrl, { max: 2, prepare: true });
-const presentationRank = () => 3;
+const presentationRank = () => 2;
 const configuredApiKey = String(process.env.IMMICH_API_KEY || "").trim();
 const credential = configuredApiKey
   ? null
@@ -79,7 +74,7 @@ const readCurrentSource = async (sourceAssetId) => {
     WHERE projection.immich_asset_id = ${stableSourceAssetId}
       AND projection.state = 'active'
       AND projection.source_id = ${process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary"}
-      AND cimmich_visibility_asset_rank(asset.asset_id) <= 3
+      AND cimmich_visibility_asset_rank(asset.asset_id) <= 2
   `;
   if (!projection) throw new Error("BODY_OPERATOR_SOURCE_NOT_VISIBLE");
   const current = await immich.getAsset({ assetId: stableSourceAssetId });
@@ -120,15 +115,34 @@ try {
   const input = await readInput();
   const action = String(input.action || "");
   if (action === "list") {
+    const configDigest = String(input.detectorConfigDigest || "");
+    if (!/^[0-9a-f]{64}$/.test(configDigest)) {
+      throw new Error("BODY_OPERATOR_CONFIG_DIGEST_INVALID");
+    }
     const rows = await sql`
       SELECT projection.immich_asset_id AS source_asset_id
       FROM immich_asset_projection projection
       JOIN asset ON asset.asset_id = projection.cimmich_asset_id
         AND asset.state = 'active' AND asset.media_kind = 'image'
+      JOIN media_asset_triage triage
+        ON triage.asset_id = projection.cimmich_asset_id
       WHERE projection.state = 'active'
         AND projection.source_id = ${process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary"}
-        AND cimmich_visibility_asset_rank(asset.asset_id) <= 3
-      ORDER BY projection.immich_asset_id
+        AND cimmich_visibility_asset_rank(asset.asset_id) <= 2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM body_detection_result result
+          JOIN current_asset_source_revision revision
+            ON revision.revision_id = result.source_revision_id
+            AND revision.asset_id = result.asset_id
+          WHERE result.asset_id = projection.cimmich_asset_id
+            AND result.detector_config_digest = ${configDigest}
+        )
+      ORDER BY triage.priority_tier,
+        triage.accepted_person_count DESC,
+        triage.accepted_association_count DESC,
+        triage.human_observation_count DESC,
+        projection.immich_asset_id
     `;
     process.stdout.write(
       `${JSON.stringify({
@@ -138,18 +152,36 @@ try {
     );
   } else if (action === "poseList") {
     const configDigest = String(input.detectorConfigDigest || "");
+    if (!/^[0-9a-f]{64}$/.test(configDigest)) {
+      throw new Error("BODY_OPERATOR_CONFIG_DIGEST_INVALID");
+    }
     const rows = await sql`
-      SELECT DISTINCT projection.immich_asset_id AS source_asset_id
+      SELECT projection.immich_asset_id AS source_asset_id
       FROM current_body_detection_result_observation current_result
       JOIN immich_asset_projection projection
         ON projection.cimmich_asset_id = current_result.asset_id
         AND projection.state = 'active'
       JOIN asset ON asset.asset_id = current_result.asset_id
         AND asset.state = 'active' AND asset.media_kind = 'image'
+      JOIN media_asset_triage triage
+        ON triage.asset_id = current_result.asset_id
       WHERE current_result.detector_config_digest = ${configDigest}
         AND projection.source_id = ${process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary"}
-        AND cimmich_visibility_asset_rank(asset.asset_id) <= 3
-      ORDER BY projection.immich_asset_id
+        AND cimmich_visibility_asset_rank(asset.asset_id) <= 2
+        AND NOT EXISTS (
+          SELECT 1
+          FROM body_pose_evidence pose
+          WHERE pose.body_id = current_result.body_id
+            AND pose.state = 'valid'
+        )
+      GROUP BY projection.immich_asset_id, triage.priority_tier,
+        triage.accepted_person_count, triage.accepted_association_count,
+        triage.human_observation_count
+      ORDER BY triage.priority_tier,
+        triage.accepted_person_count DESC,
+        triage.accepted_association_count DESC,
+        triage.human_observation_count DESC,
+        projection.immich_asset_id
     `;
     process.stdout.write(
       `${JSON.stringify({
@@ -167,7 +199,7 @@ try {
           AND asset.state = 'active' AND asset.media_kind = 'image'
         WHERE projection.state = 'active'
           AND projection.source_id = ${process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary"}
-          AND cimmich_visibility_asset_rank(asset.asset_id) <= 3
+          AND cimmich_visibility_asset_rank(asset.asset_id) <= 2
       ), current_results AS (
         SELECT result.*
         FROM body_detection_result result
@@ -298,16 +330,12 @@ try {
           sourceRead: source.sourceRead,
           validation,
         });
-        const assets = await loadFaceBodyLinkAssets(sql, source.assetId);
-        const proposal = buildFaceBodyLinks(assets);
-        const linkage = await applyFaceBodyLinks(sql, proposal, {
-          execute: true,
-        });
         process.stdout.write(
           `${JSON.stringify({
+            automaticIdentityWrites: 0,
             bodyCount: commit.bodyCount,
             changed: commit.changed,
-            linkage,
+            matcherInvocations: 0,
             providerRuns: 2,
             replayed: commit.replayed,
             schemaVersion: "cimmich.body-detection-operator-receipt.v1",

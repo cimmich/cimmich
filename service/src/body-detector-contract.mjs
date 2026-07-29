@@ -414,6 +414,7 @@ export const validateBodyDetectionResult = (value, manifestInput) => {
   const state = requiredEnum(value.state, "result.state", [
     "bodies_detected",
     "no_body",
+    "source_unreadable",
   ]);
   const observations = value.bodies
     .map(normalizeObservation)
@@ -426,8 +427,11 @@ export const validateBodyDetectionResult = (value, manifestInput) => {
   ) {
     throw typedError("Body detection result contains duplicate observations");
   }
-  if (state === "no_body" && observations.length !== 0) {
-    throw typedError("no_body results cannot contain observations");
+  if (
+    (state === "no_body" || state === "source_unreadable") &&
+    observations.length !== 0
+  ) {
+    throw typedError(`${state} results cannot contain observations`);
   }
   if (state === "bodies_detected" && observations.length === 0) {
     throw typedError("bodies_detected results require observations");

@@ -91,14 +91,17 @@ export const getPetMediaTimeframe = (media: CimmichPetMedia[], locale?: string) 
   return `${first.getFullYear()}–${last.getFullYear()}`;
 };
 
-export const getPetMediaFocusCrop = (media: CimmichPetMedia) => {
+// targetAspect must match the aspect of the frame the crop is painted into, or
+// the background axes scale unequally and the animal is distorted. Defaults to
+// square because every consumer except the hero banner is a 1:1 frame — the
+// circular portraits, the presentation picker, and the circular face slot.
+export const getPetMediaFocusCrop = (media: CimmichPetMedia, targetAspect = 1) => {
   const face = media.pet_face;
   if (!face || media.width <= 0 || media.height <= 0) {
     return null;
   }
 
   const sourceAspect = media.width / media.height;
-  const targetAspect = 4 / 3;
   const normalizedAspect = targetAspect / sourceAspect;
   let width = Math.max(0.32, face.box_w * 3.2, face.box_h * 2.6 * normalizedAspect);
   let height = width / normalizedAspect;
@@ -122,18 +125,34 @@ export const getPetMediaFocusCrop = (media: CimmichPetMedia) => {
   };
 };
 
-export const getPetDetailHref = (currentUrl: URL, petId: string) => {
+export type PetPhotoSize = 'large' | 'medium' | 'small';
+
+// Mirrors personPhotoGridClass so a Pet's photos read as the same gallery a
+// Person's do, rather than as a card list.
+export const petPhotoGridClass = (size: PetPhotoSize) => {
+  if (size === 'small') {
+    return 'grid grid-cols-3 gap-1 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8';
+  }
+  if (size === 'large') {
+    return 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3';
+  }
+  return 'grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5';
+};
+
+export const getPetDetailHref = (currentUrl: URL, petId: string, petName: string) => {
   const url = new URL(currentUrl);
-  url.searchParams.set('entityId', petId);
+  url.searchParams.delete('entityId');
   url.searchParams.delete('tab');
-  return `${url.pathname}${url.search}`;
+  url.searchParams.set('petId', petId);
+  return `/cimmich/pets/${encodeURIComponent(petName)}${url.search}`;
 };
 
 export const getPetCollectionHref = (currentUrl: URL) => {
   const url = new URL(currentUrl);
   url.searchParams.delete('entityId');
+  url.searchParams.delete('petId');
   url.searchParams.delete('tab');
-  return `${url.pathname}${url.search}`;
+  return `/cimmich/pets${url.search}`;
 };
 
 export const getPetContentView = (currentUrl: URL): PetContentView => {

@@ -52,6 +52,13 @@ def synthetic_manifest():
 
 
 class ProviderContractTest(unittest.TestCase):
+    def test_execution_provider_is_explicit_and_fails_closed(self):
+        self.assertEqual(
+            provider.execution_providers("cpu"), ["CPUExecutionProvider"]
+        )
+        with self.assertRaises(ValueError):
+            provider.execution_providers("cuda")
+
     def test_target_selection_prefers_geometry_over_confidence(self):
         boxes = np.asarray(
             [[80, 80, 120, 120, 0.82], [5, 5, 45, 45, 0.99]],
@@ -70,6 +77,42 @@ class ProviderContractTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             provider.confined_path(Path(__file__).parent, "/private/tmp")
 
+    def test_target_box_clamps_float_noise_at_image_boundary(self):
+        clamped = provider.validate_box(
+            {
+                "coordinateSpace": "normalized",
+                "x": 0.97981785,
+                "y": 0.2249345,
+                "w": 0.0201823,
+                "h": 0.148763,
+            }
+        )
+        for actual, expected in zip(
+            clamped, (0.97981785, 0.2249345, 0.02018215, 0.148763)
+        ):
+            self.assertAlmostEqual(actual, expected)
+        with self.assertRaises(ValueError):
+            provider.validate_box(
+                {
+                    "coordinateSpace": "normalized",
+                    "x": 0.98,
+                    "y": 0.2,
+                    "w": 0.03,
+                    "h": 0.2,
+                }
+            )
+
+    def test_failed_packet_redacts_unexpected_provider_error(self):
+        packet = provider.failed_packet(
+            {"assetToken": "asset", "observationId": "face"},
+            "vector-space",
+            "config-digest",
+            RuntimeError("/private/source/name.jpg"),
+        )
+        self.assertEqual(packet["state"], "failed")
+        self.assertEqual(packet["reason"], "provider-inference-failed")
+        self.assertNotIn("/private/source", str(packet))
+
     def test_private_path_is_redacted(self):
         secret = "/private/library/people/example-person.jpg"
         reason = provider.public_failure_reason(FileNotFoundError(secret))
@@ -85,6 +128,23 @@ class ProviderContractTest(unittest.TestCase):
         self.assertNotEqual(original, changed)
         manifest["licensing"]["model"] = "redistributable"
         manifest["vectorSpaceId"], manifest["providerConfigDigest"] = provider.derive_manifest_ids(manifest)
+        with self.assertRaises(ValueError):
+            provider.validate_manifest(manifest)
+
+    def test_execution_device_is_bound_and_validated(self):
+        manifest = synthetic_manifest()
+        _, cpu_digest = provider.validate_manifest(manifest)
+        manifest["execution"]["device"] = "coreml"
+        manifest["provider"]["name"] = "insightface-user-supplied-coreml"
+        manifest["vectorSpaceId"], manifest["providerConfigDigest"] = (
+            provider.derive_manifest_ids(manifest)
+        )
+        _, coreml_digest = provider.validate_manifest(manifest)
+        self.assertNotEqual(cpu_digest, coreml_digest)
+        manifest["execution"]["device"] = "cuda"
+        manifest["vectorSpaceId"], manifest["providerConfigDigest"] = (
+            provider.derive_manifest_ids(manifest)
+        )
         with self.assertRaises(ValueError):
             provider.validate_manifest(manifest)
 

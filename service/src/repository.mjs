@@ -28,6 +28,7 @@ import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
 import { createIdentityAudit } from "./identity-audit.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
+import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
 import {
   classifyFaceConditionObservation,
@@ -971,6 +972,10 @@ export const createCimmichRepository = (
     companion: options.immichCompanion,
     immichSourceId: options.immichSourceId,
   });
+  const xmpSidecarReview = createXmpSidecarReviewStore(sql, {
+    bridgeFields: (assetId) => bridgeFields(bridge, assetId),
+    presentationRank,
+  });
   const petDocuments = createPetDocumentStore(sql, {
     bridgeFields: (assetId) => bridgeFields(bridge, assetId),
     presentationRank,
@@ -999,6 +1004,7 @@ export const createCimmichRepository = (
     companion: options.immichCompanion,
     derivativeProvider: options.identityAuditDerivativeProvider,
     presentationRank,
+    sourceId: options.immichSourceId,
   });
   let machineSuggestionCache = null;
   const invalidateMachineSuggestions = () => {
@@ -1983,6 +1989,15 @@ export const createCimmichRepository = (
     undoManualPhotoContextDecision: manualPhotoContext.undo,
     smartSearch: basicSmartSearch.search,
     createPerson: personCreates.create,
+    xmpUnresolvedNames: xmpSidecarReview.list,
+    async resolveXmpUnresolvedName(input) {
+      const result = await xmpSidecarReview.resolve(input);
+      const maintenancePending = result.replayed
+        ? false
+        : await refreshPrimeAfterCommand(sql, result.personId);
+      invalidateMachineSuggestions();
+      return { ...result, maintenancePending };
+    },
     documents: documents.list,
     document: documents.get,
     referenceDocument: documents.reference,
@@ -4631,6 +4646,11 @@ export const createCimmichRepository = (
         accepted.person_id AS current_person_id,
         current_person.display_name AS current_person_name
       FROM identity_claim claim
+      JOIN current_source_pack pack
+        ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+        AND pack.evaluation_status = 'passed'
+        AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
+          claim.evidence_refs->>'policy_version'
       JOIN person ON person.person_id = claim.person_id
         AND person.status = 'active' AND person.subject_kind = 'person'
         AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
@@ -4649,8 +4669,10 @@ export const createCimmichRepository = (
         LIMIT 1
       ) accepted ON true
       LEFT JOIN person current_person ON current_person.person_id = accepted.person_id
-      WHERE claim.person_id = ${String(personId || "")} AND claim.state = 'candidate'
-        AND coalesce(claim.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
+      WHERE claim.person_id = ${String(personId || "")}
+        AND claim.state = 'candidate'
+        AND claim.origin = 'prime_match'
+        AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
         AND (
           coalesce(nullif(claim.evidence_refs->>'best_score', '')::float8, claim.calibrated_confidence::float8, -1)
             >= ${samePhotoAcceptedCandidateFloor}
@@ -4685,6 +4707,73 @@ export const createCimmichRepository = (
         ...row,
         ...bridgeFields(bridge, row.asset_id),
       }));
+    },
+
+    async personCandidateSummary() {
+      const rows = await sql`
+      SELECT claim.person_id, person.display_name,
+        count(*)::int AS suggestion_count,
+        count(DISTINCT face.asset_id)::int AS asset_count,
+        max(nullif(claim.evidence_refs->>'best_score', '')::float8)::float8 AS best_score,
+        max(nullif(claim.evidence_refs->>'margin', '')::float8)::float8 AS best_margin
+      FROM identity_claim claim
+      JOIN current_source_pack pack
+        ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+        AND pack.evaluation_status = 'passed'
+        AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
+          claim.evidence_refs->>'policy_version'
+      JOIN person
+        ON person.person_id = claim.person_id
+        AND person.status = 'active'
+        AND person.subject_kind = 'person'
+        AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
+      JOIN face_observation face
+        ON face.face_id = claim.face_id
+        AND face.state = 'valid'
+      JOIN asset
+        ON asset.asset_id = face.asset_id
+        AND asset.state = 'active'
+      WHERE claim.state = 'candidate'
+        AND claim.origin = 'prime_match'
+        AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
+        AND (
+          coalesce(
+            nullif(claim.evidence_refs->>'best_score', '')::float8,
+            claim.calibrated_confidence::float8,
+            -1
+          ) >= ${samePhotoAcceptedCandidateFloor}
+          OR NOT EXISTS (
+            SELECT 1
+            FROM identity_claim same_photo_claim
+            JOIN face_observation same_photo_face
+              ON same_photo_face.face_id = same_photo_claim.face_id
+              AND same_photo_face.state = 'valid'
+            WHERE same_photo_claim.person_id = claim.person_id
+              AND same_photo_claim.state = 'accepted'
+              AND same_photo_face.asset_id = face.asset_id
+              AND same_photo_face.face_id <> face.face_id
+          )
+        )
+      GROUP BY claim.person_id, person.display_name
+      ORDER BY suggestion_count DESC, person.display_name, claim.person_id
+    `;
+
+      return {
+        items: rows.map((row) => ({
+          assetCount: Number(row.asset_count),
+          bestMargin: row.best_margin,
+          bestScore: row.best_score,
+          displayName: row.display_name,
+          personId: row.person_id,
+          suggestionCount: Number(row.suggestion_count),
+        })),
+        schemaVersion: "cimmich.person-candidate-summary.v1",
+        totalCandidates: rows.reduce(
+          (total, row) => total + Number(row.suggestion_count),
+          0,
+        ),
+        totalPeople: rows.length,
+      };
     },
 
     async bulkAcceptPersonCandidates({ actorId, claimIds, personId }) {
@@ -4733,9 +4822,18 @@ export const createCimmichRepository = (
         const faceIds = new Set();
         for (const claimId of selectedIds) {
           const [claim] = await tx`
-          SELECT identity_claim_id, face_id, person_id, state, evidence_refs
-          FROM identity_claim
-          WHERE identity_claim_id = ${claimId}
+          SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
+            claim.state, claim.evidence_refs
+          FROM identity_claim claim
+          JOIN current_source_pack pack
+            ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+            AND pack.evaluation_status = 'passed'
+            AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
+              claim.evidence_refs->>'policy_version'
+          WHERE claim.identity_claim_id = ${claimId}
+            AND claim.origin = 'prime_match'
+            AND coalesce(claim.evidence_refs->>'assignment_decision', '') =
+              'source_pack_prime_match'
           FOR UPDATE
         `;
           if (
@@ -4745,20 +4843,6 @@ export const createCimmichRepository = (
           ) {
             throw Object.assign(
               new Error("Candidate selection is stale; refresh and try again"),
-              {
-                details: { claimId },
-                statusCode: 409,
-              },
-            );
-          }
-          if (
-            claim.evidence_refs?.assignment_decision ===
-            "accepted_matched_digikam_sidecar_face"
-          ) {
-            throw Object.assign(
-              new Error(
-                "Import reconciliation evidence is not an accept-ready machine match",
-              ),
               {
                 details: { claimId },
                 statusCode: 409,

@@ -11,6 +11,7 @@
     type CimmichImmichOnboardingScope,
     type CimmichImmichOnboardingStatus,
   } from '$lib/services/cimmich.service';
+  import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
   import { Route } from '$lib/route';
   import { Icon } from '@immich/ui';
   import { mdiArrowRight, mdiCheckCircleOutline, mdiCogOutline, mdiDatabaseImportOutline, mdiRefresh } from '@mdi/js';
@@ -89,7 +90,7 @@
     try {
       await connectCimmichImmich({
         apiBaseUrl: apiBaseUrl.trim(),
-        commandId: `onboarding.connect.${crypto.randomUUID()}`,
+        commandId: `onboarding.connect.${createCimmichUuid()}`,
         credential,
       });
       credential = '';
@@ -160,7 +161,7 @@
     notice = '';
     try {
       let activePreview = preview;
-      let commandId = `onboarding.import.${crypto.randomUUID()}`;
+      let commandId = `onboarding.import.${createCimmichUuid()}`;
       if (resume && status?.latestRun) {
         scope = copyScope(status.latestRun.scope);
         activePreview = await previewCimmichImmichOnboarding(scope);

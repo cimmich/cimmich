@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import postgres from "postgres";
-import { createImmichInventorySynchronizer } from "../src/immich-inventory.mjs";
+import {
+  cimmichAssetIdForImmich,
+  createImmichInventorySynchronizer,
+} from "../src/immich-inventory.mjs";
 import {
   createInventoryProjectionBridgeRefresher,
   resolveCimmichAssetIdFromDisplayBridge,
@@ -144,15 +147,24 @@ try {
     sourceAssetId: "inventory-a",
   });
   const interrupted = await createSynchronizer().synchronize({ maxPages: 1 });
+  const inventoryAAssetId = cimmichAssetIdForImmich({
+    immichAssetId: "inventory-a",
+    sourceId: "synthetic-immich-primary",
+  });
   assert.equal(interrupted.pagesProcessed, 1);
-  assert.equal(interrupted.admittedAssetCount, 0);
-  assert.deepEqual(interrupted.admittedAssets, []);
+  assert.equal(interrupted.admittedAssetCount, 1);
+  assert.deepEqual(interrupted.admittedAssets, [
+    {
+      assetId: inventoryAAssetId,
+      sourceAssetId: "inventory-a",
+    },
+  ]);
   assert.equal(interrupted.run.state, "processing");
   assert.deepEqual(projectionEvents[0], {
     entries: [
       {
         active: true,
-        assetId: "asset_inventory_legacy_fixture",
+        assetId: inventoryAAssetId,
         filename: "inventory-a.jpg",
         sourceAssetId: "inventory-a",
       },
@@ -161,7 +173,7 @@ try {
     runId: interrupted.run.runId,
     sourceId: "synthetic-immich-primary",
   });
-  assert.deepEqual(liveBridge.get("asset_inventory_legacy_fixture"), {
+  assert.deepEqual(liveBridge.get(inventoryAAssetId), {
     filename: "inventory-a.jpg",
     sourceAssetId: "inventory-a",
   });
@@ -224,12 +236,12 @@ try {
     toolVersion: "synthetic-inventory-provider-v2",
   });
   assert.deepEqual(await replacementProvider.ensureCurrentJobs(), {
-    eligibleAssets: 3,
-    ensuredJobs: 3,
+    eligibleAssets: 2,
+    ensuredJobs: 2,
   });
   assert.deepEqual(await replacementProvider.ensureCurrentJobs(), {
-    eligibleAssets: 3,
-    ensuredJobs: 3,
+    eligibleAssets: 0,
+    ensuredJobs: 0,
   });
   const [{ jobs: replacementJobs }] = await sql`
     SELECT count(*)::int AS jobs FROM media_job job
@@ -238,7 +250,7 @@ try {
     WHERE projection.source_id = 'synthetic-immich-primary'
       AND job.config_digest = ${"8".repeat(64)}
   `;
-  assert.equal(replacementJobs, 3);
+  assert.equal(replacementJobs, 2);
 
   const unchanged = await createSynchronizer().synchronize();
   assert.equal(unchanged.run.state, "completed");
@@ -265,7 +277,7 @@ try {
       AND projection.immich_asset_id = 'inventory-b'
   `;
   assert.deepEqual(firstAbsence, {
-    asset_state: "active",
+    asset_state: "missing",
     projection_state: "suspected_missing",
   });
   const changedJobs = await sql`

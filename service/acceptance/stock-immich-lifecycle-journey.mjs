@@ -133,6 +133,7 @@ try {
     manifest: runtime.recognitionManifest,
     recognizer: runtime.recognizer,
     sql,
+    toolVersion: runtime.pipelineManifest.recognizer.toolVersion,
     workerId: "stock-immich-recognizer",
   });
   const operator = createMediaOperator({

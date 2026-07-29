@@ -15,8 +15,11 @@ from typing import Any, Callable
 
 
 REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-request.v1"
+RESIDENT_REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-resident-request.v1"
 RESULT_SCHEMA = "cimmich.body-pose-result.v1"
 MAX_HEADER_BYTES = 4096
+MAX_RESIDENT_INPUT_BYTES = 128 * 1024 * 1024
+MAX_RESIDENT_METADATA_BYTES = 64 * 1024
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
@@ -34,7 +37,9 @@ PUBLIC_ID = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,63})$")
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, message: str, code: str = "ULTRALYTICS_POSE_PROVIDER_FAILED"):
+        super().__init__(message)
+        self.code = code
 
 
 def fail(code: str) -> int:
@@ -192,27 +197,12 @@ def round6(value: float) -> float:
     return round(max(0.0, min(1.0, float(value))), 6)
 
 
-def execute(
+def project_result(
     request: dict,
-    image_bytes: bytes,
+    image: Any,
     manifest: dict,
-    model_path: Path,
-    model_factory: Callable | None = None,
-    image_decoder: Callable[[bytes], Any] | None = None,
+    model: Any,
 ) -> dict:
-    if model_factory is None:
-        from ultralytics import YOLO
-
-        model_factory = YOLO
-    if image_decoder is None:
-        from PIL import Image
-
-        image_decoder = lambda value: Image.open(io.BytesIO(value)).convert("RGB")
-    try:
-        image = image_decoder(image_bytes)
-    except Exception as error:
-        raise ProviderError("source image is invalid") from error
-    model = model_factory(str(model_path))
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
     results = model.predict(
@@ -258,6 +248,14 @@ def execute(
         x1, y1, x2, y2 = coords
         if x2 <= x1 or y2 <= y1:
             raise ProviderError("pose result contains an invalid Body box")
+        left = round6(x1 / width)
+        top = round6(y1 / height)
+        right = round6(x2 / width)
+        bottom = round6(y2 / height)
+        box_width = round6(right - left)
+        box_height = round6(bottom - top)
+        if box_width <= 0 or box_height <= 0:
+            continue
         keypoints = []
         for joint, point, score in zip(JOINTS, points[index], point_scores[index]):
             confidence_value = round6(score)
@@ -273,10 +271,10 @@ def execute(
         detections.append(
             {
                 "box": {
-                    "h": round6((y2 - y1) / height),
-                    "w": round6((x2 - x1) / width),
-                    "x": round6(x1 / width),
-                    "y": round6(y1 / height),
+                    "h": box_height,
+                    "w": box_width,
+                    "x": left,
+                    "y": top,
                 },
                 "confidence": round6(confidence),
                 "keypoints": keypoints,
@@ -293,13 +291,131 @@ def execute(
         "state": "poses_detected" if detections else "no_pose",
     }
 
+def execute(
+    request: dict,
+    image_bytes: bytes,
+    manifest: dict,
+    model_path: Path,
+    model_factory: Callable | None = None,
+    image_decoder: Callable[[bytes], Any] | None = None,
+) -> dict:
+    if model_factory is None:
+        from ultralytics import YOLO
+
+        model_factory = YOLO
+    if image_decoder is None:
+        from PIL import Image
+
+        image_decoder = lambda value: Image.open(io.BytesIO(value)).convert("RGB")
+    try:
+        image = image_decoder(image_bytes)
+    except Exception as error:
+        raise ProviderError("source image is invalid") from error
+    return project_result(request, image, manifest, model_factory(str(model_path)))
+
+
+def load_resident_request(value: Any) -> dict:
+    exact_object(
+        value,
+        {
+            "assetToken",
+            "inputRevision",
+            "schemaVersion",
+            "sourceContentDigest",
+        },
+        "resident request",
+    )
+    if value["schemaVersion"] != RESIDENT_REQUEST_SCHEMA:
+        raise ProviderError("resident request schema is invalid")
+    for field in ("assetToken", "inputRevision", "sourceContentDigest"):
+        digest_string(value[field], field)
+    return value
+
+
+def read_exact(length: int) -> bytes:
+    value = sys.stdin.buffer.read(length)
+    if len(value) != length:
+        raise EOFError("resident request frame is truncated")
+    return value
+
+
+def read_resident_frame() -> tuple[dict, bytes] | None:
+    header = sys.stdin.buffer.read(16)
+    if not header:
+        return None
+    if len(header) != 16:
+        raise ProviderError("resident request header is invalid")
+    metadata_length, input_length = struct.unpack(">QQ", header)
+    if metadata_length < 2 or metadata_length > MAX_RESIDENT_METADATA_BYTES:
+        raise ProviderError("resident request metadata is oversized")
+    if input_length < 1 or input_length > MAX_RESIDENT_INPUT_BYTES:
+        raise ProviderError("resident source media is oversized")
+    try:
+        metadata = json.loads(read_exact(metadata_length))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProviderError("resident request JSON is invalid") from error
+    return load_resident_request(metadata), read_exact(input_length)
+
+
+def decode_resident_image(encoded: bytes) -> Any:
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(encoded)) as opened:
+            return np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
+    except (OSError, ValueError) as error:
+        raise ProviderError(
+            "resident source media is not a readable image",
+            "ULTRALYTICS_POSE_SOURCE_UNREADABLE",
+        ) from error
+
+
+def execute_resident(request: dict, encoded: bytes, manifest: dict, model: Any) -> dict:
+    if hashlib.sha256(encoded).hexdigest() != request["sourceContentDigest"]:
+        raise ProviderError("resident source media digest changed")
+    return project_result(request, decode_resident_image(encoded), manifest, model)
+
+
+def write_resident_result(value: dict) -> None:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    sys.stdout.buffer.write(struct.pack(">Q", len(payload)))
+    sys.stdout.buffer.write(payload)
+    sys.stdout.buffer.flush()
+
+
+def serve(manifest_path: Path, model_path: Path) -> int:
+    manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
+    from ultralytics import YOLO
+
+    model = YOLO(str(model_path.resolve()))
+    while True:
+        try:
+            frame = read_resident_frame()
+            if frame is None:
+                return 0
+            request, encoded = frame
+            write_resident_result(execute_resident(request, encoded, manifest, model))
+        except ProviderError as error:
+            write_resident_result({"error": {"code": error.code}})
+        except Exception:
+            write_resident_result({"error": {"code": "ULTRALYTICS_POSE_PROVIDER_FAILED"}})
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", type=Path, required=True)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--manifest", type=Path)
     parser.add_argument("--max-input-bytes", type=int, default=128 * 1024 * 1024)
-    parser.add_argument("--model", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--model", type=Path)
+    args, unknown = parser.parse_known_args()
+    if unknown or args.manifest is None or args.model is None:
+        return fail("ULTRALYTICS_POSE_PROVIDER_CONFIG_INVALID")
+    if args.serve:
+        try:
+            return serve(args.manifest, args.model)
+        except Exception:
+            return fail("ULTRALYTICS_POSE_PROVIDER_FAILED")
     if args.max_input_bytes < 1024 or args.max_input_bytes > 512 * 1024 * 1024:
         return fail("ULTRALYTICS_POSE_PROVIDER_CONFIG_INVALID")
     try:

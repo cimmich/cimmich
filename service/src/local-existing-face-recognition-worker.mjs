@@ -63,12 +63,19 @@ export const createLocalExistingFaceRecognitionWorker = ({
   const ledger = createMediaJobLedger(sql);
 
   return Object.freeze({
-    async runNext({ timeoutMs } = {}) {
-      const rows = await sql`
-        SELECT * FROM claim_existing_face_recognition_jobs(
-          ${normalizedWorkerId}, 300, 1
-        )
-      `;
+    async runNext({ expectedJobId = null, timeoutMs } = {}) {
+      const normalizedExpectedJobId = String(expectedJobId || "").trim();
+      const rows = normalizedExpectedJobId
+        ? await sql`
+            SELECT * FROM claim_exact_existing_face_recognition_job(
+              ${normalizedWorkerId}, ${normalizedExpectedJobId}, 300
+            )
+          `
+        : await sql`
+            SELECT * FROM claim_existing_face_recognition_jobs(
+              ${normalizedWorkerId}, 300, 1
+            )
+          `;
       if (!rows.length) {
         return {
           schemaVersion: localExistingFaceRecognitionWorkerVersion,

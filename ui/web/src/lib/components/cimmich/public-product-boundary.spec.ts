@@ -72,7 +72,7 @@ describe('public Cimmich product boundary', () => {
     expect(overlay).toContain('{#each primaryNamedPeopleBodyOverlays as body (body.id)}');
     expect(overlay).toContain('{#each primaryManualPeopleTags as tag (tag.tagId)}');
     expect(overlay).toContain('<span>{tag.subject.displayName}</span>');
-    expect(overlay).toContain('Route.cimmichPet({ petId: tag.subject.subjectId })');
+    expect(overlay).toContain('Route.cimmichPet({ name: tag.subject.displayName, petId: tag.subject.subjectId })');
     expect(overlay).toContain("title={`Open ${tag.subject.displayName}'s profile`}");
     expect(overlay).toContain('data-testid="cimmich-manual-evidence-edit-layer"');
     expect(overlay).toContain('data-testid="cimmich-manual-evidence-edit-tag"');
