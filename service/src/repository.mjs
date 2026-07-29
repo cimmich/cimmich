@@ -5068,6 +5068,121 @@ export const createCimmichRepository = (
       };
     },
 
+    async bulkRejectPersonCandidates({ actorId, claimIds, personId }) {
+      const actor = cleanActor(actorId);
+      if (!actor)
+        throw Object.assign(new Error("Missing Cimmich actor"), {
+          statusCode: 400,
+        });
+      if (!Array.isArray(claimIds)) {
+        throw Object.assign(new Error("claimIds must be an array"), {
+          statusCode: 400,
+        });
+      }
+      const selectedIds = [
+        ...new Set(
+          claimIds.map((value) => String(value || "").trim()).filter(Boolean),
+        ),
+      ];
+      if (selectedIds.length === 0) {
+        throw Object.assign(new Error("Select at least one candidate"), {
+          statusCode: 400,
+        });
+      }
+      if (selectedIds.length > 100) {
+        throw Object.assign(
+          new Error("Reject no more than 100 candidates at once"),
+          { statusCode: 400 },
+        );
+      }
+
+      const result = await sql.begin(async (tx) => {
+        const [target] = await tx`
+        SELECT person_id, display_name
+        FROM person
+        WHERE person_id = ${String(personId || "")}
+          AND status = 'active' AND subject_kind = 'person'
+        FOR UPDATE
+      `;
+        if (!target)
+          throw Object.assign(new Error("Active Person not found"), {
+            statusCode: 404,
+          });
+        await ensureUserCommandReceipt(tx);
+
+        const rejected = [];
+        for (const claimId of selectedIds) {
+          const [claim] = await tx`
+          SELECT identity_claim_id, face_id, person_id, state
+          FROM identity_claim
+          WHERE identity_claim_id = ${claimId}
+          FOR UPDATE
+        `;
+          if (
+            !claim ||
+            claim.person_id !== target.person_id ||
+            claim.state !== "candidate"
+          ) {
+            throw Object.assign(
+              new Error("Candidate selection is stale; refresh and try again"),
+              {
+                details: { claimId },
+                statusCode: 409,
+              },
+            );
+          }
+
+          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+          await tx`
+          INSERT INTO decision (
+            decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+            reason_code, note, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${decisionId}, 'identity_claim', ${claim.identity_claim_id}, 'reject', 'user', ${actor},
+            'person_candidate_bulk_reject', ${`Rejected from ranked candidates for ${target.display_name}`},
+            ${userCommandReceiptId}, 'sensitive-biometric'
+          )
+        `;
+          const [updated] = await tx`
+          UPDATE identity_claim
+          SET state = 'rejected', decision_id = ${decisionId}
+          WHERE identity_claim_id = ${claim.identity_claim_id} AND state = 'candidate'
+          RETURNING identity_claim_id, face_id
+        `;
+          if (!updated) {
+            throw Object.assign(
+              new Error(
+                "Candidate selection changed while rejecting; refresh and try again",
+              ),
+              {
+                details: { claimId: claim.identity_claim_id },
+                statusCode: 409,
+              },
+            );
+          }
+          rejected.push({
+            claimId: updated.identity_claim_id,
+            decisionId,
+            faceId: updated.face_id,
+          });
+        }
+
+        return {
+          changed: true,
+          personId: target.person_id,
+          rejected,
+        };
+      });
+
+      invalidateMachineSuggestions();
+      return {
+        changed: result.changed,
+        personId: result.personId,
+        rejected: result.rejected,
+        rejectedCount: result.rejected.length,
+      };
+    },
+
     async personPresentation({ personId }) {
       await requireVisibleSubject(personId);
       const id = String(personId || "");
@@ -9375,6 +9490,94 @@ export const createCimmichRepository = (
           primeMaintenancePending || bodyLinkage.maintenancePending,
       };
     },
+
+    async bulkReassignFaceIdentities({ actorId, items }) {
+      const actor = cleanActor(actorId);
+      if (!actor)
+        throw Object.assign(new Error("Missing Cimmich actor"), {
+          statusCode: 400,
+        });
+      if (!Array.isArray(items)) {
+        throw Object.assign(new Error("items must be an array"), {
+          statusCode: 400,
+        });
+      }
+      if (items.length === 0) {
+        throw Object.assign(new Error("Select at least one Face"), {
+          statusCode: 400,
+        });
+      }
+      if (items.length > 100) {
+        throw Object.assign(
+          new Error("Assign no more than 100 Faces at once"),
+          { statusCode: 400 },
+        );
+      }
+      const seenFaceIds = new Set();
+      for (const item of items) {
+        const faceId = String(item?.faceId || "").trim();
+        if (!faceId) {
+          throw Object.assign(new Error("Every item requires a faceId"), {
+            statusCode: 400,
+          });
+        }
+        if (seenFaceIds.has(faceId)) {
+          throw Object.assign(
+            new Error("Selection contains the same Face more than once"),
+            {
+              details: { faceId },
+              statusCode: 409,
+            },
+          );
+        }
+        seenFaceIds.add(faceId);
+      }
+
+      // Each assignment keeps the single-command transaction semantics; the
+      // batch exists to replace serial per-item HTTP loops with one request
+      // that reports partial failures instead of stopping at the first one.
+      // A new Person created for one item is reused for later items carrying
+      // the same new name, so one batch cannot create duplicate People.
+      const createdPersonIdByName = new Map();
+      const assigned = [];
+      const failures = [];
+      for (const item of items) {
+        const faceId = String(item.faceId).trim();
+        const input = { actorId, faceId };
+        for (const key of ["personId", "personName", "newPersonName"]) {
+          if (Object.hasOwn(item, key)) input[key] = item[key];
+        }
+        const normalizedNewName =
+          typeof input.newPersonName === "string"
+            ? input.newPersonName.trim().toLowerCase()
+            : "";
+        if (normalizedNewName && createdPersonIdByName.has(normalizedNewName)) {
+          delete input.newPersonName;
+          input.personId = createdPersonIdByName.get(normalizedNewName);
+        }
+        try {
+          const result = await repository.reassignFaceIdentity(input);
+          if (result.createdPerson && normalizedNewName) {
+            createdPersonIdByName.set(normalizedNewName, result.personId);
+          }
+          assigned.push(result);
+        } catch (error) {
+          failures.push({
+            code: error?.code || null,
+            error: String(error?.message || error).slice(0, 300),
+            faceId,
+            statusCode: error?.statusCode || 500,
+          });
+        }
+      }
+      return {
+        assigned,
+        assignedCount: assigned.length,
+        changed: assigned.some((result) => result.changed),
+        failureCount: failures.length,
+        failures,
+      };
+    },
   };
   Object.assign(repository, observationCorrections);
   Object.assign(repository, {
@@ -9387,6 +9590,7 @@ export const createCimmichRepository = (
   });
   Object.assign(repository, {
     dismissIdentityAuditItem: identityAudit.dismiss,
+    dismissIdentityAuditItems: identityAudit.dismissBatch,
     identityAuditItems: identityAudit.items,
     identityAuditLatest: identityAudit.latest,
     identityAuditLeads: identityAudit.leads,

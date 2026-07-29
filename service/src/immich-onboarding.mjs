@@ -373,7 +373,11 @@ export const projectUnlabelledPersonClusters = ({
           assetInputRevision: representative.asset.inputRevision,
           box: representative.face.box,
           faceId: representative.face.id,
+          // Source dimensions the face box was normalized against, so the UI
+          // can frame a pixel-square crop without stretching the face.
+          height: representative.face.imageHeight ?? null,
           sourceAssetId: representative.asset.immichAssetId,
+          width: representative.face.imageWidth ?? null,
         },
         snapshotDigest: digest(snapshot),
         sourceRevision: person.sourceRevision,

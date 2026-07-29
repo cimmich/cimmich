@@ -592,6 +592,53 @@ test("unnamed cluster preview is deterministic and contains only one visible rep
   assert.equal(JSON.stringify(projected).includes("name"), false);
 });
 
+test("unnamed cluster representative carries the face's source image dimensions", () => {
+  const person = {
+    id: "source-person-anonymous",
+    isHidden: false,
+    name: null,
+    sourceRevision: "d".repeat(64),
+  };
+  const asset = {
+    assetType: "image",
+    immichAssetId: "source-asset-1",
+    inputRevision: "c".repeat(64),
+    visibility: "timeline",
+  };
+  const face = {
+    ...sourceFace(
+      "source-face-a",
+      { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+      person.id,
+    ),
+    imageHeight: 3000,
+    imageWidth: 4000,
+    person,
+  };
+  const projected = projectUnlabelledPersonClusters({
+    assets: [asset],
+    facesByAsset: new Map([[asset.immichAssetId, [face]]]),
+  });
+
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].representative.width, 4000);
+  assert.equal(projected[0].representative.height, 3000);
+
+  const withoutDimensions = projectUnlabelledPersonClusters({
+    assets: [asset],
+    facesByAsset: new Map([
+      [
+        asset.immichAssetId,
+        [sourceFace("source-face-a", { h: 0.2, w: 0.2, x: 0.1, y: 0.1 }, person.id)].map(
+          (item) => ({ ...item, person }),
+        ),
+      ],
+    ]),
+  });
+  assert.equal(withoutDimensions[0].representative.width, null);
+  assert.equal(withoutDimensions[0].representative.height, null);
+});
+
 test("unnamed cluster evidence summarizes recurring photos across admitted time and place context", () => {
   const person = {
     id: "source-person-recurring",

@@ -165,6 +165,9 @@
   let pets = $state<CimmichPet[]>([]);
   let petsLoadGeneration = 0;
   let mediaLoadGeneration = 0;
+  let petMatchesLoadGeneration = 0;
+  let petUnknownLoadGeneration = 0;
+  let libraryLoadGeneration = 0;
   let pickerError = $state('');
   let pickerSelectedIds = $state<string[]>([]);
   let photosTab = $state<HTMLButtonElement | null>(null);
@@ -704,36 +707,46 @@
   };
 
   const loadPetMatches = async (pet: CimmichPet) => {
+    const generation = ++petMatchesLoadGeneration;
     petMatchesLoaded = false;
     petMatchError = null;
     try {
       const result = await getCimmichPetMatchSuggestions(pet.petId);
-      if (selectedPet?.petId !== pet.petId) {
+      if (generation !== petMatchesLoadGeneration || selectedPet?.petId !== pet.petId) {
         return;
       }
       petMatches = result.items;
     } catch (error_) {
-      if (selectedPet?.petId !== pet.petId) {
+      if (generation !== petMatchesLoadGeneration || selectedPet?.petId !== pet.petId) {
         return;
       }
       petMatchError = asServiceError(error_);
     } finally {
-      if (selectedPet?.petId === pet.petId) {
+      if (generation === petMatchesLoadGeneration && selectedPet?.petId === pet.petId) {
         petMatchesLoaded = true;
       }
     }
   };
 
   const loadUnknownPets = async () => {
+    const generation = ++petUnknownLoadGeneration;
     petUnknownLoaded = false;
     petUnknownError = null;
     try {
       const result = await getCimmichPetMatchUnknown(200);
+      if (generation !== petUnknownLoadGeneration) {
+        return;
+      }
       petUnknown = result.items;
     } catch (error_) {
+      if (generation !== petUnknownLoadGeneration) {
+        return;
+      }
       petUnknownError = asServiceError(error_);
     } finally {
-      petUnknownLoaded = true;
+      if (generation === petUnknownLoadGeneration) {
+        petUnknownLoaded = true;
+      }
     }
   };
 
@@ -1073,16 +1086,26 @@
   };
 
   const loadLibraryAssets = async () => {
+    const generation = ++libraryLoadGeneration;
     isLoadingLibrary = true;
     pickerError = '';
     try {
       const result = await searchAssets({ metadataSearchDto: { size: 80, withExif: true } });
       const recent = result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline);
-      libraryAssets = await filterVisibleCimmichAssets(recent, getCimmichAssetEvidence);
+      const visible = await filterVisibleCimmichAssets(recent, getCimmichAssetEvidence);
+      if (generation !== libraryLoadGeneration) {
+        return;
+      }
+      libraryAssets = visible;
     } catch {
+      if (generation !== libraryLoadGeneration) {
+        return;
+      }
       pickerError = 'Your photo library could not be loaded. No Pet evidence has changed.';
     } finally {
-      isLoadingLibrary = false;
+      if (generation === libraryLoadGeneration) {
+        isLoadingLibrary = false;
+      }
     }
   };
 

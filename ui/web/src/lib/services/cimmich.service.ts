@@ -1958,7 +1958,9 @@ export type CimmichImmichPersonCluster = {
     assetInputRevision: string;
     box: { h: number; w: number; x: number; y: number };
     faceId: string;
+    height?: number | null;
     sourceAssetId: string;
+    width?: number | null;
   };
   resolution:
     | { state: 'stale' | 'unresolved' }
@@ -2681,6 +2683,26 @@ export const dismissCimmichIdentityAuditItem = (kind: CimmichIdentityAuditItem['
     state: 'dismissed' | 'unchanged';
   }>(`/v1/review/identity-audit/items/${kind}/${encodeURIComponent(faceId)}/dismiss`, {
     body: '{}',
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
+export const dismissCimmichIdentityAuditItemsBatch = (
+  items: Array<{ faceId: string; kind: CimmichIdentityAuditItem['kind'] }>,
+) =>
+  request<{
+    changed: boolean;
+    dismissedCount: number;
+    items: Array<{
+      changed: boolean;
+      faceId: string;
+      kind: CimmichIdentityAuditItem['kind'];
+      schemaVersion: 'cimmich.identity-audit.v2';
+      state: 'dismissed' | 'unchanged';
+    }>;
+    schemaVersion: 'cimmich.identity-audit.v2';
+  }>('/v1/review/identity-audit/items/dismiss:batch', {
+    body: JSON.stringify({ items }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });
@@ -3544,6 +3566,18 @@ export const bulkAcceptCimmichPersonCandidates = (personId: string, claimIds: st
     method: 'POST',
   });
 
+export const bulkRejectCimmichPersonCandidates = (personId: string, claimIds: string[]) =>
+  request<{
+    changed: boolean;
+    personId: string;
+    rejected: Array<{ claimId: string; decisionId: string; faceId: string }>;
+    rejectedCount: number;
+  }>(`/v1/people/${encodeURIComponent(personId)}/candidates/bulk-reject`, {
+    body: JSON.stringify({ claimIds }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
 export const getCimmichPersonSetup = (personId: string) =>
   request<CimmichPersonSetup>(`/v1/people/${encodeURIComponent(personId)}/setup`);
 
@@ -4065,6 +4099,28 @@ export const undoCimmichIdentityCorrection = (decisionId: string, commandId: str
 export const setCimmichFaceIdentity = (faceId: string, selector: CimmichFaceIdentitySelector) =>
   request<CimmichFaceIdentityResult>(`/v1/faces/${encodeURIComponent(faceId)}/identity`, {
     body: JSON.stringify(selector),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
+export type CimmichFaceIdentityBatchFailure = {
+  code: string | null;
+  error: string;
+  faceId: string;
+  statusCode: number;
+};
+
+export const setCimmichFaceIdentitiesBatch = (
+  items: Array<CimmichFaceIdentitySelector & { faceId: string }>,
+) =>
+  request<{
+    assigned: CimmichFaceIdentityResult[];
+    assignedCount: number;
+    changed: boolean;
+    failureCount: number;
+    failures: CimmichFaceIdentityBatchFailure[];
+  }>('/v1/faces/identity:batch', {
+    body: JSON.stringify({ items }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });

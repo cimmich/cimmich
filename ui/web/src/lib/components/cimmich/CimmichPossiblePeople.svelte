@@ -9,6 +9,7 @@
     type CimmichPerson,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { cimmichSquareCropBackgroundStyle, cimmichSquareCropFrame } from '$lib/utils/cimmich-crop';
   import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
@@ -38,6 +39,7 @@
   let loadingPeople = $state(false);
   let openClusterId = $state('');
   let selectedPeople = $state<Record<string, string>>({});
+  let loadGeneration = 0;
   let newNames = $state<Record<string, string>>({});
   let visibleCount = $state(20);
 
@@ -89,10 +91,14 @@
   const remainingCount = $derived(Math.max(0, displayedClusters.length - visibleClusters.length));
 
   const load = async () => {
+    const generation = ++loadGeneration;
     loading = true;
     error = '';
     try {
       const preview = await previewCimmichImmichPersonClusters(scope);
+      if (generation !== loadGeneration) {
+        return;
+      }
       clusters = preview.clusters;
       onactivecount(
         preview.clusters.filter(
@@ -106,9 +112,14 @@
       );
       visibleCount = Math.min(Math.max(20, visibleCount), Math.max(20, preview.clusters.length));
     } catch (error_) {
+      if (generation !== loadGeneration) {
+        return;
+      }
       error = error_ instanceof Error ? error_.message : 'Cimmich could not read recurring unnamed face groups.';
     } finally {
-      loading = false;
+      if (generation === loadGeneration) {
+        loading = false;
+      }
     }
   };
 
@@ -238,30 +249,41 @@
 
   const cropFrame = (cluster: CimmichImmichPersonCluster) => {
     const box = cluster.representative.box;
-    const cropSize = Math.min(1, Math.max(box.w * 4, box.h * 4, 0.01));
-    const centerX = box.x + box.w / 2;
-    const centerY = box.y + box.h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropSize, centerX - cropSize / 2));
-    const cropY = Math.max(0, Math.min(1 - cropSize, centerY - cropSize / 2));
-    return { box, centerX, centerY, cropSize, cropX, cropY };
+    return {
+      box,
+      centerX: box.x + box.w / 2,
+      centerY: box.y + box.h / 2,
+      ...cimmichSquareCropFrame({
+        boxH: box.h,
+        boxW: box.w,
+        boxX: box.x,
+        boxY: box.y,
+        height: cluster.representative.height ?? 0,
+        padding: 4,
+        width: cluster.representative.width ?? 0,
+      }),
+    };
   };
 
   const cropStyle = (cluster: CimmichImmichPersonCluster) => {
-    const { cropSize, cropX, cropY } = cropFrame(cluster);
-    const positionX = (cropX / Math.max(0.0001, 1 - cropSize)) * 100;
-    const positionY = (cropY / Math.max(0.0001, 1 - cropSize)) * 100;
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: cluster.representative.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropSize}% ${100 / cropSize}%`,
-      `background-position: ${Math.max(0, Math.min(100, positionX))}% ${Math.max(0, Math.min(100, positionY))}%`,
-    ].join('; ');
+    const box = cluster.representative.box;
+    return cimmichSquareCropBackgroundStyle({
+      boxH: box.h,
+      boxW: box.w,
+      boxX: box.x,
+      boxY: box.y,
+      height: cluster.representative.height ?? 0,
+      padding: 4,
+      url: getAssetMediaUrl({ id: cluster.representative.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: cluster.representative.width ?? 0,
+    });
   };
 
   const faceMarkerStyle = (cluster: CimmichImmichPersonCluster) => {
-    const { box, centerX, centerY, cropSize, cropX, cropY } = cropFrame(cluster);
-    const diameter = Math.min(96, (Math.max(box.w, box.h) * 1.18 * 100) / cropSize);
-    const left = ((centerX - cropX) * 100) / cropSize - diameter / 2;
-    const top = ((centerY - cropY) * 100) / cropSize - diameter / 2;
+    const { box, centerX, centerY, cropH, cropW, cropX, cropY } = cropFrame(cluster);
+    const diameter = Math.min(96, Math.max(box.w / cropW, box.h / cropH) * 1.18 * 100);
+    const left = ((centerX - cropX) * 100) / cropW - diameter / 2;
+    const top = ((centerY - cropY) * 100) / cropH - diameter / 2;
     return [
       `height: ${diameter}%`,
       `left: ${Math.max(0, Math.min(100 - diameter, left))}%`,

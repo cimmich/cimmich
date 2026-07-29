@@ -56,11 +56,12 @@ describe('People overview layout', () => {
 
   it('keeps circular People portraits proportional while cropping them', async () => {
     const source = await readPeopleOverview();
+    const cropHelper = await readFile('src/lib/utils/cimmich-crop.ts', 'utf8');
 
     expect(source).toContain('class="max-w-none"');
     expect(source).toContain('cimmichSquareObservationStyle');
-    expect(source).toContain('width: ${100 / cropW}%');
-    expect(source).toContain('height: auto');
+    expect(cropHelper).toContain('width: ${100 / cropW}%');
+    expect(cropHelper).toContain('height: auto');
     expect(source).not.toContain('class="block size-full bg-cover bg-center"');
   });
 

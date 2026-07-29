@@ -1363,5 +1363,35 @@ export const createIdentityAudit = (
     };
   };
 
-  return { dismiss, items, latest, leads, start };
+  const dismissBatch = async ({ actorId, items: inputItems } = {}) => {
+    if (!Array.isArray(inputItems) || inputItems.length === 0) {
+      throw Object.assign(new Error("Identity audit decision is incomplete"), {
+        code: "IDENTITY_AUDIT_DECISION_INVALID",
+        statusCode: 400,
+      });
+    }
+    if (inputItems.length > 100) {
+      throw Object.assign(
+        new Error("Dismiss no more than 100 audit items at once"),
+        {
+          code: "IDENTITY_AUDIT_DECISION_INVALID",
+          statusCode: 400,
+        },
+      );
+    }
+    const results = [];
+    for (const item of inputItems) {
+      results.push(
+        await dismiss({ actorId, faceId: item?.faceId, kind: item?.kind }),
+      );
+    }
+    return {
+      changed: results.some((result) => result.changed),
+      dismissedCount: results.filter((result) => result.changed).length,
+      items: results,
+      schemaVersion: identityAuditSchemaVersion,
+    };
+  };
+
+  return { dismiss, dismissBatch, items, latest, leads, start };
 };
