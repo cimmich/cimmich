@@ -2896,6 +2896,23 @@ export const createCimmichServer = ({
         );
         return;
       }
+      const personCandidateRejectMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/candidates\/bulk-reject$/,
+      );
+      if (request.method === "POST" && personCandidateRejectMatch) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.bulkRejectPersonCandidates({
+            actorId: request.headers["x-cimmich-actor"],
+            claimIds: body.claimIds,
+            personId: decodeURIComponent(personCandidateRejectMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       const personIdentityMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/identity$/,
       );
@@ -3164,6 +3181,23 @@ export const createCimmichServer = ({
             limit: url.searchParams.get("limit"),
             offset: url.searchParams.get("offset"),
             personId: url.searchParams.get("personId"),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/review/identity-audit/items/dismiss:batch"
+      ) {
+        requireProjection("machine_suggestions");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.dismissIdentityAuditItems({
+            actorId: request.headers["x-cimmich-actor"],
+            items: body.items,
           }),
           allowedOrigin,
         );
@@ -3454,6 +3488,37 @@ export const createCimmichServer = ({
         return;
       }
 
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/faces/identity:batch"
+      ) {
+        requireProjection("asset_detail");
+        const body = await readJsonBody(request);
+        if (!Array.isArray(body.items)) {
+          throw Object.assign(new Error("items must be an array"), {
+            statusCode: 400,
+          });
+        }
+        sendJson(
+          response,
+          200,
+          await repository.bulkReassignFaceIdentities({
+            actorId: request.headers["x-cimmich-actor"],
+            items: body.items.map((item) => ({
+              faceId: item?.faceId,
+              ...exactFaceIdentitySelector(
+                item && typeof item === "object"
+                  ? Object.fromEntries(
+                      Object.entries(item).filter(([key]) => key !== "faceId"),
+                    )
+                  : item,
+              ),
+            })),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       const faceIdentityMatch = url.pathname.match(
         /^\/v1\/faces\/([^/]+)\/identity$/,
       );

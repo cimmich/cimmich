@@ -25,6 +25,7 @@
     type CimmichPersonCandidateSummary,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { cimmichSquareCropBackgroundStyle, cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccountMultipleOutline,
@@ -209,63 +210,20 @@
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join('') || '?';
-  const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
-
   const cimmichCandidateCropStyle = (candidate: CimmichIdentityCandidate, padding = 2.4) => {
     if (!candidate.sourceAssetId) {
       return '';
     }
-    const cropWidth = Math.max(0.01, Math.min(1, candidate.box_w * padding));
-    const cropHeight = Math.max(0.01, Math.min(1, candidate.box_h * padding));
-    const cropSize = Math.min(1, Math.max(cropWidth, cropHeight));
-    const centerX = candidate.box_x + candidate.box_w / 2;
-    const centerY = candidate.box_y + candidate.box_h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropSize, centerX - cropSize / 2));
-    const cropY = Math.max(0, Math.min(1 - cropSize, centerY - cropSize / 2));
-    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropSize)) * 100);
-    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropSize)) * 100);
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: candidate.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropSize}% ${100 / cropSize}%`,
-      `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
-  };
-
-  const cimmichSquareObservationStyle = ({
-    boxH,
-    boxW,
-    boxX,
-    boxY,
-    height,
-    padding,
-    width,
-  }: {
-    boxH: number;
-    boxW: number;
-    boxX: number;
-    boxY: number;
-    height: number;
-    padding: number;
-    width: number;
-  }) => {
-    if (!width || !height) {
-      return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
-    }
-    const cropPixels = Math.min(width, height, Math.max(boxW * width * padding, boxH * height * padding, 1));
-    const cropW = cropPixels / width;
-    const cropH = cropPixels / height;
-    const centerX = boxX + boxW / 2;
-    const centerY = boxY + boxH / 2;
-    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
-    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
-    return [
-      'position: absolute',
-      `width: ${100 / cropW}%`,
-      'height: auto',
-      'max-width: none',
-      `left: ${(-cropX / cropW) * 100}%`,
-      `top: ${(-cropY / cropH) * 100}%`,
-    ].join('; ');
+    return cimmichSquareCropBackgroundStyle({
+      boxH: candidate.box_h,
+      boxW: candidate.box_w,
+      boxX: candidate.box_x,
+      boxY: candidate.box_y,
+      height: candidate.height ?? 0,
+      padding,
+      url: getAssetMediaUrl({ id: candidate.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: candidate.width ?? 0,
+    });
   };
 
   const cimmichPersonCropStyle = (person: CimmichPerson) => {

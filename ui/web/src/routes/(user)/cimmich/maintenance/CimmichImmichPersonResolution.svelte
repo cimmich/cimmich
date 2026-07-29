@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Route } from '$lib/route';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
   import {
     getCimmichPeople,
     previewCimmichImmichPersonClusters,
@@ -91,18 +92,16 @@
 
   const cropStyle = (cluster: CimmichImmichPersonCluster) => {
     const box = cluster.representative.box;
-    const cropSize = Math.min(1, Math.max(box.w * 2.4, box.h * 2.4, 0.01));
-    const centerX = box.x + box.w / 2;
-    const centerY = box.y + box.h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropSize, centerX - cropSize / 2));
-    const cropY = Math.max(0, Math.min(1 - cropSize, centerY - cropSize / 2));
-    const positionX = (cropX / Math.max(0.0001, 1 - cropSize)) * 100;
-    const positionY = (cropY / Math.max(0.0001, 1 - cropSize)) * 100;
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: cluster.representative.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropSize}% ${100 / cropSize}%`,
-      `background-position: ${Math.max(0, Math.min(100, positionX))}% ${Math.max(0, Math.min(100, positionY))}%`,
-    ].join('; ');
+    return cimmichSquareCropBackgroundStyle({
+      boxH: box.h,
+      boxW: box.w,
+      boxX: box.x,
+      boxY: box.y,
+      height: cluster.representative.height ?? 0,
+      padding: 2.4,
+      url: getAssetMediaUrl({ id: cluster.representative.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: cluster.representative.width ?? 0,
+    });
   };
 
   const personName = (personId: string | null) =>

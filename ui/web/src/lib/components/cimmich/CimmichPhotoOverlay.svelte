@@ -37,6 +37,7 @@
     replaceCimmichManualSubjectTag,
     setCimmichBodySelection,
     setCimmichFaceBucket,
+    setCimmichFaceIdentitiesBatch,
     setCimmichFaceIdentity,
     setCimmichFaceReviewDisposition,
     setCimmichManualPresence,
@@ -280,7 +281,16 @@
   let faceMatchesForId = $state('');
   let clearIdentityConfirmId = $state('');
   let rejectCandidateConfirmId = $state('');
-  let bulkNameDrafts = $state<Record<string, string>>({});
+  // User-typed bulk-name edits only; the visible drafts are derived from these
+  // plus each face's current name so the panel never writes what it reads.
+  let bulkNameDraftOverrides = $state<Record<string, string>>({});
+  const bulkNameDrafts = $derived.by(() => {
+    const drafts: Record<string, string> = {};
+    for (const face of faceOverlays) {
+      drafts[face.id] = bulkNameDraftOverrides[face.id] ?? face.name ?? faceCandidateDisplayName(face) ?? '';
+    }
+    return drafts;
+  });
   let bulkActionMessage = $state('');
   let bulkActionError = $state('');
   let isBulkSaving = $state(false);
@@ -427,6 +437,25 @@
     action: Parameters<typeof updateCimmichFace>[0]['action'] | 'clear_identity';
   };
 
+  const cimmichRenameSelector = (name: string): CimmichFaceIdentitySelector => {
+    const normalizedName = normalizeName(name);
+    const existingPerson = manualTagSubjects.find(
+      (subject) =>
+        subject.kind === 'person' &&
+        normalizeName(subject.name).toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
+    );
+    const knownPersonName = knownNameOptions.find(
+      (candidateName) => normalizeName(candidateName).toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
+    );
+    return faceSelectedPersonId
+      ? { personId: faceSelectedPersonId }
+      : existingPerson
+        ? { personId: existingPerson.id }
+        : knownPersonName
+          ? { personName: knownPersonName }
+          : { newPersonName: normalizedName };
+  };
+
   const updateOverlayFace = async (payload: OverlayFaceUpdatePayload) => {
     if (!isCimmichEvidence) {
       if (payload.action === 'clear_identity') {
@@ -489,23 +518,7 @@
     if (payload.action !== 'rename' || !payload.faceId || !payload.name) {
       throw new Error('This Cimmich view currently supports existing-Person name reassignment only');
     }
-    const normalizedName = normalizeName(payload.name);
-    const existingPerson = manualTagSubjects.find(
-      (subject) =>
-        subject.kind === 'person' &&
-        normalizeName(subject.name).toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
-    );
-    const knownPersonName = knownNameOptions.find(
-      (name) => normalizeName(name).toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
-    );
-    const selector: CimmichFaceIdentitySelector = faceSelectedPersonId
-      ? { personId: faceSelectedPersonId }
-      : existingPerson
-        ? { personId: existingPerson.id }
-        : knownPersonName
-          ? { personName: knownPersonName }
-          : { newPersonName: normalizedName };
-    const identity = await setCimmichFaceIdentity(payload.faceId, selector);
+    const identity = await setCimmichFaceIdentity(payload.faceId, cimmichRenameSelector(payload.name));
     const refreshed = await getCimmichEvidenceForAsset(asset);
     if (!refreshed.evidence) {
       throw new Error('Cimmich identity saved but the photo evidence did not reload');
@@ -1603,14 +1616,9 @@
       secondary: 'Supporting matcher reference',
     })[bucket];
   const bulkNameSuggestion = (face: CimmichFaceOverlay) => closestName(bulkNameDrafts[face.id] ?? '', face.name);
-  const sameDrafts = (left: Record<string, string>, right: Record<string, string>) => {
-    const leftKeys = Object.keys(left);
-    const rightKeys = Object.keys(right);
-    return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
-  };
 
   const setBulkDraft = (faceId: string, value: string) => {
-    bulkNameDrafts = { ...bulkNameDrafts, [faceId]: value };
+    bulkNameDraftOverrides = { ...bulkNameDraftOverrides, [faceId]: value };
   };
 
   const startBulkPanelDrag = (event: PointerEvent) => {
@@ -2292,22 +2300,61 @@
     bulkActionError = '';
 
     try {
-      let latestEvidence = evidence;
-      let latestBundle = bundle;
-      for (const change of changes) {
-        const result = await updateOverlayFace({
-          action: change.name ? 'rename' : 'clear_identity',
-          faceId: change.face.id,
-          filename: latestEvidence.filename,
-          mediaId: latestEvidence.mediaId,
-          name: change.name,
-        });
-        latestEvidence = result.evidence;
-        latestBundle = result.bundle;
+      if (!isCimmichEvidence) {
+        let latestEvidence = evidence;
+        let latestBundle = bundle;
+        for (const change of changes) {
+          const result = await updateOverlayFace({
+            action: change.name ? 'rename' : 'clear_identity',
+            faceId: change.face.id,
+            filename: latestEvidence.filename,
+            mediaId: latestEvidence.mediaId,
+            name: change.name,
+          });
+          latestEvidence = result.evidence;
+          latestBundle = result.bundle;
+        }
+        evidence = latestEvidence;
+        bundle = latestBundle;
+        bulkActionMessage = `Saved ${changes.length} face ${changes.length === 1 ? 'identity change' : 'identity changes'}.`;
+        return;
       }
-      evidence = latestEvidence;
-      bundle = latestBundle;
-      bulkActionMessage = `Saved ${changes.length} face ${changes.length === 1 ? 'identity change' : 'identity changes'}.`;
+
+      // One batched request for the renames, then a single evidence reload,
+      // instead of a serial per-face HTTP loop with a reload per face.
+      const renameChanges = changes.filter(({ name }) => name);
+      const clearChanges = changes.filter(({ name }) => !name);
+      let savedCount = 0;
+      let failures: string[] = [];
+      if (renameChanges.length > 0) {
+        const batch = await setCimmichFaceIdentitiesBatch(
+          renameChanges.map(({ face, name }) => ({ faceId: face.id, ...cimmichRenameSelector(name) })),
+        );
+        savedCount += batch.assignedCount;
+        failures = batch.failures.map((failure) => failure.error);
+      }
+      for (const change of clearChanges) {
+        const face = faceOverlays.find((item) => item.id === change.face.id);
+        if (!face?.identityClaimId) {
+          throw new Error('Accepted Cimmich identity claim not found');
+        }
+        const correction = await rejectCimmichAcceptedIdentity(
+          face.identityClaimId,
+          createCimmichIdentityCorrectionCommandId('photo-not-this-person'),
+        );
+        const history = await getCimmichIdentityCorrectionHistory(face.identityClaimId);
+        identityCorrectionUndoDecisionId =
+          history.items.find(
+            (item) => item.decisionId === correction.decisionId && item.undo.eligible && item.undo.decisionId,
+          )?.undo.decisionId ?? '';
+        savedCount += 1;
+      }
+      await refreshDetailedEvidence();
+      bulkActionMessage = `Saved ${savedCount} face ${savedCount === 1 ? 'identity change' : 'identity changes'}.`;
+      bulkActionError =
+        failures.length > 0
+          ? `${failures.length} face ${failures.length === 1 ? 'change' : 'changes'} could not be saved: ${failures[0]}`
+          : '';
     } catch (error) {
       bulkActionError = error instanceof Error ? error.message : 'Unable to save bulk face names';
     } finally {
@@ -3461,6 +3508,7 @@
     identityCorrectionUndoDecisionId = '';
     bulkActionMessage = '';
     bulkActionError = '';
+    bulkNameDraftOverrides = {};
     isEditingFaceName = false;
     isTaggingMode = false;
     manualTagDraft = undefined;
@@ -3520,15 +3568,6 @@
     };
   });
 
-  $effect(() => {
-    const nextDrafts: Record<string, string> = {};
-    for (const face of faceOverlays) {
-      nextDrafts[face.id] = bulkNameDrafts[face.id] ?? face.name ?? faceCandidateDisplayName(face) ?? '';
-    }
-    if (!sameDrafts(bulkNameDrafts, nextDrafts)) {
-      bulkNameDrafts = nextDrafts;
-    }
-  });
 </script>
 
 <svelte:window

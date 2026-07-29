@@ -26,12 +26,14 @@
     acceptCimmichMachineSuggestion,
     addCimmichPersonAlias,
     bulkAcceptCimmichPersonCandidates,
+    bulkRejectCimmichPersonCandidates,
     CimmichServiceError,
     createCimmichIdentityCorrectionCommandId,
     createCimmichPersonMergeIntentTracker,
     decideCimmichFaceModifierProposal,
     decideCimmichIdentityCandidate,
     dismissCimmichIdentityAuditItem,
+    dismissCimmichIdentityAuditItemsBatch,
     getCimmichFaceMatches,
     getCimmichContextEntity,
     getCimmichHoldingMatchesBatch,
@@ -59,6 +61,7 @@
     rescanCimmichHeadEvidence,
     removeCimmichPersonAlias,
     setCimmichFaceBucket,
+    setCimmichFaceIdentitiesBatch,
     setCimmichFaceModifier,
     setCimmichPersonCategory,
     setCimmichPersonPresentation,
@@ -100,6 +103,7 @@
     type CimmichResolvedAsset,
   } from '$lib/services/cimmich-evidence.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccount,
@@ -563,7 +567,10 @@
           detectorConfidence: candidate.detection_confidence,
           margin,
           matchScore,
-          secondBestScore: matchScore !== null && margin !== null ? matchScore - margin : null,
+          // A sole-candidate lead carries margin = score + 1 (matcherPolicyMargin
+          // with no runner-up), so a real second-best score only exists when the
+          // margin does not exceed the winning score.
+          secondBestScore: matchScore !== null && margin !== null && margin <= matchScore ? matchScore - margin : null,
         },
         captureTime: candidate.capture_time,
         detectionConfidence: candidate.detection_confidence,
@@ -1215,18 +1222,16 @@
     if (!row.sourceAssetId || row.box_x === null || row.box_y === null || row.box_w === null || row.box_h === null) {
       return '';
     }
-    const cropSize = Math.min(1, Math.max(row.box_w * 1.15, row.box_h * 1.15, 0.01));
-    const centerX = row.box_x + row.box_w / 2;
-    const centerY = row.box_y + row.box_h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropSize, centerX - cropSize / 2));
-    const cropY = Math.max(0, Math.min(1 - cropSize, centerY - cropSize / 2));
-    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropSize)) * 100);
-    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropSize)) * 100);
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: row.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropSize}% ${100 / cropSize}%`,
-      `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
+    return cimmichSquareCropBackgroundStyle({
+      boxH: row.box_h,
+      boxW: row.box_w,
+      boxX: row.box_x,
+      boxY: row.box_y,
+      height: row.height ?? 0,
+      padding: 1.15,
+      url: getAssetMediaUrl({ id: row.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: row.width ?? 0,
+    });
   };
 
   const cimmichPersonHeroStyle = (row: CimmichPerson) => {
@@ -1282,38 +1287,32 @@
     if (!candidate.sourceAssetId) {
       return '';
     }
-    const cropW = Math.min(1, Math.max(candidate.box_w * 2.4, 0.01));
-    const cropH = Math.min(1, Math.max(candidate.box_h * 2.4, 0.01));
-    const centerX = candidate.box_x + candidate.box_w / 2;
-    const centerY = candidate.box_y + candidate.box_h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
-    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
-    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropW)) * 100);
-    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropH)) * 100);
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: candidate.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropW}% ${100 / cropH}%`,
-      `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
+    return cimmichSquareCropBackgroundStyle({
+      boxH: candidate.box_h,
+      boxW: candidate.box_w,
+      boxX: candidate.box_x,
+      boxY: candidate.box_y,
+      height: candidate.height ?? 0,
+      padding: 2.4,
+      url: getAssetMediaUrl({ id: candidate.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: candidate.width ?? 0,
+    });
   };
 
   const cimmichMachineSuggestionCropStyle = (suggestion: CimmichMachineSuggestion) => {
     if (!suggestion.sourceAssetId) {
       return '';
     }
-    const cropW = Math.min(1, Math.max(suggestion.box_w * 2.8, 0.01));
-    const cropH = Math.min(1, Math.max(suggestion.box_h * 2.8, 0.01));
-    const centerX = suggestion.box_x + suggestion.box_w / 2;
-    const centerY = suggestion.box_y + suggestion.box_h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
-    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
-    const positionX = clampPercent((cropX / Math.max(0.0001, 1 - cropW)) * 100);
-    const positionY = clampPercent((cropY / Math.max(0.0001, 1 - cropH)) * 100);
-    return [
-      `background-image: url("${getAssetMediaUrl({ id: suggestion.sourceAssetId, size: AssetMediaSize.Preview })}")`,
-      `background-size: ${100 / cropW}% ${100 / cropH}%`,
-      `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
+    return cimmichSquareCropBackgroundStyle({
+      boxH: suggestion.box_h,
+      boxW: suggestion.box_w,
+      boxX: suggestion.box_x,
+      boxY: suggestion.box_y,
+      height: suggestion.height ?? 0,
+      padding: 2.8,
+      url: getAssetMediaUrl({ id: suggestion.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: suggestion.width ?? 0,
+    });
   };
 
   const cimmichAuditCropStyle = (
@@ -1792,11 +1791,11 @@
     cimmichCandidateSaving = true;
     cimmichCandidateError = '';
     try {
-      await Promise.all(cimmichCandidateSelection.map((claimId) => decideCimmichIdentityCandidate(claimId, 'reject')));
+      const result = await bulkRejectCimmichPersonCandidates(cimmichPerson.person_id, cimmichCandidateSelection);
       cimmichCandidates = await getCimmichPersonCandidates(cimmichPerson.person_id);
       cimmichCandidateSelection = [];
       cimmichCandidateRejectConfirm = false;
-      cimmichCandidateMessage = 'Selected suggestions rejected.';
+      cimmichCandidateMessage = `${result.rejectedCount} selected ${result.rejectedCount === 1 ? 'suggestion' : 'suggestions'} rejected.`;
     } catch (error) {
       cimmichCandidateRejectConfirm = false;
       cimmichCandidateError = error instanceof Error ? error.message : 'Unable to reject selected suggestions';
@@ -1820,9 +1819,7 @@
     cimmichCandidateError = '';
     cimmichCandidateMessage = '';
     try {
-      for (const faceId of selectedFaceIds) {
-        await acceptCimmichMachineSuggestion(faceId, personId);
-      }
+      const batch = await setCimmichFaceIdentitiesBatch(selectedFaceIds.map((faceId) => ({ faceId, personId })));
       const [machineSuggestions, candidates, assetsPage, people] = await Promise.all([
         getCimmichMachineSuggestions(80, personId),
         getCimmichPersonCandidates(personId),
@@ -1838,7 +1835,11 @@
       cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichMachineSuggestionSelection = [];
       cimmichMachineSuggestionConfirm = false;
-      cimmichCandidateMessage = `${selectedFaceIds.length} matching ${selectedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} confirmed as ${cimmichPerson.display_name}.`;
+      cimmichCandidateMessage = `${batch.assignedCount} matching ${batch.assignedCount === 1 ? 'suggestion' : 'suggestions'} confirmed as ${cimmichPerson.display_name}.`;
+      cimmichCandidateError =
+        batch.failureCount > 0
+          ? `${batch.failureCount} ${batch.failureCount === 1 ? 'suggestion' : 'suggestions'} could not be confirmed: ${batch.failures[0].error}`
+          : '';
       cimmichIdentityLoaded = false;
       cimmichIdentityFaces = [];
       cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
@@ -2058,17 +2059,46 @@
       }
 
       const remainingItems = action === 'accept' ? auditItems : selectedItems;
-      for (const item of remainingItems) {
-        await (item.candidateClaimId
-          ? decideCimmichIdentityCandidate(item.candidateClaimId, 'reject')
-          : action === 'accept'
-            ? acceptCimmichMachineSuggestion(item.faceId, item.suggestedPerson.personId)
-            : dismissCimmichIdentityAuditItem(item.kind, item.faceId));
-        completedFaceIds.push(item.faceId);
+      if (action === 'accept' && remainingItems.length > 0) {
+        const batch = await setCimmichFaceIdentitiesBatch(
+          remainingItems.map((item) => ({ faceId: item.faceId, personId: item.suggestedPerson.personId })),
+        );
+        completedFaceIds.push(...batch.assigned.map((result) => result.faceId));
         cimmichIdentityAuditProgress = {
           completed: completedFaceIds.length,
           total: selectedItems.length,
         };
+        if (batch.failureCount > 0) {
+          throw new Error(
+            `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
+          );
+        }
+      } else if (action === 'dismiss') {
+        const candidateRejectItems = remainingItems.filter(
+          (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
+        );
+        const dismissItems = remainingItems.filter((item) => !item.candidateClaimId);
+        if (candidateRejectItems.length > 0) {
+          await bulkRejectCimmichPersonCandidates(
+            cimmichPerson.person_id,
+            candidateRejectItems.map((item) => item.candidateClaimId),
+          );
+          completedFaceIds.push(...candidateRejectItems.map((item) => item.faceId));
+          cimmichIdentityAuditProgress = {
+            completed: completedFaceIds.length,
+            total: selectedItems.length,
+          };
+        }
+        if (dismissItems.length > 0) {
+          await dismissCimmichIdentityAuditItemsBatch(
+            dismissItems.map((item) => ({ faceId: item.faceId, kind: item.kind })),
+          );
+          completedFaceIds.push(...dismissItems.map((item) => item.faceId));
+          cimmichIdentityAuditProgress = {
+            completed: completedFaceIds.length,
+            total: selectedItems.length,
+          };
+        }
       }
       cimmichIdentityMessage =
         action === 'accept'
@@ -3575,7 +3605,13 @@
                       {candidate.filename || candidate.asset_id}
                     </p>
                     <div class="flex flex-wrap gap-1 text-[11px] text-gray-600 dark:text-gray-300">
-                      {#if candidate.source_margin !== null}
+                      {#if candidate.source_margin !== null && candidate.source_score !== null && candidate.source_margin > candidate.source_score}
+                        <span
+                          class="rounded-sm bg-gray-100 px-1.5 py-0.5 dark:bg-white/10"
+                          title="No second same-model match competed for this face."
+                          >Only candidate</span
+                        >
+                      {:else if candidate.source_margin !== null}
                         <span
                           class="rounded-sm bg-gray-100 px-1.5 py-0.5 dark:bg-white/10"
                           title="Difference between the first and second same-model match; larger separation is easier to review."
@@ -3942,8 +3978,9 @@
                                   {item.kind === 'untagged_match' ? 'Previously untagged' : 'Existing tag disputed'}
                                 </span>
                                 <span class="text-xs text-gray-500 dark:text-gray-400">
-                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin.toFixed(2)} ahead of the next
-                                  person
+                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin > item.suggestedPerson.score
+                                    ? 'no competing person'
+                                    : `${item.margin.toFixed(2)} ahead of the next person`}
                                 </span>
                               </div>
                               <p class="mt-2 line-clamp-2 min-w-0 text-sm/5 font-semibold break-all">{item.filename}</p>

@@ -11,6 +11,7 @@
     type CimmichIdentityAuditRun,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
@@ -41,6 +42,7 @@
     untagged_match: 0,
   });
   let pollTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+  let loadGeneration = 0;
 
   const runAge = $derived(
     run?.completedAt
@@ -54,30 +56,16 @@
 
   type ReviewFace = Pick<CimmichIdentityAuditReference, 'box' | 'height' | 'sourceAssetId' | 'width'>;
 
-  const cropImageStyle = (face: ReviewFace, padding = 1.65) => {
-    if (!face.sourceAssetId || !face.width || !face.height) {
-      return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
-    }
-    const cropPixels = Math.min(
-      face.width,
-      face.height,
-      Math.max(face.box.w * face.width * padding, face.box.h * face.height * padding, 1),
-    );
-    const cropW = cropPixels / face.width;
-    const cropH = cropPixels / face.height;
-    const centerX = face.box.x + face.box.w / 2;
-    const centerY = face.box.y + face.box.h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
-    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
-    return [
-      'position: absolute',
-      `width: ${100 / cropW}%`,
-      'height: auto',
-      'max-width: none',
-      `left: ${(-cropX / cropW) * 100}%`,
-      `top: ${(-cropY / cropH) * 100}%`,
-    ].join('; ');
-  };
+  const cropImageStyle = (face: ReviewFace, padding = 1.65) =>
+    cimmichSquareObservationStyle({
+      boxH: face.box.h,
+      boxW: face.box.w,
+      boxX: face.box.x,
+      boxY: face.box.y,
+      height: face.sourceAssetId ? (face.height ?? 0) : 0,
+      padding,
+      width: face.sourceAssetId ? (face.width ?? 0) : 0,
+    });
 
   const itemFace = (item: CimmichIdentityAuditItem): ReviewFace => ({
     box: item.box,
@@ -87,9 +75,10 @@
   });
 
   const loadItems = async (nextKind = kind, append = false) => {
+    const generation = ++loadGeneration;
     const offset = append ? items.length : 0;
     const page = await getCimmichIdentityAuditItems(nextKind, offset, 20);
-    if (kind !== nextKind) {
+    if (generation !== loadGeneration || kind !== nextKind) {
       return;
     }
     items = append ? [...items, ...page.items] : page.items;
@@ -111,8 +100,13 @@
   };
 
   async function refreshPoll() {
+    const generation = loadGeneration;
     try {
-      run = await getCimmichIdentityAudit();
+      const nextRun = await getCimmichIdentityAudit();
+      if (generation !== loadGeneration) {
+        return;
+      }
+      run = nextRun;
       if (run?.state === 'completed') {
         await loadItems();
       }
@@ -124,10 +118,15 @@
   }
 
   const load = async () => {
+    const generation = ++loadGeneration;
     loading = true;
     error = '';
     try {
-      run = await getCimmichIdentityAudit();
+      const nextRun = await getCimmichIdentityAudit();
+      if (generation !== loadGeneration) {
+        return;
+      }
+      run = nextRun;
       if (run?.state === 'completed') {
         await loadItems();
       }
@@ -179,6 +178,7 @@
     error = '';
     try {
       run = await startCimmichIdentityAudit();
+      loadGeneration += 1;
       items = [];
       total = 0;
       hasMore = false;
@@ -605,7 +605,7 @@
                   {item.assignedPerson
                     ? `Current ${item.assignedPerson.score.toFixed(2)} · suggested ${item.suggestedPerson.score.toFixed(2)}`
                     : `Similarity ${item.suggestedPerson.score.toFixed(2)}`}
-                  · margin {item.margin.toFixed(2)}
+                  {item.margin > item.suggestedPerson.score ? '· only candidate' : `· margin ${item.margin.toFixed(2)}`}
                 </p>
                 {#if reviewMode === 'focus'}
                   <p class="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
