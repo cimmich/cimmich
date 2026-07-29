@@ -59,3 +59,38 @@ test("media_content rows carry producer attribution for scoped cleanups", async 
     );
   }
 });
+
+test("derivative guard survives assets with several active Immich projections", async () => {
+  const source = await readFile(
+    new URL(
+      "../../migrations/0104_same_photo_derivative_guard_multi_projection_v1.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /CREATE OR REPLACE FUNCTION cimmich_probable_same_photo_derivative/,
+  );
+  // Each side selects exactly one deterministic projection row; a plain join
+  // multiplied asset_pair on multi-projection assets and the scalar verdict
+  // raised "more than one row", failing every guarded audit statement closed.
+  assert.equal(
+    (source.match(/LEFT JOIN LATERAL \(/g) || []).length,
+    2,
+  );
+  assert.equal(
+    (
+      source.match(
+        /ORDER BY projection\.source_id, projection\.immich_asset_id\s+LIMIT 1/g,
+      ) || []
+    ).length,
+    2,
+  );
+  assert.doesNotMatch(source, /LEFT JOIN immich_asset_projection/);
+  // The empty-pair false contract from 0099 is preserved.
+  assert.match(
+    source,
+    /FROM asset_pair pair\s+CROSS JOIN face_counts count\s+CROSS JOIN matched_summary summary\s+\),\s+false\s+\)/,
+  );
+});

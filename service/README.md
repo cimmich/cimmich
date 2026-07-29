@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 103. Schema 76 adds
+patch level 1. Current post-submission source is schema 104. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -82,7 +82,9 @@ producer, stayed empty in every deployment, and its reader paths were removed
 with the dead-code sweep. Schema 103 adds identity_audit_run.last_progress_at
 so run liveness is judged on recorded progress instead of start age, plus a
 BRIN index on identity_claim(created_at) for the incremental-audit staleness
-probe.
+probe. Schema 104 re-issues the same-photo derivative guard to select one
+deterministic Immich projection per side, so multi-projection assets no longer
+fail guarded audit statements closed.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
@@ -922,3 +924,19 @@ reference the old crop and supersede its active embeddings while preserving
 accepted human identity truth. The contract never writes Immich or source
 media and grants no automatic identity, Prime, activation or training
 authority.
+
+## Database-backed tests
+
+`npm test` runs against no database and permanently skips the integration
+tests that need one. To run those locally against a disposable PostgreSQL:
+
+```
+docker compose --file ../docker-compose.test.yml up --detach --wait
+DATABASE_URL='postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test' node bin/migrate.mjs apply
+CIMMICH_TEST_DATABASE_URL='postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test' node --test test/pet-matching.integration.test.mjs
+docker compose --file ../docker-compose.test.yml down --volumes
+```
+
+CI runs the same sequence on every pull request that touches `migrations/` or
+`service/` (`.github/workflows/migration-acceptance.yml`), alongside the
+migration-runner acceptance script that previously ran only on tags.
