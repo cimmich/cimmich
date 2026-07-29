@@ -854,9 +854,23 @@ export const createIdentityAudit = (
 ) => {
   let runningPromise = null;
   let reconcileInterruptedRunPromise = null;
+  let reconcileInterruptedRunAt = 0;
+  const reconcileRearmMs = 15 * 60 * 1000;
   const reconcileInterruptedRun = async () => {
     // Stale-gated so one replica's cold start cannot fail a run another
-    // replica is still driving.
+    // replica is still driving. The sweep re-arms on the same cadence as the
+    // staleness threshold: a crash-and-fast-restart used to memoize a single
+    // too-early sweep forever, leaving the wedged run unreconciled until the
+    // next process restart.
+    if (
+      reconcileInterruptedRunPromise &&
+      Date.now() - reconcileInterruptedRunAt >= reconcileRearmMs
+    ) {
+      reconcileInterruptedRunPromise = null;
+    }
+    reconcileInterruptedRunAt = reconcileInterruptedRunPromise
+      ? reconcileInterruptedRunAt
+      : Date.now();
     reconcileInterruptedRunPromise ||= sql`
       UPDATE identity_audit_run
       SET state = 'failed', completed_at = now(),
