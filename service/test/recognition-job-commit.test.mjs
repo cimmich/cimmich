@@ -102,3 +102,19 @@ test("existing observation commit binds both provider runs to the prepared check
     /two distinct consistent provider runs/,
   );
 });
+
+test("existing observation bulk supersede only covers faces with fresh embeddings", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../src/recognition-job-commit.mjs", import.meta.url),
+    "utf8",
+  );
+  // A face the recognizer returned as non-embedded must keep its prior
+  // active embedding; superseding by the full checkpoint face list strips
+  // it permanently (2026-07-29 stabilization fix).
+  assert.match(
+    source,
+    /SET state = 'superseded'\s*\n\s*WHERE face_id = ANY\(\$\{embeddedFaceIds\}\)/,
+  );
+  assert.doesNotMatch(source, /WHERE face_id = ANY\(\$\{faceIds\}\)/);
+});

@@ -245,14 +245,20 @@ export const commitRecognitionJobResult = async (
 
     let inserted = 0;
     let reused = 0;
+    // Supersede only faces that receive a fresh embedding below; a face the
+    // recognizer returned as non-embedded must keep its prior active
+    // embedding or it silently disappears from every matching query.
+    const embeddedFaceIds = prepared.embedded.map(
+      (packet) => packet.observationId,
+    );
     if (
       pipeline?.run_kind === "existing_observation_set" &&
-      faceIds.length
+      embeddedFaceIds.length
     ) {
       await tx`
         UPDATE face_embedding
         SET state = 'superseded'
-        WHERE face_id = ANY(${faceIds})
+        WHERE face_id = ANY(${embeddedFaceIds})
           AND model_family =
             ${prepared.manifest.recognitionSpace.modelFamily}
           AND model_version =
