@@ -352,7 +352,7 @@
       const [candidates, candidateSummary, identities] = await Promise.all([
         getCimmichIdentityCandidates(5),
         getCimmichPersonCandidateSummary(),
-        getCimmichPeople(500),
+        getCimmichPeople(500, '', { presentation: true }),
       ]);
       if (generation !== cimmichLoadGeneration) {
         return;
