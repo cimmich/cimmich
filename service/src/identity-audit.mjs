@@ -1029,12 +1029,38 @@ export const createIdentityAudit = (
         }),
       )
       .catch(async (error) => {
-        await sql`
-          UPDATE identity_audit_run
-          SET state = 'failed', completed_at = now(),
-            error_code = ${String(error?.code || "IDENTITY_AUDIT_FAILED").slice(0, 160)}
-          WHERE audit_run_id = ${runId} AND state = 'running'
-        `;
+        // The stored error_code is the only durable trace of the failure, so
+        // log the full error here; raw driver codes (SQLSTATE) are kept in the
+        // log but stored under a stable label. The recovery UPDATE gets its
+        // own guard - if the database is unreachable (the likely cause of the
+        // failure itself), an unhandled rejection here would escape through
+        // the discarded runningPromise and crash the process.
+        console.error("Cimmich identity audit run failed", {
+          code: error?.code,
+          message: error instanceof Error ? error.message : String(error),
+          runId,
+        });
+        const storedCode = String(error?.code || "").startsWith(
+          "IDENTITY_AUDIT_",
+        )
+          ? String(error.code)
+          : "IDENTITY_AUDIT_FAILED";
+        try {
+          await sql`
+            UPDATE identity_audit_run
+            SET state = 'failed', completed_at = now(),
+              error_code = ${storedCode.slice(0, 160)}
+            WHERE audit_run_id = ${runId} AND state = 'running'
+          `;
+        } catch (recoveryError) {
+          console.error("Cimmich identity audit failure recovery failed", {
+            message:
+              recoveryError instanceof Error
+                ? recoveryError.message
+                : String(recoveryError),
+            runId,
+          });
+        }
       })
       .finally(() => {
         runningPromise = null;
