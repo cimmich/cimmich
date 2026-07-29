@@ -33,3 +33,50 @@ test("people({ includePresentation: false }) omits the presentation joins but ke
   assert.match(statement, /LEFT JOIN asset representative_asset/);
   assert.match(statement, /LEFT JOIN asset body_asset/);
 });
+
+test("people() replaces per-row asset visibility calls with one hidden-asset set", async () => {
+  let statement = "";
+  const sql = createFragmentAwareSql((text) => {
+    statement = text;
+  });
+  const repository = createCimmichRepository(sql);
+
+  await repository.people();
+
+  assert.match(statement, /hidden_assets AS MATERIALIZED/);
+  assert.match(statement, /cimmich_visibility_object/);
+  // No CTE may fall back to the per-row function; only the person-level rank
+  // check and the shared presentation joins keep their function calls.
+  assert.doesNotMatch(statement, /cimmich_visibility_asset_rank\(fo\.asset_id\)/);
+  assert.doesNotMatch(
+    statement,
+    /cimmich_visibility_asset_rank\(observation\.asset_id\)/,
+  );
+  assert.doesNotMatch(
+    statement,
+    /cimmich_visibility_asset_rank\(presence\.asset_id\)/,
+  );
+  assert.match(statement, /cimmich_visibility_person_rank/);
+});
+
+test("the unfiltered whole-grid People read is served from the hot snapshot until cleared", async () => {
+  let queries = 0;
+  const sql = createFragmentAwareSql(() => {
+    queries += 1;
+  });
+  const repository = createCimmichRepository(sql);
+
+  await repository.people({ limit: 500 });
+  await repository.people({ limit: 500 });
+  assert.equal(queries, 1);
+
+  // Scoped, searched, and smaller variants never touch the snapshot.
+  await repository.people({ limit: 500, query: "ann" });
+  assert.equal(queries, 2);
+  await repository.people({ limit: 100 });
+  assert.equal(queries, 3);
+
+  repository.clearPeopleHotSnapshot();
+  await repository.people({ limit: 500 });
+  assert.equal(queries, 4);
+});

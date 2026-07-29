@@ -297,4 +297,14 @@ process.on("uncaughtException", () => {
 
 server.listen(port, host, () => {
   console.log(`Cimmich local service listening on ${host}:${port}`);
+  // Prewarm the People-grid snapshot variant the live page requests, so the
+  // first signed-in visit after a restart is served hot. Best-effort: a cold
+  // database at boot only costs the prewarm, never the boot.
+  void repository
+    .people({ includePresentation: true, limit: 500 })
+    .catch((error) => {
+      console.error("Cimmich people snapshot prewarm failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
 });
