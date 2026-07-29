@@ -946,12 +946,18 @@ export const createIdentityAudit = (
           },
         );
       }
-      const [identityChanges] = await sql`
-        SELECT count(*)::int AS count
+      // The base run's comparison snapshot is taken when its first statement
+      // starts, not when the run completes - claims accepted during the base
+      // run were never audited by it, so the staleness frontier must be
+      // started_at. An existence probe is enough; counting the full
+      // append-only claim history forces a table scan.
+      const [identityChange] = await sql`
+        SELECT 1 AS present
         FROM identity_claim
-        WHERE created_at > ${base.completed_at}
+        WHERE created_at >= ${base.started_at}
+        LIMIT 1
       `;
-      if (Number(identityChanges?.count || 0) > 0) {
+      if (identityChange?.present) {
         throw Object.assign(
           new Error(
             "Identity authority changed after the incremental audit base",
