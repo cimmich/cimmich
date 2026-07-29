@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 100. Schema 76 adds
+patch level 1. Current post-submission source is schema 101. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -74,7 +74,9 @@ uninspectable asset pair is an explicit false rather than a NULL that silently
 dropped audit candidates from NOT-guarded queries. Schema 100 records which
 producer created each media_content row, backfills that attribution
 retroactively, and requires future cleanups to scope destructive deletes to
-their own producer's rows.
+their own producer's rows. Schema 101 adds the supporting indexes for the
+audit, pet-match and provider-bound job-claim query shapes introduced since
+schema 78; it changes no table shapes and grants no new behavior.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
