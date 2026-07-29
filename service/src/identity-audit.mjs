@@ -8,6 +8,38 @@ export const identityAuditIndependenceScoreFloor = 0.75;
 // same-photo decision both tolerate scale-appropriate noise instead of using
 // exact float equality (which failed whole audit runs on last-bit replays).
 export const identityAuditSimilarityEpsilon = 1e-6;
+// The full audit scores every eligible query Face against the whole prime
+// gallery in one statement, which is unbounded O(queries x gallery). The
+// query side is therefore capped the same way repository.mjs bounds
+// machineSuggestions: one deterministic ranked frontier. The default sits far
+// above any realistic library so it is behavior-preserving; when a library
+// does exceed it, the truncation is reported (never silent) via a structured
+// IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED warning.
+export const identityAuditQueryFrontierLimit = 50_000;
+// Independent-evidence verification runs two provider comparisons per
+// candidate. The historical behavior (no candidate bound, two concurrent
+// verification lanes) stays the default; both are configurable knobs now.
+export const identityAuditIndependenceConcurrency = 2;
+export const identityAuditIndependenceComparisonLimit =
+  Number.POSITIVE_INFINITY;
+
+const cleanFrontierLimit = (value, fallback) => {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+};
+const cleanComparisonLimit = (value, fallback) => {
+  const parsed = Number(value ?? fallback);
+  return parsed === Number.POSITIVE_INFINITY ||
+    (Number.isInteger(parsed) && parsed >= 1)
+    ? parsed
+    : fallback;
+};
+const cleanConcurrency = (value, fallback) => {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 16
+    ? parsed
+    : fallback;
+};
 
 const cleanLimit = (value) =>
   Math.min(50, Math.max(1, Number.parseInt(String(value || 20), 10) || 20));
@@ -104,9 +136,25 @@ const auditSql = async (
   presentationRank,
   scoreFloor,
   marginFloor,
-  { baseRunId = "", incrementalFaceIds = [] } = {},
+  { baseRunId = "", incrementalFaceIds = [], queryFrontierLimit } = {},
 ) => {
   const incremental = incrementalFaceIds.length > 0;
+  const frontierLimit = cleanFrontierLimit(
+    queryFrontierLimit,
+    identityAuditQueryFrontierLimit,
+  );
+  const reportFrontierTruncation = (auditKind, eligibleQueries) => {
+    if (eligibleQueries <= frontierLimit) return;
+    console.warn(
+      JSON.stringify({
+        auditKind,
+        code: "IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED",
+        eligibleQueries,
+        queryFrontierLimit: frontierLimit,
+        runId,
+      }),
+    );
+  };
   await sql.begin(async (tx) => {
     await tx`
       SELECT set_config('statement_timeout', '1800000', true),
@@ -152,7 +200,7 @@ const auditSql = async (
           )
       `;
     }
-    await tx`
+    const [untaggedFrontier] = await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -168,6 +216,9 @@ const auditSql = async (
           face.box_x::float8, face.box_y::float8,
           face.box_w::float8, face.box_h::float8,
           face.detection_confidence::float8,
+          coalesce(
+            (face.quality_measurements->>'quality_score')::float8, 0
+          ) AS quality_score,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
         FROM face_observation face
         JOIN source_pack pack ON pack.pack_id = ${packId}
@@ -188,8 +239,9 @@ const auditSql = async (
             WHERE accepted.face_id = face.face_id
               AND accepted.state = 'accepted'
           )
-      ), queries AS MATERIALIZED (
+      ), eligible_queries AS MATERIALIZED (
         SELECT candidate.face_id, candidate.asset_id, candidate.embedding,
+          candidate.detection_confidence, candidate.quality_score,
           candidate.context_ids
         FROM query_candidates candidate
         WHERE NOT EXISTS (
@@ -256,6 +308,15 @@ const auditSql = async (
               )
             )
         )
+      ), queries AS MATERIALIZED (
+        -- Bounded comparison frontier: deterministic quality-first ranking,
+        -- mirroring the machineSuggestions frontier policy in repository.mjs.
+        SELECT eligible.face_id, eligible.asset_id, eligible.embedding,
+          eligible.context_ids
+        FROM eligible_queries eligible
+        ORDER BY eligible.quality_score DESC,
+          eligible.detection_confidence DESC, eligible.face_id
+        LIMIT ${frontierLimit}
       ), gallery AS MATERIALIZED (
         SELECT reference.person_id, reference.face_id,
           face.asset_id, reference.embedding,
@@ -305,26 +366,34 @@ const auditSql = async (
             ORDER BY score.score DESC, score.person_id
           ) AS next_score
         FROM person_scores score
-      )
-      INSERT INTO identity_audit_item (
-        audit_run_id, audit_kind, face_id, asset_id, suggested_person_id,
-        suggested_score, comparison_score, margin,
-        suggested_reference_asset_id
-      )
-      -- margin mirrors matcherPolicyMargin (source-pack-evaluator.mjs), the
-      -- definition the SourcePack marginFloor gates were tuned against.
-      SELECT ${runId}, 'untagged_match', face_id, asset_id, person_id,
-        score, next_score,
-        greatest(0, score - coalesce(next_score, -1)),
-        reference_asset_id
-      FROM ranked
-      WHERE candidate_rank = 1
-        AND score >= ${scoreFloor}
-        AND greatest(0, score - coalesce(next_score, -1)) >= ${marginFloor}
-        AND NOT cimmich_probable_same_photo_derivative(
-          ${packId}, asset_id, reference_asset_id
+      ), inserted AS (
+        INSERT INTO identity_audit_item (
+          audit_run_id, audit_kind, face_id, asset_id, suggested_person_id,
+          suggested_score, comparison_score, margin,
+          suggested_reference_asset_id
         )
+        -- margin mirrors matcherPolicyMargin (source-pack-evaluator.mjs), the
+        -- definition the SourcePack marginFloor gates were tuned against.
+        SELECT ${runId}, 'untagged_match', face_id, asset_id, person_id,
+          score, next_score,
+          greatest(0, score - coalesce(next_score, -1)),
+          reference_asset_id
+        FROM ranked
+        WHERE candidate_rank = 1
+          AND score >= ${scoreFloor}
+          AND greatest(0, score - coalesce(next_score, -1)) >= ${marginFloor}
+          AND NOT cimmich_probable_same_photo_derivative(
+            ${packId}, asset_id, reference_asset_id
+          )
+        RETURNING face_id
+      )
+      SELECT (SELECT count(*) FROM eligible_queries)::int AS eligible_queries,
+        (SELECT count(*) FROM inserted)::int AS inserted_items
     `;
+    reportFrontierTruncation(
+      "untagged_match",
+      Number(untaggedFrontier?.eligible_queries || 0),
+    );
     await carryForwardIdentityAuditDismissals(tx, {
       kind: "untagged_match",
       runId,
@@ -387,7 +456,7 @@ const auditSql = async (
       SELECT set_config('statement_timeout', '1800000', true),
         set_config('transaction_timeout', '1860000', true)
     `;
-    await tx`
+    const [contradictionFrontier] = await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -398,9 +467,13 @@ const auditSql = async (
         JOIN face_observation face
           ON face.face_id = claim.face_id AND face.state = 'valid'
         WHERE claim.state = 'accepted'
-      ), queries AS MATERIALIZED (
+      ), eligible_queries AS MATERIALIZED (
         SELECT face.face_id, face.asset_id,
           claim.person_id AS assigned_person_id, embedding.embedding,
+          face.detection_confidence::float8,
+          coalesce(
+            (face.quality_measurements->>'quality_score')::float8, 0
+          ) AS quality_score,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
         FROM current_face_identity claim
         JOIN face_observation face
@@ -417,6 +490,16 @@ const auditSql = async (
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE claim.state = 'accepted'
+      ), queries AS MATERIALIZED (
+        -- Bounded comparison frontier: deterministic quality-first ranking,
+        -- mirroring the machineSuggestions frontier policy in repository.mjs.
+        SELECT eligible.face_id, eligible.asset_id,
+          eligible.assigned_person_id, eligible.embedding,
+          eligible.context_ids
+        FROM eligible_queries eligible
+        ORDER BY eligible.quality_score DESC,
+          eligible.detection_confidence DESC, eligible.face_id
+        LIMIT ${frontierLimit}
       ), gallery AS MATERIALIZED (
         SELECT reference.person_id, reference.face_id,
           face.asset_id, reference.embedding,
@@ -478,27 +561,35 @@ const auditSql = async (
           WHERE person_id <> assigned_person_id
         ) candidate
         WHERE alternative_rank = 1
-      )
-      INSERT INTO identity_audit_item (
-        audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
-        suggested_person_id, suggested_score, comparison_score, margin,
-        suggested_reference_asset_id
-      )
-      SELECT ${runId}, 'accepted_contradiction', assigned.face_id,
-        assigned.asset_id, assigned.assigned_person_id,
-        alternatives.alternative_person_id, alternatives.alternative_score,
-        assigned.assigned_score,
-        alternatives.alternative_score - assigned.assigned_score,
-        alternatives.alternative_reference_asset_id
-      FROM assigned
-      JOIN alternatives USING (face_id)
-      WHERE alternatives.alternative_score >= 0.35
-        AND alternatives.alternative_score - assigned.assigned_score >= 0.21
-        AND NOT cimmich_probable_same_photo_derivative(
-          ${packId}, assigned.asset_id,
-          alternatives.alternative_reference_asset_id
+      ), inserted AS (
+        INSERT INTO identity_audit_item (
+          audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
+          suggested_person_id, suggested_score, comparison_score, margin,
+          suggested_reference_asset_id
         )
+        SELECT ${runId}, 'accepted_contradiction', assigned.face_id,
+          assigned.asset_id, assigned.assigned_person_id,
+          alternatives.alternative_person_id, alternatives.alternative_score,
+          assigned.assigned_score,
+          alternatives.alternative_score - assigned.assigned_score,
+          alternatives.alternative_reference_asset_id
+        FROM assigned
+        JOIN alternatives USING (face_id)
+        WHERE alternatives.alternative_score >= 0.35
+          AND alternatives.alternative_score - assigned.assigned_score >= 0.21
+          AND NOT cimmich_probable_same_photo_derivative(
+            ${packId}, assigned.asset_id,
+            alternatives.alternative_reference_asset_id
+          )
+        RETURNING face_id
+      )
+      SELECT (SELECT count(*) FROM eligible_queries)::int AS eligible_queries,
+        (SELECT count(*) FROM inserted)::int AS inserted_items
     `;
+    reportFrontierTruncation(
+      "accepted_contradiction",
+      Number(contradictionFrontier?.eligible_queries || 0),
+    );
     await carryForwardIdentityAuditDismissals(tx, {
       kind: "accepted_contradiction",
       runId,
@@ -587,6 +678,8 @@ export const suppressSamePhotoDerivatives = async (
   sql,
   {
     companion,
+    comparisonConcurrency = identityAuditIndependenceConcurrency,
+    comparisonLimit = identityAuditIndependenceComparisonLimit,
     provider,
     runId,
     scoreFloor = identityAuditIndependenceScoreFloor,
@@ -641,11 +734,35 @@ export const suppressSamePhotoDerivatives = async (
       AND item.suggested_reference_asset_id IS NOT NULL
     ORDER BY item.suggested_score DESC, item.margin DESC, item.face_id
   `;
+  // Both knobs default to the historical behavior (no bound, two lanes). A
+  // finite bound trims the already strongest-first candidate ranking, and the
+  // truncation is reported rather than silent.
+  const boundedComparisonLimit = cleanComparisonLimit(
+    comparisonLimit,
+    identityAuditIndependenceComparisonLimit,
+  );
+  const concurrency = cleanConcurrency(
+    comparisonConcurrency,
+    identityAuditIndependenceConcurrency,
+  );
+  const verifiable = Number.isFinite(boundedComparisonLimit)
+    ? candidates.slice(0, boundedComparisonLimit)
+    : candidates;
+  if (verifiable.length < candidates.length) {
+    console.warn(
+      JSON.stringify({
+        code: "IDENTITY_AUDIT_INDEPENDENCE_COMPARISONS_TRUNCATED",
+        comparisonLimit: boundedComparisonLimit,
+        eligibleCandidates: candidates.length,
+        runId,
+      }),
+    );
+  }
   const suppressed = [];
   let cursor = 0;
   const verifyNext = async () => {
-    while (cursor < candidates.length) {
-      const candidate = candidates[cursor];
+    while (cursor < verifiable.length) {
+      const candidate = verifiable[cursor];
       cursor += 1;
       const [queryMedia, referenceMedia] = await Promise.all([
         companion.readAssetImage({
@@ -700,7 +817,9 @@ export const suppressSamePhotoDerivatives = async (
       }
     }
   };
-  await Promise.all([verifyNext(), verifyNext()]);
+  await Promise.all(
+    Array.from({ length: concurrency }, () => verifyNext()),
+  );
   await sql.begin(async (tx) => {
     for (const item of suppressed) {
       await tx`
@@ -740,7 +859,10 @@ export const createIdentityAudit = (
     bridgeFields = () => ({}),
     companion,
     derivativeProvider,
+    independenceComparisonLimit = identityAuditIndependenceComparisonLimit,
+    independenceConcurrency = identityAuditIndependenceConcurrency,
     presentationRank = () => 0,
+    queryFrontierLimit = identityAuditQueryFrontierLimit,
     sourceId = "",
   } = {},
 ) => {
@@ -901,11 +1023,13 @@ export const createIdentityAudit = (
       presentationRank(),
       Number(pack.score_floor),
       Number(pack.margin_floor),
-      { baseRunId, incrementalFaceIds },
+      { baseRunId, incrementalFaceIds, queryFrontierLimit },
     )
       .then(() =>
         suppressSamePhotoDerivatives(sql, {
           companion,
+          comparisonConcurrency: independenceConcurrency,
+          comparisonLimit: independenceComparisonLimit,
           provider: derivativeProvider,
           runId,
           sourceId,

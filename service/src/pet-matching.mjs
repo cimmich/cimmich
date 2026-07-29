@@ -507,36 +507,67 @@ export const createPetMatchingStore = (
             ${input.observations.length}, ${actor}, ${receiptId}
           )
         `;
-        for (const observation of input.observations) {
+        // Imports carry thousands of observations; one multi-row unnest
+        // insert per table replaces the per-row statement round trips.
+        // created_at stays identical (now() is transaction-stable).
+        await tx`
+          INSERT INTO pet_match_observation (
+            observation_id, run_id, asset_id, species_kind,
+            box_x, box_y, box_w, box_h, detection_confidence,
+            embedding_digest, state, producer_receipt_id
+          )
+          SELECT batch.observation_id, ${input.runId}, batch.asset_id,
+            batch.species_kind, batch.box_x, batch.box_y, batch.box_w,
+            batch.box_h, batch.detection_confidence, batch.embedding_digest,
+            batch.state, ${receiptId}
+          FROM unnest(
+            ${input.observations.map((item) => item.observationId)}::text[],
+            ${input.observations.map((item) => item.assetId)}::text[],
+            ${input.observations.map((item) => item.speciesKind)}::text[],
+            ${input.observations.map((item) => item.box.x)}::numeric[],
+            ${input.observations.map((item) => item.box.y)}::numeric[],
+            ${input.observations.map((item) => item.box.w)}::numeric[],
+            ${input.observations.map((item) => item.box.h)}::numeric[],
+            ${input.observations.map((item) => item.detectionConfidence)}::numeric[],
+            ${input.observations.map((item) => item.embeddingDigest)}::text[],
+            ${input.observations.map((item) =>
+              item.candidates.length ? "pending" : "unknown",
+            )}::text[]
+          ) AS batch(
+            observation_id, asset_id, species_kind, box_x, box_y, box_w,
+            box_h, detection_confidence, embedding_digest, state
+          )
+        `;
+        const suggestions = input.observations.flatMap((observation) =>
+          observation.candidates.map((candidate) => ({
+            galleryCount: candidate.galleryCount,
+            observationId: observation.observationId,
+            petId: candidate.petId,
+            rank: candidate.rank,
+            score: candidate.score,
+            suggestionId: `petsuggestion_${randomUUID().replaceAll("-", "")}`,
+          })),
+        );
+        if (suggestions.length) {
           await tx`
-            INSERT INTO pet_match_observation (
-              observation_id, run_id, asset_id, species_kind,
-              box_x, box_y, box_w, box_h, detection_confidence,
-              embedding_digest, state, producer_receipt_id
-            ) VALUES (
-              ${observation.observationId}, ${input.runId},
-              ${observation.assetId}, ${observation.speciesKind},
-              ${observation.box.x}, ${observation.box.y},
-              ${observation.box.w}, ${observation.box.h},
-              ${observation.detectionConfidence},
-              ${observation.embeddingDigest},
-              ${observation.candidates.length ? "pending" : "unknown"},
-              ${receiptId}
+            INSERT INTO pet_match_suggestion (
+              suggestion_id, observation_id, pet_id, score, rank,
+              gallery_count, producer_receipt_id
+            )
+            SELECT batch.suggestion_id, batch.observation_id, batch.pet_id,
+              batch.score, batch.rank, batch.gallery_count, ${receiptId}
+            FROM unnest(
+              ${suggestions.map((item) => item.suggestionId)}::text[],
+              ${suggestions.map((item) => item.observationId)}::text[],
+              ${suggestions.map((item) => item.petId)}::text[],
+              ${suggestions.map((item) => item.score)}::numeric[],
+              ${suggestions.map((item) => item.rank)}::integer[],
+              ${suggestions.map((item) => item.galleryCount)}::integer[]
+            ) AS batch(
+              suggestion_id, observation_id, pet_id, score, rank,
+              gallery_count
             )
           `;
-          for (const candidate of observation.candidates) {
-            await tx`
-              INSERT INTO pet_match_suggestion (
-                suggestion_id, observation_id, pet_id, score, rank,
-                gallery_count, producer_receipt_id
-              ) VALUES (
-                ${`petsuggestion_${randomUUID().replaceAll("-", "")}`},
-                ${observation.observationId}, ${candidate.petId},
-                ${candidate.score}, ${candidate.rank},
-                ${candidate.galleryCount}, ${receiptId}
-              )
-            `;
-          }
         }
         return {
           imported: true,

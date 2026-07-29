@@ -193,3 +193,96 @@ test("suggestion confirm requires a live asset and a lifecycle-visible Pet", asy
     /state = 'active'/,
   );
 });
+
+test("import batches observations and suggestions as two multi-row inserts", async () => {
+  const statements = [];
+  const bindings = [];
+  const tx = async (strings, ...values) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    bindings.push(values);
+    if (statement.includes("FROM pet_match_run")) return [];
+    if (statement.includes("SELECT asset_id FROM asset")) {
+      return [{ asset_id: "asset_pet_0001" }, { asset_id: "asset_pet_0002" }];
+    }
+    if (statement.includes("SELECT person_id, species_kind FROM person")) {
+      return [
+        { person_id: "person_cafe_0001", species_kind: "dog" },
+        { person_id: "person_mocha_0001", species_kind: "dog" },
+      ];
+    }
+    return [];
+  };
+  const sql = { begin: async (callback) => callback(tx) };
+  const store = createPetMatchingStore(sql);
+
+  const result = await store.importBatch({
+    actorId: "cimmich-operator",
+    packet: packet({
+      observations: [
+        {
+          assetId: "asset_pet_0001",
+          box: { h: 0.5, w: 0.4, x: 0.1, y: 0.2 },
+          candidates: [
+            { galleryCount: 4, petId: "person_cafe_0001", score: 0.736 },
+            { galleryCount: 2, petId: "person_mocha_0001", score: 0.42 },
+          ],
+          detectionConfidence: 0.91,
+          embeddingDigest: digest,
+          observationId: "petobservation_0001",
+          speciesKind: "dog",
+        },
+        {
+          assetId: "asset_pet_0002",
+          box: { h: 0.3, w: 0.2, x: 0.5, y: 0.6 },
+          candidates: [],
+          detectionConfidence: 0.8,
+          embeddingDigest: digest,
+          observationId: "petobservation_0002",
+          speciesKind: "dog",
+        },
+      ],
+    }),
+  });
+
+  assert.equal(result.imported, true);
+  assert.equal(result.observationCount, 2);
+  const observationInserts = statements.filter((statement) =>
+    statement.includes("INSERT INTO pet_match_observation"),
+  );
+  const suggestionInserts = statements.filter((statement) =>
+    statement.includes("INSERT INTO pet_match_suggestion"),
+  );
+  assert.equal(observationInserts.length, 1);
+  assert.equal(suggestionInserts.length, 1);
+  assert.match(observationInserts[0], /FROM unnest\(/);
+  assert.match(suggestionInserts[0], /FROM unnest\(/);
+  const observationValues =
+    bindings[
+      statements.findIndex((statement) =>
+        statement.includes("INSERT INTO pet_match_observation"),
+      )
+    ];
+  // run id and receipt bind first, then the per-column arrays; the state
+  // array preserves the pending/unknown split exactly as per-row inserts did.
+  assert.deepEqual(observationValues[2], [
+    "petobservation_0001",
+    "petobservation_0002",
+  ]);
+  assert.deepEqual(observationValues.at(-1), ["pending", "unknown"]);
+  const suggestionValues =
+    bindings[
+      statements.findIndex((statement) =>
+        statement.includes("INSERT INTO pet_match_suggestion"),
+      )
+    ];
+  assert.deepEqual(suggestionValues[2], [
+    "petobservation_0001",
+    "petobservation_0001",
+  ]);
+  assert.deepEqual(suggestionValues[3], [
+    "person_cafe_0001",
+    "person_mocha_0001",
+  ]);
+  assert.deepEqual(suggestionValues[5], [1, 2]);
+});

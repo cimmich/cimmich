@@ -147,6 +147,50 @@ test("body workers share one bounded materialized-triage claim window", async ()
   );
 });
 
+test("body claim queue snapshots triage once per window and keeps its own lease-recovery cadence", async () => {
+  let rankedReads = 0;
+  let recoveries = 0;
+  const claimed = [];
+  const sqlTag = async (strings, ...values) => {
+    const text = strings.join("?");
+    if (
+      text.includes("SELECT job.job_id") &&
+      text.includes("triage_projection")
+    ) {
+      rankedReads += 1;
+      return Array.from({ length: 130 }, (_, index) => ({
+        job_id: `job-${index + 1}`,
+      }));
+    }
+    if (text.includes("WORKER_LEASE_EXPIRED")) {
+      recoveries += 1;
+      return [];
+    }
+    if (text.includes("WITH claimed AS")) {
+      const jobId = values.find((value) => String(value).startsWith("job-"));
+      claimed.push(jobId);
+      return [{ job_id: jobId, state: "processing" }];
+    }
+    return [];
+  };
+  sqlTag.begin = async (callback) => callback(sqlTag);
+  const queue = createBodyDetectionJobClaimQueue({
+    configDigest: "7".repeat(64),
+    sourceId: "archive-source",
+    sql: sqlTag,
+  });
+  for (let index = 0; index < 130; index += 1) {
+    const row = await queue.claimNext({ workerId: "worker-a" });
+    assert.equal(row.job_id, `job-${index + 1}`);
+  }
+  // The whole-archive triage view is evaluated once for the snapshot, not per
+  // claim batch; expired-lease recovery still runs every 64 successful claims
+  // (plus once inside the snapshot refill).
+  assert.equal(rankedReads, 1);
+  assert.equal(recoveries, 3);
+  assert.equal(claimed.length, 130);
+});
+
 test("body backlog is bounded, parallel, replay-run explicit, and closes workers", async () => {
   const calls = [0, 0];
   const closed = [false, false];

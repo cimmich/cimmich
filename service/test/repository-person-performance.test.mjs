@@ -926,3 +926,119 @@ test("Holding Prime retirement is one atomic SQL statement", async () => {
     /await sql`UPDATE reference_bucket[\s\S]{0,250}await sql`UPDATE reference_prototype/,
   );
 });
+
+test("personPresentation automatic slots use the narrow representative query, not the person() dossier", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const text = strings.join("?");
+    statements.push(text);
+    if (text.includes("cimmich_visibility_subject_rank")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    if (text.includes("FROM person_presentation_media")) return [];
+    if (text.includes("representative AS MATERIALIZED")) {
+      return [
+        {
+          body_preview_asset_id: "asset-body",
+          body_preview_body_id: "body-1",
+          body_preview_box_h: 0.7,
+          body_preview_box_w: 0.5,
+          body_preview_box_x: 0.05,
+          body_preview_box_y: 0.1,
+          body_preview_height: 1500,
+          body_preview_width: 2000,
+          box_h: 0.4,
+          box_w: 0.3,
+          box_x: 0.1,
+          box_y: 0.2,
+          height: 3000,
+          person_id: "person-1",
+          representative_asset_id: "asset-rep",
+          representative_face_id: "face-1",
+          width: 4000,
+        },
+      ];
+    }
+    throw new Error(`Unexpected statement: ${text.slice(0, 120)}`);
+  };
+  const bridge = new Map([
+    ["asset-body", { filename: "body.jpg", sourceAssetId: "immich-body" }],
+    ["asset-rep", { filename: "rep.jpg", sourceAssetId: "immich-rep" }],
+  ]);
+  const repository = createCimmichRepository(sql, bridge);
+
+  const presentation = await repository.personPresentation({
+    personId: "person-1",
+  });
+
+  assert.equal(presentation.face.assetId, "asset-rep");
+  assert.equal(presentation.face.selectionMode, "automatic");
+  assert.equal(presentation.face.observationId, "face-1");
+  assert.equal(presentation.hero.assetId, "asset-rep");
+  assert.equal(presentation.hero.crop, null);
+  assert.equal(presentation.body.assetId, "asset-body");
+  assert.equal(presentation.body.observationId, "body-1");
+  // Same automatic slots as before, but priced without the dossier CTEs.
+  for (const text of statements) {
+    assert.doesNotMatch(text, /photo_history/);
+    assert.doesNotMatch(text, /person_categories/);
+    assert.doesNotMatch(text, /accepted_assets/);
+    assert.doesNotMatch(text, /candidate_faces/);
+  }
+});
+
+test("pet presentation paths gate on the narrow pet cover lookup, not the pet() projection", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const text = strings.join("?");
+    statements.push(text);
+    if (text.includes("cimmich_visibility_pet_rank")) {
+      return [
+        { cover_asset_id: null, cover_crop: null, person_id: "pet-1" },
+      ];
+    }
+    if (text.includes("cimmich_visibility_subject_rank")) {
+      return [{ person_id: "pet-1", subject_kind: "pet" }];
+    }
+    if (text.includes("FROM person_presentation_media")) {
+      return ["face", "hero"].map((slot) => ({
+        asset_id: "asset-pet",
+        crop: null,
+        height: 1200,
+        observation_id: null,
+        observation_kind: "presence",
+        slot_kind: slot,
+        updated_at: "2026-07-24T00:00:00.000Z",
+        width: 1800,
+      }));
+    }
+    if (text.includes("representative AS MATERIALIZED")) {
+      return [
+        {
+          body_preview_asset_id: null,
+          body_preview_body_id: null,
+          person_id: "pet-1",
+          representative_asset_id: null,
+          representative_face_id: null,
+        },
+      ];
+    }
+    throw new Error(`Unexpected statement: ${text.slice(0, 120)}`);
+  };
+  const bridge = new Map([
+    ["asset-pet", { filename: "pet.jpg", sourceAssetId: "immich-pet" }],
+  ]);
+  const repository = createCimmichRepository(sql, bridge);
+
+  const presentation = await repository.petPresentation({ petId: "pet-1" });
+
+  assert.equal(presentation.face.assetId, "asset-pet");
+  assert.equal(presentation.hero.assetId, "asset-pet");
+  assert.equal(presentation.body, null);
+  // The presentation gate must not price the pet list projection.
+  for (const text of statements) {
+    assert.doesNotMatch(text, /person_assets/);
+    assert.doesNotMatch(text, /current_pet_document/);
+    assert.doesNotMatch(text, /confirmed_media_count/);
+  }
+});
