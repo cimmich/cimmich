@@ -2705,10 +2705,19 @@ export const markCimmichMachineSuggestionUnknown = (faceId: string) =>
     method: 'POST',
   });
 
-export const getCimmichPeople = async (limit = 500, query = '') => {
+export const getCimmichPeople = async (
+  limit = 500,
+  query = '',
+  options: { presentation?: boolean } = {},
+) => {
   const search = new URLSearchParams({ limit: String(limit) });
   if (query.trim()) {
     search.set('q', query.trim());
+  }
+  if (!options.presentation) {
+    // Presentation media doubles the server-side cost of the hottest list
+    // query; only surfaces that render saved presentation crops opt in.
+    search.set('presentation', '0');
   }
   const result = await request<{ items: CimmichPerson[] }>(`/v1/people?${search.toString()}`);
   return result.items;
@@ -3732,13 +3741,6 @@ export const unmergeCimmichPeople = (mergeOperationId: string, commandId: string
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });
-
-export const getCimmichIdentityFaces = async (personId: string, limit = 5000) => {
-  const result = await request<{ items: CimmichIdentityFace[] }>(
-    `/v1/people/${encodeURIComponent(personId)}/identity?limit=${Math.max(1, Math.min(5000, limit))}`,
-  );
-  return result.items;
-};
 
 export const getCimmichIdentityFacesPage = (
   personId: string,

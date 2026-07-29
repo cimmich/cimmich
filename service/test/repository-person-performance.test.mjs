@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createCimmichRepository } from "../src/repository.mjs";
+import { createFragmentAwareSql } from "./fixtures/fragment-aware-sql.mjs";
 
 test("Person candidate summary is grouped from the active SourcePack without audit data", async () => {
   let statement = "";
@@ -61,9 +62,11 @@ test("Person candidate summary is grouped from the active SourcePack without aud
 
 test("People project ordinary accepted Faces and accepted Body regions without matching authority", async () => {
   let statement = "";
-  const sql = async (strings) => {
-    statement = strings.join("?");
-    return [
+  const sql = createFragmentAwareSql(
+    (text) => {
+      statement = text;
+    },
+    [
       {
         accepted_faces: 1,
         aliases: [],
@@ -110,8 +113,8 @@ test("People project ordinary accepted Faces and accepted Body regions without m
         subject_kind: "person",
         width: 1800,
       },
-    ];
-  };
+    ],
+  );
   const bridge = new Map([
     ["asset-body", { filename: "body.jpg", sourceAssetId: "source-body" }],
     ["asset-face", { filename: "face.jpg", sourceAssetId: "source-face" }],

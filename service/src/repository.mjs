@@ -3239,11 +3239,67 @@ export const createCimmichRepository = (
       }
     },
 
-    async people({ limit = 100, personId = "", query = "" } = {}) {
+    async people({
+      limit = 100,
+      personId = "",
+      query = "",
+      includePresentation = true,
+    } = {}) {
       const boundedLimit = cleanLimit(limit, 100, 500);
       const visibleRank = presentationRank();
       const exactPersonId = String(personId || "");
       const nameQuery = `%${String(query || "").trim()}%`;
+      // The presentation-media joins double the per-row work of the hottest
+      // list query; index/list consumers that never render saved
+      // presentation crops opt out with ?presentation=0.
+      const presentationSelect = includePresentation
+        ? sql`
+        presentation_body_asset.asset_id AS presentation_body_asset_id,
+        presentation_body.crop AS presentation_body_crop,
+        presentation_body.observation_id AS presentation_body_observation_id,
+        presentation_body.observation_kind AS presentation_body_observation_kind,
+        presentation_body.updated_at AS presentation_body_updated_at,
+        presentation_body_asset.width::int AS presentation_body_width,
+        presentation_body_asset.height::int AS presentation_body_height,
+        presentation_face_asset.asset_id AS presentation_face_asset_id,
+        presentation_face.crop AS presentation_face_crop,
+        presentation_face.observation_id AS presentation_face_observation_id,
+        presentation_face.observation_kind AS presentation_face_observation_kind,
+        presentation_face.updated_at AS presentation_face_updated_at,
+        presentation_face_asset.width::int AS presentation_face_width,
+        presentation_face_asset.height::int AS presentation_face_height`
+        : sql`
+        NULL AS presentation_body_asset_id,
+        NULL AS presentation_body_crop,
+        NULL AS presentation_body_observation_id,
+        NULL AS presentation_body_observation_kind,
+        NULL AS presentation_body_updated_at,
+        NULL AS presentation_body_width,
+        NULL AS presentation_body_height,
+        NULL AS presentation_face_asset_id,
+        NULL AS presentation_face_crop,
+        NULL AS presentation_face_observation_id,
+        NULL AS presentation_face_observation_kind,
+        NULL AS presentation_face_updated_at,
+        NULL AS presentation_face_width,
+        NULL AS presentation_face_height`;
+      const presentationJoins = includePresentation
+        ? sql`
+      LEFT JOIN person_presentation_media presentation_body
+        ON presentation_body.person_id = p.person_id
+        AND presentation_body.slot_kind = 'body'
+      LEFT JOIN asset presentation_body_asset
+        ON presentation_body_asset.asset_id = presentation_body.asset_id
+        AND presentation_body_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
+      LEFT JOIN person_presentation_media presentation_face
+        ON presentation_face.person_id = p.person_id
+        AND presentation_face.slot_kind = 'face'
+      LEFT JOIN asset presentation_face_asset
+        ON presentation_face_asset.asset_id = presentation_face.asset_id
+        AND presentation_face_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}`
+        : sql``;
       const rows = await sql`
       WITH identity_rows AS MATERIALIZED (
         SELECT current.person_id, current.face_id, current.state,
@@ -3422,20 +3478,7 @@ export const createCimmichRepository = (
         body.box_h::float8 AS body_preview_box_h,
         body_asset.width::int AS body_preview_width,
         body_asset.height::int AS body_preview_height,
-        presentation_body_asset.asset_id AS presentation_body_asset_id,
-        presentation_body.crop AS presentation_body_crop,
-        presentation_body.observation_id AS presentation_body_observation_id,
-        presentation_body.observation_kind AS presentation_body_observation_kind,
-        presentation_body.updated_at AS presentation_body_updated_at,
-        presentation_body_asset.width::int AS presentation_body_width,
-        presentation_body_asset.height::int AS presentation_body_height,
-        presentation_face_asset.asset_id AS presentation_face_asset_id,
-        presentation_face.crop AS presentation_face_crop,
-        presentation_face.observation_id AS presentation_face_observation_id,
-        presentation_face.observation_kind AS presentation_face_observation_kind,
-        presentation_face.updated_at AS presentation_face_updated_at,
-        presentation_face_asset.width::int AS presentation_face_width,
-        presentation_face_asset.height::int AS presentation_face_height
+        ${presentationSelect}
       FROM current_person p
       LEFT JOIN claim_counts cc ON cc.person_id = p.person_id
       LEFT JOIN asset_counts ac ON ac.person_id = p.person_id
@@ -3446,20 +3489,7 @@ export const createCimmichRepository = (
       LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representatives body ON body.person_id = p.person_id
       LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
-      LEFT JOIN person_presentation_media presentation_body
-        ON presentation_body.person_id = p.person_id
-        AND presentation_body.slot_kind = 'body'
-      LEFT JOIN asset presentation_body_asset
-        ON presentation_body_asset.asset_id = presentation_body.asset_id
-        AND presentation_body_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
-      LEFT JOIN person_presentation_media presentation_face
-        ON presentation_face.person_id = p.person_id
-        AND presentation_face.slot_kind = 'face'
-      LEFT JOIN asset presentation_face_asset
-        ON presentation_face_asset.asset_id = presentation_face.asset_id
-        AND presentation_face_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}
+      ${presentationJoins}
       WHERE p.status = 'active'
         AND (p.subject_kind <> 'person'
           OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})

@@ -1875,7 +1875,32 @@ test("People collection preserves the bounded Body presentation projection after
   );
   assert.deepEqual(calls, [
     ["visibility", "people"],
-    ["people", { limit: "20", query: "Person" }],
+    ["people", { includePresentation: true, limit: "20", query: "Person" }],
+  ]);
+});
+
+test("People collection lets list consumers opt out of presentation media", async () => {
+  const calls = [];
+  await withServer(
+    {
+      people: async (input) => {
+        calls.push(["people", input]);
+        return [];
+      },
+    },
+    async (root) => {
+      const response = await fetch(`${root}/v1/people?limit=20&presentation=0`);
+      assert.equal(response.status, 200);
+    },
+    {
+      visibility: {
+        requireProjection: () => {},
+        runRequest: (_request, _response, run) => run(),
+      },
+    },
+  );
+  assert.deepEqual(calls, [
+    ["people", { includePresentation: false, limit: "20", query: null }],
   ]);
 });
 

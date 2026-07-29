@@ -469,19 +469,38 @@
     assets: CimmichPersonAsset[],
     people: CimmichPerson[],
   ) => {
+    const contextCounts = new SvelteMap<string, number>();
+    for (const asset of assets) {
+      for (const context of asset.contexts) {
+        contextCounts.set(context.entityId, (contextCounts.get(context.entityId) ?? 0) + 1);
+      }
+    }
+    // Uncapped, this fired one request per unique context tag across the
+    // person's assets — hundreds on a well-tagged archive person. Rank by
+    // shared-asset count so the strongest connections win the budget.
     const contexts = [
       ...new SvelteMap(
         assets.flatMap((asset) => asset.contexts).map((context) => [context.entityId, context]),
       ).values(),
-    ];
-    const details = await Promise.all(
-      contexts.map((context) =>
-        getCimmichContextEntity(
+    ]
+      .sort((a, b) => (contextCounts.get(b.entityId) ?? 0) - (contextCounts.get(a.entityId) ?? 0))
+      .slice(0, 32);
+    const details: (Awaited<ReturnType<typeof getCimmichContextEntity>> | null)[] = Array.from(
+      { length: contexts.length },
+      () => null,
+    );
+    let nextContextIndex = 0;
+    const contextWorker = async () => {
+      while (nextContextIndex < contexts.length) {
+        const index = nextContextIndex++;
+        const context = contexts[index];
+        details[index] = await getCimmichContextEntity(
           context.entityKind === 'event' ? 'events' : context.entityKind === 'object' ? 'objects' : 'places',
           context.entityId,
-        ).catch(() => null),
-      ),
-    );
+        ).catch(() => null);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, contexts.length) }, () => contextWorker()));
     const linked = new SvelteMap<string, CimmichPersonConnection & { contextIds: Set<string> }>();
     for (const detail of details) {
       if (!detail) {
@@ -2826,12 +2845,7 @@
       if (generation !== personProjectionGeneration) {
         return;
       }
-      const peopleConnections = await loadCimmichPeopleConnections(row.person_id, assetsPage.items, setupPeople);
-      if (generation !== personProjectionGeneration) {
-        return;
-      }
       cimmichSetupPeople = setupPeople;
-      cimmichPeopleConnections = peopleConnections;
       cimmichIdentityCorrections = corrections.items;
       cimmichIdentityUndoDecisionId = corrections.items.find((item) => item.undo.eligible)?.undo.decisionId ?? '';
       cimmichPersonVisibility = personVisibility;
@@ -2848,6 +2862,13 @@
         cimmichDetailsDisplay = detailsDisplay;
         cimmichProfileError = '';
       }
+      // Connections fan out one request per ranked context; let the dossier
+      // paint from the state above and fill the graph in when it resolves.
+      const peopleConnections = await loadCimmichPeopleConnections(row.person_id, assetsPage.items, setupPeople);
+      if (generation !== personProjectionGeneration) {
+        return;
+      }
+      cimmichPeopleConnections = peopleConnections;
       if (row.needs_holding || cimmichMode === 'identity') {
         await openCimmichIdentity(generation);
       }

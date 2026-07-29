@@ -1317,6 +1317,8 @@ export const createCimmichServer = ({
             items: await repository.people({
               limit: url.searchParams.get("limit"),
               query: url.searchParams.get("q"),
+              includePresentation:
+                url.searchParams.get("presentation") !== "0",
             }),
           },
           allowedOrigin,
