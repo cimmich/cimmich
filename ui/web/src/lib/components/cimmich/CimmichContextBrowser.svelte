@@ -170,6 +170,7 @@
   let relationError = $state('');
   let connectionPresentations = $state<Record<string, { objectPosition: string; sourceAssetId: string | null }>>({});
   let connectionPresentationGeneration = 0;
+  let connectionPresentationKey = '';
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
@@ -1413,11 +1414,21 @@
 
   const connectionKey = (kind: CimmichContextRelation['targetKind'], id: string) => `${kind}:${id}`;
 
+  // The presentation fan-out is keyed by the visible relation targets, not by
+  // the detail object's identity: mutations return fresh detail objects with
+  // the same connections, and those must not re-fire the whole request burst.
+  const connectionPresentationSignature = (detail: CimmichContextDetail | null) =>
+    detail
+      ? [...new Set(detail.relations.map((relation) => connectionKey(relation.targetKind, relation.targetId)))]
+          .sort()
+          .join(',')
+      : '';
+
   const loadConnectionPresentations = async (detail: CimmichContextDetail | null) => {
     const generation = ++connectionPresentationGeneration;
     if (!detail || detail.relations.length === 0) {
       connectionPresentations = {};
-      return;
+      return true;
     }
     const targetKinds = new Set(detail.relations.map((relation) => relation.targetKind));
     const tasks: Array<Promise<Array<[string, { objectPosition: string; sourceAssetId: string | null }]>>> = [];
@@ -1478,11 +1489,12 @@
     }
     const settled = await Promise.allSettled(tasks);
     if (generation !== connectionPresentationGeneration) {
-      return;
+      return false;
     }
     connectionPresentations = Object.fromEntries(
       settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : [])),
     );
+    return settled.every((result) => result.status === 'fulfilled');
   };
 
   const contextRelationRoute = (relation: CimmichContextRelation) => {
@@ -1520,7 +1532,19 @@
   };
 
   $effect(() => {
-    void loadConnectionPresentations(selected);
+    const detail = selected;
+    const key = `${cimmichVisibilityManager.version}|${connectionPresentationSignature(detail)}`;
+    if (key === connectionPresentationKey) {
+      return;
+    }
+    connectionPresentationKey = key;
+    void loadConnectionPresentations(detail).then((complete) => {
+      // A partial or failed load may retry on the next detail change instead
+      // of pinning stale placeholders for the rest of the session.
+      if (!complete && connectionPresentationKey === key) {
+        connectionPresentationKey = '';
+      }
+    });
   });
 
   $effect(() => {

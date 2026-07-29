@@ -174,6 +174,11 @@ test("Pet media projects accepted Pet face geometry for automatic presentation f
     const statement = strings.join("?");
     statements.push(statement);
     if (statement.includes("WITH visible_connections")) return [];
+    if (statement.includes("SELECT person_id, cover_asset_id, cover_crop")) {
+      return [
+        { cover_asset_id: null, cover_crop: null, person_id: "pet-cafe" },
+      ];
+    }
     if (statement.includes("FROM current_person pet")) {
       return [petRow("pet-cafe", "Cafe")];
     }

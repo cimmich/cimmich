@@ -1022,7 +1022,11 @@ export const createCimmichRepository = (
     bridgeFields: (assetId) => bridgeFields(bridge, assetId),
     companion: options.immichCompanion,
     derivativeProvider: options.identityAuditDerivativeProvider,
+    independenceComparisonLimit:
+      options.identityAuditIndependenceComparisonLimit,
+    independenceConcurrency: options.identityAuditIndependenceConcurrency,
     presentationRank,
+    queryFrontierLimit: options.identityAuditQueryFrontierLimit,
     sourceId: options.immichSourceId,
   });
   let machineSuggestionCache = null;
@@ -1172,6 +1176,177 @@ export const createCimmichRepository = (
       ...projectPetRow(row),
       connections: connections.get(row.person_id) || [],
     }));
+  };
+  // Presentation reads/writes only need the pet existence/visibility gate and
+  // the stored cover; the full pet() projection (media/document counts,
+  // connections) is priced per call and unrelated to presentation.
+  const requireVisiblePetCover = async (petId) => {
+    const [pet] = await sql`
+      SELECT person_id, cover_asset_id, cover_crop
+      FROM current_person
+      WHERE person_id = ${String(petId || "").trim()}
+        AND subject_kind = 'pet'
+        AND cimmich_visibility_pet_rank(person_id) <= ${presentationRank()}
+    `;
+    if (!pet) throw typedError("Pet not found", 404, "PET_NOT_FOUND");
+    return pet;
+  };
+  // One face-bucket move inside a caller-provided transaction. setFaceBucket
+  // wraps it in its own transaction; rescanHeadEvidence batches many moves
+  // inside one transaction instead of one transaction per face.
+  const applyFaceBucketChange = async (
+    tx,
+    { actor, bucketKind, faceId, personId },
+  ) => {
+    const [identity] = await tx`
+        SELECT ic.identity_claim_id
+        FROM identity_claim ic
+        JOIN person subject ON subject.person_id = ic.person_id
+          AND subject.status = 'active' AND subject.subject_kind = 'person'
+        WHERE ic.face_id = ${faceId} AND ic.person_id = ${personId} AND ic.state = 'accepted'
+        LIMIT 1
+        FOR UPDATE
+      `;
+    if (!identity) {
+      throw Object.assign(new Error("Accepted face identity not found"), {
+        statusCode: 404,
+      });
+    }
+
+    const current = await tx`
+    SELECT g.bucket_id, g.bucket_kind
+    FROM current_reference_gallery g
+    WHERE g.person_id = ${personId}
+      AND g.face_id = ${faceId}
+      AND g.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
+      AND g.membership_state = 'active'
+    ORDER BY g.bucket_kind
+  `;
+    if (
+      current.length === (bucketKind ? 1 : 0) &&
+      (!bucketKind || current[0]?.bucket_kind === bucketKind)
+    ) {
+      return { bucketKind, changed: false, faceId, personId };
+    }
+
+    const now = new Date();
+    await tx`
+    INSERT INTO producer_receipt (
+      producer_receipt_id, producer_kind, producer_name, producer_version,
+      started_at, completed_at, privacy_class
+    ) VALUES (
+      ${userCommandReceiptId}, 'user', 'cimmich-local-identity-commands', 'v1',
+      ${now}, ${now}, 'private'
+    ) ON CONFLICT (producer_receipt_id) DO NOTHING
+  `;
+    const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+    await tx`
+    INSERT INTO decision (
+      decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+      reason_code, note, producer_receipt_id, privacy_class
+    ) VALUES (
+      ${decisionId}, 'face_bucket_membership', ${`${personId}:${faceId}`},
+      ${bucketKind === "prime" ? "promote" : "demote"}, 'user', ${actor},
+      'identity_workspace', ${
+        bucketKind === "head"
+          ? "Set head identity evidence"
+          : bucketKind === "lq"
+            ? "Set condition-routed low-quality face reference"
+            : bucketKind
+              ? `Set ${bucketKind} face reference`
+              : "Remove face reference bucket"
+      },
+      ${userCommandReceiptId}, 'sensitive-biometric'
+    )
+  `;
+
+    if (bucketKind === "head") {
+      const specialty = await tx`
+      SELECT g.bucket_id
+      FROM current_reference_gallery g
+      WHERE g.person_id = ${personId} AND g.face_id = ${faceId}
+        AND g.bucket_kind = 'specialty' AND g.membership_state = 'active'
+    `;
+      for (const row of specialty) {
+        await tx`
+        INSERT INTO bucket_membership_event (
+          membership_event_id, bucket_id, face_id, action, actor_kind,
+          reason_code, reason_text, producer_receipt_id, privacy_class
+        ) VALUES (
+          ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
+          'remove', 'user', 'identity_workspace_head', 'Head evidence cannot train Specialty matching',
+          ${userCommandReceiptId}, 'sensitive-biometric'
+        )
+      `;
+      }
+    }
+
+    for (const row of current) {
+      if (row.bucket_kind === bucketKind) {
+        continue;
+      }
+      await tx`
+      INSERT INTO bucket_membership_event (
+        membership_event_id, bucket_id, face_id, action, actor_kind,
+        reason_code, reason_text, producer_receipt_id, privacy_class
+      ) VALUES (
+        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
+        'remove', 'user', 'identity_workspace', 'Moved or removed by user',
+        ${userCommandReceiptId}, 'sensitive-biometric'
+      )
+    `;
+    }
+
+    if (
+      bucketKind &&
+      !current.some((row) => row.bucket_kind === bucketKind)
+    ) {
+      let [target] = await tx`
+      SELECT bucket_id
+      FROM reference_bucket
+      WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
+      LIMIT 1
+    `;
+      if (!target && (bucketKind === "head" || bucketKind === "lq")) {
+        await tx`
+        INSERT INTO reference_bucket (
+          bucket_id, person_id, bucket_kind, name, activation_hints,
+          created_by, policy_version, state, producer_receipt_id, privacy_class
+        ) SELECT
+          ${`bucket_${randomUUID().replaceAll("-", "")}`}, ${personId}, ${bucketKind}, NULL, NULL,
+          'user', ${bucketKind === "head" ? "cimmich-head-evidence-v1" : "cimmich-low-quality-condition-v1"},
+          'active', ${userCommandReceiptId}, 'sensitive-biometric'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM reference_bucket
+          WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
+        )
+        ON CONFLICT DO NOTHING
+      `;
+        [target] = await tx`
+        SELECT bucket_id
+        FROM reference_bucket
+        WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
+        LIMIT 1
+      `;
+      }
+      if (!target) {
+        throw Object.assign(new Error("Reference bucket not found"), {
+          statusCode: 404,
+        });
+      }
+      await tx`
+      INSERT INTO bucket_membership_event (
+        membership_event_id, bucket_id, face_id, action, actor_kind,
+        reason_code, reason_text, producer_receipt_id, privacy_class
+      ) VALUES (
+        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${target.bucket_id}, ${faceId},
+        'pin', 'user', 'identity_workspace', 'Selected by user',
+        ${userCommandReceiptId}, 'sensitive-biometric'
+      )
+    `;
+    }
+
+    return { bucketKind, changed: true, decisionId, faceId, personId };
   };
   const requirePet = async (executor, petId, { allowHidden = false } = {}) => {
     const [pet] = await executor`
@@ -2577,7 +2752,7 @@ export const createCimmichRepository = (
     },
 
     async petMedia({ limit = 100, petId }) {
-      await this.pet({ petId });
+      await requireVisiblePetCover(petId);
       const rows = await sql`
       SELECT asset.asset_id, asset.media_kind, asset.width, asset.height,
         asset.capture_time,
@@ -5186,6 +5361,7 @@ export const createCimmichRepository = (
     async personPresentation({ personId }) {
       await requireVisibleSubject(personId);
       const id = String(personId || "");
+      const visibleRank = presentationRank();
       const rows = await sql`
         SELECT media.slot_kind, media.asset_id, media.observation_kind,
           media.observation_id, media.crop, media.updated_at,
@@ -5193,7 +5369,7 @@ export const createCimmichRepository = (
         FROM person_presentation_media media
         JOIN asset source ON source.asset_id = media.asset_id AND source.state = 'active'
         WHERE media.person_id = ${id}
-          AND cimmich_visibility_asset_rank(media.asset_id) <= ${presentationRank()}
+          AND cimmich_visibility_asset_rank(media.asset_id) <= ${visibleRank}
         ORDER BY media.slot_kind
       `;
       const slots = { body: null, face: null, hero: null };
@@ -5212,7 +5388,107 @@ export const createCimmichRepository = (
         };
       }
       if (Object.values(slots).some((slot) => slot === null)) {
-        const person = await this.person({ personId: id });
+        // Automatic slots need only the representative face/body picks, not
+        // the whole person() dossier (counts, categories, photo history).
+        // These CTEs mirror the person() representative selection exactly.
+        const [representativeRow] = await sql`
+        WITH target_person AS MATERIALIZED (
+          SELECT person_id
+          FROM current_person
+          WHERE person_id = ${id} AND status = 'active'
+            AND (subject_kind <> 'person'
+              OR cimmich_visibility_person_rank(person_id) <= ${visibleRank})
+        ), accepted_faces AS MATERIALIZED (
+          SELECT identity.face_id, identity.person_id, face.asset_id,
+            face.state, face.box_x, face.box_y, face.box_w, face.box_h,
+            face.quality_measurements
+          FROM current_face_identity identity
+          JOIN target_person person ON person.person_id = identity.person_id
+          JOIN face_observation face ON face.face_id = identity.face_id
+          WHERE identity.state = 'accepted'
+            AND cimmich_visibility_asset_rank(face.asset_id) <= ${visibleRank}
+        ), person_buckets AS MATERIALIZED (
+          SELECT bucket_id, person_id, bucket_kind
+          FROM reference_bucket
+          WHERE person_id = ${id} AND state IN ('candidate', 'active')
+        ), gallery_latest AS MATERIALIZED (
+          SELECT DISTINCT ON (event.bucket_id, event.face_id)
+            bucket.person_id, bucket.bucket_kind, event.face_id, event.action
+          FROM person_buckets bucket
+          JOIN bucket_membership_event event ON event.bucket_id = bucket.bucket_id
+          ORDER BY event.bucket_id, event.face_id, event.created_at DESC,
+            event.membership_event_id DESC
+        ), active_gallery AS MATERIALIZED (
+          SELECT * FROM gallery_latest
+          WHERE action IN ('activate', 'pin', 'unpin')
+        ), representative AS MATERIALIZED (
+          SELECT face.asset_id, face.face_id, face.box_x, face.box_y,
+            face.box_w, face.box_h
+          FROM accepted_faces face
+          LEFT JOIN active_gallery gallery ON gallery.person_id = face.person_id
+            AND gallery.face_id = face.face_id
+          WHERE face.state = 'valid'
+          ORDER BY CASE gallery.bucket_kind WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1 ELSE 2 END,
+            (face.quality_measurements->>'quality_score')::float8 DESC NULLS LAST,
+            face.face_id
+          LIMIT 1
+        ), body_representative AS MATERIALIZED (
+          SELECT body.asset_id, body.body_id, body.box_x, body.box_y,
+            body.box_w, body.box_h
+          FROM current_body_tag tag
+          JOIN body_observation body ON body.body_id = tag.body_id
+          WHERE tag.person_id = ${id} AND tag.state = 'accepted'
+            AND body.state = 'valid'
+            AND cimmich_visibility_asset_rank(body.asset_id) <= ${visibleRank}
+          ORDER BY (body.quality_measurements->>'quality_score')::float8 DESC NULLS LAST,
+            (body.box_w * body.box_h) DESC,
+            body.body_id
+          LIMIT 1
+        )
+        SELECT p.person_id,
+          representative.asset_id AS representative_asset_id,
+          representative.face_id AS representative_face_id,
+          representative.box_x::float8 AS box_x,
+          representative.box_y::float8 AS box_y,
+          representative.box_w::float8 AS box_w,
+          representative.box_h::float8 AS box_h,
+          representative_asset.width::int AS width,
+          representative_asset.height::int AS height,
+          body.asset_id AS body_preview_asset_id,
+          body.body_id AS body_preview_body_id,
+          body.box_x::float8 AS body_preview_box_x,
+          body.box_y::float8 AS body_preview_box_y,
+          body.box_w::float8 AS body_preview_box_w,
+          body.box_h::float8 AS body_preview_box_h,
+          body_asset.width::int AS body_preview_width,
+          body_asset.height::int AS body_preview_height
+        FROM target_person p
+        LEFT JOIN representative ON true
+        LEFT JOIN asset representative_asset
+          ON representative_asset.asset_id = representative.asset_id
+        LEFT JOIN body_representative body ON true
+        LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+      `;
+        if (!representativeRow) {
+          throw Object.assign(new Error("Cimmich identity not found"), {
+            statusCode: 404,
+          });
+        }
+        const person = {
+          ...representativeRow,
+          bodyPreview: representativeRow.body_preview_body_id
+            ? {
+                assetId: representativeRow.body_preview_asset_id,
+                bodyId: representativeRow.body_preview_body_id,
+                box_h: representativeRow.body_preview_box_h,
+                box_w: representativeRow.body_preview_box_w,
+                box_x: representativeRow.body_preview_box_x,
+                box_y: representativeRow.body_preview_box_y,
+                height: representativeRow.body_preview_height,
+                width: representativeRow.body_preview_width,
+              }
+            : null,
+        };
         const cropFromBox = ({ h, padding, w, x, y }) => {
           if (![h, w, x, y].every(Number.isFinite)) return null;
           const cropW = Math.min(1, Math.max(w * padding, 0.01));
@@ -5420,17 +5696,18 @@ export const createCimmichRepository = (
     },
 
     async petPresentation({ petId }) {
-      const pet = await this.pet({ petId });
+      const pet = await requireVisiblePetCover(petId);
+      const coverCrop = pet.cover_asset_id ? pet.cover_crop || null : null;
       const presentation = await this.personPresentation({
-        personId: pet.petId,
+        personId: pet.person_id,
       });
       if (presentation.face && presentation.hero) {
         return { ...presentation, body: null };
       }
 
-      const media = await this.petMedia({ limit: 100, petId: pet.petId });
-      const coverMedia = pet.cover?.assetId
-        ? media.find((item) => item.asset_id === pet.cover.assetId)
+      const media = await this.petMedia({ limit: 100, petId: pet.person_id });
+      const coverMedia = pet.cover_asset_id
+        ? media.find((item) => item.asset_id === pet.cover_asset_id)
         : null;
       const cropFromBox = ({ h, padding, w, x, y }) => {
         if (![h, w, x, y].every(Number.isFinite)) return null;
@@ -5496,16 +5773,14 @@ export const createCimmichRepository = (
         ...presentation,
         body: null,
         face:
-          presentation.face ||
-          automaticPetMedia(faceMedia, "face", pet.cover?.crop || null),
+          presentation.face || automaticPetMedia(faceMedia, "face", coverCrop),
         hero:
-          presentation.hero ||
-          automaticPetMedia(heroMedia, "hero", pet.cover?.crop || null),
+          presentation.hero || automaticPetMedia(heroMedia, "hero", coverCrop),
       };
     },
 
     async setPetPresentation({ petId, slotKind, ...input }) {
-      await this.pet({ petId });
+      await requireVisiblePetCover(petId);
       if (!["face", "hero"].includes(String(slotKind || ""))) {
         throw Object.assign(new Error("Pet presentation slot is invalid"), {
           statusCode: 400,
@@ -6842,157 +7117,9 @@ export const createCimmichRepository = (
         );
       }
 
-      const result = await sql.begin(async (tx) => {
-        const [identity] = await tx`
-        SELECT ic.identity_claim_id
-        FROM identity_claim ic
-        JOIN person subject ON subject.person_id = ic.person_id
-          AND subject.status = 'active' AND subject.subject_kind = 'person'
-        WHERE ic.face_id = ${faceId} AND ic.person_id = ${personId} AND ic.state = 'accepted'
-        LIMIT 1
-        FOR UPDATE
-      `;
-        if (!identity) {
-          throw Object.assign(new Error("Accepted face identity not found"), {
-            statusCode: 404,
-          });
-        }
-
-        const current = await tx`
-        SELECT g.bucket_id, g.bucket_kind
-        FROM current_reference_gallery g
-        WHERE g.person_id = ${personId}
-          AND g.face_id = ${faceId}
-          AND g.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
-          AND g.membership_state = 'active'
-        ORDER BY g.bucket_kind
-      `;
-        if (
-          current.length === (bucketKind ? 1 : 0) &&
-          (!bucketKind || current[0]?.bucket_kind === bucketKind)
-        ) {
-          return { bucketKind, changed: false, faceId, personId };
-        }
-
-        const now = new Date();
-        await tx`
-        INSERT INTO producer_receipt (
-          producer_receipt_id, producer_kind, producer_name, producer_version,
-          started_at, completed_at, privacy_class
-        ) VALUES (
-          ${userCommandReceiptId}, 'user', 'cimmich-local-identity-commands', 'v1',
-          ${now}, ${now}, 'private'
-        ) ON CONFLICT (producer_receipt_id) DO NOTHING
-      `;
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-        INSERT INTO decision (
-          decision_id, subject_type, subject_id, action, actor_kind, actor_id,
-          reason_code, note, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${decisionId}, 'face_bucket_membership', ${`${personId}:${faceId}`},
-          ${bucketKind === "prime" ? "promote" : "demote"}, 'user', ${actor},
-          'identity_workspace', ${
-            bucketKind === "head"
-              ? "Set head identity evidence"
-              : bucketKind === "lq"
-                ? "Set condition-routed low-quality face reference"
-                : bucketKind
-                  ? `Set ${bucketKind} face reference`
-                  : "Remove face reference bucket"
-          },
-          ${userCommandReceiptId}, 'sensitive-biometric'
-        )
-      `;
-
-        if (bucketKind === "head") {
-          const specialty = await tx`
-          SELECT g.bucket_id
-          FROM current_reference_gallery g
-          WHERE g.person_id = ${personId} AND g.face_id = ${faceId}
-            AND g.bucket_kind = 'specialty' AND g.membership_state = 'active'
-        `;
-          for (const row of specialty) {
-            await tx`
-            INSERT INTO bucket_membership_event (
-              membership_event_id, bucket_id, face_id, action, actor_kind,
-              reason_code, reason_text, producer_receipt_id, privacy_class
-            ) VALUES (
-              ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
-              'remove', 'user', 'identity_workspace_head', 'Head evidence cannot train Specialty matching',
-              ${userCommandReceiptId}, 'sensitive-biometric'
-            )
-          `;
-          }
-        }
-
-        for (const row of current) {
-          if (row.bucket_kind === bucketKind) {
-            continue;
-          }
-          await tx`
-          INSERT INTO bucket_membership_event (
-            membership_event_id, bucket_id, face_id, action, actor_kind,
-            reason_code, reason_text, producer_receipt_id, privacy_class
-          ) VALUES (
-            ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
-            'remove', 'user', 'identity_workspace', 'Moved or removed by user',
-            ${userCommandReceiptId}, 'sensitive-biometric'
-          )
-        `;
-        }
-
-        if (
-          bucketKind &&
-          !current.some((row) => row.bucket_kind === bucketKind)
-        ) {
-          let [target] = await tx`
-          SELECT bucket_id
-          FROM reference_bucket
-          WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
-          LIMIT 1
-        `;
-          if (!target && (bucketKind === "head" || bucketKind === "lq")) {
-            await tx`
-            INSERT INTO reference_bucket (
-              bucket_id, person_id, bucket_kind, name, activation_hints,
-              created_by, policy_version, state, producer_receipt_id, privacy_class
-            ) SELECT
-              ${`bucket_${randomUUID().replaceAll("-", "")}`}, ${personId}, ${bucketKind}, NULL, NULL,
-              'user', ${bucketKind === "head" ? "cimmich-head-evidence-v1" : "cimmich-low-quality-condition-v1"},
-              'active', ${userCommandReceiptId}, 'sensitive-biometric'
-            WHERE NOT EXISTS (
-              SELECT 1 FROM reference_bucket
-              WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
-            )
-            ON CONFLICT DO NOTHING
-          `;
-            [target] = await tx`
-            SELECT bucket_id
-            FROM reference_bucket
-            WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
-            LIMIT 1
-          `;
-          }
-          if (!target) {
-            throw Object.assign(new Error("Reference bucket not found"), {
-              statusCode: 404,
-            });
-          }
-          await tx`
-          INSERT INTO bucket_membership_event (
-            membership_event_id, bucket_id, face_id, action, actor_kind,
-            reason_code, reason_text, producer_receipt_id, privacy_class
-          ) VALUES (
-            ${`membership_${randomUUID().replaceAll("-", "")}`}, ${target.bucket_id}, ${faceId},
-            'pin', 'user', 'identity_workspace', 'Selected by user',
-            ${userCommandReceiptId}, 'sensitive-biometric'
-          )
-        `;
-        }
-
-        return { bucketKind, changed: true, decisionId, faceId, personId };
-      });
+      const result = await sql.begin(async (tx) =>
+        applyFaceBucketChange(tx, { actor, bucketKind, faceId, personId }),
+      );
       const maintenancePending = result.changed
         ? skipPrimeMaintenance
           ? true
@@ -7191,21 +7318,29 @@ export const createCimmichRepository = (
         };
       });
 
-      const movedFaceIds = [];
-      for (const item of evaluated) {
-        if (!item.targetBucket) continue;
-        const result = await repository.setFaceBucket({
-          actorId: actor,
-          bucketKind: item.targetBucket,
-          faceId: item.faceId,
-          personId: id,
-          skipPrimeMaintenance: true,
-        });
-        if (result.changed) movedFaceIds.push(item.faceId);
-      }
+      // All bucket moves commit in one transaction (the bulk-endpoint idiom)
+      // instead of one transaction per face inside the HTTP request.
+      const moves = evaluated.filter((item) => item.targetBucket);
+      const movedFaceIds =
+        moves.length === 0
+          ? []
+          : await sql.begin(async (tx) => {
+              const changed = [];
+              for (const item of moves) {
+                const result = await applyFaceBucketChange(tx, {
+                  actor,
+                  bucketKind: item.targetBucket,
+                  faceId: item.faceId,
+                  personId: id,
+                });
+                if (result.changed) changed.push(item.faceId);
+              }
+              return changed;
+            });
 
       let maintenancePending = false;
       if (movedFaceIds.length > 0) {
+        invalidateMachineSuggestions();
         maintenancePending = await refreshPrimeAfterCommand(sql, id);
       }
       const finalBuckets =

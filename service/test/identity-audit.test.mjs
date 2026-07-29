@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   carryForwardIdentityAuditDismissals,
   createIdentityAudit,
+  identityAuditQueryFrontierLimit,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
 import { readFile } from "node:fs/promises";
@@ -507,6 +508,112 @@ test("independent evidence suppresses only replay-consistent same-photo candidat
   assert.match(candidateQuery, /audit_kind = 'accepted_contradiction'/);
   assert.match(candidateQuery, /query_projection\.source_id/);
   assert.match(candidateQuery, /reference_projection\.source_id/);
+});
+
+test("full audit bounds both comparison frontiers deterministically and reports truncation", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  // Both full-audit statements (untagged_match and accepted_contradiction)
+  // rank their eligible queries and cap them with one shared frontier limit.
+  assert.equal((source.match(/LIMIT \$\{frontierLimit\}/g) || []).length, 2);
+  assert.equal(
+    (source.match(/eligible_queries AS MATERIALIZED/g) || []).length,
+    2,
+  );
+  assert.equal(
+    (
+      source.match(
+        /ORDER BY eligible\.quality_score DESC,\s+eligible\.detection_confidence DESC, eligible\.face_id/g,
+      ) || []
+    ).length,
+    2,
+  );
+  // The frontier is applied after the weaker-duplicate overlap suppression so
+  // bounding can never change which detections suppress each other.
+  assert.ok(
+    source.indexOf("eligible_queries AS MATERIALIZED") <
+      source.indexOf("stronger.asset_id = candidate.asset_id"),
+  );
+  // Truncation is observable, never silent, and the default bound sits far
+  // above realistic library sizes so default behavior is unchanged.
+  assert.match(source, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
+  assert.ok(identityAuditQueryFrontierLimit >= 50_000);
+});
+
+test("independence verification honors the configured bound and concurrency", async () => {
+  const digest = (character) => character.repeat(64);
+  const candidate = (name, offset) => ({
+    asset_id: `asset.${name}`,
+    audit_kind: "untagged_match",
+    face_id: `face.${name}`,
+    query_checksum: digest(String(offset)),
+    query_input_revision: digest(String(offset + 1)),
+    query_source_asset_id: `immich.${name}.query`,
+    reference_asset_id: `asset.${name}.reference`,
+    reference_checksum: digest(String(offset + 2)),
+    reference_input_revision: digest(String(offset + 3)),
+    reference_source_asset_id: `immich.${name}.reference`,
+  });
+  const candidates = [
+    candidate("first", 1),
+    candidate("second", 5),
+    candidate("third", 9),
+  ];
+  const transaction = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("UPDATE identity_audit_run")) return [];
+    throw new Error(`Unexpected transaction query: ${query}`);
+  };
+  const sql = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("SELECT item.audit_kind")) return candidates;
+    throw new Error(`Unexpected identity evidence query: ${query}`);
+  };
+  sql.begin = async (callback) => callback(transaction);
+  const comparedRuns = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const provider = {
+    manifest: { providerConfigDigest: digest("a") },
+    compare: async ({ runId }) => {
+      comparedRuns.push(runId);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      inFlight -= 1;
+      return { similarity: 0.5 };
+    },
+  };
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+  try {
+    await suppressSamePhotoDerivatives(sql, {
+      companion: {
+        readAssetImage: async ({ assetId }) => ({
+          bytes: Buffer.from(assetId),
+        }),
+      },
+      comparisonConcurrency: 1,
+      comparisonLimit: 2,
+      provider,
+      runId: "audit.test",
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  // Two candidates verified (forward + reverse each), third bounded away.
+  assert.equal(comparedRuns.length, 4);
+  assert.equal(maxInFlight, 1);
+  assert.equal(
+    warnings.filter((warning) =>
+      warning.includes("IDENTITY_AUDIT_INDEPENDENCE_COMPARISONS_TRUNCATED"),
+    ).length,
+    1,
+  );
 });
 
 test("independence replay tolerates last-bit noise without failing the run", async () => {

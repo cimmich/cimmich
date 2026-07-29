@@ -13,6 +13,22 @@
   let { detail }: Props = $props();
   let linkedMapMarkers = $state<MapMarkerResponseDto[]>([]);
   let linkedMapGeneration = 0;
+  let linkedMarkersKey: string | null = null;
+
+  // Cimmich captureTime is the Immich fileCreatedAt this endpoint filters on,
+  // so a padded capture window returns every linked marker while skipping the
+  // rest of the library. The pad only ever admits extra markers, and those are
+  // filtered back out by the sourceAssetIds intersection below.
+  const linkedMarkerWindowPadMs = 24 * 60 * 60 * 1000;
+  const linkedMarkerQuery = (captureTimes: number[]) => {
+    if (captureTimes.length === 0 || !captureTimes.every((value) => Number.isFinite(value))) {
+      return {};
+    }
+    return {
+      fileCreatedAfter: new Date(Math.min(...captureTimes) - linkedMarkerWindowPadMs).toISOString(),
+      fileCreatedBefore: new Date(Math.max(...captureTimes) + linkedMarkerWindowPadMs).toISOString(),
+    };
+  };
 
   const placeProjection = $derived(contextPlaceMapProjection([detail.entity]));
   const locatorCenter = $derived(
@@ -22,13 +38,21 @@
   );
 
   $effect(() => {
-    const generation = ++linkedMapGeneration;
     const sourceAssetIds = detail.assets.map((asset) => asset.sourceAssetId);
+    const captureTimes = detail.assets.map((asset) => Date.parse(asset.captureTime ?? ''));
+    const key = sourceAssetIds.join(',');
+    if (key === linkedMarkersKey) {
+      // The detail object identity changed but the shown assets did not;
+      // downloading the library's markers again would only repeat the answer.
+      return;
+    }
+    linkedMarkersKey = key;
+    const generation = ++linkedMapGeneration;
     if (sourceAssetIds.length === 0) {
       linkedMapMarkers = [];
       return;
     }
-    void getMapMarkers({})
+    void getMapMarkers(linkedMarkerQuery(captureTimes))
       .then((markers) => {
         if (generation !== linkedMapGeneration) {
           return;
@@ -45,6 +69,8 @@
       .catch(() => {
         if (generation === linkedMapGeneration) {
           linkedMapMarkers = [];
+          // Let the next detail change retry after a transient failure.
+          linkedMarkersKey = null;
         }
       });
   });

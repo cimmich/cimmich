@@ -16,6 +16,15 @@ import { createMediaJobLedger } from "./media-job-ledger.mjs";
 
 export const bodyDetectionBacklogVersion = "cimmich.body-detection-backlog.v1";
 export const bodyDetectionJobToolVersion = "cimmich-resident-body-detection-v2";
+// media_asset_triage is a whole-archive GROUP BY view. Ranking claims against
+// it is correct but expensive, so the claim queue snapshots one ranked window
+// per run instead of re-evaluating the view every few claims. Claim-time
+// revalidation (job still pending, projection still active) keeps a stale
+// snapshot safe; staleness only affects claim order inside one snapshot.
+// Expired-lease recovery keeps its own, much shorter cadence because it is a
+// cheap targeted UPDATE that must not wait for snapshot exhaustion.
+const bodyDetectionClaimSnapshotSize = 1_024;
+const bodyDetectionLeaseRecoveryClaimInterval = 64;
 
 const requiredText = (value, label) => {
   const normalized = String(value || "").trim();
@@ -199,15 +208,16 @@ export const createBodyDetectionJobClaimQueue = ({
   sourceId,
   sql,
   toolVersion = bodyDetectionJobToolVersion,
-  windowSize = 64,
+  windowSize = bodyDetectionClaimSnapshotSize,
 } = {}) => {
   if (!sql) throw new Error("Body detection claim queue requires a database");
   const source = requiredText(sourceId, "sourceId");
   const digest = requiredText(configDigest, "configDigest");
   const version = requiredText(toolVersion, "toolVersion");
-  const size = boundedInteger(windowSize, "claim window", 1, 1_000);
+  const size = boundedInteger(windowSize, "claim window", 1, 10_000);
   let rankedJobIds = [];
   let refillPromise = null;
+  let claimsSinceLeaseRecovery = 0;
 
   const refill = async () => {
     const rows = await sql.begin(async (transaction) => {
@@ -271,7 +281,19 @@ export const createBodyDetectionJobClaimQueue = ({
           toolVersion: version,
           workerId: worker,
         });
-        if (row) return row;
+        if (row) {
+          claimsSinceLeaseRecovery += 1;
+          if (
+            claimsSinceLeaseRecovery >= bodyDetectionLeaseRecoveryClaimInterval
+          ) {
+            claimsSinceLeaseRecovery = 0;
+            await recoverExpiredBodyJobs(sql, {
+              configDigest: digest,
+              toolVersion: version,
+            });
+          }
+          return row;
+        }
       }
     },
   });

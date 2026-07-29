@@ -128,6 +128,118 @@ test("Head rescan retains evidence unless the governed winner is the current Per
   );
 });
 
+test("Head rescan commits all bucket moves in one shared transaction", async () => {
+  let begins = 0;
+  const txStatements = [];
+  const answer = (statement) => {
+    if (
+      statement.includes("SELECT person_id, subject_kind FROM current_person")
+    ) {
+      return [{ person_id: "person-current", subject_kind: "person" }];
+    }
+    if (statement.includes("slug = 'holding'")) {
+      return [{ holding: false }];
+    }
+    if (statement.includes("FROM source_pack")) {
+      return [
+        {
+          active_passed: 1,
+          active_ready: 1,
+          awaiting_review: 0,
+          margin_floor: 0.21,
+          score_floor: 0.5,
+        },
+      ];
+    }
+    if (statement.includes("head_faces AS MATERIALIZED")) {
+      return [1, 2].map((index) => ({
+        box_h: 0.2,
+        box_w: 0.2,
+        detection_confidence: 0.9,
+        face_id: `face-${index}`,
+        height: 1000,
+        margin_floor: 0.21,
+        quality_measurements: { quality_score: 0.9 },
+        quality_score: 0.9,
+        runner_up_score: null,
+        score: 0.9,
+        score_floor: 0.5,
+        width: 1000,
+        winner_display_name: "Current Person",
+        winner_person_id: "person-current",
+      }));
+    }
+    if (statement.includes("FROM identity_claim ic")) {
+      return [{ identity_claim_id: "claim-1" }];
+    }
+    if (statement.includes("bucket_kind IN ('prime', 'secondary', 'lq', 'head')")) {
+      return [];
+    }
+    if (statement.includes("INSERT INTO producer_receipt")) return [];
+    if (statement.includes("INSERT INTO decision")) return [];
+    if (statement.includes("FROM reference_bucket")) {
+      return [{ bucket_id: "bucket-secondary" }];
+    }
+    if (statement.includes("INSERT INTO bucket_membership_event")) return [];
+    if (statement.includes("bucket_kind IN ('prime','secondary','lq')")) {
+      return [
+        { bucket_kind: "secondary", face_id: "face-1" },
+        { bucket_kind: "secondary", face_id: "face-2" },
+      ];
+    }
+    return null;
+  };
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    const rows = answer(statement);
+    if (rows === null) {
+      // Prime maintenance queries after the commit are outside this test's
+      // scope; refreshPrimeAfterCommand converts the failure to a deferred
+      // maintenance flag.
+      throw new Error("maintenance out of scope");
+    }
+    return rows;
+  };
+  sql.begin = async (callback) => {
+    begins += 1;
+    return callback(async (strings, ...values) => {
+      const statement = strings.join("?");
+      txStatements.push(statement);
+      const rows = answer(statement);
+      if (rows === null) {
+        throw new Error(`Unexpected transaction query: ${statement.slice(0, 120)}`);
+      }
+      return rows;
+    });
+  };
+  const repository = createCimmichRepository(sql, new Map(), null, {
+    matchingProvider,
+  });
+
+  const result = await repository.rescanHeadEvidence({
+    actorId: "owner",
+    personId: "person-current",
+  });
+
+  assert.equal(result.totalCount, 2);
+  assert.equal(result.movedCount, 2);
+  assert.equal(result.items.every((item) => item.passed), true);
+  // Both face moves share one transaction instead of one per face.
+  assert.equal(begins, 1);
+  assert.equal(
+    txStatements.filter((statement) =>
+      statement.includes("FROM identity_claim ic"),
+    ).length,
+    2,
+  );
+  assert.equal(
+    txStatements.filter((statement) =>
+      statement.includes("INSERT INTO bucket_membership_event"),
+    ).length,
+    2,
+  );
+});
+
 test("simultaneous machine review consumers share one best-Prime scoring snapshot", async () => {
   let calls = 0;
   let release;
