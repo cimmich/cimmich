@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 103/patch 1
+Current source/disposable candidate: migration-ledger schema 104/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -81,6 +81,12 @@ interrupted-run sweep fails only runs that have actually stopped progressing
 (the fixed 15-minute start-age threshold killed legitimate long runs), and adds
 a BRIN index on identity_claim(created_at) for the incremental-audit staleness
 probe. No behavior changes for completed data.
+
+Schema 104 re-issues the same-photo derivative guard so assets holding several
+active Immich projections (legitimate under schema-84 content-hash mobility)
+contribute one deterministic projection per side instead of multiplying the
+verdict subquery into a "more than one row" failure that closed every guarded
+audit statement. The conservative verdict body is unchanged.
 
 ## Public Beta Patch 6 candidate
 
