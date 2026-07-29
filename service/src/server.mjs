@@ -196,6 +196,16 @@ export const createCimmichServer = ({
       response.end();
       return;
     }
+    if (request.method !== "GET") {
+      // Any successful mutation may change what the People grid shows; the
+      // hot snapshot is dropped wholesale rather than tracking which of the
+      // many write paths affect it.
+      response.on("finish", () => {
+        if (response.statusCode < 400) {
+          repository.clearPeopleHotSnapshot?.();
+        }
+      });
+    }
 
     try {
       const url = new URL(request.url || "/", "http://cimmich.local");

@@ -3960,3 +3960,54 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
     ["unknown", { limit: "10" }],
   ]);
 });
+
+test("successful non-GET requests clear the People hot snapshot; reads and failures keep it", async () => {
+  let clears = 0;
+  const repository = {
+    clearPeopleHotSnapshot: () => {
+      clears += 1;
+    },
+    createPerson: async (input) => {
+      if (!input.newPersonName) {
+        throw Object.assign(new Error("Person name is required"), {
+          statusCode: 400,
+        });
+      }
+      return { personId: "person-new" };
+    },
+    people: async () => [],
+  };
+  const visibility = {
+    requireProjection: () => {},
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const read = await fetch(`${root}/v1/people`);
+      assert.equal(read.status, 200);
+      assert.equal(clears, 0);
+
+      const failed = await fetch(`${root}/v1/people`, {
+        body: JSON.stringify({ commandId: "cmd-1" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(failed.status, 400);
+      assert.equal(clears, 0);
+
+      const created = await fetch(`${root}/v1/people`, {
+        body: JSON.stringify({ commandId: "cmd-2", newPersonName: "Ann" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(created.status, 201);
+      // The finish event fires after the response is fully flushed.
+      for (let attempt = 0; attempt < 100 && clears === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      assert.equal(clears, 1);
+    },
+    { visibility },
+  );
+});

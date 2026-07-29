@@ -1084,6 +1084,13 @@ export const createCimmichRepository = (
   const invalidateMachineSuggestions = () => {
     machineSuggestionCache = null;
   };
+  // Private in-process snapshot of the unfiltered People projection - the
+  // whole-grid read the live People page issues on every visit. It is served
+  // hot, refreshed in the background once stale, and cleared by the server
+  // after every successful non-GET request. Never exposed to browser or
+  // shared HTTP caches (all responses are no-store).
+  const peopleHotSnapshot = new Map();
+  const peopleHotSnapshotTtlMs = 10_000;
   const projectPetRow = (row) => ({
     aliases: row.aliases || [],
     breedLabel: row.breed_label || null,
@@ -3525,6 +3532,10 @@ export const createCimmichRepository = (
       }
     },
 
+    clearPeopleHotSnapshot() {
+      peopleHotSnapshot.clear();
+    },
+
     async people({
       limit = 100,
       personId = "",
@@ -3534,7 +3545,8 @@ export const createCimmichRepository = (
       const boundedLimit = cleanLimit(limit, 100, 500);
       const visibleRank = presentationRank();
       const exactPersonId = String(personId || "");
-      const nameQuery = `%${String(query || "").trim()}%`;
+      const trimmedQuery = String(query || "").trim();
+      const nameQuery = `%${trimmedQuery}%`;
       // The presentation-media joins double the per-row work of the hottest
       // list query; index/list consumers that never render saved
       // presentation crops opt out with ?presentation=0.
@@ -3558,8 +3570,24 @@ export const createCimmichRepository = (
       const presentationJoins = includePresentation
         ? presentationSlotJoins(sql, visibleRank)
         : sql``;
-      const rows = await sql`
-      WITH identity_rows AS MATERIALIZED (
+      const loadRows = async () => {
+        const rows = await sql`
+      WITH hidden_assets AS MATERIALIZED (
+        -- Set-based equivalent of cimmich_visibility_asset_rank(asset_id)
+        -- > ${visibleRank}: the function is a single-row lookup with a
+        -- 'standard' default, so calling it per Face/Body/Presence row
+        -- repeated hundreds of thousands of lookups per People load.
+        -- Explicit overrides are rare (often zero rows), so one anti-join
+        -- against this set costs almost nothing.
+        SELECT object_id
+        FROM cimmich_visibility_object
+        WHERE object_scope = 'asset'
+          AND CASE visibility_tier
+            WHEN 'personal' THEN 1
+            WHEN 'private' THEN 2
+            ELSE 0
+          END > ${visibleRank}
+      ), identity_rows AS MATERIALIZED (
         SELECT current.person_id, current.face_id, current.state,
           current.identity_claim_id, claim.evidence_refs, claim.calibrated_confidence,
           fo.asset_id, fo.box_x, fo.box_y, fo.box_w, fo.box_h,
@@ -3567,7 +3595,9 @@ export const createCimmichRepository = (
         FROM current_face_identity current
         JOIN identity_claim claim ON claim.identity_claim_id = current.identity_claim_id
         JOIN face_observation fo ON fo.face_id = current.face_id
-        WHERE cimmich_visibility_asset_rank(fo.asset_id) <= ${visibleRank}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM hidden_assets hidden WHERE hidden.object_id = fo.asset_id
+        )
       ), accepted_photo_person AS MATERIALIZED (
         SELECT DISTINCT person_id, asset_id
         FROM identity_rows
@@ -3592,7 +3622,9 @@ export const createCimmichRepository = (
           gallery.membership_state
         FROM current_reference_gallery gallery
         JOIN face_observation face ON face.face_id = gallery.face_id
-        WHERE cimmich_visibility_asset_rank(face.asset_id) <= ${visibleRank}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM hidden_assets hidden WHERE hidden.object_id = face.asset_id
+        )
       ), accepted_asset_people AS MATERIALIZED (
         SELECT identity.person_id, identity.asset_id,
           CASE WHEN head.face_id IS NULL THEN 'face' ELSE 'head' END AS association_type
@@ -3612,18 +3644,27 @@ export const createCimmichRepository = (
         FROM current_body_tag tag
         JOIN body_observation observation ON observation.body_id = tag.body_id
         WHERE tag.state = 'accepted'
-          AND cimmich_visibility_asset_rank(observation.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = observation.asset_id
+          )
         UNION ALL
         SELECT presence.person_id, presence.asset_id,
           CASE WHEN presence.reason_code = 'head_evidence' THEN 'head' ELSE 'presence' END AS association_type
         FROM current_presence_tag presence
         WHERE presence.state = 'accepted'
-          AND cimmich_visibility_asset_rank(presence.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = presence.asset_id
+          )
         UNION ALL
         SELECT tag.subject_id, head.asset_id, 'head' AS association_type
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
-        WHERE cimmich_visibility_asset_rank(head.asset_id) <= ${visibleRank}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM hidden_assets hidden
+          WHERE hidden.object_id = head.asset_id
+        )
       ), claim_counts AS (
         SELECT current.person_id,
           count(*) FILTER (WHERE current.state = 'accepted')::int AS accepted_faces,
@@ -3704,7 +3745,10 @@ export const createCimmichRepository = (
         FROM current_body_tag tag
         JOIN body_observation observation ON observation.body_id = tag.body_id
         WHERE tag.state = 'accepted' AND observation.state = 'valid'
-          AND cimmich_visibility_asset_rank(observation.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = observation.asset_id
+          )
         ORDER BY tag.person_id,
           (observation.quality_measurements->>'quality_score')::float8 DESC NULLS LAST,
           (observation.box_w * observation.box_h) DESC,
@@ -3764,7 +3808,50 @@ export const createCimmichRepository = (
       LIMIT ${boundedLimit}
     `;
 
-      return rows.map((row) => projectPersonPresentation(bridge, row));
+        return rows.map((row) => projectPersonPresentation(bridge, row));
+      };
+      // Only the exact unfiltered whole-grid variant the People page loads is
+      // snapshot-eligible; scoped, searched or smaller reads always hit the
+      // database. A stale snapshot is served immediately and refreshed in the
+      // background, so worker-side writes (which never pass through the HTTP
+      // clear) surface within one TTL.
+      const snapshotKey =
+        exactPersonId === "" && trimmedQuery === "" && boundedLimit === 500
+          ? `${visibleRank}:${includePresentation ? "presentation" : "plain"}`
+          : "";
+      if (!snapshotKey) return loadRows();
+      const snapshot = peopleHotSnapshot.get(snapshotKey);
+      if (snapshot) {
+        if (
+          Date.now() - snapshot.refreshedAt >= peopleHotSnapshotTtlMs &&
+          !snapshot.refreshing
+        ) {
+          snapshot.refreshing = true;
+          void loadRows()
+            .then((items) => {
+              peopleHotSnapshot.set(snapshotKey, {
+                items,
+                refreshedAt: Date.now(),
+                refreshing: false,
+              });
+            })
+            .catch((error) => {
+              snapshot.refreshing = false;
+              console.error("Cimmich people snapshot refresh failed", {
+                message:
+                  error instanceof Error ? error.message : String(error),
+              });
+            });
+        }
+        return snapshot.items;
+      }
+      const items = await loadRows();
+      peopleHotSnapshot.set(snapshotKey, {
+        items,
+        refreshedAt: Date.now(),
+        refreshing: false,
+      });
+      return items;
     },
 
     async person({ personId }) {

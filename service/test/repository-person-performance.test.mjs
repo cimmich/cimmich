@@ -183,9 +183,12 @@ test("People project ordinary accepted Faces and accepted Body regions without m
   );
   assert.doesNotMatch(statement, /subject\.subject_kind = 'pet'/);
   assert.match(statement, /body_representatives AS MATERIALIZED/);
+  // Asset visibility is enforced through the one materialized hidden-asset
+  // set, never through per-row rank function calls.
+  assert.match(statement, /hidden_assets AS MATERIALIZED/);
   assert.match(
     statement,
-    /cimmich_visibility_asset_rank\(observation\.asset_id\) <=/,
+    /NOT EXISTS \(\s+SELECT 1 FROM hidden_assets hidden\s+WHERE hidden\.object_id = observation\.asset_id\s+\)/,
   );
   assert.match(statement, /tag\.state = 'accepted'/);
   assert.match(statement, /person_presentation_media presentation_body/);
