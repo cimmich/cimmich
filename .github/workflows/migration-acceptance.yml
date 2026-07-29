@@ -1,0 +1,89 @@
+name: Cimmich migration acceptance
+
+# Migrations churned 0084 -> 0104 in one development week while the acceptance
+# script ran only on tags and manual dispatch. Any pull request touching the
+# migration ledger or the service that applies it now proves the fresh,
+# concurrent, interrupted and resumed paths, and runs the database-backed
+# tests the unit lane permanently skips.
+
+on:
+  pull_request:
+    paths:
+      - "migrations/**"
+      - "service/**"
+      - "docker-compose.test.yml"
+      - "tools/run_migration_runner_acceptance.sh"
+      - ".github/workflows/migration-acceptance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cimmich-migration-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-acceptance:
+    name: Migration runner acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install release-test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      - name: Prove fresh, concurrent, interrupted and resumed migrations
+        run: tools/run_migration_runner_acceptance.sh
+
+  database-backed-tests:
+    name: Database-backed tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CIMMICH_TEST_DATABASE_URL: postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Start disposable PostgreSQL
+        run: docker compose --file docker-compose.test.yml up --detach --wait
+
+      - name: Install service dependencies
+        working-directory: service
+        run: npm ci
+
+      - name: Apply the full migration ledger
+        working-directory: service
+        env:
+          DATABASE_URL: postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test
+        run: node bin/migrate.mjs apply
+
+      - name: Run database-backed tests
+        working-directory: service
+        run: node --test test/pet-matching.integration.test.mjs
+
+      - name: Tear down disposable PostgreSQL
+        if: always()
+        run: docker compose --file docker-compose.test.yml down --volumes
