@@ -142,10 +142,13 @@ test("a failed interrupted-run reconcile retries instead of pinning every audit 
     new URL("../src/identity-audit.mjs", import.meta.url),
     "utf8",
   );
+  // Liveness is judged on last recorded progress, never started_at alone,
+  // and the threshold derives from the configured transaction bound.
   assert.match(
     source,
-    /WHERE state = 'running'\s+AND started_at < now\(\) - interval '15 minutes'/,
+    /WHERE state = 'running'\s+AND coalesce\(last_progress_at, started_at\)/,
   );
+  assert.match(source, /make_interval\(/);
 });
 
 test("a completed audit is stale when no passed SourcePack remains active", async () => {

@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 102/patch 1
+Current source/disposable candidate: migration-ledger schema 103/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -75,6 +75,12 @@ list) and recreates the pending pet-suggestion index with the tiebreak order
 the review list actually sorts by. Index-only: no table shape changes.
 Schema 102 drops the never-populated imported_identity_locator table together
 with its removed dead reader paths; no live data or behavior is affected.
+
+Schema 103 gives identity-audit runs a last_progress_at liveness column so the
+interrupted-run sweep fails only runs that have actually stopped progressing
+(the fixed 15-minute start-age threshold killed legitimate long runs), and adds
+a BRIN index on identity_claim(created_at) for the incremental-audit staleness
+probe. No behavior changes for completed data.
 
 ## Public Beta Patch 6 candidate
 

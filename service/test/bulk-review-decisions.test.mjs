@@ -131,6 +131,7 @@ test("bulk candidate reject validates actor, shape and bounds like bulk accept",
 });
 
 test("identity audit batch dismiss reports per-item states in one request", async () => {
+  let runResolutions = 0;
   const sql = async (strings, ...values) => {
     const query = strings.join("?");
     if (query.includes("SET review_state = 'dismissed'")) {
@@ -139,8 +140,13 @@ test("identity audit batch dismiss reports per-item states in one request", asyn
       );
       return faceId === "face-open" ? [{ face_id: faceId }] : [];
     }
+    if (query.includes("WHERE state = 'completed'")) {
+      runResolutions += 1;
+      return [{ audit_run_id: "identity-audit.current" }];
+    }
     return [];
   };
+  sql.begin = (callback) => callback(sql);
   const audit = createIdentityAudit(sql);
 
   const result = await audit.dismissBatch({
@@ -157,6 +163,9 @@ test("identity audit batch dismiss reports per-item states in one request", asyn
   assert.equal(result.items[0].state, "dismissed");
   assert.equal(result.items[1].state, "unchanged");
   assert.equal(result.schemaVersion, "cimmich.identity-audit.v2");
+  // The whole batch targets one run resolved once, so a run completing
+  // mid-batch can never split the batch across two runs.
+  assert.equal(runResolutions, 1);
 });
 
 test("identity audit batch dismiss validates shape and bounds", async () => {
