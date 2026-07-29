@@ -4,8 +4,17 @@ import {
   contextAssociationLabel,
   contextAssetViewerHref,
   contextEventYear,
+  contextFamilyFromDetailParams,
+  contextFamilyHasNamedRoute,
   contextFamilyKind,
   contextFamilyLabels,
+  contextPlaceLocationLabel,
+  contextRequestedEntityId,
+  formatContextCoordinate,
+  formatImmichPlaceLocation,
+  getContextCollectionHref,
+  getContextDetailHref,
+  resolveContextRouteEntity,
   contextPlaceHierarchy,
   contextPlaceMapProjection,
   contextPlaceNearbyRadii,
@@ -322,5 +331,167 @@ describe('Cimmich context entity presentation', () => {
       'Seen at',
       'Related things',
     ]);
+  });
+});
+
+describe('place location labels', () => {
+  const place = (
+    geometry: Parameters<typeof contextPlaceLocationLabel>[0]['geometry'],
+    typeKind: Parameters<typeof contextPlaceLocationLabel>[0]['typeKind'] = 'point',
+  ) => ({ geometry, typeKind });
+
+  it('formats a point as signed-hemisphere coordinates', () => {
+    // Parent's Home on the real archive: southern and eastern hemispheres.
+    expect(formatContextCoordinate(-29.491547, 153.231453)).toBe('29.4915°S, 153.2315°E');
+    expect(formatContextCoordinate(48.8584, -2.2945)).toBe('48.8584°N, 2.2945°W');
+  });
+
+  it("composes Immich's own reverse-geocoded fields, the way DetailPanelLocation does", () => {
+    expect(formatImmichPlaceLocation({ city: 'Gulmarrad', state: 'New South Wales', country: 'Australia' })).toBe(
+      'Gulmarrad, New South Wales, Australia',
+    );
+    // Partial geocoding is normal; skip the blanks rather than leaving commas.
+    expect(formatImmichPlaceLocation({ city: null, state: '  ', country: 'Australia' })).toBe('Australia');
+    expect(formatImmichPlaceLocation(null)).toBe('');
+    expect(formatImmichPlaceLocation(undefined)).toBe('');
+  });
+
+  it('prefers the containing hierarchy over everything, because it is owner-defined truth', () => {
+    expect(
+      contextPlaceLocationLabel(
+        place({ latitude: -29.491547, longitude: 153.231453 }),
+        ['Australia', 'New South Wales', "Parent's Home"],
+        'Gulmarrad, New South Wales, Australia',
+      ),
+    ).toBe('Australia / New South Wales');
+  });
+
+  it("prefers Immich's geocoded name over raw coordinates when there is no hierarchy", () => {
+    expect(
+      contextPlaceLocationLabel(
+        place({ latitude: -29.491547, longitude: 153.231453 }),
+        ["Parent's Home"],
+        'Gulmarrad, New South Wales, Australia',
+      ),
+    ).toBe('Gulmarrad, New South Wales, Australia');
+  });
+
+  it('falls back to coordinates only when Immich has no geocoded name', () => {
+    expect(contextPlaceLocationLabel(place({ latitude: -29.491547, longitude: 153.231453 }), ["Parent's Home"])).toBe(
+      '29.4915°S, 153.2315°E',
+    );
+    expect(
+      contextPlaceLocationLabel(place({ latitude: -29.491547, longitude: 153.231453 }), ["Parent's Home"], '   '),
+    ).toBe('29.4915°S, 153.2315°E');
+  });
+
+  it('describes areas by centre and routes by start plus point count', () => {
+    expect(contextPlaceLocationLabel(place({ north: 10, south: 0, east: 20, west: 0 }, 'area'))).toBe(
+      'Area near 5.0000°N, 10.0000°E',
+    );
+    expect(
+      contextPlaceLocationLabel(
+        place(
+          {
+            points: [
+              { latitude: 1, longitude: 2 },
+              { latitude: 3, longitude: 4 },
+            ],
+          },
+          'route',
+        ),
+      ),
+    ).toBe('Route from 1.0000°N, 2.0000°E · 2 points');
+  });
+
+  it('says so honestly when there is no location, distinguishing unlocated from missing', () => {
+    expect(contextPlaceLocationLabel(place(null, 'unlocated'))).toBe('Kept without a location');
+    expect(contextPlaceLocationLabel(place(null, 'point'))).toBe('No location yet');
+  });
+});
+
+describe('named context detail routes', () => {
+  const at = (href: string) => new URL(href, 'http://localhost');
+
+  it('gives places and things a named route and leaves events on the query form', () => {
+    expect(contextFamilyHasNamedRoute('places')).toBe(true);
+    expect(contextFamilyHasNamedRoute('objects')).toBe(true);
+    // Events share this browser but have no [entityName] route; sending them to
+    // a named path would 404.
+    expect(contextFamilyHasNamedRoute('events')).toBe(false);
+
+    expect(getContextDetailHref(at('/cimmich/events'), 'events', 'event_1', 'Japan 2024')).toBe(
+      '/cimmich/events?family=events&entityId=event_1',
+    );
+  });
+
+  it('builds a named place href carrying the id, with no family param needed', () => {
+    expect(getContextDetailHref(at('/cimmich/places?family=places'), 'places', 'place_1', "Parent's Home")).toBe(
+      "/cimmich/places/Parent's%20Home?placeId=place_1",
+    );
+  });
+
+  it('builds a named thing href under the shared places section', () => {
+    expect(getContextDetailHref(at('/cimmich/places?family=objects'), 'objects', 'object_1', 'ATV')).toBe(
+      '/cimmich/places/ATV?thingId=object_1',
+    );
+  });
+
+  it('encodes names that are not URL-safe and drops any stale id or tab', () => {
+    expect(
+      getContextDetailHref(
+        at('/cimmich/places/Old?placeId=place_old&tab=map&entityId=place_legacy'),
+        'places',
+        'place_2',
+        'Kim & Co / Studio #3',
+      ),
+    ).toBe('/cimmich/places/Kim%20%26%20Co%20%2F%20Studio%20%233?placeId=place_2');
+  });
+
+  it('falls back to the query form when an entity has no usable name', () => {
+    expect(getContextDetailHref(at('/cimmich/places'), 'places', 'place_3', '   ')).toBe(
+      '/cimmich/places?family=places&entityId=place_3',
+    );
+  });
+
+  it('returns to the collection for the active family, dropping the named segment', () => {
+    expect(getContextCollectionHref(at('/cimmich/places/ATV?thingId=object_1&tab=documents'), 'objects')).toBe(
+      '/cimmich/places?family=objects',
+    );
+    expect(getContextCollectionHref(at("/cimmich/places/Parent's%20Home?placeId=place_1"), 'places')).toBe(
+      '/cimmich/places?family=places',
+    );
+  });
+
+  it('reads the family from whichever id param is present, before any family param', () => {
+    const families = ['places', 'objects'] as const;
+    expect(contextFamilyFromDetailParams(at('/x?thingId=object_1').searchParams, families)).toBe('objects');
+    expect(contextFamilyFromDetailParams(at('/x?placeId=place_1').searchParams, families)).toBe('places');
+    // A bare collection URL states no family through an id param.
+    expect(contextFamilyFromDetailParams(at('/x?family=objects').searchParams, families)).toBeNull();
+  });
+
+  it('prefers the family id param but still accepts a legacy entityId link', () => {
+    expect(contextRequestedEntityId(at('/x?placeId=place_1').searchParams, 'places')).toBe('place_1');
+    expect(contextRequestedEntityId(at('/x?entityId=place_legacy').searchParams, 'places')).toBe('place_legacy');
+    expect(contextRequestedEntityId(at('/x?placeId=place_1&entityId=place_legacy').searchParams, 'places')).toBe(
+      'place_1',
+    );
+    expect(contextRequestedEntityId(at('/x').searchParams, 'places')).toBe('');
+  });
+
+  it('resolves by id first, then by name, so a name-only link still lands', () => {
+    const entities = [
+      { displayName: "Parent's Home", entityId: 'place_1' },
+      { displayName: 'Beach House', entityId: 'place_2' },
+    ];
+    expect(resolveContextRouteEntity(entities, { entityId: 'place_2' })?.entityId).toBe('place_2');
+    expect(resolveContextRouteEntity(entities, { name: "  parent's home  " })?.entityId).toBe('place_1');
+    // A stale id must not strand a still-valid name.
+    expect(resolveContextRouteEntity(entities, { entityId: 'place_gone', name: 'Beach House' })?.entityId).toBe(
+      'place_2',
+    );
+    expect(resolveContextRouteEntity(entities, { name: 'Nowhere' })).toBeNull();
+    expect(resolveContextRouteEntity(entities, {})).toBeNull();
   });
 });

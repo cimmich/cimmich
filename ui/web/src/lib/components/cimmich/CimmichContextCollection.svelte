@@ -5,7 +5,7 @@
     CimmichContextTypeKind,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize } from '@immich/sdk';
+  import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiCalendarBlankOutline,
@@ -26,9 +26,11 @@
     contextEventYear,
     contextFamilyLabels,
     contextPlaceHierarchy,
+    contextPlaceLocationLabel,
     contextPlaceMapProjection,
     contextTypeDescription,
     formatContextDatePrecision,
+    formatImmichPlaceLocation,
     humanizeContextKind,
     sortContextEntities,
     type ContextTypeFilter,
@@ -37,12 +39,18 @@
   interface Props {
     controlledTypeFilter?: ContextTypeFilter;
     entities: CimmichContextEntity[];
+    // Every card and row is a real link, matching People and Pets. The named
+    // routes existed already but were only ever handed to goto(), so a place was
+    // addressable and yet could not be opened in a new tab or have its link
+    // copied. The owner supplies the href because it depends on the current URL.
+    entityHref: (entity: CimmichContextEntity) => string;
     family: CimmichContextFamily;
     onAdd: () => void;
+    // Still needed for the atlas view, where a map marker is not an anchor.
     onOpen: (entity: CimmichContextEntity) => void;
   }
 
-  let { controlledTypeFilter, entities, family, onAdd, onOpen }: Props = $props();
+  let { controlledTypeFilter, entities, entityHref, family, onAdd, onOpen }: Props = $props();
   let activeTypeFilter = $state<ContextTypeFilter>('all');
   let placeView = $state<'atlas' | 'list'>('list');
 
@@ -60,6 +68,46 @@
     const nextFamily = family;
     activeTypeFilter = 'all';
     placeView = nextFamily === 'places' ? 'list' : 'atlas';
+  });
+
+  // Immich already knows each place's city/state/country from its own reverse
+  // geocoding, so the card asks Immich rather than formatting coordinates. Only
+  // places need it, only ones with a cover asset can answer, and the batch is
+  // bounded the same way the Pets index bounds its preview fetches — a large
+  // collection must not turn one render into hundreds of requests.
+  let geocodedByEntityId = $state<Record<string, string>>({});
+
+  $effect(() => {
+    if (family !== 'places') {
+      return;
+    }
+    const pending = filteredEntities
+      .filter((entity) => entity.coverAssetId && geocodedByEntityId[entity.entityId] === undefined)
+      .slice(0, 24);
+    if (pending.length === 0) {
+      return;
+    }
+    let current = true;
+    void Promise.allSettled(
+      pending.map(async (entity) => ({
+        entityId: entity.entityId,
+        label: formatImmichPlaceLocation((await getAssetInfo({ id: entity.coverAssetId! })).exifInfo),
+      })),
+    ).then((results) => {
+      if (!current) {
+        return;
+      }
+      const next = { ...geocodedByEntityId };
+      for (const [index, result] of results.entries()) {
+        // Cache the empty string on failure too, so a missing geocode does not
+        // requeue the same asset on every render.
+        next[pending[index]!.entityId] = result.status === 'fulfilled' ? result.value.label : '';
+      }
+      geocodedByEntityId = next;
+    });
+    return () => {
+      current = false;
+    };
   });
 
   const coverUrl = (entity: CimmichContextEntity, size = AssetMediaSize.Preview) =>
@@ -159,7 +207,7 @@
         <div class="min-h-0 overflow-y-auto p-2">
           {#each sortContextEntities(entities, 'places') as entity (entity.entityId)}
             {@const hierarchy = contextPlaceHierarchy(entity, entities)}
-            <button class="context-place-row" type="button" onclick={() => onOpen(entity)}>
+            <a class="context-place-row" href={entityHref(entity)}>
               <span class="context-place-row-icon"><Icon icon={iconForType(entity.typeKind)} size="18" /></span>
               <span class="min-w-0 flex-1">
                 <span class="block truncate font-semibold">{entity.displayName}</span>
@@ -168,7 +216,7 @@
                 </span>
               </span>
               <span class="text-xs text-gray-500">{entity.assetCount}</span>
-            </button>
+            </a>
           {/each}
         </div>
       </aside>
@@ -185,7 +233,7 @@
       <div class="context-place-card-grid">
         {#each filteredEntities as entity (entity.entityId)}
           {@const hierarchy = contextPlaceHierarchy(entity, entities)}
-          <button class="context-place-card" type="button" onclick={() => onOpen(entity)}>
+          <a class="context-place-card" href={entityHref(entity)}>
             <div class="context-cover context-cover--place">
               {#if coverUrl(entity)}
                 <img
@@ -197,19 +245,44 @@
               {:else}
                 <Icon icon={iconForType(entity.typeKind)} size="34" />
               {/if}
+              <span class="context-cover-chip"
+                ><Icon icon={iconForType(entity.typeKind)} size="14" /> {humanizeContextKind(entity.typeKind)}</span
+              >
             </div>
-            <div class="p-4 text-left">
-              <p class="line-clamp-2 min-h-12 text-lg/6 font-semibold">{entity.displayName}</p>
-              <p class="mt-1 line-clamp-2 min-h-8 text-xs/4 text-gray-500">
-                {hierarchy.length > 1
-                  ? hierarchy.slice(0, -1).join(' / ')
-                  : entity.description || contextTypeDescription(entity.typeKind)}
+            <!-- Shares the Things card grammar: the two families sit behind one
+                 segmented control, so differing type scales and meta patterns
+                 read as two designs in one section. The place-specific part is
+                 the location line, because a place card that cannot say where
+                 it is has not identified its subject. -->
+            <!-- grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is
+                 its MIN-CONTENT width, so a nowrap child (the truncated location
+                 line) widens the whole track past the card and every sibling with
+                 it, and `truncate` never gets to engage. An explicit minmax(0,1fr)
+                 track caps the column at the container. Same family of defect as
+                 the indefinite-height bug: an implicit min-size doing the sizing. -->
+            <div class="grid grid-cols-[minmax(0,1fr)] gap-2 p-4 text-left">
+              <h2 class="line-clamp-2 min-h-10 text-base/5 font-semibold">{entity.displayName}</h2>
+              {#if entity.description}<p class="line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
+                  {entity.description}
+                </p>{/if}
+              <p class="flex min-w-0 items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                <Icon class="shrink-0" icon={mdiMapMarkerOutline} size="14" />
+                <span class="truncate"
+                  >{contextPlaceLocationLabel(entity, hierarchy, geocodedByEntityId[entity.entityId] ?? '')}</span
+                >
               </p>
-              <p class="mt-3 text-xs font-medium text-gray-600 dark:text-gray-300">
-                {humanizeContextKind(entity.typeKind)} · {entity.assetCount} media
-              </p>
+              <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-gray-500">
+                <span class="whitespace-nowrap"
+                  ><Icon class="inline" icon={mdiCameraOutline} size="14" />
+                  {entity.assetCount}
+                  {entity.assetCount === 1 ? 'photo' : 'photos'}</span
+                >
+                {#if formatContextDatePrecision(entity)}<span aria-hidden="true">·</span><span class="truncate"
+                    >{formatContextDatePrecision(entity)}</span
+                  >{/if}
+              </div>
             </div>
-          </button>
+          </a>
         {/each}
       </div>
     {/if}
@@ -230,7 +303,7 @@
     {:else}
       <div class="context-thing-grid">
         {#each filteredEntities as entity (entity.entityId)}
-          <button class="context-thing-card" type="button" onclick={() => onOpen(entity)}>
+          <a class="context-thing-card" href={entityHref(entity)}>
             <div class="context-cover context-cover--thing">
               {#if coverUrl(entity)}
                 <img
@@ -246,12 +319,19 @@
                 ><Icon icon={iconForType(entity.typeKind)} size="14" /> {humanizeContextKind(entity.typeKind)}</span
               >
             </div>
-            <div class="grid gap-2 p-4 text-left">
-              <h2 class="truncate text-base font-semibold">{entity.displayName}</h2>
+            <!-- Same minmax(0,1fr) track cap as the place card. Things carries no
+                 location line, so the blowout is latent here rather than visible,
+                 but the nowrap meta row can trigger it the moment a date precision
+                 string runs long — and the two cards must stay one grammar. -->
+            <div class="grid grid-cols-[minmax(0,1fr)] gap-2 p-4 text-left">
+              <!-- line-clamp-2 rather than truncate, matching the place card: a
+                   name is the card's subject and is worth two lines before it
+                   gets cut. min-h keeps the grid's baselines aligned. -->
+              <h2 class="line-clamp-2 min-h-10 text-base/5 font-semibold">{entity.displayName}</h2>
               {#if entity.description}<p class="line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
                   {entity.description}
                 </p>{/if}
-              <div class="mt-1 flex items-center gap-2 text-xs text-gray-500">
+              <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-gray-500">
                 <span class="whitespace-nowrap"
                   ><Icon class="inline" icon={mdiCameraOutline} size="14" />
                   {entity.assetCount}
@@ -262,7 +342,7 @@
                   >{/if}
               </div>
             </div>
-          </button>
+          </a>
         {/each}
       </div>
     {/if}
@@ -287,7 +367,7 @@
         {#each filteredEntities as entity (entity.entityId)}
           {@const previewIds = eventPreviewIds(entity)}
           {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
-          <button class={eventCardClass(entity)} type="button" onclick={() => onOpen(entity)}>
+          <a class={eventCardClass(entity)} href={entityHref(entity)}>
             <div
               class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
               class="context-event-cover"
@@ -326,7 +406,7 @@
                 {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}
               </p>
             </div>
-          </button>
+          </a>
         {/each}
       </div>
     {/if}
@@ -516,14 +596,27 @@
     font-weight: 700;
   }
 
+  /* These are anchors, not buttons, so the button defaults they used to inherit
+     (block-level box, inherited colour, no underline, left-aligned text) have to
+     be stated. Everything else about the card is unchanged. */
   .context-place-card,
   .context-thing-card {
+    display: block;
     overflow: hidden;
     border: 1px solid rgb(229 231 235);
     border-radius: 22px;
     background: white;
     box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    color: inherit;
+    text-align: left;
+    text-decoration: none;
     transition: 160ms ease;
+  }
+
+  .context-place-row,
+  .context-event-card {
+    color: inherit;
+    text-decoration: none;
   }
 
   :global(.dark) .context-place-card,
@@ -553,8 +646,18 @@
     color: rgb(var(--immich-primary));
   }
 
+  /* The cover box takes its height from `aspect-ratio`, not an explicit
+     `height`, so a percentage height on the image has nothing definite to
+     resolve against and the image falls back to its intrinsic size. It then
+     overflowed the box and was clipped from the bottom — 84px off a place
+     cover, 103px off a thing cover — which also made `object-position`
+     inert, because an image already at its natural aspect has nothing to
+     shift. Pinning to the box's edges gives a definite size in both axes, so
+     `object-fit`/`object-position` govern the crop as intended. */
   .context-cover img,
   .context-event-cover img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;

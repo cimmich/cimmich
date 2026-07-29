@@ -3,6 +3,7 @@ import type {
   CimmichContextEntity,
   CimmichContextEntityKind,
   CimmichContextFamily,
+  CimmichContextGeometry,
   CimmichContextRelation,
   CimmichContextTypeKind,
 } from '$lib/services/cimmich.service';
@@ -177,6 +178,213 @@ export const contextFamilyEyebrows: Record<CimmichContextFamily, string> = {
   events: 'Your life in moments',
   objects: 'The things that stay with you',
   places: 'Your personal atlas',
+};
+
+/**
+ * ----------------------------
+ * Place location labels
+ * ----------------------------
+ *
+ * A place is identified by where it is, the way a person is identified by
+ * their face, so every place surface has to be able to say where — including
+ * when no map can be drawn. This returns the most specific human-readable
+ * answer available and says so honestly when there is none, rather than
+ * leaving the question unanswered.
+ */
+export const formatContextCoordinate = (latitude: number, longitude: number) => {
+  const lat = `${Math.abs(latitude).toFixed(4)}°${latitude < 0 ? 'S' : 'N'}`;
+  const lng = `${Math.abs(longitude).toFixed(4)}°${longitude < 0 ? 'W' : 'E'}`;
+  return `${lat}, ${lng}`;
+};
+
+export const contextPlaceGeometryLabel = (geometry: CimmichContextGeometry) => {
+  if (!geometry) {
+    return '';
+  }
+  if ('latitude' in geometry) {
+    return formatContextCoordinate(geometry.latitude, geometry.longitude);
+  }
+  if ('north' in geometry) {
+    const centreLat = (geometry.north + geometry.south) / 2;
+    const centreLng = (geometry.east + geometry.west) / 2;
+    return `Area near ${formatContextCoordinate(centreLat, centreLng)}`;
+  }
+  if (geometry.points.length > 0) {
+    const [start] = geometry.points;
+    return `Route from ${formatContextCoordinate(start.latitude, start.longitude)} · ${geometry.points.length} points`;
+  }
+  return '';
+};
+
+/**
+ * Immich already reverse-geocodes every asset to city/state/country and renders
+ * exactly these three fields in its own `DetailPanelLocation`. Reuse that
+ * instead of deriving a place name ourselves — it is the same intelligence the
+ * rest of the product shows, so a place reads consistently with the asset
+ * viewer and Explore.
+ */
+export const formatImmichPlaceLocation = (
+  exif: { city?: string | null; country?: string | null; state?: string | null } | null | undefined,
+) => {
+  if (!exif) {
+    return '';
+  }
+  return [exif.city, exif.state, exif.country]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(', ');
+};
+
+/**
+ * The preference ladder for stating where a place is:
+ *
+ *   1. the owner's own place hierarchy — owner-defined truth outranks anything
+ *      derived;
+ *   2. Immich's reverse-geocoded city/state/country — existing product
+ *      intelligence, and human-readable;
+ *   3. raw coordinates from the place geometry — a last resort, because
+ *      "29.4915°S, 153.2315°E" orients nobody;
+ *   4. an honest statement that there is no location.
+ *
+ * Coordinates sat at rung 2 in the first version of this, which meant a place
+ * Immich already knew as "Gulmarrad, New South Wales, Australia" was shown as a
+ * number pair.
+ */
+export const contextPlaceLocationLabel = (
+  entity: Pick<CimmichContextEntity, 'geometry' | 'typeKind'>,
+  hierarchy: string[] = [],
+  geocoded = '',
+) => {
+  const ancestors = hierarchy.slice(0, -1).filter(Boolean);
+  if (ancestors.length > 0) {
+    return ancestors.join(' / ');
+  }
+  if (geocoded.trim()) {
+    return geocoded.trim();
+  }
+  const geometryLabel = contextPlaceGeometryLabel(entity.geometry);
+  if (geometryLabel) {
+    return geometryLabel;
+  }
+  return entity.typeKind === 'unlocated' ? 'Kept without a location' : 'No location yet';
+};
+
+/**
+ * ----------------------------
+ * Named detail routes
+ * ----------------------------
+ *
+ * Mirrors `Route.cimmichPerson` and `Route.cimmichPet`: the path segment
+ * carries the human-readable name so a shared link says what it points at,
+ * and an id query param keeps resolution exact when two entities share a
+ * name. The id param is family-specific, so a detail URL never needs a
+ * separate `family` param — `?thingId=` already means Things.
+ *
+ * Places and Things live under one section route and both have a named
+ * route. Events share this browser but have no `[entityName]` route yet, so
+ * they deliberately keep the legacy `?entityId=` form; sending them to a
+ * named path would 404.
+ */
+export const contextFamilySectionRoot: Record<CimmichContextFamily, string> = {
+  events: '/cimmich/events',
+  objects: '/cimmich/places',
+  places: '/cimmich/places',
+};
+
+export const contextFamilyIdParam: Record<CimmichContextFamily, string> = {
+  events: 'eventId',
+  objects: 'thingId',
+  places: 'placeId',
+};
+
+export const contextNamedRouteFamilies: readonly CimmichContextFamily[] = ['places', 'objects'];
+
+export const contextFamilyHasNamedRoute = (family: CimmichContextFamily) => contextNamedRouteFamilies.includes(family);
+
+/**
+ * Which family a detail URL is addressing, read from whichever id param is
+ * present. Returns null when the URL carries no family-specific id, so the
+ * caller can fall back to `?family=` or the section default.
+ */
+export const contextFamilyFromDetailParams = (
+  searchParams: Pick<URLSearchParams, 'get'>,
+  allowed: readonly CimmichContextFamily[],
+): CimmichContextFamily | null => {
+  for (const family of allowed) {
+    if (searchParams.get(contextFamilyIdParam[family])) {
+      return family;
+    }
+  }
+  return null;
+};
+
+/** The id a detail URL is pinned to, preferring the family-specific param and
+ * falling back to legacy `?entityId=` so links shared before the named routes
+ * existed still resolve. */
+export const contextRequestedEntityId = (searchParams: Pick<URLSearchParams, 'get'>, family: CimmichContextFamily) =>
+  searchParams.get(contextFamilyIdParam[family]) ?? searchParams.get('entityId') ?? '';
+
+export const getContextDetailHref = (
+  currentUrl: URL,
+  family: CimmichContextFamily,
+  entityId: string,
+  displayName: string,
+) => {
+  const url = new URL(currentUrl);
+  url.searchParams.delete('entityId');
+  url.searchParams.delete('tab');
+  url.searchParams.delete('family');
+  for (const value of Object.values(contextFamilyIdParam)) {
+    url.searchParams.delete(value);
+  }
+
+  const root = contextFamilySectionRoot[family];
+  if (!contextFamilyHasNamedRoute(family) || !displayName.trim()) {
+    url.searchParams.set('family', family);
+    url.searchParams.set('entityId', entityId);
+    return `${root}${url.search}`;
+  }
+
+  url.searchParams.set(contextFamilyIdParam[family], entityId);
+  return `${root}/${encodeURIComponent(displayName)}${url.search}`;
+};
+
+export const getContextCollectionHref = (currentUrl: URL, family: CimmichContextFamily) => {
+  const url = new URL(currentUrl);
+  url.searchParams.delete('entityId');
+  url.searchParams.delete('tab');
+  for (const value of Object.values(contextFamilyIdParam)) {
+    url.searchParams.delete(value);
+  }
+  url.searchParams.set('family', family);
+  return `${contextFamilySectionRoot[family]}${url.search}`;
+};
+
+/**
+ * Resolve the entity a route is asking for: by id when one is pinned,
+ * otherwise by name so a hand-typed or truncated link still lands. Name
+ * matching is case- and whitespace-insensitive because the segment is
+ * user-facing text, not an identifier.
+ */
+export const resolveContextRouteEntity = <T extends { displayName: string; entityId: string }>(
+  entities: T[],
+  requested: { entityId?: string; name?: string },
+): T | null => {
+  const entityId = requested.entityId?.trim();
+  if (entityId) {
+    const byId = entities.find((entity) => entity.entityId === entityId);
+    if (byId) {
+      return byId;
+    }
+  }
+  const name = requested.name?.trim().toLocaleLowerCase();
+  if (name) {
+    const byName = entities.find((entity) => entity.displayName.trim().toLocaleLowerCase() === name);
+    if (byName) {
+      return byName;
+    }
+  }
+  return null;
 };
 
 export const contextTypeKinds: Record<CimmichContextEntityKind, CimmichContextTypeKind[]> = {
