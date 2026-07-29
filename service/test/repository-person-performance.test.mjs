@@ -254,7 +254,14 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.match(statement, /body_representative AS MATERIALIZED/);
   assert.match(statement, /tag\.person_id =/);
   assert.match(statement, /tag\.state = 'accepted'/);
-  assert.match(statement, /cimmich_visibility_asset_rank\(body\.asset_id\) <=/);
+  // Asset visibility runs through the materialized hidden-asset set, not
+  // per-row rank function calls.
+  assert.match(statement, /hidden_assets AS MATERIALIZED/);
+  assert.match(
+    statement,
+    /NOT EXISTS \(\s+SELECT 1 FROM hidden_assets hidden\s+WHERE hidden\.object_id = body\.asset_id\s+\)/,
+  );
+  assert.doesNotMatch(statement, /cimmich_visibility_asset_rank\(/);
   assert.doesNotMatch(statement, /FROM person_assets/);
   assert.doesNotMatch(statement, /FROM current_reference_gallery/);
 });

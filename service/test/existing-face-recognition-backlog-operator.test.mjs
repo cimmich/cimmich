@@ -42,8 +42,19 @@ test("existing-Face backlog is triage ordered and boundedly parallel", async () 
   );
   assert.match(
     source,
-    /ORDER BY triage\.priority_tier,[\s\S]*triage\.accepted_person_count DESC,[\s\S]*triage\.accepted_association_count DESC,[\s\S]*triage\.human_observation_count DESC/,
+    /ORDER BY priority_tier,[\s\S]*accepted_person_count DESC,[\s\S]*accepted_association_count DESC,[\s\S]*human_observation_count DESC/,
   );
+  // The asset bound and the availability totals both live inside the one
+  // statement: the frontier is materialized once, only faces of the first
+  // limitAssets triage-ranked assets are transferred, and the receipt numbers
+  // still describe the whole eligible frontier.
+  assert.match(source, /eligible AS MATERIALIZED/);
+  assert.match(source, /LIMIT \$\{limitAssets\}/);
+  assert.match(
+    source,
+    /count\(\*\)::int AS faces_available,[\s\S]*count\(DISTINCT asset_id\)::int AS assets_available/,
+  );
+  assert.doesNotMatch(source, /\.slice\(0, limitAssets\)/);
   assert.match(
     source,
     /optionalArgument\("workers"\)[\s\S]*"workers",[\s\S]*1,[\s\S]*8,[\s\S]*1/,
