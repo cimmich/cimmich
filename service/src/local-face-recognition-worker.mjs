@@ -67,12 +67,23 @@ export const createLocalFaceRecognitionWorker = ({
           state: "paused",
         };
       }
+      const boundedTimeoutMs =
+        Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+          ? Number(timeoutMs)
+          : 120_000;
+      // Recognition replays the provider deterministically, so the lease must
+      // cover two provider runs plus commit headroom; a fixed 300 s lease
+      // expired mid-job and produced duplicate provider runs.
+      const leaseSeconds = Math.max(
+        300,
+        Math.ceil((2 * boundedTimeoutMs + 60_000) / 1000),
+      );
       const rows = await sql`
         SELECT * FROM claim_exact_face_recognition_jobs(
           ${normalizedWorkerId}, ${normalizedToolVersion},
           ${manifest.providerConfigDigest},
           ${manifest.recognitionSpaceConfigDigest},
-          ${manifest.vectorSpaceId}, 300, 1
+          ${manifest.vectorSpaceId}, ${leaseSeconds}, 1
         )
       `;
       if (!rows.length) {
