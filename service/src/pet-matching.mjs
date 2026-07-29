@@ -350,7 +350,10 @@ const suggestionSelect = (executor, where, value, limit, rank) =>
       AND run.state = 'complete'
       AND cimmich_visibility_pet_rank(pet.person_id) <= ${rank}
       AND cimmich_visibility_asset_rank(observation.asset_id) <= ${rank}
-    ORDER BY observation.created_at DESC, suggestion.rank, suggestion.suggestion_id
+    -- suggestion.created_at equals observation.created_at (single-transaction
+    -- import), so sorting on the suggestion column keeps the same order while
+    -- letting pet_match_suggestion_pet_pending serve it.
+    ORDER BY suggestion.created_at DESC, suggestion.rank, suggestion.suggestion_id
     LIMIT ${limit}
   `;
 

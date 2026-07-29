@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 100/patch 1
+Current source/disposable candidate: migration-ledger schema 101/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -67,6 +67,12 @@ silently drop candidates on a NULL result.
 Schema 100 adds retroactive producer attribution to media_content and
 documents the migration 0086 caveat: future cleanups must scope destructive
 deletes to their own producer's rows.
+
+Schema 101 adds the missing supporting indexes for the identity-audit,
+pet-match and provider-bound media-job claim query shapes (cascading foreign
+keys, the lead-scoped review lookup, the pending claim binding, the recent-jobs
+list) and recreates the pending pet-suggestion index with the tiebreak order
+the review list actually sorts by. Index-only: no table shape changes.
 
 ## Public Beta Patch 6 candidate
 
