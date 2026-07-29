@@ -452,3 +452,44 @@ test("inventory filenames are presentation-bounded without changing private owne
     /originalFileName is invalid/,
   );
 });
+
+test("synchronize recovers stale processing runs before touching the companion", async () => {
+  const staleSweeps = [];
+  let companionProbed = false;
+  const sql = async (strings, ...values) => {
+    const query = strings.join("?");
+    if (query.includes("fail_stale_immich_inventory_runs")) {
+      staleSweeps.push(values);
+      return [{ failed_count: 1 }];
+    }
+    throw new Error(`Unexpected query: ${query}`);
+  };
+  sql.begin = async (callback) => callback(sql);
+  const inventory = createImmichInventorySynchronizer({
+    companion: {
+      listAssets: async () => ({ items: [], nextCursor: null }),
+      status: async () => {
+        companionProbed = true;
+        return { state: "starting" };
+      },
+    },
+    sourceId: "archive-source",
+    sql,
+  });
+
+  // The wedged-run recovery must not depend on companion health: a stale
+  // 'processing' run is failed even when the companion cannot serve a sync.
+  await assert.rejects(
+    inventory.synchronize(),
+    (error) => error.code === "IMMICH_COMPANION_NOT_READY",
+  );
+
+  assert.equal(staleSweeps.length, 1);
+  assert.equal(companionProbed, true);
+  const [cutoff] = staleSweeps[0];
+  assert.ok(cutoff instanceof Date);
+  // 0089's deliberate cutoff: one day, far beyond any bounded inventory run.
+  const ageMs = Date.now() - cutoff.getTime();
+  assert.ok(ageMs >= 24 * 60 * 60 * 1000 - 5_000);
+  assert.ok(ageMs <= 24 * 60 * 60 * 1000 + 60_000);
+});

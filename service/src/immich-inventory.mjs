@@ -546,6 +546,13 @@ const createImmichInventoryLedger = (
     return projectRun(row);
   },
 
+  async failStale({ startedBefore }) {
+    const [row] = await sql`
+      SELECT fail_stale_immich_inventory_runs(${startedBefore}) AS failed_count
+    `;
+    return { failedCount: Number(row?.failed_count || 0) };
+  },
+
   async lanes({ runId }) {
     const rows = await sql`
       SELECT * FROM immich_inventory_lane
@@ -1348,6 +1355,15 @@ export const createImmichInventorySynchronizer = ({
       const selectedVisibilities = VISIBILITIES.filter((visibility) =>
         visibilities.includes(visibility),
       );
+      // A crashed run normally resumes in place, but when the Immich version
+      // or principal changed before the resume, begin_scoped refuses the
+      // mismatched processing run forever and nothing else fails it - the
+      // migration-time sweep (0089) ran exactly once at deploy. Recover here,
+      // before any companion dependency, with 0089's deliberate cutoff: a day
+      // is far beyond any bounded run and cannot affect a live checkpoint.
+      await ledger.failStale({
+        startedBefore: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      });
       const companionStatus = await companion.status();
       if (companionStatus.state !== "ready") {
         throw Object.assign(

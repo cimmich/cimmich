@@ -22,6 +22,18 @@ export const identityAuditQueryFrontierLimit = 50_000;
 export const identityAuditIndependenceConcurrency = 2;
 export const identityAuditIndependenceComparisonLimit =
   Number.POSITIVE_INFINITY;
+// Both audit transactions run under these bounds. The reconcile sweep's
+// interrupt threshold must exceed the longest stretch a healthy run can go
+// without touching its own run row - one full audit transaction - or the
+// sweep fails legitimate long runs and their completion UPDATE (gated on
+// state = 'running') silently discards the finished output. Phase boundaries
+// and the provider loop heartbeat last_progress_at, so the worst healthy gap
+// is one transaction bound; the margin covers clock skew and scheduling.
+export const identityAuditStatementTimeoutMs = 1_800_000;
+export const identityAuditTransactionTimeoutMs = 1_860_000;
+export const identityAuditInterruptThresholdMs =
+  identityAuditTransactionTimeoutMs + 4 * 60_000;
+export const identityAuditHeartbeatIntervalMs = 60_000;
 
 const cleanFrontierLimit = (value, fallback) => {
   const parsed = Number(value ?? fallback);
@@ -157,8 +169,10 @@ const auditSql = async (
   };
   await sql.begin(async (tx) => {
     await tx`
-      SELECT set_config('statement_timeout', '1800000', true),
-        set_config('transaction_timeout', '1860000', true)
+      SELECT set_config('statement_timeout',
+          ${String(identityAuditStatementTimeoutMs)}, true),
+        set_config('transaction_timeout',
+          ${String(identityAuditTransactionTimeoutMs)}, true)
     `;
     if (incremental) {
       await tx`
@@ -424,7 +438,8 @@ const auditSql = async (
     `;
     await tx`
       UPDATE identity_audit_run
-      SET untagged_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
+      SET last_progress_at = now(),
+        untagged_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
         untagged_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}
@@ -438,7 +453,8 @@ const auditSql = async (
   if (incremental) {
     await sql`
       UPDATE identity_audit_run current
-      SET accepted_embedded_faces = base.accepted_embedded_faces,
+      SET last_progress_at = now(),
+        accepted_embedded_faces = base.accepted_embedded_faces,
         accepted_comparable_faces = base.accepted_comparable_faces,
         contradiction_candidates = (
           SELECT count(*)::int FROM identity_audit_item
@@ -458,8 +474,10 @@ const auditSql = async (
 
   await sql.begin(async (tx) => {
     await tx`
-      SELECT set_config('statement_timeout', '1800000', true),
-        set_config('transaction_timeout', '1860000', true)
+      SELECT set_config('statement_timeout',
+          ${String(identityAuditStatementTimeoutMs)}, true),
+        set_config('transaction_timeout',
+          ${String(identityAuditTransactionTimeoutMs)}, true)
     `;
     const [contradictionFrontier] = await tx`
       WITH face_contexts AS MATERIALIZED (
@@ -631,7 +649,8 @@ const auditSql = async (
     `;
     await tx`
       UPDATE identity_audit_run
-      SET accepted_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
+      SET last_progress_at = now(),
+        accepted_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
         accepted_comparable_faces = ${Number(coverage?.comparable_faces || 0)},
         contradiction_candidates = (
           SELECT count(*)::int FROM identity_audit_item
@@ -746,10 +765,26 @@ export const suppressSamePhotoDerivatives = async (
   }
   const suppressed = [];
   let cursor = 0;
+  // The provider phase has no statement timeout bounding it, so it carries
+  // its own liveness signal: a throttled last_progress_at heartbeat keeps the
+  // reconcile sweep from failing a run that is still verifying candidates.
+  let heartbeatDueAt = Date.now() + identityAuditHeartbeatIntervalMs;
+  const heartbeat = async () => {
+    if (Date.now() < heartbeatDueAt) return;
+    heartbeatDueAt = Date.now() + identityAuditHeartbeatIntervalMs;
+    await sql`
+      UPDATE identity_audit_run
+      SET last_progress_at = now()
+      WHERE audit_run_id = ${runId} AND state = 'running'
+    `;
+  };
   const verifyNext = async () => {
     while (cursor < verifiable.length) {
+      // Claim the candidate before any await: another lane may advance the
+      // shared cursor while this one is suspended.
       const candidate = verifiable[cursor];
       cursor += 1;
+      await heartbeat();
       const [queryMedia, referenceMedia] = await Promise.all([
         companion.readAssetImage({
           assetId: candidate.query_source_asset_id,
@@ -858,10 +893,9 @@ export const createIdentityAudit = (
   const reconcileRearmMs = 15 * 60 * 1000;
   const reconcileInterruptedRun = async () => {
     // Stale-gated so one replica's cold start cannot fail a run another
-    // replica is still driving. The sweep re-arms on the same cadence as the
-    // staleness threshold: a crash-and-fast-restart used to memoize a single
-    // too-early sweep forever, leaving the wedged run unreconciled until the
-    // next process restart.
+    // replica is still driving. The sweep re-arms periodically: a
+    // crash-and-fast-restart used to memoize a single too-early sweep
+    // forever, leaving the wedged run unreconciled until the next restart.
     if (
       reconcileInterruptedRunPromise &&
       Date.now() - reconcileInterruptedRunAt >= reconcileRearmMs
@@ -871,12 +905,21 @@ export const createIdentityAudit = (
     reconcileInterruptedRunAt = reconcileInterruptedRunPromise
       ? reconcileInterruptedRunAt
       : Date.now();
+    // Staleness is judged on the run's last recorded progress, not its start:
+    // each audit transaction is bounded by identityAuditTransactionTimeoutMs
+    // and the provider phase heartbeats, so only a run that has gone longer
+    // than one transaction bound without progress is actually dead. A fixed
+    // threshold below that bound failed legitimate long runs and discarded
+    // their completed output.
     reconcileInterruptedRunPromise ||= sql`
       UPDATE identity_audit_run
       SET state = 'failed', completed_at = now(),
         error_code = 'IDENTITY_AUDIT_INTERRUPTED'
       WHERE state = 'running'
-        AND started_at < now() - interval '15 minutes'
+        AND coalesce(last_progress_at, started_at)
+          < now() - make_interval(
+              secs => ${identityAuditInterruptThresholdMs / 1000}
+            )
     `;
     try {
       await reconcileInterruptedRunPromise;
@@ -1543,12 +1586,55 @@ export const createIdentityAudit = (
         },
       );
     }
-    const results = [];
-    for (const item of inputItems) {
-      results.push(
-        await dismiss({ actorId, faceId: item?.faceId, kind: item?.kind }),
-      );
+    const actor = String(actorId || "")
+      .trim()
+      .slice(0, 120);
+    const cleanItems = inputItems.map((item) => ({
+      faceId: String(item?.faceId || "").trim(),
+      kind: cleanKind(item?.kind),
+    }));
+    if (!actor || cleanItems.some((item) => !item.faceId)) {
+      throw Object.assign(new Error("Identity audit decision is incomplete"), {
+        code: "IDENTITY_AUDIT_DECISION_INVALID",
+        statusCode: 400,
+      });
     }
+    await reconcileInterruptedRun();
+    // The batch is one decision against one run: resolve the latest completed
+    // run once and apply every dismissal in a single transaction, so a run
+    // completing mid-batch cannot split the batch across two runs and a
+    // failure cannot leave partial dismissals behind.
+    const results = await sql.begin(async (tx) => {
+      const [run] = await tx`
+        SELECT audit_run_id FROM identity_audit_run
+        WHERE state = 'completed'
+        ORDER BY started_at DESC, audit_run_id DESC
+        LIMIT 1
+      `;
+      const outcomes = [];
+      for (const item of cleanItems) {
+        const rows = run
+          ? await tx`
+              UPDATE identity_audit_item
+              SET review_state = 'dismissed', reviewed_at = now(),
+                reviewed_by = ${actor}
+              WHERE audit_run_id = ${run.audit_run_id}
+                AND audit_kind = ${item.kind}
+                AND face_id = ${item.faceId}
+                AND review_state = 'open'
+              RETURNING face_id
+            `
+          : [];
+        outcomes.push({
+          changed: rows.length > 0,
+          faceId: item.faceId,
+          kind: item.kind,
+          schemaVersion: identityAuditSchemaVersion,
+          state: rows.length > 0 ? "dismissed" : "unchanged",
+        });
+      }
+      return outcomes;
+    });
     return {
       changed: results.some((result) => result.changed),
       dismissedCount: results.filter((result) => result.changed).length,
