@@ -117,7 +117,7 @@ const exactKeys = (value, keys, label) => {
   }
 };
 
-export const normalizeXmpSidecarPacket = (value) => {
+const normalizeXmpSidecarPacket = (value) => {
   exactKeys(
     value,
     [
@@ -498,7 +498,7 @@ const publicErrorCode = (error) =>
     ? String(error.code)
     : "XMP_SIDECAR_IMPORT_FAILED";
 
-export const prepareXmpSidecarRun = async (
+const prepareXmpSidecarRun = async (
   sql,
   { actorId, commandId, limitAssets, sourceId },
 ) => {
@@ -577,7 +577,7 @@ const loadRunItem = async (sql, { runId, sourceLocatorDigest }) => {
   return rows[0] || null;
 };
 
-export const processXmpSidecarAsset = async (
+const processXmpSidecarAsset = async (
   sql,
   { execute = false, packet, runId = null, sourceId },
 ) => {
@@ -665,7 +665,7 @@ export const processXmpSidecarAsset = async (
   });
 };
 
-export const completeXmpSidecarRun = async (
+const completeXmpSidecarRun = async (
   sql,
   { providerSummary, runId },
 ) =>
@@ -694,7 +694,7 @@ export const completeXmpSidecarRun = async (
     return result;
   });
 
-export const failXmpSidecarRun = async (sql, { error, runId }) => {
+const failXmpSidecarRun = async (sql, { error, runId }) => {
   const errorCode = publicErrorCode(error);
   await sql`
     UPDATE xmp_sidecar_import_run SET
@@ -803,9 +803,12 @@ export const runXmpSidecarImport = async (
     providerPath,
     pythonPath = "/usr/bin/python3",
     root,
-    sourceId = "x1-archive-xmp",
+    sourceId,
   } = {},
 ) => {
+  if (!String(sourceId || "").trim()) {
+    throw new Error("XMP sidecar import requires an explicit sourceId");
+  }
   let run = null;
   if (execute) {
     run = await prepareXmpSidecarRun(sql, {

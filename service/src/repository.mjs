@@ -550,6 +550,57 @@ const bridgeFields = (bridge, assetId) => {
     : { filename: "", sourceAssetId: "" };
 };
 
+// One definition of the explicit face/body presentation-slot columns and
+// joins shared by the people() list and the person() dossier. Explicit hero
+// slots are served by personPresentation(), the only read that renders one.
+const presentationSlotSelect = (sql) => sql`
+        presentation_body_asset.asset_id AS presentation_body_asset_id,
+        presentation_body.crop AS presentation_body_crop,
+        presentation_body.observation_id AS presentation_body_observation_id,
+        presentation_body.observation_kind AS presentation_body_observation_kind,
+        presentation_body.updated_at AS presentation_body_updated_at,
+        presentation_body_asset.width::int AS presentation_body_width,
+        presentation_body_asset.height::int AS presentation_body_height,
+        presentation_face_asset.asset_id AS presentation_face_asset_id,
+        presentation_face.crop AS presentation_face_crop,
+        presentation_face.observation_id AS presentation_face_observation_id,
+        presentation_face.observation_kind AS presentation_face_observation_kind,
+        presentation_face.updated_at AS presentation_face_updated_at,
+        presentation_face_asset.width::int AS presentation_face_width,
+        presentation_face_asset.height::int AS presentation_face_height`;
+
+const presentationSlotJoins = (sql, visibleRank) => sql`
+      LEFT JOIN person_presentation_media presentation_body
+        ON presentation_body.person_id = p.person_id
+        AND presentation_body.slot_kind = 'body'
+      LEFT JOIN asset presentation_body_asset
+        ON presentation_body_asset.asset_id = presentation_body.asset_id
+        AND presentation_body_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
+      LEFT JOIN person_presentation_media presentation_face
+        ON presentation_face.person_id = p.person_id
+        AND presentation_face.slot_kind = 'face'
+      LEFT JOIN asset presentation_face_asset
+        ON presentation_face_asset.asset_id = presentation_face.asset_id
+        AND presentation_face_asset.state = 'active'
+        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}`;
+
+// Shared square-ish crop framing for automatic presentation slots. Padding is
+// per-call: person face 2.4 / body 1.12, pet face 2.1 / body 1.16.
+const cropFromBox = ({ h, padding, w, x, y }) => {
+  if (![h, w, x, y].every(Number.isFinite)) return null;
+  const cropW = Math.min(1, Math.max(w * padding, 0.01));
+  const cropH = Math.min(1, Math.max(h * padding, 0.01));
+  const centerX = x + w / 2;
+  const centerY = y + h / 2;
+  return {
+    h: cropH,
+    w: cropW,
+    x: Math.max(0, Math.min(1 - cropW, centerX - cropW / 2)),
+    y: Math.max(0, Math.min(1 - cropH, centerY - cropH / 2)),
+  };
+};
+
 const projectPersonPresentation = (bridge, row) => {
   const {
     body_preview_asset_id: bodyAssetId,
@@ -3488,21 +3539,7 @@ export const createCimmichRepository = (
       // list query; index/list consumers that never render saved
       // presentation crops opt out with ?presentation=0.
       const presentationSelect = includePresentation
-        ? sql`
-        presentation_body_asset.asset_id AS presentation_body_asset_id,
-        presentation_body.crop AS presentation_body_crop,
-        presentation_body.observation_id AS presentation_body_observation_id,
-        presentation_body.observation_kind AS presentation_body_observation_kind,
-        presentation_body.updated_at AS presentation_body_updated_at,
-        presentation_body_asset.width::int AS presentation_body_width,
-        presentation_body_asset.height::int AS presentation_body_height,
-        presentation_face_asset.asset_id AS presentation_face_asset_id,
-        presentation_face.crop AS presentation_face_crop,
-        presentation_face.observation_id AS presentation_face_observation_id,
-        presentation_face.observation_kind AS presentation_face_observation_kind,
-        presentation_face.updated_at AS presentation_face_updated_at,
-        presentation_face_asset.width::int AS presentation_face_width,
-        presentation_face_asset.height::int AS presentation_face_height`
+        ? presentationSlotSelect(sql)
         : sql`
         NULL AS presentation_body_asset_id,
         NULL AS presentation_body_crop,
@@ -3519,21 +3556,7 @@ export const createCimmichRepository = (
         NULL AS presentation_face_width,
         NULL AS presentation_face_height`;
       const presentationJoins = includePresentation
-        ? sql`
-      LEFT JOIN person_presentation_media presentation_body
-        ON presentation_body.person_id = p.person_id
-        AND presentation_body.slot_kind = 'body'
-      LEFT JOIN asset presentation_body_asset
-        ON presentation_body_asset.asset_id = presentation_body.asset_id
-        AND presentation_body_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
-      LEFT JOIN person_presentation_media presentation_face
-        ON presentation_face.person_id = p.person_id
-        AND presentation_face.slot_kind = 'face'
-      LEFT JOIN asset presentation_face_asset
-        ON presentation_face_asset.asset_id = presentation_face.asset_id
-        AND presentation_face_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}`
+        ? presentationSlotJoins(sql, visibleRank)
         : sql``;
       const rows = await sql`
       WITH identity_rows AS MATERIALIZED (
@@ -3935,20 +3958,7 @@ export const createCimmichRepository = (
         body.box_h::float8 AS body_preview_box_h,
         body_asset.width::int AS body_preview_width,
         body_asset.height::int AS body_preview_height,
-        presentation_body_asset.asset_id AS presentation_body_asset_id,
-        presentation_body.crop AS presentation_body_crop,
-        presentation_body.observation_id AS presentation_body_observation_id,
-        presentation_body.observation_kind AS presentation_body_observation_kind,
-        presentation_body.updated_at AS presentation_body_updated_at,
-        presentation_body_asset.width::int AS presentation_body_width,
-        presentation_body_asset.height::int AS presentation_body_height,
-        presentation_face_asset.asset_id AS presentation_face_asset_id,
-        presentation_face.crop AS presentation_face_crop,
-        presentation_face.observation_id AS presentation_face_observation_id,
-        presentation_face.observation_kind AS presentation_face_observation_kind,
-        presentation_face.updated_at AS presentation_face_updated_at,
-        presentation_face_asset.width::int AS presentation_face_width,
-        presentation_face_asset.height::int AS presentation_face_height
+        ${presentationSlotSelect(sql)}
       FROM target_person p
       CROSS JOIN person_categories category
       CROSS JOIN photo_history photo
@@ -3956,20 +3966,7 @@ export const createCimmichRepository = (
       LEFT JOIN asset representative_asset ON representative_asset.asset_id = representative.asset_id
       LEFT JOIN body_representative body ON true
       LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
-      LEFT JOIN person_presentation_media presentation_body
-        ON presentation_body.person_id = p.person_id
-        AND presentation_body.slot_kind = 'body'
-      LEFT JOIN asset presentation_body_asset
-        ON presentation_body_asset.asset_id = presentation_body.asset_id
-        AND presentation_body_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_body_asset.asset_id) <= ${visibleRank}
-      LEFT JOIN person_presentation_media presentation_face
-        ON presentation_face.person_id = p.person_id
-        AND presentation_face.slot_kind = 'face'
-      LEFT JOIN asset presentation_face_asset
-        ON presentation_face_asset.asset_id = presentation_face.asset_id
-        AND presentation_face_asset.state = 'active'
-        AND cimmich_visibility_asset_rank(presentation_face_asset.asset_id) <= ${visibleRank}
+      ${presentationSlotJoins(sql, visibleRank)}
     `;
       if (!row) {
         throw Object.assign(new Error("Cimmich identity not found"), {
@@ -5489,19 +5486,6 @@ export const createCimmichRepository = (
               }
             : null,
         };
-        const cropFromBox = ({ h, padding, w, x, y }) => {
-          if (![h, w, x, y].every(Number.isFinite)) return null;
-          const cropW = Math.min(1, Math.max(w * padding, 0.01));
-          const cropH = Math.min(1, Math.max(h * padding, 0.01));
-          const centerX = x + w / 2;
-          const centerY = y + h / 2;
-          return {
-            h: cropH,
-            w: cropW,
-            x: Math.max(0, Math.min(1 - cropW, centerX - cropW / 2)),
-            y: Math.max(0, Math.min(1 - cropH, centerY - cropH / 2)),
-          };
-        };
         const automaticMedia = ({
           assetId,
           crop,
@@ -5709,19 +5693,6 @@ export const createCimmichRepository = (
       const coverMedia = pet.cover_asset_id
         ? media.find((item) => item.asset_id === pet.cover_asset_id)
         : null;
-      const cropFromBox = ({ h, padding, w, x, y }) => {
-        if (![h, w, x, y].every(Number.isFinite)) return null;
-        const cropW = Math.min(1, Math.max(w * padding, 0.01));
-        const cropH = Math.min(1, Math.max(h * padding, 0.01));
-        const centerX = x + w / 2;
-        const centerY = y + h / 2;
-        return {
-          h: cropH,
-          w: cropW,
-          x: Math.max(0, Math.min(1 - cropW, centerX - cropW / 2)),
-          y: Math.max(0, Math.min(1 - cropH, centerY - cropH / 2)),
-        };
-      };
       const automaticPetMedia = (item, slotKind, preferredCrop = null) => {
         if (!item?.asset_id || !item.sourceAssetId) return null;
         const observation = item.pet_face
@@ -6404,7 +6375,6 @@ export const createCimmichRepository = (
         headRows,
         bodyRows,
         presenceRows,
-        locatorRows,
         peopleRows,
         contextRows,
         manualContext,
@@ -6541,21 +6511,6 @@ export const createCimmichRepository = (
           AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
             <= ${presentationRank()}
         ORDER BY p.display_name, pt.person_id
-      `,
-        sql`
-        SELECT locator.locator_id, locator.person_id, person.display_name,
-          locator.intended_tag_type, locator.geometry_role,
-          locator.box_x::float8, locator.box_y::float8,
-          locator.box_w::float8, locator.box_h::float8,
-          locator.source_instance_suffix, locator.source_kind
-        FROM imported_identity_locator locator
-        JOIN person ON person.person_id = locator.person_id
-        WHERE locator.asset_id = ${linked.assetId}
-          AND locator.state = 'unresolved'
-          AND cimmich_visibility_subject_rank(
-            person.subject_kind, person.person_id
-          ) <= ${presentationRank()}
-        ORDER BY lower(person.display_name), locator.locator_id
       `,
         sql`
         SELECT person.person_id, person.display_name,
@@ -6709,7 +6664,6 @@ export const createCimmichRepository = (
         faces: detailedFaces,
         heads: headRows,
         known_people: peopleRows,
-        identity_locators: locatorRows,
         presence: presenceRows,
         contexts: contextRows,
         ownerSummary: manualContext.ownerSummary,

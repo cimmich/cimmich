@@ -28,22 +28,6 @@ test("typed manual Face attach is exact and preserves normalized human geometry"
   );
 });
 
-test("typed manual tag may bind one imported locator for atomic owner resolution", () => {
-  const normalized = normalizeManualSubjectTagAttach({
-    actorId: "local-user",
-    assetId: "asset-one",
-    commandId: "manual.locator.0001",
-    locatorId: "identity-locator-one",
-    region: { h: 0.2, w: 0.18, x: 0.3, y: 0.1 },
-    subjectId: "person-one",
-    subjectKind: "person",
-    tagType: "head",
-  });
-  assert.equal(normalized.locatorId, "identity-locator-one");
-  assert.equal(normalized.subjectId, "person-one");
-  assert.equal(normalized.tagType, "head");
-});
-
 test("manual Head is a first-class bounded observation for Person and Pet", () => {
   for (const subjectKind of ["person", "pet"]) {
     const normalized = normalizeManualSubjectTagAttach({

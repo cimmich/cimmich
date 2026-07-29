@@ -185,7 +185,7 @@ test("suggestion confirm requires a live asset and a lifecycle-visible Pet", asy
     statement.includes("FOR UPDATE OF suggestion"),
   );
   assert.match(suggestionSelect, /pet\.subject_kind = 'pet'/);
-  assert.match(suggestionSelect, /pet\.status IN \('active','hidden'\)/);
+  assert.match(suggestionSelect, /pet\.status = ANY\(/);
   assert.match(
     statements.find((statement) =>
       statement.includes("SELECT asset_id FROM asset"),

@@ -189,17 +189,12 @@ export const normalizeManualSubjectTagAttach = (input) => {
     "subjectId",
     "subjectKind",
     "tagType",
-    ...(input?.locatorId == null ? [] : ["locatorId"]),
   ];
   exactObject(input, "input", keys);
   return {
     actorId: cleanActor(input.actorId),
     assetId: cleanStableId(input.assetId, "assetId"),
     commandId: cleanCommandId(input.commandId),
-    locatorId:
-      input.locatorId == null
-        ? null
-        : cleanStableId(input.locatorId, "locatorId"),
     region: cleanManualSubjectTagRegion(input.region),
     subjectId: cleanStableId(input.subjectId, "subjectId"),
     subjectKind: cleanEnum(input.subjectKind, "subjectKind", subjectKinds),
@@ -764,7 +759,6 @@ export const createManualSubjectTagStore = (
     const request = normalizeManualSubjectTagAttach(input);
     const payload = {
       assetId: request.assetId,
-      locatorId: request.locatorId,
       region: request.region,
       subjectId: request.subjectId,
       subjectKind: request.subjectKind,
@@ -784,30 +778,6 @@ export const createManualSubjectTagStore = (
         request.subjectId,
         request.subjectKind,
       );
-      let locator = null;
-      if (request.locatorId) {
-        if (request.subjectKind !== "person") {
-          throw typedError(
-            "Imported identity locators can resolve only to a Person",
-            409,
-            "MANUAL_SUBJECT_TAG_LOCATOR_SUBJECT_INVALID",
-          );
-        }
-        [locator] = await tx`
-          SELECT locator_id, person_id, asset_id, state
-          FROM imported_identity_locator
-          WHERE locator_id = ${request.locatorId}
-            AND asset_id = ${request.assetId}
-          FOR UPDATE
-        `;
-        if (!locator || locator.state !== "unresolved") {
-          throw typedError(
-            "Imported identity locator is not available for resolution",
-            409,
-            "MANUAL_SUBJECT_TAG_LOCATOR_NOT_OPEN",
-          );
-        }
-      }
       const sameRows = await tx`
         SELECT operation.decision_id, command.response
         FROM manual_subject_tag_operation operation
@@ -851,55 +821,6 @@ export const createManualSubjectTagStore = (
         sameRegion(row.response?.tag?.geometry, request.region),
       );
       if (same && sameRegion(same.response?.tag?.geometry, request.region)) {
-        if (locator) {
-          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-          await tx`
-            INSERT INTO decision (
-              decision_id, subject_type, subject_id, action, actor_kind,
-              actor_id, reason_code, note, producer_receipt_id, privacy_class
-            ) VALUES (
-              ${decisionId}, 'imported_identity_locator',
-              ${locator.locator_id}, 'resolve', 'user', ${request.actorId},
-              'imported_identity_locator_typed_resolution',
-              ${`Resolve imported locator as ${request.tagType}`},
-              ${receiptId}, 'private'
-            )
-          `;
-          await tx`
-            UPDATE imported_identity_locator
-            SET state = 'resolved',
-              resolution_kind = 'owner_typed_tag',
-              resolution_decision_id = ${decisionId},
-              resolved_subject_id = ${request.subjectId},
-              resolved_tag_type = ${request.tagType},
-              resolved_tag_id = ${same.response.tag.tagId}
-            WHERE locator_id = ${locator.locator_id}
-              AND state = 'unresolved'
-          `;
-          const response = {
-            assetId: request.assetId,
-            changed: true,
-            replayed: false,
-            resolvedLocatorId: locator.locator_id,
-            schemaVersion: manualSubjectTagSchemaVersion,
-            status: "applied",
-            tag: {
-              ...same.response.tag,
-              subject: {
-                displayName: subject.display_name || "",
-                subjectId: subject.person_id,
-                subjectKind: subject.subject_kind,
-              },
-            },
-          };
-          return completeCommand(tx, {
-            actorId: request.actorId,
-            command,
-            commandKind: "attach",
-            decisionId,
-            response,
-          });
-        }
         const response = {
           assetId: request.assetId,
           changed: false,
@@ -990,7 +911,6 @@ export const createManualSubjectTagStore = (
         assetId: request.assetId,
         changed: true,
         replayed: false,
-        ...(locator ? { resolvedLocatorId: locator.locator_id } : {}),
         schemaVersion: manualSubjectTagSchemaVersion,
         status: "applied",
         tag,
@@ -1031,19 +951,6 @@ export const createManualSubjectTagStore = (
           'active', ${receiptId}, 'private'
         )
       `;
-      if (locator) {
-        await tx`
-          UPDATE imported_identity_locator
-          SET state = 'resolved',
-            resolution_kind = 'owner_typed_tag',
-            resolution_decision_id = ${decisionId},
-            resolved_subject_id = ${request.subjectId},
-            resolved_tag_type = ${request.tagType},
-            resolved_tag_id = ${tagId}
-          WHERE locator_id = ${locator.locator_id}
-            AND state = 'unresolved'
-        `;
-      }
       if (request.tagType === "face") {
         await tx`
           INSERT INTO manual_face_matching_lifecycle (

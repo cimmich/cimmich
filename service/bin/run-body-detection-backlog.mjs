@@ -5,6 +5,11 @@ import { access, readFile } from "node:fs/promises";
 import process from "node:process";
 import postgres from "postgres";
 import {
+  argumentValue as argument,
+  boundedInteger,
+  requiredText,
+} from "../src/bin-arguments.mjs";
+import {
   createBodyDetectionJobClaimQueue,
   createBodyDetectionJobWorker,
   ensureBodyDetectionJobs,
@@ -13,23 +18,8 @@ import {
 import { createImmichCompanionManager } from "../src/immich-companion-manager.mjs";
 import { createUltralyticsYoloBodyDetector } from "../src/ultralytics-yolo-body-detector.mjs";
 
-const argument = (name, fallback) => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : null;
-  return value && !value.startsWith("--") ? value : fallback;
-};
-const boundedInteger = (value, label, minimum, maximum) => {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < minimum || number > maximum) {
-    throw new Error(`${label} must be from ${minimum} to ${maximum}`);
-  }
-  return number;
-};
-const required = (value, label) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) throw new Error(`Body detection backlog requires ${label}`);
-  return normalized;
-};
+const required = (value, label) =>
+  requiredText(value, label, "Body detection backlog");
 
 const databaseUrl = required(process.env.DATABASE_URL, "DATABASE_URL");
 const manifestPath = required(

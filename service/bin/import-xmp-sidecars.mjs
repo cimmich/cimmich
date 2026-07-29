@@ -2,26 +2,16 @@
 
 import process from "node:process";
 import postgres from "postgres";
+import {
+  argumentValue as argument,
+  booleanFlag as flag,
+  boundedInteger,
+  requiredText,
+} from "../src/bin-arguments.mjs";
 import { runXmpSidecarImport } from "../src/xmp-sidecar-import.mjs";
 
-const argument = (name, fallback = "") => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : null;
-  return value && !value.startsWith("--") ? value : fallback;
-};
-const flag = (name) => process.argv.includes(`--${name}`);
-const required = (value, label) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) throw new Error(`XMP sidecar import requires ${label}`);
-  return normalized;
-};
-const boundedInteger = (value, label, minimum, maximum) => {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < minimum || number > maximum) {
-    throw new Error(`${label} must be from ${minimum} to ${maximum}`);
-  }
-  return number;
-};
+const required = (value, label) =>
+  requiredText(value, label, "XMP sidecar import");
 
 const execute = flag("execute");
 const databaseUrl = required(process.env.DATABASE_URL, "DATABASE_URL");
@@ -61,7 +51,10 @@ try {
     providerPath,
     pythonPath,
     root,
-    sourceId: argument("source-id", "x1-archive-xmp"),
+    sourceId: required(
+      argument("source-id", process.env.CIMMICH_XMP_SOURCE_ID),
+      "--source-id (the stable evidence source key for this archive)",
+    ),
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

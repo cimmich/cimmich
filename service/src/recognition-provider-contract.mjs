@@ -25,7 +25,7 @@ const canonicalize = (value) => {
   return value;
 };
 
-export const canonicalRecognitionJson = (value) =>
+const canonicalRecognitionJson = (value) =>
   JSON.stringify(canonicalize(value));
 
 export const recognitionDigest = (value) =>

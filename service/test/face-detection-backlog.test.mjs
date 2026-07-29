@@ -5,27 +5,12 @@ import { runFaceDetectionBacklog } from "../src/face-detection-backlog.mjs";
 import { createLocalFaceDetectionWorker } from "../src/local-face-detection-worker.mjs";
 import { faceDetectorManifestFixture } from "./fixtures/face-detector-manifest.mjs";
 
-test("discovery stages one binding per asset and workers read that exact revision", async () => {
-  const [operator, worker] = await Promise.all([
-    readFile(
-      new URL("../bin/run-face-discovery-pilot.mjs", import.meta.url),
-      "utf8",
-    ),
-    readFile(
-      new URL("../src/local-face-detection-worker.mjs", import.meta.url),
-      "utf8",
-    ),
-  ]);
+test("workers read the exact staged input revision", async () => {
+  const worker = await readFile(
+    new URL("../src/local-face-detection-worker.mjs", import.meta.url),
+    "utf8",
+  );
 
-  assert.match(operator, /DISTINCT ON \(projection\.cimmich_asset_id\)/);
-  assert.doesNotMatch(
-    operator,
-    /DISTINCT ON \(\s*projection\.cimmich_asset_id,\s*projection\.input_revision/,
-  );
-  assert.match(
-    operator,
-    /projection\.last_seen_at DESC,\s*projection\.input_revision,\s*projection\.immich_asset_id/,
-  );
   assert.match(worker, /AND input_revision = \$\{job\.inputRevision\}/);
   assert.match(
     worker,

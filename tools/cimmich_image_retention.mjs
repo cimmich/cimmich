@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -40,6 +40,7 @@ const execute = process.argv.includes("--execute");
 const confirmation = optionValue("--confirm");
 const expectedPlanDigest = optionValue("--expected-plan-digest");
 const outputPath = optionValue("--output");
+const policyConfigPath = optionValue("--policy-config");
 const rollbackValue = optionValue("--rollback-images-per-repository") || "2";
 if (!/^\d+$/.test(rollbackValue)) {
   fail("--rollback-images-per-repository must be an integer");
@@ -58,6 +59,27 @@ if (!execute && expectedPlanDigest) {
 }
 if (outputPath && !path.isAbsolute(outputPath)) {
   fail("--output must be an absolute new file path");
+}
+if (policyConfigPath && !path.isAbsolute(policyConfigPath)) {
+  fail("--policy-config must be an absolute JSON file path");
+}
+let policyConfig = {};
+if (policyConfigPath) {
+  try {
+    policyConfig = JSON.parse(await readFile(policyConfigPath, "utf8"));
+  } catch (error) {
+    fail(`--policy-config could not be read as JSON: ${error.message}`);
+  }
+  const knownKeys = new Set([
+    "ephemeralRepositoryPatterns",
+    "managedDeploymentRepositories",
+  ]);
+  const unknown = Object.keys(policyConfig).filter(
+    (key) => !knownKeys.has(key),
+  );
+  if (unknown.length > 0) {
+    fail(`--policy-config has unknown keys: ${unknown.join(", ")}`);
+  }
 }
 
 const imageRows = lines(
@@ -98,6 +120,7 @@ const inspectContainerImages = (containerIds) =>
       );
 
 const plan = planCimmichImageRetention({
+  ...policyConfig,
   activeImageIds: inspectContainerImages(runningContainerIds),
   containerImageIds: inspectContainerImages(allContainerIds),
   images: imageRows.map((row) => ({

@@ -16,7 +16,7 @@ const canonicalAssetIdsFor = (bridge) =>
 const hasCanonicalFilename = (bridge, assetId) =>
   canonicalAssetIdsFor(bridge).has(assetId);
 
-export const emptyBridge = () => registerBridge(new Map());
+const emptyBridge = () => registerBridge(new Map());
 
 export const parseDisplayBridge = (value) => {
   if (
@@ -143,7 +143,7 @@ export const applyInventoryProjectionBridgeEntries = (bridge, entries) => {
 // presentation filenames observed in this process or supplied by the legacy
 // display file. The replacement is synchronous after the database read, so a
 // request never observes a half-rebuilt Map.
-export const reconcileInventoryProjectionBridge = async (
+const reconcileInventoryProjectionBridge = async (
   sql,
   bridge,
   legacyBridge = emptyBridge(),

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import PetsWorkspace from '../../objects/+page.svelte';
+  import PetsWorkspace from '../+page.svelte';
 </script>
 
 <PetsWorkspace />

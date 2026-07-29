@@ -1251,7 +1251,7 @@ const definitions = [
               type: "string",
             },
             schemaVersion: {
-              const: "cimmich.owner-source-pack-plan.v1",
+              const: "cimmich.owner-source-pack-plan.v2",
               type: "string",
             },
             strategy: {
