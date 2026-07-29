@@ -1000,14 +1000,22 @@ export const createIdentityAudit = (
       baseRunId = base.audit_run_id;
     }
     const runId = `identity-audit.${randomUUID()}`;
-    await sql`
-      INSERT INTO identity_audit_run (
-        audit_run_id, pack_id, policy_version, score_floor, margin_floor, state
-      ) VALUES (
-        ${runId}, ${pack.pack_id}, ${pack.policy_version},
-        ${Number(pack.score_floor)}, ${Number(pack.margin_floor)}, 'running'
-      )
-    `;
+    try {
+      await sql`
+        INSERT INTO identity_audit_run (
+          audit_run_id, pack_id, policy_version, score_floor, margin_floor, state
+        ) VALUES (
+          ${runId}, ${pack.pack_id}, ${pack.policy_version},
+          ${Number(pack.score_floor)}, ${Number(pack.margin_floor)}, 'running'
+        )
+      `;
+    } catch (error) {
+      // Two near-simultaneous starts both pass the running-run check; the
+      // identity_audit_one_running unique index rejects the loser. That is
+      // the concurrent-start race, not a failure - return the winning run.
+      if (error?.code === "23505") return latest();
+      throw error;
+    }
     runningPromise = auditSql(
       sql,
       runId,
