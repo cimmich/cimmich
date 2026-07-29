@@ -447,3 +447,54 @@ test("owner can set, reset and turn off the Private filter password without the 
     false,
   );
 });
+
+test("credential rotation for one principal leaves a prefix-sharing principal untouched", async () => {
+  const fixture = createSql();
+  await configurePrivateCredential({
+    password: "user ten private password",
+    principalId: "user10",
+    sql: fixture.sql,
+  });
+  const service = createVisibilityService({ sql: fixture.sql });
+  await service.initialize();
+  const requestFor = (principalId, deviceId, token = "") => ({
+    headers: {
+      "x-cimmich-device-id": deviceId,
+      "x-cimmich-principal-id": principalId,
+      "x-cimmich-private-session": token,
+      "x-cimmich-surface": "interactive",
+    },
+  });
+
+  const unlocked = await service.runRequest(
+    requestFor("user10", "device-ten"),
+    {},
+    () =>
+      service.unlock({
+        actorId: "owner-ten",
+        password: "user ten private password",
+      }),
+  );
+  await service.runRequest(
+    requestFor("user10", "device-ten", unlocked.privateSessionToken),
+    {},
+    () => service.setMode({ actorId: "owner-ten", viewingMode: "private" }),
+  );
+
+  // "user1" is a strict prefix of "user10": rotating its credential must only
+  // reset user1 devices, never user10's live Private presentation.
+  await service.runRequest(requestFor("user1", "device-one"), {}, () =>
+    service.setCredential({
+      actorId: "owner-one",
+      password: "user one private password",
+    }),
+  );
+
+  const status = await service.runRequest(
+    requestFor("user10", "device-ten", unlocked.privateSessionToken),
+    {},
+    () => service.status(),
+  );
+  assert.equal(status.privateAuthorized, true);
+  assert.equal(status.viewingMode, "private");
+});

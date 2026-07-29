@@ -325,7 +325,7 @@ const projectSuggestion = (row, bridgeFields) => ({
   ...bridgeFields(row.asset_id),
 });
 
-const suggestionSelect = (executor, where, value, limit) =>
+const suggestionSelect = (executor, where, value, limit, rank) =>
   executor`
     SELECT suggestion.suggestion_id, suggestion.pet_id, suggestion.score,
       suggestion.rank, suggestion.gallery_count,
@@ -339,19 +339,24 @@ const suggestionSelect = (executor, where, value, limit) =>
     JOIN pet_match_observation observation
       ON observation.observation_id = suggestion.observation_id
     JOIN pet_match_run run ON run.run_id = observation.run_id
+    JOIN asset ON asset.asset_id = observation.asset_id
+      AND asset.state = 'active'
     JOIN current_person pet ON pet.person_id = suggestion.pet_id
       AND pet.subject_kind = 'pet'
+      AND pet.status = 'active'
     WHERE ${where} = ${value}
       AND suggestion.state = 'pending'
       AND observation.state = 'pending'
       AND run.state = 'complete'
+      AND cimmich_visibility_pet_rank(pet.person_id) <= ${rank}
+      AND cimmich_visibility_asset_rank(observation.asset_id) <= ${rank}
     ORDER BY observation.created_at DESC, suggestion.rank, suggestion.suggestion_id
     LIMIT ${limit}
   `;
 
 export const createPetMatchingStore = (
   sql,
-  { bridgeFields = () => ({}) } = {},
+  { bridgeFields = () => ({}), presentationRank = () => 0 } = {},
 ) => {
   const beginCommand = async (
     tx,
@@ -550,6 +555,10 @@ export const createPetMatchingStore = (
           count(DISTINCT run.run_id) FILTER (WHERE run.state = 'complete')::int AS runs
         FROM pet_match_observation observation
         JOIN pet_match_run run ON run.run_id = observation.run_id
+        JOIN asset ON asset.asset_id = observation.asset_id
+          AND asset.state = 'active'
+        WHERE cimmich_visibility_asset_rank(observation.asset_id)
+          <= ${presentationRank()}
       `;
       return {
         confirmed: Number(counts?.confirmed || 0),
@@ -568,6 +577,7 @@ export const createPetMatchingStore = (
         sql` suggestion.pet_id `,
         id,
         cleanLimit(limit),
+        presentationRank(),
       );
       return {
         items: rows.map((row) => projectSuggestion(row, bridgeFields)),
@@ -586,7 +596,11 @@ export const createPetMatchingStore = (
           run.vector_space_id, run.lane
         FROM pet_match_observation observation
         JOIN pet_match_run run ON run.run_id = observation.run_id
+        JOIN asset ON asset.asset_id = observation.asset_id
+          AND asset.state = 'active'
         WHERE observation.state = 'unknown' AND run.state = 'complete'
+          AND cimmich_visibility_asset_rank(observation.asset_id)
+            <= ${presentationRank()}
         ORDER BY observation.created_at DESC, observation.observation_id
         LIMIT ${cleanLimit(limit)}
       `;
@@ -688,6 +702,19 @@ export const createPetMatchingStore = (
               "Selected Pet must use the observation species",
               409,
               "PET_MATCH_SPECIES_CONFLICT",
+            );
+          }
+          const [asset] = await tx`
+            SELECT asset_id FROM asset
+            WHERE asset_id = ${observation.asset_id} AND state = 'active'
+            FOR SHARE
+          `;
+          if (!asset) {
+            throw typedError(
+              "One or more active Cimmich assets were not found",
+              404,
+              "PET_MATCH_ASSET_NOT_FOUND",
+              { missingAssetIds: [observation.asset_id] },
             );
           }
         }
@@ -862,6 +889,8 @@ export const createPetMatchingStore = (
             ON observation.observation_id = suggestion.observation_id
           JOIN pet_match_run run ON run.run_id = observation.run_id
           JOIN person pet ON pet.person_id = suggestion.pet_id
+            AND pet.subject_kind = 'pet'
+            AND pet.status IN ('active','hidden')
           WHERE suggestion.suggestion_id = ${id}
           FOR UPDATE OF suggestion, observation
         `;
@@ -881,6 +910,21 @@ export const createPetMatchingStore = (
             409,
             "PET_MATCH_ALREADY_REVIEWED",
           );
+        }
+        if (action === "confirm") {
+          const [asset] = await tx`
+            SELECT asset_id FROM asset
+            WHERE asset_id = ${suggestion.asset_id} AND state = 'active'
+            FOR SHARE
+          `;
+          if (!asset) {
+            throw typedError(
+              "One or more active Cimmich assets were not found",
+              404,
+              "PET_MATCH_ASSET_NOT_FOUND",
+              { missingAssetIds: [suggestion.asset_id] },
+            );
+          }
         }
         const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
         await tx`

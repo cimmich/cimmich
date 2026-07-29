@@ -735,14 +735,22 @@ export const createIdentityAudit = (
 ) => {
   let runningPromise = null;
   let reconcileInterruptedRunPromise = null;
-  const reconcileInterruptedRun = () => {
+  const reconcileInterruptedRun = async () => {
+    // Stale-gated so one replica's cold start cannot fail a run another
+    // replica is still driving.
     reconcileInterruptedRunPromise ||= sql`
       UPDATE identity_audit_run
       SET state = 'failed', completed_at = now(),
         error_code = 'IDENTITY_AUDIT_INTERRUPTED'
       WHERE state = 'running'
+        AND started_at < now() - interval '15 minutes'
     `;
-    return reconcileInterruptedRunPromise;
+    try {
+      await reconcileInterruptedRunPromise;
+    } catch (error) {
+      reconcileInterruptedRunPromise = null;
+      throw error;
+    }
   };
 
   const latest = async () => {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createPetMatchingStore,
   petMatchingSchemaVersion,
   validatePetMatchImport,
 } from "../src/pet-matching.mjs";
@@ -80,5 +81,109 @@ test("rejects unsupported provider lanes", () => {
   assert.throws(
     () => validatePetMatchImport(value),
     (error) => error.code === "PET_MATCH_LANE_INVALID",
+  );
+});
+
+test("read surfaces scope suggestions, unknowns and counts to visible active evidence", async () => {
+  const statements = [];
+  const values = [];
+  const sql = async (strings, ...parameters) => {
+    statements.push(strings.join("?"));
+    values.push(parameters);
+    return [];
+  };
+  const store = createPetMatchingStore(sql, { presentationRank: () => 1 });
+
+  await store.suggestions({ petId: "person_cafe_0001" });
+  await store.unknown({});
+  await store.status();
+
+  const suggestions = statements.find((statement) =>
+    statement.includes("FROM pet_match_suggestion suggestion"),
+  );
+  assert.match(suggestions, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(suggestions, /pet\.status = 'active'/);
+  assert.match(suggestions, /cimmich_visibility_pet_rank\(pet\.person_id\) <=/);
+  assert.match(
+    suggestions,
+    /cimmich_visibility_asset_rank\(observation\.asset_id\) <=/,
+  );
+
+  const unknown = statements.find((statement) =>
+    statement.includes("WHERE observation.state = 'unknown'"),
+  );
+  assert.match(unknown, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(
+    unknown,
+    /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,
+  );
+
+  const counts = statements.find((statement) =>
+    statement.includes("count(*) FILTER"),
+  );
+  assert.match(counts, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(
+    counts,
+    /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,
+  );
+  assert.ok(values.flat().includes(1), "queries must bind the caller rank");
+});
+
+test("suggestion confirm requires a live asset and a lifecycle-visible Pet", async () => {
+  const statements = [];
+  const tx = async (strings) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    if (statement.includes("FROM pet_match_command")) return [];
+    if (statement.includes("FROM pet_match_suggestion suggestion")) {
+      return [
+        {
+          asset_id: "asset_pet_0001",
+          box_h: 0.5,
+          box_w: 0.4,
+          box_x: 0.1,
+          box_y: 0.2,
+          detection_confidence: 0.91,
+          display_name: "Café",
+          lane: "face",
+          observation_id: "petobservation_0001",
+          observation_state: "pending",
+          pet_id: "person_cafe_0001",
+          score: 0.7,
+          species_kind: "dog",
+          suggestion_id: "petsuggestion_0001",
+          suggestion_state: "pending",
+        },
+      ];
+    }
+    if (statement.includes("SELECT asset_id FROM asset")) return [];
+    return [];
+  };
+  tx.json = (value) => value;
+  const sql = async () => {
+    throw new Error("Review must run inside one transaction");
+  };
+  sql.begin = (callback) => callback(tx);
+  const store = createPetMatchingStore(sql);
+
+  await assert.rejects(
+    store.review({
+      action: "confirm",
+      actorId: "owner-test",
+      commandId: "petmatchconfirm_0001",
+      suggestionId: "petsuggestion_0001",
+    }),
+    (error) => error.code === "PET_MATCH_ASSET_NOT_FOUND",
+  );
+  const suggestionSelect = statements.find((statement) =>
+    statement.includes("FOR UPDATE OF suggestion"),
+  );
+  assert.match(suggestionSelect, /pet\.subject_kind = 'pet'/);
+  assert.match(suggestionSelect, /pet\.status IN \('active','hidden'\)/);
+  assert.match(
+    statements.find((statement) =>
+      statement.includes("SELECT asset_id FROM asset"),
+    ),
+    /state = 'active'/,
   );
 });

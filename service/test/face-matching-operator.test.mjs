@@ -138,6 +138,54 @@ test("successor routing holds a passed pack when known coverage materially regre
   );
 });
 
+test("an unwired presentation rank fails closed to Standard visibility", async () => {
+  let statusValues = null;
+  const operator = createFaceMatchingOperator({
+    matchingProvider: {
+      configDigest: "a".repeat(64),
+      modelFamily: "synthetic-face",
+      modelVersion: "v1",
+      providerConfigDigest: "b".repeat(64),
+      providerId: "synthetic-provider",
+      vectorSpaceId: "synthetic-space-v1",
+    },
+    providerReceipt: { state: "ready" },
+    repository: {
+      async faceMatchingStatus() {
+        return {
+          enhanced: { enabled: true },
+          sourcePack: { activePassed: 0, awaitingReview: 0 },
+          state: "needs_source_pack",
+        };
+      },
+    },
+    sql: async (strings, ...values) => {
+      const query = strings.join("");
+      if (query.includes("WITH accepted AS")) {
+        statusValues = values;
+        return [
+          {
+            accepted_faces: 0,
+            analysed_faces: 0,
+            eligible_faces: 0,
+            provider_embeddings: 0,
+          },
+        ];
+      }
+      if (query.includes("FROM source_pack")) {
+        return [];
+      }
+      throw new Error(`Unexpected status query: ${query}`);
+    },
+  });
+  await operator.status();
+  assert.ok(statusValues.includes(0), "the default rank must be Standard");
+  assert.ok(
+    !statusValues.includes(3),
+    "the default rank must never fail open above Private",
+  );
+});
+
 test("provider-disabled status retains Basic truth in one total response shape", async () => {
   const sql = async (strings) => {
     assert.match(strings.join(""), /current_face_identity/);

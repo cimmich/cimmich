@@ -1594,6 +1594,7 @@ export const createCimmichServer = ({
         request.method === "POST" &&
         url.pathname === "/v1/pets/matching:import"
       ) {
+        requireProjection("pets");
         const body = await readJsonBody(request, 524_288);
         sendJson(
           response,
@@ -1610,6 +1611,7 @@ export const createCimmichServer = ({
         request.method === "GET" &&
         url.pathname === "/v1/pets/matching/status"
       ) {
+        requireProjection("pets");
         sendJson(
           response,
           200,
@@ -1622,6 +1624,7 @@ export const createCimmichServer = ({
         request.method === "GET" &&
         url.pathname === "/v1/pets/matching/unknown"
       ) {
+        requireProjection("pets");
         sendJson(
           response,
           200,
@@ -1636,6 +1639,7 @@ export const createCimmichServer = ({
         /^\/v1\/pets\/matching\/unknown\/([^/]+)\/(assign|reject)$/,
       );
       if (request.method === "POST" && petMatchUnknownReview) {
+        requireProjection("pets");
         const body = await readJsonBody(request);
         sendJson(
           response,
@@ -1655,6 +1659,7 @@ export const createCimmichServer = ({
         /^\/v1\/pets\/matching\/suggestions\/([^/]+)\/(confirm|reject)$/,
       );
       if (request.method === "POST" && petMatchReview) {
+        requireProjection("pets");
         const body = await readJsonBody(request);
         sendJson(
           response,
@@ -1673,6 +1678,7 @@ export const createCimmichServer = ({
         /^\/v1\/pets\/([^/]+)\/matching\/suggestions$/,
       );
       if (request.method === "GET" && petMatchSuggestions) {
+        requireProjection("pets");
         sendJson(
           response,
           200,

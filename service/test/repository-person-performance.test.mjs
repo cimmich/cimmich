@@ -392,6 +392,14 @@ test("Person presentation persists only confirmed Person evidence and projects f
       statement.includes("FROM current_face_identity"),
     ),
   );
+  const validation = statements.find(({ statement }) =>
+    statement.includes("FROM current_face_identity"),
+  );
+  assert.match(validation.statement, /source\.state = 'active'/);
+  assert.match(
+    validation.statement,
+    /cimmich_visibility_asset_rank\(face\.asset_id\) <=/,
+  );
   assert.ok(
     statements.some(({ statement }) =>
       statement.includes("INSERT INTO person_presentation_media"),
