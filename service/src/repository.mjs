@@ -1875,23 +1875,52 @@ export const createCimmichRepository = (
 
     async summary() {
       const visibleRank = presentationRank();
+      // Whole-archive counts: per-row visibility function calls here cost one
+      // lookup per asset/face/body/presence/candidate row. The materialized
+      // hidden-asset set (see people()) keeps semantics identical at near-zero
+      // cost when explicit overrides are rare.
       const [row] = await sql`
+      WITH hidden_assets AS MATERIALIZED (
+        SELECT object_id
+        FROM cimmich_visibility_object
+        WHERE object_scope = 'asset'
+          AND CASE visibility_tier
+            WHEN 'personal' THEN 1
+            WHEN 'private' THEN 2
+            ELSE 0
+          END > ${visibleRank}
+      )
       SELECT
         (SELECT count(*)::int FROM asset WHERE state = 'active'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${visibleRank}) AS assets,
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = asset.asset_id
+          )) AS assets,
         (SELECT count(*)::int FROM current_person
           WHERE status = 'active' AND subject_kind = 'person'
             AND cimmich_visibility_person_rank(person_id) <= ${visibleRank}) AS people,
         (SELECT count(*)::int FROM face_observation WHERE state = 'valid'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${visibleRank}) AS face_observations,
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = face_observation.asset_id
+          )) AS face_observations,
         (SELECT count(*)::int FROM body_observation WHERE state = 'valid'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${visibleRank}) AS body_observations,
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = body_observation.asset_id
+          )) AS body_observations,
         (SELECT count(*)::int FROM current_presence_tag WHERE state = 'accepted'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${visibleRank}) AS accepted_presence,
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = current_presence_tag.asset_id
+          )) AS accepted_presence,
         (SELECT count(*)::int FROM identity_claim claim
           JOIN face_observation face ON face.face_id = claim.face_id
           WHERE claim.state = 'candidate'
-            AND cimmich_visibility_asset_rank(face.asset_id) <= ${visibleRank}) AS candidate_signals,
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_assets hidden
+              WHERE hidden.object_id = face.asset_id
+            )) AS candidate_signals,
         (SELECT count(*)::int FROM decision WHERE actor_kind = 'user') AS user_decisions
     `;
       const suggestions = await repository.machineSuggestions({ limit: 80 });
@@ -3858,7 +3887,18 @@ export const createCimmichRepository = (
       const id = String(personId || "");
       const visibleRank = presentationRank();
       const [row] = await sql`
-      WITH target_person AS MATERIALIZED (
+      WITH hidden_assets AS MATERIALIZED (
+        -- Set-based equivalent of the per-row asset visibility function; see
+        -- people() for the rationale.
+        SELECT object_id
+        FROM cimmich_visibility_object
+        WHERE object_scope = 'asset'
+          AND CASE visibility_tier
+            WHEN 'personal' THEN 1
+            WHEN 'private' THEN 2
+            ELSE 0
+          END > ${visibleRank}
+      ), target_person AS MATERIALIZED (
         SELECT person_id, display_name, status, aliases, subject_kind
         FROM current_person
         WHERE person_id = ${id} AND status = 'active'
@@ -3872,7 +3912,10 @@ export const createCimmichRepository = (
         JOIN target_person person ON person.person_id = identity.person_id
         JOIN face_observation face ON face.face_id = identity.face_id
         WHERE identity.state = 'accepted'
-          AND cimmich_visibility_asset_rank(face.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = face.asset_id
+          )
       ), person_buckets AS MATERIALIZED (
         SELECT bucket_id, person_id, bucket_kind, name AS bucket_name
         FROM reference_bucket
@@ -3892,7 +3935,10 @@ export const createCimmichRepository = (
         SELECT gallery.*
         FROM active_gallery gallery
         JOIN face_observation face ON face.face_id = gallery.face_id
-        WHERE cimmich_visibility_asset_rank(face.asset_id) <= ${visibleRank}
+        WHERE NOT EXISTS (
+          SELECT 1 FROM hidden_assets hidden
+          WHERE hidden.object_id = face.asset_id
+        )
       ), accepted_assets AS MATERIALIZED (
         SELECT asset_id FROM accepted_faces
         UNION
@@ -3900,18 +3946,27 @@ export const createCimmichRepository = (
         FROM current_body_tag tag
         JOIN body_observation body ON body.body_id = tag.body_id
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
-          AND cimmich_visibility_asset_rank(body.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = body.asset_id
+          )
         UNION
         SELECT tag.asset_id
         FROM current_presence_tag tag
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
-          AND cimmich_visibility_asset_rank(tag.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = tag.asset_id
+          )
         UNION
         SELECT head.asset_id
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
         WHERE tag.subject_id = ${id}
-          AND cimmich_visibility_asset_rank(head.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = head.asset_id
+          )
       ), photo_history AS MATERIALIZED (
         SELECT
           min(asset.capture_time) FILTER (
@@ -3936,13 +3991,19 @@ export const createCimmichRepository = (
         FROM current_presence_tag tag
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND tag.reason_code = 'head_evidence'
-          AND cimmich_visibility_asset_rank(tag.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = tag.asset_id
+          )
         UNION
         SELECT head.asset_id
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
         WHERE tag.subject_id = ${id}
-          AND cimmich_visibility_asset_rank(head.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = head.asset_id
+          )
       ), person_categories AS MATERIALIZED (
         SELECT jsonb_agg(
           jsonb_build_object(
@@ -3985,7 +4046,10 @@ export const createCimmichRepository = (
         JOIN body_observation body ON body.body_id = tag.body_id
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND body.state = 'valid'
-          AND cimmich_visibility_asset_rank(body.asset_id) <= ${visibleRank}
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = body.asset_id
+          )
         ORDER BY (body.quality_measurements->>'quality_score')::float8 DESC NULLS LAST,
           (body.box_w * body.box_h) DESC,
           body.body_id
@@ -3998,7 +4062,10 @@ export const createCimmichRepository = (
           JOIN identity_claim claim ON claim.identity_claim_id = identity.identity_claim_id
           JOIN face_observation claim_face ON claim_face.face_id = claim.face_id AND claim_face.state = 'valid'
           WHERE identity.person_id = p.person_id AND identity.state = 'candidate'
-            AND cimmich_visibility_asset_rank(claim_face.asset_id) <= ${visibleRank}
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_assets hidden
+              WHERE hidden.object_id = claim_face.asset_id
+            )
             AND coalesce(claim.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
             AND (
               coalesce(nullif(claim.evidence_refs->>'best_score', '')::float8, claim.calibrated_confidence::float8, -1)

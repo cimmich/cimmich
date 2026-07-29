@@ -325,68 +325,98 @@ try {
             ${detectorConfigDigest}
       )`
     : sql``;
+  // The asset bound is applied inside the statement: the eligible frontier is
+  // archive-wide, and returning every eligible face only to keep the first
+  // limitAssets groups pulled hundreds of thousands of rows into process
+  // memory on a full archive. The availability totals the receipt reports are
+  // computed over the same materialized frontier, so bounding the transfer
+  // does not change any reported number.
   const rows = await sql`
-    SELECT face.asset_id, face.face_id
-    FROM face_observation face
-    JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
-    JOIN media_asset_triage triage ON triage.asset_id = face.asset_id
-    WHERE face.state = 'valid'
-      AND triage.priority_tier <= ${priorityTierMax}
-      ${detectorScope}
-      AND mod(
-        hashtextextended(face.asset_id, 0)::numeric + 9223372036854775808,
-        ${laneCount}
-      ) = ${laneIndex}
-      AND EXISTS (
-        SELECT 1
-        FROM immich_asset_projection projection
-        WHERE projection.cimmich_asset_id = face.asset_id
-          AND projection.source_id = ${sourceId}
-          AND projection.state = 'active'
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM media_pipeline_run active_pipeline
-        JOIN media_job active_job
-          ON active_job.job_id = active_pipeline.recognition_job_id
-        WHERE active_pipeline.asset_id = face.asset_id
-          AND active_pipeline.run_kind = 'existing_observation_set'
-          AND active_pipeline.state = 'recognition_pending'
-          AND active_pipeline.recognizer_config_digest = ${configDigest}
-          AND active_job.state = 'processing'
-          AND active_job.lease_expires_at > now()
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM face_embedding embedding
-        WHERE embedding.face_id = face.face_id
-          AND embedding.state = 'active'
-          AND embedding.config_digest = ${configDigest}
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM media_pipeline_run_observation observation
-        JOIN media_pipeline_run pipeline
-          ON pipeline.pipeline_run_id = observation.pipeline_run_id
-        WHERE observation.face_id = face.face_id
-          AND pipeline.state = 'recognized'
-          AND pipeline.recognizer_config_digest = ${configDigest}
-      )
-    ORDER BY triage.priority_tier,
-      triage.accepted_person_count DESC,
-      triage.accepted_association_count DESC,
-      triage.human_observation_count DESC,
-      face.asset_id,
-      face.face_id
+    WITH eligible AS MATERIALIZED (
+      SELECT face.asset_id, face.face_id,
+        triage.priority_tier, triage.accepted_person_count,
+        triage.accepted_association_count, triage.human_observation_count
+      FROM face_observation face
+      JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
+      JOIN media_asset_triage triage ON triage.asset_id = face.asset_id
+      WHERE face.state = 'valid'
+        AND triage.priority_tier <= ${priorityTierMax}
+        ${detectorScope}
+        AND mod(
+          hashtextextended(face.asset_id, 0)::numeric + 9223372036854775808,
+          ${laneCount}
+        ) = ${laneIndex}
+        AND EXISTS (
+          SELECT 1
+          FROM immich_asset_projection projection
+          WHERE projection.cimmich_asset_id = face.asset_id
+            AND projection.source_id = ${sourceId}
+            AND projection.state = 'active'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM media_pipeline_run active_pipeline
+          JOIN media_job active_job
+            ON active_job.job_id = active_pipeline.recognition_job_id
+          WHERE active_pipeline.asset_id = face.asset_id
+            AND active_pipeline.run_kind = 'existing_observation_set'
+            AND active_pipeline.state = 'recognition_pending'
+            AND active_pipeline.recognizer_config_digest = ${configDigest}
+            AND active_job.state = 'processing'
+            AND active_job.lease_expires_at > now()
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM face_embedding embedding
+          WHERE embedding.face_id = face.face_id
+            AND embedding.state = 'active'
+            AND embedding.config_digest = ${configDigest}
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM media_pipeline_run_observation observation
+          JOIN media_pipeline_run pipeline
+            ON pipeline.pipeline_run_id = observation.pipeline_run_id
+          WHERE observation.face_id = face.face_id
+            AND pipeline.state = 'recognized'
+            AND pipeline.recognizer_config_digest = ${configDigest}
+        )
+    ), availability AS (
+      SELECT count(*)::int AS faces_available,
+        count(DISTINCT asset_id)::int AS assets_available
+      FROM eligible
+    ), bounded_assets AS (
+      SELECT asset_id
+      FROM eligible
+      GROUP BY asset_id, priority_tier, accepted_person_count,
+        accepted_association_count, human_observation_count
+      ORDER BY priority_tier,
+        accepted_person_count DESC,
+        accepted_association_count DESC,
+        human_observation_count DESC,
+        asset_id
+      LIMIT ${limitAssets}
+    )
+    SELECT eligible.asset_id, eligible.face_id,
+      availability.faces_available, availability.assets_available
+    FROM eligible
+    JOIN bounded_assets USING (asset_id)
+    CROSS JOIN availability
+    ORDER BY eligible.priority_tier,
+      eligible.accepted_person_count DESC,
+      eligible.accepted_association_count DESC,
+      eligible.human_observation_count DESC,
+      eligible.asset_id,
+      eligible.face_id
   `;
   const grouped = new Map();
   for (const row of rows) {
     if (!grouped.has(row.asset_id)) grouped.set(row.asset_id, []);
     grouped.get(row.asset_id).push(row.face_id);
   }
-  const assets = [...grouped.entries()].slice(0, limitAssets);
-  summary.assetsAvailableAtStart = grouped.size;
-  summary.facesAvailableAtStart = rows.length;
+  const assets = [...grouped.entries()];
+  summary.assetsAvailableAtStart = Number(rows[0]?.assets_available || 0);
+  summary.facesAvailableAtStart = Number(rows[0]?.faces_available || 0);
   let nextAssetIndex = 0;
   let stopped = false;
   const processAsset = async ([assetId, faceIds], recognizer, workerSlot) => {
