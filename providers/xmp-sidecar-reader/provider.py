@@ -11,6 +11,12 @@ from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
 
+try:
+    # Preferred: defusedxml blocks entity-expansion attacks outright.
+    from defusedxml.ElementTree import fromstring as _defused_fromstring
+except ImportError:  # pragma: no cover - depends on the host environment
+    _defused_fromstring = None
+
 
 SCHEMA_VERSION = "cimmich.xmp-sidecar-reader.v3"
 MEDIA_EXTENSIONS = {
@@ -154,8 +160,24 @@ def parse_microsoft(root: ET.Element) -> list[dict[str, object]]:
     return regions
 
 
+def parse_xml(packet: bytes) -> ET.Element:
+    if _defused_fromstring is not None:
+        try:
+            return _defused_fromstring(packet)
+        except ET.ParseError:
+            raise
+        except Exception as error:  # DefusedXmlException and friends
+            raise ET.ParseError(str(error)) from error
+    # Stdlib fallback: ElementTree does not expand external entities, but it
+    # is still vulnerable to internal-entity blowups. Legitimate XMP sidecars
+    # never carry a DTD, so reject any packet that declares one.
+    if b"<!DOCTYPE" in packet or b"<!ENTITY" in packet:
+        raise ET.ParseError("DTD/entity declarations are not allowed in XMP")
+    return ET.fromstring(packet)
+
+
 def parse_faces(packet: bytes) -> list[dict[str, object]]:
-    root = ET.fromstring(packet)
+    root = parse_xml(packet)
     mwg = parse_mwg(root)
     microsoft = parse_microsoft(root)
     combined = list(mwg)

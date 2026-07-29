@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
-const readPetWorkspace = () => readFile('src/routes/(user)/cimmich/objects/+page.svelte', 'utf8');
+const readPetWorkspace = () => readFile('src/routes/(user)/cimmich/pets/+page.svelte', 'utf8');
 
 describe('Pet profile layout', () => {
   it('turns an opened Pet into a destination instead of retaining collection controls', async () => {

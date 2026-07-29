@@ -106,7 +106,6 @@ export const Route = {
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
   cimmichMaintenance: () => '/cimmich/maintenance',
-  cimmichObjects: () => '/cimmich/objects',
   cimmichPets: () => '/cimmich/pets',
   cimmichPet: ({ name, petId }: { name: string; petId?: string }) =>
     `/cimmich/pets/${encodeURIComponent(name)}` + asQueryString(petId ? { petId } : undefined),
@@ -114,14 +113,8 @@ export const Route = {
   cimmichPerson: ({ name, personId }: { name: string; personId?: string }) =>
     `/cimmich/people/${encodeURIComponent(name)}` + asQueryString(personId ? { personId } : undefined),
   cimmichPlaces: () => '/cimmich/places',
-  cimmichPlace: ({ name, placeId }: { name: string; placeId?: string }) =>
-    `/cimmich/places/${encodeURIComponent(name)}` + asQueryString(placeId ? { placeId } : undefined),
   cimmichThings: () => '/cimmich/places?family=objects',
-  cimmichThing: ({ name, thingId }: { name: string; thingId?: string }) =>
-    `/cimmich/places/${encodeURIComponent(name)}` + asQueryString(thingId ? { thingId } : undefined),
-  cimmichQc: () => '/cimmich/qc',
   cimmichSmartSearch: () => '/cimmich/smart-search',
-  cimmichTrips: () => '/cimmich/trips',
 
   // photos
   photos: (params?: { at?: string }) => '/photos' + asQueryString(params),

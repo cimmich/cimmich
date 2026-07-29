@@ -25,7 +25,7 @@ const canonicalize = (value) => {
   return value;
 };
 
-export const canonicalJson = (value) => JSON.stringify(canonicalize(value));
+const canonicalJson = (value) => JSON.stringify(canonicalize(value));
 export const digestValue = (value) =>
   sha256(typeof value === "string" ? value : canonicalJson(value));
 

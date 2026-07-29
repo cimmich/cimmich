@@ -1,10 +1,14 @@
 const nonNegativeBigInt = (value, label) => {
-  let normalized;
-  try {
-    normalized = BigInt(value);
-  } catch {
+  // BigInt() alone coerces booleans and the empty string to 0n/1n; only
+  // accept a bigint, an integral number, or an all-digit string.
+  const acceptable =
+    typeof value === "bigint" ||
+    (typeof value === "number" && Number.isInteger(value)) ||
+    (typeof value === "string" && /^\d+$/.test(value));
+  if (!acceptable) {
     throw new TypeError(`${label} must be a non-negative integer`);
   }
+  const normalized = BigInt(value);
   if (normalized < 0n) {
     throw new TypeError(`${label} must be a non-negative integer`);
   }

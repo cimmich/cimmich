@@ -11,7 +11,7 @@ describe('Cimmich visibility projection boundary', () => {
     'src/lib/components/cimmich/CimmichContextBrowser.svelte',
     'src/lib/components/cimmich/CimmichDocuments.svelte',
     ['src/routes/(user)/cimmich', 'home', '+page.svelte'].join('/'),
-    'src/routes/(user)/cimmich/objects/+page.svelte',
+    'src/routes/(user)/cimmich/pets/+page.svelte',
     'src/routes/(user)/cimmich/people/+page.svelte',
     'src/routes/(user)/cimmich/people/[personName]/+page.svelte',
     'src/routes/(user)/cimmich/smart-search/+page.svelte',

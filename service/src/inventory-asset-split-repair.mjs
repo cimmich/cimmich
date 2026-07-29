@@ -86,7 +86,6 @@ const forbiddenAssetReferences = [
   ["identity_audit_item", "suggested_reference_asset_id"],
   ["immich_face_projection", "cimmich_asset_id"],
   ["immich_onboarding_review_item", "cimmich_asset_id"],
-  ["imported_identity_locator", "asset_id"],
   ["manual_context_observation", "asset_id"],
   ["manual_context_tag", "asset_id"],
   ["manual_face_recognition_request", "asset_id"],

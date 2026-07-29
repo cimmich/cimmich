@@ -20,7 +20,7 @@ import {
 export const faceMatchingOperatorSchemaVersion =
   "cimmich.face-matching-operator.v1";
 export const ownerSourcePackPlanSchemaVersion =
-  "cimmich.owner-source-pack-plan.v1";
+  "cimmich.owner-source-pack-plan.v2";
 const ownerPlanMinimumKnownQueriesPerSplit = 100;
 const ownerPlanMinimumUnknownQueriesPerSplit = 100;
 const ownerPlanMinimumCompletePeople = 20;

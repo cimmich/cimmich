@@ -3,6 +3,9 @@ import { createHash, randomUUID } from "node:crypto";
 export const petMatchingSchemaVersion = "cimmich.pet-matching.v1";
 
 const receiptId = "receipt_cimmich_pet_matching_v1";
+// One definition of the Pet statuses that stay addressable by matching:
+// hidden Pets keep receiving suggestions, deleted/merged ones do not.
+const matchablePetStatuses = ["active", "hidden"];
 const lanes = new Set(["face", "whole_animal"]);
 const speciesKinds = new Set([
   "bird",
@@ -461,7 +464,7 @@ export const createPetMatchingStore = (
           const pets = await tx`
             SELECT person_id, species_kind FROM person
             WHERE person_id = ANY(${petIds}) AND subject_kind = 'pet'
-              AND status IN ('active','hidden')
+              AND status = ANY(${matchablePetStatuses})
             FOR SHARE
           `;
           const petsById = new Map(
@@ -725,7 +728,7 @@ export const createPetMatchingStore = (
             FROM current_person
             WHERE person_id = ${selectedPetId}
               AND subject_kind = 'pet'
-              AND status IN ('active','hidden')
+              AND status = ANY(${matchablePetStatuses})
           `;
           if (!pet) {
             throw typedError(
@@ -927,7 +930,7 @@ export const createPetMatchingStore = (
           JOIN pet_match_run run ON run.run_id = observation.run_id
           JOIN person pet ON pet.person_id = suggestion.pet_id
             AND pet.subject_kind = 'pet'
-            AND pet.status IN ('active','hidden')
+            AND pet.status = ANY(${matchablePetStatuses})
           WHERE suggestion.suggestion_id = ${id}
           FOR UPDATE OF suggestion, observation
         `;

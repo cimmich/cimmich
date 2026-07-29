@@ -1,25 +1,15 @@
 #!/usr/bin/env node
 
 import postgres from "postgres";
+import {
+  argumentValue as argument,
+  boundedInteger,
+} from "../src/bin-arguments.mjs";
 import { createImmichCompanionManager } from "../src/immich-companion-manager.mjs";
 import { createImmichInventorySynchronizer } from "../src/immich-inventory.mjs";
 import { runFaceDetectionBacklog } from "../src/face-detection-backlog.mjs";
 import { createLocalFaceDetectionWorker } from "../src/local-face-detection-worker.mjs";
 import { loadLocalMediaProviderRuntime } from "../src/local-media-provider-runtime.mjs";
-
-const argument = (name, fallback) => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : null;
-  return value && !value.startsWith("--") ? value : fallback;
-};
-
-const boundedInteger = (value, name, minimum, maximum) => {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  }
-  return parsed;
-};
 
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
 if (!databaseUrl) {

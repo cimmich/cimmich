@@ -1,3 +1,5 @@
+// Default allowlist. Operators can override both lists per run through the
+// CLI --policy-config file; the plan digest binds whatever policy was used.
 const MANAGED_DEPLOYMENT_REPOSITORIES = new Set([
   "cimmich-archive-api",
   "cimmich-archive-ui",
@@ -48,8 +50,24 @@ const normalizedImage = (image) => {
   };
 };
 
-const isEphemeralRepository = (repository) =>
-  EPHEMERAL_REPOSITORY_PATTERNS.some((pattern) => pattern.test(repository));
+const cleanRepositoryList = (value, fallback, label) => {
+  if (value == null) return new Set(fallback);
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string" || !entry.trim())
+  ) {
+    throw new TypeError(`${label} must be an array of repository names`);
+  }
+  return new Set(value.map((entry) => entry.trim()));
+};
+
+const cleanPatternList = (value, fallback, label) => {
+  if (value == null) return [...fallback];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new TypeError(`${label} must be an array of pattern sources`);
+  }
+  return value.map((entry) => new RegExp(entry));
+};
 
 const sumUniqueImageBytes = (rows) => {
   const sizes = new Map();
@@ -62,9 +80,23 @@ const sumUniqueImageBytes = (rows) => {
 export const planCimmichImageRetention = ({
   activeImageIds = [],
   containerImageIds = [],
+  ephemeralRepositoryPatterns = null,
   images,
+  managedDeploymentRepositories = null,
   rollbackImagesPerRepository = 2,
 }) => {
+  const managedRepositories = cleanRepositoryList(
+    managedDeploymentRepositories,
+    MANAGED_DEPLOYMENT_REPOSITORIES,
+    "managedDeploymentRepositories",
+  );
+  const ephemeralPatterns = cleanPatternList(
+    ephemeralRepositoryPatterns,
+    EPHEMERAL_REPOSITORY_PATTERNS,
+    "ephemeralRepositoryPatterns",
+  );
+  const isEphemeralRepository = (repository) =>
+    ephemeralPatterns.some((pattern) => pattern.test(repository));
   if (!Array.isArray(images)) {
     throw new TypeError("images must be an array");
   }
@@ -92,7 +124,7 @@ export const planCimmichImageRetention = ({
   const managedByRepository = new Map();
 
   for (const image of normalized) {
-    if (!MANAGED_DEPLOYMENT_REPOSITORIES.has(image.repository)) {
+    if (!managedRepositories.has(image.repository)) {
       continue;
     }
     const rows = managedByRepository.get(image.repository) || [];
@@ -134,7 +166,7 @@ export const planCimmichImageRetention = ({
       candidates.push({ ...image, reason: "disposable_build" });
       continue;
     }
-    if (MANAGED_DEPLOYMENT_REPOSITORIES.has(image.repository)) {
+    if (managedRepositories.has(image.repository)) {
       candidates.push({ ...image, reason: "retention_expired" });
       continue;
     }
@@ -152,6 +184,10 @@ export const planCimmichImageRetention = ({
     contractVersion: "cimmich.docker-image-retention.v1",
     policy: {
       containerProtection: "all_running_and_stopped",
+      ephemeralRepositoryPatterns: ephemeralPatterns.map(
+        (pattern) => pattern.source,
+      ),
+      managedDeploymentRepositories: [...managedRepositories].sort(),
       rollbackImagesPerRepository,
       unknownRepositoryAction: "retain",
     },
@@ -170,13 +206,6 @@ export const planCimmichImageRetention = ({
     },
   };
 };
-
-export const cimmichImageRetentionPolicy = Object.freeze({
-  ephemeralRepositoryPatterns: EPHEMERAL_REPOSITORY_PATTERNS.map(
-    (pattern) => pattern.source,
-  ),
-  managedDeploymentRepositories: [...MANAGED_DEPLOYMENT_REPOSITORIES].sort(),
-});
 
 export const dockerImageRetentionPlanDigest = (plan) =>
   createHash("sha256")

@@ -3,6 +3,11 @@
 import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import postgres from "postgres";
+import {
+  argumentValue as argument,
+  boundedInteger,
+  requiredText,
+} from "../src/bin-arguments.mjs";
 import { createImmichCompanionManager } from "../src/immich-companion-manager.mjs";
 import {
   createBodyPoseCurrentProjectionRepository,
@@ -16,23 +21,8 @@ import {
 import { prepareLocalBodyPoseJobFromCurrent } from "../src/local-body-pose-worker.mjs";
 import { createUltralyticsYoloPoseDetector } from "../src/ultralytics-yolo-pose-detector.mjs";
 
-const argument = (name, fallback = "") => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : "";
-  return value && !value.startsWith("--") ? value : fallback;
-};
-const boundedInteger = (value, label, minimum, maximum) => {
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < minimum || number > maximum) {
-    throw new Error(`${label} must be from ${minimum} to ${maximum}`);
-  }
-  return number;
-};
-const required = (value, label) => {
-  const normalized = String(value || "").trim();
-  if (!normalized) throw new Error(`Body pose backlog requires ${label}`);
-  return normalized;
-};
+const required = (value, label) =>
+  requiredText(value, label, "Body pose backlog");
 const optionalTimestamp = (value, label) => {
   const normalized = String(value || "").trim();
   if (!normalized) return "";

@@ -58,7 +58,7 @@ export const rebuildWorkerReceipt = ({ cycles, options, packs, requests }) => ({
   workerVersion: sourcePackRebuildWorkerVersion,
 });
 
-export const claimSourcePackRebuildBatch = async (sql, optionsInput) => {
+const claimSourcePackRebuildBatch = async (sql, optionsInput) => {
   const options = validateRebuildWorkerOptions(optionsInput);
   return sql.begin(async (tx) => {
     await tx`

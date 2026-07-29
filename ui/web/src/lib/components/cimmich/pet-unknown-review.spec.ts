@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 describe('Pet unknown review workspace', () => {
   it('makes unmatched animal detections visible and directly classifiable', async () => {
-    const source = await readFile('src/routes/(user)/cimmich/objects/+page.svelte', 'utf8');
+    const source = await readFile('src/routes/(user)/cimmich/pets/+page.svelte', 'utf8');
 
     expect(source).toContain('Unknown pets');
     expect(source).toContain('No identity cleared the matching threshold');

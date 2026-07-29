@@ -66,7 +66,6 @@
     onprofilechange: (value: CimmichPersonProfileProjection) => void;
     profile: CimmichPersonProfileProjection;
     railManaged?: boolean;
-    startInEdit?: boolean;
   }
 
   let {
@@ -84,7 +83,6 @@
     onprofilechange,
     profile,
     railManaged = false,
-    startInEdit = false,
   }: Props = $props();
 
   let aboutEditorElement = $state<HTMLTextAreaElement>();
@@ -158,7 +156,6 @@
   let relationshipEditorElement = $state<HTMLFieldSetElement>();
   let relationshipDraft = $state<string[]>([]);
   let removeConfirmId = $state('');
-  let startInEditHandled = false;
 
   const fieldLabels: Record<CimmichPersonProfileFieldKey, string> = {
     about: 'About',
@@ -539,33 +536,6 @@
       openDetailsSettings();
     }
   }
-
-  const startEditing = async (view: EditorView = 'profile', target?: ProfileEditTarget) => {
-    detailsSettingsOpen = false;
-    loadProfileDraft();
-    globalVisibilityDraft = Object.fromEntries(
-      defaults.fields.map(({ fieldKey, visible }) => [fieldKey, visible]),
-    ) as Record<CimmichPersonProfileFieldKey, boolean>;
-    personVisibilityDraft = Object.fromEntries(
-      display.fields.map(({ fieldKey, visibility }) => [fieldKey, visibility]),
-    ) as Record<CimmichPersonProfileFieldKey, Visibility>;
-    editorView = view;
-    editing = true;
-    errorMessage = '';
-    message = '';
-    if (target && sectionOrder.has(target as CimmichPersonProfileItemKind)) {
-      itemKindDraft = target as CimmichPersonProfileItemKind;
-      itemLabelDraft = defaultItemLabel(itemKindDraft);
-    }
-    await focusEditTarget(target);
-  };
-
-  $effect(() => {
-    if (startInEdit && !startInEditHandled) {
-      startInEditHandled = true;
-      void startEditing('profile');
-    }
-  });
 
   const toggleRelationship = (categoryId: string) => {
     relationshipDraft = relationshipDraft.includes(categoryId)

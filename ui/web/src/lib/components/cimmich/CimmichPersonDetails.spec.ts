@@ -107,7 +107,7 @@ const detailsDisplay = {
   })),
 };
 
-const renderDetails = (startInEdit = false, compact = false, railManaged = false) =>
+const renderDetails = (compact = false, railManaged = false) =>
   render(CimmichPersonDetails, {
     aliases: [],
     compact,
@@ -123,7 +123,6 @@ const renderDetails = (startInEdit = false, compact = false, railManaged = false
     onprofilechange: vi.fn(),
     profile,
     railManaged,
-    startInEdit,
   });
 
 describe('CimmichPersonDetails', () => {
@@ -226,20 +225,6 @@ describe('CimmichPersonDetails', () => {
     });
   });
 
-  it('saves only this Person from Shown in hero', async () => {
-    mocks.patchDisplay.mockResolvedValueOnce({
-      display: { ...display, fields: [{ ...display.fields[0], visibility: 'hide' }] },
-    });
-    const { getByRole } = renderDetails(true);
-
-    await fireEvent.click(getByRole('tab', { name: 'Shown in hero' }));
-    await fireEvent.click(getByRole('button', { name: 'Hide' }));
-    await fireEvent.click(getByRole('button', { name: 'Save display' }));
-
-    await waitFor(() => expect(mocks.patchDisplay).toHaveBeenCalledOnce());
-    expect(mocks.patchDefaults).not.toHaveBeenCalled();
-  });
-
   it('shows discoverable empty sections, identity and aliases without opening settings', () => {
     const { getByRole, getByText, queryByRole } = renderDetails();
 
@@ -265,7 +250,7 @@ describe('CimmichPersonDetails', () => {
   });
 
   it('keeps every useful compact detail discoverable without empty-card clutter', () => {
-    const { getByLabelText, getByRole, getByText, queryByRole } = renderDetails(false, true);
+    const { getByLabelText, getByRole, getByText, queryByRole } = renderDetails(true);
 
     expect(getByRole('heading', { name: 'At a glance' })).toBeInTheDocument();
     expect(getByRole('heading', { name: 'Names & identity' })).toBeInTheDocument();
@@ -292,7 +277,7 @@ describe('CimmichPersonDetails', () => {
   });
 
   it('renders the rail-managed profile as a complete personal dossier', () => {
-    const { getByLabelText, getByRole, getByText, queryByText } = renderDetails(false, true, true);
+    const { getByLabelText, getByRole, getByText, queryByText } = renderDetails(true, true);
 
     expect(getByText('Personal archive')).toBeInTheDocument();
     expect(getByText('Profile dossier · Maya Chen')).toBeInTheDocument();

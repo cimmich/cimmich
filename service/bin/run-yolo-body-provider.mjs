@@ -3,20 +3,15 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
+import { requiredArgument } from "../src/bin-arguments.mjs";
 
-const argument = (name) => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : "";
-  if (!value || value.startsWith("--")) throw new Error(`Missing --${name}`);
-  return value;
-};
-const preparation = JSON.parse(await readFile(argument("preparation"), "utf8"));
-const manifest = JSON.parse(await readFile(argument("manifest"), "utf8"));
-const imagePath = argument("image");
-const manifestPath = argument("manifest");
-const modelPath = argument("model");
-const providerPath = argument("provider");
-const pythonPath = argument("python");
+const preparation = JSON.parse(await readFile(requiredArgument("preparation"), "utf8"));
+const manifest = JSON.parse(await readFile(requiredArgument("manifest"), "utf8"));
+const imagePath = requiredArgument("image");
+const manifestPath = requiredArgument("manifest");
+const modelPath = requiredArgument("model");
+const providerPath = requiredArgument("provider");
+const pythonPath = requiredArgument("python");
 
 const run = (runId) =>
   new Promise((resolve, reject) => {

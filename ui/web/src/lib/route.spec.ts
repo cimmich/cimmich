@@ -59,22 +59,6 @@ describe('Route', () => {
     });
   });
 
-  describe(Route.cimmichPlace.name, () => {
-    it('names the place in the path and pins it with placeId, like Person and Pet', () => {
-      expect(Route.cimmichPlace({ name: "Parent's Home", placeId: 'place-1' })).toBe(
-        "/cimmich/places/Parent's%20Home?placeId=place-1",
-      );
-      expect(Route.cimmichPlace({ name: "Parent's Home" })).toBe("/cimmich/places/Parent's%20Home");
-    });
-  });
-
-  describe(Route.cimmichThing.name, () => {
-    it('names the thing in the path and pins it with thingId, so the id states the family', () => {
-      expect(Route.cimmichThing({ name: 'ATV', thingId: 'object-1' })).toBe('/cimmich/places/ATV?thingId=object-1');
-      expect(Route.cimmichThing({ name: 'ATV' })).toBe('/cimmich/places/ATV');
-    });
-  });
-
   describe(Route.tags.name, () => {
     it('should work', () => {
       expect(Route.tags()).toBe('/tags');

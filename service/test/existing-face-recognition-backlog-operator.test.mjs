@@ -46,7 +46,7 @@ test("existing-Face backlog is triage ordered and boundedly parallel", async () 
   );
   assert.match(
     source,
-    /argument\("workers", \{ required: false \}\)[\s\S]*"workers",[\s\S]*1,[\s\S]*8,[\s\S]*1/,
+    /optionalArgument\("workers"\)[\s\S]*"workers",[\s\S]*1,[\s\S]*8,[\s\S]*1/,
   );
   assert.match(
     source,

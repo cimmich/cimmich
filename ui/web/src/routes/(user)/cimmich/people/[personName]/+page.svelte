@@ -4,11 +4,7 @@
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
-  import {
-    preparePersonCandidates,
-    rawSimilarityLabel,
-    type PersonCandidateReviewMode,
-  } from '$lib/components/cimmich/person-candidate-review';
+  import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
   import {
     groupPersonPhotos,
@@ -147,7 +143,7 @@
     | 'prime'
     | 'references'
     | 'secondary';
-  type CimmichPersonMode = 'candidates' | 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
+  type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
     displayName: string;
@@ -204,15 +200,7 @@
   let cimmichAssets = $state<CimmichPersonAsset[]>([]);
   let cimmichAssetsLoadingMore = $state(false);
   let cimmichAssetsNextCursor = $state<string | null>(null);
-  let cimmichCandidateConfirm = $state(false);
-  let cimmichCandidateRejectConfirm = $state(false);
-  let cimmichCandidateError = $state('');
-  let cimmichCandidateLoading = $state(false);
-  let cimmichCandidateMessage = $state('');
-  let cimmichCandidateSaving = $state(false);
-  let cimmichCandidateSelection = $state<string[]>([]);
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
-  let cimmichCandidateReviewMode = $state<PersonCandidateReviewMode>('useful');
   let cimmichIdentityError = $state('');
   let cimmichIdentityAuditEvidenceExpanded = $state<string[]>([]);
   let cimmichIdentityAuditChangeFaceId = $state('');
@@ -543,7 +531,7 @@
     }
     return [...linked.values()].sort((left, right) => left.displayName.localeCompare(right.displayName));
   };
-  const visibleCimmichCandidates = $derived(preparePersonCandidates(cimmichCandidates, cimmichCandidateReviewMode));
+  const visibleCimmichCandidates = $derived(preparePersonCandidates(cimmichCandidates));
   const cimmichIdentityAuditFaceIds = $derived(new Set(cimmichIdentityAuditItems.map(({ faceId }) => faceId)));
   const cimmichCandidateReviewItems = $derived<CimmichPersonReviewItem[]>(
     visibleCimmichCandidates.map((candidate) => {
@@ -1283,22 +1271,6 @@
     ].join('; ');
   };
 
-  const cimmichCandidateCropStyle = (candidate: CimmichIdentityCandidate) => {
-    if (!candidate.sourceAssetId) {
-      return '';
-    }
-    return cimmichSquareCropBackgroundStyle({
-      boxH: candidate.box_h,
-      boxW: candidate.box_w,
-      boxX: candidate.box_x,
-      boxY: candidate.box_y,
-      height: candidate.height ?? 0,
-      padding: 2.4,
-      url: getAssetMediaUrl({ id: candidate.sourceAssetId, size: AssetMediaSize.Preview }),
-      width: candidate.width ?? 0,
-    });
-  };
-
   const cimmichMachineSuggestionCropStyle = (suggestion: CimmichMachineSuggestion) => {
     if (!suggestion.sourceAssetId) {
       return '';
@@ -1539,22 +1511,6 @@
     adjustCimmichPresentationFrame(slotKind, delta);
   };
 
-  const candidateSelected = (claimId: string) => cimmichCandidateSelection.includes(claimId);
-
-  const toggleCandidate = (claimId: string) => {
-    cimmichCandidateSelection = candidateSelected(claimId)
-      ? cimmichCandidateSelection.filter((id) => id !== claimId)
-      : [...cimmichCandidateSelection, claimId];
-    cimmichCandidateConfirm = false;
-    cimmichCandidateRejectConfirm = false;
-  };
-
-  const selectAllCandidates = () => {
-    cimmichCandidateSelection = visibleCimmichCandidates.map((candidate) => candidate.identity_claim_id);
-    cimmichCandidateConfirm = false;
-    cimmichCandidateRejectConfirm = false;
-  };
-
   const machineSuggestionSelected = (faceId: string) => cimmichMachineSuggestionSelection.includes(faceId);
 
   const toggleCimmichAuditEvidence = (faceId: string) => {
@@ -1734,76 +1690,6 @@
     }
   };
 
-  const acceptSelectedCandidates = async () => {
-    if (!cimmichPerson || cimmichCandidateSelection.length === 0) {
-      return;
-    }
-    if (!cimmichCandidateConfirm) {
-      cimmichCandidateConfirm = true;
-      cimmichCandidateRejectConfirm = false;
-      return;
-    }
-    const personId = cimmichPerson.person_id;
-    cimmichCandidateSaving = true;
-    cimmichCandidateError = '';
-    cimmichCandidateMessage = '';
-    try {
-      const result = await bulkAcceptCimmichPersonCandidates(personId, cimmichCandidateSelection);
-      cimmichCandidateMessage = `${result.acceptedCount} ${result.acceptedCount === 1 ? 'face' : 'faces'} accepted.`;
-      cimmichCandidateSelection = [];
-      cimmichCandidateConfirm = false;
-      cimmichCandidateRejectConfirm = false;
-      const [candidates, assetsPage, people] = await Promise.all([
-        getCimmichPersonCandidates(personId),
-        getCimmichPersonAssetsPage(personId, 120),
-        getCimmichPeople(500),
-      ]);
-      cimmichCandidates = candidates;
-      cimmichAssets = assetsPage.items;
-      cimmichAssetsNextCursor = assetsPage.nextCursor;
-      cimmichIdentityLoaded = false;
-      cimmichIdentityFaces = [];
-      cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
-      cimmichIdentityNextCursor = null;
-      cimmichHoldingMatches = {};
-      cimmichHoldingMatchesLoading = {};
-      const refreshed = people.find((row) => row.person_id === personId);
-      if (refreshed) {
-        cimmichPerson = refreshed;
-      }
-    } catch (error) {
-      cimmichCandidateConfirm = false;
-      cimmichCandidateError = error instanceof Error ? error.message : 'Unable to accept candidates';
-    } finally {
-      cimmichCandidateSaving = false;
-    }
-  };
-
-  const rejectSelectedCandidates = async () => {
-    if (!cimmichPerson || cimmichCandidateSelection.length === 0) {
-      return;
-    }
-    if (!cimmichCandidateRejectConfirm) {
-      cimmichCandidateRejectConfirm = true;
-      cimmichCandidateConfirm = false;
-      return;
-    }
-    cimmichCandidateSaving = true;
-    cimmichCandidateError = '';
-    try {
-      const result = await bulkRejectCimmichPersonCandidates(cimmichPerson.person_id, cimmichCandidateSelection);
-      cimmichCandidates = await getCimmichPersonCandidates(cimmichPerson.person_id);
-      cimmichCandidateSelection = [];
-      cimmichCandidateRejectConfirm = false;
-      cimmichCandidateMessage = `${result.rejectedCount} selected ${result.rejectedCount === 1 ? 'suggestion' : 'suggestions'} rejected.`;
-    } catch (error) {
-      cimmichCandidateRejectConfirm = false;
-      cimmichCandidateError = error instanceof Error ? error.message : 'Unable to reject selected suggestions';
-    } finally {
-      cimmichCandidateSaving = false;
-    }
-  };
-
   const confirmSelectedMachineSuggestions = async () => {
     if (!cimmichPerson || cimmichMachineSuggestionSelection.length === 0) {
       return;
@@ -1816,8 +1702,6 @@
     const personId = cimmichPerson.person_id;
     const selectedFaceIds = [...cimmichMachineSuggestionSelection];
     cimmichMachineSuggestionSaving = true;
-    cimmichCandidateError = '';
-    cimmichCandidateMessage = '';
     try {
       const batch = await setCimmichFaceIdentitiesBatch(selectedFaceIds.map((faceId) => ({ faceId, personId })));
       const [machineSuggestions, candidates, assetsPage, people] = await Promise.all([
@@ -1835,11 +1719,6 @@
       cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichMachineSuggestionSelection = [];
       cimmichMachineSuggestionConfirm = false;
-      cimmichCandidateMessage = `${batch.assignedCount} matching ${batch.assignedCount === 1 ? 'suggestion' : 'suggestions'} confirmed as ${cimmichPerson.display_name}.`;
-      cimmichCandidateError =
-        batch.failureCount > 0
-          ? `${batch.failureCount} ${batch.failureCount === 1 ? 'suggestion' : 'suggestions'} could not be confirmed: ${batch.failures[0].error}`
-          : '';
       cimmichIdentityLoaded = false;
       cimmichIdentityFaces = [];
       cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
@@ -1854,7 +1733,6 @@
       cimmichIdentityFilter = 'candidates';
     } catch (error) {
       cimmichMachineSuggestionConfirm = false;
-      cimmichCandidateError = error instanceof Error ? error.message : 'Unable to confirm the matching suggestions';
     } finally {
       if (generation === personProjectionGeneration) {
         cimmichMachineSuggestionSaving = false;
@@ -2355,7 +2233,6 @@
     cimmichIdentityAuditSavingId = '';
     cimmichMachineSuggestionSelection = [];
     cimmichMachineSuggestionConfirm = false;
-    cimmichCandidateRejectConfirm = false;
     cimmichMachineSuggestionSaving = false;
     cimmichHoldingMatches = {};
     cimmichHoldingMatchesLoading = {};
@@ -3446,202 +3323,6 @@
         {:else}
           <p class="text-sm text-gray-500 dark:text-gray-400">Loading details…</p>
         {/if}
-      {:else if cimmichMode === 'candidates'}
-        <section class="grid gap-4">
-          <div
-            class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-immich-dark-gray"
-          >
-            <div class="flex flex-wrap items-center gap-2">
-              <fieldset class="flex min-h-10 items-center rounded-lg bg-gray-100 p-1 dark:bg-immich-dark-gray">
-                <legend class="sr-only">Candidate evidence filter</legend>
-                {#each [{ id: 'useful', label: 'Useful first' }, { id: 'all', label: `All ${cimmichCandidates.length.toLocaleString()}` }] as option (option.id)}
-                  <button
-                    class={[
-                      'min-h-8 rounded-md px-3 text-xs font-semibold',
-                      cimmichCandidateReviewMode === option.id
-                        ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
-                        : 'text-gray-600 dark:text-gray-300',
-                    ]}
-                    type="button"
-                    aria-pressed={cimmichCandidateReviewMode === option.id}
-                    onclick={() => {
-                      cimmichCandidateReviewMode = option.id as PersonCandidateReviewMode;
-                      cimmichCandidateSelection = [];
-                      cimmichCandidateConfirm = false;
-                      cimmichCandidateRejectConfirm = false;
-                    }}>{option.label}</button
-                  >
-                {/each}
-              </fieldset>
-              <button
-                class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-100 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/10"
-                disabled={cimmichCandidateSaving || visibleCimmichCandidates.length === 0}
-                onclick={selectAllCandidates}
-                type="button"
-              >
-                Select all
-              </button>
-              {#if cimmichCandidateSelection.length > 0}
-                <button
-                  class="rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10"
-                  disabled={cimmichCandidateSaving}
-                  onclick={() => {
-                    cimmichCandidateSelection = [];
-                    cimmichCandidateConfirm = false;
-                    cimmichCandidateRejectConfirm = false;
-                  }}
-                  type="button"
-                >
-                  Clear
-                </button>
-              {/if}
-              <span class="text-sm text-gray-500 dark:text-gray-400">
-                {cimmichCandidateSelection.length.toLocaleString()} selected
-              </span>
-            </div>
-            <button
-              class={[
-                'rounded-md px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40 dark:text-black',
-                cimmichCandidateConfirm
-                  ? 'bg-amber-600 dark:bg-amber-400'
-                  : 'bg-immich-primary dark:bg-immich-dark-primary',
-              ]}
-              disabled={cimmichCandidateSaving || cimmichCandidateSelection.length === 0}
-              onclick={() => void acceptSelectedCandidates()}
-              type="button"
-            >
-              {#if cimmichCandidateSaving}
-                Accepting…
-              {:else if cimmichCandidateConfirm}
-                Confirm accept {cimmichCandidateSelection.length}
-              {:else}
-                Accept selected ({cimmichCandidateSelection.length})
-              {/if}
-            </button>
-          </div>
-
-          {#if cimmichCandidateError}
-            <p
-              class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-            >
-              {cimmichCandidateError}
-            </p>
-          {/if}
-          {#if cimmichCandidateMessage}
-            <p
-              class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200"
-            >
-              {cimmichCandidateMessage}
-            </p>
-          {/if}
-
-          {#if cimmichCandidateLoading}
-            <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading candidates…</p>
-          {:else}
-            <p class="text-sm/6 text-gray-500 dark:text-gray-400">
-              Raw same-model similarity and separation margin explain the ordering; neither is an identity probability.
-              Useful first hides zero-margin ties only. All preserves the complete owner queue.
-            </p>
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {#each visibleCimmichCandidates as candidate, index (candidate.identity_claim_id)}
-                {@const selected = candidateSelected(candidate.identity_claim_id)}
-                <article
-                  class={[
-                    'relative overflow-hidden rounded-lg border-2 bg-white dark:bg-immich-dark-bg',
-                    selected
-                      ? 'border-immich-primary shadow-sm dark:border-immich-dark-primary'
-                      : 'border-gray-200 dark:border-immich-dark-gray',
-                  ]}
-                >
-                  <a
-                    href={candidate.sourceAssetId
-                      ? Route.viewCimmichPersonAsset({
-                          faceId: candidate.face_id,
-                          id: candidate.sourceAssetId,
-                          overlay: 'machinery',
-                          personId: cimmichPerson.person_id,
-                          personName: cimmichPerson.display_name,
-                        })
-                      : undefined}
-                    class="relative block aspect-4/5 overflow-hidden bg-gray-200 dark:bg-gray-800"
-                    title={candidate.filename}
-                  >
-                    {#if candidate.sourceAssetId}
-                      <span
-                        class="absolute inset-0 bg-cover transition-transform hover:scale-[1.02]"
-                        style={cimmichCandidateCropStyle(candidate)}
-                        aria-label={`Candidate face in ${candidate.filename}`}
-                      ></span>
-                    {:else}
-                      <span class="flex size-full items-center justify-center p-4 text-center text-xs text-gray-500">
-                        Preview unavailable
-                      </span>
-                    {/if}
-                    <span
-                      class="absolute top-2 left-2 rounded-sm bg-black/75 px-2 py-1 text-xs font-semibold text-white"
-                    >
-                      #{index + 1}
-                    </span>
-                    <span
-                      class="absolute bottom-2 left-2 rounded-sm bg-black/75 px-2 py-1 text-xs font-semibold text-white"
-                    >
-                      Raw similarity {rawSimilarityLabel(candidate.match_score)}
-                    </span>
-                  </a>
-                  <label
-                    class="absolute top-2 right-2 flex size-9 cursor-pointer items-center justify-center rounded-md bg-white/95 shadow-sm dark:bg-black/85"
-                  >
-                    <span class="sr-only">Select candidate {index + 1}</span>
-                    <input
-                      class="size-5 accent-immich-primary"
-                      type="checkbox"
-                      checked={selected}
-                      disabled={cimmichCandidateSaving}
-                      onchange={() => toggleCandidate(candidate.identity_claim_id)}
-                    />
-                  </label>
-                  <div class="grid gap-1.5 p-3">
-                    <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                      {candidate.filename || candidate.asset_id}
-                    </p>
-                    <div class="flex flex-wrap gap-1 text-[11px] text-gray-600 dark:text-gray-300">
-                      {#if candidate.source_margin !== null && candidate.source_score !== null && candidate.source_margin > candidate.source_score}
-                        <span
-                          class="rounded-sm bg-gray-100 px-1.5 py-0.5 dark:bg-white/10"
-                          title="No second same-model match competed for this face."
-                          >Only candidate</span
-                        >
-                      {:else if candidate.source_margin !== null}
-                        <span
-                          class="rounded-sm bg-gray-100 px-1.5 py-0.5 dark:bg-white/10"
-                          title="Difference between the first and second same-model match; larger separation is easier to review."
-                          >Separation {candidate.source_margin.toFixed(3)}</span
-                        >
-                      {/if}
-                      <span
-                        class="rounded-sm bg-gray-100 px-1.5 py-0.5 dark:bg-white/10"
-                        title="How certain the detector was that this region contains a face; it does not identify the person."
-                      >
-                        Face detector {Math.round(candidate.detection_confidence * 100)}%
-                      </span>
-                    </div>
-                    {#if candidate.current_person_name}
-                      <p class="text-xs font-medium text-amber-700 dark:text-amber-300">
-                        Currently {candidate.current_person_name}; accepting will move it here.
-                      </p>
-                    {/if}
-                  </div>
-                </article>
-              {:else}
-                <p class="col-span-full py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                  {cimmichCandidateReviewMode === 'useful'
-                    ? 'No candidates have a positive separation margin. Choose All to inspect the complete queue.'
-                    : 'No candidates for this Person.'}
-                </p>
-              {/each}
-            </div>
-          {/if}
-        </section>
       {:else if cimmichMode === 'identity'}
         <section class="grid gap-4">
           <div class="grid gap-3">

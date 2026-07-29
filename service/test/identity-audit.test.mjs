@@ -499,7 +499,7 @@ test("independent evidence suppresses only replay-consistent same-photo candidat
     },
     provider,
     runId: "audit.test",
-    sourceId: "x1-archive-immich",
+    sourceId: "legacy-archive-immich",
   });
 
   assert.deepEqual(deleted, ["face.same"]);

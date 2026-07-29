@@ -16,10 +16,10 @@ const providerPath = new URL(
 ).pathname;
 
 test("private tier suffix normalization is deliberately limited to 1 and 2", () => {
-  assert.deepEqual(normalizeXmpPersonName("  Benji   Hart 1 "), {
+  assert.deepEqual(normalizeXmpPersonName("  Rowan   Vale 1 "), {
     normalization: "strip_trailing_private_tier_hint",
-    normalizedName: "Benji Hart",
-    rawName: "Benji Hart 1",
+    normalizedName: "Rowan Vale",
+    rawName: "Rowan Vale 1",
   });
   assert.equal(normalizeXmpPersonName("Person 2").normalizedName, "Person");
   assert.equal(normalizeXmpPersonName("Person 3").normalizedName, "Person 3");

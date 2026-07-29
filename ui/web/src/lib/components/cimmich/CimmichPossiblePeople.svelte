@@ -25,11 +25,10 @@
 
   interface Props {
     mode: 'active' | 'ignored';
-    onactivecount?: (count: number) => void;
     onignoredcount?: (count: number) => void;
   }
 
-  let { mode, onactivecount = () => undefined, onignoredcount = () => undefined }: Props = $props();
+  let { mode, onignoredcount = () => undefined }: Props = $props();
   let clusters = $state<CimmichImmichPersonCluster[]>([]);
   let people = $state<CimmichPerson[]>([]);
   let loading = $state(true);
@@ -100,13 +99,6 @@
         return;
       }
       clusters = preview.clusters;
-      onactivecount(
-        preview.clusters.filter(
-          (cluster) =>
-            hasMeaningfulRecurrence(cluster) &&
-            (cluster.resolution.state === 'unresolved' || cluster.resolution.state === 'stale'),
-        ).length,
-      );
       onignoredcount(
         preview.clusters.filter((cluster) => hasMeaningfulRecurrence(cluster) && isIgnored(cluster)).length,
       );
@@ -142,12 +134,10 @@
       if (!resolution || resolution.state !== 'later') {
         throw new Error('Cimmich saved an unexpected possible-person decision.');
       }
-      const nextActiveCount = Math.max(0, activeClusters.length - 1);
       const nextIgnoredCount = ignoredClusters.length + 1;
       clusters = clusters.map((candidate) =>
         candidate.immichPersonId === cluster.immichPersonId ? { ...candidate, resolution } : candidate,
       );
-      onactivecount(nextActiveCount);
       onignoredcount(nextIgnoredCount);
       notice = 'Possible person moved to Needs attention. You can restore it there.';
     } catch (error_) {
@@ -195,7 +185,6 @@
     error = '';
     notice = '';
     try {
-      const nextActiveCount = Math.max(0, activeClusters.length - 1);
       await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
         action,
         commandId: `possible-person.resolve.${createCimmichUuid()}`,
@@ -210,7 +199,6 @@
           : 'Person created and mapped. Update the Immich import when you want the full group admitted.';
       openClusterId = '';
       clusters = clusters.filter((candidate) => candidate.immichPersonId !== cluster.immichPersonId);
-      onactivecount(nextActiveCount);
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Cimmich could not resolve this possible person.';
     } finally {
@@ -230,14 +218,12 @@
         commandId: `possible-person.restore.${createCimmichUuid()}`,
         scope,
       });
-      const nextActiveCount = activeClusters.length + 1;
       const nextIgnoredCount = Math.max(0, ignoredClusters.length - 1);
       clusters = clusters.map((candidate) =>
         candidate.immichPersonId === cluster.immichPersonId
           ? { ...candidate, resolution: { state: 'unresolved' } }
           : candidate,
       );
-      onactivecount(nextActiveCount);
       onignoredcount(nextIgnoredCount);
       notice = 'Possible person restored to Suggestions.';
     } catch (error_) {

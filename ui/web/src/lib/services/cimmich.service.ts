@@ -2146,7 +2146,7 @@ export type CimmichFaceMatchingOperatorResult = {
     referenceEvidence: number;
     referencePeople: number;
     reviewability: 'balanced_open_set_holdout_ready' | 'operator_hold_required';
-    schemaVersion: 'cimmich.owner-source-pack-plan.v1';
+    schemaVersion: 'cimmich.owner-source-pack-plan.v2';
     strategy: 'all_current_evidence_proposed_only' | 'deterministic_three_window';
   };
   replayed: boolean;

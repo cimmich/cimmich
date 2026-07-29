@@ -478,7 +478,7 @@ const reconcileMobilityBindings = async (sql, runId) => {
   `;
 };
 
-export const createImmichInventoryLedger = (
+const createImmichInventoryLedger = (
   sql,
   {
     fingerprintConcurrency = 2,

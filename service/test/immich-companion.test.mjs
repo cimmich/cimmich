@@ -798,7 +798,7 @@ test("companion operator config is data-only and UI builds exclude local env fil
           ...process.env,
           CIMMICH_COMPANION_PROJECT: "cimmich-config-adversarial",
           CIMMICH_COMPANION_STATE_ROOT: stateRoot,
-          CIMMICH_IMMICH_SOURCE_ID: "synthetic-x1-archive",
+          CIMMICH_IMMICH_SOURCE_ID: "synthetic-legacy-archive",
         },
       },
     );
@@ -806,7 +806,7 @@ test("companion operator config is data-only and UI builds exclude local env fil
     const envPath = join(stateRoot, "runtime.env");
     const runtime = await readFile(envPath, "utf8");
     assert.match(runtime, /^CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=none$/m);
-    assert.match(runtime, /^CIMMICH_IMMICH_SOURCE_ID=synthetic-x1-archive$/m);
+    assert.match(runtime, /^CIMMICH_IMMICH_SOURCE_ID=synthetic-legacy-archive$/m);
     assert.equal(runtime.includes("synthetic_read_only_key"), true);
     assert.equal(
       runtime.includes("CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=password"),

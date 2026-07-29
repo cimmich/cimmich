@@ -61,7 +61,7 @@ test("unresolved XMP names are grouped by ROI with bounded visible previews", as
             "Known Historical Label 1",
           ],
           source_asset_id: "immich_1",
-          source_id: "x1-archive-xmp",
+          source_id: "legacy-archive-xmp",
           width: 4000,
         },
       ];
@@ -82,12 +82,12 @@ test("unresolved XMP names are grouped by ROI with bounded visible previews", as
   assert.equal(result.items[0].previews[0].sourceAssetId, "immich_1");
   assert.equal(
     result.items[0].groupId,
-    groupId("x1-archive-xmp", "Known Historical Label"),
+    groupId("legacy-archive-xmp", "Known Historical Label"),
   );
 });
 
 test("completed owner resolution commands replay without another write", async () => {
-  const stableGroupId = groupId("x1-archive-xmp", "Historical Label");
+  const stableGroupId = groupId("legacy-archive-xmp", "Historical Label");
   let queryCount = 0;
   const sql = fakeSql((text) => {
     queryCount += 1;
@@ -128,7 +128,7 @@ test("owner resolution requires exactly one explicit Person selector", async () 
     store.resolve({
       actorId: "local-operator",
       commandId: "xmp-owner-resolution-0002",
-      groupId: groupId("x1-archive-xmp", "Historical Label"),
+      groupId: groupId("legacy-archive-xmp", "Historical Label"),
     }),
     { code: "XMP_NAME_RESOLUTION_SELECTOR_INVALID" },
   );
@@ -136,7 +136,7 @@ test("owner resolution requires exactly one explicit Person selector", async () 
     store.resolve({
       actorId: "local-operator",
       commandId: "xmp-owner-resolution-0003",
-      groupId: groupId("x1-archive-xmp", "Historical Label"),
+      groupId: groupId("legacy-archive-xmp", "Historical Label"),
       newPersonName: "New Person",
       personId: "person_target",
     }),

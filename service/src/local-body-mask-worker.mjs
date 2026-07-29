@@ -113,18 +113,6 @@ export const prepareLocalBodyMaskJob = ({
   return prepared;
 };
 
-export const prepareLocalBodyMaskJobFromCurrent = ({ current, manifest }) => {
-  const binding = consumeCurrentBodyPoseProjection(current);
-  return prepareLocalBodyMaskJob({
-    assetId: binding.assetId,
-    bodyValidation: binding.validation,
-    manifest,
-    projection: {
-      assetId: binding.assetId,
-      inputRevision: binding.validation.result.inputRevision,
-    },
-  });
-};
 
 const requirePrepared = (value) => {
   if (!preparedJobs.has(value) || !preparedBindings.has(value))

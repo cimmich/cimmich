@@ -5,6 +5,11 @@ import { access, readFile } from "node:fs/promises";
 import process from "node:process";
 import postgres from "postgres";
 import {
+  boundedInteger,
+  optionalArgument,
+  requiredArgument,
+} from "../src/bin-arguments.mjs";
+import {
   completeAssetSourceRead,
   createAssetSourceRevisionRepository,
 } from "../src/asset-source-revision.mjs";
@@ -14,66 +19,48 @@ import { createInsightFaceUserSuppliedRecognizer } from "../src/insightface-user
 import { createLocalExistingFaceRecognitionWorker } from "../src/local-existing-face-recognition-worker.mjs";
 import { recognitionDigest } from "../src/recognition-provider-contract.mjs";
 
-const argument = (name, { required = true } = {}) => {
-  const index = process.argv.indexOf(`--${name}`);
-  const value = index >= 0 ? process.argv[index + 1] : null;
-  if (required && (!value || value.startsWith("--"))) {
-    throw new Error(`Missing --${name}`);
-  }
-  return value;
-};
-
-const boundedInteger = (value, name, minimum, maximum, fallback) => {
-  if (value === null) return fallback;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  }
-  return parsed;
-};
-
-const manifestPath = argument("manifest");
-const detectorModelPath = argument("detector-model");
-const providerScriptPath = argument("provider-script");
-const pythonPath = argument("python");
-const recognizerModelPath = argument("recognizer-model");
+const manifestPath = requiredArgument("manifest");
+const detectorModelPath = requiredArgument("detector-model");
+const providerScriptPath = requiredArgument("provider-script");
+const pythonPath = requiredArgument("python");
+const recognizerModelPath = requiredArgument("recognizer-model");
 const limitAssets = boundedInteger(
-  argument("limit-assets", { required: false }),
+  optionalArgument("limit-assets"),
   "limit-assets",
   1,
   100_000,
   10,
 );
 const priorityTierMax = boundedInteger(
-  argument("priority-tier-max", { required: false }),
+  optionalArgument("priority-tier-max"),
   "priority-tier-max",
   0,
   2,
   2,
 );
 const laneCount = boundedInteger(
-  argument("lane-count", { required: false }),
+  optionalArgument("lane-count"),
   "lane-count",
   1,
   16,
   1,
 );
 const laneIndex = boundedInteger(
-  argument("lane-index", { required: false }),
+  optionalArgument("lane-index"),
   "lane-index",
   0,
   laneCount - 1,
   0,
 );
 const workerCount = boundedInteger(
-  argument("workers", { required: false }),
+  optionalArgument("workers"),
   "workers",
   1,
   8,
   1,
 );
 const detectorConfigDigest = String(
-  argument("detector-config-digest", { required: false }) || "",
+  optionalArgument("detector-config-digest") || "",
 ).trim();
 if (
   detectorConfigDigest &&
