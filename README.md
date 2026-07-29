@@ -1,8 +1,9 @@
 # Cimmich
 
 > [!NOTE]
-> **Cimmich is now in public-beta development.** The exact OpenAI Build Week
-> submission remains preserved in the
+> **Cimmich is now in public-beta development.** The current release is
+> [v1.0.1 Public Beta Patch 6](https://github.com/cimmich/cimmich/releases/tag/v1.0.1-beta.6).
+> The exact OpenAI Build Week submission remains preserved in the
 > [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
 > That tag, release and its assets remain unchanged as the living project moves
 > forward. See the [Public Beta changelog](docs/PUBLIC_BETA_CHANGELOG.md) for
@@ -419,6 +420,12 @@ Current release-hardening evidence is recorded in
 [release readiness](docs/RELEASE_READINESS.md). The same checkout must pass the
 service, migration, disposable synthetic, web, Svelte, TypeScript,
 production-build and public-demo lifecycle gates.
+
+Current public-beta releases carry their own certification in
+[release readiness](docs/RELEASE_READINESS.md) and the
+[Public Beta changelog](docs/PUBLIC_BETA_CHANGELOG.md); the migration ledger
+advances with each beta patch. The following Build Week certification is the
+frozen historical bar for that tag, not the current release's schema state.
 
 The Build Week release tag is `v1.0.0-build-week`. It targets exact Immich 3.0.3
 and derives schema 75 from its contiguous migration ledger. Its certification
