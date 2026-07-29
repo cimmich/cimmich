@@ -1,3 +1,8 @@
+import {
+  boundedBacklogState,
+  runBoundedBacklogWorkers,
+} from "./bounded-backlog.mjs";
+
 export const faceDetectionBacklogVersion =
   "cimmich.face-detection-backlog.v1";
 
@@ -67,6 +72,7 @@ export const runFaceDetectionBacklog = async ({
     scheduled: 0,
     schemaVersion: faceDetectionBacklogVersion,
     sourceMediaWrite: "none",
+    workerFailures: [],
   };
 
   try {
@@ -88,19 +94,15 @@ export const runFaceDetectionBacklog = async ({
       if (ensured === 0) break;
     }
 
-    let issued = 0;
-    const runWorker = async (worker) => {
-      while (issued < boundedLimit) {
-        issued += 1;
-        const result = await worker.runNext({
+    const { paused, workerFailures } = await runBoundedBacklogWorkers({
+      limit: boundedLimit,
+      onProgress: () => onProgress({ ...summary }),
+      runNext: (worker) =>
+        worker.runNext({
           priorityTierMax: boundedPriorityTierMax,
           timeoutMs: boundedTimeout,
-        });
-        if (result?.state === "idle") return;
-        if (result?.state === "paused") {
-          summary.paused = true;
-          return;
-        }
+        }),
+      tally: (result) => {
         summary.attempts += 1;
         if (result?.status === "completed") {
           summary.completed += 1;
@@ -117,21 +119,16 @@ export const runFaceDetectionBacklog = async ({
         } else {
           summary.retryPending += 1;
         }
-        await onProgress({ ...summary });
-      }
-    };
-    await Promise.all(workers.map(runWorker));
+      },
+      workers,
+    });
+    summary.paused = paused;
+    summary.workerFailures = workerFailures;
     summary.elapsedSeconds = Number(
       ((Date.now() - startedAt) / 1000).toFixed(3),
     );
     summary.priorityTierMax = boundedPriorityTierMax;
-    summary.state = summary.paused
-      ? "paused"
-      : summary.failed > 0
-        ? "bounded_run_complete_with_failures"
-        : summary.retryPending > 0
-          ? "bounded_run_complete_with_retries"
-          : "bounded_run_complete";
+    summary.state = boundedBacklogState(summary);
     return summary;
   } finally {
     await Promise.allSettled(workers.map((worker) => worker.close()));

@@ -2,6 +2,10 @@ import {
   completeAssetSourceRead,
   createAssetSourceRevisionRepository,
 } from "./asset-source-revision.mjs";
+import {
+  boundedBacklogState,
+  runBoundedBacklogWorkers,
+} from "./bounded-backlog.mjs";
 import { createBodyDetectionResultRepository } from "./body-detection-result-repository.mjs";
 import { bodyDetectionDigest } from "./body-detector-contract.mjs";
 import {
@@ -148,7 +152,7 @@ const recoverExpiredBodyJobs = async (
 
 const claimRankedBodyJob = async (
   sql,
-  { configDigest, jobId, sourceId, toolVersion, workerId },
+  { configDigest, jobId, leaseSeconds = 300, sourceId, toolVersion, workerId },
 ) =>
   sql.begin(async (transaction) => {
     const rows = await transaction`
@@ -158,7 +162,7 @@ const claimRankedBodyJob = async (
             attempt_count = job.attempt_count + 1,
             started_at = coalesce(job.started_at, now()),
             lease_owner = ${workerId}::text,
-            lease_expires_at = now() + (300 * interval '1 second'),
+            lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
             last_error_code = NULL
         WHERE job.job_id = ${jobId}
           AND job.state = 'pending'
@@ -252,8 +256,9 @@ export const createBodyDetectionJobClaimQueue = ({
   };
 
   return Object.freeze({
-    async claimNext({ workerId }) {
+    async claimNext({ leaseSeconds = 300, workerId }) {
       const worker = requiredText(workerId, "workerId");
+      const lease = boundedInteger(leaseSeconds, "lease seconds", 60, 86_400);
       while (true) {
         await ensureRankedJobs();
         const jobId = rankedJobIds.shift();
@@ -261,6 +266,7 @@ export const createBodyDetectionJobClaimQueue = ({
         const row = await claimRankedBodyJob(sql, {
           configDigest: digest,
           jobId,
+          leaseSeconds: lease,
           sourceId: source,
           toolVersion: version,
           workerId: worker,
@@ -317,7 +323,19 @@ export const createBodyDetectionJobWorker = ({
       if (control?.state === "paused") {
         return { schemaVersion: bodyDetectionBacklogVersion, state: "paused" };
       }
+      // The determinism check runs the provider twice, and each run may take
+      // the full configured timeout. Derive the lease from that worst-case
+      // wall time plus read/commit headroom so a healthy in-flight job can
+      // never lose its lease and trigger a duplicate provider run.
+      const boundedTimeoutMs =
+        Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+          ? Number(timeoutMs)
+          : 120_000;
       const row = await queue.claimNext({
+        leaseSeconds: Math.max(
+          300,
+          Math.ceil((2 * boundedTimeoutMs + 60_000) / 1000),
+        ),
         workerId: worker,
       });
       if (!row) {
@@ -487,12 +505,14 @@ export const runBodyDetectionBacklog = async ({
     failed: 0,
     imagesWithBodies: 0,
     noBody: 0,
+    paused: false,
     providerProcesses: workers.length,
     retryPending: 0,
     scheduled: 0,
     schemaVersion: bodyDetectionBacklogVersion,
     sourceMediaWrite: "none",
     sourceUnreadable: 0,
+    workerFailures: [],
   };
   try {
     let remaining = limit;
@@ -506,14 +526,13 @@ export const runBodyDetectionBacklog = async ({
       remaining -= ensured;
       if (ensured === 0) break;
     }
-    let issued = 0;
-    const runWorker = async (worker) => {
-      while (issued < limit) {
-        issued += 1;
-        const result = await worker.runNext({ timeoutMs });
-        if (result.state === "idle" || result.state === "paused") return;
+    const { paused, workerFailures } = await runBoundedBacklogWorkers({
+      limit,
+      onProgress: () => onProgress({ ...summary }),
+      runNext: (worker) => worker.runNext({ timeoutMs }),
+      tally: (result) => {
         summary.attempts += 1;
-        if (result.state === "completed") {
+        if (result?.state === "completed") {
           summary.completed += 1;
           summary.bodiesDetected += Number(result.bodyCount || 0);
           if (result.outcome === "bodies_detected") {
@@ -523,23 +542,19 @@ export const runBodyDetectionBacklog = async ({
           } else if (result.outcome === "source_unreadable") {
             summary.sourceUnreadable += 1;
           }
-        } else if (result.state === "failed") {
+        } else if (result?.state === "failed") {
           summary.failed += 1;
         } else {
           summary.retryPending += 1;
         }
-        await onProgress({ ...summary });
-      }
-    };
-    await Promise.all(workers.map(runWorker));
+      },
+      workers,
+    });
+    summary.paused = paused;
+    summary.workerFailures = workerFailures;
     return {
       ...summary,
-      state:
-        summary.failed > 0
-          ? "bounded_run_complete_with_failures"
-          : summary.retryPending > 0
-            ? "bounded_run_complete_with_retries"
-            : "bounded_run_complete",
+      state: boundedBacklogState(summary),
     };
   } finally {
     await Promise.allSettled(workers.map((worker) => worker.close()));

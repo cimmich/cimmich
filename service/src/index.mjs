@@ -93,12 +93,28 @@ const derivativeProviderManifestPath = path.join(
   derivativeProviderRoot,
   "provider-manifest.json",
 );
-const derivativeProvider = createLocalDHashSimilarityProvider({
-  manifest: JSON.parse(await readFile(derivativeProviderManifestPath, "utf8")),
-  manifestPath: derivativeProviderManifestPath,
-  pythonPath: process.env.CIMMICH_LOCAL_PYTHON_PATH || "/usr/bin/python3",
-  scriptPath: path.join(derivativeProviderRoot, "provider.py"),
-});
+// The perceptual-dhash derivative provider is optional: a missing or
+// malformed manifest must not refuse the whole service boot. Without it the
+// identity audit reports independence verification as unavailable
+// (IDENTITY_AUDIT_INDEPENDENCE_UNAVAILABLE) instead.
+const derivativeProvider = await (async () => {
+  try {
+    return createLocalDHashSimilarityProvider({
+      manifest: JSON.parse(
+        await readFile(derivativeProviderManifestPath, "utf8"),
+      ),
+      manifestPath: derivativeProviderManifestPath,
+      pythonPath: process.env.CIMMICH_LOCAL_PYTHON_PATH || "/usr/bin/python3",
+      scriptPath: path.join(derivativeProviderRoot, "provider.py"),
+    });
+  } catch (error) {
+    console.warn(
+      "Cimmich derivative provider unavailable; identity-audit independence checks are disabled",
+      { error: error instanceof Error ? error.message : String(error) },
+    );
+    return null;
+  }
+})();
 const hashLinkedAssetResolver = createHashLinkedAssetResolver({
   legacyResolver: ({ immichAssetId }) =>
     resolveCimmichAssetIdFromDisplayBridge(bridge, immichAssetId),

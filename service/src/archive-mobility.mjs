@@ -274,10 +274,16 @@ export const bindVerifiedContent = async ({
     }
 
     const [storedContent] = await transaction`
-      INSERT INTO media_content (content_id, byte_length)
-      VALUES (${contentId}, ${command.byteLength})
+      INSERT INTO media_content (content_id, byte_length, producer_receipt_id)
+      VALUES (
+        ${contentId}, ${command.byteLength},
+        'receipt_cimmich_verified_content_binding_v1'
+      )
       ON CONFLICT (content_id) DO UPDATE SET
         byte_length = coalesce(media_content.byte_length, excluded.byte_length),
+        producer_receipt_id = coalesce(
+          media_content.producer_receipt_id, excluded.producer_receipt_id
+        ),
         updated_at = now()
       WHERE media_content.byte_length IS NULL
         OR media_content.byte_length = excluded.byte_length

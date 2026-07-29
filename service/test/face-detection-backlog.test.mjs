@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { runFaceDetectionBacklog } from "../src/face-detection-backlog.mjs";
+import { createLocalFaceDetectionWorker } from "../src/local-face-detection-worker.mjs";
+import { faceDetectorManifestFixture } from "./fixtures/face-detector-manifest.mjs";
 
 test("discovery stages one binding per asset and workers read that exact revision", async () => {
   const [operator, worker] = await Promise.all([
@@ -113,4 +115,69 @@ test("detection backlog closes workers and reports a paused operator", async () 
   assert.equal(result.state, "paused");
   assert.equal(result.attempts, 0);
   assert.equal(closed, 1);
+});
+
+test("one crashed detection worker cannot discard the whole-run summary", async () => {
+  const queue = [
+    {
+      observations: { inserted: 2, reused: 0 },
+      outcome: "faces_detected",
+      status: "completed",
+    },
+  ];
+  let closed = 0;
+  const result = await runFaceDetectionBacklog({
+    ensureJobs: async () => ({ ensuredJobs: 0 }),
+    limitJobs: 5,
+    workers: [
+      {
+        close: async () => {
+          closed += 1;
+        },
+        runNext: async () => queue.shift() || { state: "idle" },
+      },
+      {
+        close: async () => {
+          closed += 1;
+        },
+        runNext: async () => {
+          throw Object.assign(new Error("provider process exited"), {
+            code: "PROVIDER_CRASHED",
+          });
+        },
+      },
+    ],
+  });
+  assert.equal(result.completed, 1);
+  assert.equal(result.facesDetected, 2);
+  assert.deepEqual(result.workerFailures, ["PROVIDER_CRASHED"]);
+  assert.equal(result.state, "bounded_run_complete_with_failures");
+  assert.equal(closed, 2);
+});
+
+test("face claim lease is derived from the configured job timeout", async () => {
+  const claims = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("media_operator_control")) return [];
+    throw new Error(`Unexpected worker query: ${statement.slice(0, 80)}`);
+  };
+  sql.begin = async (callback) =>
+    callback(async (strings, ...values) => {
+      const statement = strings.join("?");
+      if (statement.includes("WITH claimable AS")) {
+        claims.push({ statement, values });
+      }
+      return [];
+    });
+  const worker = createLocalFaceDetectionWorker({
+    companion: { readAssetImage: async () => ({}) },
+    detector: { detect: async () => ({}) },
+    manifest: faceDetectorManifestFixture,
+    sql,
+  });
+  assert.equal((await worker.runNext({ timeoutMs: 600_000 })).state, "idle");
+  // One provider run of 600s plus 60s read/commit headroom.
+  assert.match(claims[0].statement, /\? \* interval '1 second'/);
+  assert.ok(claims[0].values.includes(660));
 });

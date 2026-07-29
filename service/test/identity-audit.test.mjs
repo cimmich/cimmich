@@ -293,6 +293,68 @@ test("audit items expose the exact trusted references needed for visual review",
   assert.match(itemQuery, /ranked\.evidence_rank <= 3/);
 });
 
+test("audit item counts share the row query's guarded predicate", async () => {
+  const run = {
+    accepted_comparable_faces: 7,
+    accepted_embedded_faces: 8,
+    audit_run_id: "identity-audit.completed",
+    completed_at: "2026-07-25T00:01:00.000Z",
+    contradiction_candidates: 1,
+    error_code: null,
+    margin_floor: 0.21,
+    pack_id: "pack.active",
+    policy_version: "cimmich-best-prime-v1",
+    score_floor: 0,
+    started_at: "2026-07-25T00:00:00.000Z",
+    state: "completed",
+    untagged_candidates: 2,
+    untagged_embedded_faces: 20,
+  };
+  let countQuery = "";
+  let itemQuery = "";
+  const sql = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("UPDATE identity_audit_run")) return [];
+    if (
+      query.includes("SELECT * FROM identity_audit_run") &&
+      query.includes("WHERE state = 'completed'")
+    ) {
+      return [run];
+    }
+    if (query.includes("SELECT count(*)::int AS total")) {
+      countQuery = query;
+      return [{ total: 0 }];
+    }
+    if (query.includes("SELECT item.*")) {
+      itemQuery = query;
+      return [];
+    }
+    throw new Error(`Unexpected identity audit query: ${query}`);
+  };
+
+  const result = await createIdentityAudit(sql, {
+    presentationRank: () => 2,
+  }).items({ kind: "untagged_match" });
+
+  assert.equal(result.total, 0);
+  assert.equal(result.hasMore, false);
+  // A wider count than the guarded rows both leaks hidden-item existence and
+  // keeps hasMore true forever ("load more" never terminates). Every guard on
+  // the rows must also guard the count.
+  for (const guard of [
+    /JOIN face_observation face ON face\.face_id = item\.face_id/,
+    /JOIN asset ON asset\.asset_id = item\.asset_id/,
+    /JOIN face_embedding query_embedding/,
+    /JOIN current_person suggested/,
+    /face\.state = 'valid'/,
+    /asset\.state = 'active'/,
+    /cimmich_visibility_asset_rank\(asset\.asset_id\) <=/,
+  ]) {
+    assert.match(countQuery, guard);
+    assert.match(itemQuery, guard);
+  }
+});
+
 test("audit leads group all open untagged matches by known Person", async () => {
   const run = {
     accepted_comparable_faces: 7,
@@ -445,4 +507,118 @@ test("independent evidence suppresses only replay-consistent same-photo candidat
   assert.match(candidateQuery, /audit_kind = 'accepted_contradiction'/);
   assert.match(candidateQuery, /query_projection\.source_id/);
   assert.match(candidateQuery, /reference_projection\.source_id/);
+});
+
+test("independence replay tolerates last-bit noise without failing the run", async () => {
+  const digest = (character) => character.repeat(64);
+  const candidates = [
+    {
+      asset_id: "asset.same",
+      audit_kind: "untagged_match",
+      face_id: "face.same",
+      query_checksum: digest("1"),
+      query_input_revision: digest("2"),
+      query_source_asset_id: "immich.same.query",
+      reference_asset_id: "asset.same.reference",
+      reference_checksum: digest("3"),
+      reference_input_revision: digest("4"),
+      reference_source_asset_id: "immich.same.reference",
+    },
+    {
+      asset_id: "asset.independent",
+      audit_kind: "untagged_match",
+      face_id: "face.independent",
+      query_checksum: digest("5"),
+      query_input_revision: digest("6"),
+      query_source_asset_id: "immich.independent.query",
+      reference_asset_id: "asset.independent.reference",
+      reference_checksum: digest("7"),
+      reference_input_revision: digest("8"),
+      reference_source_asset_id: "immich.independent.reference",
+    },
+  ];
+  const deleted = [];
+  const transaction = async (strings, ...values) => {
+    const query = strings.join(" ");
+    if (query.includes("DELETE FROM identity_audit_item")) {
+      deleted.push(values[2]);
+      return [];
+    }
+    if (query.includes("UPDATE identity_audit_run")) return [];
+    throw new Error(`Unexpected transaction query: ${query}`);
+  };
+  const sql = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("SELECT item.audit_kind")) return candidates;
+    throw new Error(`Unexpected identity evidence query: ${query}`);
+  };
+  sql.begin = async (callback) => callback(transaction);
+  const provider = {
+    manifest: { providerConfigDigest: digest("a") },
+    // Replays of the same byte pair differ in the last float bits: the
+    // forward and reverse runs disagree by well under the documented epsilon
+    // and must neither fail the run nor change the same-photo decision.
+    compare: async ({ leftBytes }) => {
+      const marker = leftBytes.toString();
+      if (marker.includes(".same.")) {
+        return { similarity: marker.includes(".query") ? 1 - 5e-7 : 1 };
+      }
+      return { similarity: marker.includes(".query") ? 0.5 : 0.5 + 5e-8 };
+    },
+  };
+
+  await suppressSamePhotoDerivatives(sql, {
+    companion: {
+      readAssetImage: async ({ assetId }) => ({ bytes: Buffer.from(assetId) }),
+    },
+    provider,
+    runId: "audit.test",
+  });
+
+  assert.deepEqual(deleted, ["face.same"]);
+});
+
+test("independence replay still rejects a real similarity disagreement", async () => {
+  const digest = (character) => character.repeat(64);
+  const sql = async (strings) => {
+    const query = strings.join(" ");
+    if (query.includes("SELECT item.audit_kind")) {
+      return [
+        {
+          asset_id: "asset.disagreeing",
+          audit_kind: "untagged_match",
+          face_id: "face.disagreeing",
+          query_checksum: digest("1"),
+          query_input_revision: digest("2"),
+          query_source_asset_id: "immich.disagreeing.query",
+          reference_asset_id: "asset.disagreeing.reference",
+          reference_checksum: digest("3"),
+          reference_input_revision: digest("4"),
+          reference_source_asset_id: "immich.disagreeing.reference",
+        },
+      ];
+    }
+    throw new Error(`Unexpected identity evidence query: ${query}`);
+  };
+  sql.begin = async () => {
+    throw new Error("A disagreeing replay must never reach the commit");
+  };
+
+  await assert.rejects(
+    suppressSamePhotoDerivatives(sql, {
+      companion: {
+        readAssetImage: async ({ assetId }) => ({
+          bytes: Buffer.from(assetId),
+        }),
+      },
+      provider: {
+        manifest: { providerConfigDigest: digest("a") },
+        compare: async ({ leftBytes }) => ({
+          similarity: leftBytes.toString().includes(".query") ? 0.5 : 0.7,
+        }),
+      },
+      runId: "audit.test",
+    }),
+    (error) => error.code === "IDENTITY_AUDIT_INDEPENDENCE_REPLAY_FAILED",
+  );
 });

@@ -17,6 +17,19 @@ const reviewGateThresholds = Object.freeze({
 
 const rounded = (value) => Number(Number(value || 0).toFixed(6));
 
+// One margin definition governs every marginFloor gate. The floors stored in
+// a SourcePack's matcherPolicy are tuned by the open-set review gate below
+// against `greatest(0, winner_score - coalesce(runner_up_score, -1))`: a sole
+// candidate has margin winner_score + 1 (an unopposed winner passes any tuned
+// floor), never NULL, 0, or the bare winner score. Runtime consumers
+// (identity audit, machine suggestions, Head rescan) must apply this same
+// definition — in SQL, mirror the expression above.
+export const matcherPolicyMargin = (score, runnerUpScore) =>
+  Math.max(
+    0,
+    Number(score) - (runnerUpScore == null ? -1 : Number(runnerUpScore)),
+  );
+
 const operatingMetrics = (rows, scoreFloor, marginFloor) => {
   const decisions = rows.filter(
     (row) =>

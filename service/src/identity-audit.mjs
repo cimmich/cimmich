@@ -3,6 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
+// Provider similarity is a 0..1 score. Replayed comparisons of the same byte
+// pair may differ in the last float bits across runs, so agreement and the
+// same-photo decision both tolerate scale-appropriate noise instead of using
+// exact float equality (which failed whole audit runs on last-bit replays).
+export const identityAuditSimilarityEpsilon = 1e-6;
 
 const cleanLimit = (value) =>
   Math.min(50, Math.max(1, Number.parseInt(String(value || 20), 10) || 20));
@@ -306,13 +311,16 @@ const auditSql = async (
         suggested_score, comparison_score, margin,
         suggested_reference_asset_id
       )
+      -- margin mirrors matcherPolicyMargin (source-pack-evaluator.mjs), the
+      -- definition the SourcePack marginFloor gates were tuned against.
       SELECT ${runId}, 'untagged_match', face_id, asset_id, person_id,
-        score, next_score, score - coalesce(next_score, -1),
+        score, next_score,
+        greatest(0, score - coalesce(next_score, -1)),
         reference_asset_id
       FROM ranked
       WHERE candidate_rank = 1
         AND score >= ${scoreFloor}
-        AND score - coalesce(next_score, -1) >= ${marginFloor}
+        AND greatest(0, score - coalesce(next_score, -1)) >= ${marginFloor}
         AND NOT cimmich_probable_same_photo_derivative(
           ${packId}, asset_id, reference_asset_id
         )
@@ -675,13 +683,16 @@ export const suppressSamePhotoDerivatives = async (
         rightBytes: queryMedia.bytes,
         runId: anonymousRunId(runId, candidate.face_id, "reverse"),
       });
-      if (first.similarity !== replay.similarity) {
+      if (
+        Math.abs(first.similarity - replay.similarity) >
+        identityAuditSimilarityEpsilon
+      ) {
         throw Object.assign(
           new Error("Identity audit independent-evidence replay did not agree"),
           { code: "IDENTITY_AUDIT_INDEPENDENCE_REPLAY_FAILED" },
         );
       }
-      if (first.similarity === 1) {
+      if (first.similarity >= 1 - identityAuditSimilarityEpsilon) {
         suppressed.push({
           auditKind: candidate.audit_kind,
           faceId: candidate.face_id,
@@ -942,29 +953,47 @@ export const createIdentityAudit = (
         total: 0,
       };
     }
+    // The count must share the row query's guarded predicate exactly: a wider
+    // count both leaks the existence of hidden or invalidated items and keeps
+    // hasMore true forever once the guarded rows run out ("load more" loops).
     const [count] = await sql`
       SELECT count(*)::int AS total
-      FROM identity_audit_item
-      WHERE audit_run_id = ${run.audit_run_id}
-        AND audit_kind = ${auditKind}
-        AND review_state = 'open'
+      FROM identity_audit_item item
+      JOIN identity_audit_run item_run
+        ON item_run.audit_run_id = item.audit_run_id
+      JOIN face_observation face ON face.face_id = item.face_id
+      JOIN asset ON asset.asset_id = item.asset_id
+      JOIN source_pack item_pack ON item_pack.pack_id = item_run.pack_id
+      JOIN face_embedding query_embedding
+        ON query_embedding.face_id = item.face_id
+        AND query_embedding.state = 'active'
+        AND query_embedding.model_family = item_pack.model_family
+        AND query_embedding.model_version = item_pack.model_version
+        AND query_embedding.config_digest = item_pack.config_digest
+      JOIN current_person suggested
+        ON suggested.person_id = item.suggested_person_id
+      WHERE item.audit_run_id = ${run.audit_run_id}
+        AND item.audit_kind = ${auditKind}
+        AND item.review_state = 'open'
         AND (
           ${exactPersonId} = ''
-          OR suggested_person_id = ${exactPersonId}
-          OR assigned_person_id = ${exactPersonId}
+          OR item.suggested_person_id = ${exactPersonId}
+          OR item.assigned_person_id = ${exactPersonId}
         )
+        AND face.state = 'valid'
+        AND asset.state = 'active'
+        AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
         AND (
-          (audit_kind = 'untagged_match' AND NOT EXISTS (
+          (item.audit_kind = 'untagged_match' AND NOT EXISTS (
             SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = identity_audit_item.face_id
-              AND current.state = 'accepted'
+            WHERE current.face_id = item.face_id AND current.state = 'accepted'
           ))
           OR
-          (audit_kind = 'accepted_contradiction' AND EXISTS (
+          (item.audit_kind = 'accepted_contradiction' AND EXISTS (
             SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = identity_audit_item.face_id
+            WHERE current.face_id = item.face_id
               AND current.state = 'accepted'
-              AND current.person_id = identity_audit_item.assigned_person_id
+              AND current.person_id = item.assigned_person_id
           ))
         )
     `;
