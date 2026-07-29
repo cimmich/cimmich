@@ -65,15 +65,26 @@ export const createLocalExistingFaceRecognitionWorker = ({
   return Object.freeze({
     async runNext({ expectedJobId = null, timeoutMs } = {}) {
       const normalizedExpectedJobId = String(expectedJobId || "").trim();
+      const boundedTimeoutMs =
+        Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+          ? Number(timeoutMs)
+          : 120_000;
+      // Existing-face recognition requires two agreeing provider runs, so the
+      // lease covers both plus commit headroom; the fixed 300 s lease expired
+      // mid-job and produced duplicate provider runs.
+      const leaseSeconds = Math.max(
+        300,
+        Math.ceil((2 * boundedTimeoutMs + 60_000) / 1000),
+      );
       const rows = normalizedExpectedJobId
         ? await sql`
             SELECT * FROM claim_exact_existing_face_recognition_job(
-              ${normalizedWorkerId}, ${normalizedExpectedJobId}, 300
+              ${normalizedWorkerId}, ${normalizedExpectedJobId}, ${leaseSeconds}
             )
           `
         : await sql`
             SELECT * FROM claim_existing_face_recognition_jobs(
-              ${normalizedWorkerId}, 300, 1
+              ${normalizedWorkerId}, ${leaseSeconds}, 1
             )
           `;
       if (!rows.length) {
