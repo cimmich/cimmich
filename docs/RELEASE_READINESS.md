@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 98/patch 1
+Current source/disposable candidate: migration-ledger schema 100/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -59,6 +59,14 @@ ordinary retry and event history.
 
 Schema 98 preserves a corrupt Body source as an exact source-unreadable
 abstention with zero observations instead of inventing no-Body evidence.
+
+Schema 99 re-issues the same-photo derivative guard with explicit false
+semantics for an empty asset pair, so NOT-guarded audit queries no longer
+silently drop candidates on a NULL result.
+
+Schema 100 adds retroactive producer attribution to media_content and
+documents the migration 0086 caveat: future cleanups must scope destructive
+deletes to their own producer's rows.
 
 ## Public Beta Patch 6 candidate
 

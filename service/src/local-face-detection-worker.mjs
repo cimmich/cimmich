@@ -36,7 +36,7 @@ const projectClaim = (row) => ({
 
 const claimProviderJob = async (
   sql,
-  { configDigest, expectedJobId = "", workerId },
+  { configDigest, expectedJobId = "", leaseSeconds = 300, workerId },
 ) =>
   sql.begin(async (transaction) => {
     await transaction`
@@ -88,7 +88,7 @@ const claimProviderJob = async (
               attempt_count = job.attempt_count + 1,
               started_at = coalesce(job.started_at, now()),
               lease_owner = ${workerId}::text,
-              lease_expires_at = now() + (300 * interval '1 second'),
+              lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
               last_error_code = NULL
           FROM claimable
           WHERE job.job_id = claimable.job_id
@@ -125,7 +125,7 @@ const claimProviderJob = async (
             attempt_count = job.attempt_count + 1,
             started_at = coalesce(job.started_at, now()),
             lease_owner = ${workerId}::text,
-            lease_expires_at = now() + (300 * interval '1 second'),
+            lease_expires_at = now() + (${leaseSeconds} * interval '1 second'),
             last_error_code = NULL
         FROM claimable
         WHERE job.job_id = claimable.job_id
@@ -192,9 +192,20 @@ export const createLocalFaceDetectionWorker = ({
         };
       }
       const controlCheckedAt = performance.now();
+      // One provider run may take the full configured timeout. Derive the
+      // lease from that worst-case wall time plus read/commit headroom so an
+      // in-flight job cannot lose its lease and be re-run by another worker.
+      const boundedTimeoutMs =
+        Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+          ? Number(timeoutMs)
+          : 120_000;
       const claimed = await claimProviderJob(sql, {
         configDigest: manifest.detectorConfigDigest,
         expectedJobId: String(expectedJobId || "").trim(),
+        leaseSeconds: Math.max(
+          300,
+          Math.ceil((boundedTimeoutMs + 60_000) / 1000),
+        ),
         workerId: normalizedWorkerId,
       });
       if (!claimed) {

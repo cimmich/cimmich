@@ -546,6 +546,8 @@ export const createPetMatchingStore = (
     },
 
     async status() {
+      // Counts must share the list queries' run.state = 'complete' scope so
+      // the badge numbers agree with what the lists actually show.
       const [counts] = await sql`
         SELECT
           count(*) FILTER (WHERE observation.state = 'pending')::int AS pending,
@@ -555,6 +557,7 @@ export const createPetMatchingStore = (
           count(DISTINCT run.run_id) FILTER (WHERE run.state = 'complete')::int AS runs
         FROM pet_match_observation observation
         JOIN pet_match_run run ON run.run_id = observation.run_id
+          AND run.state = 'complete'
         JOIN asset ON asset.asset_id = observation.asset_id
           AND asset.state = 'active'
         WHERE cimmich_visibility_asset_rank(observation.asset_id)

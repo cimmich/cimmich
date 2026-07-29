@@ -34,6 +34,7 @@ import {
   classifyFaceConditionObservation,
   waveOneFaceConditionPolicyV1,
 } from "./face-condition-classifier.mjs";
+import { matcherPolicyMargin } from "./source-pack-evaluator.mjs";
 
 const decisionReceiptId = "receipt_cimmich_local_review_service_v1";
 const userCommandReceiptId = "receipt_cimmich_local_identity_commands_v1";
@@ -696,14 +697,31 @@ const refreshPrimeAfterCommand = async (sql, personId) => {
 // Head classification is an operator-facing correction, while Prime curation
 // is a derived convenience projection. Start that maintenance immediately but
 // do not hold the correction response open for a full gallery rebuild.
-const deferPrimeAfterCommand = (sql, personId) => {
+// Rebuilds for one Person chain behind each other instead of firing and
+// forgetting: two rapid corrections must not run concurrent rebuilds of the
+// same gallery. The chain's catch is what actually protects the queue — a
+// rejected queued rebuild is logged and the next queued rebuild still runs
+// (refreshPrimeAfterCommand resolves on its own failures, so the old
+// fire-and-forget catch could never fire).
+const deferredPrimeMaintenance = new Map();
+export const deferPrimeAfterCommand = (sql, personId) => {
   if (!personId) return false;
-  void refreshPrimeAfterCommand(sql, personId).catch((error) => {
-    console.error("Cimmich deferred Prime maintenance failed", {
-      error: error instanceof Error ? error.message : String(error),
-      personId,
+  const id = String(personId);
+  const previous = deferredPrimeMaintenance.get(id) || Promise.resolve();
+  const chained = previous
+    .then(() => refreshPrimeAfterCommand(sql, personId))
+    .catch((error) => {
+      console.error("Cimmich deferred Prime maintenance failed", {
+        error: error instanceof Error ? error.message : String(error),
+        personId,
+      });
+    })
+    .finally(() => {
+      if (deferredPrimeMaintenance.get(id) === chained) {
+        deferredPrimeMaintenance.delete(id);
+      }
     });
-  });
+  deferredPrimeMaintenance.set(id, chained);
   return true;
 };
 
@@ -2717,7 +2735,9 @@ export const createCimmichRepository = (
           .filter(
             (suggestion) =>
               !exactLeadPersonId ||
-              suggestion.candidates[0]?.person_id === exactLeadPersonId,
+              suggestion.candidates.some(
+                (candidate) => candidate.person_id === exactLeadPersonId,
+              ),
           )
           .slice(0, boundedLimit);
       const visibleRank = presentationRank();
@@ -2771,16 +2791,13 @@ export const createCimmichRepository = (
       if (!machineReviewConfigured) {
         return [];
       }
-      if (
-        machineSuggestionCache?.expiresAt > Date.now() &&
-        machineSuggestionCache.visibleRank === visibleRank
-      ) {
-        return projectSuggestions(await machineSuggestionCache.promise);
-      }
-      const promise = (async () => {
+      const loadSuggestions = async (leadFilterPersonId) => {
         // Score one stable bounded front for every consumer. The caller's output
         // limit truncates this ranked snapshot only; it never changes eligibility
-        // or the upstream vector-search frontier.
+        // or the upstream vector-search frontier. A lead-Person filter is pushed
+        // into the query itself: the bounded frontier is then selected among
+        // faces with plausible evidence for that Person instead of slicing a
+        // cached global snapshot that may not contain them at all.
         const queryLimit = machineSuggestionQueryLimit;
         const rows = await sql`
       WITH face_contexts AS MATERIALIZED (
@@ -2902,6 +2919,23 @@ export const createCimmichRepository = (
                 fo.box_w * fo.box_h + accepted_face.box_w * accepted_face.box_h - overlap.intersection
               ) >= 0.45
           )
+          AND (
+            ${leadFilterPersonId} = ''
+            OR EXISTS (
+              SELECT 1
+              FROM source_pack_matching_gallery lead_gallery
+              JOIN face_observation lead_face
+                ON lead_face.face_id = lead_gallery.face_id
+                AND lead_face.state = 'valid'
+                AND lead_face.asset_id <> fo.asset_id
+              WHERE lead_gallery.pack_id = pack.pack_id
+                AND lead_gallery.person_id = ${leadFilterPersonId}
+                AND lead_gallery.bucket_kind = 'prime'
+                AND lead_gallery.reference_kind = 'face'
+                AND (1 - (lead_gallery.embedding <=> embedding.embedding))
+                  >= (pack.evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8
+            )
+          )
       ), ranked_queries AS MATERIALIZED (
         SELECT query_inventory.*,
           row_number() OVER (
@@ -3011,11 +3045,11 @@ export const createCimmichRepository = (
             ORDER BY prime_score DESC NULLS LAST, raw_prime_score DESC NULLS LAST,
               individual_top3 DESC NULLS LAST, person_id
           ) AS lead_can_suggest,
-          (prime_score - lead(prime_score) OVER (
+          greatest(0, prime_score - coalesce(lead(prime_score) OVER (
             PARTITION BY face_id
             ORDER BY prime_score DESC NULLS LAST, raw_prime_score DESC NULLS LAST,
               individual_top3 DESC NULLS LAST, person_id
-          ))::float8 AS lead_margin
+          ), -1))::float8 AS lead_margin
         FROM person_scores
         WHERE prime_score IS NOT NULL
       )
@@ -3028,7 +3062,20 @@ export const createCimmichRepository = (
           WHERE lead.face_id = ranked.face_id AND lead.candidate_rank = 1
             AND lead.can_suggest
             AND lead.prime_score >= lead.policy_score_floor
-            AND coalesce(lead.lead_margin, 1) >= lead.policy_margin_floor
+            -- lead_margin mirrors matcherPolicyMargin
+            -- (source-pack-evaluator.mjs), the definition policy_margin_floor
+            -- was tuned against; a sole candidate carries score + 1.
+            AND lead.lead_margin >= lead.policy_margin_floor
+        )
+        AND (
+          ${leadFilterPersonId} = ''
+          OR EXISTS (
+            SELECT 1
+            FROM ranked lead_match
+            WHERE lead_match.face_id = ranked.face_id
+              AND lead_match.person_id = ${leadFilterPersonId}
+              AND lead_match.candidate_rank <= 3
+          )
         )
       ORDER BY quality_score DESC, detection_confidence DESC, face_id, candidate_rank
     `;
@@ -3217,7 +3264,19 @@ export const createCimmichRepository = (
           delete suggestion.policy_score_floor;
         }
         return baseline;
-      })();
+      };
+      if (exactLeadPersonId) {
+        // Lead click-through is filtered at query level and never served from
+        // (or written into) the shared unfiltered snapshot.
+        return projectSuggestions(await loadSuggestions(exactLeadPersonId));
+      }
+      if (
+        machineSuggestionCache?.expiresAt > Date.now() &&
+        machineSuggestionCache.visibleRank === visibleRank
+      ) {
+        return projectSuggestions(await machineSuggestionCache.promise);
+      }
+      const promise = loadSuggestions("");
       machineSuggestionCache = {
         // Keep one scorer snapshot shared while it is in flight. Start the
         // short reuse window only after PostgreSQL has finished; otherwise a
@@ -6982,12 +7041,10 @@ export const createCimmichRepository = (
         const score = row.score == null ? null : Number(row.score);
         const runnerUpScore =
           row.runner_up_score == null ? null : Number(row.runner_up_score);
+        // marginFloor was tuned against matcherPolicyMargin: an unopposed
+        // winner has margin score + 1, not the bare score.
         const margin =
-          score == null
-            ? null
-            : runnerUpScore == null
-              ? score
-              : score - runnerUpScore;
+          score == null ? null : matcherPolicyMargin(score, runnerUpScore);
         const scoreFloor = Number(row.score_floor);
         const marginFloor = Number(row.margin_floor);
         const passed =

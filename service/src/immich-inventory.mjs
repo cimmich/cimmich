@@ -842,11 +842,24 @@ export const createImmichInventoryLedger = (
         if (supported) {
           if (content.fingerprint) {
             const [storedContent] = await transaction`
-              INSERT INTO media_content (content_id, byte_length)
-              VALUES (${content.contentId}, ${content.byteLength})
+              INSERT INTO media_content (
+                content_id, byte_length, producer_receipt_id
+              )
+              VALUES (
+                ${content.contentId}, ${content.byteLength},
+                ${
+                  content.verification === "byte_verified"
+                    ? "receipt_cimmich_verified_content_binding_v1"
+                    : "receipt_cimmich_hash_linked_archive_mobility_v1"
+                }
+              )
               ON CONFLICT (content_id) DO UPDATE SET
                 byte_length = coalesce(
                   media_content.byte_length, excluded.byte_length
+                ),
+                producer_receipt_id = coalesce(
+                  media_content.producer_receipt_id,
+                  excluded.producer_receipt_id
                 ),
                 updated_at = now()
               WHERE media_content.byte_length IS NULL

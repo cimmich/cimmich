@@ -255,15 +255,18 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
 
   const small = await repository.machineSuggestions({ limit: 3 });
   const large = await repository.machineSuggestions({ limit: 24 });
+  assert.equal(scoringCalls, 1);
   const personTwo = await repository.machineSuggestions({
     leadPersonId: "person-2",
     limit: 24,
   });
+  const leadScoringValues = scoringValues;
   const missingPerson = await repository.machineSuggestions({
     leadPersonId: "person-missing",
     limit: 24,
   });
   const summary = await repository.summary();
+  const cachedAgain = await repository.machineSuggestions({ limit: 24 });
 
   assert.deepEqual(
     small.map((item) => item.face_id),
@@ -276,7 +279,13 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
   );
   assert.deepEqual(missingPerson, []);
   assert.equal(summary.suggestions_ready, large.length);
-  assert.equal(scoringCalls, 1);
+  // A lead click-through is filtered at query level: each lead request runs
+  // its own scoring query and never reads or replaces the shared unfiltered
+  // snapshot.
+  assert.equal(scoringCalls, 3);
+  assert.equal(cachedAgain.length, 4);
+  assert.equal(scoringCalls, 3);
+  assert.ok(leadScoringValues.includes("person-2"));
   assert.equal(summaryCalls, 1);
   assert.ok(scoringValues.includes(48));
   assert.ok(scoringValues.includes(16));
@@ -681,4 +690,65 @@ test("identity-changing commands invalidate the shared machine-suggestion snapsh
       name,
     );
   }
+});
+
+test("lead click-through is filtered at query level and matches any suggested rank", async () => {
+  const candidate = (rank, personId) => ({
+    asset_id: "asset-1",
+    box_h: 0.2,
+    box_w: 0.2,
+    box_x: 0.1,
+    box_y: 0.1,
+    candidate_rank: rank,
+    can_suggest: true,
+    capture_time: null,
+    detection_confidence: 0.9,
+    display_name: personId,
+    face_id: "face-1",
+    height: 1000,
+    individual_top3: 0.8,
+    lead_can_suggest: true,
+    lead_margin: rank === 1 ? 0.2 : null,
+    media_kind: "image",
+    person_id: personId,
+    prime_score: 0.9 - rank * 0.05,
+    prototype_score: null,
+    quality_measurements: { quality_score: 0.9 },
+    quality_score: 0.9,
+    raw_prime_score: 0.9 - rank * 0.05,
+    secondary_score: null,
+    width: 1000,
+  });
+  const statements = [];
+  const sql = async (strings, ...values) => {
+    const text = strings.join("?");
+    statements.push({ text, values });
+    if (text.includes("WITH face_contexts AS MATERIALIZED")) {
+      return [
+        candidate(1, "person-lead-first"),
+        candidate(2, "person-lead-second"),
+      ];
+    }
+    throw new Error(`Unexpected repository query: ${text.slice(0, 120)}`);
+  };
+  const repository = createCimmichRepository(sql, new Map(), null, {
+    conditionConsensusReviewEnabled: false,
+    matchingProvider,
+  });
+
+  const suggestions = await repository.machineSuggestions({
+    leadPersonId: "person-lead-second",
+    limit: 24,
+  });
+
+  // The lead Person appears at rank two: the click-through must still return
+  // this face instead of only matching the rank-one candidate.
+  assert.equal(suggestions.length, 1);
+  assert.equal(suggestions[0].face_id, "face-1");
+  const scoring = statements.find((statement) =>
+    statement.text.includes("WITH face_contexts AS MATERIALIZED"),
+  );
+  assert.match(scoring.text, /lead_gallery\.person_id = \?/);
+  assert.match(scoring.text, /lead_match\.candidate_rank <= 3/);
+  assert.ok(scoring.values.includes("person-lead-second"));
 });

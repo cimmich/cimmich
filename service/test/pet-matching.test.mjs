@@ -126,6 +126,12 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
     counts,
     /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,
   );
+  // Status counts must agree with the lists, which only show observations
+  // from completed runs.
+  assert.match(
+    counts,
+    /JOIN pet_match_run run ON run\.run_id = observation\.run_id\s+AND run\.state = 'complete'/,
+  );
   assert.ok(values.flat().includes(1), "queries must bind the caller rank");
 });
 

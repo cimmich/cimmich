@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   createBodyDetectionJobClaimQueue,
+  createBodyDetectionJobWorker,
   ensureBodyDetectionJobs,
   runBodyDetectionBacklog,
 } from "../src/body-detection-backlog.mjs";
@@ -197,4 +198,122 @@ test("body backlog is bounded, parallel, replay-run explicit, and closes workers
   assert.equal(summary.providerProcesses, 2);
   assert.deepEqual(closed, [true, true]);
   assert.ok(calls.every((value) => value >= 1));
+});
+
+test("body backlog reports an operator pause instead of a clean completion", async () => {
+  let closed = false;
+  const summary = await runBodyDetectionBacklog({
+    ensureJobs: async () => ({ ensuredJobs: 0 }),
+    limitJobs: 5,
+    workers: [
+      {
+        close: async () => {
+          closed = true;
+        },
+        runNext: async () => ({ state: "paused" }),
+      },
+    ],
+  });
+  assert.equal(summary.state, "paused");
+  assert.equal(summary.paused, true);
+  assert.equal(summary.attempts, 0);
+  assert.equal(closed, true);
+});
+
+test("one crashed body worker cannot discard the whole-run summary", async () => {
+  const queue = [
+    {
+      bodyCount: 2,
+      outcome: "bodies_detected",
+      providerRuns: 2,
+      state: "completed",
+    },
+  ];
+  let closed = 0;
+  const summary = await runBodyDetectionBacklog({
+    ensureJobs: async () => ({ ensuredJobs: 0 }),
+    limitJobs: 5,
+    workers: [
+      {
+        close: async () => {
+          closed += 1;
+        },
+        runNext: async () => queue.shift() || { state: "idle" },
+      },
+      {
+        close: async () => {
+          closed += 1;
+        },
+        runNext: async () => {
+          throw Object.assign(new Error("provider process exited"), {
+            code: "PROVIDER_CRASHED",
+          });
+        },
+      },
+    ],
+  });
+  assert.equal(summary.completed, 1);
+  assert.equal(summary.bodiesDetected, 2);
+  assert.deepEqual(summary.workerFailures, ["PROVIDER_CRASHED"]);
+  assert.equal(summary.state, "bounded_run_complete_with_failures");
+  assert.equal(closed, 2);
+});
+
+test("body claim queue binds the caller lease into the claim", async () => {
+  const queries = [];
+  const transaction = async (strings, ...values) => {
+    const text = strings.join("?");
+    queries.push({ text, values });
+    if (
+      text.includes("SELECT job.job_id") &&
+      text.includes("triage_projection")
+    ) {
+      return [{ job_id: "job-a" }];
+    }
+    if (text.includes("WITH claimed AS")) {
+      return [{ job_id: "job-a", state: "processing" }];
+    }
+    return [];
+  };
+  const sql = { begin: async (callback) => callback(transaction) };
+  const queue = createBodyDetectionJobClaimQueue({
+    configDigest: "7".repeat(64),
+    sourceId: "archive-source",
+    sql,
+  });
+  const row = await queue.claimNext({
+    leaseSeconds: 1260,
+    workerId: "worker-a",
+  });
+  assert.equal(row.job_id, "job-a");
+  const claim = queries.find((query) => query.text.includes("WITH claimed AS"));
+  assert.match(claim.text, /\? \* interval '1 second'/);
+  assert.ok(claim.values.includes(1260));
+});
+
+test("body claim lease covers the double-run worst case for the configured timeout", async () => {
+  const claimArgs = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("media_operator_control")) return [];
+    throw new Error(`Unexpected worker query: ${statement.slice(0, 80)}`);
+  };
+  const worker = createBodyDetectionJobWorker({
+    claimQueue: {
+      claimNext: async (input) => {
+        claimArgs.push(input);
+        return null;
+      },
+    },
+    companion: { readAssetImage: async () => ({}) },
+    detector: { detect: async () => ({}) },
+    manifest: { detectorConfigDigest: "7".repeat(64) },
+    sourceId: "archive-source",
+    sql,
+  });
+  assert.equal((await worker.runNext({ timeoutMs: 600_000 })).state, "idle");
+  // Two determinism runs of 600s each plus 60s commit headroom.
+  assert.equal(claimArgs[0].leaseSeconds, 1260);
+  assert.equal((await worker.runNext({})).state, "idle");
+  assert.equal(claimArgs[1].leaseSeconds, 300);
 });
