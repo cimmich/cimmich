@@ -33,6 +33,18 @@ resolve.
 Events share the same browser from `/cimmich/events` but have no named route
 yet, so they deliberately keep the `?family=events&entityId=` form.
 
+Every card and every atlas list row is an `<a href>` carrying the route above,
+not a click handler — so a place or thing can be opened in a new tab,
+middle-clicked, copied as a link, and previewed on hover, exactly as a Person or
+Pet can. The one deliberate exception is the atlas map marker, which is not an
+anchor and still opens through a handler.
+
+The detail surface keeps its tab in the URL as `?tab={photos|map|connections|documents}`,
+with `photos` implied by the absence of the parameter. Changing tab re-renders
+the detail and replaces the tab rail's buttons, so the selected tab reclaims
+keyboard focus after the rail rebuilds; it only does so when nothing else owns
+focus, so it can never take focus from a live element.
+
 ## API routes
 
 - `GET|POST /v1/places`
