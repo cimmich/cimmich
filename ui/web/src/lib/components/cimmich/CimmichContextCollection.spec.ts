@@ -40,26 +40,31 @@ const entity = (overrides: Partial<CimmichContextEntity> = {}): CimmichContextEn
   ...overrides,
 });
 
+// Cards and rows are anchors now, so the collection needs to be told how to
+// address an entity. A deterministic stub keeps the href assertions readable.
+const entityHref = (candidate: CimmichContextEntity) => `/cimmich/test/${candidate.entityId}`;
+
 describe('Cimmich context collections', () => {
-  it('presents Things as durable identities and filters without changing the object contract', async () => {
-    const onOpen = vi.fn();
+  it('presents Things as durable identities and filters without changing the object contract', () => {
     const { getByRole, getByText, queryByRole, queryByText } = render(CimmichContextCollection, {
       controlledTypeFilter: 'device',
       entities: [
         entity({ displayName: 'Campervan', entityId: 'object_vehicle', typeKind: 'vehicle' }),
         entity({ assetCount: 1, displayName: 'Old camera', entityId: 'object_device', typeKind: 'device' }),
       ],
+      entityHref,
       family: 'objects',
       onAdd: vi.fn(),
-      onOpen,
+      onOpen: vi.fn(),
     });
 
-    expect(queryByRole('button', { name: /Campervan/ })).not.toBeInTheDocument();
+    expect(queryByRole('link', { name: /Campervan/ })).not.toBeInTheDocument();
     expect(queryByText('The things that stay with you')).not.toBeInTheDocument();
     expect(getByText('1 photo')).toBeInTheDocument();
     expect(queryByRole('combobox', { name: 'Filter Things' })).not.toBeInTheDocument();
-    await fireEvent.click(getByRole('button', { name: /Old camera/ }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'object_device' }));
+    // A thing card is a LINK, not a click handler: that is what makes it
+    // middle-clickable, copyable and previewable on hover, as People and Pets are.
+    expect(getByRole('link', { name: /Old camera/ })).toHaveAttribute('href', '/cimmich/test/object_device');
   });
 
   it('renders Events as a compact newest-first photo collection', () => {
@@ -81,6 +86,7 @@ describe('Cimmich context collections', () => {
           typeKind: 'activity',
         }),
       ],
+      entityHref,
       family: 'events',
       onAdd: vi.fn(),
       onOpen: vi.fn(),
@@ -91,7 +97,7 @@ describe('Cimmich context collections', () => {
     expect(getByText('Corfu trip')).toBeInTheDocument();
     expect(getByText('Summer football')).toBeInTheDocument();
     expect(getByTestId('cimmich-event-contact-sheet').querySelectorAll('img')).toHaveLength(4);
-    expect(getAllByRole('button', { name: /Corfu trip|Summer football/ }).map((button) => button.textContent)).toEqual([
+    expect(getAllByRole('link', { name: /Corfu trip|Summer football/ }).map((card) => card.textContent)).toEqual([
       expect.stringContaining('Corfu trip'),
       expect.stringContaining('Summer football'),
     ]);
@@ -101,6 +107,7 @@ describe('Cimmich context collections', () => {
     const onAdd = vi.fn();
     const { getByRole, getByText } = render(CimmichContextCollection, {
       entities: [],
+      entityHref,
       family: 'places',
       onAdd,
       onOpen: vi.fn(),
@@ -113,8 +120,7 @@ describe('Cimmich context collections', () => {
     expect(getByText('Your atlas starts with a place')).toBeInTheDocument();
   });
 
-  it('opens a Place when its cover photo is clicked', async () => {
-    const onOpen = vi.fn();
+  it('wraps a Place, cover photo and all, in a link to that place', () => {
     const { getByTestId } = render(CimmichContextCollection, {
       entities: [
         entity({
@@ -125,15 +131,19 @@ describe('Cimmich context collections', () => {
           typeKind: 'point',
         }),
       ],
+      entityHref,
       family: 'places',
       onAdd: vi.fn(),
-      onOpen,
+      onOpen: vi.fn(),
     });
 
+    // The whole card is the link, so the cover is inside it rather than carrying
+    // its own click handler — clicking the photo still opens the place, and now
+    // cmd-click opens it in a new tab.
     const cover = getByTestId('cimmich-place-cover-place_home');
-    await fireEvent.click(cover);
-    expect(onOpen).toHaveBeenCalledOnce();
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'place_home' }));
+    const card = cover.closest('a');
+    expect(card).not.toBeNull();
+    expect(card).toHaveAttribute('href', '/cimmich/test/place_home');
   });
 });
 
@@ -157,16 +167,23 @@ describe('Cimmich context detail hero', () => {
       relations: [],
       schemaVersion: 'cimmich.context-entity.v1',
     };
-    const { getByRole, getByText } = render(CimmichContextDetailHero, {
+    const { getByRole, getByText, queryByText } = render(CimmichContextDetailHero, {
       detail,
       entities: [event],
       family: 'events',
     });
 
     expect(getByRole('heading', { name: 'Corfu trip' })).toBeInTheDocument();
-    expect(getByText('A week across Corfu.')).toBeInTheDocument();
-    expect(getByText('The big trip')).toBeInTheDocument();
-    expect(getByText('12')).toBeInTheDocument();
+    // Description, date and other names now share one metadata line under the
+    // name, so these are substring matches against that single line.
+    expect(getByText(/A week across Corfu\./)).toBeInTheDocument();
+    expect(getByText(/The big trip/)).toBeInTheDocument();
+    // An Event's date is genuinely only available here, so it must survive.
     expect(getByText(/2024/)).toBeInTheDocument();
+    // The media count deliberately does NOT appear: the tab rail beneath this
+    // hero already renders "Photos 12", and printing it twice is what made the
+    // copy column spend 93px on two integers. Asserted as an absence so the
+    // count tiles cannot quietly come back.
+    expect(queryByText('12')).toBeNull();
   });
 });

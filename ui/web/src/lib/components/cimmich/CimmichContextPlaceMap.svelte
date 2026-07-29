@@ -145,8 +145,15 @@
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
+  /* MapLibre sizes itself from its container, and its wrapper asks for
+     `height: 100%`. A `min-height` alone leaves this box's height `auto`, so
+     that percentage resolved against nothing and the map rendered at 0px —
+     present in the DOM, with a marker, painting nothing. An explicit `height`
+     makes it definite. Native Immich's own map page never hit this because it
+     sizes its container from the viewport. */
   .context-place-map-canvas,
   .context-place-map-placeholder {
+    height: min(58vh, 36rem);
     min-height: min(58vh, 36rem);
   }
   .context-place-map-placeholder {
@@ -165,6 +172,7 @@
     }
     .context-place-map-canvas,
     .context-place-map-placeholder {
+      height: 26rem;
       min-height: 26rem;
     }
   }

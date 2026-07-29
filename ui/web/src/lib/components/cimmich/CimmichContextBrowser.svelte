@@ -71,8 +71,13 @@
     contextAssociationKinds,
     contextAssociationLabel,
     contextAssetViewerHref,
+    contextFamilyFromDetailParams,
     contextFamilyKind,
     contextFamilyLabels,
+    contextRequestedEntityId,
+    getContextCollectionHref,
+    getContextDetailHref,
+    resolveContextRouteEntity,
     contextPlaceSearchQualityLabel,
     contextPlaceNearbyRadii,
     contextPlacePointDistanceMeters,
@@ -97,13 +102,18 @@
 
   let { families }: Props = $props();
 
-  let activeFamily = $state<CimmichContextFamily>(
-    untrack(() =>
-      families.includes(page.url.searchParams.get('family') as CimmichContextFamily)
-        ? (page.url.searchParams.get('family') as CimmichContextFamily)
-        : families[0],
-    ),
-  );
+  // The named /cimmich/places/[entityName] route is canonical for Places and
+  // Things; ?entityId= remains supported so links shared before the route
+  // existed still resolve. A detail URL states its family through its id param
+  // (?placeId= / ?thingId=), which is why that is checked before ?family=.
+  const requestedEntityName = $derived((page.data as { entityName?: string }).entityName ?? '');
+  const resolveRequestedFamily = (): CimmichContextFamily | null =>
+    contextFamilyFromDetailParams(page.url.searchParams, families) ??
+    (families.includes(page.url.searchParams.get('family') as CimmichContextFamily)
+      ? (page.url.searchParams.get('family') as CimmichContextFamily)
+      : null);
+
+  let activeFamily = $state<CimmichContextFamily>(untrack(() => resolveRequestedFamily() ?? families[0]));
   let entities = $state<CimmichContextEntity[]>([]);
   let error = $state<CimmichServiceError | null>(null);
   let loaded = $state(false);
@@ -162,7 +172,6 @@
   let connectionPresentationGeneration = 0;
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let showDeleteContext = $state(false);
-  let showEntityMenu = $state(false);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
   let deleteContextError = $state('');
@@ -345,13 +354,15 @@
       });
       if (generation === listRequestGeneration) {
         entities = next;
-        const requestedEntityId = page.url.searchParams.get('entityId') ?? selectedEntityId;
-        const requestedEntity = requestedEntityId
-          ? next.find((entity) => entity.entityId === requestedEntityId)
-          : undefined;
+        const requestedEntityId =
+          contextRequestedEntityId(page.url.searchParams, activeFamily) || selectedEntityId || '';
+        const requestedEntity = resolveContextRouteEntity(next, {
+          entityId: requestedEntityId,
+          name: requestedEntityName,
+        });
         if (requestedEntity) {
           void openDetail(requestedEntity);
-        } else if (selectedEntityId) {
+        } else if (selectedEntityId || requestedEntityName) {
           selected = null;
         }
       }
@@ -372,30 +383,24 @@
     }
     query = '';
     collectionTypeFilter = 'all';
-    const url = new URL(page.url);
-    url.searchParams.set('family', family);
-    url.searchParams.delete('entityId');
-    url.searchParams.delete('tab');
-    void goto(`${url.pathname}${url.search}`);
+    // Leaves any named detail segment behind, so switching family always lands
+    // on that family's collection rather than a path naming another entity.
+    void goto(getContextCollectionHref(page.url, family));
   };
 
   const closeDetail = () => {
     selected = null;
-    showEntityMenu = false;
-    if (!page.url.searchParams.has('entityId')) {
+    const collectionHref = getContextCollectionHref(page.url, activeFamily);
+    if (`${page.url.pathname}${page.url.search}` === collectionHref) {
       return;
     }
-    const url = new URL(page.url);
-    url.searchParams.delete('entityId');
-    url.searchParams.delete('tab');
-    void goto(`${url.pathname}${url.search}`, { replaceState: true });
+    void goto(collectionHref, { replaceState: true });
   };
 
   const openDetail = async (entity: CimmichContextEntity) => {
     const generation = ++detailRequestGeneration;
     selectedLoading = true;
     eventMediaLane = 'main';
-    showEntityMenu = false;
     error = null;
     try {
       const next = await getCimmichContextEntity(activeFamily, entity.entityId, {
@@ -416,20 +421,56 @@
   };
 
   const openEntity = (entity: CimmichContextEntity) => {
-    const url = new URL(page.url);
-    url.searchParams.set('family', activeFamily);
-    url.searchParams.set('entityId', entity.entityId);
-    url.searchParams.delete('tab');
-    void goto(`${url.pathname}${url.search}`);
+    void goto(getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName));
   };
 
-  const selectDetailTab = (tab: ContextDetailTab) => {
+  // Changing tab re-renders the detail, which DESTROYS the tab rail's buttons —
+  // so the focused tab node no longer exists by the time navigation settles.
+  // `keepFocus: true` cannot restore an element that is gone, and focus falls to
+  // <body>: verified in the browser, where a keydown after clicking a tab arrives
+  // with target BODY. That breaks the tablist twice over — arrow keys work exactly
+  // once and then die, and a mouse user who clicks a tab is left with no focus at
+  // all. Re-focus the selected tab AFTER the new rail exists, and only when the
+  // interaction came from the rail, so unrelated navigation does not steal focus.
+  let detailTabRail = $state<HTMLDivElement | undefined>();
+  // Deliberately NOT $state: this is a one-shot latch, and making it reactive
+  // would let the effect that clears it re-trigger itself.
+  let pendingTabFocus = false;
+
+  // Waiting on goto()'s promise and a tick() is NOT enough — measured, it restored
+  // focus to nothing at all, because the rail has not been rebuilt by then. React
+  // instead to the rail node itself being replaced (the binding is $state, so this
+  // effect re-runs on every rebuild) and claim focus the moment the new selected
+  // tab exists.
+  $effect(() => {
+    const rail = detailTabRail;
+    void activeDetailTab;
+    if (!rail || !pendingTabFocus) {
+      return;
+    }
+    const active = document.activeElement;
+    // Restoring once is not enough: the rail rebuilds SEVERAL times as the newly
+    // selected panel loads, and each rebuild destroys the button we just focused.
+    // So stay armed, and reclaim only when nothing owns focus — never steal it
+    // from a real element. Once focus lands somewhere outside the rail the user
+    // has moved on, and the latch is dropped.
+    if (active && active !== document.body) {
+      if (!rail.contains(active)) {
+        pendingTabFocus = false;
+      }
+      return;
+    }
+    rail.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
+  });
+
+  const selectDetailTab = (tab: ContextDetailTab, restoreFocus = false) => {
     const url = new URL(page.url);
     if (tab === 'photos') {
       url.searchParams.delete('tab');
     } else {
       url.searchParams.set('tab', tab);
     }
+    pendingTabFocus = restoreFocus;
     void goto(`${url.pathname}${url.search}`, { keepFocus: true, noScroll: true, replaceState: true });
   };
 
@@ -445,10 +486,7 @@
           ? detailTabs.length - 1
           : (index + (event.key === 'ArrowRight' ? 1 : -1) + detailTabs.length) % detailTabs.length;
     const next = detailTabs[nextIndex];
-    selectDetailTab(next.value);
-    const currentTarget = event.currentTarget as HTMLButtonElement;
-    const tabs = currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-    void tabs?.[nextIndex]?.focus();
+    selectDetailTab(next.value, true);
   };
 
   const resetForm = () => {
@@ -1487,11 +1525,12 @@
 
   $effect(() => {
     const visibilityVersion = cimmichVisibilityManager.version;
-    const requestedFamily = page.url.searchParams.get('family') as CimmichContextFamily | null;
-    const requestedEntityId = page.url.searchParams.get('entityId');
+    const requestedFamily = resolveRequestedFamily();
+    const requestedName = requestedEntityName;
+    const requestedEntityId = contextRequestedEntityId(page.url.searchParams, requestedFamily ?? activeFamily);
     if (visibilityVersion >= 0) {
       untrack(() => {
-        if (requestedFamily && families.includes(requestedFamily)) {
+        if (requestedFamily) {
           activeFamily = requestedFamily;
         }
         detailRequestGeneration += 1;
@@ -1502,7 +1541,7 @@
         if (showAssetPicker && assetPickerMode === 'library') {
           void loadLibrary();
         }
-        if (!requestedEntityId) {
+        if (!requestedEntityId && !requestedName) {
           selected = null;
         }
         void loadEntities();
@@ -1513,182 +1552,110 @@
 
 <div class="mx-auto w-full max-w-7xl px-5 pb-20 text-immich-fg sm:px-7 dark:text-immich-dark-fg">
   <div class={selected ? 'hidden' : 'py-5'}>
-    <div class={selected ? 'flex flex-nowrap items-center gap-3' : ''}>
-      {#if selected}
-        <button
-          class="context-icon-button"
-          type="button"
-          aria-label={`Back to ${contextFamilyLabels[activeFamily]}`}
-          onclick={closeDetail}
-        >
-          <Icon icon={mdiArrowLeft} size="22" />
-        </button>
-        <div class="min-w-0 flex-1"></div>
-        {#if selected.entity.visibility}
-          <CimmichObjectVisibility
-            object={selected.entity.visibility}
-            objectLabel={contextTargetLabel(selected.entity.entityKind)}
-            onChange={updateSelectedVisibility}
-          />
-        {/if}
-        {#if undoDecisionId}
-          <button class="context-secondary-button" type="button" disabled={isSaving} onclick={() => void undoAssets()}>
-            <Icon icon={mdiUndoVariant} size="19" />
-            {undoLabel}
-          </button>
-        {/if}
-        <button class="context-secondary-button context-profile-edit" type="button" onclick={openEdit}>
-          <Icon icon={mdiPencilOutline} size="19" /> <span>Edit</span>
-        </button>
-        <div class="relative">
-          <button
-            class="context-icon-button"
-            type="button"
-            aria-label={`More actions for ${selected.entity.displayName}`}
-            aria-expanded={showEntityMenu}
-            aria-haspopup="menu"
-            onclick={() => (showEntityMenu = !showEntityMenu)}
-          >
-            <Icon icon={mdiDotsVertical} size="21" />
-          </button>
-          {#if showEntityMenu}
-            <div
-              class="absolute top-12 right-0 z-30 grid min-w-48 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
-              role="menu"
-              aria-label={`More actions for ${selected.entity.displayName}`}
-            >
-              <button
-                class="min-h-10 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
-                type="button"
-                role="menuitem"
-                disabled={isSaving}
-                onclick={() => {
-                  showEntityMenu = false;
-                  void changeArchivedState();
-                }}
-              >
-                {selected.entity.status === 'archived' ? 'Restore' : 'Archive'}
-              </button>
-              {#if entityKind === 'place' || entityKind === 'object'}
+    <div>
+      <CimmichSectionHeader icon={iconForFamily(activeFamily)} title={collectionTitle} meta={collectionMeta}>
+        {#snippet actions()}
+          {#if families.length > 1}
+            <nav class="flex min-h-11 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Context type">
+              {#each families as family (family)}
                 <button
-                  class="min-h-10 rounded-xl px-3 text-left text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none dark:text-red-300 dark:hover:bg-red-950/40 dark:focus-visible:bg-red-950/40"
+                  class="rounded-lg px-4 text-sm font-semibold transition {activeFamily === family
+                    ? 'bg-white text-primary shadow-sm dark:bg-gray-700'
+                    : 'text-gray-600 hover:text-gray-950 dark:text-gray-300'}"
                   type="button"
-                  role="menuitem"
-                  disabled={isSaving}
-                  onclick={() => {
-                    showEntityMenu = false;
-                    openContextDelete();
-                  }}>Delete permanently</button
+                  aria-current={activeFamily === family ? 'page' : undefined}
+                  onclick={() => selectFamily(family)}>{contextFamilyLabels[family]}</button
                 >
-              {/if}
-            </div>
+              {/each}
+            </nav>
           {/if}
-        </div>
-      {:else}
-        <CimmichSectionHeader icon={iconForFamily(activeFamily)} title={collectionTitle} meta={collectionMeta}>
-          {#snippet actions()}
-            {#if families.length > 1}
-              <nav class="flex min-h-11 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Context type">
-                {#each families as family (family)}
-                  <button
-                    class="rounded-lg px-4 text-sm font-semibold transition {activeFamily === family
-                      ? 'bg-white text-primary shadow-sm dark:bg-gray-700'
-                      : 'text-gray-600 hover:text-gray-950 dark:text-gray-300'}"
-                    type="button"
-                    aria-current={activeFamily === family ? 'page' : undefined}
-                    onclick={() => selectFamily(family)}>{contextFamilyLabels[family]}</button
-                  >
-                {/each}
-              </nav>
-            {/if}
-            <form
-              class="w-full min-w-0 sm:w-56 lg:w-64"
-              role="search"
-              onsubmit={(event) => {
-                event.preventDefault();
-                void loadEntities();
-              }}
-            >
-              <label class="relative block">
-                <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
-                <Icon
-                  class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-500"
-                  icon={mdiMagnify}
-                  size="18"
-                />
-                <input
-                  class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
-                  bind:value={query}
-                  maxlength="500"
-                  placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
-                />
-              </label>
-            </form>
-            <div class="relative">
-              <button
-                class="flex size-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-                class:text-primary={showArchived || collectionTypeFilter !== 'all'}
-                type="button"
-                aria-label="Filter collection"
-                aria-expanded={showCollectionFilters}
-                aria-haspopup="menu"
-                title="Filter"
-                onclick={() => (showCollectionFilters = !showCollectionFilters)}
-              >
-                <Icon icon={mdiFilterVariant} size="20" />
-              </button>
-              {#if showCollectionFilters}
-                <div
-                  class="absolute top-12 right-0 z-30 grid min-w-52 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
-                  role="menu"
-                  aria-label="Collection filters"
-                >
-                  <button
-                    class="flex min-h-11 items-center justify-between gap-4 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={showArchived}
-                    onclick={() => {
-                      showArchived = !showArchived;
-                      showCollectionFilters = false;
-                      void loadEntities();
-                    }}
-                  >
-                    <span>{showArchived ? 'Hide archived' : 'Include archived'}</span>
-                    {#if showArchived}<Icon icon={mdiCheck} size="18" />{/if}
-                  </button>
-                  {#if activeFamily !== 'places'}
-                    <label class="grid gap-1 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
-                      <span class="text-xs text-gray-500 dark:text-gray-400">Type</span>
-                      <select
-                        class="min-h-10 rounded-xl bg-gray-100 px-3 outline-none dark:bg-gray-800"
-                        aria-label={`Filter ${contextFamilyLabels[activeFamily]}`}
-                        value={collectionTypeFilter}
-                        onchange={(event) => {
-                          collectionTypeFilter = (event.currentTarget as HTMLSelectElement).value as ContextTypeFilter;
-                          showCollectionFilters = false;
-                        }}
-                      >
-                        {#each collectionTypeFilters as filter (filter.value)}
-                          <option value={filter.value}>{filter.label}</option>
-                        {/each}
-                      </select>
-                    </label>
-                  {/if}
-                </div>
-              {/if}
-            </div>
+          <form
+            class="w-full min-w-0 sm:w-56 lg:w-64"
+            role="search"
+            onsubmit={(event) => {
+              event.preventDefault();
+              void loadEntities();
+            }}
+          >
+            <label class="relative block">
+              <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
+              <Icon
+                class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-500"
+                icon={mdiMagnify}
+                size="18"
+              />
+              <input
+                class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
+                bind:value={query}
+                maxlength="500"
+                placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
+              />
+            </label>
+          </form>
+          <div class="relative">
             <button
-              class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+              class="flex size-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+              class:text-primary={showArchived || collectionTypeFilter !== 'all'}
               type="button"
-              onclick={openCreate}
+              aria-label="Filter collection"
+              aria-expanded={showCollectionFilters}
+              aria-haspopup="menu"
+              title="Filter"
+              onclick={() => (showCollectionFilters = !showCollectionFilters)}
             >
-              <Icon icon={mdiPlus} size="18" />
-              {addLabel}
+              <Icon icon={mdiFilterVariant} size="20" />
             </button>
-          {/snippet}
-        </CimmichSectionHeader>
-      {/if}
+            {#if showCollectionFilters}
+              <div
+                class="absolute top-12 right-0 z-30 grid min-w-52 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                role="menu"
+                aria-label="Collection filters"
+              >
+                <button
+                  class="flex min-h-11 items-center justify-between gap-4 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={showArchived}
+                  onclick={() => {
+                    showArchived = !showArchived;
+                    showCollectionFilters = false;
+                    void loadEntities();
+                  }}
+                >
+                  <span>{showArchived ? 'Hide archived' : 'Include archived'}</span>
+                  {#if showArchived}<Icon icon={mdiCheck} size="18" />{/if}
+                </button>
+                {#if activeFamily !== 'places'}
+                  <label class="grid gap-1 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">Type</span>
+                    <select
+                      class="min-h-10 rounded-xl bg-gray-100 px-3 outline-none dark:bg-gray-800"
+                      aria-label={`Filter ${contextFamilyLabels[activeFamily]}`}
+                      value={collectionTypeFilter}
+                      onchange={(event) => {
+                        collectionTypeFilter = (event.currentTarget as HTMLSelectElement).value as ContextTypeFilter;
+                        showCollectionFilters = false;
+                      }}
+                    >
+                      {#each collectionTypeFilters as filter (filter.value)}
+                        <option value={filter.value}>{filter.label}</option>
+                      {/each}
+                    </select>
+                  </label>
+                {/if}
+              </div>
+            {/if}
+          </div>
+          <button
+            class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+            type="button"
+            onclick={openCreate}
+          >
+            <Icon icon={mdiPlus} size="18" />
+            {addLabel}
+          </button>
+        {/snippet}
+      </CimmichSectionHeader>
     </div>
   </div>
 
@@ -1720,82 +1687,32 @@
         <Icon icon={mdiArrowLeft} size="21" />
       </button>
 
-      <div class="context-hero-actions">
-        {#if selected.entity.visibility}
-          <CimmichObjectVisibility
-            object={selected.entity.visibility}
-            objectLabel={contextTargetLabel(selected.entity.entityKind)}
-            onChange={updateSelectedVisibility}
-          />
-        {/if}
-        {#if undoDecisionId}
-          <button
-            class="context-hero-control context-hero-control--label"
-            type="button"
-            disabled={isSaving}
-            onclick={() => void undoAssets()}
-          >
-            <Icon icon={mdiUndoVariant} size="18" />
-            <span>{undoLabel}</span>
-          </button>
-        {/if}
-        <button
-          class="context-hero-control context-hero-control--label context-profile-edit"
-          type="button"
-          onclick={openEdit}
-        >
-          <Icon icon={mdiPencilOutline} size="18" /> <span>Edit</span>
-        </button>
-        <div class="relative">
-          <button
-            class="context-hero-control"
-            type="button"
-            aria-label={`More actions for ${selected.entity.displayName}`}
-            aria-expanded={showEntityMenu}
-            aria-haspopup="menu"
-            onclick={() => (showEntityMenu = !showEntityMenu)}
-          >
-            <Icon icon={mdiDotsVertical} size="20" />
-          </button>
-          {#if showEntityMenu}
-            <div
-              class="absolute top-12 right-0 z-30 grid min-w-48 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold text-gray-900 shadow-xl dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-              role="menu"
-              aria-label={`More actions for ${selected.entity.displayName}`}
-            >
-              <button
-                class="min-h-10 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
-                type="button"
-                role="menuitem"
-                disabled={isSaving}
-                onclick={() => {
-                  showEntityMenu = false;
-                  void changeArchivedState();
-                }}
-              >
-                {selected.entity.status === 'archived' ? 'Restore' : 'Archive'}
-              </button>
-              {#if entityKind === 'place' || entityKind === 'object'}
-                <button
-                  class="min-h-10 rounded-xl px-3 text-left text-red-700 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none dark:text-red-300 dark:hover:bg-red-950/40 dark:focus-visible:bg-red-950/40"
-                  type="button"
-                  role="menuitem"
-                  disabled={isSaving}
-                  onclick={() => {
-                    showEntityMenu = false;
-                    openContextDelete();
-                  }}>Delete permanently</button
-                >
-              {/if}
-            </div>
-          {/if}
-        </div>
-      </div>
+      <!-- One pen, opposite the back arrow. Editing is the only thing an owner
+           does to the record itself from here, so it gets an icon rather than a
+           labelled button and a sibling menu. Visibility, Archive and Delete all
+           live inside the editor now: they are all "change this record", and a
+           separate dots menu asked the owner to guess which of two places an
+           edit lived in. -->
+      <button
+        class="context-hero-control context-hero-edit context-profile-edit"
+        type="button"
+        aria-label={`Edit ${selected.entity.displayName}`}
+        title={`Edit ${selected.entity.displayName}`}
+        onclick={openEdit}
+      >
+        <Icon icon={mdiPencilOutline} size="20" />
+      </button>
+
       <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
     </div>
 
     <div class="context-profile-rail mt-6">
-      <div class="context-profile-tabs" role="tablist" aria-label={`${selected.entity.displayName} content`}>
+      <div
+        bind:this={detailTabRail}
+        class="context-profile-tabs"
+        role="tablist"
+        aria-label={`${selected.entity.displayName} content`}
+      >
         {#each detailTabs as tab, index (tab.value)}
           <button
             class:context-profile-tab--active={activeDetailTab === tab.value}
@@ -1805,7 +1722,7 @@
             aria-selected={activeDetailTab === tab.value}
             tabindex={activeDetailTab === tab.value ? 0 : -1}
             onkeydown={(event) => handleDetailTabKeydown(event, index)}
-            onclick={() => selectDetailTab(tab.value)}
+            onclick={() => selectDetailTab(tab.value, true)}
           >
             <Icon icon={tab.icon} size="18" />
             {tab.label}
@@ -1814,13 +1731,40 @@
           </button>
         {/each}
       </div>
+      <!-- Below 640px these collapse to icon-only 44x44 buttons by hiding the
+           label with `display: none` — and display:none content is EXCLUDED from
+           the accessible name computation, so on a phone each of these announced
+           as an unnamed button. The aria-label carries the name at every width. -->
       {#if activeDetailTab === 'photos'}
-        <button class="context-primary-button context-profile-action" type="button" onclick={openAssetPicker}>
+        <button
+          class="context-primary-button context-profile-action"
+          type="button"
+          aria-label="Add media"
+          onclick={openAssetPicker}
+        >
           <Icon icon={mdiLinkPlus} size="19" /> <span>Add media</span>
         </button>
       {:else if activeDetailTab === 'connections'}
-        <button class="context-secondary-button context-profile-action" type="button" onclick={openRelationPicker}>
+        <button
+          class="context-secondary-button context-profile-action"
+          type="button"
+          aria-label="Add connection"
+          onclick={openRelationPicker}
+        >
           <Icon icon={mdiLinkPlus} size="19" /> <span>Add connection</span>
+        </button>
+      {/if}
+
+      {#if undoDecisionId}
+        <button
+          class="context-secondary-button context-profile-action"
+          type="button"
+          aria-label={undoLabel}
+          disabled={isSaving}
+          onclick={() => void undoAssets()}
+        >
+          <Icon icon={mdiUndoVariant} size="18" />
+          <span>{undoLabel}</span>
         </button>
       {/if}
     </div>
@@ -2061,6 +2005,7 @@
       family={activeFamily}
       entities={displayedEntities}
       controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
+      entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
       onAdd={openCreate}
       onOpen={openEntity}
     />
@@ -2374,6 +2319,75 @@
             >
               {editorError}
             </p>{/if}
+          {#if editorMode === 'edit' && selected}
+            <!-- Visibility, Archive and Delete are all "change this record", so
+                 they belong in the one place an owner goes to change it. They
+                 used to be a floating pill and a dots menu on the hero, which
+                 meant three separate entry points and no way to tell what
+                 "Archive" or "Delete" applied to. Said plainly here instead. -->
+            <div class="context-editor-record">
+              {#if selected.entity.visibility}
+                <div class="context-editor-record-row">
+                  <div>
+                    <p class="context-editor-record-title">Who can see this {entityNoun}</p>
+                    <p class="context-editor-record-note">
+                      Controls the {entityNoun} profile only. It never changes who can see your photos.
+                    </p>
+                  </div>
+                  <CimmichObjectVisibility
+                    object={selected.entity.visibility}
+                    objectLabel={contextTargetLabel(selected.entity.entityKind)}
+                    onChange={updateSelectedVisibility}
+                  />
+                </div>
+              {/if}
+
+              <div class="context-editor-record-row">
+                <div>
+                  <p class="context-editor-record-title">
+                    {selected.entity.status === 'archived'
+                      ? `Restore this ${entityNoun}`
+                      : `Archive this ${entityNoun}`}
+                  </p>
+                  <p class="context-editor-record-note">
+                    {selected.entity.status === 'archived'
+                      ? `Puts the ${entityNoun} back in the collection.`
+                      : `Hides the ${entityNoun} from the collection and search. Your photos are untouched, and you can restore it later.`}
+                  </p>
+                </div>
+                <button
+                  class="context-secondary-button"
+                  type="button"
+                  disabled={isSaving}
+                  onclick={() => void changeArchivedState()}
+                >
+                  {selected.entity.status === 'archived' ? 'Restore' : 'Archive'}
+                </button>
+              </div>
+
+              {#if entityKind === 'place' || entityKind === 'object'}
+                <div class="context-editor-record-row">
+                  <div>
+                    <p class="context-editor-record-title">Delete this {entityNoun}</p>
+                    <p class="context-editor-record-note">
+                      Removes the {entityNoun} record, its aliases and its connections from Cimmich for good.
+                      <strong>Your photos and videos are not deleted.</strong>
+                    </p>
+                  </div>
+                  <button
+                    class="context-editor-danger"
+                    type="button"
+                    disabled={isSaving}
+                    onclick={() => {
+                      showEditor = false;
+                      openContextDelete();
+                    }}>Delete…</button
+                  >
+                </div>
+              {/if}
+            </div>
+          {/if}
+
           <div
             class="sticky bottom-0 -mx-2 flex justify-end gap-3 bg-white/95 px-2 py-3 backdrop-blur-sm dark:bg-gray-900/95"
           >
@@ -2876,8 +2890,9 @@
     flex: none;
   }
 
+  /* Two overlay controls only: back, and edit. */
   .context-hero-back,
-  .context-hero-actions {
+  .context-hero-edit {
     position: absolute;
     z-index: 12;
     top: 16px;
@@ -2887,11 +2902,8 @@
     left: 16px;
   }
 
-  .context-hero-actions {
+  .context-hero-edit {
     right: 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
   }
 
   .context-hero-control {
@@ -2912,24 +2924,11 @@
     backdrop-filter: blur(12px);
   }
 
-  .context-hero-control--label {
-    width: auto;
-    padding: 0 14px;
-  }
-
   .context-hero-control:hover,
   .context-hero-control:focus-visible {
     background: rgb(15 23 42 / 0.9);
     outline: 2px solid white;
     outline-offset: 2px;
-  }
-
-  .context-hero-actions :global(button:not([role='menuitem'])) {
-    border-color: rgb(255 255 255 / 0.2);
-    background: rgb(15 23 42 / 0.72);
-    color: white;
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.16);
-    backdrop-filter: blur(12px);
   }
   :global(.context-primary-button:focus-visible),
   :global(.context-secondary-button:focus-visible),
@@ -3537,10 +3536,17 @@
     font-size: 0.7rem;
   }
 
+  /* Wraps rather than squeezing. The entity actions moved onto this rail, and
+     on a 1024px viewport they plus "Add media" cut the tab strip down to 260px
+     when it needs 534 — so "Documents" scrolled out of sight. Letting the action
+     cluster drop to its own line keeps every tab reachable, which matters more
+     than holding one row. */
   .context-profile-rail {
     display: flex;
     min-width: 0;
+    flex-wrap: wrap;
     align-items: stretch;
+    row-gap: 0.5rem;
     border-bottom: 1px solid rgb(229 231 235);
   }
 
@@ -3551,7 +3557,11 @@
   .context-profile-tabs {
     display: flex;
     min-width: 0;
-    flex: 1;
+    /* Basis set just above the widest tab strip (four tabs with counts measure
+       ~534px), so the action cluster wraps to its own line rather than clipping
+       a tab. At 24rem the 1280px case sat in between — one row, with
+       "Documents" cut off by 6px. Biasing toward a wrap is the safer failure. */
+    flex: 1 1 34rem;
     gap: 0.15rem;
     overflow-x: auto;
     scrollbar-width: none;
@@ -3595,21 +3605,98 @@
     color: rgb(var(--immich-primary));
   }
 
+  /* The count inherited the active tab's primary colour over a translucent
+     grey pill, measuring 3.28:1 at 10.88px. It now carries its own colour so
+     it stays legible on both the active and inactive tab, and is large enough
+     to be read at a glance. */
   .context-profile-tab > span {
     display: inline-grid;
     min-width: 1.35rem;
     height: 1.35rem;
     place-items: center;
     border-radius: 999px;
-    background: rgb(107 114 128 / 0.12);
+    background: rgb(107 114 128 / 0.18);
     padding: 0 0.35rem;
-    font-size: 0.68rem;
+    color: rgb(55 65 81);
+    font-size: 0.75rem;
+  }
+
+  :global(.dark) .context-profile-tab > span {
+    background: rgb(148 163 184 / 0.22);
+    color: rgb(229 231 235);
   }
 
   .context-profile-action {
     align-self: center;
     flex: 0 0 auto;
     margin-left: 0.75rem;
+  }
+
+  .context-editor-record {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    border-top: 1px solid rgb(229 231 235);
+    padding-top: 1.25rem;
+  }
+
+  :global(.dark) .context-editor-record {
+    border-color: rgb(31 41 55);
+  }
+
+  .context-editor-record-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .context-editor-record-row > div {
+    min-width: 0;
+    flex: 1 1 16rem;
+  }
+
+  .context-editor-record-title {
+    font-size: 0.9rem;
+    font-weight: 650;
+  }
+
+  .context-editor-record-note {
+    margin-top: 2px;
+    color: rgb(75 85 99);
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  :global(.dark) .context-editor-record-note {
+    color: rgb(156 163 175);
+  }
+
+  .context-editor-danger {
+    display: inline-flex;
+    min-height: 2.75rem;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid rgb(220 38 38 / 0.4);
+    border-radius: 0.85rem;
+    padding: 0 1rem;
+    color: rgb(185 28 28);
+    font-size: 0.85rem;
+    font-weight: 650;
+  }
+
+  .context-editor-danger:hover {
+    background: rgb(254 242 242);
+  }
+
+  :global(.dark) .context-editor-danger {
+    color: rgb(252 165 165);
+  }
+
+  :global(.dark) .context-editor-danger:hover {
+    background: rgb(127 29 29 / 0.28);
   }
 
   @media (min-width: 640px) {

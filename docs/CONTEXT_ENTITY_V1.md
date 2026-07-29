@@ -16,7 +16,24 @@ JSON shapes. Routes contain 2–500 points. Only Places carry geometry. Place an
 Event parents must be current same-kind entities. Parent cycles are rejected,
 and a parent cannot be archived while it has a current child.
 
-## Routes
+## Web routes
+
+Places and Things share one section at `/cimmich/places` and each has a named
+detail route, matching People and Pets:
+
+- `/cimmich/places/{name}?placeId={entityId}`
+- `/cimmich/places/{name}?thingId={entityId}`
+
+The id parameter names the family, so a detail URL never needs `?family=`. The
+id keeps resolution exact when two records share a name; with no id the name
+alone resolves, case- and whitespace-insensitively. Links shared before these
+routes existed still work: `?family={family}&entityId={entityId}` continues to
+resolve.
+
+Events share the same browser from `/cimmich/events` but have no named route
+yet, so they deliberately keep the `?family=events&entityId=` form.
+
+## API routes
 
 - `GET|POST /v1/places`
 - `GET|POST /v1/objects`
