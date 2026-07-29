@@ -211,6 +211,13 @@ test("state/count consistency and duplicate observations fail closed", () => {
     ).result.bodies.length,
     0,
   );
+  assert.equal(
+    validateBodyDetectionResult(
+      result({ bodies: [], state: "source_unreadable" }),
+      detector,
+    ).result.state,
+    "source_unreadable",
+  );
   assert.throws(
     () =>
       validateBodyDetectionResult(
@@ -226,6 +233,17 @@ test("state/count consistency and duplicate observations fail closed", () => {
         detector,
       ),
     /require observations/,
+  );
+  assert.throws(
+    () =>
+      validateBodyDetectionResult(
+        result({
+          bodies: [observation()],
+          state: "source_unreadable",
+        }),
+        detector,
+      ),
+    /source_unreadable results cannot contain/,
   );
   assert.throws(
     () =>

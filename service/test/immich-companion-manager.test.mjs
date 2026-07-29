@@ -34,6 +34,7 @@ test("setup-managed credentials survive a provider-style API restart without rot
     credentialFile: filename,
     fetchImpl: readyFetch,
   });
+  assert.equal(typeof manager.readAssetFingerprint, "function");
   assert.equal((await manager.status()).state, "not_configured");
   const connected = await manager.connect({
     apiBaseUrl: "http://immich.test",

@@ -12,6 +12,17 @@ const cleanKind = (value) =>
   value === "accepted_contradiction"
     ? "accepted_contradiction"
     : "untagged_match";
+const cleanDetectorConfigDigest = (value) => {
+  const digest = String(value || "").trim();
+  if (!digest) return "";
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw Object.assign(
+      new Error("Identity audit detector configuration is invalid"),
+      { code: "IDENTITY_AUDIT_DETECTOR_INVALID", statusCode: 400 },
+    );
+  }
+  return digest;
+};
 
 export const carryForwardIdentityAuditDismissals = async (
   sql,
@@ -88,12 +99,54 @@ const auditSql = async (
   presentationRank,
   scoreFloor,
   marginFloor,
+  { baseRunId = "", incrementalFaceIds = [] } = {},
 ) => {
+  const incremental = incrementalFaceIds.length > 0;
   await sql.begin(async (tx) => {
     await tx`
-      SELECT set_config('statement_timeout', '600000', true),
-        set_config('transaction_timeout', '660000', true)
+      SELECT set_config('statement_timeout', '1800000', true),
+        set_config('transaction_timeout', '1860000', true)
     `;
+    if (incremental) {
+      await tx`
+        INSERT INTO identity_audit_item (
+          audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
+          suggested_person_id, suggested_score, comparison_score, margin,
+          review_state, reviewed_at, reviewed_by, created_at, privacy_class,
+          suggested_reference_asset_id
+        )
+        SELECT ${runId}, prior.audit_kind, prior.face_id, prior.asset_id,
+          prior.assigned_person_id, prior.suggested_person_id,
+          prior.suggested_score, prior.comparison_score, prior.margin,
+          prior.review_state, prior.reviewed_at, prior.reviewed_by,
+          prior.created_at, prior.privacy_class,
+          prior.suggested_reference_asset_id
+        FROM identity_audit_item prior
+        JOIN identity_audit_run prior_run
+          ON prior_run.audit_run_id = prior.audit_run_id
+          AND prior_run.state = 'completed'
+          AND prior_run.pack_id = ${packId}
+          AND prior_run.policy_version = ${identityAuditPolicyVersion}
+        JOIN face_observation face
+          ON face.face_id = prior.face_id AND face.state = 'valid'
+        WHERE prior.audit_run_id = ${baseRunId}
+          AND prior.face_id <> ALL(${incrementalFaceIds})
+          AND (
+            (prior.audit_kind = 'untagged_match' AND NOT EXISTS (
+              SELECT 1 FROM current_face_identity current
+              WHERE current.face_id = prior.face_id
+                AND current.state = 'accepted'
+            ))
+            OR
+            (prior.audit_kind = 'accepted_contradiction' AND EXISTS (
+              SELECT 1 FROM current_face_identity current
+              WHERE current.face_id = prior.face_id
+                AND current.state = 'accepted'
+                AND current.person_id = prior.assigned_person_id
+            ))
+          )
+      `;
+    }
     await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
@@ -124,6 +177,7 @@ const auditSql = async (
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE face.state = 'valid'
+          AND (${!incremental} OR face.face_id = ANY(${incrementalFaceIds}))
           AND NOT EXISTS (
             SELECT 1 FROM current_face_identity accepted
             WHERE accepted.face_id = face.face_id
@@ -299,10 +353,31 @@ const auditSql = async (
     `;
   });
 
+  if (incremental) {
+    await sql`
+      UPDATE identity_audit_run current
+      SET accepted_embedded_faces = base.accepted_embedded_faces,
+        accepted_comparable_faces = base.accepted_comparable_faces,
+        contradiction_candidates = (
+          SELECT count(*)::int FROM identity_audit_item
+          WHERE audit_run_id = ${runId}
+            AND audit_kind = 'accepted_contradiction'
+            AND review_state = 'open'
+        )
+      FROM identity_audit_run base
+      WHERE current.audit_run_id = ${runId}
+        AND base.audit_run_id = ${baseRunId}
+        AND base.state = 'completed'
+        AND base.pack_id = current.pack_id
+        AND base.policy_version = current.policy_version
+    `;
+    return;
+  }
+
   await sql.begin(async (tx) => {
     await tx`
-      SELECT set_config('statement_timeout', '600000', true),
-        set_config('transaction_timeout', '660000', true)
+      SELECT set_config('statement_timeout', '1800000', true),
+        set_config('transaction_timeout', '1860000', true)
     `;
     await tx`
       WITH face_contexts AS MATERIALIZED (
@@ -507,6 +582,8 @@ export const suppressSamePhotoDerivatives = async (
     provider,
     runId,
     scoreFloor = identityAuditIndependenceScoreFloor,
+    sourceId = "",
+    faceIds = [],
   },
 ) => {
   if (
@@ -521,6 +598,12 @@ export const suppressSamePhotoDerivatives = async (
       { code: "IDENTITY_AUDIT_INDEPENDENCE_UNAVAILABLE" },
     );
   }
+  const exactSourceId = String(sourceId || "").trim();
+  const exactFaceIds = [
+    ...new Set(
+      faceIds.map((faceId) => String(faceId || "").trim()).filter(Boolean),
+    ),
+  ];
   const candidates = await sql`
     SELECT item.audit_kind, item.face_id, item.asset_id,
       item.suggested_reference_asset_id AS reference_asset_id,
@@ -534,12 +617,15 @@ export const suppressSamePhotoDerivatives = async (
     JOIN immich_asset_projection query_projection
       ON query_projection.cimmich_asset_id = item.asset_id
       AND query_projection.state = 'active'
+      AND (${exactSourceId} = '' OR query_projection.source_id = ${exactSourceId})
     JOIN immich_asset_projection reference_projection
       ON reference_projection.cimmich_asset_id =
         item.suggested_reference_asset_id
       AND reference_projection.state = 'active'
+      AND (${exactSourceId} = '' OR reference_projection.source_id = ${exactSourceId})
     WHERE item.audit_run_id = ${runId}
       AND item.review_state = 'open'
+      AND (${exactFaceIds.length === 0} OR item.face_id = ANY(${exactFaceIds}))
       AND (
         item.audit_kind = 'accepted_contradiction'
         OR item.suggested_score >= ${scoreFloor}
@@ -644,6 +730,7 @@ export const createIdentityAudit = (
     companion,
     derivativeProvider,
     presentationRank = () => 0,
+    sourceId = "",
   } = {},
 ) => {
   let runningPromise = null;
@@ -675,10 +762,12 @@ export const createIdentityAudit = (
     return projectRun(row, currentPack?.pack_id || null);
   };
 
-  const start = async () => {
+  const start = async ({ detectorConfigDigest } = {}) => {
     await reconcileInterruptedRun();
     const existing = await latest();
     if (existing?.state === "running") return existing;
+    const exactDetectorConfigDigest =
+      cleanDetectorConfigDigest(detectorConfigDigest);
     const [pack] = await sql`
       SELECT pack_id,
         evaluation_summary->'matcherPolicy'->>'policyVersion' AS policy_version,
@@ -705,6 +794,78 @@ export const createIdentityAudit = (
         { code: "IDENTITY_AUDIT_SOURCE_PACK_UNAVAILABLE", statusCode: 409 },
       );
     }
+    let baseRunId = "";
+    let incrementalFaceIds = [];
+    if (exactDetectorConfigDigest) {
+      const [base] = await sql`
+        SELECT *
+        FROM identity_audit_run
+        WHERE state = 'completed'
+          AND pack_id = ${pack.pack_id}
+          AND policy_version = ${identityAuditPolicyVersion}
+          AND score_floor = ${Number(pack.score_floor)}
+          AND margin_floor = ${Number(pack.margin_floor)}
+        ORDER BY started_at DESC, audit_run_id DESC
+        LIMIT 1
+      `;
+      if (!base) {
+        throw Object.assign(
+          new Error(
+            "Incremental identity audit requires a completed compatible base",
+          ),
+          {
+            code: "IDENTITY_AUDIT_INCREMENTAL_BASE_UNAVAILABLE",
+            statusCode: 409,
+          },
+        );
+      }
+      const [identityChanges] = await sql`
+        SELECT count(*)::int AS count
+        FROM identity_claim
+        WHERE created_at > ${base.completed_at}
+      `;
+      if (Number(identityChanges?.count || 0) > 0) {
+        throw Object.assign(
+          new Error(
+            "Identity authority changed after the incremental audit base",
+          ),
+          { code: "IDENTITY_AUDIT_INCREMENTAL_BASE_STALE", statusCode: 409 },
+        );
+      }
+      const rows = await sql`
+        SELECT DISTINCT observation.face_id
+        FROM face_detection_result result
+        JOIN face_detection_result_observation observation
+          ON observation.detection_result_id = result.detection_result_id
+        JOIN face_observation face
+          ON face.face_id = observation.face_id AND face.state = 'valid'
+        JOIN source_pack current_pack
+          ON current_pack.pack_id = ${pack.pack_id}
+        JOIN face_embedding embedding
+          ON embedding.face_id = face.face_id
+          AND embedding.state = 'active'
+          AND embedding.model_family = current_pack.model_family
+          AND embedding.model_version = current_pack.model_version
+          AND embedding.config_digest = current_pack.config_digest
+        WHERE result.detector_config_digest = ${exactDetectorConfigDigest}
+          AND NOT EXISTS (
+            SELECT 1 FROM current_face_identity accepted
+            WHERE accepted.face_id = face.face_id
+              AND accepted.state = 'accepted'
+          )
+        ORDER BY observation.face_id
+      `;
+      incrementalFaceIds = rows.map((row) => row.face_id);
+      if (incrementalFaceIds.length === 0) {
+        throw Object.assign(
+          new Error(
+            "Incremental identity audit detector has no compatible new Faces",
+          ),
+          { code: "IDENTITY_AUDIT_INCREMENTAL_EMPTY", statusCode: 409 },
+        );
+      }
+      baseRunId = base.audit_run_id;
+    }
     const runId = `identity-audit.${randomUUID()}`;
     await sql`
       INSERT INTO identity_audit_run (
@@ -721,12 +882,15 @@ export const createIdentityAudit = (
       presentationRank(),
       Number(pack.score_floor),
       Number(pack.margin_floor),
+      { baseRunId, incrementalFaceIds },
     )
       .then(() =>
         suppressSamePhotoDerivatives(sql, {
           companion,
           provider: derivativeProvider,
           runId,
+          sourceId,
+          faceIds: incrementalFaceIds,
         }),
       )
       .catch(async (error) => {
@@ -819,7 +983,9 @@ export const createIdentityAudit = (
         suggested_reference.box_h AS suggested_reference_box_h,
         suggested_reference.width AS suggested_reference_width,
         suggested_reference.height AS suggested_reference_height,
-        suggested_reference.score AS suggested_reference_score
+        suggested_reference.score AS suggested_reference_score,
+        suggested_support.reference_count AS suggested_reference_count,
+        suggested_support.top3_average_score AS suggested_top3_average_score
       FROM identity_audit_item item
       JOIN identity_audit_run item_run
         ON item_run.audit_run_id = item.audit_run_id
@@ -905,6 +1071,61 @@ export const createIdentityAudit = (
         ORDER BY score DESC, reference.face_id
         LIMIT 1
       ) suggested_reference ON true
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int AS reference_count,
+          avg(ranked.score) FILTER (
+            WHERE ranked.evidence_rank <= 3
+          )::float8 AS top3_average_score
+        FROM (
+          SELECT evidence.score,
+            row_number() OVER (
+              ORDER BY evidence.score DESC, evidence.evidence_unit
+            ) AS evidence_rank
+          FROM (
+            SELECT coalesce(
+                'context:' || reference_context.evidence_context,
+                'asset:' || reference_face.asset_id
+              ) AS evidence_unit,
+              max(
+                (1 - (
+                  reference.embedding <=> query_embedding.embedding
+                ))::float8
+              ) AS score
+            FROM source_pack_matching_gallery reference
+            JOIN face_observation reference_face
+              ON reference_face.face_id = reference.face_id
+              AND reference_face.state = 'valid'
+              AND reference_face.asset_id <> item.asset_id
+            JOIN asset reference_asset
+              ON reference_asset.asset_id = reference_face.asset_id
+              AND reference_asset.state = 'active'
+              AND cimmich_visibility_asset_rank(reference_asset.asset_id)
+                <= ${presentationRank()}
+            LEFT JOIN LATERAL (
+              SELECT min(context.context_id) AS evidence_context
+              FROM current_face_capture_context context
+              WHERE context.face_id = reference.face_id
+            ) reference_context ON true
+            WHERE reference.pack_id = item_run.pack_id
+              AND reference.person_id = item.suggested_person_id
+              AND reference.bucket_kind = 'prime'
+              AND reference.reference_kind = 'face'
+              AND reference.face_id <> item.face_id
+              AND NOT EXISTS (
+                SELECT 1
+                FROM current_face_capture_context query_context
+                JOIN current_face_capture_context shared_context
+                  ON shared_context.context_id = query_context.context_id
+                WHERE query_context.face_id = item.face_id
+                  AND shared_context.face_id = reference.face_id
+              )
+            GROUP BY coalesce(
+              'context:' || reference_context.evidence_context,
+              'asset:' || reference_face.asset_id
+            )
+          ) evidence
+        ) ranked
+      ) suggested_support ON true
       WHERE item.audit_run_id = ${run.audit_run_id}
         AND item.audit_kind = ${auditKind}
         AND item.review_state = 'open'
@@ -983,9 +1204,24 @@ export const createIdentityAudit = (
         mediaKind: row.media_kind,
         qualityMeasurements: row.quality_measurements || {},
         suggestedPerson: {
+          confidenceBand:
+            Number(row.suggested_score) >= 0.75
+              ? "high"
+              : Number(row.suggested_score) >= 0.6
+                ? "medium"
+                : "low",
           displayName: row.suggested_display_name,
           personId: row.suggested_person_id,
           reference: projectReference(row, "suggested"),
+          reviewEvidence: {
+            independentReferenceCount: Number(
+              row.suggested_reference_count || 0,
+            ),
+            top3AverageScore:
+              row.suggested_top3_average_score == null
+                ? null
+                : Number(row.suggested_top3_average_score),
+          },
           score: Number(row.suggested_score),
         },
         width: row.width,

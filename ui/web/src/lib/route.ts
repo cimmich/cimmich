@@ -108,12 +108,17 @@ export const Route = {
   cimmichMaintenance: () => '/cimmich/maintenance',
   cimmichObjects: () => '/cimmich/objects',
   cimmichPets: () => '/cimmich/pets',
-  cimmichPet: ({ petId }: { petId: string }) => `/cimmich/pets` + asQueryString({ entityId: petId }),
+  cimmichPet: ({ name, petId }: { name: string; petId?: string }) =>
+    `/cimmich/pets/${encodeURIComponent(name)}` + asQueryString(petId ? { petId } : undefined),
   cimmichPeople: () => '/cimmich/people',
   cimmichPerson: ({ name, personId }: { name: string; personId?: string }) =>
     `/cimmich/people/${encodeURIComponent(name)}` + asQueryString(personId ? { personId } : undefined),
   cimmichPlaces: () => '/cimmich/places',
+  cimmichPlace: ({ name, placeId }: { name: string; placeId?: string }) =>
+    `/cimmich/places/${encodeURIComponent(name)}` + asQueryString(placeId ? { placeId } : undefined),
   cimmichThings: () => '/cimmich/places?family=objects',
+  cimmichThing: ({ name, thingId }: { name: string; thingId?: string }) =>
+    `/cimmich/places/${encodeURIComponent(name)}` + asQueryString(thingId ? { thingId } : undefined),
   cimmichQc: () => '/cimmich/qc',
   cimmichSmartSearch: () => '/cimmich/smart-search',
   cimmichTrips: () => '/cimmich/trips',
@@ -122,18 +127,25 @@ export const Route = {
   photos: (params?: { at?: string }) => '/photos' + asQueryString(params),
   viewAsset: ({ id }: { id: string }) => `/photos/${id}`,
   viewCimmichPersonAsset: ({
+    faceId,
     id,
     personId,
     personName,
     overlay,
   }: {
+    faceId?: string;
     id: string;
     personId: string;
     personName: string;
-    overlay?: 'people';
+    overlay?: 'machinery' | 'people';
   }) =>
     `/photos/${id}` +
-    asQueryString({ cimmichOverlay: overlay, cimmichPersonId: personId, cimmichPersonName: personName }),
+    asQueryString({
+      cimmichFaceId: faceId,
+      cimmichOverlay: overlay,
+      cimmichPersonId: personId,
+      cimmichPersonName: personName,
+    }),
   viewCimmichPetAsset: ({ id, petId, petName }: { id: string; petId: string; petName: string }) =>
     `/photos/${id}` + asQueryString({ cimmichPetId: petId, cimmichPetName: petName }),
   archive: () => '/archive',

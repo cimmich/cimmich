@@ -3,7 +3,6 @@
   import CimmichPossiblePeople from '$lib/components/cimmich/CimmichPossiblePeople.svelte';
   import CimmichSectionHeader from '$lib/components/cimmich/CimmichSectionHeader.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
-  import { machineSuggestionCountsByLead } from '$lib/components/cimmich/person-machine-suggestions';
   import {
     chooseInitialPeopleView,
     comparePeople,
@@ -19,13 +18,11 @@
   import {
     decideCimmichIdentityCandidate,
     getCimmichIdentityCandidates,
-    getCimmichIdentityAuditLeads,
-    getCimmichMachineSuggestions,
+    getCimmichPersonCandidateSummary,
     getCimmichPeople,
-    type CimmichIdentityAuditLead,
     type CimmichIdentityCandidate,
-    type CimmichMachineSuggestion,
     type CimmichPerson,
+    type CimmichPersonCandidateSummary,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
@@ -59,11 +56,10 @@
   const relatedFrom = $derived(page.url.searchParams.get('relatedFrom') ?? '');
 
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
-  let cimmichIdentityAuditLeads = $state<CimmichIdentityAuditLead[]>([]);
+  let cimmichCandidateSummary = $state<CimmichPersonCandidateSummary | null>(null);
   let cimmichError = $state('');
   let cimmichLoaded = $state(false);
   let cimmichLoadGeneration = 0;
-  let cimmichMachineSuggestions = $state<CimmichMachineSuggestion[]>([]);
   let cimmichMessage = $state('');
   let cimmichPeople = $state<CimmichPerson[]>([]);
   let cimmichSavingClaimId = $state('');
@@ -133,16 +129,12 @@
   const cimmichNeedsFaceCount = $derived(
     cimmichPeople.filter((person) => person.needs_holding || person.needs_sort).length + ignoredPossiblePeopleCount,
   );
-  const cimmichMachineSuggestionCounts = $derived(machineSuggestionCountsByLead(cimmichMachineSuggestions));
-  const cimmichIdentityAuditLeadCounts = $derived(
-    new Map(cimmichIdentityAuditLeads.map((lead) => [lead.personId, lead.suggestionCount])),
+  const cimmichCandidateCounts = $derived(
+    new Map((cimmichCandidateSummary?.items ?? []).map((item) => [item.personId, item.suggestionCount])),
   );
-  const personMachineSuggestionCount = (personId: string) =>
-    cimmichIdentityAuditLeadCounts.size > 0
-      ? (cimmichIdentityAuditLeadCounts.get(personId) ?? 0)
-      : (cimmichMachineSuggestionCounts.get(personId) ?? 0);
+  const personMachineSuggestionCount = (personId: string) => cimmichCandidateCounts.get(personId) ?? 0;
   const personHasSuggestions = (person: CimmichPerson) => personMachineSuggestionCount(person.person_id) > 0;
-  const cimmichCandidateCount = $derived(cimmichPeople.filter((person) => personHasSuggestions(person)).length);
+  const cimmichCandidateCount = $derived(cimmichCandidateSummary?.totalPeople ?? 0);
   const faceBackedCount = $derived(cimmichFaceBackedCount);
   const needsFaceCount = $derived(cimmichNeedsFaceCount);
 
@@ -354,22 +346,19 @@
     const generation = ++cimmichLoadGeneration;
     cimmichLoaded = false;
     cimmichCandidates = [];
-    cimmichIdentityAuditLeads = [];
-    cimmichMachineSuggestions = [];
+    cimmichCandidateSummary = null;
     cimmichPeople = [];
     try {
-      const [candidates, auditLeads, machineSuggestions, identities] = await Promise.all([
+      const [candidates, candidateSummary, identities] = await Promise.all([
         getCimmichIdentityCandidates(5),
-        getCimmichIdentityAuditLeads(),
-        getCimmichMachineSuggestions(80),
+        getCimmichPersonCandidateSummary(),
         getCimmichPeople(500),
       ]);
       if (generation !== cimmichLoadGeneration) {
         return;
       }
       cimmichCandidates = candidates;
-      cimmichIdentityAuditLeads = auditLeads.items;
-      cimmichMachineSuggestions = machineSuggestions;
+      cimmichCandidateSummary = candidateSummary;
       cimmichPeople = identities.filter((identity) => identity.subject_kind === 'person');
       if (!initialViewChosen) {
         viewMode = chooseInitialPeopleView(cimmichPeople);
@@ -612,7 +601,8 @@
             </p>
             <h2 class="mt-1 text-xl font-semibold">People with suggestions</h2>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Full-library audit suggestions grouped by the known Person they may belong to.
+              {cimmichCandidateSummary?.totalCandidates.toLocaleString() ?? '0'} matched faces from the current reference
+              library, grouped by the known person they may belong to. Nothing changes until you confirm.
             </p>
           </div>
           <span
@@ -752,7 +742,7 @@
               description={peopleQuery
                 ? 'Try another name or clear the current filters.'
                 : viewMode === 'candidates'
-                  ? 'The latest full-library audit has no open photo suggestions for known People.'
+                  ? 'The current reference library has no open face suggestions for known people.'
                   : viewMode === 'needsFace'
                     ? 'No one currently needs sorting or Holding.'
                     : 'People will appear here when the current projection contains them.'}

@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 83. Schema 76 adds
+patch level 1. Current post-submission source is schema 98. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -29,8 +29,46 @@ the resulting typed tag, subject and decision, so editing a retained locator
 cannot leave duplicate unresolved evidence. Schema 83 adds same-species,
 vector-space-bound Pet match proposals, an explicit Unknown Pet state, and
 user-confirmed realization as Face or Whole-animal evidence. A model proposal
-has no identity authority. All eight leave the preserved
-Build Week runtime unchanged.
+has no identity authority. Schema 84 adds hash-linked media identity,
+replaceable source bindings, binding history, and portable database
+export/restore for archive mobility. Schema 85 attempted to backfill canonical
+Base64 Immich checksums; schema 86 quarantines those inferred links because
+Immich 3.0.3 can expose deprecated path hashes through the same API field
+without its algorithm. Schema 87 adds streamed original-byte SHA-256 identity
+and a replay-safe operator for attaching that verified identity to restored
+legacy assets. Schema 88 derives asset availability across every binding, so a
+moved file cannot mark shared intelligence missing while its replacement
+binding is active. Only byte-verified hashes may drive content identity.
+Schema 89 closes portable exports over stale inventory ownership by marking
+only runs older than 24 hours interrupted and their open snapshots incomplete.
+Schema 90 lets a resident archive worker claim only the exact recognition job
+it just enqueued, preventing asset-scoped media readers from crossing work when
+multiple workers exist. Schema 91 applies the same exact provider, configuration
+and vector-space binding to the normal detection-to-recognition continuation,
+so a newly enabled worker cannot consume a paused job from an older provider.
+Schema 92 binds the intentionally distinct provider and recognition-space
+digests independently instead of treating them as one value. Schema 93 derives
+a live reusable work rank from accepted Person associations and existing human
+observations, so already tagged photos lead every queue without copying stale
+priority into jobs. Schema 94 adds exact resumable Body-detection jobs and
+job-to-result binding for the resident archive lane. Schema 95 adds resumable,
+read-only XMP Face recovery: paired media is bound only by an existing
+byte-verified SHA-256 identity, raw names and geometry retain provenance,
+both appended and single-sibling replacement sidecar naming are supported,
+duplicate sidecars converge, known People may receive trusted-import claims,
+and unresolved or ambiguous names remain non-authoritative Face evidence.
+Schema 96 adds a highest-return-first owner review queue over those unresolved
+names. One replay-safe owner command can resolve the whole exact-name group to
+an existing or new Person while preserving its original import outcome and
+provenance. No fuzzy name match gains identity authority. All post-submission
+schemas leave the preserved Build Week runtime unchanged. The schema 97 change
+lets an exact existing-Face worker reclaim only its own expired lease, recording
+the expiry and preserving the ordinary retry limit instead of leaving an
+interrupted parallel batch permanently non-claimable.
+Schema 98 records an exact source-unreadable Body outcome with zero
+observations, so corrupt media terminates as an honest abstention rather than a
+false no-Body result or a permanently open retry. It remains bound to the
+source revision and detector configuration and grants no identity authority.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
@@ -429,6 +467,14 @@ Locked inventory stays an explicit typed exclusion when the configured Immich
 credential lacks the required interactive authority; Cimmich neither retries
 with broader authority nor treats that lane as empty.
 
+Matching can be bound independently from ingest with
+`CIMMICH_MATCHING_PROVIDER_MANIFEST_PATH`. The file must pass the same local,
+network-forbidden recognition-manifest contract. Its recognition space governs
+SourcePack reads and incremental mathematical matching, while an incompatible
+ingest provider is explicitly unavailable for recognition execution. This
+prevents a stock ingest configuration from silently replacing the active
+private matching space.
+
 Provider enablement after an earlier provider-disabled inventory sync is also a
 supported lifecycle. Before bounded detection work, the operator replay-safely
 ensures one current provider/config/input-revision job for each active supported
@@ -519,6 +565,89 @@ The service can create capture contexts and select Body Tags, but the complete
 product journey is not yet closed: arbitrary Presence creation and low-friction
 context correction/merge/split remain UI/API work. Legacy Specialty and private
 suffix compatibility are laboratory migration debt, not future public contracts.
+
+## Archive face discovery
+
+Archive discovery and recognition are intentionally separate operations.
+`npm run detect-face-backlog -- --limit-jobs 1000 --workers 4` runs a bounded
+detection-only batch with one to eight independent resident local-provider
+processes. Workers claim only the exact detector configuration from the shared
+database queue, schedule current still images (never videos), close on every
+exit path and create no recognition continuation or identity authority.
+
+The command requires the ordinary local-provider variables, `DATABASE_URL`,
+`IMMICH_API_URL`, an Immich credential supplied by environment or private
+credential file, and `CIMMICH_IMMICH_SOURCE_ID`. Model weights remain
+operator-supplied and are never bundled or downloaded by Cimmich. Start with a
+reviewable cohort and increase the explicit job limit only after measured
+throughput, failures, thermals and no-face recall are acceptable.
+
+Scheduling and claims consume `media_asset_triage`: photos with accepted People
+run first, ordered by distinct accepted People and accepted associations;
+photos with existing Face/Body/Head observations run next; unexplored photos
+follow with stable asset ordering. The rank is a live database projection, so
+an accepted or retracted tag changes already queued work immediately.
+
+Inventory sync keeps exact-content authority without turning every refresh into
+a complete archive reread. A prior SHA-256 may be reused only for the same
+Immich asset while both its opaque upstream checksum and source-update timestamp
+are unchanged and exactly one active byte-verified content binding exists. New,
+changed, missing, invalid or ambiguous bindings are streamed and SHA-256
+verified again. The upstream checksum is only a change token; it is never
+promoted as Cimmich content identity.
+
+`npm run recognize-existing-face-backlog -- --limit-assets 1000
+--priority-tier-max 0 --workers 4` embeds already-present Face observations
+without running discovery. Selection uses the same live triage order, and one
+to eight resident provider processes may consume distinct selected assets in
+parallel. The default remains one worker; increase it only after a bounded
+host-specific pilot. The operator preflights its Python runtime, provider
+script and model artifacts before it can enqueue work, executes every provider
+request twice for exact replay, and creates no identity authority.
+
+`npm run detect-body-backlog -- --limit-jobs 1000 --workers 2 --manifest
+/private/manifest.json --model /private/model.pt --python /private/python`
+runs the corresponding bounded Body-rectangle lane. Each worker owns one
+resident, offline YOLO process, executes two replay-consistency passes per
+asset, commits exact current-source evidence through a resumable media job, and
+then applies only the existing accepted Face-to-Body linker. It runs no pose,
+mask or automatic identity stage. The provider script may be overridden with
+`--provider`; weights and Python remain operator-supplied.
+
+## Archive XMP recovery
+
+`npm run import-xmp-sidecars -- --root /archive --limit-assets 1000` performs a
+read-only dry run over paired XMP sidecars. It parses MWG Face regions and
+Microsoft-only fallbacks, hashes only media with named regions, and resolves
+assets through the existing byte-verified SHA-256 content index. It emits no
+paths or names in its summary and writes no database or source state.
+Both `photo.jpg.xmp` and `photo.xmp` beside one unambiguous eligible media
+sibling are supported; zero or multiple replacement-style candidates fail
+closed.
+
+After reviewing the counts, add `--execute --command-id
+xmp-archive-batch-<stable-id>` to commit a resumable batch. Existing People are
+matched by exact display name or active alias, with the private historical
+trailing `1|2` tier hint handled explicitly. Missing or ambiguous names create
+valid anonymous Face evidence but no Person or identity claim. Source media and
+sidecars are always read-only; database rows retain path digests rather than
+paths. The source-locator digest identifies the sidecar packet independently
+from the owning media's content digest, so two sidecars may safely describe one
+content object.
+
+The Steward surface exposes unresolved imported names highest-return-first:
+
+- `GET /v1/xmp-sidecar/unresolved-names?limit=50` returns exact-name groups
+  ordered by unresolved Face count, with bounded photo previews and no source
+  paths.
+- `POST /v1/xmp-sidecar/unresolved-names/:groupId/resolve` accepts
+  `{ "commandId": "...", "personId": "..." }` or
+  `{ "commandId": "...", "newPersonName": "..." }`.
+
+Resolution is atomic across the group and exact replay is safe. Existing,
+conflicting identity evidence and alias collisions fail closed. The original
+`import_resolution_state` is immutable; schema 96 adds owner-decision links
+rather than rewriting what the sidecar import originally concluded.
 
 ## Machine review and Memory Steward
 
@@ -711,18 +840,13 @@ provider packets, projects a result only through the module-private conformance
 envelope, and returns the existing repository validation. It performs no media
 read, provider execution or commit itself.
 
-The isolated Cedar House demo adds the missing operator composition without
-weakening those boundaries. `tools/public_demo_body.sh run` enumerates every
-current image in the exact `cimmich-public-demo` project, rereads it through the
-read-only Immich companion, runs an operator-supplied local provider twice,
-commits only a replay-consistent validated result, and then invokes the existing
-Face-to-Body linker. `status` reports aggregate completed, detected, no-body,
-Body and linked counts. The command is library-wide, fail-fast and
-interrupt-safe; it is not a one-asset product shortcut. A checkpoint and Python
-runtime must be supplied explicitly through `CIMMICH_BODY_MODEL_PATH` and
-`CIMMICH_BODY_PYTHON_PATH`. Cimmich does not bundle that checkpoint, infer its
-redistribution rights or turn a detected Body into identity without the
-accepted linker policy.
+The isolated Cedar House demo retains the narrow operator composition.
+`tools/public_demo_body.sh run` now enumerates unfinished current images in the
+same live triage order, rereads each through the read-only Immich companion,
+runs an operator-supplied local provider twice, commits only replay-consistent
+evidence, and invokes the accepted Face-to-Body linker. The archive command
+above is the resident, resumable path; the demo remains fail-fast and is not an
+archive-scale runner.
 
 The signed-in `GET /v1/integrations/status` and
 `GET /v1/integrations/provider-settings-pack` routes provide the owner-facing

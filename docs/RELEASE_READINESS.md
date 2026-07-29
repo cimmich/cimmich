@@ -1,8 +1,8 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-07-26
+Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 83/patch 1
+Current source/disposable candidate: migration-ledger schema 98/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -23,9 +23,42 @@ identity locators rather than silently reducing it to regionless Presence. The
 owner’s schema-82 correction binds the retained locator to its resulting typed
 tag and decision so unresolved evidence cannot remain as a duplicate. Schema 83
 adds review-only, same-species Pet matching proposals and preserves Unknown Pet
-rather than forcing the nearest named result. The tagged
+rather than forcing the nearest named result. Schema 84 adds hash-linked archive
+mobility. Schema 85 exposed a legacy Base64 checksum backfill gap; schema 86
+quarantines those inferred links because Immich can return deprecated path
+hashes without exposing their algorithm. The tagged
 Build Week release and its preserved schema-75 runtime remain the submission
 baseline.
+
+Schemas 93–94 add live Person-linked media-work triage and a resident,
+resumable, exact-result-bound Body-rectangle lane. They do not add automatic
+identity, pose or mask authority.
+
+Schema 95 restores the missing archive-wide XMP seam. Named sidecar Face
+regions are read without source writes, paired media is resolved only through
+byte-verified SHA-256 content identity, duplicate sources converge, and
+interrupted batches resume from path-free item receipts. Exact existing People
+may receive trusted-import identity claims; missing or ambiguous names remain
+anonymous review evidence. Appended and unambiguous replacement-style sidecars
+are both supported, with packet locators kept distinct from media identity.
+The live X1 proof is recorded in
+`docs/X1_XMP_SIDECAR_RECOVERY_2026-07-27.md`.
+
+Schema 96 turns the remaining exact imported-name groups into a bounded owner
+triage surface, ordered by unresolved Face count so the People already present
+throughout the archive lead the work. A replay-safe command resolves the full
+group to an existing or new Person, records user-origin claims and preserves
+the immutable original import classification. Alias collisions, pre-existing
+identity conflicts and fuzzy matches fail closed.
+The live X1 proof is recorded in
+`docs/X1_XMP_NAME_RESOLUTION_2026-07-27.md`.
+
+Schema 97 restores expired-lease recovery to exact existing-Face claims, so an
+interrupted parallel worker can reclaim only its own job while preserving the
+ordinary retry and event history.
+
+Schema 98 preserves a corrupt Body source as an exact source-unreadable
+abstention with zero observations instead of inventing no-Body evidence.
 
 ## Public Beta Patch 6 candidate
 
@@ -52,12 +85,12 @@ The release makes no representative biometric-accuracy or fairness claim.
 
 The exact patch-6 publication candidate has passed:
 
-- service tests: 649 passed, one skipped;
+- service tests: 701 passed, one skipped;
 - web tests: 833 passed, two skipped;
 - Svelte diagnostics: zero errors and zero warnings;
 - TypeScript, formatting, lint and the production web build;
 - fresh, upgrade, concurrent, interrupted/resumed and checksum-drift migration
-  acceptance through schema 83;
+  acceptance through schema 98;
 - the complete disposable synthetic product lifecycle;
 - the install preflight and focused Pet matching/provider tests; and
 - the same pinned Python provider dependency audit used by CI, with no known

@@ -11,6 +11,7 @@ STAGE="/private/tmp/${COMPANION_PROJECT}"
 STOCK_STAGE="/private/tmp/${STOCK_PROJECT}"
 STATE_ROOT="$STAGE/state"
 BACKUP_ROOT="$STAGE/${COMPANION_PROJECT}-backup"
+PORTABLE_ROOT="$STAGE/${COMPANION_PROJECT}-portable"
 RECEIPT="$STAGE/immich-bootstrap.json"
 API_KEY_FILE="$STAGE/immich-api-key"
 ONBOARDING_PREVIEW="$STAGE/onboarding-preview.json"
@@ -126,8 +127,10 @@ unresolved_status=$(curl --silent --show-error \
   -o "$UNRESOLVED_IMPORT" \
   -w '%{http_code}' \
   "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/import")
-test "$unresolved_status" = 409
-grep -q 'IMMICH_ONBOARDING_PERSON_LABEL_REQUIRED' "$UNRESOLVED_IMPORT"
+test "$unresolved_status" = 200
+node -e \
+  "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed_with_review'||v.import?.projectedPeople!==1||v.import?.reviewItems<1||v.next?.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import,next:v.next}));process.exit(2)}" \
+  "$UNRESOLVED_IMPORT"
 cluster_preview=$(curl --fail --silent --show-error \
   -H 'content-type: application/json' \
   -H 'x-cimmich-device-id: companion-acceptance' \
@@ -164,7 +167,7 @@ curl --fail --silent --show-error \
   -d "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
   "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/import" > "$ONBOARDING_IMPORT"
 node -e \
-  "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(!['completed','completed_with_review'].includes(v.state)||v.replayed!==false||v.import?.assignedFaces!==2||v.import?.projectedPeople!==1||v.import?.importedSourceFaces!==2||v.next.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import}));process.exit(2)}" \
+  "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed'||v.replayed!==false||v.import?.assignedFaces!==1||v.import?.projectedPeople!==0||v.import?.importedSourceFaces!==1||v.import?.reviewItems!==0||v.next.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import}));process.exit(2)}" \
   "$ONBOARDING_IMPORT"
 onboarding_replay=$(curl --fail --silent --show-error \
   -H 'content-type: application/json' \
@@ -179,10 +182,21 @@ printf '%s' "$onboarding_replay" | grep -q '"replayed":true'
 
 health=$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/health")
 printf '%s' "$health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
+gateway_health=$(curl --fail --silent --show-error \
+  "http://127.0.0.1:${UI_PORT}/cimmich-api/health")
+printf '%s' "$gateway_health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
 curl --fail --silent --show-error "http://127.0.0.1:${UI_PORT}/api/server/version" |
   grep -q '"patch":3'
 
 "$ROOT/tools/companion.sh" backup "$BACKUP_ROOT" >/dev/null
+"$ROOT/tools/companion.sh" portable-export "$PORTABLE_ROOT" >/dev/null
+test ! -e "$PORTABLE_ROOT/config.tgz"
+test ! -e "$PORTABLE_ROOT/face-provider.tgz"
+test "$(awk 'NF == 2 { print $2 }' "$PORTABLE_ROOT/SHA256SUMS" | sort | tr '\n' ':')" = \
+  "cimmich.dump:documents.tgz:manifest.json:"
+grep -q '"format":"cimmich.portable-export.v1"' "$PORTABLE_ROOT/manifest.json"
+grep -Fq '"excludes":["credentials","media","provider-artifacts"]' \
+  "$PORTABLE_ROOT/manifest.json"
 BASELINE_DATABASE_ID=$(companion_compose ps -q cimmich-database)
 BASELINE_COUNTS=$(companion_counts)
 cp "$BACKUP_ROOT/manifest.json" "$SECURITY_PROOF/manifest.json"
@@ -280,12 +294,17 @@ curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/ve
 "$ROOT/tools/companion.sh" restore "$BACKUP_ROOT" \
   "--confirm=$COMPANION_PROJECT" >/dev/null
 "$ROOT/tools/companion.sh" status >/dev/null
+"$ROOT/tools/companion.sh" portable-restore "$PORTABLE_ROOT" \
+  "--confirm=$COMPANION_PROJECT" >/dev/null
+"$ROOT/tools/companion.sh" status >/dev/null
 "$ROOT/tools/companion.sh" remove "--confirm=$COMPANION_PROJECT" >/dev/null
 
 curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/version" |
   grep -q '"patch":3'
 test ! -e "$STATE_ROOT"
 test -z "$(docker volume ls --quiet --filter "name=^${COMPANION_PROJECT}-")"
+test -z "$(docker image ls --quiet "$COMPANION_PROJECT-api:current-source")"
+test -z "$(docker image ls --quiet "$COMPANION_PROJECT-ui:current-source")"
 
-printf '{"backupRestore":true,"companionRemoved":true,"freshNamedPersonImport":true,"freshOnboardingImport":true,"freshOnboardingReplay":true,"freshUnnamedClusterHeldForOwner":true,"immichHealthyAfterDisable":true,"immichHealthyAfterRemove":true,"immichVersion":"3.0.3","project":"%s","restoreAdversarialCases":7,"schemaVersion":%s,"status":"PASS"}\n' \
+printf '{"backupRestore":true,"companionRemoved":true,"freshNamedPersonImport":true,"freshOnboardingImport":true,"freshOnboardingReplay":true,"freshUnnamedClusterHeldForOwner":true,"immichHealthyAfterDisable":true,"immichHealthyAfterRemove":true,"immichVersion":"3.0.3","portableExportExcludesCredentialsMediaAndProviders":true,"portableRestore":true,"project":"%s","restoreAdversarialCases":7,"schemaVersion":%s,"status":"PASS"}\n' \
   "$COMPANION_PROJECT" "$SCHEMA_VERSION"

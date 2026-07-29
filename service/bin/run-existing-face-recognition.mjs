@@ -59,6 +59,8 @@ if (!databaseUrl) {
 const input = exactInput(JSON.parse(await readFile(inputPath, "utf8")));
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const sql = postgres(databaseUrl, { max: 2, prepare: true });
+const configuredSourceId =
+  process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary";
 
 try {
   const faceRows = await sql`
@@ -70,6 +72,7 @@ try {
     LEFT JOIN immich_asset_projection projection
       ON projection.cimmich_asset_id = asset.asset_id
       AND projection.state = 'active'
+      AND projection.source_id = ${configuredSourceId}
     WHERE face.face_id = ANY(${input.faceIds}) AND face.state = 'valid'
     ORDER BY face.face_id
   `;
@@ -95,8 +98,7 @@ try {
   });
   if (
     !sourceAssetId ||
-    faceRows[0].source_id !==
-      (process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary")
+    faceRows[0].source_id !== configuredSourceId
   ) {
     throw new Error("Existing recognition configured source is unavailable");
   }
@@ -185,10 +187,36 @@ try {
     recognizer,
     sql,
   });
-  const result =
-    pipeline.state === "recognized"
-      ? { state: "recognized" }
-      : await worker.runNext();
+  let result = { state: pipeline.state };
+  if (pipeline.state !== "recognized") {
+    for (let ordinal = 0; ordinal < 64; ordinal += 1) {
+      result = await worker.runNext();
+      const [currentPipeline] = await sql`
+        SELECT state
+        FROM media_pipeline_run
+        WHERE pipeline_run_id = ${pipeline.pipelineRunId}
+      `;
+      if (currentPipeline?.state === "recognized") break;
+      if (
+        currentPipeline?.state === "recognition_failed" ||
+        result.state === "idle"
+      ) {
+        throw new Error(
+          "Existing recognition operator could not complete its pipeline",
+        );
+      }
+    }
+    const [terminalPipeline] = await sql`
+      SELECT state
+      FROM media_pipeline_run
+      WHERE pipeline_run_id = ${pipeline.pipelineRunId}
+    `;
+    if (terminalPipeline?.state !== "recognized") {
+      throw new Error(
+        "Existing recognition operator exceeded its bounded drain",
+      );
+    }
+  }
   const [lineage] = await sql`
     SELECT pipeline.state, pipeline.provider_run_count,
       count(embedding.embedding_id)::int AS runtime_embedding_count,

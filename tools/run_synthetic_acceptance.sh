@@ -13,8 +13,9 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     docker logs "$SERVICE_CONTAINER" 2>&1 || true
   fi
-  docker rm -f "$SERVICE_CONTAINER" >/dev/null 2>&1 || true
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$SERVICE_CONTAINER" >/dev/null 2>&1 || true
+  docker rm -fv "$CONTAINER" >/dev/null 2>&1 || true
+  docker image rm "$SERVICE_IMAGE" >/dev/null 2>&1 || true
   return "$status"
 }
 trap cleanup EXIT INT TERM
@@ -650,6 +651,8 @@ docker exec -e CIMMICH_VISIBILITY_PHASE=readback "$SERVICE_CONTAINER" \
 docker exec "$SERVICE_CONTAINER" node acceptance/media-job-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/immich-companion-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/immich-inventory-journey.mjs
+docker exec "$SERVICE_CONTAINER" node acceptance/archive-mobility-journey.mjs
+docker exec "$SERVICE_CONTAINER" node acceptance/xmp-name-review-journey.mjs
 docker exec -e CIMMICH_MANUAL_PHOTO_CONTEXT_PHASE=write "$SERVICE_CONTAINER" \
   node acceptance/manual-photo-context-journey.mjs
 docker restart "$SERVICE_CONTAINER" >/dev/null

@@ -394,6 +394,115 @@ BEGIN
 END;
 $$;
 
+INSERT INTO asset(
+  asset_id,content_hash,locator_token,media_kind,mime_type,width,height,
+  source_snapshot_id,state,privacy_class
+) VALUES (
+  'asset_triage_unexplored','hash_asset_triage_unexplored',
+  'token_asset_triage_unexplored','image','image/x-synthetic',1000,1000,
+  'snapshot_synthetic','active','release-safe'
+);
+SELECT assert_true((
+  SELECT
+    (SELECT priority_tier=0 AND accepted_person_count>=1
+       FROM media_asset_triage WHERE asset_id='asset_faces')
+    AND
+    (SELECT priority_tier=1 AND accepted_person_count=0
+       FROM media_asset_triage WHERE asset_id='asset_unknown')
+    AND
+    (SELECT priority_tier=2 AND human_observation_count=0
+       FROM media_asset_triage WHERE asset_id='asset_triage_unexplored')
+), '18 media triage ranks accepted People before observations and unexplored assets');
+
+SELECT enqueue_media_job(
+  asset_id, 'detect_faces', 'triage-fixture-v1',
+  repeat('9', 64), repeat('8', 64), 1
+)
+FROM unnest(ARRAY[
+  'asset_triage_unexplored','asset_unknown','asset_faces'
+]) asset_id;
+SELECT assert_true((
+  SELECT asset_id='asset_faces'
+  FROM claim_media_jobs('triage-fixture-worker', 300, 1)
+), '18 media claims consume the current person-linked rank rather than enqueue order');
+
+INSERT INTO media_content(content_id,byte_length) VALUES
+('media_content_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1234);
+INSERT INTO media_content_fingerprint(
+  content_id,hash_algorithm,content_digest,verification,producer_receipt_id
+) VALUES (
+  'media_content_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','sha256',
+  repeat('a',64),'byte_verified','receipt_cimmich_xmp_sidecar_face_import_v1'
+);
+INSERT INTO asset_content_link(asset_id,content_id,producer_receipt_id) VALUES (
+  'asset_faces','media_content_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'receipt_cimmich_xmp_sidecar_face_import_v1'
+);
+INSERT INTO face_observation(
+  face_id,asset_id,box_x,box_y,box_w,box_h,detection_confidence,
+  quality_measurements,state,producer_receipt_id,observation_origin
+) VALUES (
+  'face_xmp_fixture','asset_faces',0.2,0.2,0.2,0.3,NULL,
+  '{"sourceKind":"xmp_sidecar"}','valid',
+  'receipt_cimmich_xmp_sidecar_face_import_v1','xmp_sidecar_import'
+);
+INSERT INTO decision(
+  decision_id,subject_type,subject_id,action,actor_kind,actor_id,reason_code,
+  producer_receipt_id,privacy_class
+) VALUES (
+  'decision_xmp_fixture','identity_claim','claim_xmp_fixture','accept',
+  'trusted_import','xmp-sidecar-import','xmp_sidecar_face_import',
+  'receipt_cimmich_xmp_sidecar_face_import_v1','sensitive-biometric'
+);
+INSERT INTO identity_claim(
+  identity_claim_id,face_id,person_id,origin,state,evidence_refs,decision_id,
+  producer_receipt_id,privacy_class
+) VALUES (
+  'claim_xmp_fixture','face_xmp_fixture','person_alpha','trusted_import',
+  'accepted','[{"sourceKind":"xmp_sidecar"}]','decision_xmp_fixture',
+  'receipt_cimmich_xmp_sidecar_face_import_v1','sensitive-biometric'
+);
+INSERT INTO xmp_sidecar_face_evidence(
+  evidence_id,source_id,content_id,asset_id,face_id,person_id,
+  identity_claim_id,region_key,raw_name,normalized_name,
+  box_x,box_y,box_w,box_h,resolution_state
+) VALUES (
+  'xmp_face_evidence_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'archive-xmp','media_content_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'asset_faces','face_xmp_fixture','person_alpha','claim_xmp_fixture',
+  repeat('b',64),'Alpha 1','Alpha',0.2,0.2,0.2,0.3,'created_mapped'
+);
+INSERT INTO xmp_sidecar_face_source(
+  source_id,source_locator_digest,evidence_id,sidecar_digest
+) VALUES (
+  'archive-xmp',repeat('c',64),
+  'xmp_face_evidence_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  repeat('d',64)
+);
+INSERT INTO xmp_sidecar_import_run(
+  run_id,command_id,actor_id,source_id,config_digest,request_digest
+) VALUES (
+  'xmp_sidecar_run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'xmp-fixture-command','fixture','archive-xmp',repeat('e',64),repeat('f',64)
+);
+INSERT INTO xmp_sidecar_import_item(
+  run_id,source_locator_digest,sidecar_digest,content_digest,state,face_count,result
+) VALUES (
+  'xmp_sidecar_run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  repeat('c',64),repeat('d',64),repeat('a',64),'completed',1,
+  '{"boundAssets":1,"created_mapped":1,"faceCount":1}'
+);
+SELECT assert_true((
+  SELECT evidence.resolution_state='created_mapped'
+    AND face.observation_origin='xmp_sidecar_import'
+    AND claim.origin='trusted_import' AND claim.state='accepted'
+  FROM xmp_sidecar_face_evidence evidence
+  JOIN face_observation face ON face.face_id=evidence.face_id
+  JOIN identity_claim claim ON claim.identity_claim_id=evidence.identity_claim_id
+  WHERE evidence.evidence_id=
+    'xmp_face_evidence_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+), '19 XMP evidence binds exact content, imported geometry and trusted owner truth');
+
 SELECT purge_person('person_alpha', true);
 SELECT assert_true(NOT EXISTS (SELECT 1 FROM person WHERE person_id='person_alpha'), '17 person purged');
 SELECT assert_true(NOT EXISTS (SELECT 1 FROM person_alias WHERE person_id='person_alpha'), '17 aliases purged');
@@ -410,4 +519,4 @@ SELECT assert_true(NOT EXISTS (SELECT 1 FROM decision WHERE subject_id LIKE 'cla
 SELECT assert_true((SELECT count(*)=1 FROM person WHERE person_id='person_beta'), '17 unrelated person preserved');
 
 ROLLBACK;
-\echo 'Cimmich SQL contract tests: PASS (18 data tests; release leak scan runs in shell)'
+\echo 'Cimmich SQL contract tests: PASS (19 data tests; release leak scan runs in shell)'

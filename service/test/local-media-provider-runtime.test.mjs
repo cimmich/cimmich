@@ -106,7 +106,7 @@ test("OpenCV runtime binds verified provider stages and redacted receipt", async
   );
 });
 
-test("InsightFace runtime recognizes upstream inventory without owning detection", async () => {
+test("InsightFace runtime shares one resident process across detection and recognition", async () => {
   const runtime = await loadLocalMediaProviderRuntime({
     env: {
       CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH: "/synthetic/detector.onnx",
@@ -130,10 +130,12 @@ test("InsightFace runtime recognizes upstream inventory without owning detection
     readJson: async () => insightFaceManifest,
   });
   assert.equal(runtime.enabled, true);
-  assert.equal(runtime.detectionEnabled, false);
+  assert.equal(runtime.detectionEnabled, true);
   assert.equal(runtime.recognitionEnabled, true);
-  assert.equal(runtime.inventoryJob, null);
-  assert.equal(runtime.providerReceipt.detection, "upstream-inventory");
+  assert.equal(runtime.inventoryJob.operation, "detect_faces");
+  assert.equal(runtime.detector, runtime.recognizer);
+  assert.equal(runtime.providerReceipt.detection, "resident-scrfd-full-image");
+  assert.equal(runtime.providerReceipt.execution, "resident-process");
   assert.equal(runtime.providerReceipt.runtimeDigest.length, 64);
   assert.deepEqual(runtime.matchingProvider, {
     configDigest: runtime.recognitionManifest.recognitionSpaceConfigDigest,

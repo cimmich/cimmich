@@ -1323,6 +1323,62 @@ export const createCimmichServer = ({
         );
         return;
       }
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/xmp-sidecar/unresolved-names"
+      ) {
+        requireProjection("people");
+        sendJson(
+          response,
+          200,
+          await repository.xmpUnresolvedNames({
+            limit: url.searchParams.get("limit"),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const xmpNameResolveMatch = url.pathname.match(
+        /^\/v1\/xmp-sidecar\/unresolved-names\/([^/]+)\/resolve$/,
+      );
+      if (request.method === "POST" && xmpNameResolveMatch) {
+        requireProjection("people");
+        const body = await readJsonBody(request);
+        const keys = Object.keys(body || {}).sort();
+        const allowed = new Set(["commandId", "newPersonName", "personId"]);
+        if (
+          !body ||
+          typeof body !== "object" ||
+          Array.isArray(body) ||
+          keys.some((key) => !allowed.has(key)) ||
+          !keys.includes("commandId")
+        ) {
+          throw Object.assign(
+            new Error("XMP name resolution input is invalid"),
+            {
+              code: "XMP_NAME_RESOLUTION_INPUT_INVALID",
+              statusCode: 400,
+            },
+          );
+        }
+        sendJson(
+          response,
+          200,
+          await repository.resolveXmpUnresolvedName({
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+            groupId: decodeURIComponent(xmpNameResolveMatch[1]),
+            ...(Object.hasOwn(body, "personId")
+              ? { personId: body.personId }
+              : {}),
+            ...(Object.hasOwn(body, "newPersonName")
+              ? { newPersonName: body.newPersonName }
+              : {}),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/v1/people") {
         requireProjection("people");
         const body = await readJsonBody(request);
@@ -2787,6 +2843,19 @@ export const createCimmichServer = ({
       const personCandidatesMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/candidates$/,
       );
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/people/candidate-summary"
+      ) {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.personCandidateSummary(),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "GET" && personCandidatesMatch) {
         requireProjection("person_review");
         sendJson(
@@ -3045,12 +3114,16 @@ export const createCimmichServer = ({
         url.pathname === "/v1/review/identity-audit"
       ) {
         requireProjection("machine_suggestions");
+        const body = await readJsonBody(request);
         sendJson(
           response,
           202,
           {
             run: await repository.startIdentityAudit({
               actorId: request.headers["x-cimmich-actor"],
+              ...(body.detectorConfigDigest
+                ? { detectorConfigDigest: body.detectorConfigDigest }
+                : {}),
             }),
           },
           allowedOrigin,

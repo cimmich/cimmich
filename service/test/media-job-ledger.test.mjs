@@ -49,6 +49,16 @@ test("media job identity inputs are strict and provider-specific", () => {
       }),
     /Unsupported media job operation/,
   );
+  assert.equal(
+    validateMediaJobRequest({
+      assetId: "asset-one",
+      configDigest: digest("a"),
+      inputRevision: digest("b"),
+      operation: "detect_bodies",
+      toolVersion: "fixture-provider-v1",
+    }).operation,
+    "detect_bodies",
+  );
 });
 
 test("checkpoint digest is canonical and rejects non-durable queued state", () => {

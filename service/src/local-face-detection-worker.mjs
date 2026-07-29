@@ -34,7 +34,10 @@ const projectClaim = (row) => ({
   state: row.state,
 });
 
-const claimProviderJob = async (sql, { configDigest, workerId }) =>
+const claimProviderJob = async (
+  sql,
+  { configDigest, expectedJobId = "", workerId },
+) =>
   sql.begin(async (transaction) => {
     await transaction`
       WITH expired AS (
@@ -69,15 +72,52 @@ const claimProviderJob = async (sql, { configDigest, workerId }) =>
         jsonb_build_object('errorCode', 'WORKER_LEASE_EXPIRED')
       FROM expired
     `;
-    const rows = await transaction`
-      WITH claimable AS (
-        SELECT job_id
-        FROM media_job
-        WHERE state = 'pending'
-          AND operation = 'detect_faces'
-          AND config_digest = ${configDigest}
-        ORDER BY requested_at, job_id
-        FOR UPDATE SKIP LOCKED
+    const claim = expectedJobId
+      ? await transaction`
+        WITH claimable AS (
+          SELECT job.job_id
+          FROM media_job job
+          WHERE job.job_id = ${expectedJobId}
+            AND job.state = 'pending'
+            AND job.operation = 'detect_faces'
+            AND job.config_digest = ${configDigest}
+          FOR UPDATE OF job SKIP LOCKED
+        ), claimed AS (
+          UPDATE media_job job
+          SET state = 'processing',
+              attempt_count = job.attempt_count + 1,
+              started_at = coalesce(job.started_at, now()),
+              lease_owner = ${workerId}::text,
+              lease_expires_at = now() + (300 * interval '1 second'),
+              last_error_code = NULL
+          FROM claimable
+          WHERE job.job_id = claimable.job_id
+          RETURNING job.*
+        ), events AS (
+          INSERT INTO media_job_event (
+            event_id, job_id, event_kind, attempt_count, checkpoint_revision,
+            public_details
+          )
+          SELECT
+            'media_job_event_' || replace(gen_random_uuid()::text, '-', ''),
+            job_id,
+            'leased',
+            attempt_count,
+            checkpoint_revision,
+            jsonb_build_object('workerId', ${workerId}::text)
+          FROM claimed
+        )
+        SELECT claimed.* FROM claimed
+      `
+      : await transaction`
+        WITH claimable AS (
+        SELECT job.job_id
+        FROM media_job job
+        WHERE job.state = 'pending'
+          AND job.operation = 'detect_faces'
+          AND job.config_digest = ${configDigest}
+        ORDER BY job.requested_at, job.job_id
+        FOR UPDATE OF job SKIP LOCKED
         LIMIT 1
       ), claimed AS (
         UPDATE media_job job
@@ -106,7 +146,7 @@ const claimProviderJob = async (sql, { configDigest, workerId }) =>
       )
       SELECT claimed.* FROM claimed
     `;
-    return rows[0] || null;
+    return claim[0] || null;
   });
 
 export const createLocalFaceDetectionWorker = ({
@@ -133,7 +173,15 @@ export const createLocalFaceDetectionWorker = ({
   const ledger = createMediaJobLedger(sql);
 
   return {
-    async runNext({ timeoutMs } = {}) {
+    async runNext({ expectedJobId, priorityTierMax = 2, timeoutMs } = {}) {
+      if (
+        !Number.isInteger(priorityTierMax) ||
+        priorityTierMax < 0 ||
+        priorityTierMax > 2
+      ) {
+        throw new Error("Local face detection priorityTierMax must be from 0 to 2");
+      }
+      const startedAt = performance.now();
       const [control] = await sql`
         SELECT state FROM media_operator_control WHERE control_id = 'primary'
       `;
@@ -143,8 +191,10 @@ export const createLocalFaceDetectionWorker = ({
           state: "paused",
         };
       }
+      const controlCheckedAt = performance.now();
       const claimed = await claimProviderJob(sql, {
         configDigest: manifest.detectorConfigDigest,
+        expectedJobId: String(expectedJobId || "").trim(),
         workerId: normalizedWorkerId,
       });
       if (!claimed) {
@@ -153,13 +203,15 @@ export const createLocalFaceDetectionWorker = ({
           state: "idle",
         };
       }
+      const claimedAt = performance.now();
       const job = projectClaim(claimed);
       try {
         const [projection] = await sql`
           SELECT immich_asset_id, input_revision, state
           FROM immich_asset_projection
           WHERE cimmich_asset_id = ${job.assetId}
-          ORDER BY last_seen_at DESC
+            AND input_revision = ${job.inputRevision}
+          ORDER BY (state = 'active') DESC, last_seen_at DESC, immich_asset_id
           LIMIT 1
         `;
         if (!projection || projection.state !== "active") {
@@ -178,6 +230,7 @@ export const createLocalFaceDetectionWorker = ({
             },
           );
         }
+        const projectionLoadedAt = performance.now();
         const media = await companion.readAssetImage({
           assetId: projection.immich_asset_id,
         });
@@ -189,6 +242,7 @@ export const createLocalFaceDetectionWorker = ({
             },
           );
         }
+        const mediaReadAt = performance.now();
         await ledger.checkpoint({
           jobId: job.jobId,
           payload: {
@@ -199,12 +253,14 @@ export const createLocalFaceDetectionWorker = ({
           stage: "inventory_verified",
           workerId: normalizedWorkerId,
         });
+        const inventoryCheckpointedAt = performance.now();
         const detected = await detector.detect({
           asset: media.asset,
           bytes: media.bytes,
           mimeType: media.mimeType,
           timeoutMs,
         });
+        const detectedAt = performance.now();
         const result = {
           assetId: job.assetId,
           detectorConfigDigest: manifest.detectorConfigDigest,
@@ -220,10 +276,26 @@ export const createLocalFaceDetectionWorker = ({
           result,
           workerId: normalizedWorkerId,
         });
+        const committedAt = performance.now();
+        const seconds = (left, right) =>
+          Number(((right - left) / 1000).toFixed(3));
         return {
           ...committed,
           jobId: job.jobId,
           schemaVersion: localFaceDetectionWorkerVersion,
+          timings: {
+            claimSeconds: seconds(controlCheckedAt, claimedAt),
+            commitSeconds: seconds(detectedAt, committedAt),
+            controlSeconds: seconds(startedAt, controlCheckedAt),
+            detectSeconds: seconds(inventoryCheckpointedAt, detectedAt),
+            inventoryCheckpointSeconds: seconds(
+              mediaReadAt,
+              inventoryCheckpointedAt,
+            ),
+            mediaReadSeconds: seconds(projectionLoadedAt, mediaReadAt),
+            projectionSeconds: seconds(claimedAt, projectionLoadedAt),
+            totalSeconds: seconds(startedAt, committedAt),
+          },
         };
       } catch (error) {
         const errorCode = publicErrorCode(error);

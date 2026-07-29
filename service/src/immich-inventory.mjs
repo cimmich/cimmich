@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  cimmichAssetIdForContent,
+  contentIdForFingerprint,
+  normalizeContentFingerprint,
+  sourceBindingId,
+} from "./archive-mobility.mjs";
 
 export const IMMICH_INVENTORY_SCHEMA_VERSION = "cimmich.immich-inventory.v1";
 
@@ -35,6 +41,23 @@ const digest = (value) =>
     )
     .digest("hex");
 
+const mapWithConcurrency = async (items, concurrency, project) => {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await project(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+};
+
 const requiredText = (value, label, maximum = 200) => {
   const normalized = String(value || "").trim();
   if (!normalized || normalized.length > maximum) {
@@ -57,6 +80,11 @@ const optionalInteger = (value, label) => {
     throw new Error(`Immich inventory ${label} must be a non-negative integer`);
   }
   return value;
+};
+
+const optionalDimension = (value, label) => {
+  const normalized = optionalInteger(value, label);
+  return normalized === 0 ? null : normalized;
 };
 
 const requiredTimestamp = (value, label) => {
@@ -133,8 +161,8 @@ const normalizeAsset = (value, visibility) => {
     originalFileName: optionalFilename(value.originalFileName),
     captureTime: requiredTimestamp(value.captureTime, "asset.captureTime"),
     sourceUpdatedAt: requiredTimestamp(value.updatedAt, "asset.updatedAt"),
-    width: optionalInteger(value.width, "asset.width"),
-    height: optionalInteger(value.height, "asset.height"),
+    width: optionalDimension(value.width, "asset.width"),
+    height: optionalDimension(value.height, "asset.height"),
     durationSeconds: optionalInteger(value.duration, "asset.duration"),
     isArchived: Boolean(value.isArchived),
     isFavorite: Boolean(value.isFavorite),
@@ -200,6 +228,71 @@ export const normalizeInventoryPage = ({ cursor = "", page, visibility }) => {
     }),
     visibility: normalizedVisibility,
   };
+};
+
+export const selectReusableByteFingerprints = ({ assets, rows }) => {
+  const sourceStateByAsset = new Map(
+    assets.map((asset) => [
+      asset.immichAssetId,
+      {
+        checksum: asset.checksum,
+        sourceUpdatedAt: asset.sourceUpdatedAt,
+      },
+    ]),
+  );
+  const candidates = new Map();
+  for (const row of rows) {
+    const immichAssetId = String(row.immich_asset_id || "");
+    const sourceState = sourceStateByAsset.get(immichAssetId);
+    const storedUpdatedAt =
+      row.source_updated_at == null
+        ? ""
+        : new Date(row.source_updated_at).toISOString();
+    if (
+      !sourceState ||
+      sourceState.checksum !== row.checksum ||
+      sourceState.sourceUpdatedAt !== storedUpdatedAt ||
+      row.verification !== "byte_verified"
+    ) {
+      continue;
+    }
+    const fingerprint = normalizeContentFingerprint(
+      `${row.hash_algorithm}:${row.content_digest}`,
+    );
+    const byteLength = Number(row.byte_length);
+    if (
+      !fingerprint ||
+      fingerprint.hashAlgorithm !== "sha256" ||
+      !Number.isSafeInteger(byteLength) ||
+      byteLength < 1
+    ) {
+      throw new Error("Immich inventory stored byte fingerprint is invalid");
+    }
+    const normalized = {
+      byteLength,
+      contentDigest: fingerprint.contentDigest,
+      hashAlgorithm: fingerprint.hashAlgorithm,
+      verification: "byte_verified",
+    };
+    const key = `${normalized.hashAlgorithm}:${normalized.contentDigest}:${normalized.byteLength}`;
+    const prior = candidates.get(immichAssetId);
+    if (!prior) {
+      candidates.set(immichAssetId, {
+        fingerprint: normalized,
+        keys: new Set([key]),
+      });
+    } else {
+      prior.keys.add(key);
+    }
+  }
+  return new Map(
+    [...candidates]
+      .filter(([, candidate]) => candidate.keys.size === 1)
+      .map(([immichAssetId, candidate]) => [
+        immichAssetId,
+        candidate.fingerprint,
+      ]),
+  );
 };
 
 export const projectInventoryCoverage = ({
@@ -317,9 +410,84 @@ const pauseSupersededJobs = async (sql, { assetId, inputRevision }) => {
   `;
 };
 
+const reconcileMobilityBindings = async (sql, runId) => {
+  await sql`
+    UPDATE asset_source_binding binding SET
+      state = CASE projection.state
+        WHEN 'active' THEN 'active'
+        WHEN 'suspected_missing' THEN 'offline'
+        WHEN 'missing' THEN 'missing'
+        ELSE 'superseded'
+      END,
+      last_seen_at = projection.last_seen_at
+    FROM immich_asset_projection projection, immich_inventory_run run
+    WHERE run.run_id = ${runId}
+      AND projection.source_id = run.source_id
+      AND binding.source_kind = 'immich'
+      AND binding.source_id = projection.source_id
+      AND binding.external_asset_id = projection.immich_asset_id
+  `;
+  await sql`
+    INSERT INTO asset_source_binding_event (
+      event_id, binding_id, asset_id, content_id, input_revision,
+      event_kind, producer_receipt_id
+    )
+    SELECT
+      'source_binding_event_' || substr(encode(digest(
+        binding.binding_id || E'\x1f' || binding.asset_id || E'\x1f'
+          || coalesce(binding.input_revision, '') || E'\x1f'
+          || binding.state, 'sha256'
+      ), 'hex'), 1, 40),
+      binding.binding_id, binding.asset_id, binding.content_id,
+      binding.input_revision,
+      CASE binding.state
+        WHEN 'offline' THEN 'offline'
+        WHEN 'missing' THEN 'missing'
+        WHEN 'superseded' THEN 'superseded'
+        ELSE 'observed'
+      END,
+      'receipt_cimmich_hash_linked_archive_mobility_v1'
+    FROM asset_source_binding binding
+    JOIN immich_inventory_run run ON run.run_id = ${runId}
+      AND run.source_id = binding.source_id
+    WHERE binding.source_kind = 'immich'
+    ON CONFLICT (binding_id, asset_id, input_revision, event_kind) DO NOTHING
+  `;
+  await sql`
+    UPDATE asset SET state = CASE
+      WHEN EXISTS (
+        SELECT 1 FROM asset_source_binding binding
+        WHERE binding.asset_id = asset.asset_id
+          AND binding.state = 'active'
+      ) THEN 'active'
+      WHEN EXISTS (
+        SELECT 1 FROM asset_source_binding binding
+        WHERE binding.asset_id = asset.asset_id
+          AND binding.state IN ('offline','missing')
+      ) THEN 'missing'
+      ELSE asset.state
+    END
+    WHERE asset.asset_id IN (
+      SELECT binding.asset_id
+      FROM asset_source_binding binding
+      JOIN immich_inventory_run run ON run.run_id = ${runId}
+        AND run.source_id = binding.source_id
+      WHERE binding.source_kind = 'immich'
+    )
+      AND asset.state IN ('active','missing')
+  `;
+};
+
 export const createImmichInventoryLedger = (
   sql,
-  { resolveCimmichAssetId = null } = {},
+  {
+    fingerprintConcurrency = 2,
+    readAssetFingerprint = null,
+    resolveCimmichAssetId = null,
+    reuseVerifiedFingerprints = false,
+    trustSourceChecksums = false,
+    verifySourceBytes = false,
+  } = {},
 ) => ({
   async begin({ immichVersion, principalDigest, sourceId }) {
     const [row] = await sql`
@@ -355,6 +523,7 @@ export const createImmichInventoryLedger = (
         ${requiredText(runId, "runId", 200)}
       )
     `;
+    await reconcileMobilityBindings(sql, runId);
     return projectRun(row);
   },
 
@@ -364,6 +533,7 @@ export const createImmichInventoryLedger = (
         ${requiredText(runId, "runId", 200)}
       )
     `;
+    await reconcileMobilityBindings(sql, runId);
     return projectRun(row);
   },
 
@@ -389,29 +559,115 @@ export const createImmichInventoryLedger = (
 
   async recordPage({ job, page, runId, sourceId }) {
     const normalized = normalizeInventoryPage(page);
-    const projectedAssetIds = new Map(
-      normalized.items.map((asset) => {
-        const generatedAssetId = cimmichAssetIdForImmich({
-          immichAssetId: asset.immichAssetId,
-          sourceId,
-        });
+    const supportedAssetIds = normalized.items
+      .filter((asset) => ["image", "video"].includes(asset.assetType))
+      .map((asset) => asset.immichAssetId);
+    const reusableRows =
+      reuseVerifiedFingerprints && supportedAssetIds.length > 0
+        ? await sql`
+            SELECT
+              projection.immich_asset_id, projection.checksum,
+              projection.source_updated_at,
+              fingerprint.hash_algorithm, fingerprint.content_digest,
+              fingerprint.verification, content.byte_length
+            FROM immich_asset_projection projection
+            JOIN asset_content_link link
+              ON link.asset_id = projection.cimmich_asset_id
+             AND link.state = 'active'
+            JOIN media_content content ON content.content_id = link.content_id
+            JOIN media_content_fingerprint fingerprint
+              ON fingerprint.content_id = content.content_id
+             AND fingerprint.verification = 'byte_verified'
+            WHERE projection.source_id = ${sourceId}
+              AND projection.state = 'active'
+              AND projection.immich_asset_id = ANY(${supportedAssetIds})
+          `
+        : [];
+    const reusableFingerprints = selectReusableByteFingerprints({
+      assets: normalized.items,
+      rows: reusableRows,
+    });
+    const projected = await mapWithConcurrency(
+      normalized.items,
+      fingerprintConcurrency,
+      async (asset) => {
+        const supported = ["image", "video"].includes(asset.assetType);
+        const verified =
+          supported && verifySourceBytes
+            ? reusableFingerprints.get(asset.immichAssetId) ||
+              (await readAssetFingerprint({ assetId: asset.immichAssetId }))
+            : null;
+        const verifiedFingerprint = verified
+          ? normalizeContentFingerprint(
+              `${verified.hashAlgorithm}:${verified.contentDigest}`,
+            )
+          : null;
+        if (
+          verified &&
+          (verified.verification !== "byte_verified" ||
+            verified.hashAlgorithm !== "sha256" ||
+            !verifiedFingerprint ||
+            !Number.isSafeInteger(verified.byteLength) ||
+            verified.byteLength < 1)
+        ) {
+          throw new Error(
+            "Immich inventory received an invalid byte fingerprint",
+          );
+        }
+        const sourceFingerprint =
+          supported && trustSourceChecksums
+            ? normalizeContentFingerprint(asset.checksum)
+            : null;
+        const fingerprint = verifiedFingerprint || sourceFingerprint;
+        const verification = verifiedFingerprint
+          ? "byte_verified"
+          : sourceFingerprint
+            ? "source_asserted"
+            : null;
+        const generatedAssetId = fingerprint
+          ? cimmichAssetIdForContent(fingerprint)
+          : cimmichAssetIdForImmich({
+              immichAssetId: asset.immichAssetId,
+              sourceId,
+            });
         const resolvedAssetId =
-          ["image", "video"].includes(asset.assetType) && resolveCimmichAssetId
-            ? resolveCimmichAssetId({
+          supported && fingerprint && resolveCimmichAssetId
+            ? await resolveCimmichAssetId({
+                checksum: `${fingerprint.hashAlgorithm}:${fingerprint.contentDigest}`,
                 immichAssetId: asset.immichAssetId,
                 sourceId,
               })
             : null;
-        return [
-          asset.immichAssetId,
-          resolvedAssetId == null
-            ? generatedAssetId
-            : requiredText(resolvedAssetId, "resolved Cimmich assetId", 200),
-        ];
-      }),
+        return {
+          assetId:
+            resolvedAssetId == null
+              ? generatedAssetId
+              : requiredText(resolvedAssetId, "resolved Cimmich assetId", 200),
+          contentId: fingerprint ? contentIdForFingerprint(fingerprint) : null,
+          byteLength: verifiedFingerprint ? verified.byteLength : null,
+          fingerprint,
+          generatedAssetId,
+          immichAssetId: asset.immichAssetId,
+          verification,
+        };
+      },
     );
-    if (new Set(projectedAssetIds.values()).size !== projectedAssetIds.size) {
-      throw new Error("Immich inventory asset identity is ambiguous");
+    const projectedAssetIds = new Map(
+      projected.map((item) => [item.immichAssetId, item.assetId]),
+    );
+    const projectedContent = new Map(
+      projected.map((item) => [item.immichAssetId, item]),
+    );
+    const contentByAsset = new Map();
+    for (const item of projected.filter((candidate) => candidate.fingerprint)) {
+      const contentKey = `${item.fingerprint.hashAlgorithm}:${item.fingerprint.contentDigest}`;
+      const previous = contentByAsset.get(item.assetId);
+      if (previous && previous !== contentKey) {
+        throw new Error(
+          "Immich inventory asset identity resolved conflicting content",
+        );
+      }
+      contentByAsset.set(item.assetId, contentKey);
     }
     const bridgeEntries = normalized.items.map((asset) => ({
       active: ["image", "video"].includes(asset.assetType),
@@ -517,11 +773,14 @@ export const createImmichInventoryLedger = (
         const assetId = supported
           ? projectedAssetIds.get(assetInput.immichAssetId)
           : null;
+        const content = projectedContent.get(assetInput.immichAssetId);
 
         if (
           supported &&
           existing?.cimmich_asset_id &&
-          existing.cimmich_asset_id !== assetId
+          existing.cimmich_asset_id !== assetId &&
+          existing.checksum === assetInput.checksum &&
+          content.verification !== "byte_verified"
         ) {
           throw new Error("Immich inventory asset identity changed");
         }
@@ -531,27 +790,34 @@ export const createImmichInventoryLedger = (
             WHERE asset_id = ${assetId}
             FOR UPDATE
           `;
-          const generatedAssetId = cimmichAssetIdForImmich({
-            immichAssetId: assetInput.immichAssetId,
-            sourceId,
-          });
-          if (assetId !== generatedAssetId && !resolvedAsset) {
+          if (assetId !== content.generatedAssetId && !resolvedAsset) {
             throw new Error("Resolved Cimmich inventory asset does not exist");
           }
-          const [crossedProjection] = await transaction`
-            SELECT source_id, immich_asset_id
-            FROM immich_asset_projection
-            WHERE cimmich_asset_id = ${assetId}
-              AND NOT (
-                source_id = ${sourceId}
-                AND immich_asset_id = ${assetInput.immichAssetId}
+          if (resolvedAsset && content.fingerprint) {
+            const currentFingerprints = await transaction`
+              SELECT fingerprint.hash_algorithm, fingerprint.content_digest
+              FROM asset_content_link link
+              JOIN media_content_fingerprint fingerprint
+                ON fingerprint.content_id = link.content_id
+              WHERE link.asset_id = ${assetId} AND link.state = 'active'
+            `;
+            if (
+              currentFingerprints.length > 0 &&
+              !currentFingerprints.some(
+                (fingerprint) =>
+                  fingerprint.hash_algorithm ===
+                    content.fingerprint.hashAlgorithm &&
+                  fingerprint.content_digest ===
+                    content.fingerprint.contentDigest,
               )
-            LIMIT 1
-          `;
-          if (crossedProjection) {
-            throw new Error(
-              "Resolved Cimmich inventory asset is already bound",
-            );
+            ) {
+              throw Object.assign(
+                new Error(
+                  "Resolved Cimmich inventory asset has different exact content",
+                ),
+                { code: "ARCHIVE_CONTENT_BINDING_CONFLICT" },
+              );
+            }
           }
           if (!resolvedAsset) {
             admittedAssetMappings.push({
@@ -563,7 +829,9 @@ export const createImmichInventoryLedger = (
 
         if (
           existing?.cimmich_asset_id &&
-          (!supported || existing.input_revision !== assetInput.inputRevision)
+          (!supported ||
+            existing.cimmich_asset_id !== assetId ||
+            existing.input_revision !== assetInput.inputRevision)
         ) {
           await pauseSupersededJobs(transaction, {
             assetId: existing.cimmich_asset_id,
@@ -572,13 +840,64 @@ export const createImmichInventoryLedger = (
         }
 
         if (supported) {
+          if (content.fingerprint) {
+            const [storedContent] = await transaction`
+              INSERT INTO media_content (content_id, byte_length)
+              VALUES (${content.contentId}, ${content.byteLength})
+              ON CONFLICT (content_id) DO UPDATE SET
+                byte_length = coalesce(
+                  media_content.byte_length, excluded.byte_length
+                ),
+                updated_at = now()
+              WHERE media_content.byte_length IS NULL
+                OR excluded.byte_length IS NULL
+                OR media_content.byte_length = excluded.byte_length
+              RETURNING content_id
+            `;
+            if (!storedContent) {
+              throw Object.assign(
+                new Error(
+                  "Exact content fingerprint has a conflicting byte length",
+                ),
+                { code: "ARCHIVE_CONTENT_BINDING_CONFLICT" },
+              );
+            }
+            await transaction`
+              INSERT INTO media_content_fingerprint (
+                content_id, hash_algorithm, content_digest, verification,
+                producer_receipt_id
+              ) VALUES (
+                ${content.contentId}, ${content.fingerprint.hashAlgorithm},
+                ${content.fingerprint.contentDigest}, ${content.verification},
+                ${
+                  content.verification === "byte_verified"
+                    ? "receipt_cimmich_verified_content_binding_v1"
+                    : "receipt_cimmich_hash_linked_archive_mobility_v1"
+                }
+              )
+              ON CONFLICT (hash_algorithm, content_digest) DO UPDATE SET
+                verification = CASE
+                  WHEN media_content_fingerprint.verification = 'byte_verified'
+                    THEN 'byte_verified'
+                  ELSE excluded.verification
+                END,
+                producer_receipt_id = CASE
+                  WHEN excluded.verification = 'byte_verified'
+                    THEN excluded.producer_receipt_id
+                  ELSE media_content_fingerprint.producer_receipt_id
+                END
+            `;
+          }
+          const canonicalContentHash = content.fingerprint
+            ? `${content.fingerprint.hashAlgorithm}:${content.fingerprint.contentDigest}`
+            : assetInput.checksum;
           await transaction`
             INSERT INTO asset (
               asset_id, content_hash, locator_token, media_kind, mime_type,
               width, height, duration_seconds, capture_time,
               source_snapshot_id, state, privacy_class
             ) VALUES (
-              ${assetId}, ${assetInput.checksum},
+              ${assetId}, ${canonicalContentHash},
               ${`immich:${sourceId}:${assetInput.immichAssetId}`},
               ${assetInput.assetType},
               ${assetInput.originalMimeType || "application/octet-stream"},
@@ -587,16 +906,35 @@ export const createImmichInventoryLedger = (
               ${run.snapshot_id}, 'active', 'private'
             )
             ON CONFLICT (asset_id) DO UPDATE SET
-              content_hash = excluded.content_hash,
+              content_hash = CASE
+                WHEN asset.content_hash IS NULL OR asset.content_hash = ''
+                  THEN excluded.content_hash
+                ELSE asset.content_hash
+              END,
               media_kind = excluded.media_kind,
               mime_type = excluded.mime_type,
               width = excluded.width,
               height = excluded.height,
               duration_seconds = excluded.duration_seconds,
               capture_time = excluded.capture_time,
-              source_snapshot_id = excluded.source_snapshot_id,
               state = 'active'
           `;
+          if (content.fingerprint) {
+            await transaction`
+              INSERT INTO asset_content_link (
+                asset_id, content_id, producer_receipt_id
+              ) VALUES (
+                ${assetId}, ${content.contentId},
+                ${
+                  content.verification === "byte_verified"
+                    ? "receipt_cimmich_verified_content_binding_v1"
+                    : "receipt_cimmich_hash_linked_archive_mobility_v1"
+                }
+              )
+              ON CONFLICT (asset_id, content_id) DO UPDATE SET
+                state = 'active'
+            `;
+          }
         } else if (existing?.cimmich_asset_id) {
           await transaction`
             UPDATE asset SET state = 'unsupported'
@@ -645,6 +983,48 @@ export const createImmichInventoryLedger = (
             last_seen_run_id = excluded.last_seen_run_id,
             last_seen_at = now()
         `;
+
+        if (supported) {
+          const bindingId = sourceBindingId({
+            externalAssetId: assetInput.immichAssetId,
+            sourceId,
+            sourceKind: "immich",
+          });
+          await transaction`
+            INSERT INTO asset_source_binding (
+              binding_id, asset_id, content_id, source_kind, source_id,
+              external_asset_id, locator_token, input_revision, state
+            ) VALUES (
+              ${bindingId}, ${assetId}, ${content.contentId}, 'immich',
+              ${sourceId}, ${assetInput.immichAssetId},
+              ${`immich:${sourceId}:${assetInput.immichAssetId}`},
+              ${assetInput.inputRevision}, 'active'
+            )
+            ON CONFLICT (source_kind, source_id, external_asset_id) DO UPDATE SET
+              asset_id = excluded.asset_id,
+              content_id = excluded.content_id,
+              locator_token = excluded.locator_token,
+              input_revision = excluded.input_revision,
+              state = 'active',
+              last_seen_at = now()
+          `;
+          const bindingEventId = `source_binding_event_${digest(
+            `${bindingId}\u001f${assetId}\u001f${assetInput.inputRevision}\u001fobserved`,
+          ).slice(0, 40)}`;
+          await transaction`
+            INSERT INTO asset_source_binding_event (
+              event_id, binding_id, asset_id, content_id, input_revision,
+              event_kind, producer_receipt_id
+            ) VALUES (
+              ${bindingEventId}, ${bindingId}, ${assetId},
+              ${content.contentId}, ${assetInput.inputRevision}, 'observed',
+              'receipt_cimmich_hash_linked_archive_mobility_v1'
+            )
+            ON CONFLICT (
+              binding_id, asset_id, input_revision, event_kind
+            ) DO NOTHING
+          `;
+        }
 
         if (supported && normalizedJob) {
           await transaction`
@@ -747,12 +1127,16 @@ export const createImmichInventoryLedger = (
 
 export const createImmichInventorySynchronizer = ({
   companion,
+  fingerprintConcurrency = 2,
   job,
   onProjectionCommitted = null,
   pageSize = 250,
   resolveCimmichAssetId = null,
+  reuseVerifiedFingerprints = false,
   sourceId = "immich-primary",
   sql,
+  trustSourceChecksums = false,
+  verifySourceBytes = false,
 }) => {
   if (
     !companion ||
@@ -762,6 +1146,28 @@ export const createImmichInventorySynchronizer = ({
     throw new Error("Immich inventory requires a companion adapter");
   }
   if (!sql) throw new Error("Immich inventory requires a Cimmich database");
+  if (
+    !Number.isInteger(fingerprintConcurrency) ||
+    fingerprintConcurrency < 1 ||
+    fingerprintConcurrency > 8
+  ) {
+    throw new Error(
+      "Immich inventory fingerprintConcurrency must be from 1 to 8",
+    );
+  }
+  if (
+    verifySourceBytes &&
+    typeof companion.readAssetFingerprint !== "function"
+  ) {
+    throw new Error(
+      "Immich inventory byte verification requires fingerprint reads",
+    );
+  }
+  if (reuseVerifiedFingerprints && !verifySourceBytes) {
+    throw new Error(
+      "Immich inventory fingerprint reuse requires byte verification",
+    );
+  }
   const normalizedPageSize = Number(pageSize);
   if (
     !Number.isInteger(normalizedPageSize) ||
@@ -784,7 +1190,16 @@ export const createImmichInventorySynchronizer = ({
   ) {
     throw new Error("Immich inventory asset resolver is invalid");
   }
-  const ledger = createImmichInventoryLedger(sql, { resolveCimmichAssetId });
+  const ledger = createImmichInventoryLedger(sql, {
+    fingerprintConcurrency,
+    readAssetFingerprint: verifySourceBytes
+      ? companion.readAssetFingerprint
+      : null,
+    resolveCimmichAssetId,
+    reuseVerifiedFingerprints,
+    trustSourceChecksums,
+    verifySourceBytes,
+  });
   const inventoryStatus = async ({ probeLocked = true } = {}) => {
     let lockedAccessState = "unknown";
     if (probeLocked) {
@@ -811,7 +1226,7 @@ export const createImmichInventorySynchronizer = ({
   return {
     status: () => inventoryStatus(),
 
-    async ensureCurrentJobs({ limit = 10_000 } = {}) {
+    async ensureCurrentJobs({ limit = 10_000, priorityTierMax = 2 } = {}) {
       if (!normalizedJob) return { eligibleAssets: 0, ensuredJobs: 0 };
       const normalizedLimit = Number(limit);
       if (
@@ -823,19 +1238,64 @@ export const createImmichInventorySynchronizer = ({
           "Immich inventory current-job limit must be from 1 to 10000",
         );
       }
+      const normalizedPriorityTierMax = Number(priorityTierMax);
+      if (
+        !Number.isInteger(normalizedPriorityTierMax) ||
+        normalizedPriorityTierMax < 0 ||
+        normalizedPriorityTierMax > 2
+      ) {
+        throw new Error(
+          "Immich inventory priorityTierMax must be from 0 to 2",
+        );
+      }
       return sql.begin(async (transaction) => {
         const projections = await transaction`
-          SELECT projection.cimmich_asset_id AS asset_id,
-            projection.input_revision
-          FROM immich_asset_projection projection
-          JOIN asset ON asset.asset_id = projection.cimmich_asset_id
-            AND asset.state = 'active'
-          WHERE projection.source_id = ${normalizedSourceId}
-            AND projection.state = 'active'
-            AND projection.asset_type IN ('image', 'video')
-          ORDER BY projection.cimmich_asset_id
+          WITH unique_projection AS (
+            SELECT DISTINCT ON (
+                projection.cimmich_asset_id, projection.input_revision
+              )
+              projection.cimmich_asset_id AS asset_id,
+              projection.input_revision
+            FROM immich_asset_projection projection
+            JOIN asset ON asset.asset_id = projection.cimmich_asset_id
+              AND asset.state = 'active'
+            WHERE projection.source_id = ${normalizedSourceId}
+              AND projection.state = 'active'
+              AND projection.asset_type = 'image'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM face_detection_result detection
+                WHERE detection.asset_id = projection.cimmich_asset_id
+                  AND detection.detector_config_digest =
+                    ${normalizedJob.configDigest}
+                  AND detection.input_revision = projection.input_revision
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM media_job current_job
+                WHERE current_job.asset_id = projection.cimmich_asset_id
+                  AND current_job.operation = ${normalizedJob.operation}
+                  AND current_job.config_digest = ${normalizedJob.configDigest}
+                  AND current_job.input_revision = projection.input_revision
+              )
+            ORDER BY projection.cimmich_asset_id, projection.input_revision,
+              projection.last_seen_at DESC
+          )
+          SELECT projection.asset_id, projection.input_revision,
+            triage.priority_tier,
+            triage.accepted_person_count,
+            triage.accepted_association_count,
+            triage.human_observation_count
+          FROM unique_projection projection
+          JOIN media_asset_triage triage
+            ON triage.asset_id = projection.asset_id
+          WHERE triage.priority_tier <= ${normalizedPriorityTierMax}
+          ORDER BY triage.priority_tier,
+            triage.accepted_person_count DESC,
+            triage.accepted_association_count DESC,
+            triage.human_observation_count DESC,
+            projection.asset_id, projection.input_revision
           LIMIT ${normalizedLimit}
-          FOR SHARE OF projection, asset
         `;
         for (const projection of projections) {
           await transaction`

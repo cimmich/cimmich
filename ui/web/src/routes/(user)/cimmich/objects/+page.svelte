@@ -19,8 +19,10 @@
     getPetRelatedConnectionsHref,
     getVisiblePetAliases,
     groupPetConnections,
+    petPhotoGridClass,
     sortPets,
     type PetContentView,
+    type PetPhotoSize,
     type PetSortMode,
   } from '$lib/components/cimmich/pet-presentation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
@@ -61,6 +63,7 @@
     mdiFileDocumentOutline,
     mdiImageMultipleOutline,
     mdiImageEditOutline,
+    mdiImageOffOutline,
     mdiImagePlusOutline,
     mdiLinkOff,
     mdiMagnify,
@@ -76,6 +79,7 @@
     mdiSortNumericDescending,
     mdiSortVariant,
     mdiUndoVariant,
+    mdiViewGridOutline,
   } from '@mdi/js';
   import {
     ContextMenuButton,
@@ -172,7 +176,24 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let showMediaPicker = $state(false);
-  let showUnknownPets = $state(false);
+  type PetViewMode = 'pets' | 'unknown';
+  const petViewModes: Array<{ id: PetViewMode; label: string }> = [
+    { id: 'pets', label: 'Pets' },
+    { id: 'unknown', label: 'Unknown' },
+  ];
+  // Unknown is a sibling view, never a panel stacked above the collection —
+  // an unbounded review queue must not displace the owner's own Pets.
+  let petViewMode = $state<PetViewMode>('pets');
+  let petThumbnailSize = $state<'large' | 'medium' | 'small'>('medium');
+  let petPhotoSize = $state<PetPhotoSize>('medium');
+  // A failed thumbnail must not fall back to the browser's alt-text rendering:
+  // the raw source filename then overflows the frame and collides with the badge.
+  let unreadableObservations = $state(new Set<string>());
+  const markObservationUnreadable = (observationId: string) => {
+    if (!unreadableObservations.has(observationId)) {
+      unreadableObservations = new Set(unreadableObservations).add(observationId);
+    }
+  };
   let sortMode = $state<PetSortMode>('name-asc');
   let undoReceipt = $state<UndoReceipt>(null);
   let undoCommand = $state<RetryCommand>(null);
@@ -186,7 +207,12 @@
   let updateSpeciesLabel = $state('');
   const relatedPetIds = $derived(new Set((page.url.searchParams.get('relatedIds') ?? '').split(',').filter(Boolean)));
   const relatedFrom = $derived(page.url.searchParams.get('relatedFrom') ?? '');
-  const requestedPetId = $derived(page.url.searchParams.get('entityId'));
+  // The named /cimmich/pets/[petName] route is canonical; ?entityId= remains
+  // supported so links shared before the route existed still resolve.
+  const requestedPetName = $derived((page.data as { petName?: string }).petName ?? '');
+  const requestedPetId = $derived(
+    page.url.searchParams.get('petId') || page.url.searchParams.get('entityId') || (requestedPetName ? '' : null),
+  );
   const requestedPetContent = $derived(getPetContentView(page.url));
   let activePetContent = $derived<PetContentView>(requestedPetContent);
   const connectionGroups = $derived(selectedPet ? groupPetConnections(selectedPet.connections) : []);
@@ -392,12 +418,17 @@
     return `${image}; background-size: ${100 / crop.w}% ${100 / crop.h}%; background-position: ${positionX}% ${positionY}%`;
   };
 
-  const petVisualStyle = (pet: CimmichPet) => {
+  // frameAspect must match the frame this style is painted into: 1 for the
+  // circular portraits, 12/5 for the hero banner. A mismatched aspect scales the
+  // background axes unequally and distorts the animal.
+  const petVisualStyle = (pet: CimmichPet, frameAspect = 1) => {
     if (pet.cover?.sourceAssetId) {
       return petCoverStyle(pet);
     }
     const preview = petPreviewMedia[pet.petId];
-    return preview?.sourceAssetId ? mediaBackgroundStyle(preview.sourceAssetId, getPetMediaFocusCrop(preview)) : '';
+    return preview?.sourceAssetId
+      ? mediaBackgroundStyle(preview.sourceAssetId, getPetMediaFocusCrop(preview, frameAspect))
+      : '';
   };
 
   const petPresentationImageUrl = (media: CimmichPersonPresentationMedia | null | undefined) =>
@@ -608,7 +639,7 @@
     petPreviewMedia = next;
   };
 
-  const loadPets = async (selectedPetId: string | null) => {
+  const loadPets = async (selectedPetId: string | null, selectedPetName = '') => {
     const generation = ++petsLoadGeneration;
     loaded = false;
     error = null;
@@ -621,7 +652,11 @@
       }
       pets = nextPets;
       void loadPetPreviews(nextPets, generation);
-      const nextSelectedPet = nextPets.find((pet) => pet.petId === selectedPetId) || null;
+      const name = selectedPetName.trim().toLocaleLowerCase();
+      const nextSelectedPet =
+        (selectedPetId ? nextPets.find((pet) => pet.petId === selectedPetId) : undefined) ||
+        (name ? nextPets.find((pet) => pet.displayName.trim().toLocaleLowerCase() === name) : undefined) ||
+        null;
       selectedPet = nextSelectedPet;
       return nextSelectedPet;
     } catch (error_) {
@@ -695,9 +730,6 @@
     try {
       const result = await getCimmichPetMatchUnknown(200);
       petUnknown = result.items;
-      if (result.items.length > 0) {
-        showUnknownPets = true;
-      }
     } catch (error_) {
       petUnknownError = asServiceError(error_);
     } finally {
@@ -778,7 +810,7 @@
     archiveCommand = null;
     mediaCommand = null;
     undoCommand = null;
-    const href = getPetDetailHref(page.url, pet.petId);
+    const href = getPetDetailHref(page.url, pet.petId, pet.displayName);
     if (`${page.url.pathname}${page.url.search}` === href) {
       void loadMedia(pet);
       void loadPetMatches(pet);
@@ -1253,6 +1285,7 @@
   $effect(() => {
     const visibilityVersion = cimmichVisibilityManager.version;
     const petId = requestedPetId;
+    const petName = requestedPetName;
     if (visibilityVersion >= 0) {
       untrack(() => {
         mediaLoadGeneration += 1;
@@ -1265,10 +1298,10 @@
         if (showMediaPicker) {
           void loadLibraryAssets();
         }
-        if (!petId) {
+        if (!petId && !petName) {
           selectedPet = null;
         }
-        void loadPets(petId).then((pet) => {
+        void loadPets(petId, petName).then((pet) => {
           if (pet) {
             void loadMedia(pet);
             void loadPetMatches(pet);
@@ -1288,12 +1321,39 @@
         icon={mdiPawOutline}
         title="Pets"
         meta={loaded
-          ? `${pets.length.toLocaleString()} active ${pets.length === 1 ? 'pet' : 'pets'}`
+          ? `${pets.length.toLocaleString()} ${pets.length === 1 ? 'pet' : 'pets'}`
           : 'Loading current projection'}
       >
         {#snippet actions()}
+          <div
+            class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
+            role="toolbar"
+            aria-label="Pet views and categories"
+          >
+            {#each petViewModes as mode (mode.id)}
+              <button
+                class={[
+                  'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
+                  petViewMode === mode.id
+                    ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                    : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+                ]}
+                type="button"
+                aria-pressed={petViewMode === mode.id}
+                onclick={() => (petViewMode = mode.id)}
+              >
+                {mode.label}
+                <span class="text-xs opacity-65">
+                  {mode.id === 'pets' ? pets.length : petUnknownLoaded ? petUnknown.length : ''}
+                </span>
+              </button>
+              {#if mode.id === 'pets'}
+                <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+              {/if}
+            {/each}
+          </div>
           <label
-            class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-72 lg:w-80 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+            class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
           >
             <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
             <input
@@ -1303,30 +1363,38 @@
               type="search"
             />
           </label>
-          <Tooltip text={`Sort pets — ${sortLabel}`}>
-            {#snippet child({ props })}
-              <ContextMenuButton
-                {...props}
-                class="size-11 border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-                icon={mdiSortVariant}
-                items={sortActions}
-                position="top-right"
-                aria-label={`Sort pets. Current: ${sortLabel}`}
-              />
-            {/snippet}
-          </Tooltip>
-          <button
-            class="inline-flex h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-semibold hover:border-primary hover:text-primary dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-            class:border-primary={showUnknownPets}
-            class:text-primary={showUnknownPets}
-            type="button"
-            onclick={() => (showUnknownPets = !showUnknownPets)}
+          <div
+            class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+            aria-label="Pet view options"
           >
-            Unknown
-            {#if petUnknownLoaded}
-              <span class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{petUnknown.length}</span>
-            {/if}
-          </button>
+            <Tooltip text={`Sort pets — ${sortLabel}`}>
+              {#snippet child({ props })}
+                <ContextMenuButton
+                  {...props}
+                  class="size-10"
+                  icon={mdiSortVariant}
+                  items={sortActions}
+                  position="top-right"
+                  aria-label={`Sort pets. Current: ${sortLabel}`}
+                />
+              {/snippet}
+            </Tooltip>
+            <label
+              class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-immich-dark-gray dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+              title="Thumbnail size"
+            >
+              <Icon icon={mdiViewGridOutline} size="19" />
+              <select
+                class="absolute inset-0 size-full cursor-pointer opacity-0"
+                bind:value={petThumbnailSize}
+                aria-label="Thumbnail size"
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+          </div>
           <button
             class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
             type="button"
@@ -1386,10 +1454,10 @@
                   alt=""
                 />
               </span>
-            {:else if petVisualStyle(selectedPet)}
+            {:else if petVisualStyle(selectedPet, 12 / 5)}
               <span
                 class="absolute inset-0 block bg-cover bg-center"
-                style={petVisualStyle(selectedPet)}
+                style={petVisualStyle(selectedPet, 12 / 5)}
                 aria-hidden="true"
               ></span>
             {:else}
@@ -1462,40 +1530,6 @@
                   </h1>
                 </div>
 
-                {#if getVisiblePetAliases(selectedPet).length > 0}
-                  <p class="mt-2 truncate text-sm text-white/65">
-                    Also known as {getVisiblePetAliases(selectedPet).join(', ')}
-                  </p>
-                {/if}
-
-                <div class="mt-4 flex flex-wrap items-center gap-2 text-sm text-white">
-                  <span
-                    class="inline-flex min-h-9 items-center rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
-                    role="img"
-                    aria-label={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
-                    title={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
-                  >
-                    <Icon
-                      icon={selectedPet.speciesKind ? getPetPresentation(selectedPet).icon : mdiPawOutline}
-                      size="20"
-                    />
-                  </span>
-                  {#if selectedPet.breedLabel}
-                    <span
-                      class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
-                    >
-                      <span class="font-medium text-white/55">Breed</span>
-                      {selectedPet.breedLabel}
-                    </span>
-                  {/if}
-                  <span
-                    class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
-                  >
-                    <span class="font-medium text-white/55">Photo history</span>
-                    {photoTimeframe || 'Date unavailable'}
-                  </span>
-                </div>
-
                 {#if isEditingAbout}
                   <form
                     class="mt-4 max-w-3xl rounded-2xl border border-white/15 bg-black/35 p-3 backdrop-blur-md"
@@ -1541,6 +1575,42 @@
                     onclick={beginAboutEdit}><Icon icon={mdiPlus} size="16" /> Add about</button
                   >
                 {/if}
+
+                <div class="mt-4 flex flex-wrap items-center gap-2 text-sm text-white">
+                  <span
+                    class="inline-flex min-h-9 items-center rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                    role="img"
+                    aria-label={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
+                    title={selectedPet.speciesKind ? getPetPresentation(selectedPet).label : 'Species not set'}
+                  >
+                    <Icon
+                      icon={selectedPet.speciesKind ? getPetPresentation(selectedPet).icon : mdiPawOutline}
+                      size="20"
+                    />
+                  </span>
+                  {#if selectedPet.breedLabel}
+                    <span
+                      class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                    >
+                      <span class="font-medium text-white/55">Breed</span>
+                      {selectedPet.breedLabel}
+                    </span>
+                  {/if}
+                  {#if getVisiblePetAliases(selectedPet).length > 0}
+                    <span
+                      class="inline-flex min-h-9 max-w-full items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                    >
+                      <span class="font-medium text-white/55">Also known as</span>
+                      <span class="truncate">{getVisiblePetAliases(selectedPet).join(', ')}</span>
+                    </span>
+                  {/if}
+                  <span
+                    class="inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-black/30 px-3 font-semibold backdrop-blur-md"
+                  >
+                    <span class="font-medium text-white/55">Photo history</span>
+                    {photoTimeframe || 'Date unavailable'}
+                  </span>
+                </div>
               </div>
             </div>
           </section>
@@ -1667,6 +1737,21 @@
               <div
                 class="flex shrink-0 items-center border-l border-gray-200 bg-white pl-2 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
               >
+                <label
+                  class="relative mr-2 inline-flex size-10 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  title="Photo size"
+                >
+                  <Icon icon={mdiViewGridOutline} size="19" />
+                  <select
+                    class="absolute inset-0 size-full cursor-pointer opacity-0"
+                    bind:value={petPhotoSize}
+                    aria-label="Photo size"
+                  >
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                  </select>
+                </label>
                 <Tooltip text={$t('add_photos')}>
                   {#snippet child({ props })}
                     <button
@@ -1727,55 +1812,51 @@
                   {/snippet}
                 </CimmichStatePanel>
               {:else}
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div class={petPhotoGridClass(petPhotoSize)}>
                   {#each petMedia as item (item.asset_id)}
                     <article
-                      class="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                      class="group relative aspect-square overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-800"
                     >
-                      <div class="relative aspect-4/3 overflow-hidden bg-gray-100 dark:bg-immich-dark-gray">
-                        <a
-                          class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-                          href={Route.viewCimmichPetAsset({
-                            id: item.sourceAssetId,
-                            petId: selectedPet.petId,
-                            petName: selectedPet.displayName,
-                          })}
-                          aria-label={`Open ${formatCaptureDate(item.capture_time)} photo of ${selectedPet.displayName}`}
-                        >
-                          <img
-                            class="size-full object-cover transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none motion-reduce:transition-none"
-                            src={getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview })}
-                            alt={item.filename || `${selectedPet.displayName} media`}
-                            loading="lazy"
-                          />
-                        </a>
-                        {#if petPresentation?.face?.assetId === item.asset_id || petPresentation?.hero?.assetId === item.asset_id}
-                          <span
-                            class="absolute top-2 left-2 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm"
-                            >{petPresentation?.face?.assetId === item.asset_id &&
-                            petPresentation?.hero?.assetId === item.asset_id
-                              ? 'Profile + Hero'
-                              : petPresentation?.face?.assetId === item.asset_id
-                                ? 'Profile'
-                                : 'Hero'}</span
-                          >
-                        {/if}
-                        <ContextMenuButton
-                          class="absolute top-2 right-2 size-11 bg-black/60 text-white shadow-sm backdrop-blur-sm hover:bg-black/80"
-                          items={getMediaActions(item)}
-                          position="top-right"
-                          aria-label={`Photo actions for ${formatCaptureDate(item.capture_time)}`}
-                          disabled={isMutating}
+                      <a
+                        class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                        href={Route.viewCimmichPetAsset({
+                          id: item.sourceAssetId,
+                          petId: selectedPet.petId,
+                          petName: selectedPet.displayName,
+                        })}
+                        aria-label={`Open ${formatCaptureDate(item.capture_time)} photo of ${selectedPet.displayName}`}
+                        title={item.filename || undefined}
+                      >
+                        <img
+                          class="size-full object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"
+                          src={getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Thumbnail })}
+                          alt={item.filename || `${selectedPet.displayName} media`}
+                          loading="lazy"
                         />
-                      </div>
-                      <div class="p-3">
-                        <p class="text-sm font-semibold">{formatCaptureDate(item.capture_time)}</p>
-                        <p
-                          class="mt-1 truncate text-xs text-gray-400 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 dark:text-gray-500"
+                        <span
+                          class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/75 to-transparent px-3 pt-10 pb-2 text-xs font-medium text-white opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
                         >
-                          {item.filename || item.asset_id}
-                        </p>
-                      </div>
+                          <span class="line-clamp-1">{formatCaptureDate(item.capture_time)}</span>
+                        </span>
+                      </a>
+                      {#if petPresentation?.face?.assetId === item.asset_id || petPresentation?.hero?.assetId === item.asset_id}
+                        <span
+                          class="pointer-events-none absolute top-2 left-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm"
+                          >{petPresentation?.face?.assetId === item.asset_id &&
+                          petPresentation?.hero?.assetId === item.asset_id
+                            ? 'Profile + Hero'
+                            : petPresentation?.face?.assetId === item.asset_id
+                              ? 'Profile'
+                              : 'Hero'}</span
+                        >
+                      {/if}
+                      <ContextMenuButton
+                        class="absolute top-1 right-1 size-9 bg-black/60 text-white opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-black/80"
+                        items={getMediaActions(item)}
+                        position="top-right"
+                        aria-label={`Photo actions for ${formatCaptureDate(item.capture_time)}`}
+                        disabled={isMutating}
+                      />
                     </article>
                   {/each}
                 </div>
@@ -2290,7 +2371,7 @@
         </div>
       </section>
     {:else}
-      {#if showUnknownPets}
+      {#if petViewMode === 'unknown'}
         <section
           class="grid gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4 sm:p-5 dark:border-immich-dark-gray dark:bg-immich-dark-bg/50"
           aria-labelledby="unknown-pets-heading"
@@ -2338,33 +2419,45 @@
             <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {#each petUnknown as observation (observation.observationId)}
                 <article
-                  class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                  class="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
                 >
                   <a
                     class="group relative block aspect-4/3 overflow-hidden bg-gray-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary dark:bg-immich-dark-gray"
                     href={`/photos/${observation.sourceAssetId}`}
                     aria-label={`Open ${observation.filename || 'unknown Pet photo'}`}
                   >
-                    <img
-                      class="size-full object-contain transition-transform duration-300 group-hover:scale-[1.015] motion-reduce:transition-none"
-                      src={getAssetMediaUrl({ id: observation.sourceAssetId, size: AssetMediaSize.Preview })}
-                      alt={observation.filename || 'Unknown Pet candidate'}
-                      loading="lazy"
-                    />
-                    <span
-                      class="pointer-events-none absolute rounded-lg border-2 border-dashed border-white/90 bg-primary/5 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-                      style={`left:${observation.box.x * 100}%;top:${observation.box.y * 100}%;width:${observation.box.w * 100}%;height:${observation.box.h * 100}%`}
-                      aria-hidden="true"
-                    ></span>
+                    {#if unreadableObservations.has(observation.observationId)}
+                      <span
+                        class="flex size-full flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-500"
+                      >
+                        <Icon icon={mdiImageOffOutline} size="28" />
+                        <span class="px-4 text-center text-xs">Preview unavailable</span>
+                      </span>
+                    {:else}
+                      <img
+                        class="size-full object-contain transition-transform duration-300 group-hover:scale-[1.015] motion-reduce:transition-none"
+                        src={getAssetMediaUrl({ id: observation.sourceAssetId, size: AssetMediaSize.Preview })}
+                        alt=""
+                        loading="lazy"
+                        onerror={() => markObservationUnreadable(observation.observationId)}
+                      />
+                      <span
+                        class="pointer-events-none absolute rounded-lg border-2 border-dashed border-white/90 bg-primary/5 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+                        style={`left:${observation.box.x * 100}%;top:${observation.box.y * 100}%;width:${observation.box.w * 100}%;height:${observation.box.h * 100}%`}
+                        aria-hidden="true"
+                      ></span>
+                    {/if}
                     <span
                       class="absolute top-3 left-3 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white capitalize backdrop-blur-sm"
                     >
                       Possible {observation.speciesKind.replace('_', ' ')}
                     </span>
                   </a>
-                  <div class="grid gap-3 p-4">
-                    <div>
-                      <p class="truncate font-semibold">{observation.filename || 'Photo'}</p>
+                  <div class="grid min-w-0 gap-3 p-4">
+                    <div class="min-w-0">
+                      <p class="truncate font-semibold" title={observation.filename || 'Photo'}>
+                        {observation.filename || 'Photo'}
+                      </p>
                       <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                         No identity cleared the matching threshold
                       </p>
@@ -2395,9 +2488,7 @@
             </div>
           {/if}
         </section>
-      {/if}
-
-      {#if !loaded}
+      {:else if !loaded}
         <CimmichStatePanel
           tone="loading"
           title="Loading Pets"
@@ -2421,54 +2512,73 @@
           {/snippet}
         </CimmichStatePanel>
       {:else}
-        <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="cimmich-pets">
+        <section
+          class={[
+            'grid',
+            petThumbnailSize === 'small'
+              ? 'grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 xl:grid-cols-10'
+              : petThumbnailSize === 'large'
+                ? 'grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                : 'grid-cols-3 gap-x-5 gap-y-8 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7',
+          ]}
+          data-testid="cimmich-pets"
+        >
           {#each visiblePets as pet (pet.petId)}
-            <button
-              class="group overflow-hidden rounded-xl border border-gray-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+            <a
+              class="group flex min-w-0 flex-col items-center gap-3 text-center"
               data-testid="cimmich-pet-card"
-              type="button"
-              onclick={() => openPet(pet)}
+              href={Route.cimmichPet({ name: pet.displayName, petId: pet.petId })}
             >
-              <span class="relative block aspect-4/3 overflow-hidden bg-gray-100 dark:bg-immich-dark-gray">
-                {#if petVisualStyle(pet)}
-                  <span
-                    class="block size-full bg-cover bg-center transition-transform duration-300 group-hover:scale-[1.025] motion-reduce:transform-none motion-reduce:transition-none"
-                    style={petVisualStyle(pet)}
-                  ></span>
-                {:else}
-                  <span class="flex size-full items-center justify-center text-gray-400">
-                    <Icon icon={mdiPawOutline} size="48" />
+              <span
+                class={[
+                  'relative block w-full rounded-full',
+                  petThumbnailSize === 'small'
+                    ? 'max-w-24'
+                    : petThumbnailSize === 'large'
+                      ? 'max-w-48'
+                      : 'max-w-36',
+                ]}
+              >
+                <span
+                  class="relative block aspect-square w-full rounded-full shadow-sm transition-transform duration-500 group-hover:scale-[1.02] motion-reduce:transition-none"
+                >
+                  <span class="absolute inset-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                    {#if petVisualStyle(pet)}
+                      <span class="block size-full bg-cover bg-center" style={petVisualStyle(pet)}></span>
+                    {:else}
+                      <span
+                        class="flex size-full items-center justify-center text-gray-500 dark:bg-immich-dark-gray dark:text-gray-300"
+                        aria-label={`${pet.displayName} portrait unavailable in this viewing mode`}
+                      >
+                        <Icon icon={getPetPresentation(pet).icon} size="32" />
+                      </span>
+                    {/if}
                   </span>
-                {/if}
-                <span
-                  class="absolute top-3 left-3 flex size-9 items-center justify-center rounded-full bg-black/60 text-white shadow-sm backdrop-blur-sm"
-                  role="img"
-                  aria-label={getPetPresentation(pet).label}
-                  title={getPetPresentation(pet).label}
-                >
-                  <Icon icon={getPetPresentation(pet).icon} size="19" />
+                  {#if petVisualStyle(pet)}
+                    <span
+                      class="absolute right-1 bottom-1 z-10 flex size-8 items-center justify-center rounded-full border-2 border-white bg-gray-800 text-white shadow-sm dark:border-gray-950"
+                      role="img"
+                      aria-label={getPetPresentation(pet).label}
+                      title={getPetPresentation(pet).label}
+                    >
+                      <Icon icon={getPetPresentation(pet).icon} size="16" />
+                    </span>
+                  {/if}
                 </span>
-                <span
-                  class="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white shadow-sm backdrop-blur-sm"
-                  aria-label={`${pet.confirmedMediaCount} media`}
-                >
-                  <Icon icon={mdiImageMultipleOutline} size="14" />
+              </span>
+              <span class="w-full truncate text-sm font-medium">{pet.displayName}</span>
+              {#if pet.breedLabel}
+                <span class="-mt-2 w-full truncate text-xs text-gray-500 dark:text-gray-400">{pet.breedLabel}</span>
+              {/if}
+              <span class="w-full truncate text-xs text-gray-500 dark:text-gray-400">
+                {#if pet.confirmedMediaCount === 0}
+                  No photos yet
+                {:else}
                   {pet.confirmedMediaCount.toLocaleString()}
-                </span>
-              </span>
-              <span class="block p-4">
-                <span class="block truncate text-lg font-semibold">{pet.displayName}</span>
-                {#if pet.description}
-                  <span class="mt-3 line-clamp-2 block text-sm/5 text-gray-600 dark:text-gray-300"
-                    >{pet.description}</span
-                  >
-                {:else if getVisiblePetAliases(pet).length > 0}
-                  <span class="mt-3 block truncate text-sm text-gray-500"
-                    >Also known as {getVisiblePetAliases(pet).join(', ')}</span
-                  >
+                  {pet.confirmedMediaCount === 1 ? 'photo' : 'photos'}
                 {/if}
               </span>
-            </button>
+            </a>
           {/each}
         </section>
       {/if}

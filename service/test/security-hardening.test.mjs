@@ -113,6 +113,11 @@ test("backup restore validates hostile input before replacing owner state", asyn
       restore.indexOf("compose stop"),
   );
   assert.match(companion, /preflight_backup_database/);
+  assert.match(
+    companion,
+    /docker rm -fv "\$preflight_database"/,
+    "restore preflight must remove the anonymous PostgreSQL data volume",
+  );
   assert.match(companion, /createGunzip/);
   assert.match(companion, /parts\.includes\("\.\."\)/);
   assert.match(

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
   createInsightFaceUserSuppliedRecognizer,
+  insightFaceUserSuppliedDetectorVersion,
   insightFaceUserSuppliedRecognizerVersion,
 } from "./insightface-user-supplied-recognizer.mjs";
 import { createMediaPipelineManifest } from "./media-pipeline-contract.mjs";
@@ -215,6 +216,9 @@ export const loadLocalMediaProviderRuntime = async ({
       manifest: recognitionManifest,
       manifestPath: paths.manifest,
       pythonPath: paths.python,
+      residentProcess:
+        String(env.CIMMICH_INSIGHTFACE_RESIDENT_PROCESS || "true").trim() !==
+        "false",
       recognizerModelPath: paths.recognitionModel,
       scriptPath: paths.recognitionScript,
       timeoutMs: boundedInteger(
@@ -225,11 +229,26 @@ export const loadLocalMediaProviderRuntime = async ({
         120_000,
       ),
     });
+    const detectorManifest = recognizer.detectorManifest;
+    const pipelineManifest = createMediaPipelineManifest({
+      detectorManifest,
+      name: "insightface-user-supplied-local-face-intelligence",
+      recognitionManifest,
+      recognitionToolVersion: insightFaceUserSuppliedRecognizerVersion,
+      version: "1",
+    });
     const providerReceiptCore = {
       activationAuthority: "none",
-      detection: "upstream-inventory",
+      detection: "resident-scrfd-full-image",
+      detectorConfigDigest: detectorManifest.detectorConfigDigest,
+      execution:
+        String(env.CIMMICH_INSIGHTFACE_RESIDENT_PROCESS || "true").trim() ===
+        "false"
+          ? "one-shot-process"
+          : "resident-process",
       externalUpload: "none",
       network: "forbidden",
+      pipelineConfigDigest: pipelineManifest.pipelineConfigDigest,
       providerId,
       pythonVersion: String(probe.pythonVersion),
       recognitionConfigDigest:
@@ -243,9 +262,22 @@ export const loadLocalMediaProviderRuntime = async ({
       vectorSpaceId: recognitionManifest.vectorSpaceId,
     };
     return {
-      detectionEnabled: false,
+      detectionEnabled: true,
+      detector: recognizer,
+      detectorManifest,
       enabled: true,
-      inventoryJob: null,
+      inventoryJob: {
+        configDigest: detectorManifest.detectorConfigDigest,
+        maxAttempts: boundedInteger(
+          env.CIMMICH_MEDIA_JOB_MAX_ATTEMPTS,
+          "job max attempts",
+          1,
+          25,
+          3,
+        ),
+        operation: "detect_faces",
+        toolVersion: insightFaceUserSuppliedDetectorVersion,
+      },
       matchingProvider: Object.freeze({
         configDigest: recognitionManifest.recognitionSpaceConfigDigest,
         modelFamily: recognitionManifest.recognitionSpace.modelFamily,
@@ -263,6 +295,7 @@ export const loadLocalMediaProviderRuntime = async ({
       recognitionEnabled: true,
       recognitionManifest,
       recognizer,
+      pipelineManifest,
     };
   }
 

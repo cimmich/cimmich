@@ -62,11 +62,31 @@ validate_port() {
     fail "$label must be from 1 to 65535"
 }
 
+validate_source_id() {
+  value=$1
+  case "$value" in
+    ''|*[!A-Za-z0-9._:-]*) fail "Immich source ID must use only letters, numbers, dot, underscore, colon or hyphen" ;;
+  esac
+  test "${#value}" -le 128 || fail "Immich source ID must be 128 characters or fewer"
+}
+
 configured_value() {
   key=$1
   count=$(grep -c "^${key}=" "$ENV_FILE" || true)
   test "$count" -eq 1 || fail "runtime configuration has an invalid $key entry"
   sed -n "s/^${key}=//p" "$ENV_FILE"
+}
+
+configured_value_or() {
+  key=$1
+  fallback=$2
+  count=$(grep -c "^${key}=" "$ENV_FILE" || true)
+  test "$count" -le 1 || fail "runtime configuration has an invalid $key entry"
+  if test "$count" -eq 1; then
+    sed -n "s/^${key}=//p" "$ENV_FILE"
+  else
+    printf '%s\n' "$fallback"
+  fi
 }
 
 require_configured() {
@@ -86,9 +106,22 @@ configure() {
   validate_origin "$origin"
   api_port=${CIMMICH_COMPANION_API_PORT:-3411}
   ui_port=${CIMMICH_COMPANION_UI_PORT:-3413}
+  ui_bind_address=${CIMMICH_COMPANION_UI_BIND_ADDRESS:-127.0.0.1}
+  source_id=${CIMMICH_IMMICH_SOURCE_ID:-immich-primary}
   private_lock_mode=${CIMMICH_COMPANION_PRIVATE_LOCK_MODE:-none}
   validate_port "$api_port" "Cimmich API port"
   validate_port "$ui_port" "Cimmich UI port"
+  printf '%s\n' "$ui_bind_address" | awk -F. '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i += 1) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) exit 1
+      }
+    }
+  ' || fail "Cimmich UI bind address must be an IPv4 address"
+  test "$ui_bind_address" != "0.0.0.0" ||
+    fail "Cimmich UI bind address must name one trusted interface"
+  validate_source_id "$source_id"
   case "$private_lock_mode" in
     none|password) ;;
     *) fail "private lock mode must be none or password" ;;
@@ -115,6 +148,8 @@ configure() {
     printf 'CIMMICH_COMPANION_PROJECT=%s\n' "$PROJECT"
     printf 'CIMMICH_COMPANION_API_PORT=%s\n' "$api_port"
     printf 'CIMMICH_COMPANION_UI_PORT=%s\n' "$ui_port"
+    printf 'CIMMICH_COMPANION_UI_BIND_ADDRESS=%s\n' "$ui_bind_address"
+    printf 'CIMMICH_IMMICH_SOURCE_ID=%s\n' "$source_id"
     printf 'CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=%s\n' "$private_lock_mode"
     printf 'CIMMICH_DB_PASSWORD=%s\n' "$database_password"
     printf 'CIMMICH_IMMICH_API_KEY=%s\n' "$api_key"
@@ -167,12 +202,13 @@ status() {
   require_configured
   api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
   ui_port=$(configured_value CIMMICH_COMPANION_UI_PORT)
+  ui_bind_address=$(configured_value_or CIMMICH_COMPANION_UI_BIND_ADDRESS 127.0.0.1)
   validate_port "$api_port" "Configured Cimmich API port"
   validate_port "$ui_port" "Configured Cimmich UI port"
   health=$(curl --fail --silent --show-error "http://127.0.0.1:${api_port}/health")
   companion=$(curl --fail --silent --show-error "http://127.0.0.1:${api_port}/v1/companion/status")
-  printf '{"companion":%s,"health":%s,"project":"%s","ui":"http://127.0.0.1:%s"}\n' \
-    "$companion" "$health" "$PROJECT" "$ui_port"
+  printf '{"companion":%s,"health":%s,"project":"%s","ui":"http://%s:%s"}\n' \
+    "$companion" "$health" "$PROJECT" "$ui_bind_address" "$ui_port"
 }
 
 sync_inventory() {
@@ -182,7 +218,9 @@ sync_inventory() {
     ''|*[!0-9]*) test -z "$max_pages" || fail "max pages must be a positive integer" ;;
     0) fail "max pages must be a positive integer" ;;
   esac
-  args="--action=sync --source-id=immich-primary --operation=detect_and_recognize --tool-version=inventory-only-v1 --config-digest=$ZERO_DIGEST"
+  source_id=$(configured_value CIMMICH_IMMICH_SOURCE_ID)
+  validate_source_id "$source_id"
+  args="--action=sync --source-id=$source_id --operation=detect_and_recognize --tool-version=inventory-only-v1 --config-digest=$ZERO_DIGEST"
   if test -n "$max_pages"; then
     args="$args --max-pages=$max_pages"
   fi
@@ -440,7 +478,7 @@ preflight_backup_database() (
   preflight_database="$preflight_id-database"
   preflight_password=$(openssl rand -hex 32)
   preflight_cleanup() {
-    docker rm -f "$preflight_database" >/dev/null 2>&1 || true
+    docker rm -fv "$preflight_database" >/dev/null 2>&1 || true
     docker network rm "$preflight_network" >/dev/null 2>&1 || true
   }
   trap preflight_cleanup EXIT INT TERM
@@ -532,6 +570,45 @@ validate_backup() {
   preflight_backup_database "$backup_path"
 }
 
+validate_portable_export() {
+  backup_path=$1
+  validate_backup_path "$backup_path"
+  test -d "$backup_path" || fail "portable export directory does not exist"
+  for filename in cimmich.dump documents.tgz manifest.json SHA256SUMS; do
+    test -s "$backup_path/$filename" || fail "portable export is incomplete: $filename"
+  done
+  checksum_names=$(awk 'NF == 2 && $1 ~ /^[0-9a-f]{64}$/ && $2 !~ /\// { print $2 }' \
+    "$backup_path/SHA256SUMS" | sort | tr '\n' ':')
+  test "$checksum_names" = "cimmich.dump:documents.tgz:manifest.json:" ||
+    fail "portable export checksum manifest is invalid"
+  test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" -eq 3 ||
+    fail "portable export checksum manifest is invalid"
+  (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) ||
+    fail "portable export checksum verification failed"
+  manifest_fields=$(docker run --rm -v "$backup_path:/portable:ro" "$NODE_IMAGE" node -e '
+    const fs = require("node:fs");
+    const value = JSON.parse(fs.readFileSync("/portable/manifest.json", "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(2);
+    if (Object.keys(value).sort().join(",") !== "excludes,format,health,project,semanticCounts") process.exit(2);
+    if (value.format !== "cimmich.portable-export.v1") process.exit(2);
+    if (JSON.stringify(value.excludes) !== JSON.stringify(["credentials","media","provider-artifacts"])) process.exit(2);
+    const schema = value.health?.schemaVersion;
+    if (!Number.isSafeInteger(schema) || schema < 1) process.exit(2);
+    if (typeof value.project !== "string" || !/^[a-z0-9_-]+$/.test(value.project)) process.exit(2);
+    if (typeof value.semanticCounts !== "string" || !/^\d+(?::\d+){5}$/.test(value.semanticCounts)) process.exit(2);
+    process.stdout.write(`${value.project}|${schema}|${value.semanticCounts}`);
+  ') || fail "portable export manifest is invalid"
+  BACKUP_PROJECT=${manifest_fields%%|*}
+  manifest_remainder=${manifest_fields#*|}
+  BACKUP_SCHEMA_VERSION=${manifest_remainder%%|*}
+  BACKUP_SEMANTIC_COUNTS=${manifest_remainder#*|}
+  test "$BACKUP_SCHEMA_VERSION" -le "$CURRENT_SCHEMA_VERSION" ||
+    fail "portable export schema is newer than this Cimmich build"
+  validate_semantic_counts "$BACKUP_SEMANTIC_COUNTS"
+  validate_tar_archive "$backup_path" documents.tgz
+  preflight_backup_database "$backup_path"
+}
+
 backup() {
   require_configured
   test "$#" -eq 1 || fail "usage: companion.sh backup ABSOLUTE_NEW_DIRECTORY"
@@ -581,6 +658,48 @@ backup() {
     "$backup_id" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$backup_counts_before"
 }
 
+portable_export() {
+  require_configured
+  test "$#" -eq 1 || fail "usage: companion.sh portable-export ABSOLUTE_NEW_DIRECTORY"
+  portable_destination=$1
+  validate_backup_path "$portable_destination"
+  test ! -e "$portable_destination" || fail "portable export target already exists"
+  portable_counts_before=$(semantic_counts 2>/dev/null) ||
+    fail "unable to read companion semantic counts"
+  validate_semantic_counts "$portable_counts_before"
+  portable_staging="$portable_destination.incomplete.$$"
+  test ! -e "$portable_staging" ||
+    fail "incomplete portable export staging path already exists"
+  portable_complete=0
+  portable_cleanup() {
+    if test "$portable_complete" -eq 0; then rm -rf "$portable_staging"; fi
+  }
+  trap portable_cleanup EXIT INT TERM
+  umask 077
+  mkdir -p "$portable_staging"
+  chmod 700 "$portable_staging"
+  compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc \
+    > "$portable_staging/cimmich.dump"
+  docker run --rm -v "$DOCUMENT_VOLUME:/source:ro" -v "$portable_staging:/portable" \
+    "$ALPINE_IMAGE" tar -czf /portable/documents.tgz -C /source .
+  health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
+  portable_counts_after=$(semantic_counts 2>/dev/null) ||
+    fail "unable to re-read companion semantic counts"
+  test "$portable_counts_after" = "$portable_counts_before" ||
+    fail "companion semantic counts changed during portable export"
+  printf '{"excludes":["credentials","media","provider-artifacts"],"format":"cimmich.portable-export.v1","health":%s,"project":"%s","semanticCounts":"%s"}\n' \
+    "$health" "$PROJECT" "$portable_counts_before" > "$portable_staging/manifest.json"
+  (cd "$portable_staging" && sha256sum cimmich.dump documents.tgz manifest.json > SHA256SUMS)
+  chmod 600 "$portable_staging"/*
+  validate_portable_export "$portable_staging"
+  mv "$portable_staging" "$portable_destination"
+  portable_complete=1
+  trap - EXIT INT TERM
+  portable_id=${portable_destination##*/}
+  printf '{"exportId":"%s","format":"cimmich.portable-export.v1","media":"excluded","project":"%s","schemaVersion":%s,"status":"READY"}\n' \
+    "$portable_id" "$PROJECT" "$CURRENT_SCHEMA_VERSION"
+}
+
 restore() {
   require_configured
   test "$#" -eq 2 || fail "usage: companion.sh restore ABSOLUTE_BACKUP --confirm=PROJECT"
@@ -611,6 +730,35 @@ restore() {
     "$backup_id" "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
 }
 
+portable_restore() {
+  require_configured
+  test "$#" -eq 2 ||
+    fail "usage: companion.sh portable-restore ABSOLUTE_EXPORT --confirm=PROJECT"
+  backup_path=$1
+  confirmation=$2
+  test "$confirmation" = "--confirm=$PROJECT" ||
+    fail "portable restore confirmation must exactly name $PROJECT"
+  validate_portable_export "$backup_path"
+  compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
+  compose up --detach --wait cimmich-database
+  compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich
+  compose exec -T cimmich-database createdb -U cimmich cimmich
+  compose exec -T cimmich-database pg_restore -U cimmich -d cimmich \
+    --no-owner --no-privileges < "$backup_path/cimmich.dump"
+  docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$backup_path:/portable:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /portable/documents.tgz -C /target'
+  # Target credentials and provider artifacts are deliberately preserved.
+  compose up --detach --wait
+  restored_counts=$(semantic_counts 2>/dev/null) ||
+    fail "unable to read portable-restored semantic counts"
+  test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
+    fail "portable-restored semantic counts do not match the export"
+  portable_id=${backup_path##*/}
+  printf '{"exportId":"%s","exportSchemaVersion":%s,"format":"cimmich.portable-export.v1","project":"%s","restoredSchemaVersion":%s,"semanticCounts":"%s","status":"RESTORED"}\n' \
+    "$portable_id" "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
+}
+
 disable() {
   require_configured
   compose stop cimmich-gateway cimmich-ui cimmich-api
@@ -622,6 +770,8 @@ remove_companion() {
   test "$#" -eq 1 || fail "usage: companion.sh remove --confirm=PROJECT"
   test "$1" = "--confirm=$PROJECT" || fail "remove confirmation must exactly name $PROJECT"
   compose down --volumes --remove-orphans
+  docker image rm "$PROJECT-api:current-source" "$PROJECT-ui:current-source" \
+    >/dev/null 2>&1 || true
   known=$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -type f -print)
   test "$known" = "$ENV_FILE" || fail "state root contains unrecognized files; refusing removal"
   rm -f "$ENV_FILE"
@@ -632,7 +782,7 @@ remove_companion() {
 validate_project
 
 command=${1:-}
-test -n "$command" || fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|disable|remove"
+test -n "$command" || fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove"
 shift
 case "$command" in
   configure) configure "$@" ;;
@@ -644,7 +794,9 @@ case "$command" in
   private-password) private_password "$@" ;;
   backup) backup "$@" ;;
   restore) restore "$@" ;;
+  portable-export) portable_export "$@" ;;
+  portable-restore) portable_restore "$@" ;;
   disable) disable "$@" ;;
   remove) remove_companion "$@" ;;
-  *) fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|disable|remove" ;;
+  *) fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove" ;;
 esac

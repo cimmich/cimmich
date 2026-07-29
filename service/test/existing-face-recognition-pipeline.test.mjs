@@ -161,6 +161,19 @@ test("exact operator source and current observation set enqueue recognition-only
   assert.doesNotMatch(source, /INSERT INTO face_detection_result/);
 });
 
+test("normal detection continuation claims only its exact recognition provider", async () => {
+  const source = await readFile(
+    new URL("../src/local-face-recognition-worker.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /claim_exact_face_recognition_jobs/);
+  assert.match(source, /\$\{normalizedToolVersion\}/);
+  assert.match(source, /\$\{manifest\.providerConfigDigest\}/);
+  assert.match(source, /\$\{manifest\.recognitionSpaceConfigDigest\}/);
+  assert.match(source, /\$\{manifest\.vectorSpaceId\}/);
+  assert.doesNotMatch(source, /claim_face_recognition_jobs\(/);
+});
+
 test("observation-set digest binds geometry, origin, and canonical order", () => {
   const rows = [
     {
@@ -230,6 +243,15 @@ test("operator derives source truth only from the current companion and keeps se
     source,
     /projection\.input_revision AS companion_input_revision/,
   );
+  assert.match(
+    source,
+    /projection\.source_id = \$\{configuredSourceId\}/,
+  );
+  assert.match(source, /ordinal < 64/);
+  assert.match(
+    source,
+    /Existing recognition operator exceeded its bounded drain/,
+  );
   assert.doesNotMatch(source, /sourcePath/);
   assert.doesNotMatch(source, /loadConfiguredSourceProvenance/);
   assert.doesNotMatch(source, /operator_local_read_only/);
@@ -255,6 +277,8 @@ test("worker recomputes frozen observation geometry before provider media execut
   assert.ok(mediaRead > digestCheck);
   assert.match(source, /face\.observation_origin/);
   assert.match(source, /observation\.observation_order/);
+  assert.match(source, /claim_exact_existing_face_recognition_job/);
+  assert.match(source, /normalizedExpectedJobId/);
 });
 
 test("copied source envelopes and invisible observations fail before pipeline creation", async () => {

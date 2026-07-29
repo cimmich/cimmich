@@ -46,6 +46,9 @@ def main() -> None:
     parser.add_argument("--training-data", required=True)
     parser.add_argument("--recognition-space-model-family")
     parser.add_argument("--recognition-space-model-version")
+    parser.add_argument(
+        "--execution-device", choices=("cpu", "coreml"), default="cpu"
+    )
     parser.add_argument("--pipeline-version", default="target-centric-fixed640-tight-crop+2.4x-source-fallback-v1")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
@@ -71,9 +74,12 @@ def main() -> None:
             "inputSize": [112, 112],
             "pipelineVersion": args.pipeline_version,
         },
-        "provider": {"name": "insightface-user-supplied-cpu", "version": "1"},
+        "provider": {
+            "name": f"insightface-user-supplied-{args.execution_device}",
+            "version": "1",
+        },
         "execution": {
-            "device": "cpu",
+            "device": args.execution_device,
             "network": "forbidden",
             "runtime": f"onnxruntime-{onnxruntime.__version__}+insightface-{insightface.__version__}",
             "threads": 1,

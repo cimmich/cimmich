@@ -4,6 +4,9 @@ export const IMMICH_COMPANION_SCHEMA_VERSION = "cimmich.immich-companion.v1";
 export const IMMICH_COMPANION_SUPPORTED_VERSION = "3.0.3";
 export const IMMICH_COMPANION_SUPPORTED_RANGE = "=3.0.3";
 export const IMMICH_COMPANION_DEFAULT_MAX_IMAGE_BYTES = 128 * 1024 * 1024;
+export const IMMICH_COMPANION_DEFAULT_MAX_FINGERPRINT_BYTES =
+  100 * 1024 * 1024 * 1024;
+export const IMMICH_COMPANION_DEFAULT_FINGERPRINT_TIMEOUT_MS = 15 * 60 * 1000;
 
 const VISIBILITIES = new Set(["timeline", "archive", "hidden", "locked"]);
 const ASSET_TYPES = new Set(["IMAGE", "VIDEO", "AUDIO", "OTHER"]);
@@ -331,6 +334,8 @@ export const createImmichCompanion = ({
   supportedVersion = IMMICH_COMPANION_SUPPORTED_VERSION,
   timeoutMs = 5_000,
   maxImageBytes = IMMICH_COMPANION_DEFAULT_MAX_IMAGE_BYTES,
+  maxFingerprintBytes = IMMICH_COMPANION_DEFAULT_MAX_FINGERPRINT_BYTES,
+  fingerprintTimeoutMs = IMMICH_COMPANION_DEFAULT_FINGERPRINT_TIMEOUT_MS,
   maxJsonBytes = 16 * 1024 * 1024,
 } = {}) => {
   const normalizedApiBaseUrl = normalizeImmichApiBaseUrl(apiBaseUrl);
@@ -366,6 +371,28 @@ export const createImmichCompanion = ({
     throw companionError(
       "IMMICH_COMPANION_CONFIG_INVALID",
       "Immich image read limit must be between 1 MiB and 1 GiB",
+      500,
+    );
+  }
+  if (
+    !Number.isSafeInteger(maxFingerprintBytes) ||
+    maxFingerprintBytes < 1024 * 1024 ||
+    maxFingerprintBytes > 1024 * 1024 * 1024 * 1024
+  ) {
+    throw companionError(
+      "IMMICH_COMPANION_CONFIG_INVALID",
+      "Immich fingerprint read limit must be between 1 MiB and 1 TiB",
+      500,
+    );
+  }
+  if (
+    !Number.isInteger(fingerprintTimeoutMs) ||
+    fingerprintTimeoutMs < 1_000 ||
+    fingerprintTimeoutMs > 24 * 60 * 60 * 1000
+  ) {
+    throw companionError(
+      "IMMICH_COMPANION_CONFIG_INVALID",
+      "Immich fingerprint timeout must be between 1 second and 24 hours",
       500,
     );
   }
@@ -591,6 +618,88 @@ export const createImmichCompanion = ({
       throw companionError(
         "IMMICH_COMPANION_MEDIA_UNAVAILABLE",
         "Immich original image could not be read",
+        503,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const requestOriginalFingerprint = async (assetId) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      fingerprintTimeoutMs,
+    );
+    let response;
+    try {
+      response = await fetchImpl(
+        `${normalizedApiBaseUrl}/assets/${encodeURIComponent(assetId)}/original`,
+        {
+          signal: controller.signal,
+          headers: {
+            accept: "application/octet-stream,*/*;q=0.5",
+            "x-api-key": normalizedApiKey,
+          },
+        },
+      );
+      if (response.status === 401 || response.status === 403) {
+        throw companionError(
+          "IMMICH_COMPANION_AUTH_FAILED",
+          "Immich API key was rejected or lacks original-asset read permission",
+          503,
+        );
+      }
+      if (response.status === 404) {
+        throw companionError(
+          "IMMICH_ASSET_NOT_FOUND",
+          "Immich asset was not found",
+          404,
+        );
+      }
+      if (!response.ok || !response.body) {
+        throw companionError(
+          "IMMICH_COMPANION_MEDIA_UNAVAILABLE",
+          "Immich original asset could not be read",
+          503,
+        );
+      }
+      const declaredLength = Number(response.headers.get("content-length"));
+      if (
+        Number.isFinite(declaredLength) &&
+        declaredLength > maxFingerprintBytes
+      ) {
+        throw companionError(
+          "IMMICH_COMPANION_MEDIA_TOO_LARGE",
+          "Immich original asset exceeds the configured fingerprint limit",
+          413,
+        );
+      }
+      const hash = createHash("sha256");
+      let byteLength = 0;
+      for await (const chunk of response.body) {
+        const bytes = Buffer.from(chunk);
+        byteLength += bytes.length;
+        if (byteLength > maxFingerprintBytes) {
+          controller.abort();
+          throw companionError(
+            "IMMICH_COMPANION_MEDIA_TOO_LARGE",
+            "Immich original asset exceeds the configured fingerprint limit",
+            413,
+          );
+        }
+        hash.update(bytes);
+      }
+      return {
+        byteLength,
+        contentDigest: hash.digest("hex"),
+        mimeType: optionalText(response.headers.get("content-type")),
+      };
+    } catch (error) {
+      if (error?.code) throw error;
+      throw companionError(
+        "IMMICH_COMPANION_MEDIA_UNAVAILABLE",
+        "Immich original asset could not be fingerprinted",
         503,
       );
     } finally {
@@ -940,12 +1049,45 @@ export const createImmichCompanion = ({
     };
   };
 
+  const readAssetFingerprint = async ({ assetId }) => {
+    const projection = await getAsset({ assetId });
+    if (!["image", "video"].includes(projection.asset.assetType)) {
+      throw companionError(
+        "IMMICH_COMPANION_MEDIA_UNSUPPORTED",
+        "Byte fingerprinting accepts image and video assets only",
+        415,
+      );
+    }
+    if (projection.asset.isOffline || projection.asset.isTrashed) {
+      throw companionError(
+        "IMMICH_COMPANION_MEDIA_UNAVAILABLE",
+        "Immich original asset is not currently available",
+        409,
+      );
+    }
+    const media = await requestOriginalFingerprint(
+      projection.asset.immichAssetId,
+    );
+    return {
+      schemaVersion: IMMICH_COMPANION_SCHEMA_VERSION,
+      asset: projection.asset,
+      byteLength: media.byteLength,
+      contentDigest: media.contentDigest,
+      hashAlgorithm: "sha256",
+      immichVersion: projection.immichVersion,
+      mimeType: media.mimeType || projection.asset.originalMimeType,
+      sourceAccess: "immich-api-read-only",
+      verification: "byte_verified",
+    };
+  };
+
   return {
     getAsset,
     getPerson,
     listAssetFaces,
     listAssets,
     listPeople,
+    readAssetFingerprint,
     readAssetImage,
     status,
     verifyOnboardingPermissions,

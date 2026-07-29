@@ -3,23 +3,31 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+from io import BytesIO
 import json
+import struct
 import sys
 from pathlib import Path
 from typing import Any
 
 
 REQUEST_SCHEMA = "cimmich.ultralytics-yolo-body-request.v1"
+RESIDENT_REQUEST_SCHEMA = "cimmich.ultralytics-yolo-body-resident-request.v1"
 RESULT_SCHEMA = "cimmich.body-detection-result.v1"
 MAX_INPUT_BYTES = 1024 * 1024
+MAX_RESIDENT_INPUT_BYTES = 128 * 1024 * 1024
+MAX_RESIDENT_METADATA_BYTES = 64 * 1024
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(self, message: str, code: str = "ULTRALYTICS_BODY_PROVIDER_FAILED"):
+        super().__init__(message)
+        self.code = code
 
 
 def fail(code: str) -> int:
@@ -110,23 +118,11 @@ def round6(value: float) -> float:
     return round(max(0.0, min(1.0, float(value))), 6)
 
 
-def execute(request: dict, model_factory=None) -> dict:
-    image_path = Path(request["imagePath"]).resolve()
-    model_path = Path(request["modelPath"]).resolve()
-    manifest = load_manifest(Path(request["manifestPath"]).resolve(), model_path)
-    if not image_path.is_file():
-        raise ProviderError("source image is unavailable")
-    if file_digest(image_path) != request["sourceContentDigest"]:
-        raise ProviderError("source image digest changed")
-    if model_factory is None:
-        from ultralytics import YOLO
-
-        model_factory = YOLO
-    model = model_factory(str(model_path))
+def project_result(request: dict, manifest: dict, model: Any, image_input: Any) -> dict:
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
     results = model.predict(
-        str(image_path),
+        image_input,
         classes=[0],
         conf=RAW_CONFIDENCE_FLOOR,
         device=runtime_device,
@@ -173,7 +169,125 @@ def execute(request: dict, model_factory=None) -> dict:
     }
 
 
+def execute(request: dict, model_factory=None) -> dict:
+    image_path = Path(request["imagePath"]).resolve()
+    model_path = Path(request["modelPath"]).resolve()
+    manifest = load_manifest(Path(request["manifestPath"]).resolve(), model_path)
+    if not image_path.is_file():
+        raise ProviderError("source image is unavailable")
+    if file_digest(image_path) != request["sourceContentDigest"]:
+        raise ProviderError("source image digest changed")
+    if model_factory is None:
+        from ultralytics import YOLO
+
+        model_factory = YOLO
+    model = model_factory(str(model_path))
+    return project_result(request, manifest, model, str(image_path))
+
+
+def load_resident_request(value: Any) -> dict:
+    exact_object(
+        value,
+        {
+            "assetToken",
+            "inputRevision",
+            "schemaVersion",
+            "sourceContentDigest",
+        },
+        "resident request",
+    )
+    if value["schemaVersion"] != RESIDENT_REQUEST_SCHEMA:
+        raise ProviderError("resident request schema is invalid")
+    for field in ("assetToken", "inputRevision", "sourceContentDigest"):
+        digest_string(value[field], field)
+    return value
+
+
+def read_exact(length: int) -> bytes:
+    value = sys.stdin.buffer.read(length)
+    if len(value) != length:
+        raise EOFError("resident request frame is truncated")
+    return value
+
+
+def read_resident_frame() -> tuple[dict, bytes] | None:
+    header = sys.stdin.buffer.read(16)
+    if not header:
+        return None
+    if len(header) != 16:
+        raise ProviderError("resident request header is invalid")
+    metadata_length, input_length = struct.unpack(">QQ", header)
+    if metadata_length < 2 or metadata_length > MAX_RESIDENT_METADATA_BYTES:
+        raise ProviderError("resident request metadata is oversized")
+    if input_length < 1 or input_length > MAX_RESIDENT_INPUT_BYTES:
+        raise ProviderError("resident source media is oversized")
+    try:
+        metadata = json.loads(read_exact(metadata_length))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProviderError("resident request JSON is invalid") from error
+    return load_resident_request(metadata), read_exact(input_length)
+
+
+def decode_resident_image(encoded: bytes) -> Any:
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        with Image.open(BytesIO(encoded)) as opened:
+            return np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
+    except (OSError, ValueError) as error:
+        raise ProviderError(
+            "resident source media is not a readable image",
+            "ULTRALYTICS_BODY_SOURCE_UNREADABLE",
+        ) from error
+
+
+def execute_resident(request: dict, encoded: bytes, manifest: dict, model: Any) -> dict:
+    if hashlib.sha256(encoded).hexdigest() != request["sourceContentDigest"]:
+        raise ProviderError("resident source media digest changed")
+    return project_result(request, manifest, model, decode_resident_image(encoded))
+
+
+def write_resident_result(value: dict) -> None:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    sys.stdout.buffer.write(struct.pack(">Q", len(payload)))
+    sys.stdout.buffer.write(payload)
+    sys.stdout.buffer.flush()
+
+
+def serve(manifest_path: Path, model_path: Path) -> int:
+    manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
+    from ultralytics import YOLO
+
+    model = YOLO(str(model_path.resolve()))
+    while True:
+        try:
+            frame = read_resident_frame()
+            if frame is None:
+                return 0
+            request, encoded = frame
+            write_resident_result(execute_resident(request, encoded, manifest, model))
+        except ProviderError as error:
+            write_resident_result({"error": {"code": error.code}})
+        except Exception:
+            write_resident_result({"error": {"code": "ULTRALYTICS_BODY_PROVIDER_FAILED"}})
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--model", type=Path)
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        return fail("ULTRALYTICS_BODY_PROVIDER_FAILED")
+    if args.serve:
+        if args.manifest is None or args.model is None:
+            return fail("ULTRALYTICS_BODY_PROVIDER_FAILED")
+        try:
+            return serve(args.manifest, args.model)
+        except Exception:
+            return fail("ULTRALYTICS_BODY_PROVIDER_FAILED")
     try:
         request = load_request(sys.stdin.buffer.read(MAX_INPUT_BYTES + 1))
         result = execute(request)

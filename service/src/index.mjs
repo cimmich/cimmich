@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createAddressGeocoder } from "./address-geocoding.mjs";
+import { createHashLinkedAssetResolver } from "./archive-mobility.mjs";
 import {
   createInventoryProjectionBridgeRefresher,
   loadDisplayBridge,
@@ -20,6 +21,7 @@ import { createLocalFaceRecognitionWorker } from "./local-face-recognition-worke
 import { createLocalExistingFaceRecognitionWorker } from "./local-existing-face-recognition-worker.mjs";
 import { createLocalDHashSimilarityProvider } from "./local-dhash-similarity-provider.mjs";
 import { loadLocalMediaProviderRuntime } from "./local-media-provider-runtime.mjs";
+import { loadMatchingProviderRuntime } from "./matching-provider-runtime.mjs";
 import { createMemorySteward } from "./memory-steward.mjs";
 import { createMediaOperator } from "./media-operator.mjs";
 import { continueFaceDetectionPipeline } from "./media-pipeline.mjs";
@@ -79,6 +81,10 @@ const visibility = createVisibilityService({
 });
 await visibility.initialize();
 const localMediaProvider = await loadLocalMediaProviderRuntime();
+const matchingProviderRuntime = await loadMatchingProviderRuntime({
+  fallbackProvider: localMediaProvider.matchingProvider,
+  fallbackReceipt: localMediaProvider.providerReceipt,
+});
 const derivativeProviderRoot = path.resolve(
   serviceDirectory,
   "../providers/perceptual-dhash",
@@ -93,6 +99,11 @@ const derivativeProvider = createLocalDHashSimilarityProvider({
   pythonPath: process.env.CIMMICH_LOCAL_PYTHON_PATH || "/usr/bin/python3",
   scriptPath: path.join(derivativeProviderRoot, "provider.py"),
 });
+const hashLinkedAssetResolver = createHashLinkedAssetResolver({
+  legacyResolver: ({ immichAssetId }) =>
+    resolveCimmichAssetIdFromDisplayBridge(bridge, immichAssetId),
+  sql,
+});
 const immichInventory = createImmichInventorySynchronizer({
   companion: immichCompanion,
   job: localMediaProvider.detectionEnabled
@@ -100,10 +111,10 @@ const immichInventory = createImmichInventorySynchronizer({
     : null,
   pageSize: Number(process.env.CIMMICH_IMMICH_PAGE_SIZE || "250"),
   onProjectionCommitted: refreshInventoryProjectionBridge,
-  resolveCimmichAssetId: ({ immichAssetId }) =>
-    resolveCimmichAssetIdFromDisplayBridge(bridge, immichAssetId),
+  resolveCimmichAssetId: hashLinkedAssetResolver,
   sourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
   sql,
+  verifySourceBytes: true,
 });
 const immichOnboarding = createImmichOnboarding({
   companion: immichCompanion,
@@ -135,7 +146,7 @@ const repository = createCimmichRepository(sql, bridge, visibility, {
   expectedSchemaVersion,
   immichCompanion,
   immichSourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
-  matchingProvider: localMediaProvider.matchingProvider,
+  matchingProvider: matchingProviderRuntime.matchingProvider,
 });
 const guidedAccess = createGuidedAccess({
   accessToken: runtimeConfig.guidedAccessToken,
@@ -161,6 +172,7 @@ const recognitionWorker = localMediaProvider.detectionEnabled
       manifest: localMediaProvider.recognitionManifest,
       recognizer: localMediaProvider.recognizer,
       sql,
+      toolVersion: localMediaProvider.pipelineManifest.recognizer.toolVersion,
     })
   : undefined;
 const existingRecognitionScheduler = localMediaProvider.recognitionEnabled
@@ -204,12 +216,16 @@ const mediaOperator = createMediaOperator({
   sql,
 });
 const faceMatchingOperator = createFaceMatchingOperator({
-  detectionEnabled: localMediaProvider.detectionEnabled,
+  detectionEnabled:
+    matchingProviderRuntime.recognitionCompatible &&
+    localMediaProvider.detectionEnabled,
   enhancedComponent,
-  matchingProvider: localMediaProvider.matchingProvider,
-  mediaOperator,
+  matchingProvider: matchingProviderRuntime.matchingProvider,
+  mediaOperator: matchingProviderRuntime.recognitionCompatible
+    ? mediaOperator
+    : null,
   presentationRank: visibility.currentRank,
-  providerReceipt: localMediaProvider.providerReceipt,
+  providerReceipt: matchingProviderRuntime.providerReceipt,
   repository,
   sourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
   sql,
@@ -238,6 +254,7 @@ const shutdown = async (exitCode = 0) => {
   shuttingDown = true;
   process.exitCode = exitCode;
   await new Promise((resolve) => server.close(() => resolve()));
+  await localMediaProvider.recognizer?.close?.().catch(() => {});
   await sql.end({ timeout: 5 }).catch(() => {});
 };
 

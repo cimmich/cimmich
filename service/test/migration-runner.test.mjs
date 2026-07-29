@@ -64,6 +64,173 @@ test("the current source chain is contiguous and preserves schema-48 adoption", 
   );
 });
 
+test("schema 87 makes byte-verified legacy binding durable and replay-safe", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0087_verified_content_binding_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /verified_content_binding_command/);
+  assert.match(source, /request_digest ~ '\^\[0-9a-f\]\{64\}\$'/);
+  assert.match(source, /cimmich\.verified-content-binding\.v1/);
+  assert.match(source, /byte_verified/);
+});
+
+test("schema 88 keeps a content asset available while another binding remains active", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0088_multi_binding_asset_availability_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /cimmich_asset_available_after_immich_run/);
+  assert.match(source, /projection\.last_seen_run_id = p_run_id/);
+  assert.match(source, /binding\.source_id = p_source_id/);
+  assert.match(source, /AND NOT cimmich_asset_available_after_immich_run/);
+  assert.match(
+    source,
+    /asset[\s\S]*cannot be missing while at least one source binding is active/,
+  );
+});
+
+test("schema 90 binds a batch worker to its exact recognition job", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0090_exact_existing_face_recognition_claim_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /claim_exact_existing_face_recognition_job/);
+  assert.match(source, /job\.job_id = p_job_id/);
+  assert.match(source, /pipeline\.state = 'recognition_pending'/);
+  assert.match(source, /FOR UPDATE OF job SKIP LOCKED/);
+  assert.match(source, /jsonb_build_object\('workerId', p_worker_id, 'claim', 'exact'\)/);
+});
+
+test("schema 91 binds pipeline recognition claims to one exact provider space", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0091_exact_pipeline_recognition_claim_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /claim_exact_face_recognition_jobs/);
+  assert.match(source, /job\.tool_version = p_tool_version/);
+  assert.match(source, /job\.config_digest = p_config_digest/);
+  assert.match(source, /pipeline\.recognizer_config_digest = p_config_digest/);
+  assert.match(source, /pipeline\.vector_space_id = p_vector_space_id/);
+  assert.match(source, /FOR UPDATE OF job SKIP LOCKED/);
+});
+
+test("schema 92 corrects exact pipeline claims for distinct provider and space digests", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0092_exact_pipeline_recognition_dual_digest_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /p_job_config_digest/);
+  assert.match(source, /p_recognition_space_config_digest/);
+  assert.match(source, /job\.config_digest = p_job_config_digest/);
+  assert.match(
+    source,
+    /pipeline\.recognizer_config_digest =\s+p_recognition_space_config_digest/,
+  );
+});
+
+test("schema 93 derives live person-linked triage for every media claim path", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0093_media_asset_triage_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE OR REPLACE VIEW media_asset_triage/);
+  assert.match(source, /count\(DISTINCT people\.person_id\)/);
+  assert.match(source, /people\.authority_state = 'accepted'/);
+  assert.match(source, /WHEN coalesce\(people\.accepted_person_count, 0\) > 0 THEN 0/);
+  assert.match(source, /CREATE OR REPLACE FUNCTION claim_media_jobs/);
+  assert.match(source, /CREATE OR REPLACE FUNCTION claim_existing_face_recognition_jobs/);
+  assert.match(source, /CREATE OR REPLACE FUNCTION claim_exact_face_recognition_jobs/);
+  assert.match(
+    source,
+    /ORDER BY triage\.priority_tier,\s+triage\.accepted_person_count DESC/,
+  );
+  assert.doesNotMatch(source, /ALTER TABLE media_job[\s\S]+ADD COLUMN priority/);
+});
+
+test("schema 94 makes body detection resumable without weakening job binding", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0094_resumable_body_detection_job_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /'detect_bodies'/);
+  assert.match(source, /media_job_body_detection_result/);
+  assert.match(source, /enforce_media_job_body_detection_binding/);
+  assert.match(source, /v_job\.asset_id <> v_result\.asset_id/);
+  assert.match(source, /v_job\.config_digest <> v_result\.detector_config_digest/);
+});
+
+test("schema 95 makes hash-bound XMP face recovery resumable and provenance complete", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0095_xmp_sidecar_face_import_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /'xmp_sidecar_import'/);
+  assert.match(source, /CREATE TABLE xmp_sidecar_import_run/);
+  assert.match(source, /CREATE TABLE xmp_sidecar_import_item/);
+  assert.match(source, /CREATE TABLE xmp_sidecar_face_evidence/);
+  assert.match(source, /CREATE TABLE xmp_sidecar_face_source/);
+  assert.match(source, /UNIQUE \(source_id, content_id, region_key\)/);
+  assert.doesNotMatch(source, /original_path|sidecar_path|source_path/);
+});
+
+test("schema 96 adds owner-command resolution for unresolved XMP names", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0096_xmp_sidecar_name_resolution_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE xmp_sidecar_name_resolution_command/);
+  assert.match(source, /owner_resolution_command_id/);
+  assert.match(source, /owner_resolution_decision_id/);
+  assert.match(source, /'owner_resolved'/);
+  assert.match(source, /UNIQUE \(source_id, normalized_name\)/);
+});
+
 test("Pet matching migration keeps model proposals non-authoritative", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
@@ -453,8 +620,111 @@ test("schema 82 binds owner locator resolution to the resulting typed tag decisi
       "utf8",
     ),
   );
-  assert.match(source, /resolution_kind IN \('stronger_existing_truth', 'owner_typed_tag'\)/);
+  assert.match(
+    source,
+    /resolution_kind IN \('stronger_existing_truth', 'owner_typed_tag'\)/,
+  );
   assert.match(source, /resolution_decision_id text REFERENCES decision/);
   assert.match(source, /resolved_subject_id text REFERENCES person/);
-  assert.match(source, /resolved_tag_type IN \('face', 'body', 'head', 'presence'\)/);
+  assert.match(
+    source,
+    /resolved_tag_type IN \('face', 'body', 'head', 'presence'\)/,
+  );
+});
+
+test("schema 84 separates exact content identity from replaceable source bindings", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0084_hash_linked_archive_mobility_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE media_content \(/);
+  assert.match(source, /CREATE TABLE media_content_fingerprint \(/);
+  assert.match(source, /UNIQUE \(hash_algorithm, content_digest\)/);
+  assert.match(source, /CREATE TABLE asset_content_link \(/);
+  assert.match(source, /CREATE TABLE asset_source_binding \(/);
+  assert.match(source, /CREATE TABLE asset_source_binding_event \(/);
+  assert.match(
+    source,
+    /DROP CONSTRAINT IF EXISTS immich_asset_projection_cimmich_asset_id_key/,
+  );
+  assert.match(
+    source,
+    /source_kind IN \('immich','filesystem','trusted_import'\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /UPDATE (?:face_observation|identity_claim|person)/,
+  );
+});
+
+test("schema 85 backfills canonical Immich Base64 fingerprints", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0085_immich_base64_fingerprint_backfill_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /decode\(content_hash, 'base64'\)/);
+  assert.match(source, /octet_length\(fingerprint_bytes\) IN \(20, 32\)/);
+  assert.match(
+    source,
+    /encode\(fingerprint_bytes, 'base64'\) = content_hash/,
+  );
+  assert.match(source, /INSERT INTO media_content \(/);
+  assert.match(source, /INSERT INTO media_content_fingerprint \(/);
+  assert.match(source, /INSERT INTO asset_content_link \(/);
+  assert.match(source, /UPDATE asset_source_binding binding/);
+  assert.doesNotMatch(
+    source,
+    /UPDATE (?:asset|face_observation|identity_claim|person)\s/,
+  );
+});
+
+test("schema 86 quarantines links inferred from ambiguous Immich checksums", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0086_quarantine_unverified_immich_checksum_links_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    source,
+    /receipt_cimmich_immich_base64_fingerprint_backfill_v1/,
+  );
+  assert.match(source, /UPDATE asset_source_binding binding/);
+  assert.match(source, /DELETE FROM asset_content_link/);
+  assert.match(source, /DELETE FROM media_content_fingerprint/);
+  assert.match(source, /DELETE FROM media_content content/);
+  assert.doesNotMatch(
+    source,
+    /UPDATE (?:asset|face_observation|identity_claim|person)\s/,
+  );
+});
+
+test("schema 89 recovers only stale interrupted inventory ownership", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0089_stale_inventory_run_recovery_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /fail_stale_immich_inventory_runs/);
+  assert.match(source, /INVENTORY_RUN_INTERRUPTED/);
+  assert.match(source, /started_at < p_started_before/);
+  assert.match(source, /state = 'incomplete'/);
+  assert.match(source, /interval '24 hours'/);
 });

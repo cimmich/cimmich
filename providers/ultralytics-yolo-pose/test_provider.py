@@ -47,6 +47,22 @@ class Model:
         return [Result()]
 
 
+class EdgeBoxes:
+    xyxy = Tensor([[0.00019, -0.25, 100.00001, 200.5]])
+    conf = Tensor([0.91])
+    cls = Tensor([0])
+
+
+class EdgeResult(Result):
+    boxes = EdgeBoxes()
+
+
+class EdgeModel(Model):
+    def predict(self, *args, **kwargs):
+        self.kwargs = kwargs
+        return [EdgeResult()]
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -95,6 +111,21 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(len(first["detections"][0]["keypoints"]), 17)
         self.assertIsNone(first["detections"][0]["keypoints"][16]["x"])
         self.assertEqual(first["detections"][0]["keypoints"][0]["joint"], "nose")
+
+    def test_edge_box_is_derived_from_clamped_endpoints(self):
+        manifest_path, model, request = self.fixture()
+        manifest = provider.load_manifest(manifest_path, model)
+        result = provider.execute(
+            request,
+            b"image",
+            manifest,
+            model,
+            EdgeModel,
+            lambda _: object(),
+        )
+        box = result["detections"][0]["box"]
+        self.assertLessEqual(box["x"] + box["w"], 1.000001)
+        self.assertLessEqual(box["y"] + box["h"], 1.000001)
 
     def test_manifest_and_source_drift_fail(self):
         manifest_path, model, request = self.fixture()

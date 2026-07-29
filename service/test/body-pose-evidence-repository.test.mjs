@@ -108,7 +108,7 @@ const poseManifest = () =>
     schemaVersion: bodyPoseProviderSchemaVersion,
   });
 
-const fixture = () => {
+const fixture = ({ includeSecondBody = false } = {}) => {
   const detector = detectorManifest();
   const inputRevision = digest("b");
   const bodyResult = {
@@ -119,6 +119,15 @@ const fixture = () => {
     }),
     bodies: [
       { box: { h: 0.8, w: 0.4, x: 0.1, y: 0.1 }, confidence: 0.9, quality: {} },
+      ...(includeSecondBody
+        ? [
+            {
+              box: { h: 0.35, w: 0.2, x: 0.7, y: 0.2 },
+              confidence: 0.88,
+              quality: {},
+            },
+          ]
+        : []),
     ],
     detectorConfigDigest: detector.detectorConfigDigest,
     inputRevision,
@@ -144,6 +153,20 @@ const fixture = () => {
           y: Number((0.2 + index * 0.01).toFixed(6)),
         })),
       },
+      ...(includeSecondBody
+        ? [
+            {
+              box: bodyResult.bodies[1].box,
+              confidence: 0.88,
+              keypoints: joints.map((joint, index) => ({
+                confidence: 0.85,
+                joint,
+                x: Number((0.72 + index * 0.005).toFixed(6)),
+                y: Number((0.23 + index * 0.005).toFixed(6)),
+              })),
+            },
+          ]
+        : []),
     ],
     inputRevision,
     poseConfigDigest: pose.poseConfigDigest,
@@ -153,6 +176,7 @@ const fixture = () => {
   };
   return {
     bodyId,
+    bodyIds: bodyProjection.bodies.map((body) => body.bodyId),
     bodyProjection,
     bodyResult,
     bodyValidation,
@@ -163,35 +187,35 @@ const fixture = () => {
   };
 };
 
-const database = ({ existing = [] } = {}) => {
-  const state = fixture();
+const database = ({ existing = [], includeSecondBody = false } = {}) => {
+  const state = fixture({ includeSecondBody });
   const statements = [];
-  const currentRow = {
+  const currentRows = state.bodyProjection.bodies.map((body, index) => ({
     asset_id: assetId,
     asset_token: state.bodyResult.assetToken,
-    body_count: 1,
-    body_id: state.bodyId,
-    box_h: 0.8,
-    box_w: 0.4,
-    box_x: 0.1,
-    box_y: 0.1,
+    body_count: state.bodyProjection.bodies.length,
+    body_id: body.bodyId,
+    box_h: body.box.h,
+    box_w: body.box.w,
+    box_x: body.box.x,
+    box_y: body.box.y,
     current_proof: "current_at_last_validated_read",
     detection_result_id: "result",
     detector_config_digest: state.detector.detectorConfigDigest,
-    detector_confidence: 0.9,
+    detector_confidence: body.confidence,
     head_box_h: null,
     head_box_w: null,
     head_box_x: null,
     head_box_y: null,
     input_revision: state.inputRevision,
-    observation_key: state.bodyProjection.bodies[0].observationKey,
-    observation_order: 0,
-    quality_digest: state.bodyProjection.bodies[0].qualityDigest,
+    observation_key: body.observationKey,
+    observation_order: index,
+    quality_digest: body.qualityDigest,
     quality_measurements: {},
     result_digest: state.bodyProjection.resultDigest,
     source_content_digest: digest("c"),
     source_kind: "operator_local_read_only",
-  };
+  }));
   const query = async (strings, ...values) => {
     const statement = strings.join("?");
     statements.push({ statement, values });
@@ -199,10 +223,11 @@ const database = ({ existing = [] } = {}) => {
       statement.includes("FROM current_body_detection_result_observation") &&
       statement.includes("body.box_x")
     )
-      return [currentRow];
+      return currentRows;
     if (statement.includes("SELECT current_result.body_id"))
-      return [{ body_id: state.bodyId }];
-    if (statement.includes("FROM body_pose_evidence")) return existing;
+      return currentRows.map((row) => ({ body_id: row.body_id }));
+    if (statement.includes("FROM body_pose_evidence"))
+      return existing.filter((row) => row.body_id === values[0]);
     return [];
   };
   query.json = (value) => value;
@@ -308,5 +333,92 @@ test("copied current envelopes and stale Body lineage fail before pose writes", 
         presentationRank: () => 1,
       }).commit({ current: fresh, validation: validated(db.state) }),
     (error) => error.code === "BODY_POSE_EVIDENCE_STALE",
+  );
+});
+
+test("explicit missing-Body gap fill preserves immutable evidence on other Bodies", async () => {
+  const seed = fixture({ includeSecondBody: true });
+  const validation = validated(seed);
+  const [existingItem, missingItem] =
+    projectValidatedBodyPoseForRepository(validation).items;
+  const existingRow = {
+    body_id: existingItem.bodyId,
+    coordinate_space: existingItem.coordinateSpace,
+    joint_schema: existingItem.jointSchema,
+    keypoints: [{ confidence: 0.1, joint: "nose", x: 0.1, y: 0.1 }],
+    model_digest: existingItem.modelDigest,
+    model_family: existingItem.modelFamily,
+    model_name: existingItem.modelName,
+    model_version: existingItem.modelVersion,
+    provider: existingItem.provider,
+    source_artifact_digest: existingItem.sourceArtifactDigest,
+    source_schema_version: existingItem.sourceSchemaVersion,
+    state: existingItem.state,
+    topology_id: existingItem.topologyId,
+  };
+  const db = database({ existing: [existingRow], includeSecondBody: true });
+  const current = await createBodyPoseCurrentProjectionRepository(db.sql, {
+    presentationRank: () => 1,
+  }).load({ assetId, detectorManifest: db.state.detector });
+
+  const receipt = await createBodyPoseEvidenceRepository(db.sql, {
+    presentationRank: () => 1,
+  }).commit({
+    current,
+    targetBodyIds: [missingItem.bodyId],
+    validation: validated(db.state),
+  });
+
+  assert.equal(receipt.changed, true);
+  assert.equal(receipt.bodyCount, 1);
+  assert.equal(receipt.persistedPoseCount, 1);
+  assert.equal(receipt.replayedPoseCount, 0);
+  assert.equal(receipt.sourceBodyCount, 2);
+  assert.equal(receipt.targetMode, "explicit_missing_body_gap_fill");
+  assert.equal(receipt.unavailablePoseCount, 0);
+  assert.equal(
+    db.statements.filter(({ statement }) =>
+      statement.includes("FROM body_pose_evidence"),
+    ).length,
+    1,
+  );
+});
+
+test("explicit gap fill rejects targets that gained evidence concurrently", async () => {
+  const seed = fixture();
+  const item = projectValidatedBodyPoseForRepository(validated(seed)).items[0];
+  const db = database({
+    existing: [
+      {
+        body_id: item.bodyId,
+        coordinate_space: item.coordinateSpace,
+        joint_schema: item.jointSchema,
+        keypoints: item.keypoints,
+        model_digest: item.modelDigest,
+        model_family: item.modelFamily,
+        model_name: item.modelName,
+        model_version: item.modelVersion,
+        provider: item.provider,
+        source_artifact_digest: item.sourceArtifactDigest,
+        source_schema_version: item.sourceSchemaVersion,
+        state: item.state,
+        topology_id: item.topologyId,
+      },
+    ],
+  });
+  const current = await createBodyPoseCurrentProjectionRepository(db.sql, {
+    presentationRank: () => 1,
+  }).load({ assetId, detectorManifest: db.state.detector });
+
+  await assert.rejects(
+    () =>
+      createBodyPoseEvidenceRepository(db.sql, {
+        presentationRank: () => 1,
+      }).commit({
+        current,
+        targetBodyIds: [item.bodyId],
+        validation: validated(db.state),
+      }),
+    (error) => error.code === "BODY_POSE_EVIDENCE_GAP_FILL_CONFLICT",
   );
 });

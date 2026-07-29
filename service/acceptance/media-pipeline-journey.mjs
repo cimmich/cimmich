@@ -360,6 +360,7 @@ try {
     manifest: recognitionManifest,
     recognizer,
     sql,
+    toolVersion: pipelineManifest.recognizer.toolVersion,
     workerId: "synthetic-pipeline-recognizer",
   });
   const interrupted = await worker.runNext();

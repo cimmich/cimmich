@@ -29,6 +29,29 @@ const storedMatches = (row, item) =>
   row.source_artifact_digest === item.sourceArtifactDigest &&
   row.state === item.state;
 
+const normalizeTargetBodyIds = (value) => {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.length === 0) {
+    throw typedError(
+      "Body-pose gap fill requires at least one target Body",
+      "BODY_POSE_EVIDENCE_INPUT_INVALID",
+      400,
+    );
+  }
+  const normalized = value.map((bodyId) => String(bodyId || "").trim());
+  if (
+    normalized.some((bodyId) => !bodyId) ||
+    new Set(normalized).size !== normalized.length
+  ) {
+    throw typedError(
+      "Body-pose gap-fill targets must be unique Body identifiers",
+      "BODY_POSE_EVIDENCE_INPUT_INVALID",
+      400,
+    );
+  }
+  return Object.freeze(normalized.toSorted());
+};
+
 export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
   if (typeof sql !== "function" || typeof presentationRank !== "function") {
     throw new TypeError(
@@ -36,10 +59,11 @@ export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
     );
   }
 
-  const commit = async ({ current, validation }) => {
+  const commit = async ({ current, targetBodyIds, validation }) => {
     const currentBinding = consumeCurrentBodyPoseProjection(current);
     const contractReceipt = createBodyPoseReceipt(validation);
     const projected = projectValidatedBodyPoseForRepository(validation);
+    const targets = normalizeTargetBodyIds(targetBodyIds);
     if (contractReceipt.binding.bodyResultDigest !== current.bodyResultDigest) {
       throw typedError(
         "Body-pose evidence belongs to another Body result",
@@ -83,15 +107,26 @@ export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
           "BODY_POSE_EVIDENCE_STALE",
         );
       }
+      if (targets?.some((bodyId) => !currentBodyIds.includes(bodyId))) {
+        throw typedError(
+          "A Body-pose gap-fill target is no longer current",
+          "BODY_POSE_EVIDENCE_STALE",
+        );
+      }
 
       let changed = 0;
-      for (const item of projected.items) {
+      const selectedItems = targets
+        ? projected.items.filter((item) => targets.includes(item.bodyId))
+        : projected.items;
+      const inspectedBodyIds = targets || selectedItems.map((item) => item.bodyId);
+      const existingByBodyId = new Map();
+      for (const bodyId of inspectedBodyIds) {
         const existing = await tx`
           SELECT body_id, coordinate_space, joint_schema, topology_id,
             keypoints, provider, model_family, model_name, model_version,
             model_digest, source_schema_version, source_artifact_digest, state
           FROM body_pose_evidence
-          WHERE body_id = ${item.bodyId}
+          WHERE body_id = ${bodyId}
           FOR SHARE
         `;
         if (existing.length > 1) {
@@ -100,8 +135,18 @@ export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
             "BODY_POSE_EVIDENCE_REPOSITORY_CONFLICT",
           );
         }
-        if (existing.length === 1) {
-          if (!storedMatches(existing[0], item)) {
+        if (existing.length === 1) existingByBodyId.set(bodyId, existing[0]);
+      }
+      if (targets && existingByBodyId.size > 0) {
+        throw typedError(
+          "A Body-pose gap-fill target already has persisted evidence",
+          "BODY_POSE_EVIDENCE_GAP_FILL_CONFLICT",
+        );
+      }
+      for (const item of selectedItems) {
+        const existing = existingByBodyId.get(item.bodyId);
+        if (existing) {
+          if (!storedMatches(existing, item)) {
             throw typedError(
               "Existing Body-pose evidence conflicts with validated replay",
               "BODY_POSE_EVIDENCE_REPLAY_CONFLICT",
@@ -127,16 +172,19 @@ export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
         changed += 1;
       }
 
+      const scopeBodyCount = targets?.length || current.bodyCount;
       return Object.freeze({
         activationAuthority: "none",
         automaticIdentityAuthority: "none",
-        bodyCount: current.bodyCount,
+        bodyCount: scopeBodyCount,
         changed: changed > 0,
-        persistedPoseCount: projected.items.length,
-        replayedPoseCount: projected.items.length - changed,
+        persistedPoseCount: selectedItems.length,
+        replayedPoseCount: selectedItems.length - changed,
         repositoryWrites: changed > 0 ? "pose_evidence_only" : "none",
         schemaVersion: bodyPoseEvidenceRepositoryVersion,
-        unavailablePoseCount: current.bodyCount - projected.items.length,
+        sourceBodyCount: current.bodyCount,
+        targetMode: targets ? "explicit_missing_body_gap_fill" : "full_replay",
+        unavailablePoseCount: scopeBodyCount - selectedItems.length,
       });
     });
   };

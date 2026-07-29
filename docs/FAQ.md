@@ -162,6 +162,12 @@ confirmation-gated and preflights manifests, checksums, project identity,
 database readability, schema compatibility and semantic counts before
 replacement. It does not back up or restore Immich media.
 
+For another machine or Immich installation, `portable-export` carries only the
+Cimmich database and Documents store with a verified manifest.
+`portable-restore` preserves the target installation's credentials and provider
+artifacts. Cimmich then reconnects moved files by exact content hash rather than
+requiring the old path or Immich UUID. See [archive mobility](ARCHIVE_MOBILITY.md).
+
 ## What parts existed before OpenAI Build Week?
 
 The original problem, archive-processing and local/cloud-model experiments,

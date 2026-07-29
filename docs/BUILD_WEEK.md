@@ -16,7 +16,9 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 83 without rewriting that release.
+Public Beta development continues on schema 98 without rewriting that release.
+The first live X1 Body-triage proof is recorded in
+[X1_BODY_TRIAGE_PILOT_2026-07-27.md](X1_BODY_TRIAGE_PILOT_2026-07-27.md).
 
 The schema 75 source retains exact, human-review-only machine ranking while
 its representative 3,985-asset cold review request falls from 4.459 seconds to
