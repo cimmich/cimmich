@@ -302,8 +302,26 @@ docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test
       repeat('1', 64), '{\"passed\":true}', '{\"verifiedUnknowns\":1}', 'passed',
       'receipt_service_fixture'
     );
-    UPDATE source_pack SET evaluation_status = 'passed' WHERE pack_id = candidate_pack;
+    UPDATE source_pack
+    SET evaluation_status = 'passed',
+        evaluation_summary = jsonb_build_object(
+          'matcherPolicy',
+          jsonb_build_object('policyVersion', 'cimmich-best-prime-v1')
+        )
+    WHERE pack_id = candidate_pack;
     UPDATE source_pack SET state = 'active' WHERE pack_id = candidate_pack;
+    UPDATE identity_claim
+    SET evidence_refs = evidence_refs || jsonb_build_object(
+      'assignment_decision', 'source_pack_prime_match',
+      'source_pack_id', candidate_pack,
+      'policy_version', 'cimmich-best-prime-v1'
+    )
+    WHERE identity_claim_id IN (
+      'claim_candidate_high_fixture',
+      'claim_candidate_low_fixture',
+      'claim_same_photo_low_fixture',
+      'claim_same_photo_strong_fixture'
+    );
 
     BEGIN
       UPDATE identity_claim
@@ -403,6 +421,7 @@ docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test
       'categoryevent_holding_pack_guard_remove', held_person, 'category_holding', 'remove',
       'system', 'synthetic-acceptance', 'receipt_service_fixture', 'release-safe'
     );
+    UPDATE source_pack SET state = 'active' WHERE pack_id = active_pack;
   END \$\$;" >/dev/null
 docker exec "$SERVICE_CONTAINER" node acceptance/live.mjs
 docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test -c \

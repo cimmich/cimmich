@@ -650,6 +650,22 @@ test("schema 82 binds owner locator resolution to the resulting typed tag decisi
   );
 });
 
+test("schema 102 retains dormant imported locator provenance after reader retirement", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0102_retain_imported_identity_locator_provenance_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /COMMENT ON TABLE imported_identity_locator/);
+  assert.match(source, /retained losslessly/);
+  assert.doesNotMatch(source, /DROP TABLE/);
+  assert.doesNotMatch(source, /DELETE FROM imported_identity_locator/);
+});
+
 test("schema 84 separates exact content identity from replaceable source bindings", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

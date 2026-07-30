@@ -3,7 +3,7 @@ import test from "node:test";
 import { createOwnerFaceRecognitionScheduler } from "../src/owner-face-recognition.mjs";
 import { recognitionManifestFixture } from "./fixtures/recognition-manifest.mjs";
 
-test("owner recognition requires one current completed pipeline per imported face", async () => {
+test("owner recognition requires one current completed pipeline per imported face without erasing abstained embeddings", async () => {
   const statements = [];
   const sql = async (strings) => {
     statements.push(strings.join(""));
@@ -17,12 +17,10 @@ test("owner recognition requires one current completed pipeline per imported fac
   });
   assert.equal((await scheduler.enqueueNext()).state, "idle");
   assert.equal((await scheduler.enqueueNext()).state, "idle");
-  const [repair, statement] = statements;
-  assert.equal(statements.length, 3);
-  assert.match(repair, /UPDATE face_embedding embedding/);
-  assert.match(repair, /SET state = 'superseded'/);
-  assert.match(repair, /pipeline\.run_kind = 'existing_observation_set'/);
-  assert.match(repair, /recognition_job\.result_receipt_id <>/);
+  const [statement] = statements;
+  assert.equal(statements.length, 2);
+  assert.doesNotMatch(statement, /UPDATE face_embedding/);
+  assert.doesNotMatch(statement, /SET state = 'superseded'/);
   assert.match(statement, /FROM media_pipeline_run_observation observation/);
   assert.match(statement, /JOIN media_pipeline_run pipeline/);
   assert.match(statement, /JOIN current_asset_source_revision revision/);

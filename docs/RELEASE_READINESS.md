@@ -73,8 +73,10 @@ pet-match and provider-bound media-job claim query shapes (cascading foreign
 keys, the lead-scoped review lookup, the pending claim binding, the recent-jobs
 list) and recreates the pending pet-suggestion index with the tiebreak order
 the review list actually sorts by. Index-only: no table shape changes.
-Schema 102 drops the never-populated imported_identity_locator table together
-with its removed dead reader paths; no live data or behavior is affected.
+Schema 102 removes the imported_identity_locator runtime paths but retains its
+exact dormant rows and constraints. Public service source never produced rows,
+but private archive operators may have; migration and backup preflight prove
+that removing a reader does not erase imported spatial provenance.
 
 Schema 103 gives identity-audit runs a last_progress_at liveness column so the
 interrupted-run sweep fails only runs that have actually stopped progressing

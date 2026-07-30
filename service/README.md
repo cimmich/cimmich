@@ -77,9 +77,11 @@ retroactively, and requires future cleanups to scope destructive deletes to
 their own producer's rows. Schema 101 adds the supporting indexes for the
 audit, pet-match and provider-bound job-claim query shapes introduced since
 schema 78; it changes no table shapes and grants no new behavior. Schema 102
-drops the never-populated imported_identity_locator table: it shipped without a
-producer, stayed empty in every deployment, and its reader paths were removed
-with the dead-code sweep. Schema 103 adds identity_audit_run.last_progress_at
+retires the imported_identity_locator runtime paths while retaining the exact
+dormant table and rows: public service source never produced them, but private
+archive import operators may have. Removing a reader does not authorize
+deleting imported source rectangles, and backup migration preflight now proves
+their count is unchanged. Schema 103 adds identity_audit_run.last_progress_at
 so run liveness is judged on recorded progress instead of start age, plus a
 BRIN index on identity_claim(created_at) for the incremental-audit staleness
 probe. Schema 104 re-issues the same-photo derivative guard to select one

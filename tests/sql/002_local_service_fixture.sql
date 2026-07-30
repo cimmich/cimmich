@@ -324,7 +324,7 @@ INSERT INTO identity_claim (
   ),
   (
     'claim_candidate_low_fixture', 'face_candidate_low_fixture', 'person_candidate_fixture',
-    'secondary_match', 'candidate',
+    'prime_match', 'candidate',
     '{"automatic_acceptance":false,"best_score":0.42,"margin":0.08}', 'receipt_service_fixture'
   );
 
