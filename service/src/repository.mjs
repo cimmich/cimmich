@@ -432,6 +432,11 @@ const beginPetCommand = async (
 ) => {
   const id = cleanCommandId(commandId);
   const digest = commandDigest({ commandKind, payload });
+  // Serialize same-command-id requests inside the transaction (the merge
+  // sibling's pattern): without this, two concurrent replays both miss the
+  // existing row and the loser's completePetCommand INSERT surfaces the
+  // primary-key violation as a raw 500 instead of the replay response.
+  await tx`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 61))`;
   const [existing] = await tx`
     SELECT command_kind, actor_id, request_digest, response
     FROM pet_command WHERE command_id = ${id}
@@ -5378,6 +5383,15 @@ export const createCimmichRepository = (
           changed: true,
           personId: target.person_id,
         };
+      }).catch((error) => {
+        // A concurrent accept outside this selection can win a face after the
+        // per-claim locks are taken; the unique accepted-per-face index then
+        // rejects this batch. That is a stale selection, not a server fault.
+        if (error?.code !== "23505") throw error;
+        throw Object.assign(
+          new Error("Candidate selection is stale; refresh and try again"),
+          { statusCode: 409 },
+        );
       });
 
       const maintenancePending = await refreshPrimeForPeople(
@@ -6704,13 +6718,22 @@ export const createCimmichRepository = (
       ]);
 
       const displayFaces = dedupeAssetFaces(faceRows);
-      const candidateLists = await Promise.all(
-        displayFaces.map((face) =>
-          face.person_id
-            ? Promise.resolve([])
-            : repository.faceMatches({ faceId: face.face_id, limit: 5 }),
-        ),
-      );
+      // Same bounded fan-out as faceMatchesBatch: each faceMatches call is a
+      // whole-gallery pgvector scan, and a crowded photo fired one per
+      // unidentified face concurrently, exhausting the connection pool.
+      const candidateLists = [];
+      for (let offset = 0; offset < displayFaces.length; offset += 4) {
+        const chunk = displayFaces.slice(offset, offset + 4);
+        candidateLists.push(
+          ...(await Promise.all(
+            chunk.map((face) =>
+              face.person_id
+                ? Promise.resolve([])
+                : repository.faceMatches({ faceId: face.face_id, limit: 5 }),
+            ),
+          )),
+        );
+      }
       const detailedFaces = displayFaces.map((face, index) => {
         const matches = candidateLists[index]
           .filter((match) => Number.isFinite(Number(match.prime_score)))
@@ -8179,7 +8202,12 @@ export const createCimmichRepository = (
         });
       }
 
-      const result = await sql.begin(async (tx) => {
+      // Two concurrent accepts of different candidate claims for one face
+      // each lock their own claim row, both pass the accepted-conflict check,
+      // and the loser hits identity_claim_one_accepted_person_per_face. That
+      // is the same conflict the check reports - answer it the same way
+      // instead of leaking a raw unique-violation 500.
+      const decide = (tx) => (async () => {
         const [claim] = await tx`
         SELECT identity_claim_id, face_id, person_id, state, decision_id
         FROM identity_claim
@@ -8278,7 +8306,31 @@ export const createCimmichRepository = (
           personId: updated.person_id,
           state: updated.state,
         };
-      });
+      })();
+      let result;
+      try {
+        result = await sql.begin(decide);
+      } catch (error) {
+        if (error?.code !== "23505") throw error;
+        const [winner] = await sql`
+          SELECT accepted.identity_claim_id, accepted.person_id
+          FROM identity_claim claim
+          JOIN identity_claim accepted
+            ON accepted.face_id = claim.face_id
+            AND accepted.state = 'accepted'
+          WHERE claim.identity_claim_id = ${claimId}
+          LIMIT 1
+        `;
+        throw Object.assign(new Error("Face already has an accepted identity"), {
+          details: winner
+            ? {
+                acceptedClaimId: winner.identity_claim_id,
+                acceptedPersonId: winner.person_id,
+              }
+            : {},
+          statusCode: 409,
+        });
+      }
       const maintenancePending =
         result.changed && result.state === "accepted"
           ? await refreshPrimeAfterCommand(sql, result.personId)
@@ -9247,6 +9299,15 @@ export const createCimmichRepository = (
           previousPersonId: current.person_id,
           state: "accepted",
         };
+      }).catch((error) => {
+        // A concurrent identity write can win this face between the checks
+        // and the accepted-per-face index; report the conflict, not a 500.
+        if (error?.code !== "23505") throw error;
+        throw typedError(
+          "This face's identity changed concurrently; refresh and try again",
+          409,
+          "FACE_IDENTITY_CONFLICT",
+        );
       });
 
       const maintenancePending = result.changed
@@ -9714,6 +9775,15 @@ export const createCimmichRepository = (
           previousPersonId: current?.person_id || null,
           state: "accepted",
         };
+      }).catch((error) => {
+        // A concurrent identity write can win this face between the checks
+        // and the accepted-per-face index; report the conflict, not a 500.
+        if (error?.code !== "23505") throw error;
+        throw typedError(
+          "This face's identity changed concurrently; refresh and try again",
+          409,
+          "FACE_IDENTITY_CONFLICT",
+        );
       });
 
       const primeMaintenancePending = result.changed

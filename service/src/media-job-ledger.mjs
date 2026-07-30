@@ -40,10 +40,19 @@ export const mediaJobDigest = (value) =>
     )
     .digest("hex");
 
+// Validation failures are the caller's fault: they carry statusCode 400 so
+// HTTP surfaces answer bad input with 400 instead of a generic 500. Worker
+// and bin callers ignore the extra fields.
+const inputError = (message) =>
+  Object.assign(new Error(message), {
+    code: "MEDIA_JOB_INPUT_INVALID",
+    statusCode: 400,
+  });
+
 const requiredText = (value, label, maximum = 200) => {
   const normalized = String(value || "").trim();
   if (!normalized || normalized.length > maximum) {
-    throw new Error(`Media job requires ${label}`);
+    throw inputError(`Media job requires ${label}`);
   }
   return normalized;
 };
@@ -51,7 +60,7 @@ const requiredText = (value, label, maximum = 200) => {
 const requiredDigest = (value, label) => {
   const digest = requiredText(value, label, 64);
   if (!digestPattern.test(digest)) {
-    throw new Error(`${label} must be a lowercase SHA-256 digest`);
+    throw inputError(`${label} must be a lowercase SHA-256 digest`);
   }
   return digest;
 };
@@ -59,7 +68,7 @@ const requiredDigest = (value, label) => {
 const boundedInteger = (value, label, minimum, maximum) => {
   const number = Number(value);
   if (!Number.isInteger(number) || number < minimum || number > maximum) {
-    throw new Error(
+    throw inputError(
       `${label} must be an integer from ${minimum} to ${maximum}`,
     );
   }
@@ -69,7 +78,7 @@ const boundedInteger = (value, label, minimum, maximum) => {
 export const validateMediaJobRequest = (request = {}) => {
   const operation = requiredText(request.operation, "operation");
   if (!operations.has(operation)) {
-    throw new Error(`Unsupported media job operation: ${operation}`);
+    throw inputError(`Unsupported media job operation: ${operation}`);
   }
   return {
     assetId: requiredText(request.assetId, "assetId"),
@@ -178,13 +187,26 @@ export const createMediaJobLedger = (sql) => ({
 
   async enqueue(requestInput) {
     const request = validateMediaJobRequest(requestInput);
-    const [row] = await sql`
-      SELECT * FROM enqueue_media_job(
-        ${request.assetId}, ${request.operation}, ${request.toolVersion},
-        ${request.configDigest}, ${request.inputRevision}, ${request.maxAttempts}
-      )
-    `;
-    return projectJob(row);
+    try {
+      const [row] = await sql`
+        SELECT * FROM enqueue_media_job(
+          ${request.assetId}, ${request.operation}, ${request.toolVersion},
+          ${request.configDigest}, ${request.inputRevision}, ${request.maxAttempts}
+        )
+      `;
+      return projectJob(row);
+    } catch (error) {
+      // enqueue_media_job raises 22023 for request-shaped problems (an
+      // unknown asset or mismatched revision); that is the caller's input,
+      // not a server fault.
+      if (error?.code === "22023") {
+        throw Object.assign(
+          new Error(error.message || "Media job request is invalid"),
+          { code: "MEDIA_JOB_INPUT_INVALID", statusCode: 400 },
+        );
+      }
+      throw error;
+    }
   },
 
   async fail({ errorCode, jobId, workerId }) {

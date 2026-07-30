@@ -1732,7 +1732,11 @@
       await openCimmichIdentity(generation);
       cimmichIdentityFilter = 'candidates';
     } catch (error) {
+      // Keep the selection so the operator can retry; a silent stop here left
+      // no trace that the batch never saved.
       cimmichMachineSuggestionConfirm = false;
+      cimmichIdentityError =
+        error instanceof Error ? error.message : 'Unable to confirm the selected suggestions';
     } finally {
       if (generation === personProjectionGeneration) {
         cimmichMachineSuggestionSaving = false;
