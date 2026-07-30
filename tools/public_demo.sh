@@ -256,8 +256,8 @@ validate_current_runtime() {
   immich_version=$(curl -fsS "http://127.0.0.1:$IMMICH_PORT/api/server/version" 2>/dev/null) ||
     fail "Immich is not healthy"
   case "$immich_version" in
-    *'"major":3'*'"minor":0'*'"patch":3'*) ;;
-    *) fail "Immich runtime is not exact supported version 3.0.3" ;;
+    *'"major":3'*'"minor":1'*'"patch":0'*) ;;
+    *) fail "Immich runtime is not exact supported version 3.1.0" ;;
   esac
 
   cimmich_health=$(curl -fsS "http://127.0.0.1:$API_PORT/health" 2>/dev/null) ||
@@ -591,7 +591,7 @@ status() {
   curl -fsS "http://127.0.0.1:$UI_PORT/" >/dev/null 2>&1 && ui_status=ready
   counts=$(semantic_counts 2>/dev/null || printf unavailable)
   case "$immich_version" in
-    *'"major":3'*'"minor":0'*'"patch":3'*) immich_status=ready ;;
+    *'"major":3'*'"minor":1'*'"patch":0'*) immich_status=ready ;;
     *) immich_status=down ;;
   esac
   cimmich_status=down
@@ -733,8 +733,8 @@ up() {
   wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
   version=$(curl -fsS "http://127.0.0.1:$IMMICH_PORT/api/server/version")
   case "$version" in
-    *'"major":3'*'"minor":0'*'"patch":3'*) ;;
-    *) fail "Immich runtime is not exact supported version 3.0.3" ;;
+    *'"major":3'*'"minor":1'*'"patch":0'*) ;;
+    *) fail "Immich runtime is not exact supported version 3.1.0" ;;
   esac
   compose run --rm --no-deps \
     -v "$STATE_ROOT:/demo-state" \

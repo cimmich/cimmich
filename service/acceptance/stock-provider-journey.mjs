@@ -62,7 +62,7 @@ const upstream = createServer(async (request, response) => {
   });
   if (request.url === "/api/server/version") {
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ major: 3, minor: 0, patch: 3 }));
+    response.end(JSON.stringify({ major: 3, minor: 1, patch: 0 }));
     return;
   }
   if (request.headers["x-api-key"] !== "public-fixture-only-key") {
@@ -268,7 +268,7 @@ try {
       sourceMutation: "none",
       status: "PASS",
       upstream: {
-        immichVersion: "3.0.3",
+        immichVersion: "3.1.0",
         originalReads: originalReadsBeforeReplay,
         requestCount: requests.length,
       },

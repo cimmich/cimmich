@@ -3,7 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
-STOCK_COMPOSE="$ROOT/ops/stock-immich-v3.0.3.compose.yml"
+STOCK_COMPOSE="$ROOT/ops/stock-immich-v3.1.0.compose.yml"
 RUN_ID=${CIMMICH_COMPANION_ACCEPTANCE_RUN_ID:-$$}
 STOCK_PROJECT="cimmich-companion-stock-${RUN_ID}"
 COMPANION_PROJECT="cimmich-companion-acceptance-${RUN_ID}"
@@ -186,7 +186,7 @@ gateway_health=$(curl --fail --silent --show-error \
   "http://127.0.0.1:${UI_PORT}/cimmich-api/health")
 printf '%s' "$gateway_health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
 curl --fail --silent --show-error "http://127.0.0.1:${UI_PORT}/api/server/version" |
-  grep -q '"patch":3'
+  grep -q '"minor":1'
 
 companion_compose exec -T cimmich-api sh -c \
   'cp /app/providers/opencv-sface/provider-manifest.json /config/cimmich-matching-provider.json'
@@ -291,7 +291,7 @@ cp "$SECURITY_PROOF/SHA256SUMS" "$BACKUP_ROOT/SHA256SUMS"
 
 "$ROOT/tools/companion.sh" disable >/dev/null
 curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/version" |
-  grep -q '"patch":3'
+  grep -q '"minor":1'
 
 "$ROOT/tools/companion.sh" restore "$BACKUP_ROOT" \
   "--confirm=$COMPANION_PROJECT" >/dev/null
@@ -302,11 +302,11 @@ curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/ve
 "$ROOT/tools/companion.sh" remove "--confirm=$COMPANION_PROJECT" >/dev/null
 
 curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/version" |
-  grep -q '"patch":3'
+  grep -q '"minor":1'
 test ! -e "$STATE_ROOT"
 test -z "$(docker volume ls --quiet --filter "name=^${COMPANION_PROJECT}-")"
 test -z "$(docker image ls --quiet "$COMPANION_PROJECT-api:current-source")"
 test -z "$(docker image ls --quiet "$COMPANION_PROJECT-ui:current-source")"
 
-printf '{"backupRestore":true,"companionRemoved":true,"freshNamedPersonImport":true,"freshOnboardingImport":true,"freshOnboardingReplay":true,"freshUnnamedClusterHeldForOwner":true,"immichHealthyAfterDisable":true,"immichHealthyAfterRemove":true,"immichVersion":"3.0.3","portableExportExcludesCredentialsMediaAndProviders":true,"portableRestore":true,"project":"%s","restoreAdversarialCases":7,"schemaVersion":%s,"status":"PASS"}\n' \
+printf '{"backupRestore":true,"companionRemoved":true,"freshNamedPersonImport":true,"freshOnboardingImport":true,"freshOnboardingReplay":true,"freshUnnamedClusterHeldForOwner":true,"immichHealthyAfterDisable":true,"immichHealthyAfterRemove":true,"immichVersion":"3.1.0","portableExportExcludesCredentialsMediaAndProviders":true,"portableRestore":true,"project":"%s","restoreAdversarialCases":7,"schemaVersion":%s,"status":"PASS"}\n' \
   "$COMPANION_PROJECT" "$SCHEMA_VERSION"

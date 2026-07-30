@@ -61,7 +61,7 @@ const companion = createImmichCompanion({
 });
 const companionStatus = await companion.status();
 assert.equal(companionStatus.state, "ready");
-assert.equal(companionStatus.immichVersion, "3.0.3");
+assert.equal(companionStatus.immichVersion, "3.1.0");
 assert.equal(companionStatus.permissionVerification, "not_performed");
 assert.equal(Object.values(companionStatus.capabilities).some(Boolean), false);
 const permissionReceipt = await companion.verifyOnboardingPermissions();

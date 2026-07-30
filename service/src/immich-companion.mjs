@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 export const IMMICH_COMPANION_SCHEMA_VERSION = "cimmich.immich-companion.v1";
-export const IMMICH_COMPANION_SUPPORTED_VERSION = "3.0.3";
-export const IMMICH_COMPANION_SUPPORTED_RANGE = "=3.0.3";
+export const IMMICH_COMPANION_SUPPORTED_VERSION = "3.1.0";
+export const IMMICH_COMPANION_SUPPORTED_RANGE = "=3.1.0";
 export const IMMICH_COMPANION_DEFAULT_MAX_IMAGE_BYTES = 128 * 1024 * 1024;
 export const IMMICH_COMPANION_DEFAULT_MAX_FINGERPRINT_BYTES =
   100 * 1024 * 1024 * 1024;
@@ -267,7 +267,7 @@ export const projectImmichFace = (value) => {
   const rawY1 = finiteSignedInteger(value.boundingBoxY1, "face.boundingBoxY1");
   const rawX2 = finiteSignedInteger(value.boundingBoxX2, "face.boundingBoxX2");
   const rawY2 = finiteSignedInteger(value.boundingBoxY2, "face.boundingBoxY2");
-  // Immich 3.0.3 preserves detector boxes that extend slightly beyond an
+  // Immich 3.x preserves detector boxes that extend slightly beyond an
   // image edge. Clip that valid upstream evidence to the actual frame while
   // retaining strict integer and non-degenerate geometry checks.
   const x1 = Math.max(0, rawX1);

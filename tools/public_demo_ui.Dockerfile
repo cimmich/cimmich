@@ -15,7 +15,7 @@ RUN pnpm --filter @immich/sdk --filter immich-web install --frozen-lockfile --fo
 
 ARG PUBLIC_CIMMICH_API_URL
 ENV PUBLIC_CIMMICH_API_URL=${PUBLIC_CIMMICH_API_URL}
-ENV IMMICH_BUILD=3.0.3-cimmich-public-demo
+ENV IMMICH_BUILD=3.1.0-cimmich-public-demo
 RUN pnpm --dir web run build
 
 FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de

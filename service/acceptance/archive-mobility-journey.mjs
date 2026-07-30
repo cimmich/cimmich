@@ -53,7 +53,7 @@ const companion = (items) => ({
   },
   async status() {
     return {
-      immichVersion: "3.0.3",
+      immichVersion: "3.1.0",
       principal: { userId: "mobility-owner" },
       state: "ready",
     };

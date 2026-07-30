@@ -31,7 +31,7 @@ release; a published-image installation is not yet claimed.
 
 You need:
 
-1. A working Immich 3.0.3 installation. Other 3.x releases are not claimed by
+1. A working Immich 3.1.0 installation. Other 3.x releases are not claimed by
    this release until their compatibility is proved.
 2. Docker Desktop, OrbStack or Docker Engine with Docker Compose v2.
 3. `curl` and `openssl`. They are already present on a normal macOS system;

@@ -42,7 +42,7 @@ const upstream = createServer(async (request, response) => {
   response.setHeader("content-type", "application/json");
   if (request.url === "/api/server/version") {
     response.end(
-      JSON.stringify({ major: 3, minor: 0, patch: 3, prerelease: null }),
+      JSON.stringify({ major: 3, minor: 1, patch: 0, prerelease: null }),
     );
     return;
   }
@@ -98,7 +98,7 @@ try {
 
   const status = await companion.status();
   assert.equal(status.state, "ready");
-  assert.equal(status.immichVersion, "3.0.3");
+  assert.equal(status.immichVersion, "3.1.0");
   assert.equal(JSON.stringify(status).includes("@example.test"), false);
 
   const exact = await companion.getAsset({ assetId: asset.id });

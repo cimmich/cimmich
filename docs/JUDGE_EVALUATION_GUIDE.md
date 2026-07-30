@@ -111,7 +111,7 @@ not a required runtime dependency and receives no automatic identity authority.
 
 ```yaml
 releaseTag: v1.0.0-build-week
-supportedImmich: 3.0.3
+supportedImmich: 3.1.0
 schema: 75
 patchLevel: 1
 serviceTests: 595/595

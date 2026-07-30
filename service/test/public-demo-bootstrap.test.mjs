@@ -50,7 +50,7 @@ const mapFixture = () => ({
     width: Number.parseInt(row.width, 10),
   })),
   generatedAt: "2026-07-19T00:00:00.000Z",
-  immichVersion: "3.0.3",
+  immichVersion: "3.1.0",
   principalDigest: digest("cedar-house-demo-principal"),
   schemaVersion: publicDemoImmichMapSchemaVersion,
   source: "immich_api_upload",

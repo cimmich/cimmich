@@ -51,7 +51,7 @@ assert.equal(versionResponse.ok, true);
 const version = await versionResponse.json();
 assert.deepEqual(
   { major: version.major, minor: version.minor, patch: version.patch },
-  { major: 3, minor: 0, patch: 3 },
+  { major: 3, minor: 1, patch: 0 },
 );
 
 await requestJson("/auth/admin-sign-up", {
@@ -176,7 +176,7 @@ await writeFile(
     assetId: upload.id,
     fixtureBytes: fixture.length,
     fixtureSha256: fixtureDigest,
-    immichVersion: "3.0.3",
+    immichVersion: "3.1.0",
     permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
     peopleFixture: withOnboardingPeopleFixture
       ? { labelled: 1, unlabelled: 1 }
@@ -194,7 +194,7 @@ process.stdout.write(
     assetId: upload.id,
     fixtureBytes: fixture.length,
     fixtureSha256: fixtureDigest,
-    immichVersion: "3.0.3",
+    immichVersion: "3.1.0",
     limitedKeyMutationDenied: true,
     peopleFixture: withOnboardingPeopleFixture
       ? { labelled: 1, unlabelled: 1 }

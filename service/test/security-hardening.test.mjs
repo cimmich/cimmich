@@ -54,7 +54,7 @@ test("local runtime secrets, images and browser response headers are hardened", 
     source("tools/background-lab.compose.yml"),
     source("tools/cimmich_gateway.conf.template"),
     source("tools/public_demo_nginx.conf"),
-    source("ops/stock-immich-v3.0.3.compose.yml"),
+    source("ops/stock-immich-v3.1.0.compose.yml"),
     source("tools/cimmich_ui.Dockerfile"),
     source("tools/companion.compose.yml"),
     source("tools/public_demo.compose.yml"),
@@ -71,8 +71,8 @@ test("local runtime secrets, images and browser response headers are hardened", 
     assert.match(nginx, /X-Frame-Options "SAMEORIGIN" always/);
   }
   for (const image of [
-    "ghcr.io/immich-app/immich-server:v3.0.3",
-    "ghcr.io/immich-app/immich-machine-learning:v3.0.3",
+    "ghcr.io/immich-app/immich-server:v3.1.0",
+    "ghcr.io/immich-app/immich-machine-learning:v3.1.0",
     "pgvector/pgvector:0.8.2-pg17-trixie",
   ]) {
     assert.match(

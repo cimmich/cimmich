@@ -40,7 +40,7 @@ const connection = {
     personRead: true,
   },
   databaseIsolation: 'separate',
-  immichVersion: '3.0.3',
+  immichVersion: '3.1.0',
   principal: { isAdmin: true, userId: 'owner-fixture' },
   readOnly: true,
   schemaVersion: 'cimmich.immich-companion.v1',
@@ -65,7 +65,7 @@ const scope = {
 
 const preview = {
   connection: {
-    immichVersion: '3.0.3',
+    immichVersion: '3.1.0',
     permissionVerification: 'verified',
     permissions: {
       assets: true,
