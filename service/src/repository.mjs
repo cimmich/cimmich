@@ -1955,8 +1955,24 @@ export const createCimmichRepository = (
             )) AS candidate_signals,
         (SELECT count(*)::int FROM decision WHERE actor_kind = 'user') AS user_decisions
     `;
-      const suggestions = await repository.machineSuggestions({ limit: 80 });
-      return { ...row, suggestions_ready: suggestions.length };
+      // Summary is a navigation/readiness projection, not a review trigger.
+      // Reuse a fresh completed scorer snapshot when another review surface has
+      // already paid for it, but never cold-start or wait on the archive-wide
+      // machine-suggestion query from Home.
+      const cachedSuggestions = machineSuggestionCache;
+      let suggestionsReady = 0;
+      if (
+        cachedSuggestions?.visibleRank === visibleRank &&
+        Number.isFinite(cachedSuggestions.expiresAt) &&
+        cachedSuggestions.expiresAt > Date.now()
+      ) {
+        try {
+          suggestionsReady = (await cachedSuggestions.promise).length;
+        } catch {
+          // Summary remains available when an optional review snapshot fails.
+        }
+      }
+      return { ...row, suggestions_ready: suggestionsReady };
     },
 
     async integrationStatus() {

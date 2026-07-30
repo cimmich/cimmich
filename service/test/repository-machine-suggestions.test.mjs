@@ -411,6 +411,42 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
   assert.ok(!scoringValues.includes(6));
 });
 
+test("summary never cold-starts the archive machine-suggestion scorer", async () => {
+  let scoringCalls = 0;
+  let summaryCalls = 0;
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("WITH face_contexts AS MATERIALIZED")) {
+      scoringCalls += 1;
+      return [];
+    }
+    if (statement.includes("FROM asset WHERE state = 'active'")) {
+      summaryCalls += 1;
+      return [
+        {
+          accepted_presence: 0,
+          assets: 4,
+          body_observations: 0,
+          candidate_signals: 3,
+          face_observations: 4,
+          people: 4,
+          user_decisions: 0,
+        },
+      ];
+    }
+    throw new Error(`Unexpected repository query: ${statement.slice(0, 120)}`);
+  };
+  const repository = createCimmichRepository(sql, new Map(), null, {
+    matchingProvider,
+  });
+
+  const summary = await repository.summary();
+
+  assert.equal(summary.suggestions_ready, 0);
+  assert.equal(scoringCalls, 0);
+  assert.equal(summaryCalls, 1);
+});
+
 test("machine review applies exact SourcePack condition consensus without accepting identity", async () => {
   const rows = [
     {
