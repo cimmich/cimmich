@@ -198,7 +198,7 @@ export const cimmichPetsObjectDefinitions: Array<CimmichNamedEntityDefinition & 
   {
     aliases: ['Bluewater boat', 'boat'],
     description: 'The boat used for Bluewater activity instances, routes, and coastal photo clusters.',
-    id: 'booze-cruise-boat',
+    id: 'bluewater-boat',
     kind: 'object',
     locationHints: ['Bluewater route', 'Bluewater coast'],
     name: 'Bluewater Boat',

@@ -1,13 +1,9 @@
+# Only the directories this fork actually carries; the upstream layout's
+# docs/e2e/server/plugins/.github globs advertised packages that do not exist.
 packages:
   - packages/**
-  - docs
-  - e2e
   - i18n
-  - server
-  - plugins
   - web
-  - .github
-  - packages/*
 allowBuilds:
   "@nestjs/core": false
   "@parcel/watcher": false

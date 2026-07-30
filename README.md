@@ -444,13 +444,15 @@ automatic identity authority.
 Core source checks:
 
 ```sh
-cd service && npm test
-cd ../ui/web && pnpm exec prettier --check .
+cd service && npm ci && npm test
+cd ../ui && corepack enable && pnpm install --frozen-lockfile
+pnpm --filter @immich/sdk build
+cd web && pnpm exec prettier --check .
 pnpm run lint
 pnpm run check:svelte
 pnpm run check:typescript
 pnpm run build
-cd ../../..
+cd ../..
 ./tools/run_migration_runner_acceptance.sh
 ./tools/run_synthetic_acceptance.sh
 ```

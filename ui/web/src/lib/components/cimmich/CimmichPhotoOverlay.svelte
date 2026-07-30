@@ -3106,7 +3106,10 @@
     try {
       const result = await attachCimmichManualSubjectTag(stableAssetId, {
         commandId: createCimmichManualSubjectTagCommandId('photo-tag'),
-        ...(manualTagSourceLocatorId ? { locatorId: manualTagSourceLocatorId } : {}),
+        // manualTagSourceLocatorId stays client-side UI state only: the
+        // locator table was dropped with schema 102 and the attach validator
+        // rejects unknown keys, so sending it turned every edit of an
+        // imported tag into a 400.
         region: manualTagDraft,
         subjectId: manualTagSelectedSubject.id,
         subjectKind: manualTagSelectedSubject.kind,

@@ -1459,7 +1459,7 @@ export type CimmichAssetEvidence = {
   ownerSummary?: CimmichAssetOwnerSummary;
   presence: Array<{ display_name: string; person_id: string; reason_code: string }>;
   sourceAssetId: string;
-  schemaVersion: 'cimmich.asset-detailed-evidence.v2' | 'cimmich.asset-detailed-evidence.v3';
+  schemaVersion: 'cimmich.asset-detailed-evidence.v3';
   thingRegions?: CimmichManualObjectRegionTag[];
   width: number;
 };
@@ -1526,7 +1526,7 @@ export type CimmichManualSubjectTagResult = {
   changed: boolean;
   replayed: boolean;
   resolvedLocatorId?: string;
-  schemaVersion: 'cimmich.typed-manual-subject-tag.v1' | 'cimmich.typed-manual-subject-tag.v2';
+  schemaVersion: 'cimmich.typed-manual-subject-tag.v2';
   status: 'applied' | 'no_change' | 'replaced' | 'restored' | 'reverted';
   supersedesDecisionId?: string;
   tag: CimmichManualSubjectTag;
@@ -3416,7 +3416,7 @@ export const updateCimmichPet = (petId: string, input: CimmichPetUpdateInput) =>
   });
 
 export const getCimmichPetMedia = async (petId: string, limit = 500) => {
-  const result = await request<{ items: CimmichPetMedia[]; schemaVersion: 'cimmich.pet-manual.v1' }>(
+  const result = await request<{ items: CimmichPetMedia[]; schemaVersion: 'cimmich.pet-manual.v2' }>(
     `/v1/pets/${encodeURIComponent(petId)}/media?limit=${Math.max(1, Math.min(500, limit))}`,
   );
   return result.items;
@@ -3944,7 +3944,7 @@ export const getCimmichManualSubjectTags = (assetId: string) =>
   request<{
     assetId: string;
     items: CimmichManualSubjectTag[];
-    schemaVersion: 'cimmich.typed-manual-subject-tag.v1' | 'cimmich.typed-manual-subject-tag.v2';
+    schemaVersion: 'cimmich.typed-manual-subject-tag.v2';
   }>(`/v1/assets/${encodeURIComponent(assetId)}/manual-subject-tags`);
 
 export const attachCimmichManualSubjectTag = (
