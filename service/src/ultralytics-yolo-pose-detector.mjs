@@ -6,6 +6,7 @@ import {
   validateBodyPoseManifest,
 } from "./body-pose-provider-contract.mjs";
 import { providerSubprocessEnvironment } from "./provider-subprocess-env.mjs";
+import { closeResidentProcess } from "./resident-process-shutdown.mjs";
 
 export const ultralyticsYoloPoseDetectorVersion =
   "cimmich.ultralytics-yolo-pose-detector.v1";
@@ -43,6 +44,7 @@ export const createUltralyticsYoloPoseDetector = ({
   modelPath,
   pythonPath,
   scriptPath,
+  shutdownTimeoutMs = 5_000,
   timeoutMs = 120_000,
 } = {}) => {
   const manifest = validateBodyPoseManifest(manifestInput);
@@ -55,6 +57,7 @@ export const createUltralyticsYoloPoseDetector = ({
   for (const [value, label, minimum, maximum] of [
     [maxInputBytes, "input limit", 1024, 256 * 1024 * 1024],
     [maxOutputBytes, "output limit", 1024, 16 * 1024 * 1024],
+    [shutdownTimeoutMs, "shutdown timeout", 50, 30_000],
     [timeoutMs, "timeout", 1_000, manifest.resources.maxRuntimeMs],
   ]) {
     if (!Number.isInteger(value) || value < minimum || value > maximum) {
@@ -309,9 +312,8 @@ export const createUltralyticsYoloPoseDetector = ({
       const current = child;
       child = null;
       if (!current || current.killed) return;
-      await new Promise((resolve) => {
-        current.once("close", resolve);
-        current.stdin.end();
+      await closeResidentProcess(current, {
+        timeoutMs: shutdownTimeoutMs,
       });
     },
     async detect(request) {

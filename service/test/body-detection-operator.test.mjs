@@ -15,3 +15,11 @@ test("Body operator stays within the source-revision visibility contract", async
   assert.match(source, /GROUP BY projection\.immich_asset_id/);
   assert.match(source, /NOT EXISTS \(\s+SELECT 1\s+FROM body_pose_evidence/);
 });
+
+test("Body operator tolerates a missing optional credential file at boot", async () => {
+  const source = await readFile(
+    new URL("../bin/body-detection-operator.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /if \(error\?\.code !== "ENOENT"\) throw error/);
+});

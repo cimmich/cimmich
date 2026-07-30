@@ -59,7 +59,13 @@ const immichCompanion = await createImmichCompanionManager({
 const sql = postgres(databaseUrl, { max: 5, prepare: true });
 const legacyBridge = await loadDisplayBridge(
   process.env.CIMMICH_DISPLAY_BRIDGE_PATH || "",
-);
+).catch((error) => {
+  console.warn(
+    "Cimmich optional legacy display bridge unavailable; using inventory projection only",
+    { error: error instanceof Error ? error.message : String(error) },
+  );
+  return new Map();
+});
 const bridge = await mergeInventoryProjectionBridge(sql, legacyBridge);
 const refreshInventoryProjectionBridge =
   createInventoryProjectionBridgeRefresher({
