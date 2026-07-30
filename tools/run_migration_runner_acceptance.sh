@@ -8,6 +8,23 @@ IMAGE=pgvector/pgvector:0.8.2-pg17-trixie
 PORT=55433
 TMP_ROOT=$(mktemp -d)
 
+copy_migrations_through() {
+  destination=$1
+  maximum_version=$2
+  mkdir -p "$destination"
+  for migration in "$ROOT"/migrations/[0-9][0-9][0-9][0-9]_*.sql; do
+    filename=${migration##*/}
+    version=${filename%%_*}
+    while [ "${version#0}" != "$version" ]; do
+      version=${version#0}
+    done
+    version=${version:-0}
+    if [ "$version" -le "$maximum_version" ]; then
+      cp "$migration" "$destination/"
+    fi
+  done
+}
+
 cleanup() {
   status=$?
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -63,10 +80,7 @@ fi
 # for every new write. This is deliberately a disposable database fixture;
 # product migrations remain the only source of release schema truth.
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_legacy_restore_test
-mkdir -p "$TMP_ROOT/through-71-migrations"
-find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0072_*' ! -name '0073_*' ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' ! -name '0077_*' ! -name '0078_*' ! -name '0079_*' ! -name '0080_*' ! -name '0081_*' ! -name '0082_*' ! -name '0083_*' \
-  -exec cp {} "$TMP_ROOT/through-71-migrations/" \;
+copy_migrations_through "$TMP_ROOT/through-71-migrations" 71
 mkdir -p "$TMP_ROOT/through-71-migrations/patches"
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
   "$TMP_ROOT/through-71-migrations/patches/"
@@ -134,10 +148,8 @@ if [ "$legacy_version" != "$CURRENT_SCHEMA_VERSION" ] || [ "$legacy_rows" != "1"
 fi
 
 docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema73_upgrade_test
+copy_migrations_through "$TMP_ROOT/through-73-migrations" 73
 mkdir -p "$TMP_ROOT/through-73-migrations/patches"
-find "$ROOT/migrations" -maxdepth 1 -type f -name '*.sql' \
-  ! -name '0074_*' ! -name '0075_*' ! -name '0076_*' ! -name '0077_*' ! -name '0078_*' ! -name '0079_*' ! -name '0080_*' ! -name '0081_*' ! -name '0082_*' ! -name '0083_*' \
-  -exec cp {} "$TMP_ROOT/through-73-migrations/" \;
 cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
   "$TMP_ROOT/through-73-migrations/patches/"
 SCHEMA73_DATABASE_URL="postgres://cimmich_migration_test:synthetic-migration-password@127.0.0.1:${PORT}/cimmich_schema73_upgrade_test"
