@@ -43,6 +43,9 @@ describe('photo viewer Person picker', () => {
     expect(overlay).toContain("overlayView === 'people' && !isTaggingMode");
     expect(overlay).toContain('editImportedIdentityLocator(presence)');
     expect(overlay).toContain('{#if !manualTagSourceLocatorId}');
-    expect(overlay).toContain('locatorId: manualTagSourceLocatorId');
+    // The locator id is client-side UI state only: schema 102 dropped the
+    // locator table and the attach validator rejects unknown keys, so the
+    // request body must never carry it.
+    expect(overlay).not.toContain('locatorId: manualTagSourceLocatorId');
   });
 });

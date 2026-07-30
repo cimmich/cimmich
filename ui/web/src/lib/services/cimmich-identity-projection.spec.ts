@@ -7,9 +7,9 @@ import {
 
 describe('full archive identity-slate candidate projection', () => {
   it('preserves the machinery primary review candidate', () => {
-    expect(projectPrimaryMachineCandidateNames({ reviewCandidateName: 'Tony Beranek' })).toEqual({
+    expect(projectPrimaryMachineCandidateNames({ reviewCandidateName: 'Test Reviewer' })).toEqual({
       candidateName: undefined,
-      reviewCandidateName: 'Tony Beranek',
+      reviewCandidateName: 'Test Reviewer',
     });
   });
 
@@ -21,9 +21,9 @@ describe('full archive identity-slate candidate projection', () => {
   });
 
   it('restores a primary review candidate from the bounded machinery projection', () => {
-    expect(projectPrimaryMachineCandidateNames(undefined, 'Tony Beranek')).toEqual({
+    expect(projectPrimaryMachineCandidateNames(undefined, 'Test Reviewer')).toEqual({
       candidateName: undefined,
-      reviewCandidateName: 'Tony Beranek',
+      reviewCandidateName: 'Test Reviewer',
     });
   });
 });

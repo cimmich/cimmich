@@ -43,7 +43,7 @@ services:
       context: ..
       dockerfile: service/Dockerfile
       target: production
-    image: cimmich-background-lab-api:schema62-current-source-20260719
+    image: cimmich-background-lab-api:current-source
     command:
       - /bin/sh
       - -c

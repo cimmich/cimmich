@@ -43,7 +43,7 @@ const pet = (displayName: string, aliases: string[] = [], description = ''): Cim
 describe('Pet presentation', () => {
   it('does not infer species from a Pet name', () => {
     expect(getPetPresentation(pet('Cafe')).label).toBe('Pet');
-    expect(getPetPresentation(pet('Freya Hart')).label).toBe('Pet');
+    expect(getPetPresentation(pet('Freya')).label).toBe('Pet');
   });
 
   it('prefers an explicit descriptive species hint', () => {
@@ -63,7 +63,7 @@ describe('Pet presentation', () => {
 
   it('hides aliases that only repeat the display name', () => {
     expect(getVisiblePetAliases(pet('Cafe', ['Cafe', 'Café']))).toEqual(['Café']);
-    expect(getVisiblePetAliases(pet('Freya Hart', ['Freya Hart']))).toEqual([]);
+    expect(getVisiblePetAliases(pet('Freya', ['Freya']))).toEqual([]);
   });
 
   it('sorts by name without mutating the Pet projection', () => {

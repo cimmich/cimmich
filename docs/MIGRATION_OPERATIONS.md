@@ -16,7 +16,7 @@ this process.
   than recording it as unknown.
 - Ordered schema-48 hardening patches use a separate checksummed patch ledger.
   The runner applies each patch immediately after its declared base migration
-  and before any later migration; current order is 1…48 → 0048_0001 → 49…66.
+  and before any later migration; current order is 1…48 → 0048_0001 → 49 onward (contiguous through the latest migration).
 - Missing, reordered or edited applied source fails startup. The service health
   response derives `schemaVersion` and `schemaPatchLevel` from the ledgers.
 - A database with schema objects but no ledger is never guessed. The only
