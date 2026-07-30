@@ -3635,7 +3635,7 @@ export const createCimmichRepository = (
         const rows = await sql`
       WITH hidden_assets AS MATERIALIZED (
         -- Set-based equivalent of cimmich_visibility_asset_rank(asset_id)
-        -- > ${visibleRank}: the function is a single-row lookup with a
+        -- above the active visibility rank: the function is a single-row lookup with a
         -- 'standard' default, so calling it per Face/Body/Presence row
         -- repeated hundreds of thousands of lookups per People load.
         -- Explicit overrides are rare (often zero rows), so one anti-join
@@ -3857,9 +3857,9 @@ export const createCimmichRepository = (
         AND (p.subject_kind <> 'person'
           OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})
         AND (
-          (${exactPersonId} <> '' AND p.person_id = ${exactPersonId})
+          (${exactPersonId}::text <> '' AND p.person_id = ${exactPersonId})
           OR (
-            ${exactPersonId} = '' AND (
+            ${exactPersonId}::text = '' AND (
               coalesce(p.display_name, '') ILIKE ${nameQuery}
               OR EXISTS (SELECT 1 FROM unnest(p.aliases) alias WHERE alias ILIKE ${nameQuery})
             )

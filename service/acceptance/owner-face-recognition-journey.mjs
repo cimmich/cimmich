@@ -319,8 +319,8 @@ try {
       AND config_digest = ${manifest.recognitionSpaceConfigDigest}
   `;
   assert.deepEqual(abstainedTruth, {
-    active_count: 0,
-    imported_superseded: 1,
+    active_count: 1,
+    imported_superseded: 0,
   });
   const idle = await scheduler.enqueueNext();
   assert.deepEqual(idle, {
@@ -336,7 +336,7 @@ try {
   process.stdout.write(
     `${JSON.stringify({
       acceptedIdentityRetained: true,
-      abstainedImportedEmbeddingSuperseded: true,
+      abstainedImportedEmbeddingPreserved: true,
       automaticIdentityAuthority: "none",
       providerExecutions: executionCount,
       providerReplay: completed.replayEvidence,

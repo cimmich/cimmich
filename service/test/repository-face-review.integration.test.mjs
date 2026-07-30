@@ -104,6 +104,11 @@ integrationTest(
       const repository = createCimmichRepository(sql, new Map(), {
         currentRank: () => 0,
       });
+      // The whole-grid snapshot path must bind its empty person filter as
+      // text. PostgreSQL cannot infer a standalone parameter's type from
+      // `parameter <> ''`, which previously made boot prewarm and the first
+      // People load fail with 42P18 despite unit-query-shape coverage.
+      await repository.people({ limit: 500 });
       const result = await repository.faceReviewComparisons({
         faceId: "face_review_query",
         limit: 5,

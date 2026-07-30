@@ -511,6 +511,16 @@ preflight_backup_database() (
   validate_semantic_counts "$restored_counts"
   test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
     fail "backup database semantic counts do not match its manifest"
+  restored_locator_table=$(docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
+    "SELECT to_regclass('imported_identity_locator') IS NOT NULL;") ||
+    fail "backup imported-locator preservation state is unreadable"
+  if test "$restored_locator_table" = t; then
+    restored_locator_count=$(docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
+      "SELECT count(*) FROM imported_identity_locator;") ||
+      fail "backup imported-locator count is unreadable"
+  else
+    restored_locator_count=0
+  fi
   docker run --rm --network "$preflight_network" \
     -e DATABASE_URL="postgres://cimmich:$preflight_password@$preflight_database:5432/cimmich" \
     "$PROJECT-api:current-source" node bin/migrate.mjs apply >/dev/null ||
@@ -525,6 +535,16 @@ preflight_backup_database() (
     fail "migrated backup semantic counts are unreadable"
   test "$migrated_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
     fail "backup migration changed semantic counts"
+  migrated_locator_table=$(docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
+    "SELECT to_regclass('imported_identity_locator') IS NOT NULL;") ||
+    fail "migrated backup imported-locator preservation state is unreadable"
+  test "$migrated_locator_table" = t ||
+    fail "backup migration removed imported-locator provenance"
+  migrated_locator_count=$(docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
+    "SELECT count(*) FROM imported_identity_locator;") ||
+    fail "migrated backup imported-locator count is unreadable"
+  test "$migrated_locator_count" = "$restored_locator_count" ||
+    fail "backup migration changed imported-locator provenance"
   trap - EXIT INT TERM
   preflight_cleanup
 )

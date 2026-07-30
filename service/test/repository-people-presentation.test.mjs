@@ -48,6 +48,9 @@ test("people() replaces per-row asset visibility calls with one hidden-asset set
 
   assert.match(statement, /hidden_assets AS MATERIALIZED/);
   assert.match(statement, /cimmich_visibility_object/);
+  // Interpolations inside SQL comments still bind protocol parameters, but
+  // PostgreSQL cannot see their use and rejects the statement with 42P18.
+  assert.doesNotMatch(statement, /--[^\n]*\?/);
   // No CTE may fall back to the per-row function; only the person-level rank
   // check and the shared presentation joins keep their function calls.
   assert.doesNotMatch(
@@ -63,6 +66,8 @@ test("people() replaces per-row asset visibility calls with one hidden-asset set
     /cimmich_visibility_asset_rank\(presence\.asset_id\)/,
   );
   assert.match(statement, /cimmich_visibility_person_rank/);
+  assert.match(statement, /\?::text <> ''/);
+  assert.match(statement, /\?::text = ''/);
 });
 
 test("the unfiltered whole-grid People read is served from the hot snapshot until cleared", async () => {

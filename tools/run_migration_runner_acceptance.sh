@@ -177,6 +177,66 @@ if [ "$upgraded_schema_version" != "$CURRENT_SCHEMA_VERSION" ] || \
   echo "schema 73 to ${CURRENT_SCHEMA_VERSION} upgrade verification failed" >&2
   exit 1
 fi
+
+# Private archive operators may have populated schema 81's imported spatial
+# locator table even though the public service tree had no producer. Prove a
+# schema-101 restore retains that provenance through the current migration
+# boundary instead of accepting a broad-count-equivalent destructive drop.
+docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema101_locator_test
+copy_migrations_through "$TMP_ROOT/through-101-migrations" 101
+mkdir -p "$TMP_ROOT/through-101-migrations/patches"
+cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
+  "$TMP_ROOT/through-101-migrations/patches/"
+SCHEMA101_LOCATOR_DATABASE_URL="postgres://cimmich_migration_test:synthetic-migration-password@127.0.0.1:${PORT}/cimmich_schema101_locator_test"
+DATABASE_URL="$SCHEMA101_LOCATOR_DATABASE_URL" \
+  CIMMICH_MIGRATIONS_DIRECTORY="$TMP_ROOT/through-101-migrations" \
+  npm --prefix "$ROOT/service" run migrate -- apply >"$TMP_ROOT/schema101-locator.log"
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_schema101_locator_test <<'SQL'
+INSERT INTO source_snapshot (
+  snapshot_id, input_schema_version, source_digest, locator_root_token,
+  started_at, completed_at, declared_asset_count, observed_asset_count, state
+) VALUES (
+  'snapshot_locator_preservation_fixture', 'locator-preservation-v1',
+  repeat('b', 64), 'locator-preservation-root', now(), now(), 1, 1, 'complete'
+);
+INSERT INTO asset (
+  asset_id, locator_token, media_kind, mime_type, source_snapshot_id, state
+) VALUES (
+  'asset_locator_preservation_fixture', 'locator-preservation-asset',
+  'image', 'image/jpeg', 'snapshot_locator_preservation_fixture', 'active'
+);
+INSERT INTO person (
+  person_id, display_name, status, created_by_receipt_id
+) VALUES (
+  'person_locator_preservation_fixture', 'Locator Preservation Fixture',
+  'active', 'receipt_cimmich_imported_identity_locator_v1'
+);
+INSERT INTO imported_identity_locator (
+  locator_id, person_id, asset_id, intended_tag_type, geometry_role,
+  box_x, box_y, box_w, box_h, source_instance_suffix, source_kind, state,
+  producer_receipt_id, privacy_class
+) VALUES (
+  'locator_preservation_fixture', 'person_locator_preservation_fixture',
+  'asset_locator_preservation_fixture', 'body', 'head_locator',
+  0.1, 0.1, 0.2, 0.2, '2', 'synthetic-private-import', 'unresolved',
+  'receipt_cimmich_imported_identity_locator_v1', 'private'
+);
+SQL
+DATABASE_URL="$SCHEMA101_LOCATOR_DATABASE_URL" \
+  npm --prefix "$ROOT/service" run migrate -- apply >"$TMP_ROOT/schema101-locator-current.log"
+read -r locator_schema locator_table locator_rows locator_unresolved <<EOF
+$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_schema101_locator_test -AtF ' ' -c \
+  "SELECT (SELECT max(version) FROM cimmich_schema_migration), to_regclass('imported_identity_locator') IS NOT NULL, (SELECT count(*) FROM imported_identity_locator WHERE locator_id='locator_preservation_fixture'), (SELECT count(*) FROM imported_identity_locator WHERE locator_id='locator_preservation_fixture' AND state='unresolved')")
+EOF
+if [ "$locator_schema" != "$CURRENT_SCHEMA_VERSION" ] || \
+  [ "$locator_table" != "t" ] || [ "$locator_rows" != "1" ] || \
+  [ "$locator_unresolved" != "1" ]; then
+  echo "schema-101 imported-locator provenance was not preserved" >&2
+  exit 1
+fi
+
 if docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
   -d cimmich_legacy_restore_test -c \
   "INSERT INTO identity_claim (identity_claim_id,face_id,person_id,origin,state,evidence_refs,producer_receipt_id) VALUES ('claim_legacy_compatibility_forgery','face_legacy_compatibility_fixture','person_legacy_compatibility_fixture','import','candidate','{\"assignment_decision\":\"accepted_matched_digikam_sidecar_face\"}'::jsonb,'receipt_legacy_compatibility_fixture')" \
@@ -230,4 +290,4 @@ if [ "$resume_count" != "2" ] || [ "$resume_timing_count" != "2" ]; then
   exit 1
 fi
 
-echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/concurrent/checksum/resume/legacy-restore/new-write-enforcement)"
+echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/concurrent/checksum/resume/legacy-restore/locator-preservation/new-write-enforcement)"
