@@ -445,10 +445,14 @@ validate_config_archive() {
   config_members=$(docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
     tar -tzf /backup/config.tgz | sed 's#^\./##' | sort | tr '\n' ':')
   case "$config_members" in
-    :|:immich-credential.json:) ;;
+    :|\
+    :immich-credential.json:|\
+    :cimmich-matching-provider.json:|\
+    :cimmich-matching-provider.json:immich-credential.json:) ;;
     *) fail "backup config archive members are invalid" ;;
   esac
-  if test "$config_members" = ":immich-credential.json:"; then
+  case "$config_members" in
+    *:immich-credential.json:*)
     docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
       tar -xOzf /backup/config.tgz ./immich-credential.json |
       docker run --rm -i "$NODE_IMAGE" node -e '
@@ -468,7 +472,29 @@ validate_config_archive() {
           if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.hostname || !url.pathname.endsWith("/api")) process.exit(2);
         });
       ' || fail "backup Immich credential is invalid"
-  fi
+      ;;
+  esac
+  case "$config_members" in
+    *:cimmich-matching-provider.json:*)
+      docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
+        tar -xOzf /backup/config.tgz ./cimmich-matching-provider.json |
+        docker run --rm -i "$PROJECT-api:current-source" \
+        node --input-type=module -e '
+          import { validateRecognitionProviderManifest } from "./src/recognition-provider-contract.mjs";
+          let input = "";
+          process.stdin.setEncoding("utf8");
+          process.stdin.on("data", (chunk) => {
+            input += chunk;
+            if (Buffer.byteLength(input) > 32768) process.exit(2);
+          });
+          process.stdin.on("end", () => {
+            let value;
+            try { value = JSON.parse(input); } catch { process.exit(2); }
+            try { validateRecognitionProviderManifest(value); } catch { process.exit(2); }
+          });
+        ' || fail "backup matching-provider manifest is invalid"
+      ;;
+  esac
 }
 
 preflight_backup_database() (
@@ -651,16 +677,24 @@ backup() {
   umask 077
   mkdir -p "$backup_staging"
   chmod 700 "$backup_staging"
+  backup_archive_uid=$(id -u)
+  backup_archive_gid=$(id -g)
   compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc > "$backup_staging/cimmich.dump"
-  docker run --rm -v "$DOCUMENT_VOLUME:/source:ro" -v "$backup_staging:/backup" \
-    "$ALPINE_IMAGE" \
-    tar -czf /backup/documents.tgz -C /source .
-  docker run --rm -v "$CONFIG_VOLUME:/source:ro" -v "$backup_staging:/backup" \
-    "$ALPINE_IMAGE" \
-    tar -czf /backup/config.tgz -C /source .
-  docker run --rm -v "$FACE_PROVIDER_VOLUME:/source:ro" -v "$backup_staging:/backup" \
-    "$ALPINE_IMAGE" \
-    tar -czf /backup/face-provider.tgz -C /source .
+  docker run --rm \
+    -e ARCHIVE_UID="$backup_archive_uid" -e ARCHIVE_GID="$backup_archive_gid" \
+    -v "$DOCUMENT_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" sh -c \
+    'tar -czf /backup/documents.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /backup/documents.tgz'
+  docker run --rm \
+    -e ARCHIVE_UID="$backup_archive_uid" -e ARCHIVE_GID="$backup_archive_gid" \
+    -v "$CONFIG_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" sh -c \
+    'tar -czf /backup/config.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /backup/config.tgz'
+  docker run --rm \
+    -e ARCHIVE_UID="$backup_archive_uid" -e ARCHIVE_GID="$backup_archive_gid" \
+    -v "$FACE_PROVIDER_VOLUME:/source:ro" -v "$backup_staging:/backup" \
+    "$ALPINE_IMAGE" sh -c \
+    'tar -czf /backup/face-provider.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /backup/face-provider.tgz'
   health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
   backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read companion semantic counts"
   test "$backup_counts_after" = "$backup_counts_before" ||
@@ -698,10 +732,15 @@ portable_export() {
   umask 077
   mkdir -p "$portable_staging"
   chmod 700 "$portable_staging"
+  portable_archive_uid=$(id -u)
+  portable_archive_gid=$(id -g)
   compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc \
     > "$portable_staging/cimmich.dump"
-  docker run --rm -v "$DOCUMENT_VOLUME:/source:ro" -v "$portable_staging:/portable" \
-    "$ALPINE_IMAGE" tar -czf /portable/documents.tgz -C /source .
+  docker run --rm \
+    -e ARCHIVE_UID="$portable_archive_uid" -e ARCHIVE_GID="$portable_archive_gid" \
+    -v "$DOCUMENT_VOLUME:/source:ro" -v "$portable_staging:/portable" \
+    "$ALPINE_IMAGE" sh -c \
+    'tar -czf /portable/documents.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /portable/documents.tgz'
   health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
   portable_counts_after=$(semantic_counts 2>/dev/null) ||
     fail "unable to re-read companion semantic counts"

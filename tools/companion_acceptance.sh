@@ -188,6 +188,8 @@ printf '%s' "$gateway_health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
 curl --fail --silent --show-error "http://127.0.0.1:${UI_PORT}/api/server/version" |
   grep -q '"patch":3'
 
+companion_compose exec -T cimmich-api sh -c \
+  'cp /app/providers/opencv-sface/provider-manifest.json /config/cimmich-matching-provider.json'
 "$ROOT/tools/companion.sh" backup "$BACKUP_ROOT" >/dev/null
 "$ROOT/tools/companion.sh" portable-export "$PORTABLE_ROOT" >/dev/null
 test ! -e "$PORTABLE_ROOT/config.tgz"
