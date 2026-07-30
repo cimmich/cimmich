@@ -9,7 +9,11 @@ export const createFragmentAwareSql = (record, rows = []) => {
       if (value === undefined) {
         return acc + part;
       }
-      if (value !== null && typeof value === "object" && "fragmentText" in value) {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        "fragmentText" in value
+      ) {
         return acc + part + value.fragmentText;
       }
       return acc + part + "?";

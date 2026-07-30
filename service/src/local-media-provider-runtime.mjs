@@ -195,12 +195,15 @@ export const loadLocalMediaProviderRuntime = async ({
         "Local InsightFace provider runtime does not match its manifest",
       );
     }
-    const [detectorModelDigest, recognitionModelDigest, recognitionScriptDigest] =
-      await Promise.all([
-        fileDigest(paths.detectorModel),
-        fileDigest(paths.recognitionModel),
-        fileDigest(paths.recognitionScript),
-      ]);
+    const [
+      detectorModelDigest,
+      recognitionModelDigest,
+      recognitionScriptDigest,
+    ] = await Promise.all([
+      fileDigest(paths.detectorModel),
+      fileDigest(paths.recognitionModel),
+      fileDigest(paths.recognitionScript),
+    ]);
     assertDigest(
       detectorModelDigest,
       recognitionManifest.detector.artifactSha256,
@@ -251,8 +254,7 @@ export const loadLocalMediaProviderRuntime = async ({
       pipelineConfigDigest: pipelineManifest.pipelineConfigDigest,
       providerId,
       pythonVersion: String(probe.pythonVersion),
-      recognitionConfigDigest:
-        recognitionManifest.recognitionSpaceConfigDigest,
+      recognitionConfigDigest: recognitionManifest.recognitionSpaceConfigDigest,
       recognitionScriptDigest,
       recognitionToolVersion: insightFaceUserSuppliedRecognizerVersion,
       runtime: String(probe.runtime),

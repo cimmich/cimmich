@@ -1023,9 +1023,7 @@ test("pet presentation paths gate on the narrow pet cover lookup, not the pet() 
     const text = strings.join("?");
     statements.push(text);
     if (text.includes("cimmich_visibility_pet_rank")) {
-      return [
-        { cover_asset_id: null, cover_crop: null, person_id: "pet-1" },
-      ];
+      return [{ cover_asset_id: null, cover_crop: null, person_id: "pet-1" }];
     }
     if (text.includes("cimmich_visibility_subject_rank")) {
       return [{ person_id: "pet-1", subject_kind: "pet" }];

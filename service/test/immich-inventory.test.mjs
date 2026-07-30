@@ -117,8 +117,8 @@ test("bounded current-job batches re-scan assets with existing faces but skip ex
       priorityTierMax: 1,
     }),
     {
-    eligibleAssets: 1,
-    ensuredJobs: 1,
+      eligibleAssets: 1,
+      ensuredJobs: 1,
     },
   );
   assert.doesNotMatch(queries[0].text, /FROM face_observation/);

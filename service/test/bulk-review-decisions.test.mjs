@@ -193,10 +193,13 @@ test("batch face reassignment reports partial failures and reuses a created Pers
   repository.reassignFaceIdentity = async (input) => {
     calls.push(input);
     if (input.faceId === "face-broken") {
-      throw Object.assign(new Error("Visible current Face observation not found"), {
-        code: "FACE_OBSERVATION_NOT_FOUND",
-        statusCode: 404,
-      });
+      throw Object.assign(
+        new Error("Visible current Face observation not found"),
+        {
+          code: "FACE_OBSERVATION_NOT_FOUND",
+          statusCode: 404,
+        },
+      );
     }
     return {
       changed: true,

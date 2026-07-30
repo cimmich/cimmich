@@ -1043,22 +1043,19 @@ test("Pet presentation routes preserve independent profile and hero slots", asyn
       assert.equal(current.status, 200);
       assert.deepEqual(await current.json(), presentation);
 
-      const updated = await fetch(
-        `${root}/v1/pets/pet-one/presentation/hero`,
-        {
-          body: JSON.stringify({
-            assetId: "asset-pet",
-            crop: { h: 0.4, w: 1, x: 0, y: 0.3 },
-            observationId: "face-pet",
-            observationKind: "face",
-          }),
-          headers: {
-            "content-type": "application/json",
-            "x-cimmich-actor": "tester",
-          },
-          method: "POST",
+      const updated = await fetch(`${root}/v1/pets/pet-one/presentation/hero`, {
+        body: JSON.stringify({
+          assetId: "asset-pet",
+          crop: { h: 0.4, w: 1, x: 0, y: 0.3 },
+          observationId: "face-pet",
+          observationKind: "face",
+        }),
+        headers: {
+          "content-type": "application/json",
+          "x-cimmich-actor": "tester",
         },
-      );
+        method: "POST",
+      });
       assert.equal(updated.status, 200);
       assert.deepEqual(await updated.json(), presentation);
     },

@@ -1,9 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import {
-  validateBodyDetectorManifest,
-} from "./body-detector-contract.mjs";
+import { validateBodyDetectorManifest } from "./body-detector-contract.mjs";
 import { providerSubprocessEnvironment } from "./provider-subprocess-env.mjs";
 
 export const ultralyticsYoloBodyDetectorVersion =
@@ -109,10 +107,7 @@ export const createUltralyticsYoloBodyDetector = ({
     current.pendingResponse = null;
     current.stderr.on("data", () => {});
     current.stdout.on("data", (chunk) => {
-      current.responseBuffer = Buffer.concat([
-        current.responseBuffer,
-        chunk,
-      ]);
+      current.responseBuffer = Buffer.concat([current.responseBuffer, chunk]);
       const pending = current.pendingResponse;
       if (!pending) {
         stop();
@@ -156,9 +151,7 @@ export const createUltralyticsYoloBodyDetector = ({
       try {
         const result = JSON.parse(payload.toString("utf8"));
         if (result?.error) {
-          if (
-            result.error.code === "ULTRALYTICS_BODY_SOURCE_UNREADABLE"
-          ) {
+          if (result.error.code === "ULTRALYTICS_BODY_SOURCE_UNREADABLE") {
             pending.resolve({
               assetToken: pending.request.assetToken,
               bodies: [],
@@ -222,7 +215,11 @@ export const createUltralyticsYoloBodyDetector = ({
     sourceContentDigest,
     timeoutMs: budget,
   }) => {
-    if (!Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > maxInputBytes) {
+    if (
+      !Buffer.isBuffer(bytes) ||
+      bytes.length < 1 ||
+      bytes.length > maxInputBytes
+    ) {
       throw detectorError(
         "LOCAL_BODY_DETECTOR_INPUT_INVALID",
         "YOLO body detector source media is empty or oversized",
@@ -247,7 +244,9 @@ export const createUltralyticsYoloBodyDetector = ({
       );
     }
     const effectiveTimeoutMs =
-      budget == null ? timeoutMs : Math.min(timeoutMs, Math.floor(Number(budget)));
+      budget == null
+        ? timeoutMs
+        : Math.min(timeoutMs, Math.floor(Number(budget)));
     if (!Number.isInteger(effectiveTimeoutMs) || effectiveTimeoutMs < 1_000) {
       throw detectorError(
         "LOCAL_BODY_DETECTOR_CONFIG_INVALID",
@@ -278,23 +277,20 @@ export const createUltralyticsYoloBodyDetector = ({
         stop();
       }, effectiveTimeoutMs);
       current.pendingResponse = { reject, request, resolve, timer };
-      current.stdin.write(
-        Buffer.concat([header, metadata, bytes]),
-        (error) => {
-          if (!error) return;
-          if (current.pendingResponse) {
-            current.pendingResponse = null;
-            clearTimeout(timer);
-            reject(
-              detectorError(
-                "LOCAL_BODY_DETECTOR_PROCESS_FAILED",
-                "YOLO body detector write failed",
-              ),
-            );
-          }
-          stop();
-        },
-      );
+      current.stdin.write(Buffer.concat([header, metadata, bytes]), (error) => {
+        if (!error) return;
+        if (current.pendingResponse) {
+          current.pendingResponse = null;
+          clearTimeout(timer);
+          reject(
+            detectorError(
+              "LOCAL_BODY_DETECTOR_PROCESS_FAILED",
+              "YOLO body detector write failed",
+            ),
+          );
+        }
+        stop();
+      });
     });
   };
 

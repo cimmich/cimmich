@@ -109,10 +109,7 @@ test("reader hashes paired bytes, emits no paths, and collapses MWG/Microsoft du
     assert.equal(values[1].kind, "asset");
     assert.equal(values[1].value.faces[0].rawName, "Replacement Style");
     assert.equal(values[2].kind, "asset");
-    assert.equal(
-      values[1].value.contentDigest,
-      values[2].value.contentDigest,
-    );
+    assert.equal(values[1].value.contentDigest, values[2].value.contentDigest);
     assert.notEqual(
       values[1].value.sourceLocatorDigest,
       values[2].value.sourceLocatorDigest,

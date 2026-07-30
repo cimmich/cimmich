@@ -249,7 +249,9 @@ export const createUltralyticsYoloPoseDetector = ({
       );
     }
     const effectiveTimeoutMs =
-      budget == null ? timeoutMs : Math.min(timeoutMs, Math.floor(Number(budget)));
+      budget == null
+        ? timeoutMs
+        : Math.min(timeoutMs, Math.floor(Number(budget)));
     if (!Number.isInteger(effectiveTimeoutMs) || effectiveTimeoutMs < 1_000) {
       throw poseError(
         "LOCAL_BODY_POSE_CONFIG_INVALID",
@@ -272,10 +274,7 @@ export const createUltralyticsYoloPoseDetector = ({
       const timer = setTimeout(() => {
         current.pendingResponse = null;
         reject(
-          poseError(
-            "LOCAL_BODY_POSE_TIMEOUT",
-            "YOLO pose detector timed out",
-          ),
+          poseError("LOCAL_BODY_POSE_TIMEOUT", "YOLO pose detector timed out"),
         );
         stop();
       }, effectiveTimeoutMs);
@@ -285,23 +284,20 @@ export const createUltralyticsYoloPoseDetector = ({
         runId: normalizedRunId,
         timer,
       };
-      current.stdin.write(
-        Buffer.concat([header, metadata, bytes]),
-        (error) => {
-          if (!error) return;
-          if (current.pendingResponse) {
-            current.pendingResponse = null;
-            clearTimeout(timer);
-            reject(
-              poseError(
-                "LOCAL_BODY_POSE_PROCESS_FAILED",
-                "YOLO pose detector write failed",
-              ),
-            );
-          }
-          stop();
-        },
-      );
+      current.stdin.write(Buffer.concat([header, metadata, bytes]), (error) => {
+        if (!error) return;
+        if (current.pendingResponse) {
+          current.pendingResponse = null;
+          clearTimeout(timer);
+          reject(
+            poseError(
+              "LOCAL_BODY_POSE_PROCESS_FAILED",
+              "YOLO pose detector write failed",
+            ),
+          );
+        }
+        stop();
+      });
     });
   };
 

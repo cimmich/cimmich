@@ -65,7 +65,9 @@ test("the reconcile sweep thresholds on last progress, derived from the transact
     /coalesce\(last_progress_at, started_at\)\s+< now\(\) - make_interval/,
   );
   assert.deepEqual(reconcileValues, [identityAuditInterruptThresholdMs / 1000]);
-  assert.ok(identityAuditInterruptThresholdMs > identityAuditTransactionTimeoutMs);
+  assert.ok(
+    identityAuditInterruptThresholdMs > identityAuditTransactionTimeoutMs,
+  );
 });
 
 test("the reconcile sweep re-arms after its cadence instead of memoizing forever", async () => {
@@ -108,7 +110,12 @@ test("incremental start gates staleness on the base run's start, inclusively", a
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("SELECT * FROM identity_audit_run")) {
-      return [runRow({ state: "completed", completed_at: "2026-07-30T03:00:00.000Z" })];
+      return [
+        runRow({
+          state: "completed",
+          completed_at: "2026-07-30T03:00:00.000Z",
+        }),
+      ];
     }
     if (query.includes("WHERE state = 'completed'")) {
       return [
@@ -197,9 +204,12 @@ test("an audit failure stores a stable label, logs the error, and guards its rec
   // The audit's first transaction dies with a raw driver code; the stored
   // label must stay stable while the log keeps the raw code.
   sql.begin = async () => {
-    throw Object.assign(new Error("canceling statement due to statement timeout"), {
-      code: "57014",
-    });
+    throw Object.assign(
+      new Error("canceling statement due to statement timeout"),
+      {
+        code: "57014",
+      },
+    );
   };
   const logged = [];
   const realError = console.error;
@@ -263,7 +273,8 @@ test("a failing recovery write is contained instead of escaping the process", as
       let attempt = 0;
       attempt < 100 &&
       !logged.some(
-        (parts) => parts[0] === "Cimmich identity audit failure recovery failed",
+        (parts) =>
+          parts[0] === "Cimmich identity audit failure recovery failed",
       );
       attempt += 1
     ) {

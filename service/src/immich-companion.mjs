@@ -274,12 +274,7 @@ export const projectImmichFace = (value) => {
   const y1 = Math.max(0, rawY1);
   const x2 = Math.min(imageWidth, rawX2);
   const y2 = Math.min(imageHeight, rawY2);
-  if (
-    imageWidth < 1 ||
-    imageHeight < 1 ||
-    x2 <= x1 ||
-    y2 <= y1
-  ) {
+  if (imageWidth < 1 || imageHeight < 1 || x2 <= x1 || y2 <= y1) {
     throw companionError(
       "IMMICH_COMPANION_PROTOCOL_INVALID",
       "Immich Face geometry is invalid",
@@ -627,10 +622,7 @@ export const createImmichCompanion = ({
 
   const requestOriginalFingerprint = async (assetId) => {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      fingerprintTimeoutMs,
-    );
+    const timeout = setTimeout(() => controller.abort(), fingerprintTimeoutMs);
     let response;
     try {
       response = await fetchImpl(

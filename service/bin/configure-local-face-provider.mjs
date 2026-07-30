@@ -1,14 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash, randomUUID } from "node:crypto";
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  readFile,
-  rename,
-  rm,
-} from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { validateRecognitionProviderManifest } from "../src/recognition-provider-contract.mjs";
@@ -28,7 +21,9 @@ const requiredPath = (name) => {
 };
 
 const fileDigest = async (filePath) =>
-  createHash("sha256").update(await readFile(filePath)).digest("hex");
+  createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex");
 
 const manifestPath = requiredPath("manifest");
 const detectorPath = requiredPath("detector");

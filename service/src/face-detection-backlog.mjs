@@ -3,8 +3,7 @@ import {
   runBoundedBacklogWorkers,
 } from "./bounded-backlog.mjs";
 
-export const faceDetectionBacklogVersion =
-  "cimmich.face-detection-backlog.v1";
+export const faceDetectionBacklogVersion = "cimmich.face-detection-backlog.v1";
 
 const boundedInteger = (value, label, minimum, maximum) => {
   const parsed = Number(value);
@@ -40,12 +39,7 @@ export const runFaceDetectionBacklog = async ({
   ) {
     throw new Error("Face detection backlog workers are invalid");
   }
-  const boundedLimit = boundedInteger(
-    limitJobs,
-    "job limit",
-    1,
-    1_000_000,
-  );
+  const boundedLimit = boundedInteger(limitJobs, "job limit", 1, 1_000_000);
   const boundedTimeout = boundedInteger(
     timeoutMs,
     "per-job timeout",
@@ -84,7 +78,9 @@ export const runFaceDetectionBacklog = async ({
       });
       const ensured = Number(scheduled?.ensuredJobs || 0);
       if (!Number.isInteger(ensured) || ensured < 0) {
-        throw new Error("Face detection backlog scheduler returned invalid work");
+        throw new Error(
+          "Face detection backlog scheduler returned invalid work",
+        );
       }
       if (ensured > Math.min(10_000, scheduleBudget)) {
         throw new Error("Face detection backlog scheduler exceeded its limit");

@@ -316,9 +316,7 @@ const createAnonymousImportHarness = ({ resolutionAction = null } = {}) => {
         : [];
     }
     if (
-      query.includes(
-        "SELECT * FROM immich_onboarding_run WHERE command_id",
-      )
+      query.includes("SELECT * FROM immich_onboarding_run WHERE command_id")
     ) {
       return [];
     }
@@ -629,9 +627,13 @@ test("unnamed cluster representative carries the face's source image dimensions"
     facesByAsset: new Map([
       [
         asset.immichAssetId,
-        [sourceFace("source-face-a", { h: 0.2, w: 0.2, x: 0.1, y: 0.1 }, person.id)].map(
-          (item) => ({ ...item, person }),
-        ),
+        [
+          sourceFace(
+            "source-face-a",
+            { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+            person.id,
+          ),
+        ].map((item) => ({ ...item, person })),
       ],
     ]),
   });
@@ -720,10 +722,7 @@ test("possible people exclude unnamed source clusters already tagged to a known 
 
   const projected = projectUnlabelledPersonClusters({
     acceptedFacesByAsset: new Map([
-      [
-        asset.immichAssetId,
-        [{ box: { h: 0.22, w: 0.22, x: 0.09, y: 0.09 } }],
-      ],
+      [asset.immichAssetId, [{ box: { h: 0.22, w: 0.22, x: 0.09, y: 0.09 } }]],
     ]),
     assets: [asset],
     facesByAsset: new Map([[asset.immichAssetId, [face]]]),

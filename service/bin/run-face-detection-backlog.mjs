@@ -21,12 +21,7 @@ const limitJobs = boundedInteger(
   1,
   1_000_000,
 );
-const workerCount = boundedInteger(
-  argument("workers", "4"),
-  "workers",
-  1,
-  8,
-);
+const workerCount = boundedInteger(argument("workers", "4"), "workers", 1, 8);
 const priorityTierMax = boundedInteger(
   argument("priority-tier-max", "1"),
   "priority-tier-max",
@@ -57,7 +52,9 @@ const runtimes = await Promise.all(
 
 try {
   if (runtimes.some((runtime) => !runtime.detectionEnabled)) {
-    throw new Error("Face detection backlog requires an enabled local provider");
+    throw new Error(
+      "Face detection backlog requires an enabled local provider",
+    );
   }
   const providerDigest = runtimes[0].detectorManifest.detectorConfigDigest;
   if (

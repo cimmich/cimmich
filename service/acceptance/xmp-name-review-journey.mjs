@@ -101,8 +101,7 @@ try {
   const queue = await store.list({ limit: 10 });
   const group = queue.items.find(
     (item) =>
-      item.sourceId === sourceId &&
-      item.normalizedName === normalizedName,
+      item.sourceId === sourceId && item.normalizedName === normalizedName,
   );
   assert.ok(group);
   assert.equal(group.faceCount, 2);

@@ -6,11 +6,7 @@ export const closeResidentProcess = async (
   { timeoutMs = 5_000 } = {},
 ) => {
   if (!child || child.killed) return { forced: false };
-  if (
-    !Number.isInteger(timeoutMs) ||
-    timeoutMs < 50 ||
-    timeoutMs > 30_000
-  ) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 50 || timeoutMs > 30_000) {
     throw shutdownError("Provider shutdown timeout is invalid");
   }
   return new Promise((resolve) => {

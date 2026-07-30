@@ -43,9 +43,7 @@ while (true) {
           sourceContentDigest: metadata.sourceContentDigest,
           state: "no_body",
         };
-  const payload = Buffer.from(
-    JSON.stringify(response),
-  );
+  const payload = Buffer.from(JSON.stringify(response));
   const responseHeader = Buffer.alloc(8);
   responseHeader.writeBigUInt64BE(BigInt(payload.length));
   process.stdout.write(Buffer.concat([responseHeader, payload]));

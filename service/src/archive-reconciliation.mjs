@@ -9,18 +9,16 @@ const VISIBILITIES = ["timeline", "archive", "hidden", "locked"];
 const requiredText = (value, name, maxLength = 200) => {
   const normalized = String(value || "").trim();
   if (!normalized || normalized.length > maxLength) {
-    throw new Error(`${name} is required and must be at most ${maxLength} characters`);
+    throw new Error(
+      `${name} is required and must be at most ${maxLength} characters`,
+    );
   }
   return normalized;
 };
 
 const positiveInteger = (value, name, maximum) => {
   const normalized = Number(value);
-  if (
-    !Number.isInteger(normalized) ||
-    normalized < 1 ||
-    normalized > maximum
-  ) {
+  if (!Number.isInteger(normalized) || normalized < 1 || normalized > maximum) {
     throw new Error(`${name} must be an integer between 1 and ${maximum}`);
   }
   return normalized;
@@ -43,11 +41,7 @@ const mapLimit = async (items, limit, operation) => {
   return results;
 };
 
-const candidateForAsset = async ({
-  asset,
-  legacySourceId,
-  sql,
-}) => {
+const candidateForAsset = async ({ asset, legacySourceId, sql }) => {
   const candidates = await sql`
     SELECT DISTINCT
       projection.cimmich_asset_id AS asset_id,

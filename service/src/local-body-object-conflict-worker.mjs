@@ -135,7 +135,6 @@ export const prepareLocalBodyObjectConflictJob = ({
   return prepared;
 };
 
-
 const requirePrepared = (value) => {
   if (!preparedJobs.has(value) || !preparedBindings.has(value)) {
     throw workerError(

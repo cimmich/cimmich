@@ -1016,7 +1016,12 @@ const definitions = [
             eligibleFaces: { minimum: 0, type: "integer" },
             providerEmbeddings: { minimum: 0, type: "integer" },
           },
-          required: ["acceptedFaces", "analysedFaces", "eligibleFaces", "providerEmbeddings"],
+          required: [
+            "acceptedFaces",
+            "analysedFaces",
+            "eligibleFaces",
+            "providerEmbeddings",
+          ],
           type: "object",
         },
         latestPack: {

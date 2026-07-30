@@ -58,7 +58,9 @@ const manifest = () => {
 };
 
 test("YOLO body adapter retains one bounded process across replay runs", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "cimmich-body-resident-"));
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "cimmich-body-resident-"),
+  );
   const manifestPath = path.join(directory, "manifest.json");
   const configuredManifest = manifest();
   await writeFile(manifestPath, JSON.stringify(configuredManifest));
@@ -92,7 +94,9 @@ test("YOLO body adapter retains one bounded process across replay runs", async (
 });
 
 test("YOLO body adapter rejects bytes that do not match source authority", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "cimmich-body-resident-"));
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "cimmich-body-resident-"),
+  );
   const manifestPath = path.join(directory, "manifest.json");
   const configuredManifest = manifest();
   await writeFile(manifestPath, JSON.stringify(configuredManifest));
@@ -122,7 +126,9 @@ test("YOLO body adapter rejects bytes that do not match source authority", async
 });
 
 test("YOLO body adapter preserves an exact unreadable-source abstention", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "cimmich-body-resident-"));
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "cimmich-body-resident-"),
+  );
   const manifestPath = path.join(directory, "manifest.json");
   const configuredManifest = manifest();
   await writeFile(manifestPath, JSON.stringify(configuredManifest));
@@ -147,7 +153,10 @@ test("YOLO body adapter preserves an exact unreadable-source abstention", async 
     assert.deepEqual(result.bodies, []);
     assert.equal(result.state, "source_unreadable");
     assert.equal(result.sourceContentDigest, request.sourceContentDigest);
-    assert.equal(result.detectorConfigDigest, configuredManifest.detectorConfigDigest);
+    assert.equal(
+      result.detectorConfigDigest,
+      configuredManifest.detectorConfigDigest,
+    );
   } finally {
     await detector.close();
     await rm(directory, { force: true, recursive: true });

@@ -27,10 +27,10 @@ test("owner recognition requires one current completed pipeline per imported fac
   assert.match(statement, /JOIN media_pipeline_run pipeline/);
   assert.match(statement, /JOIN current_asset_source_revision revision/);
   assert.match(statement, /pipeline\.state = 'recognized'/);
-  assert.match(statement, /recognition_job\.job_id = pipeline\.recognition_job_id/);
   assert.match(
     statement,
-    /pipeline\.recognizer_provider_config_digest/,
+    /recognition_job\.job_id = pipeline\.recognition_job_id/,
   );
+  assert.match(statement, /pipeline\.recognizer_provider_config_digest/);
   assert.doesNotMatch(statement, /embedding\.producer_receipt_id/);
 });

@@ -838,9 +838,7 @@ export const suppressSamePhotoDerivatives = async (
       }
     }
   };
-  await Promise.all(
-    Array.from({ length: concurrency }, () => verifyNext()),
-  );
+  await Promise.all(Array.from({ length: concurrency }, () => verifyNext()));
   await sql.begin(async (tx) => {
     for (const item of suppressed) {
       await tx`

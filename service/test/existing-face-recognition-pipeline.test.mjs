@@ -243,10 +243,7 @@ test("operator derives source truth only from the current companion and keeps se
     source,
     /projection\.input_revision AS companion_input_revision/,
   );
-  assert.match(
-    source,
-    /projection\.source_id = \$\{configuredSourceId\}/,
-  );
+  assert.match(source, /projection\.source_id = \$\{configuredSourceId\}/);
   assert.match(source, /ordinal < 64/);
   assert.match(
     source,

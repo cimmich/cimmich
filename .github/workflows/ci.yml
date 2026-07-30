@@ -64,6 +64,10 @@ jobs:
         working-directory: service
         run: npm run check:syntax
 
+      - name: Check service formatting
+        working-directory: service
+        run: npm run format
+
       - name: Run service and release-schema tests
         working-directory: service
         run: npm test

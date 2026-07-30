@@ -25,8 +25,7 @@ const canonicalize = (value) => {
   return value;
 };
 
-const canonicalRecognitionJson = (value) =>
-  JSON.stringify(canonicalize(value));
+const canonicalRecognitionJson = (value) => JSON.stringify(canonicalize(value));
 
 export const recognitionDigest = (value) =>
   createHash("sha256")

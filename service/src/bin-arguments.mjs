@@ -27,7 +27,9 @@ export const boundedInteger = (value, label, minimum, maximum, fallback) => {
   if (value === null && fallback !== undefined) return fallback;
   const number = Number(value);
   if (!Number.isInteger(number) || number < minimum || number > maximum) {
-    throw new Error(`${label} must be an integer from ${minimum} to ${maximum}`);
+    throw new Error(
+      `${label} must be an integer from ${minimum} to ${maximum}`,
+    );
   }
   return number;
 };

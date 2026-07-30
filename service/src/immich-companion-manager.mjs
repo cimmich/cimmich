@@ -162,8 +162,7 @@ export const createImmichCompanionManager = async ({
     listAssetFaces: (...args) => companion.listAssetFaces(...args),
     listAssets: (...args) => companion.listAssets(...args),
     listPeople: (...args) => companion.listPeople(...args),
-    readAssetFingerprint: (...args) =>
-      companion.readAssetFingerprint(...args),
+    readAssetFingerprint: (...args) => companion.readAssetFingerprint(...args),
     readAssetImage: (...args) => companion.readAssetImage(...args),
     async status() {
       const status = await companion.status();
