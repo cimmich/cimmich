@@ -1015,10 +1015,7 @@ export const createImmichOnboarding = ({
         : [];
     const sourceAssetIdByCimmichAssetId = new Map(
       [...cimmichAssetBySourceId.entries()].map(
-        ([sourceAssetId, cimmichAssetId]) => [
-          cimmichAssetId,
-          sourceAssetId,
-        ],
+        ([sourceAssetId, cimmichAssetId]) => [cimmichAssetId, sourceAssetId],
       ),
     );
     const acceptedFacesByAsset = new Map();

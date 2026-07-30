@@ -39,8 +39,8 @@ export const shouldContinueDetectionPipeline = ({
 }) =>
   Boolean(
     continuationAvailable &&
-      Number(maxRecognitionJobs) > 0 &&
-      resultStatus === "completed",
+    Number(maxRecognitionJobs) > 0 &&
+    resultStatus === "completed",
   );
 
 export const createMediaOperator = ({
@@ -280,8 +280,7 @@ export const createMediaOperator = ({
         (command.envelope.maxInventoryPages > 0 && !inventory) ||
         (command.envelope.maxDetectionJobs > 0 &&
           (!detectionWorker ||
-            (command.envelope.maxRecognitionJobs > 0 &&
-              !continueDetection))) ||
+            (command.envelope.maxRecognitionJobs > 0 && !continueDetection))) ||
         (command.envelope.maxRecognitionJobs > 0 &&
           !recognitionWorker &&
           !(existingRecognitionScheduler && existingRecognitionWorker))

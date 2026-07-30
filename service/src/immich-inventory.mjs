@@ -93,11 +93,10 @@ const requiredTimestamp = (value, label) => {
   // source value would normalize differently across hosts (and portable
   // restores). Immich emits zoned ISO strings; if a zone-less one ever
   // arrives it is pinned to UTC deterministically instead.
-  const zoneless =
-    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized);
-  const canonical = zoneless
-    ? `${normalized.replace(" ", "T")}Z`
-    : normalized;
+  const zoneless = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(
+    normalized,
+  );
+  const canonical = zoneless ? `${normalized.replace(" ", "T")}Z` : normalized;
   if (Number.isNaN(Date.parse(canonical))) {
     throw new Error(`Immich inventory ${label} is invalid`);
   }
@@ -1273,9 +1272,7 @@ export const createImmichInventorySynchronizer = ({
         normalizedPriorityTierMax < 0 ||
         normalizedPriorityTierMax > 2
       ) {
-        throw new Error(
-          "Immich inventory priorityTierMax must be from 0 to 2",
-        );
+        throw new Error("Immich inventory priorityTierMax must be from 0 to 2");
       }
       return sql.begin(async (transaction) => {
         const projections = await transaction`

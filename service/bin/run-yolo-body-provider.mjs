@@ -5,8 +5,12 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { requiredArgument } from "../src/bin-arguments.mjs";
 
-const preparation = JSON.parse(await readFile(requiredArgument("preparation"), "utf8"));
-const manifest = JSON.parse(await readFile(requiredArgument("manifest"), "utf8"));
+const preparation = JSON.parse(
+  await readFile(requiredArgument("preparation"), "utf8"),
+);
+const manifest = JSON.parse(
+  await readFile(requiredArgument("manifest"), "utf8"),
+);
 const imagePath = requiredArgument("image");
 const manifestPath = requiredArgument("manifest");
 const modelPath = requiredArgument("model");

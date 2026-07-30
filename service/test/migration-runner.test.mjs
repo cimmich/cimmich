@@ -114,7 +114,10 @@ test("schema 90 binds a batch worker to its exact recognition job", async () => 
   assert.match(source, /job\.job_id = p_job_id/);
   assert.match(source, /pipeline\.state = 'recognition_pending'/);
   assert.match(source, /FOR UPDATE OF job SKIP LOCKED/);
-  assert.match(source, /jsonb_build_object\('workerId', p_worker_id, 'claim', 'exact'\)/);
+  assert.match(
+    source,
+    /jsonb_build_object\('workerId', p_worker_id, 'claim', 'exact'\)/,
+  );
 });
 
 test("schema 91 binds pipeline recognition claims to one exact provider space", async () => {
@@ -167,15 +170,27 @@ test("schema 93 derives live person-linked triage for every media claim path", a
   assert.match(source, /CREATE OR REPLACE VIEW media_asset_triage/);
   assert.match(source, /count\(DISTINCT people\.person_id\)/);
   assert.match(source, /people\.authority_state = 'accepted'/);
-  assert.match(source, /WHEN coalesce\(people\.accepted_person_count, 0\) > 0 THEN 0/);
+  assert.match(
+    source,
+    /WHEN coalesce\(people\.accepted_person_count, 0\) > 0 THEN 0/,
+  );
   assert.match(source, /CREATE OR REPLACE FUNCTION claim_media_jobs/);
-  assert.match(source, /CREATE OR REPLACE FUNCTION claim_existing_face_recognition_jobs/);
-  assert.match(source, /CREATE OR REPLACE FUNCTION claim_exact_face_recognition_jobs/);
+  assert.match(
+    source,
+    /CREATE OR REPLACE FUNCTION claim_existing_face_recognition_jobs/,
+  );
+  assert.match(
+    source,
+    /CREATE OR REPLACE FUNCTION claim_exact_face_recognition_jobs/,
+  );
   assert.match(
     source,
     /ORDER BY triage\.priority_tier,\s+triage\.accepted_person_count DESC/,
   );
-  assert.doesNotMatch(source, /ALTER TABLE media_job[\s\S]+ADD COLUMN priority/);
+  assert.doesNotMatch(
+    source,
+    /ALTER TABLE media_job[\s\S]+ADD COLUMN priority/,
+  );
 });
 
 test("schema 94 makes body detection resumable without weakening job binding", async () => {
@@ -192,7 +207,10 @@ test("schema 94 makes body detection resumable without weakening job binding", a
   assert.match(source, /media_job_body_detection_result/);
   assert.match(source, /enforce_media_job_body_detection_binding/);
   assert.match(source, /v_job\.asset_id <> v_result\.asset_id/);
-  assert.match(source, /v_job\.config_digest <> v_result\.detector_config_digest/);
+  assert.match(
+    source,
+    /v_job\.config_digest <> v_result\.detector_config_digest/,
+  );
 });
 
 test("schema 95 makes hash-bound XMP face recovery resumable and provenance complete", async () => {
@@ -674,10 +692,7 @@ test("schema 85 backfills canonical Immich Base64 fingerprints", async () => {
   );
   assert.match(source, /decode\(content_hash, 'base64'\)/);
   assert.match(source, /octet_length\(fingerprint_bytes\) IN \(20, 32\)/);
-  assert.match(
-    source,
-    /encode\(fingerprint_bytes, 'base64'\) = content_hash/,
-  );
+  assert.match(source, /encode\(fingerprint_bytes, 'base64'\) = content_hash/);
   assert.match(source, /INSERT INTO media_content \(/);
   assert.match(source, /INSERT INTO media_content_fingerprint \(/);
   assert.match(source, /INSERT INTO asset_content_link \(/);
@@ -698,10 +713,7 @@ test("schema 86 quarantines links inferred from ambiguous Immich checksums", asy
       "utf8",
     ),
   );
-  assert.match(
-    source,
-    /receipt_cimmich_immich_base64_fingerprint_backfill_v1/,
-  );
+  assert.match(source, /receipt_cimmich_immich_base64_fingerprint_backfill_v1/);
   assert.match(source, /UPDATE asset_source_binding binding/);
   assert.match(source, /DELETE FROM asset_content_link/);
   assert.match(source, /DELETE FROM media_content_fingerprint/);

@@ -37,7 +37,9 @@ test("asset evidence projects only current visibility-admitted photo context", a
   };
   const repository = createCimmichRepository(
     sql,
-    new Map([["asset-1", { filename: "photo.jpg", sourceAssetId: "source-1" }]]),
+    new Map([
+      ["asset-1", { filename: "photo.jpg", sourceAssetId: "source-1" }],
+    ]),
   );
 
   const result = await repository.assetEvidence({ sourceAssetId: "source-1" });

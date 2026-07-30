@@ -1364,10 +1364,7 @@ export const createCimmichRepository = (
     `;
     }
 
-    if (
-      bucketKind &&
-      !current.some((row) => row.bucket_kind === bucketKind)
-    ) {
+    if (bucketKind && !current.some((row) => row.bucket_kind === bucketKind)) {
       let [target] = await tx`
       SELECT bucket_id
       FROM reference_bucket
@@ -3902,8 +3899,7 @@ export const createCimmichRepository = (
             .catch((error) => {
               snapshot.refreshing = false;
               console.error("Cimmich people snapshot refresh failed", {
-                message:
-                  error instanceof Error ? error.message : String(error),
+                message: error instanceof Error ? error.message : String(error),
               });
             });
         }
@@ -5255,24 +5251,25 @@ export const createCimmichRepository = (
         );
       }
 
-      const result = await sql.begin(async (tx) => {
-        const [target] = await tx`
+      const result = await sql
+        .begin(async (tx) => {
+          const [target] = await tx`
         SELECT person_id, display_name
         FROM person
         WHERE person_id = ${String(personId || "")}
           AND status = 'active' AND subject_kind = 'person'
         FOR UPDATE
       `;
-        if (!target)
-          throw Object.assign(new Error("Active Person not found"), {
-            statusCode: 404,
-          });
-        await ensureUserCommandReceipt(tx);
+          if (!target)
+            throw Object.assign(new Error("Active Person not found"), {
+              statusCode: 404,
+            });
+          await ensureUserCommandReceipt(tx);
 
-        const claims = [];
-        const faceIds = new Set();
-        for (const claimId of selectedIds) {
-          const [claim] = await tx`
+          const claims = [];
+          const faceIds = new Set();
+          for (const claimId of selectedIds) {
+            const [claim] = await tx`
           SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
             claim.state, claim.evidence_refs
           FROM identity_claim claim
@@ -5287,38 +5284,40 @@ export const createCimmichRepository = (
               'source_pack_prime_match'
           FOR UPDATE
         `;
-          if (
-            !claim ||
-            claim.person_id !== target.person_id ||
-            claim.state !== "candidate"
-          ) {
-            throw Object.assign(
-              new Error("Candidate selection is stale; refresh and try again"),
-              {
-                details: { claimId },
-                statusCode: 409,
-              },
-            );
+            if (
+              !claim ||
+              claim.person_id !== target.person_id ||
+              claim.state !== "candidate"
+            ) {
+              throw Object.assign(
+                new Error(
+                  "Candidate selection is stale; refresh and try again",
+                ),
+                {
+                  details: { claimId },
+                  statusCode: 409,
+                },
+              );
+            }
+            if (faceIds.has(claim.face_id)) {
+              throw Object.assign(
+                new Error(
+                  "Selection contains more than one candidate for the same face",
+                ),
+                {
+                  details: { faceId: claim.face_id },
+                  statusCode: 409,
+                },
+              );
+            }
+            faceIds.add(claim.face_id);
+            claims.push(claim);
           }
-          if (faceIds.has(claim.face_id)) {
-            throw Object.assign(
-              new Error(
-                "Selection contains more than one candidate for the same face",
-              ),
-              {
-                details: { faceId: claim.face_id },
-                statusCode: 409,
-              },
-            );
-          }
-          faceIds.add(claim.face_id);
-          claims.push(claim);
-        }
 
-        const affectedPersonIds = new Set([target.person_id]);
-        const accepted = [];
-        for (const claim of claims) {
-          const [current] = await tx`
+          const affectedPersonIds = new Set([target.person_id]);
+          const accepted = [];
+          for (const claim of claims) {
+            const [current] = await tx`
           SELECT identity_claim_id, person_id
           FROM identity_claim
           WHERE face_id = ${claim.face_id} AND state = 'accepted'
@@ -5326,23 +5325,23 @@ export const createCimmichRepository = (
           LIMIT 1
           FOR UPDATE
         `;
-          if (current?.person_id === target.person_id) {
-            throw Object.assign(
-              new Error(
-                "Candidate selection is stale; this face is already accepted for the Person",
-              ),
-              {
-                details: {
-                  claimId: claim.identity_claim_id,
-                  faceId: claim.face_id,
+            if (current?.person_id === target.person_id) {
+              throw Object.assign(
+                new Error(
+                  "Candidate selection is stale; this face is already accepted for the Person",
+                ),
+                {
+                  details: {
+                    claimId: claim.identity_claim_id,
+                    faceId: claim.face_id,
+                  },
+                  statusCode: 409,
                 },
-                statusCode: 409,
-              },
-            );
-          }
+              );
+            }
 
-          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-          await tx`
+            const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+            await tx`
           INSERT INTO decision (
             decision_id, subject_type, subject_id, action, actor_kind, actor_id,
             reason_code, note, producer_receipt_id, privacy_class
@@ -5353,16 +5352,16 @@ export const createCimmichRepository = (
           )
         `;
 
-          if (current) {
-            affectedPersonIds.add(current.person_id);
-            const memberships = await tx`
+            if (current) {
+              affectedPersonIds.add(current.person_id);
+              const memberships = await tx`
             SELECT bucket_id
             FROM current_reference_gallery
             WHERE person_id = ${current.person_id} AND face_id = ${claim.face_id}
               AND membership_state = 'active'
           `;
-            for (const membership of memberships) {
-              await tx`
+              for (const membership of memberships) {
+                await tx`
               INSERT INTO bucket_membership_event (
                 membership_event_id, bucket_id, face_id, action, actor_kind,
                 reason_code, reason_text, producer_receipt_id, privacy_class
@@ -5373,56 +5372,57 @@ export const createCimmichRepository = (
                 ${userCommandReceiptId}, 'sensitive-biometric'
               )
             `;
-            }
-            await tx`
+              }
+              await tx`
             UPDATE identity_claim
             SET state = 'superseded'
             WHERE identity_claim_id = ${current.identity_claim_id} AND state = 'accepted'
           `;
-          }
+            }
 
-          const [updated] = await tx`
+            const [updated] = await tx`
           UPDATE identity_claim
           SET state = 'accepted', decision_id = ${decisionId},
             supersedes_claim_id = coalesce(${current?.identity_claim_id || null}, supersedes_claim_id)
           WHERE identity_claim_id = ${claim.identity_claim_id} AND state = 'candidate'
           RETURNING identity_claim_id, face_id, person_id, state
         `;
-          if (!updated) {
-            throw Object.assign(
-              new Error(
-                "Candidate selection changed while accepting; refresh and try again",
-              ),
-              {
-                details: { claimId: claim.identity_claim_id },
-                statusCode: 409,
-              },
-            );
+            if (!updated) {
+              throw Object.assign(
+                new Error(
+                  "Candidate selection changed while accepting; refresh and try again",
+                ),
+                {
+                  details: { claimId: claim.identity_claim_id },
+                  statusCode: 409,
+                },
+              );
+            }
+            accepted.push({
+              claimId: updated.identity_claim_id,
+              decisionId,
+              faceId: updated.face_id,
+              previousPersonId: current?.person_id || null,
+            });
           }
-          accepted.push({
-            claimId: updated.identity_claim_id,
-            decisionId,
-            faceId: updated.face_id,
-            previousPersonId: current?.person_id || null,
-          });
-        }
 
-        return {
-          accepted,
-          affectedPersonIds: [...affectedPersonIds],
-          changed: true,
-          personId: target.person_id,
-        };
-      }).catch((error) => {
-        // A concurrent accept outside this selection can win a face after the
-        // per-claim locks are taken; the unique accepted-per-face index then
-        // rejects this batch. That is a stale selection, not a server fault.
-        if (error?.code !== "23505") throw error;
-        throw Object.assign(
-          new Error("Candidate selection is stale; refresh and try again"),
-          { statusCode: 409 },
-        );
-      });
+          return {
+            accepted,
+            affectedPersonIds: [...affectedPersonIds],
+            changed: true,
+            personId: target.person_id,
+          };
+        })
+        .catch((error) => {
+          // A concurrent accept outside this selection can win a face after the
+          // per-claim locks are taken; the unique accepted-per-face index then
+          // rejects this batch. That is a stale selection, not a server fault.
+          if (error?.code !== "23505") throw error;
+          throw Object.assign(
+            new Error("Candidate selection is stale; refresh and try again"),
+            { statusCode: 409 },
+          );
+        });
 
       const maintenancePending = await refreshPrimeForPeople(
         sql,
@@ -5920,7 +5920,8 @@ export const createCimmichRepository = (
             : { id: null, kind: "presence", crop: null };
         return {
           assetId: item.asset_id,
-          crop: preferredCrop ?? (slotKind === "face" ? observation.crop : null),
+          crop:
+            preferredCrop ?? (slotKind === "face" ? observation.crop : null),
           observationId: observation.id,
           observationKind: observation.kind,
           selectionMode: "automatic",
@@ -7294,12 +7295,7 @@ export const createCimmichRepository = (
       };
     },
 
-    async setFaceBucket({
-      actorId,
-      bucketKind,
-      faceId,
-      personId,
-    }) {
+    async setFaceBucket({ actorId, bucketKind, faceId, personId }) {
       if (![null, "prime", "secondary", "lq", "head"].includes(bucketKind)) {
         throw Object.assign(
           new Error(
@@ -8280,52 +8276,53 @@ export const createCimmichRepository = (
       // and the loser hits identity_claim_one_accepted_person_per_face. That
       // is the same conflict the check reports - answer it the same way
       // instead of leaking a raw unique-violation 500.
-      const decide = (tx) => (async () => {
-        const [claim] = await tx`
+      const decide = (tx) =>
+        (async () => {
+          const [claim] = await tx`
         SELECT identity_claim_id, face_id, person_id, state, decision_id
         FROM identity_claim
         WHERE identity_claim_id = ${claimId}
         FOR UPDATE
       `;
-        if (!claim) {
-          throw Object.assign(new Error("Identity claim not found"), {
-            statusCode: 404,
-          });
-        }
-        const requiredState = action === "restore" ? "rejected" : "candidate";
-        if (claim.state !== requiredState) {
-          return {
-            changed: false,
-            claimId,
-            decisionId: claim.decision_id,
-            state: claim.state,
-          };
-        }
+          if (!claim) {
+            throw Object.assign(new Error("Identity claim not found"), {
+              statusCode: 404,
+            });
+          }
+          const requiredState = action === "restore" ? "rejected" : "candidate";
+          if (claim.state !== requiredState) {
+            return {
+              changed: false,
+              claimId,
+              decisionId: claim.decision_id,
+              state: claim.state,
+            };
+          }
 
-        if (action === "accept" || action === "restore") {
-          const [conflict] = await tx`
+          if (action === "accept" || action === "restore") {
+            const [conflict] = await tx`
           SELECT identity_claim_id, person_id
           FROM identity_claim
           WHERE face_id = ${claim.face_id} AND state = 'accepted'
           LIMIT 1
         `;
-          if (conflict) {
-            throw Object.assign(
-              new Error("Face already has an accepted identity"),
-              {
-                details: {
-                  acceptedClaimId: conflict.identity_claim_id,
-                  acceptedPersonId: conflict.person_id,
+            if (conflict) {
+              throw Object.assign(
+                new Error("Face already has an accepted identity"),
+                {
+                  details: {
+                    acceptedClaimId: conflict.identity_claim_id,
+                    acceptedPersonId: conflict.person_id,
+                  },
+                  statusCode: 409,
                 },
-                statusCode: 409,
-              },
-            );
+              );
+            }
           }
-        }
 
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        const now = new Date();
-        await tx`
+          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+          const now = new Date();
+          await tx`
         INSERT INTO producer_receipt (
           producer_receipt_id, producer_kind, producer_name, producer_version,
           started_at, completed_at, privacy_class
@@ -8334,7 +8331,7 @@ export const createCimmichRepository = (
           ${now}, ${now}, 'private'
         ) ON CONFLICT (producer_receipt_id) DO NOTHING
       `;
-        await tx`
+          await tx`
         INSERT INTO decision (
           decision_id, subject_type, subject_id, action, actor_kind, actor_id,
           reason_code, note, producer_receipt_id, privacy_class
@@ -8344,16 +8341,16 @@ export const createCimmichRepository = (
           ${String(note || "").slice(0, 1000)}, ${decisionReceiptId}, 'private'
         )
       `;
-        const [updated] = await tx`
+          const [updated] = await tx`
         UPDATE identity_claim
         SET state = ${action === "accept" ? "accepted" : action === "restore" ? "candidate" : "rejected"},
           decision_id = ${action === "restore" ? null : decisionId}
         WHERE identity_claim_id = ${claimId} AND state = ${requiredState}
         RETURNING identity_claim_id, face_id, person_id, state, decision_id
       `;
-        if (action === "accept") {
-          const competingDecisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-          await tx`
+          if (action === "accept") {
+            const competingDecisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+            await tx`
           INSERT INTO decision (
             decision_id, subject_type, subject_id, action, actor_kind, actor_id,
             reason_code, note, producer_receipt_id, privacy_class
@@ -8363,23 +8360,23 @@ export const createCimmichRepository = (
             ${decisionReceiptId}, 'sensitive-biometric'
           )
         `;
-          await tx`
+            await tx`
           UPDATE identity_claim
           SET state = 'superseded', decision_id = ${competingDecisionId}
           WHERE face_id = ${updated.face_id}
             AND identity_claim_id <> ${updated.identity_claim_id}
             AND state = 'candidate'
         `;
-        }
-        return {
-          changed: true,
-          claimId,
-          decisionId,
-          faceId: updated.face_id,
-          personId: updated.person_id,
-          state: updated.state,
-        };
-      })();
+          }
+          return {
+            changed: true,
+            claimId,
+            decisionId,
+            faceId: updated.face_id,
+            personId: updated.person_id,
+            state: updated.state,
+          };
+        })();
       let result;
       try {
         result = await sql.begin(decide);
@@ -8394,15 +8391,18 @@ export const createCimmichRepository = (
           WHERE claim.identity_claim_id = ${claimId}
           LIMIT 1
         `;
-        throw Object.assign(new Error("Face already has an accepted identity"), {
-          details: winner
-            ? {
-                acceptedClaimId: winner.identity_claim_id,
-                acceptedPersonId: winner.person_id,
-              }
-            : {},
-          statusCode: 409,
-        });
+        throw Object.assign(
+          new Error("Face already has an accepted identity"),
+          {
+            details: winner
+              ? {
+                  acceptedClaimId: winner.identity_claim_id,
+                  acceptedPersonId: winner.person_id,
+                }
+              : {},
+            statusCode: 409,
+          },
+        );
       }
       const maintenancePending =
         result.changed && result.state === "accepted"
@@ -9131,8 +9131,9 @@ export const createCimmichRepository = (
         );
       }
       const requestedName = createNew ? cleanPersonName(newPersonName) : "";
-      const result = await sql.begin(async (tx) => {
-        const [current] = await tx`
+      const result = await sql
+        .begin(async (tx) => {
+          const [current] = await tx`
         SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
           face.asset_id
         FROM identity_claim claim
@@ -9146,17 +9147,17 @@ export const createCimmichRepository = (
         LIMIT 1
         FOR UPDATE OF claim, face, source
       `;
-        if (!current)
-          throw Object.assign(
-            new Error("Accepted source face identity not found"),
-            { statusCode: 404 },
-          );
-        await ensureUserCommandReceipt(tx);
+          if (!current)
+            throw Object.assign(
+              new Error("Accepted source face identity not found"),
+              { statusCode: 404 },
+            );
+          await ensureUserCommandReceipt(tx);
 
-        let target;
-        let createdPerson = false;
-        if (createNew) {
-          const duplicates = await tx`
+          let target;
+          let createdPerson = false;
+          if (createNew) {
+            const duplicates = await tx`
           SELECT person_id, display_name
           FROM current_person person
           WHERE person.status = 'active' AND (
@@ -9166,18 +9167,18 @@ export const createCimmichRepository = (
           ORDER BY person_id
           LIMIT 2
         `;
-          if (duplicates.length > 0) {
-            throw Object.assign(
-              new Error(
-                `A Cimmich Person named ${requestedName} already exists; move to that Person instead`,
-              ),
-              {
-                statusCode: 409,
-              },
-            );
-          }
-          const personId = `person_${randomUUID().replaceAll("-", "")}`;
-          [target] = await tx`
+            if (duplicates.length > 0) {
+              throw Object.assign(
+                new Error(
+                  `A Cimmich Person named ${requestedName} already exists; move to that Person instead`,
+                ),
+                {
+                  statusCode: 409,
+                },
+              );
+            }
+            const personId = `person_${randomUUID().replaceAll("-", "")}`;
+            [target] = await tx`
           INSERT INTO person (
             person_id, display_name, status, subject_kind, created_by_receipt_id, privacy_class
           ) VALUES (
@@ -9185,33 +9186,33 @@ export const createCimmichRepository = (
           )
           RETURNING person_id, display_name
         `;
-          createdPerson = true;
-        } else {
-          [target] = await tx`
+            createdPerson = true;
+          } else {
+            [target] = await tx`
           SELECT person_id, display_name
           FROM person
           WHERE person_id = ${existingTargetId} AND status = 'active' AND subject_kind = 'person'
           FOR UPDATE
         `;
-          if (!target)
-            throw Object.assign(
-              new Error("Active destination Person not found"),
-              { statusCode: 404 },
-            );
-        }
-        if (target.person_id === current.person_id) {
-          return {
-            changed: false,
-            createdPerson,
-            faceId: current.face_id,
-            movedBody: false,
-            personId: target.person_id,
-            personName: target.display_name,
-            previousPersonId: current.person_id,
-          };
-        }
+            if (!target)
+              throw Object.assign(
+                new Error("Active destination Person not found"),
+                { statusCode: 404 },
+              );
+          }
+          if (target.person_id === current.person_id) {
+            return {
+              changed: false,
+              createdPerson,
+              faceId: current.face_id,
+              movedBody: false,
+              personId: target.person_id,
+              personName: target.display_name,
+              previousPersonId: current.person_id,
+            };
+          }
 
-        const transferableBuckets = await tx`
+          const transferableBuckets = await tx`
         SELECT gallery.bucket_kind, gallery.bucket_name, bucket.activation_hints
         FROM current_reference_gallery gallery
         JOIN reference_bucket bucket ON bucket.bucket_id = gallery.bucket_id
@@ -9221,14 +9222,14 @@ export const createCimmichRepository = (
           AND gallery.bucket_kind IN ('head','lq','secondary','specialty')
         ORDER BY gallery.bucket_kind, gallery.bucket_name
       `;
-        const currentMemberships = await tx`
+          const currentMemberships = await tx`
         SELECT bucket_id
         FROM current_reference_gallery
         WHERE person_id = ${current.person_id} AND face_id = ${current.face_id}
           AND membership_state = 'active'
       `;
-        const [body] = moveBody
-          ? await tx`
+          const [body] = moveBody
+            ? await tx`
             SELECT observation.body_id, tag.body_tag_id, tag.origin
             FROM face_observation face
             JOIN body_observation observation ON observation.asset_id = face.asset_id
@@ -9240,10 +9241,10 @@ export const createCimmichRepository = (
             LIMIT 1
             FOR UPDATE OF tag
           `
-          : [];
+            : [];
 
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        await tx`
+          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+          await tx`
         INSERT INTO decision (
           decision_id, subject_type, subject_id, action, actor_kind, actor_id,
           reason_code, note, producer_receipt_id, privacy_class
@@ -9254,12 +9255,12 @@ export const createCimmichRepository = (
           ${userCommandReceiptId}, 'sensitive-biometric'
         )
       `;
-        await tx`
+          await tx`
         UPDATE identity_claim SET state = 'superseded'
         WHERE identity_claim_id = ${current.identity_claim_id} AND state = 'accepted'
       `;
-        for (const membership of currentMemberships) {
-          await tx`
+          for (const membership of currentMemberships) {
+            await tx`
           INSERT INTO bucket_membership_event (
             membership_event_id, bucket_id, face_id, action, actor_kind,
             reason_code, reason_text, producer_receipt_id, privacy_class
@@ -9269,9 +9270,9 @@ export const createCimmichRepository = (
             ${userCommandReceiptId}, 'sensitive-biometric'
           )
         `;
-        }
-        const claimId = `claim_${randomUUID().replaceAll("-", "")}`;
-        await tx`
+          }
+          const claimId = `claim_${randomUUID().replaceAll("-", "")}`;
+          await tx`
         INSERT INTO identity_claim (
           identity_claim_id, face_id, person_id, origin, state, evidence_refs,
           decision_id, supersedes_claim_id, producer_receipt_id, privacy_class
@@ -9289,9 +9290,9 @@ export const createCimmichRepository = (
         )
       `;
 
-        for (const sourceBucket of transferableBuckets) {
-          const bucketName = sourceBucket.bucket_name || null;
-          let [targetBucket] = await tx`
+          for (const sourceBucket of transferableBuckets) {
+            const bucketName = sourceBucket.bucket_name || null;
+            let [targetBucket] = await tx`
           SELECT bucket_id
           FROM reference_bucket
           WHERE person_id = ${target.person_id}
@@ -9304,8 +9305,8 @@ export const createCimmichRepository = (
           ORDER BY CASE state WHEN 'active' THEN 0 ELSE 1 END, bucket_id
           LIMIT 1
         `;
-          if (!targetBucket) {
-            [targetBucket] = await tx`
+            if (!targetBucket) {
+              [targetBucket] = await tx`
             INSERT INTO reference_bucket (
               bucket_id, person_id, bucket_kind, name, activation_hints,
               created_by, policy_version, state, producer_receipt_id, privacy_class
@@ -9316,8 +9317,8 @@ export const createCimmichRepository = (
             )
             RETURNING bucket_id
           `;
-          }
-          await tx`
+            }
+            await tx`
           INSERT INTO bucket_membership_event (
             membership_event_id, bucket_id, face_id, action, actor_kind,
             reason_code, reason_text, producer_receipt_id, privacy_class
@@ -9328,11 +9329,11 @@ export const createCimmichRepository = (
             ${userCommandReceiptId}, 'sensitive-biometric'
           )
         `;
-        }
+          }
 
-        if (body && body.origin !== "face_body_linkage") {
-          await tx`UPDATE body_tag SET state = 'superseded' WHERE body_tag_id = ${body.body_tag_id}`;
-          await tx`
+          if (body && body.origin !== "face_body_linkage") {
+            await tx`UPDATE body_tag SET state = 'superseded' WHERE body_tag_id = ${body.body_tag_id}`;
+            await tx`
           INSERT INTO body_tag (
             body_tag_id, person_id, body_id, origin, state, decision_id,
             supersedes_body_tag_id, producer_receipt_id, privacy_class
@@ -9341,14 +9342,14 @@ export const createCimmichRepository = (
             'accepted', ${decisionId}, ${body.body_tag_id}, ${userCommandReceiptId}, 'private'
           )
         `;
-        }
+          }
 
-        if (createdPerson) {
-          const [sortCategory] = await tx`
+          if (createdPerson) {
+            const [sortCategory] = await tx`
           SELECT category_id FROM person_category WHERE slug = 'sort' AND state = 'active' LIMIT 1
         `;
-          if (sortCategory) {
-            await tx`
+            if (sortCategory) {
+              await tx`
             INSERT INTO person_category_membership_event (
               membership_event_id, person_id, category_id, action, actor_kind, actor_id,
               decision_id, producer_receipt_id, privacy_class
@@ -9357,31 +9358,32 @@ export const createCimmichRepository = (
               'add', 'user', ${actor}, ${decisionId}, ${userCommandReceiptId}, 'private'
             )
           `;
+            }
           }
-        }
-        await tx`UPDATE person SET current_revision = current_revision + 1 WHERE person_id IN (${current.person_id}, ${target.person_id})`;
-        return {
-          changed: true,
-          claimId,
-          createdPerson,
-          decisionId,
-          faceId: current.face_id,
-          movedBody: Boolean(body),
-          personId: target.person_id,
-          personName: target.display_name,
-          previousPersonId: current.person_id,
-          state: "accepted",
-        };
-      }).catch((error) => {
-        // A concurrent identity write can win this face between the checks
-        // and the accepted-per-face index; report the conflict, not a 500.
-        if (error?.code !== "23505") throw error;
-        throw typedError(
-          "This face's identity changed concurrently; refresh and try again",
-          409,
-          "FACE_IDENTITY_CONFLICT",
-        );
-      });
+          await tx`UPDATE person SET current_revision = current_revision + 1 WHERE person_id IN (${current.person_id}, ${target.person_id})`;
+          return {
+            changed: true,
+            claimId,
+            createdPerson,
+            decisionId,
+            faceId: current.face_id,
+            movedBody: Boolean(body),
+            personId: target.person_id,
+            personName: target.display_name,
+            previousPersonId: current.person_id,
+            state: "accepted",
+          };
+        })
+        .catch((error) => {
+          // A concurrent identity write can win this face between the checks
+          // and the accepted-per-face index; report the conflict, not a 500.
+          if (error?.code !== "23505") throw error;
+          throw typedError(
+            "This face's identity changed concurrently; refresh and try again",
+            409,
+            "FACE_IDENTITY_CONFLICT",
+          );
+        });
 
       const maintenancePending = result.changed
         ? await refreshPrimeForPeople(sql, [
@@ -9598,21 +9600,22 @@ export const createCimmichRepository = (
           : createPerson
             ? cleanPersonName(newPersonName)
             : "";
-      const result = await sql.begin(async (tx) => {
-        const [face] = await tx`
+      const result = await sql
+        .begin(async (tx) => {
+          const [face] = await tx`
         SELECT face_id, asset_id
         FROM face_observation
         WHERE face_id = ${String(faceId || "")} AND state = 'valid'
           AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
         FOR UPDATE
       `;
-        if (!face)
-          throw typedError(
-            "Visible current Face observation not found",
-            404,
-            "FACE_OBSERVATION_NOT_FOUND",
-          );
-        const [current] = await tx`
+          if (!face)
+            throw typedError(
+              "Visible current Face observation not found",
+              404,
+              "FACE_OBSERVATION_NOT_FOUND",
+            );
+          const [current] = await tx`
         SELECT identity_claim_id, person_id
         FROM identity_claim
         WHERE face_id = ${face.face_id} AND state = 'accepted'
@@ -9620,16 +9623,16 @@ export const createCimmichRepository = (
         LIMIT 1
         FOR UPDATE
       `;
-        let target;
-        let createdPerson = false;
-        if (createPerson) {
-          await ensureUserCommandReceipt(tx);
-          // Serialize Person-name creation against the existing Person/alias
-          // mutation surfaces so this transaction cannot knowingly create a
-          // duplicate display name or alias.
-          await tx`LOCK TABLE person IN SHARE ROW EXCLUSIVE MODE`;
-          await tx`LOCK TABLE person_alias IN SHARE ROW EXCLUSIVE MODE`;
-          const duplicates = await tx`
+          let target;
+          let createdPerson = false;
+          if (createPerson) {
+            await ensureUserCommandReceipt(tx);
+            // Serialize Person-name creation against the existing Person/alias
+            // mutation surfaces so this transaction cannot knowingly create a
+            // duplicate display name or alias.
+            await tx`LOCK TABLE person IN SHARE ROW EXCLUSIVE MODE`;
+            await tx`LOCK TABLE person_alias IN SHARE ROW EXCLUSIVE MODE`;
+            const duplicates = await tx`
             SELECT person_id, display_name
             FROM current_person person
             WHERE person.status = 'active' AND person.subject_kind = 'person'
@@ -9643,21 +9646,21 @@ export const createCimmichRepository = (
             ORDER BY person_id
             LIMIT 2
           `;
-          if (duplicates.length > 0) {
-            throw typedError(
-              "A Cimmich Person already uses this display name or alias",
-              409,
-              "PERSON_NAME_CONFLICT",
-              {
-                existingPeople: duplicates.map((person) => ({
-                  personId: person.person_id,
-                  personName: person.display_name,
-                })),
-              },
-            );
-          }
-          const createdPersonId = `person_${randomUUID().replaceAll("-", "")}`;
-          [target] = await tx`
+            if (duplicates.length > 0) {
+              throw typedError(
+                "A Cimmich Person already uses this display name or alias",
+                409,
+                "PERSON_NAME_CONFLICT",
+                {
+                  existingPeople: duplicates.map((person) => ({
+                    personId: person.person_id,
+                    personName: person.display_name,
+                  })),
+                },
+              );
+            }
+            const createdPersonId = `person_${randomUUID().replaceAll("-", "")}`;
+            [target] = await tx`
             INSERT INTO person (
               person_id, display_name, status, subject_kind,
               created_by_receipt_id, privacy_class
@@ -9667,10 +9670,10 @@ export const createCimmichRepository = (
             )
             RETURNING person_id, display_name
           `;
-          createdPerson = true;
-        } else {
-          const people = targetPersonId
-            ? await tx`
+            createdPerson = true;
+          } else {
+            const people = targetPersonId
+              ? await tx`
               SELECT person_id, display_name
               FROM person
               WHERE status = 'active' AND subject_kind = 'person'
@@ -9679,7 +9682,7 @@ export const createCimmichRepository = (
               LIMIT 1
               FOR UPDATE
             `
-            : await tx`
+              : await tx`
               SELECT person_id, display_name
               FROM current_person person
               WHERE status = 'active' AND subject_kind = 'person' AND (
@@ -9693,32 +9696,32 @@ export const createCimmichRepository = (
               ORDER BY person_id
               LIMIT 2
             `;
-          if (people.length === 0) {
-            throw typedError(
-              targetPersonId
-                ? "Cimmich Person not found"
-                : `No existing Cimmich Person named ${targetName}`,
-              404,
-              "PERSON_NOT_FOUND",
-            );
-          }
-          if (people.length > 1) {
-            throw typedError(
-              `More than one Cimmich Person uses ${targetName}`,
-              409,
-              "PERSON_NAME_AMBIGUOUS",
-              {
-                existingPeople: people.map((person) => ({
-                  personId: person.person_id,
-                  personName: person.display_name,
-                })),
-              },
-            );
-          }
-          [target] = people;
-          const [lockedTarget] = targetPersonId
-            ? [target]
-            : await tx`
+            if (people.length === 0) {
+              throw typedError(
+                targetPersonId
+                  ? "Cimmich Person not found"
+                  : `No existing Cimmich Person named ${targetName}`,
+                404,
+                "PERSON_NOT_FOUND",
+              );
+            }
+            if (people.length > 1) {
+              throw typedError(
+                `More than one Cimmich Person uses ${targetName}`,
+                409,
+                "PERSON_NAME_AMBIGUOUS",
+                {
+                  existingPeople: people.map((person) => ({
+                    personId: person.person_id,
+                    personName: person.display_name,
+                  })),
+                },
+              );
+            }
+            [target] = people;
+            const [lockedTarget] = targetPersonId
+              ? [target]
+              : await tx`
                 SELECT person_id, display_name
                 FROM person
                 WHERE person_id = ${target.person_id}
@@ -9726,32 +9729,32 @@ export const createCimmichRepository = (
                   AND cimmich_visibility_person_rank(person_id) <= ${presentationRank()}
                 FOR UPDATE
               `;
-          if (!lockedTarget) {
-            throw typedError(
-              "Cimmich Person changed while the Face was being assigned",
-              409,
-              "PERSON_STALE",
-            );
+            if (!lockedTarget) {
+              throw typedError(
+                "Cimmich Person changed while the Face was being assigned",
+                409,
+                "PERSON_STALE",
+              );
+            }
+            target = lockedTarget;
           }
-          target = lockedTarget;
-        }
-        if (current?.person_id === target.person_id) {
-          return {
-            changed: false,
-            assetId: face.asset_id,
-            claimId: current.identity_claim_id,
-            createdPerson: false,
-            faceId: face.face_id,
-            personId: target.person_id,
-            personName: target.display_name,
-            previousPersonId: current.person_id,
-            state: "accepted",
-          };
-        }
+          if (current?.person_id === target.person_id) {
+            return {
+              changed: false,
+              assetId: face.asset_id,
+              claimId: current.identity_claim_id,
+              createdPerson: false,
+              faceId: face.face_id,
+              personId: target.person_id,
+              personName: target.display_name,
+              previousPersonId: current.person_id,
+              state: "accepted",
+            };
+          }
 
-        await ensureUserCommandReceipt(tx);
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        await tx`
+          await ensureUserCommandReceipt(tx);
+          const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+          await tx`
         INSERT INTO decision (
           decision_id, subject_type, subject_id, action, actor_kind, actor_id,
           reason_code, note, producer_receipt_id, privacy_class
@@ -9762,19 +9765,19 @@ export const createCimmichRepository = (
           ${userCommandReceiptId}, 'sensitive-biometric'
         )
       `;
-        if (current) {
-          await tx`
+          if (current) {
+            await tx`
           UPDATE identity_claim
           SET state = 'superseded'
           WHERE identity_claim_id = ${current.identity_claim_id} AND state = 'accepted'
         `;
-          const memberships = await tx`
+            const memberships = await tx`
           SELECT bucket_id
           FROM current_reference_gallery
           WHERE person_id = ${current.person_id} AND face_id = ${face.face_id} AND membership_state = 'active'
         `;
-          for (const membership of memberships) {
-            await tx`
+            for (const membership of memberships) {
+              await tx`
             INSERT INTO bucket_membership_event (
               membership_event_id, bucket_id, face_id, action, actor_kind,
               reason_code, reason_text, producer_receipt_id, privacy_class
@@ -9784,15 +9787,15 @@ export const createCimmichRepository = (
               ${userCommandReceiptId}, 'sensitive-biometric'
             )
           `;
+            }
           }
-        }
-        await tx`
+          await tx`
         UPDATE identity_claim
         SET state = 'superseded', decision_id = ${decisionId}
         WHERE face_id = ${face.face_id} AND state = 'candidate'
       `;
-        const claimId = `claim_${randomUUID().replaceAll("-", "")}`;
-        await tx`
+          const claimId = `claim_${randomUUID().replaceAll("-", "")}`;
+          await tx`
         INSERT INTO identity_claim (
           identity_claim_id, face_id, person_id, origin, state, evidence_refs,
           decision_id, supersedes_claim_id, producer_receipt_id, privacy_class
@@ -9810,22 +9813,22 @@ export const createCimmichRepository = (
           ${decisionId}, ${current?.identity_claim_id || null}, ${userCommandReceiptId}, 'sensitive-biometric'
         )
       `;
-        if (createdPerson) {
-          const [sortCategory] = await tx`
+          if (createdPerson) {
+            const [sortCategory] = await tx`
             SELECT category_id
             FROM person_category
             WHERE slug = 'sort' AND state = 'active'
             LIMIT 1
             FOR SHARE
           `;
-          if (!sortCategory) {
-            throw typedError(
-              "The required Sort workflow category is unavailable",
-              503,
-              "PERSON_SORT_CATEGORY_UNAVAILABLE",
-            );
-          }
-          await tx`
+            if (!sortCategory) {
+              throw typedError(
+                "The required Sort workflow category is unavailable",
+                503,
+                "PERSON_SORT_CATEGORY_UNAVAILABLE",
+              );
+            }
+            await tx`
             INSERT INTO person_category_membership_event (
               membership_event_id, person_id, category_id, action, actor_kind,
               actor_id, decision_id, producer_receipt_id, privacy_class
@@ -9835,29 +9838,30 @@ export const createCimmichRepository = (
               ${actor}, ${decisionId}, ${userCommandReceiptId}, 'private'
             )
           `;
-        }
-        return {
-          changed: true,
-          assetId: face.asset_id,
-          claimId,
-          createdPerson,
-          decisionId,
-          faceId: face.face_id,
-          personId: target.person_id,
-          personName: target.display_name,
-          previousPersonId: current?.person_id || null,
-          state: "accepted",
-        };
-      }).catch((error) => {
-        // A concurrent identity write can win this face between the checks
-        // and the accepted-per-face index; report the conflict, not a 500.
-        if (error?.code !== "23505") throw error;
-        throw typedError(
-          "This face's identity changed concurrently; refresh and try again",
-          409,
-          "FACE_IDENTITY_CONFLICT",
-        );
-      });
+          }
+          return {
+            changed: true,
+            assetId: face.asset_id,
+            claimId,
+            createdPerson,
+            decisionId,
+            faceId: face.face_id,
+            personId: target.person_id,
+            personName: target.display_name,
+            previousPersonId: current?.person_id || null,
+            state: "accepted",
+          };
+        })
+        .catch((error) => {
+          // A concurrent identity write can win this face between the checks
+          // and the accepted-per-face index; report the conflict, not a 500.
+          if (error?.code !== "23505") throw error;
+          throw typedError(
+            "This face's identity changed concurrently; refresh and try again",
+            409,
+            "FACE_IDENTITY_CONFLICT",
+          );
+        });
 
       const primeMaintenancePending = result.changed
         ? await refreshPrimeForPeople(sql, [

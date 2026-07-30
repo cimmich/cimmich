@@ -22,8 +22,23 @@ const internalProductLabel = /\brui\b|booze[_ -]cruise/i;
 // noise and byte-run false positives.
 const generatedDirectories = new Set(["__pycache__", "node_modules", ".venv"]);
 const textExtensions = new Set([
-  ".cjs", ".conf", ".css", ".csv", ".html", ".js", ".json", ".md", ".mjs",
-  ".py", ".sh", ".sql", ".svelte", ".template", ".ts", ".txt", ".yaml",
+  ".cjs",
+  ".conf",
+  ".css",
+  ".csv",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".py",
+  ".sh",
+  ".sql",
+  ".svelte",
+  ".template",
+  ".ts",
+  ".txt",
+  ".yaml",
   ".yml",
 ]);
 const collectFiles = async (root) => {

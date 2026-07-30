@@ -18,7 +18,9 @@ export const xmpSidecarImportConfigDigest = createHash("sha256")
 const receiptId = "receipt_cimmich_xmp_sidecar_face_import_v1";
 const hex64 = /^[0-9a-f]{64}$/;
 const cleanText = (value, label, maximum = 500) => {
-  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (
     !normalized ||
     normalized.length > maximum ||
@@ -108,8 +110,7 @@ const exactKeys = (value, keys, label) => {
     !value ||
     typeof value !== "object" ||
     Array.isArray(value) ||
-    Object.keys(value).sort().join("\u001f") !==
-      [...keys].sort().join("\u001f")
+    Object.keys(value).sort().join("\u001f") !== [...keys].sort().join("\u001f")
   ) {
     throw Object.assign(new Error(`XMP sidecar ${label} shape is invalid`), {
       code: "XMP_SIDECAR_INPUT_INVALID",
@@ -181,13 +182,17 @@ const normalizeXmpSidecarPacket = (value) => {
 const intersectionOverUnion = (left, right) => {
   const x1 = Math.max(Number(left.box_x), right.x);
   const y1 = Math.max(Number(left.box_y), right.y);
-  const x2 = Math.min(Number(left.box_x) + Number(left.box_w), right.x + right.w);
-  const y2 = Math.min(Number(left.box_y) + Number(left.box_h), right.y + right.h);
+  const x2 = Math.min(
+    Number(left.box_x) + Number(left.box_w),
+    right.x + right.w,
+  );
+  const y2 = Math.min(
+    Number(left.box_y) + Number(left.box_h),
+    right.y + right.h,
+  );
   const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
   const union =
-    Number(left.box_w) * Number(left.box_h) +
-    right.w * right.h -
-    intersection;
+    Number(left.box_w) * Number(left.box_h) + right.w * right.h - intersection;
   return union > 0 ? intersection / union : 0;
 };
 
@@ -282,10 +287,7 @@ const projectOutcome = ({
   });
 };
 
-const existingEvidence = async (
-  sql,
-  { contentId, regionKey, sourceId },
-) => {
+const existingEvidence = async (sql, { contentId, regionKey, sourceId }) => {
   const rows = await sql`
     SELECT * FROM xmp_sidecar_face_evidence
     WHERE source_id = ${sourceId} AND content_id = ${contentId}
@@ -459,9 +461,7 @@ const prepareFace = async (sql, { content, face, sourceId }) => {
       face,
       faceId: current.face_id,
       identityClaimId: current.identity_claim_id,
-      person: current.person_id
-        ? { person_id: current.person_id }
-        : null,
+      person: current.person_id ? { person_id: current.person_id } : null,
       resolutionState: current.resolution_state,
     });
   }
@@ -665,10 +665,7 @@ const processXmpSidecarAsset = async (
   });
 };
 
-const completeXmpSidecarRun = async (
-  sql,
-  { providerSummary, runId },
-) =>
+const completeXmpSidecarRun = async (sql, { providerSummary, runId }) =>
   sql.begin(async (transaction) => {
     const items = await transaction`
       SELECT result FROM xmp_sidecar_import_item
@@ -779,12 +776,7 @@ export const scanXmpSidecars = async function* ({
     yield { kind: "asset", value };
   }
   const completed = await completion;
-  if (
-    completed.error ||
-    completed.code !== 0 ||
-    !headerSeen ||
-    !summarySeen
-  ) {
+  if (completed.error || completed.code !== 0 || !headerSeen || !summarySeen) {
     throw Object.assign(new Error("XMP reader failed"), {
       code: "XMP_SIDECAR_PROVIDER_FAILED",
       privateDetails: stderr.slice(0, 4096),

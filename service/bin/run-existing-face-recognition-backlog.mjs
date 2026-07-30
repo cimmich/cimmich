@@ -62,10 +62,7 @@ const workerCount = boundedInteger(
 const detectorConfigDigest = String(
   optionalArgument("detector-config-digest") || "",
 ).trim();
-if (
-  detectorConfigDigest &&
-  !/^[0-9a-f]{64}$/.test(detectorConfigDigest)
-) {
+if (detectorConfigDigest && !/^[0-9a-f]{64}$/.test(detectorConfigDigest)) {
   throw new Error("detector-config-digest must be a lowercase SHA-256 digest");
 }
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();

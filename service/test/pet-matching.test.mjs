@@ -101,7 +101,10 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
   const suggestions = statements.find((statement) =>
     statement.includes("FROM pet_match_suggestion suggestion"),
   );
-  assert.match(suggestions, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(
+    suggestions,
+    /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/,
+  );
   assert.match(suggestions, /pet\.status = 'active'/);
   assert.match(suggestions, /cimmich_visibility_pet_rank\(pet\.person_id\) <=/);
   assert.match(
@@ -112,7 +115,10 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
   const unknown = statements.find((statement) =>
     statement.includes("WHERE observation.state = 'unknown'"),
   );
-  assert.match(unknown, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(
+    unknown,
+    /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/,
+  );
   assert.match(
     unknown,
     /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,
@@ -121,7 +127,10 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
   const counts = statements.find((statement) =>
     statement.includes("count(*) FILTER"),
   );
-  assert.match(counts, /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/);
+  assert.match(
+    counts,
+    /JOIN asset ON asset\.asset_id = observation\.asset_id\s+AND asset\.state = 'active'/,
+  );
   assert.match(
     counts,
     /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,

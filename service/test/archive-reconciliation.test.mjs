@@ -43,9 +43,7 @@ test("archive reconciliation dry-run is metadata-only and bounded", async () => 
     },
     legacySourceId: "immich-primary",
     sql: sqlFor({
-      "a.jpg": [
-        { asset_id: "legacy-a", external_asset_id: "old-a" },
-      ],
+      "a.jpg": [{ asset_id: "legacy-a", external_asset_id: "old-a" }],
       "b.jpg": [
         { asset_id: "legacy-b1", external_asset_id: "old-b1" },
         { asset_id: "legacy-b2", external_asset_id: "old-b2" },
@@ -98,13 +96,9 @@ test("archive reconciliation binds only byte-consistent legacy groups", async ()
     legacySourceId: "immich-primary",
     sql: sqlFor({
       "a.jpg": [{ asset_id: "legacy-a", external_asset_id: "old-a" }],
-      "a-copy.jpg": [
-        { asset_id: "legacy-a", external_asset_id: "old-a" },
-      ],
+      "a-copy.jpg": [{ asset_id: "legacy-a", external_asset_id: "old-a" }],
       "b.jpg": [{ asset_id: "legacy-b", external_asset_id: "old-b" }],
-      "b-copy.jpg": [
-        { asset_id: "legacy-b", external_asset_id: "old-b" },
-      ],
+      "b-copy.jpg": [{ asset_id: "legacy-b", external_asset_id: "old-b" }],
     }),
   });
 

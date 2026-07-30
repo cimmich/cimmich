@@ -102,7 +102,10 @@ test("validated matcher manifest can differ from ingest without enabling incompa
     vectorSpaceId: runtime.matchingProvider.vectorSpaceId,
   });
   assert.match(runtime.matchingProvider.providerConfigDigest, /^[0-9a-f]{64}$/);
-  assert.match(runtime.matchingProvider.vectorSpaceId, /^vector_space_[0-9a-f]{64}$/);
+  assert.match(
+    runtime.matchingProvider.vectorSpaceId,
+    /^vector_space_[0-9a-f]{64}$/,
+  );
   assert.equal(runtime.providerReceipt.state, "ready");
   assert.equal(runtime.providerReceipt.recognitionExecution, "unavailable");
   assert.equal(runtime.recognitionCompatible, false);

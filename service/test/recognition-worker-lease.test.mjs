@@ -4,7 +4,8 @@ import { createLocalFaceRecognitionWorker } from "../src/local-face-recognition-
 import { createLocalExistingFaceRecognitionWorker } from "../src/local-existing-face-recognition-worker.mjs";
 import { recognitionManifestFixture as manifest } from "./fixtures/recognition-manifest.mjs";
 
-const claimCapturingSql = (claims) =>
+const claimCapturingSql =
+  (claims) =>
   async (strings, ...values) => {
     const statement = strings.join("?");
     if (statement.includes("media_operator_control")) return [];
@@ -51,6 +52,9 @@ test("existing recognition claim lease is derived in both claim branches", async
       .state,
     "idle",
   );
-  assert.match(claims[1].statement, /claim_exact_existing_face_recognition_job/);
+  assert.match(
+    claims[1].statement,
+    /claim_exact_existing_face_recognition_job/,
+  );
   assert.ok(claims[1].values.includes(1260));
 });

@@ -118,7 +118,8 @@ export const createBodyPoseEvidenceRepository = (sql, { presentationRank }) => {
       const selectedItems = targets
         ? projected.items.filter((item) => targets.includes(item.bodyId))
         : projected.items;
-      const inspectedBodyIds = targets || selectedItems.map((item) => item.bodyId);
+      const inspectedBodyIds =
+        targets || selectedItems.map((item) => item.bodyId);
       const existingByBodyId = new Map();
       for (const bodyId of inspectedBodyIds) {
         const existing = await tx`

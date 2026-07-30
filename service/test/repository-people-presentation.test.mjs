@@ -14,7 +14,10 @@ test("people() includes presentation-media joins by default", async () => {
 
   assert.match(statement, /person_presentation_media presentation_face/);
   assert.match(statement, /person_presentation_media presentation_body/);
-  assert.match(statement, /presentation_face_asset\.asset_id AS presentation_face_asset_id/);
+  assert.match(
+    statement,
+    /presentation_face_asset\.asset_id AS presentation_face_asset_id/,
+  );
 });
 
 test("people({ includePresentation: false }) omits the presentation joins but keeps the projection columns", async () => {
@@ -47,7 +50,10 @@ test("people() replaces per-row asset visibility calls with one hidden-asset set
   assert.match(statement, /cimmich_visibility_object/);
   // No CTE may fall back to the per-row function; only the person-level rank
   // check and the shared presentation joins keep their function calls.
-  assert.doesNotMatch(statement, /cimmich_visibility_asset_rank\(fo\.asset_id\)/);
+  assert.doesNotMatch(
+    statement,
+    /cimmich_visibility_asset_rank\(fo\.asset_id\)/,
+  );
   assert.doesNotMatch(
     statement,
     /cimmich_visibility_asset_rank\(observation\.asset_id\)/,

@@ -96,10 +96,7 @@ try {
   const sourceRepository = createAssetSourceRevisionRepository(sql, {
     presentationRank: () => 1,
   });
-  if (
-    !sourceAssetId ||
-    faceRows[0].source_id !== configuredSourceId
-  ) {
+  if (!sourceAssetId || faceRows[0].source_id !== configuredSourceId) {
     throw new Error("Existing recognition configured source is unavailable");
   }
   const immich = createImmichCompanion({

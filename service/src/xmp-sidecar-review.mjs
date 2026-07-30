@@ -81,11 +81,7 @@ const cleanName = (value) => {
   const name = String(value || "")
     .trim()
     .replace(/\s+/g, " ");
-  if (
-    !name ||
-    name.length > 160 ||
-    /[\u0000-\u001f\u007f]/u.test(name)
-  ) {
+  if (!name || name.length > 160 || /[\u0000-\u001f\u007f]/u.test(name)) {
     throw typedError(
       "Person name must contain 1 to 160 characters",
       400,
@@ -288,13 +284,7 @@ export const createXmpSidecarReviewStore = (
     };
   },
 
-  async resolve({
-    actorId,
-    commandId,
-    groupId,
-    newPersonName,
-    personId,
-  }) {
+  async resolve({ actorId, commandId, groupId, newPersonName, personId }) {
     const actor = cleanActor(actorId);
     const stableCommandId = cleanCommandId(commandId);
     const stableGroupId = cleanGroupId(groupId);
@@ -378,9 +368,7 @@ export const createXmpSidecarReviewStore = (
             ? "This XMP name group was already resolved"
             : "The unresolved XMP name group was not found",
           completed ? 409 : 404,
-          completed
-            ? "XMP_NAME_ALREADY_RESOLVED"
-            : "XMP_NAME_GROUP_NOT_FOUND",
+          completed ? "XMP_NAME_ALREADY_RESOLVED" : "XMP_NAME_GROUP_NOT_FOUND",
         );
       }
       const sourceId = evidence[0].source_id;
@@ -471,8 +459,7 @@ export const createXmpSidecarReviewStore = (
 
       const conflictingFaces = evidence.filter(
         (row) =>
-          row.current_person_id &&
-          row.current_person_id !== target.person_id,
+          row.current_person_id && row.current_person_id !== target.person_id,
       );
       if (conflictingFaces.length > 0) {
         throw typedError(
@@ -496,9 +483,7 @@ export const createXmpSidecarReviewStore = (
           )
         ORDER BY person.person_id
       `;
-      if (
-        exactPeople.some((person) => person.person_id !== target.person_id)
-      ) {
+      if (exactPeople.some((person) => person.person_id !== target.person_id)) {
         throw typedError(
           "The imported name now belongs to another Person",
           409,

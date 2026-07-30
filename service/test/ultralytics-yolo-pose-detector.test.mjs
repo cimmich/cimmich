@@ -43,7 +43,9 @@ const manifestFor = (artifactDigest) =>
   });
 
 test("YOLO pose adapter retains one bounded process across replay runs", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "cimmich-pose-resident-"));
+  const directory = await mkdtemp(
+    path.join(tmpdir(), "cimmich-pose-resident-"),
+  );
   const modelPath = path.join(directory, "synthetic.pt");
   const manifestPath = path.join(directory, "manifest.json");
   await writeFile(modelPath, "synthetic-pose-model");

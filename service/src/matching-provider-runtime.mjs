@@ -54,8 +54,9 @@ export const loadMatchingProviderRuntime = async ({
       configDigest: matchingProvider.configDigest,
       providerConfigDigest: matchingProvider.providerConfigDigest,
       providerId: matchingProvider.providerId,
-      recognitionExecution:
-        recognitionCompatible ? "local_media_provider" : "unavailable",
+      recognitionExecution: recognitionCompatible
+        ? "local_media_provider"
+        : "unavailable",
       schemaVersion: matchingProviderRuntimeVersion,
       source: "validated_recognition_manifest",
       state: "ready",

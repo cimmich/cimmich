@@ -172,7 +172,9 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
     if (statement.includes("FROM identity_claim ic")) {
       return [{ identity_claim_id: "claim-1" }];
     }
-    if (statement.includes("bucket_kind IN ('prime', 'secondary', 'lq', 'head')")) {
+    if (
+      statement.includes("bucket_kind IN ('prime', 'secondary', 'lq', 'head')")
+    ) {
       return [];
     }
     if (statement.includes("INSERT INTO producer_receipt")) return [];
@@ -207,7 +209,9 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
       txStatements.push(statement);
       const rows = answer(statement);
       if (rows === null) {
-        throw new Error(`Unexpected transaction query: ${statement.slice(0, 120)}`);
+        throw new Error(
+          `Unexpected transaction query: ${statement.slice(0, 120)}`,
+        );
       }
       return rows;
     });
@@ -223,7 +227,10 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
 
   assert.equal(result.totalCount, 2);
   assert.equal(result.movedCount, 2);
-  assert.equal(result.items.every((item) => item.passed), true);
+  assert.equal(
+    result.items.every((item) => item.passed),
+    true,
+  );
   // Both face moves share one transaction instead of one per face.
   assert.equal(begins, 1);
   assert.equal(

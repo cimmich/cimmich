@@ -165,7 +165,8 @@ export const createLocalExistingFaceRecognitionWorker = ({
           !media.bytes.length ||
           mediaAssetId(media) !== pipeline.asset_id ||
           media.asset?.inputRevision !== pipeline.input_revision ||
-          media.sourceAccess !== projectedSourceAccess(pipeline.source_access) ||
+          media.sourceAccess !==
+            projectedSourceAccess(pipeline.source_access) ||
           contentDigest !== pipeline.source_content_digest
         ) {
           throw Object.assign(

@@ -806,7 +806,10 @@ test("companion operator config is data-only and UI builds exclude local env fil
     const envPath = join(stateRoot, "runtime.env");
     const runtime = await readFile(envPath, "utf8");
     assert.match(runtime, /^CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=none$/m);
-    assert.match(runtime, /^CIMMICH_IMMICH_SOURCE_ID=synthetic-legacy-archive$/m);
+    assert.match(
+      runtime,
+      /^CIMMICH_IMMICH_SOURCE_ID=synthetic-legacy-archive$/m,
+    );
     assert.equal(runtime.includes("synthetic_read_only_key"), true);
     assert.equal(
       runtime.includes("CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=password"),

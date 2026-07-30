@@ -384,12 +384,11 @@ try {
       retryEvidenceCutoff: excludeAssetsWithPoseSince || null,
       providerProcesses: workerCount,
       sourceMediaWrite: "none",
-      state:
-        summary.paused
-          ? "paused"
-          : summary.assetsFailed === 0 && summary.workerFailures.length === 0
-            ? "bounded_run_complete"
-            : "bounded_run_complete_with_failures",
+      state: summary.paused
+        ? "paused"
+        : summary.assetsFailed === 0 && summary.workerFailures.length === 0
+          ? "bounded_run_complete"
+          : "bounded_run_complete_with_failures",
     })}\n`,
   );
   if (summary.workerFailures.length > 0) process.exitCode = 1;

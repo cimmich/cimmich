@@ -3,12 +3,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-export const enhancedComponentSchemaVersion =
-  "cimmich.enhanced-component.v1";
+export const enhancedComponentSchemaVersion = "cimmich.enhanced-component.v1";
 export const enhancedCoreInterfaceVersion = "cimmich.core-enhanced.v1";
 const receiptId = "receipt_cimmich_enhanced_component_v1";
-const sha256 = (value) =>
-  createHash("sha256").update(value).digest("hex");
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const typedError = (code, message, statusCode = 400) =>
   Object.assign(new Error(message), { code, statusCode });
 const exactKeys = (value, keys, label) => {
@@ -66,11 +64,7 @@ export const validateEnhancedArtifact = (raw, bytes) => {
     ["automaticIdentity", "sourcePackActivation", "training"],
     "authority",
   );
-  exactKeys(
-    raw.matcherPolicy,
-    ["policyVersion", "scorer"],
-    "matcherPolicy",
-  );
+  exactKeys(raw.matcherPolicy, ["policyVersion", "scorer"], "matcherPolicy");
   if (
     raw.schemaVersion !== "cimmich.enhanced-artifact.v1" ||
     raw.component !== "cimmich-enhanced" ||
@@ -78,8 +72,7 @@ export const validateEnhancedArtifact = (raw, bytes) => {
     raw.matcherPolicy.policyVersion !== "cimmich-best-prime-v1" ||
     raw.matcherPolicy.scorer !== "best_individual_prime" ||
     raw.authority.automaticIdentity !== "none" ||
-    raw.authority.sourcePackActivation !==
-      "governed_operator_review_only" ||
+    raw.authority.sourcePackActivation !== "governed_operator_review_only" ||
     raw.authority.training !== "none"
   ) {
     throw typedError(
@@ -163,11 +156,7 @@ export const createEnhancedComponent = ({
       coreAvailable: true,
       enabled: head?.enabled === true,
       state:
-        head?.enabled !== true
-          ? "disabled"
-          : active
-            ? "ready"
-            : "incompatible",
+        head?.enabled !== true ? "disabled" : active ? "ready" : "incompatible",
       currentRevision: Number(head?.current_revision || 1),
       active: active
         ? {
@@ -221,10 +210,7 @@ export const createEnhancedComponent = ({
     const command = boundedId(commandId, "commandId");
     const revision = Number(expectedRevision);
     if (!Number.isInteger(revision) || revision < 1) {
-      throw typedError(
-        "ENHANCED_INPUT_INVALID",
-        "expectedRevision is invalid",
-      );
+      throw typedError("ENHANCED_INPUT_INVALID", "expectedRevision is invalid");
     }
     if (targetVersion != null) semverParts(targetVersion);
     const requestDigest = sha256(

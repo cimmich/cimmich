@@ -44,18 +44,17 @@ test("guided install stops at signed-in preview and documentation separates both
     bundleScript,
     agentInstall,
     gateway,
-  ] =
-    await Promise.all([
-      readFile(installer, "utf8"),
-      readFile(companion, "utf8"),
-      readFile(join(root, "tools/companion.compose.yml"), "utf8"),
-      readFile(join(root, "INSTALL.md"), "utf8"),
-      readFile(join(root, "README.md"), "utf8"),
-      readFile(join(root, "tools/public_demo.sh"), "utf8"),
-      readFile(bundleBuilder, "utf8"),
-      readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
-      readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
-    ]);
+  ] = await Promise.all([
+    readFile(installer, "utf8"),
+    readFile(companion, "utf8"),
+    readFile(join(root, "tools/companion.compose.yml"), "utf8"),
+    readFile(join(root, "INSTALL.md"), "utf8"),
+    readFile(join(root, "README.md"), "utf8"),
+    readFile(join(root, "tools/public_demo.sh"), "utf8"),
+    readFile(bundleBuilder, "utf8"),
+    readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
+    readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
+  ]);
 
   assert.doesNotMatch(script, /["']?\$COMPANION["']? sync/);
   assert.doesNotMatch(script, /API key.*read_secret/i);
@@ -97,14 +96,23 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(install, /named `cimmich-<version>\.tar\.gz` install bundle/);
   assert.match(install, /currently supports \*\*macOS and Linux\*\*/);
   assert.match(install, /Create a dedicated Immich API key/);
-  assert.match(install, /Do not import if the account, server or preview is unexpected/);
+  assert.match(
+    install,
+    /Do not import if the account, server or preview is unexpected/,
+  );
   assert.match(install, /Updating Cimmich/);
   assert.match(
     install,
     /companion\.sh backup \/safe\/new\/cimmich-backup[\s\S]*install\.sh --check/,
   );
-  assert.match(install, /Docker Desktop or another remote Docker engine may store images elsewhere/);
-  assert.match(agentInstall, /never ask for an API key, password or token in chat/i);
+  assert.match(
+    install,
+    /Docker Desktop or another remote Docker engine may store images elsewhere/,
+  );
+  assert.match(
+    agentInstall,
+    /never ask for an API key, password or token in chat/i,
+  );
   assert.match(agentInstall, /never use `sudo`/);
   assert.match(
     install,
@@ -139,14 +147,8 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(script, /command -v ss/);
   assert.match(script, /"installer":"blocked"[\s\S]*"portIssues"/);
   assert.match(script, /Docker storage may be elsewhere/);
-  assert.match(
-    compose,
-    /environment:\s+PUBLIC_CIMMICH_API_URL: \/cimmich-api/,
-  );
-  assert.match(
-    compose,
-    /CIMMICH_COMPANION_UI_BIND_ADDRESS:-127\.0\.0\.1/,
-  );
+  assert.match(compose, /environment:\s+PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
+  assert.match(compose, /CIMMICH_COMPANION_UI_BIND_ADDRESS:-127\.0\.0\.1/);
   assert.match(
     gateway,
     /location \/cimmich-api\/[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
@@ -164,7 +166,10 @@ test("guided install stops at signed-in preview and documentation separates both
     /cimmich-face-provider-init:[\s\S]*install-models\.sh[\s\S]*cimmich-face-provider:\/face-provider/,
   );
   assert.match(companionScript, /face-provider install-recommended/);
-  assert.match(companionScript, /CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu/);
+  assert.match(
+    companionScript,
+    /CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu/,
+  );
   assert.match(install, /Optional local Face recognition/);
   assert.match(install, /face-provider install-recommended/);
   assert.match(install, /checksum-pinned OpenCV YuNet and SFace/);

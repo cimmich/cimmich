@@ -179,7 +179,9 @@ export const createLocalFaceDetectionWorker = ({
         priorityTierMax < 0 ||
         priorityTierMax > 2
       ) {
-        throw new Error("Local face detection priorityTierMax must be from 0 to 2");
+        throw new Error(
+          "Local face detection priorityTierMax must be from 0 to 2",
+        );
       }
       const startedAt = performance.now();
       const [control] = await sql`

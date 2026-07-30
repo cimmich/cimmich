@@ -75,10 +75,7 @@ test("derivative guard survives assets with several active Immich projections", 
   // Each side selects exactly one deterministic projection row; a plain join
   // multiplied asset_pair on multi-projection assets and the scalar verdict
   // raised "more than one row", failing every guarded audit statement closed.
-  assert.equal(
-    (source.match(/LEFT JOIN LATERAL \(/g) || []).length,
-    2,
-  );
+  assert.equal((source.match(/LEFT JOIN LATERAL \(/g) || []).length, 2);
   assert.equal(
     (
       source.match(

@@ -63,7 +63,10 @@ const cleanRepositoryList = (value, fallback, label) => {
 
 const cleanPatternList = (value, fallback, label) => {
   if (value == null) return [...fallback];
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
     throw new TypeError(`${label} must be an array of pattern sources`);
   }
   return value.map((entry) => new RegExp(entry));

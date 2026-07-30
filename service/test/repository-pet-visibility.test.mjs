@@ -206,10 +206,7 @@ test("Pet media projects accepted Pet face geometry for automatic presentation f
   const repository = createCimmichRepository(
     sql,
     new Map([
-      [
-        "asset-cafe",
-        { filename: "cafe.jpg", sourceAssetId: "source-cafe" },
-      ],
+      ["asset-cafe", { filename: "cafe.jpg", sourceAssetId: "source-cafe" }],
     ]),
     { currentRank: () => 0 },
   );
@@ -231,5 +228,8 @@ test("Pet media projects accepted Pet face geometry for automatic presentation f
   );
   assert.match(mediaStatement, /face_association\.person_id =/);
   assert.match(mediaStatement, /face_association\.asset_id = asset\.asset_id/);
-  assert.match(mediaStatement, /face_association\.authority_state = 'accepted'/);
+  assert.match(
+    mediaStatement,
+    /face_association\.authority_state = 'accepted'/,
+  );
 });

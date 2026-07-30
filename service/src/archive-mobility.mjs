@@ -155,9 +155,13 @@ export const bindVerifiedContent = async ({
     actorId: boundedText(actorId, "actorId", 200),
     byteLength: Number(byteLength),
     commandId: boundedText(commandId, "commandId", 200),
-    contentDigest: String(contentDigest || "").trim().toLowerCase(),
+    contentDigest: String(contentDigest || "")
+      .trim()
+      .toLowerCase(),
     externalAssetId: boundedText(externalAssetId, "externalAssetId", 500),
-    hashAlgorithm: String(hashAlgorithm || "").trim().toLowerCase(),
+    hashAlgorithm: String(hashAlgorithm || "")
+      .trim()
+      .toLowerCase(),
     schemaVersion: String(schemaVersion || "").trim(),
     sourceId: boundedText(sourceId, "sourceId", 120),
     sourceKind: String(sourceKind || "").trim(),

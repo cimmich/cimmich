@@ -58,11 +58,7 @@ const cleanActor = (value) => {
 
 const cleanSafeId = (value, field, maximum = 192) => {
   const id = String(value || "").trim();
-  if (
-    id.length > maximum ||
-    !safeIdPattern.test(id) ||
-    id.length < 8
-  ) {
+  if (id.length > maximum || !safeIdPattern.test(id) || id.length < 8) {
     throw typedError(
       `${field} must be a stable safe ID of 8 to ${maximum} characters`,
       400,
@@ -177,10 +173,16 @@ export const validatePetMatchImport = (value) => {
     );
   }
   const provider = {
-    configDigest: cleanDigest(providerInput.configDigest, "provider.configDigest"),
+    configDigest: cleanDigest(
+      providerInput.configDigest,
+      "provider.configDigest",
+    ),
     lane,
     modelFamily: cleanProviderValue(providerInput.modelFamily, "modelFamily"),
-    modelVersion: cleanProviderValue(providerInput.modelVersion, "modelVersion"),
+    modelVersion: cleanProviderValue(
+      providerInput.modelVersion,
+      "modelVersion",
+    ),
     providerId: cleanProviderValue(providerInput.providerId, "providerId"),
     speciesKind: String(providerInput.speciesKind || "").trim(),
     vectorSpaceId: cleanProviderValue(
@@ -217,10 +219,7 @@ export const validatePetMatchImport = (value) => {
         { observationIndex },
       );
     }
-    if (
-      !Array.isArray(item?.candidates) ||
-      item.candidates.length > 5
-    ) {
+    if (!Array.isArray(item?.candidates) || item.candidates.length > 5) {
       throw typedError(
         "candidates must contain no more than 5 ranked Pets",
         400,
@@ -262,10 +261,7 @@ export const validatePetMatchImport = (value) => {
         0,
         1,
       ),
-      embeddingDigest: cleanDigest(
-        item?.embeddingDigest,
-        "embeddingDigest",
-      ),
+      embeddingDigest: cleanDigest(item?.embeddingDigest, "embeddingDigest"),
       observationId: cleanSafeId(item?.observationId, "observationId"),
       speciesKind,
     };
@@ -668,13 +664,7 @@ export const createPetMatchingStore = (
       };
     },
 
-    async resolveUnknown({
-      action,
-      actorId,
-      commandId,
-      observationId,
-      petId,
-    }) {
+    async resolveUnknown({ action, actorId, commandId, observationId, petId }) {
       const actor = cleanActor(actorId);
       const id = cleanSafeId(observationId, "observationId");
       if (!["assign", "reject"].includes(action)) {

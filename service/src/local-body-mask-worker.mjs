@@ -113,7 +113,6 @@ export const prepareLocalBodyMaskJob = ({
   return prepared;
 };
 
-
 const requirePrepared = (value) => {
   if (!preparedJobs.has(value) || !preparedBindings.has(value))
     throw workerError(

@@ -113,8 +113,7 @@ test("InsightFace runtime shares one resident process across detection and recog
       CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH:
         "/synthetic/provider-manifest.json",
       CIMMICH_INSIGHTFACE_PROVIDER_ROOT: "/synthetic/provider",
-      CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH:
-        "/synthetic/recognizer.onnx",
+      CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH: "/synthetic/recognizer.onnx",
       CIMMICH_LOCAL_MEDIA_PROVIDER: insightFaceUserSuppliedProviderId,
       CIMMICH_LOCAL_PYTHON_PATH: "/synthetic/python",
     },
