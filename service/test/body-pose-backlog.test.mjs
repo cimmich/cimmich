@@ -24,6 +24,15 @@ test("pose ingest is resident and cannot invoke matching or identity linkage", a
   assert.match(source, /argument\("priority-tier-max", "1"\)/);
   assert.match(source, /FROM current_body_detection_result_observation/);
   assert.match(source, /FROM body_detection_result result/);
+  assert.match(source, /pg_try_advisory_lock/);
+  assert.match(source, /BODY_POSE_BACKLOG_ALREADY_RUNNING/);
+  assert.match(
+    source,
+    /SELECT state FROM media_operator_control WHERE control_id = 'primary'/,
+  );
+  assert.match(source, /const settledWorkers = await Promise\.allSettled/);
+  assert.match(source, /summary\.workerFailures = settledWorkers/);
+  assert.match(source, /summary\.paused[\s\S]*"paused"/);
   assert.doesNotMatch(source, /identity-audit/);
   assert.doesNotMatch(source, /face-body-linker/);
   assert.doesNotMatch(source, /source-pack/i);

@@ -134,13 +134,42 @@ const summary = {
   assetsFailed: 0,
   assetsTargeted: 0,
   failedAssets: [],
+  paused: false,
   posesInserted: 0,
   posesReplayed: 0,
   posesUnavailable: 0,
   posesValidated: 0,
+  workerFailures: [],
 };
 
+const runLockKey = [
+  "cimmich-body-pose-backlog",
+  sourceId,
+  detectorManifest.detectorConfigDigest,
+  poseManifest.poseConfigDigest,
+].join(":");
+const lockConnection = await sql.reserve();
+let runLockAcquired = false;
+
 try {
+  const [runLock] = await lockConnection`
+    SELECT pg_try_advisory_lock(
+      hashtextextended(${runLockKey}, 63)
+    ) AS acquired
+  `;
+  if (!runLock?.acquired) {
+    throw Object.assign(
+      new Error("Another Body pose backlog run already owns this scope"),
+      { code: "BODY_POSE_BACKLOG_ALREADY_RUNNING" },
+    );
+  }
+  runLockAcquired = true;
+  const [initialControl] = await sql`
+    SELECT state FROM media_operator_control WHERE control_id = 'primary'
+  `;
+  if (initialControl?.state === "paused") {
+    summary.paused = true;
+  }
   const assetFilter = assetIdFilter
     ? sql`AND body.asset_id = ${assetIdFilter}`
     : sql``;
@@ -165,7 +194,9 @@ try {
   const detectorResultFilter = detectorResultsSince
     ? sql`AND result.created_at >= ${detectorResultsSince}::timestamptz`
     : sql``;
-  const targets = await sql`
+  const targets = summary.paused
+    ? []
+    : await sql`
     WITH ${recentPoseAssetCte}
     triage_projection AS MATERIALIZED (
       SELECT * FROM media_asset_triage
@@ -235,6 +266,13 @@ try {
   let next = 0;
   const runWorker = async (provider, workerIndex) => {
     while (next < targets.length) {
+      const [control] = await sql`
+        SELECT state FROM media_operator_control WHERE control_id = 'primary'
+      `;
+      if (control?.state === "paused") {
+        summary.paused = true;
+        return;
+      }
       const index = next;
       next += 1;
       const target = targets[index];
@@ -322,7 +360,16 @@ try {
       }
     }
   };
-  await Promise.all(providers.map(runWorker));
+  const settledWorkers = await Promise.allSettled(providers.map(runWorker));
+  summary.workerFailures = settledWorkers
+    .filter((outcome) => outcome.status === "rejected")
+    .map((outcome) =>
+      String(
+        outcome.reason?.code ||
+          outcome.reason?.message ||
+          "BODY_POSE_BACKLOG_WORKER_FAILED",
+      ).slice(0, 200),
+    );
   process.stdout.write(
     `${JSON.stringify({
       ...summary,
@@ -338,12 +385,24 @@ try {
       providerProcesses: workerCount,
       sourceMediaWrite: "none",
       state:
-        summary.assetsFailed === 0
-          ? "bounded_run_complete"
-          : "bounded_run_complete_with_failures",
+        summary.paused
+          ? "paused"
+          : summary.assetsFailed === 0 && summary.workerFailures.length === 0
+            ? "bounded_run_complete"
+            : "bounded_run_complete_with_failures",
     })}\n`,
   );
+  if (summary.workerFailures.length > 0) process.exitCode = 1;
 } finally {
-  await Promise.allSettled(providers.map((provider) => provider.close()));
-  await sql.end({ timeout: 5 });
+  try {
+    if (runLockAcquired) {
+      await lockConnection`
+        SELECT pg_advisory_unlock(hashtextextended(${runLockKey}, 63))
+      `;
+    }
+  } finally {
+    lockConnection.release();
+    await Promise.allSettled(providers.map((provider) => provider.close()));
+    await sql.end({ timeout: 5 });
+  }
 }

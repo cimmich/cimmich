@@ -19,3 +19,14 @@ test("optional derivative provider cannot make the service boot fatal", async ()
   assert.match(creation, /return null;/);
   assert.match(creation, /JSON\.parse/);
 });
+
+test("optional legacy display bridge cannot make the service boot fatal", async () => {
+  const source = await readFile(
+    new URL("../src/index.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /loadDisplayBridge\([\s\S]*\)\.catch\(\(error\) => \{[\s\S]*return new Map\(\)/,
+  );
+});

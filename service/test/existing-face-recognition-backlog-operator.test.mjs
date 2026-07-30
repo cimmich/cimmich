@@ -80,4 +80,8 @@ test("existing-Face backlog is triage ordered and boundedly parallel", async () 
     source,
     /Promise\.allSettled\([\s\S]*recognizers\.map\(\(recognizer\) => recognizer\.close\(\)\)/,
   );
+  assert.match(source, /const settledWorkers = await Promise\.allSettled/);
+  assert.match(source, /summary\.workerFailures = settledWorkers/);
+  assert.match(source, /"bounded_run_complete_with_failures"/);
+  assert.match(source, /process\.exitCode = 1/);
 });

@@ -136,6 +136,7 @@ const summary = {
   retriedJobs: 0,
   schemaVersion: "cimmich.existing-face-recognition-backlog-receipt.v2",
   sourceMediaWrite: "none",
+  workerFailures: [],
 };
 
 const currentSource = async (assetId) => {
@@ -444,7 +445,7 @@ try {
       );
     }
   };
-  await Promise.all(
+  const settledWorkers = await Promise.allSettled(
     recognizers.map(async (recognizer, index) => {
       const workerSlot = index + 1;
       while (!stopped) {
@@ -460,9 +461,23 @@ try {
       }
     }),
   );
+  summary.workerFailures = settledWorkers
+    .filter((outcome) => outcome.status === "rejected")
+    .map((outcome) =>
+      String(
+        outcome.reason?.code ||
+          outcome.reason?.message ||
+          "EXISTING_FACE_BACKLOG_WORKER_FAILED",
+      ).slice(0, 200),
+    );
   summary.elapsedSeconds = Number(((Date.now() - startedAt) / 1000).toFixed(3));
+  summary.state =
+    summary.workerFailures.length === 0
+      ? "bounded_run_complete"
+      : "bounded_run_complete_with_failures";
   summary.receiptDigest = recognitionDigest(summary);
   process.stdout.write(`${JSON.stringify(summary)}\n`);
+  if (summary.workerFailures.length > 0) process.exitCode = 1;
 } finally {
   await Promise.allSettled(recognizers.map((recognizer) => recognizer.close()));
   await sql.end({ timeout: 5 });

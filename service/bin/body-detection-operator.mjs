@@ -46,15 +46,20 @@ if (!databaseUrl) throw new Error("BODY_OPERATOR_DATABASE_UNAVAILABLE");
 const sql = postgres(databaseUrl, { max: 2, prepare: true });
 const presentationRank = () => 2;
 const configuredApiKey = String(process.env.IMMICH_API_KEY || "").trim();
-const credential = configuredApiKey
-  ? null
-  : JSON.parse(
+let credential = null;
+if (!configuredApiKey) {
+  try {
+    credential = JSON.parse(
       await readFile(
         process.env.CIMMICH_IMMICH_CREDENTIAL_PATH ||
           "/demo-state/immich-credential.json",
         "utf8",
       ),
     );
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
 const immich = createImmichCompanion({
   apiBaseUrl: process.env.IMMICH_API_URL || "",
   apiKey: configuredApiKey || credential?.apiKey || "",

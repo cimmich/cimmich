@@ -9,6 +9,7 @@ import {
   validateRecognitionProviderManifest,
 } from "./recognition-provider-contract.mjs";
 import { providerSubprocessEnvironment } from "./provider-subprocess-env.mjs";
+import { closeResidentProcess } from "./resident-process-shutdown.mjs";
 
 export const insightFaceUserSuppliedRecognizerVersion =
   "cimmich.insightface-user-supplied-recognizer.v1";
@@ -37,6 +38,7 @@ export const createInsightFaceUserSuppliedRecognizer = ({
   recognizerModelPath,
   residentProcess = false,
   scriptPath,
+  shutdownTimeoutMs = 5_000,
   timeoutMs = 120_000,
 } = {}) => {
   const manifest = validateRecognitionProviderManifest(manifestInput);
@@ -91,6 +93,16 @@ export const createInsightFaceUserSuppliedRecognizer = ({
     throw recognizerError(
       "LOCAL_RECOGNIZER_CONFIG_INVALID",
       "InsightFace resident-process selection is invalid",
+    );
+  }
+  if (
+    !Number.isInteger(shutdownTimeoutMs) ||
+    shutdownTimeoutMs < 50 ||
+    shutdownTimeoutMs > 30_000
+  ) {
+    throw recognizerError(
+      "LOCAL_RECOGNIZER_CONFIG_INVALID",
+      "InsightFace shutdown timeout is invalid",
     );
   }
 
@@ -317,10 +329,7 @@ export const createInsightFaceUserSuppliedRecognizer = ({
       const child = resident;
       resident = null;
       if (!child || child.killed) return;
-      await new Promise((resolve) => {
-        child.once("close", resolve);
-        child.stdin.end();
-      });
+      await closeResidentProcess(child, { timeoutMs: shutdownTimeoutMs });
     },
     async detect({ bytes, timeoutMs: budget }) {
       if (!Buffer.isBuffer(bytes) || !bytes.length) {
