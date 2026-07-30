@@ -258,11 +258,20 @@ export const createLocalExistingFaceRecognitionWorker = ({
         };
       } catch (cause) {
         const errorCode = publicErrorCode(cause);
-        const failed = await ledger.fail({
-          errorCode,
-          jobId: job.job_id,
-          workerId: normalizedWorkerId,
-        });
+        let failed;
+        try {
+          failed = await ledger.fail({
+            errorCode,
+            jobId: job.job_id,
+            workerId: normalizedWorkerId,
+          });
+        } catch (failError) {
+          // A parallel expired-lease sweep can reclaim the job between the
+          // failure and this report (SQLSTATE 55000). The retry is already
+          // in flight elsewhere; rethrowing killed this worker loop.
+          if (failError?.code !== "55000") throw failError;
+          failed = { state: "pending" };
+        }
         if (failed.state === "failed") {
           await sql`
             UPDATE media_pipeline_run

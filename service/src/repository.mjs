@@ -1783,9 +1783,12 @@ export const createCimmichRepository = (
     async decisionHistory({ limit = 50 } = {}) {
       const boundedLimit = cleanLimit(limit, 50, 100);
       const visibleRank = presentationRank();
+      // Each arm keeps its own newest-first LIMIT: only the final page can
+      // survive the outer sort, so scanning and sorting seven whole operation
+      // tables to keep 50 rows was pure waste that grew with history.
       const rows = await sql`
         WITH visible_history AS (
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'manual_subject_tag'::text AS decision_kind,
             operation.tag_type::text AS subject_kind,
             operation.tag_id::text AS subject_id,
@@ -1797,8 +1800,10 @@ export const createCimmichRepository = (
             AND cimmich_visibility_subject_rank(
               operation.subject_kind, operation.subject_id
             ) <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'manual_presence', operation.subject_kind, operation.subject_id,
             operation.state,
             '/v1/manual-presences/decisions/' || operation.decision_id || '/undo'
@@ -1807,38 +1812,48 @@ export const createCimmichRepository = (
             AND cimmich_visibility_subject_rank(
               operation.subject_kind, operation.subject_id
             ) <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'observation_correction', operation.observation_kind,
             operation.observation_id, operation.state,
             '/v1/observation-corrections/decisions/' || operation.decision_id || '/undo'
           FROM observation_correction_operation operation
           WHERE cimmich_visibility_asset_rank(operation.asset_id) <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'photo_context', operation.operation_scope, operation.asset_id,
             operation.state,
             '/v1/manual-photo-context/decisions/' || operation.decision_id || '/undo'
           FROM manual_photo_context_operation operation
           WHERE cimmich_visibility_asset_rank(operation.asset_id) <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'context', operation.operation_scope, operation.entity_id,
             operation.state,
             '/v1/context/decisions/' || operation.decision_id || '/undo'
           FROM context_operation operation
           WHERE cimmich_visibility_context_entity_rank(operation.entity_id)
             <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.decision_id, operation.created_at,
+          (SELECT operation.decision_id, operation.created_at,
             'document', operation.operation_kind, operation.document_id,
             operation.state,
             '/v1/document-decisions/' || operation.decision_id || '/undo'
           FROM cimmich_document_operation operation
           WHERE cimmich_visibility_document_rank(operation.document_id)
             <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.decision_id DESC
+          LIMIT ${boundedLimit})
           UNION ALL
-          SELECT operation.merge_decision_id, operation.created_at,
+          (SELECT operation.merge_decision_id, operation.created_at,
             'person_merge', source.subject_kind, operation.merge_operation_id,
             operation.state,
             CASE source.subject_kind
@@ -1854,6 +1869,8 @@ export const createCimmichRepository = (
             AND cimmich_visibility_subject_rank(
               target.subject_kind, target.person_id
             ) <= ${visibleRank}
+          ORDER BY operation.created_at DESC, operation.merge_decision_id DESC
+          LIMIT ${boundedLimit})
         )
         SELECT decision_id, created_at, decision_kind, subject_kind, subject_id,
           operation_state, undo_link
@@ -6276,8 +6293,29 @@ export const createCimmichRepository = (
     async faceReviewComparisons({ faceId, limit = 5 }) {
       const boundedLimit = cleanLimit(limit, 6, 12);
       const visibleRank = presentationRank();
+      // This statement walks every accepted face's embeddings; per-row
+      // visibility function calls multiplied that walk with one lookup per
+      // reference row. Same materialized hidden-set equivalence as people().
       const rows = await sql`
-        WITH query AS MATERIALIZED (
+        WITH hidden_assets AS MATERIALIZED (
+          SELECT object_id
+          FROM cimmich_visibility_object
+          WHERE object_scope = 'asset'
+            AND CASE visibility_tier
+              WHEN 'personal' THEN 1
+              WHEN 'private' THEN 2
+              ELSE 0
+            END > ${visibleRank}
+        ), hidden_people AS MATERIALIZED (
+          SELECT object_id
+          FROM cimmich_visibility_object
+          WHERE object_scope = 'person'
+            AND CASE visibility_tier
+              WHEN 'personal' THEN 1
+              WHEN 'private' THEN 2
+              ELSE 0
+            END > ${visibleRank}
+        ), query AS MATERIALIZED (
           SELECT face.face_id, face.asset_id, embedding.model_family,
             embedding.model_version, embedding.config_digest,
             embedding.dimension, embedding.embedding,
@@ -6311,10 +6349,14 @@ export const createCimmichRepository = (
                 AND reference.dimension = candidate.dimension
                 AND reference.face_id <> face.face_id
                 AND reference_face.asset_id <> face.asset_id
-                AND cimmich_visibility_asset_rank(reference_asset.asset_id)
-                  <= ${visibleRank}
-                AND cimmich_visibility_person_rank(person.person_id)
-                  <= ${visibleRank}
+                AND NOT EXISTS (
+                  SELECT 1 FROM hidden_assets hidden
+                  WHERE hidden.object_id = reference_asset.asset_id
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM hidden_people hidden
+                  WHERE hidden.object_id = person.person_id
+                )
                 AND NOT EXISTS (
                   SELECT 1
                   FROM current_face_capture_context reference_context
@@ -6331,8 +6373,10 @@ export const createCimmichRepository = (
             FROM current_face_identity identity
             JOIN current_person person ON person.person_id = identity.person_id
               AND person.status = 'active' AND person.subject_kind = 'person'
-              AND cimmich_visibility_person_rank(person.person_id)
-                <= ${visibleRank}
+              AND NOT EXISTS (
+                SELECT 1 FROM hidden_people hidden
+                WHERE hidden.object_id = person.person_id
+              )
             WHERE identity.face_id = face.face_id
               AND identity.state = 'accepted'
             ORDER BY identity.identity_claim_id
@@ -6340,8 +6384,10 @@ export const createCimmichRepository = (
           ) accepted ON true
           WHERE face.face_id = ${String(faceId || "")}
             AND face.state = 'valid'
-            AND cimmich_visibility_asset_rank(query_asset.asset_id)
-              <= ${visibleRank}
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_assets hidden
+              WHERE hidden.object_id = query_asset.asset_id
+            )
         ), reference_scores AS MATERIALIZED (
           SELECT identity.person_id, person.display_name,
             reference.face_id AS reference_face_id,
@@ -6366,10 +6412,14 @@ export const createCimmichRepository = (
             AND identity.state = 'accepted'
           JOIN current_person person ON person.person_id = identity.person_id
             AND person.status = 'active' AND person.subject_kind = 'person'
-          WHERE cimmich_visibility_asset_rank(reference_asset.asset_id)
-              <= ${visibleRank}
-            AND cimmich_visibility_person_rank(person.person_id)
-              <= ${visibleRank}
+          WHERE NOT EXISTS (
+              SELECT 1 FROM hidden_assets hidden
+              WHERE hidden.object_id = reference_asset.asset_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_people hidden
+              WHERE hidden.object_id = person.person_id
+            )
             AND NOT EXISTS (
               SELECT 1
               FROM current_face_capture_context reference_context
@@ -6389,8 +6439,10 @@ export const createCimmichRepository = (
           FROM query
           JOIN current_person person ON person.status = 'active'
             AND person.subject_kind = 'person'
-            AND cimmich_visibility_person_rank(person.person_id)
-              <= ${visibleRank}
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_people hidden
+              WHERE hidden.object_id = person.person_id
+            )
         ), selected AS MATERIALIZED (
           SELECT person.person_id, person.display_name,
             best.reference_face_id, best.similarity,

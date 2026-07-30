@@ -89,10 +89,19 @@ const optionalDimension = (value, label) => {
 
 const requiredTimestamp = (value, label) => {
   const normalized = requiredText(value, label, 80);
-  if (Number.isNaN(Date.parse(normalized))) {
+  // A zone-less ISO timestamp parses in the server's local zone, so the same
+  // source value would normalize differently across hosts (and portable
+  // restores). Immich emits zoned ISO strings; if a zone-less one ever
+  // arrives it is pinned to UTC deterministically instead.
+  const zoneless =
+    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(normalized);
+  const canonical = zoneless
+    ? `${normalized.replace(" ", "T")}Z`
+    : normalized;
+  if (Number.isNaN(Date.parse(canonical))) {
     throw new Error(`Immich inventory ${label} is invalid`);
   }
-  return new Date(normalized).toISOString();
+  return new Date(canonical).toISOString();
 };
 
 export const normalizeInventoryJob = (job) => {

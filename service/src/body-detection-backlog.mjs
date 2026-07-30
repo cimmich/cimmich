@@ -491,11 +491,21 @@ export const createBodyDetectionJobWorker = ({
           status: "completed",
         };
       } catch (error) {
-        const failed = await ledger.fail({
-          errorCode: publicErrorCode(error),
-          jobId: row.job_id,
-          workerId: worker,
-        });
+        let failed;
+        try {
+          failed = await ledger.fail({
+            errorCode: publicErrorCode(error),
+            jobId: row.job_id,
+            workerId: worker,
+          });
+        } catch (failError) {
+          // A parallel expired-lease sweep can reclaim the job between the
+          // failure and this report (SQLSTATE 55000: lease no longer
+          // current). The retry is already in flight elsewhere; rethrowing
+          // here killed this worker for the rest of the run.
+          if (failError?.code !== "55000") throw failError;
+          failed = { state: "pending" };
+        }
         return {
           errorCode: publicErrorCode(error),
           schemaVersion: bodyDetectionBacklogVersion,
