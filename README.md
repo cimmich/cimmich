@@ -444,7 +444,7 @@ automatic identity authority.
 Core source checks:
 
 ```sh
-cd service && npm ci && npm test
+cd service && npm ci && npm run check:syntax && npm test
 cd ../ui && corepack enable && pnpm install --frozen-lockfile
 pnpm --filter @immich/sdk build
 cd web && pnpm exec prettier --check .
@@ -453,9 +453,14 @@ pnpm run check:svelte
 pnpm run check:typescript
 pnpm run build
 cd ../..
+./tools/run_provider_contract_tests.sh
 ./tools/run_migration_runner_acceptance.sh
 ./tools/run_synthetic_acceptance.sh
 ```
+
+The provider contract command expects Python with the pinned NumPy, OpenCV and
+Pillow versions installed; CI creates that bounded environment without
+installing operator-supplied model runtimes.
 
 The synthetic suite uses an isolated disposable database and grants no identity
 or bulk-matching activation authority to a model. Real-provider acceptance is

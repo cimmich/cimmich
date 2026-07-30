@@ -206,6 +206,8 @@ def bounded_correspondence_score(
 
 
 def similarity(left: bytes, right: bytes) -> float:
+    if left == right:
+        return 1.0
     left_image, left_gray = decoded_image(left)
     right_image, right_gray = decoded_image(right)
     distance = bin(difference_hash(left) ^ difference_hash(right)).count("1")

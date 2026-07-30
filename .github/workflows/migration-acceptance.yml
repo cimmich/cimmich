@@ -82,7 +82,7 @@ jobs:
 
       - name: Run database-backed tests
         working-directory: service
-        run: node --test test/pet-matching.integration.test.mjs
+        run: node --test test/*.integration.test.mjs
 
       - name: Tear down disposable PostgreSQL
         if: always()

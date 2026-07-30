@@ -787,6 +787,20 @@ test("owner Face review comparisons are visible same-space evidence without Sour
   // per-row rank calls multiplied the accepted-reference walk.
   assert.match(statement, /hidden_assets AS MATERIALIZED/);
   assert.match(statement, /hidden_people AS MATERIALIZED/);
+  assert.match(statement, /candidate_spaces AS MATERIALIZED/);
+  assert.match(statement, /space_reference_counts AS MATERIALIZED/);
+  assert.match(
+    statement,
+    /count\(DISTINCT identity\.person_id\)::int AS accepted_person_count/,
+  );
+  assert.match(
+    statement,
+    /ORDER BY coalesce\(reference_count\.accepted_person_count, 0\) DESC/,
+  );
+  assert.doesNotMatch(
+    statement,
+    /ORDER BY \(\s+SELECT count\(DISTINCT identity\.person_id\)/,
+  );
   assert.match(
     statement,
     /NOT EXISTS \(\s+SELECT 1 FROM hidden_assets hidden\s+WHERE hidden\.object_id = reference_asset\.asset_id\s+\)/,

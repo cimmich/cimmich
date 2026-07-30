@@ -6315,59 +6315,12 @@ export const createCimmichRepository = (
               WHEN 'private' THEN 2
               ELSE 0
             END > ${visibleRank}
-        ), query AS MATERIALIZED (
-          SELECT face.face_id, face.asset_id, embedding.model_family,
-            embedding.model_version, embedding.config_digest,
-            embedding.dimension, embedding.embedding,
+        ), query_face AS MATERIALIZED (
+          SELECT face.face_id, face.asset_id,
             accepted.person_id AS current_person_id
           FROM face_observation face
           JOIN asset query_asset ON query_asset.asset_id = face.asset_id
             AND query_asset.state = 'active'
-          JOIN LATERAL (
-            SELECT candidate.*
-            FROM face_embedding candidate
-            WHERE candidate.face_id = face.face_id
-              AND candidate.state = 'active'
-            ORDER BY (
-              SELECT count(DISTINCT identity.person_id)
-              FROM face_embedding reference
-              JOIN face_observation reference_face
-                ON reference_face.face_id = reference.face_id
-                AND reference_face.state = 'valid'
-              JOIN asset reference_asset
-                ON reference_asset.asset_id = reference_face.asset_id
-                AND reference_asset.state = 'active'
-              JOIN current_face_identity identity
-                ON identity.face_id = reference.face_id
-                AND identity.state = 'accepted'
-              JOIN current_person person ON person.person_id = identity.person_id
-                AND person.status = 'active' AND person.subject_kind = 'person'
-              WHERE reference.state = 'active'
-                AND reference.model_family = candidate.model_family
-                AND reference.model_version = candidate.model_version
-                AND reference.config_digest = candidate.config_digest
-                AND reference.dimension = candidate.dimension
-                AND reference.face_id <> face.face_id
-                AND reference_face.asset_id <> face.asset_id
-                AND NOT EXISTS (
-                  SELECT 1 FROM hidden_assets hidden
-                  WHERE hidden.object_id = reference_asset.asset_id
-                )
-                AND NOT EXISTS (
-                  SELECT 1 FROM hidden_people hidden
-                  WHERE hidden.object_id = person.person_id
-                )
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM current_face_capture_context reference_context
-                  JOIN current_face_capture_context query_context
-                    ON query_context.face_id = face.face_id
-                    AND query_context.context_id = reference_context.context_id
-                  WHERE reference_context.face_id = reference.face_id
-                )
-            ) DESC, candidate.created_at DESC, candidate.embedding_id
-            LIMIT 1
-          ) embedding ON true
           LEFT JOIN LATERAL (
             SELECT identity.person_id
             FROM current_face_identity identity
@@ -6388,6 +6341,64 @@ export const createCimmichRepository = (
               SELECT 1 FROM hidden_assets hidden
               WHERE hidden.object_id = query_asset.asset_id
             )
+        ), candidate_spaces AS MATERIALIZED (
+          SELECT candidate.*
+          FROM query_face
+          JOIN face_embedding candidate ON candidate.face_id = query_face.face_id
+            AND candidate.state = 'active'
+        ), space_reference_counts AS MATERIALIZED (
+          SELECT candidate.embedding_id,
+            count(DISTINCT identity.person_id)::int AS accepted_person_count
+          FROM candidate_spaces candidate
+          JOIN query_face ON true
+          JOIN face_embedding reference
+            ON reference.state = 'active'
+            AND reference.model_family = candidate.model_family
+            AND reference.model_version = candidate.model_version
+            AND reference.config_digest = candidate.config_digest
+            AND reference.dimension = candidate.dimension
+            AND reference.face_id <> query_face.face_id
+          JOIN face_observation reference_face
+            ON reference_face.face_id = reference.face_id
+            AND reference_face.state = 'valid'
+            AND reference_face.asset_id <> query_face.asset_id
+          JOIN asset reference_asset
+            ON reference_asset.asset_id = reference_face.asset_id
+            AND reference_asset.state = 'active'
+          JOIN current_face_identity identity
+            ON identity.face_id = reference.face_id
+            AND identity.state = 'accepted'
+          JOIN current_person person ON person.person_id = identity.person_id
+            AND person.status = 'active' AND person.subject_kind = 'person'
+          WHERE NOT EXISTS (
+              SELECT 1 FROM hidden_assets hidden
+              WHERE hidden.object_id = reference_asset.asset_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM hidden_people hidden
+              WHERE hidden.object_id = person.person_id
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_capture_context reference_context
+              JOIN current_face_capture_context query_context
+                ON query_context.face_id = query_face.face_id
+                AND query_context.context_id = reference_context.context_id
+              WHERE reference_context.face_id = reference.face_id
+            )
+          GROUP BY candidate.embedding_id
+        ), query AS MATERIALIZED (
+          SELECT query_face.face_id, query_face.asset_id,
+            candidate.model_family, candidate.model_version,
+            candidate.config_digest, candidate.dimension,
+            candidate.embedding, query_face.current_person_id
+          FROM query_face
+          JOIN candidate_spaces candidate ON true
+          LEFT JOIN space_reference_counts reference_count
+            ON reference_count.embedding_id = candidate.embedding_id
+          ORDER BY coalesce(reference_count.accepted_person_count, 0) DESC,
+            candidate.created_at DESC, candidate.embedding_id
+          LIMIT 1
         ), reference_scores AS MATERIALIZED (
           SELECT identity.person_id, person.display_name,
             reference.face_id AS reference_face_id,
