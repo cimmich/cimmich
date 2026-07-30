@@ -40,6 +40,7 @@
     "source-pack-lifecycle": "node bin/source-pack-lifecycle.mjs",
     "start": "node bin/start.mjs",
     "storage-budget-preflight": "node ../tools/storage_budget_preflight.mjs",
+    "check:syntax": "../tools/run_service_syntax_check.sh",
     "validate-recognition-provider": "node bin/validate-recognition-provider.mjs",
     "visibility-credential": "node bin/visibility-credential.mjs",
     "test": "node --test test/*.test.mjs"

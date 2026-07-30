@@ -933,7 +933,7 @@ tests that need one. To run those locally against a disposable PostgreSQL:
 ```
 docker compose --file ../docker-compose.test.yml up --detach --wait
 DATABASE_URL='postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test' node bin/migrate.mjs apply
-CIMMICH_TEST_DATABASE_URL='postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test' node --test test/pet-matching.integration.test.mjs
+CIMMICH_TEST_DATABASE_URL='postgres://cimmich_test:synthetic-only-password@127.0.0.1:55432/cimmich_test' node --test test/*.integration.test.mjs
 docker compose --file ../docker-compose.test.yml down --volumes
 ```
 

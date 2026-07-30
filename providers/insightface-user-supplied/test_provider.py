@@ -1,9 +1,33 @@
 import importlib.util
 from pathlib import Path
+import sys
+from types import ModuleType
 import unittest
 
 import numpy as np
 
+
+# Contract tests exercise the provider's pure validation and selection
+# functions. Keep optional model runtimes out of this unit boundary so CI does
+# not need to download operator-supplied InsightFace/ONNX dependencies.
+onnxruntime = ModuleType("onnxruntime")
+onnxruntime.get_available_providers = lambda: ["CPUExecutionProvider"]
+arcface_onnx = ModuleType("insightface.model_zoo.arcface_onnx")
+arcface_onnx.ArcFaceONNX = object
+scrfd = ModuleType("insightface.model_zoo.scrfd")
+scrfd.SCRFD = object
+face_align = ModuleType("insightface.utils.face_align")
+insightface = ModuleType("insightface")
+model_zoo = ModuleType("insightface.model_zoo")
+utils = ModuleType("insightface.utils")
+utils.face_align = face_align
+sys.modules.setdefault("onnxruntime", onnxruntime)
+sys.modules.setdefault("insightface", insightface)
+sys.modules.setdefault("insightface.model_zoo", model_zoo)
+sys.modules.setdefault("insightface.model_zoo.arcface_onnx", arcface_onnx)
+sys.modules.setdefault("insightface.model_zoo.scrfd", scrfd)
+sys.modules.setdefault("insightface.utils", utils)
+sys.modules.setdefault("insightface.utils.face_align", face_align)
 
 MODULE_PATH = Path(__file__).with_name("provider.py")
 SPEC = importlib.util.spec_from_file_location("cimmich_insightface_user_supplied", MODULE_PATH)

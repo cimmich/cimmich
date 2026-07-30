@@ -72,7 +72,9 @@ class ProviderContractTest(unittest.TestCase):
     def test_detector_threshold_is_bound_into_the_provider_configuration(self):
         manifest = json.loads(Path(__file__).with_name("provider-manifest.json").read_text())
         _, original_digest = provider.validate_manifest(manifest)
-        manifest["detector"]["scoreThreshold"] = 0.8
+        manifest["detector"]["scoreThreshold"] = (
+            0.7 if manifest["detector"]["scoreThreshold"] == 0.8 else 0.8
+        )
         manifest["providerConfigDigest"] = provider.digest(
             {
                 **provider.normalized_manifest_core(manifest),
