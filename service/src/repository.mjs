@@ -4,6 +4,7 @@ import {
   applyPrimeCurations,
   buildPrimeCurations,
   loadPrimeCuratorFaces,
+  primeCuratorPolicyVersion,
 } from "./prime-curator-repository.mjs";
 import { projectAssetFaceBodyLinks } from "./face-body-linker.mjs";
 import {
@@ -11,7 +12,10 @@ import {
   buildFaceBodyLinks,
   loadFaceBodyLinkAssets,
 } from "./face-body-linker-repository.mjs";
-import { lowQualityReasons } from "./low-quality-policy.mjs";
+import {
+  lowQualityPolicyVersion,
+  lowQualityReasons,
+} from "./low-quality-policy.mjs";
 import { createMediaJobLedger } from "./media-job-ledger.mjs";
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
@@ -1370,14 +1374,23 @@ export const createCimmichRepository = (
       WHERE person_id = ${personId} AND bucket_kind = ${bucketKind} AND state = 'active'
       LIMIT 1
     `;
-      if (!target && (bucketKind === "head" || bucketKind === "lq")) {
+      if (
+        !target &&
+        ["prime", "secondary", "head", "lq"].includes(bucketKind)
+      ) {
+        const policyVersion =
+          bucketKind === "head"
+            ? "cimmich-head-evidence-v1"
+            : bucketKind === "lq"
+              ? lowQualityPolicyVersion
+              : primeCuratorPolicyVersion;
         await tx`
         INSERT INTO reference_bucket (
           bucket_id, person_id, bucket_kind, name, activation_hints,
           created_by, policy_version, state, producer_receipt_id, privacy_class
         ) SELECT
           ${`bucket_${randomUUID().replaceAll("-", "")}`}, ${personId}, ${bucketKind}, NULL, NULL,
-          'user', ${bucketKind === "head" ? "cimmich-head-evidence-v1" : "cimmich-low-quality-condition-v1"},
+          'user', ${policyVersion},
           'active', ${userCommandReceiptId}, 'sensitive-biometric'
         WHERE NOT EXISTS (
           SELECT 1 FROM reference_bucket
@@ -7286,7 +7299,6 @@ export const createCimmichRepository = (
       bucketKind,
       faceId,
       personId,
-      skipPrimeMaintenance = false,
     }) {
       if (![null, "prime", "secondary", "lq", "head"].includes(bucketKind)) {
         throw Object.assign(
@@ -7315,11 +7327,9 @@ export const createCimmichRepository = (
         applyFaceBucketChange(tx, { actor, bucketKind, faceId, personId }),
       );
       const maintenancePending = result.changed
-        ? skipPrimeMaintenance
-          ? true
-          : bucketKind === "head"
-            ? deferPrimeAfterCommand(sql, personId)
-            : await refreshPrimeAfterCommand(sql, personId)
+        ? bucketKind === "head"
+          ? deferPrimeAfterCommand(sql, personId)
+          : await refreshPrimeAfterCommand(sql, personId)
         : false;
       if (result.changed) {
         invalidateMachineSuggestions();

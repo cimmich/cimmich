@@ -74,9 +74,6 @@ integrationTest(
             ${digest}, 'active', 'receipt_cimmich_pet_matching_v1'),
           ('embedding_face_review_maya_wide', 'face_review_maya',
             'review-model', 'v1', 'wide', 3, true, '[0.8,0.6,0]'::vector,
-            ${digest}, 'active', 'receipt_cimmich_pet_matching_v1'),
-          ('embedding_face_review_alex_narrow', 'face_review_alex',
-            'review-model', 'v1', 'narrow', 3, true, '[0,1,0]'::vector,
             ${digest}, 'active', 'receipt_cimmich_pet_matching_v1')
       `;
       await sql`
@@ -118,6 +115,22 @@ integrationTest(
       );
       assert.equal(Number(result.items[0].similarity), 1);
       assert.ok(Math.abs(Number(result.items[1].similarity) - 0.8) < 1e-6);
+
+      const moved = await repository.setFaceBucket({
+        actorId: "integration-test",
+        bucketKind: "secondary",
+        faceId: "face_review_alex",
+        personId: "person_face_review_alex",
+      });
+      assert.equal(moved.changed, true);
+      const [secondary] = await sql`
+        SELECT bucket_id
+        FROM reference_bucket
+        WHERE person_id = 'person_face_review_alex'
+          AND bucket_kind = 'secondary'
+          AND state = 'active'
+      `;
+      assert.ok(secondary.bucket_id);
     } finally {
       await sql.end({ timeout: 5 });
     }
