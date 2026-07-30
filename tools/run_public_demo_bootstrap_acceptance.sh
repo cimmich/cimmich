@@ -7,6 +7,16 @@ CONTAINER=cimmich-public-demo-acceptance
 IMAGE=pgvector/pgvector:0.8.2-pg17-trixie
 PORT=${CIMMICH_DEMO_ACCEPTANCE_DB_PORT:-55443}
 ARCHIVE_ROOT=${CIMMICH_DEMO_ARCHIVE_ROOT:-"$ROOT/demo/cedar-house-v1"}
+# Every assertion below is pinned to the cedar-house-v1 media set (51 assets,
+# 9 people, exact source id), and that media is not distributed with the
+# repository. Without this check a public checkout fails halfway through with
+# an opaque database count mismatch instead of an actionable message.
+if [ ! -d "$ARCHIVE_ROOT/media" ]; then
+  echo "Demo archive media is missing: $ARCHIVE_ROOT/media" >&2
+  echo "This acceptance requires the cedar-house-v1 media set, which is not distributed in the repository." >&2
+  echo "Provide it locally or set CIMMICH_DEMO_ARCHIVE_ROOT to a complete cedar-house-v1 archive." >&2
+  exit 2
+fi
 STAGE=$(mktemp -d /private/tmp/cimmich-public-demo.XXXXXX)
 DATABASE_URL="postgres://cimmich_demo:public-demo-only-password@127.0.0.1:${PORT}/cimmich_demo"
 MAP_PATH="$STAGE/immich-map.json"

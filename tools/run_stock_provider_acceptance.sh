@@ -43,4 +43,4 @@ DATABASE_URL=postgres://cimmich_stock_provider:public-fixture-only-password@127.
 DATABASE_URL=postgres://cimmich_stock_provider:public-fixture-only-password@127.0.0.1:55434/cimmich_stock_provider \
 CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu \
 CIMMICH_OPENCV_PROVIDER_ROOT="$ROOT/providers/opencv-sface" \
-/usr/bin/time -lp node "$ROOT/service/acceptance/stock-provider-journey.mjs"
+/usr/bin/time -p node "$ROOT/service/acceptance/stock-provider-journey.mjs"
