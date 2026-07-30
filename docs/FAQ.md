@@ -108,7 +108,7 @@ ends an open Private session. Headless and recovery paths are in
 ## Can I try Cimmich without using my own photographs?
 
 Yes. Follow [Try Cimmich](../README.md#try-cimmich-with-fictional-data) to launch an isolated,
-loopback-only Immich 3.0.3 and Cimmich demonstration using the fictional Cedar
+loopback-only Immich 3.1.0 and Cimmich demonstration using the fictional Cedar
 House archive. The optional six-image Space Trip extension demonstrates a
 Guided album-organisation journey. Both packs include licensing, attribution,
 provenance and checksums.
@@ -121,7 +121,7 @@ accuracy, demographic fairness or real-person consistency.
 
 ## Which Immich version is supported?
 
-The current release candidate is proved against exact Immich 3.0.3. Later
+The current release candidate is proved against exact Immich 3.1.0. Later
 Immich versions need their own compatibility proof before being claimed as
 supported.
 

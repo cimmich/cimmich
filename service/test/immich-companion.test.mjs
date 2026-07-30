@@ -53,7 +53,7 @@ const readyFetch =
   async (url, options = {}) => {
     calls.push({ url, options });
     if (url.endsWith("/server/version")) {
-      return jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null });
+      return jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null });
     }
     if (url.endsWith("/users/me")) {
       return jsonResponse({
@@ -152,7 +152,7 @@ test("an unconfigured companion is healthy-but-disabled and fails asset reads cl
   const companion = createImmichCompanion();
   assert.deepEqual(await companion.status(), {
     schemaVersion: IMMICH_COMPANION_SCHEMA_VERSION,
-    supportedRange: "=3.0.3",
+    supportedRange: "=3.1.0",
     readOnly: true,
     databaseIsolation: "separate",
     state: "not_configured",
@@ -320,7 +320,7 @@ test("ready status binds only the stable principal ID and redacts profile fields
   });
   const status = await companion.status();
   assert.equal(status.state, "ready");
-  assert.equal(status.immichVersion, "3.0.3");
+  assert.equal(status.immichVersion, "3.1.0");
   assert.deepEqual(status.principal, {
     userId: "22222222-2222-4222-8222-222222222222",
     isAdmin: false,
@@ -385,7 +385,7 @@ test("an under-scoped key fails the People probe after basic principal health", 
     apiKey: "synthetic-secret-key",
     fetchImpl: async (url) => {
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null });
+        return jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null });
       }
       if (url.endsWith("/users/me")) {
         return jsonResponse({ id: "owner-fixture", isAdmin: true });
@@ -435,7 +435,7 @@ test("exact asset reads return only the versioned Cimmich projection", async () 
     assetId: "11111111-1111-4111-8111-111111111111",
   });
   assert.equal(result.schemaVersion, IMMICH_COMPANION_SCHEMA_VERSION);
-  assert.equal(result.immichVersion, "3.0.3");
+  assert.equal(result.immichVersion, "3.1.0");
   assert.equal(result.asset.originalFileName, "synthetic.jpg");
   assert.equal(JSON.stringify(result).includes("/private/upstream"), false);
   assert.equal(calls.length, 3);
@@ -451,7 +451,7 @@ test("original image reads are bounded, read-only and return no upstream path", 
     fetchImpl: async (url, options = {}) => {
       calls.push({ url, options });
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null });
+        return jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null });
       }
       if (url.endsWith("/users/me")) {
         return jsonResponse({
@@ -502,8 +502,8 @@ test("original image and video fingerprints stream exact bytes without returning
         if (url.endsWith("/server/version")) {
           return jsonResponse({
             major: 3,
-            minor: 0,
-            patch: 3,
+            minor: 1,
+            patch: 0,
             prerelease: null,
           });
         }
@@ -563,7 +563,7 @@ test("fingerprint reads reject unsupported, unavailable and oversized originals"
     maxFingerprintBytes: 1024 * 1024,
     fetchImpl: async (url) => {
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3 });
+        return jsonResponse({ major: 3, minor: 1, patch: 0 });
       }
       if (url.endsWith("/users/me")) {
         return jsonResponse({ id: asset().ownerId });
@@ -602,7 +602,7 @@ test("media reads reject non-images and declared oversized bodies before bufferi
     maxImageBytes: 1024 * 1024,
     fetchImpl: async (url) => {
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null });
+        return jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null });
       }
       if (url.endsWith("/users/me"))
         return jsonResponse({ id: asset().ownerId });
@@ -629,7 +629,7 @@ test("JSON responses are timeout-bound and size-bound while streaming", async ()
     fetchImpl: async (url, options = {}) => {
       calls.push({ url, options });
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3 });
+        return jsonResponse({ major: 3, minor: 1, patch: 0 });
       }
       if (url.endsWith("/users/me")) {
         return jsonResponse({ id: asset().ownerId, isAdmin: false });
@@ -686,7 +686,7 @@ test("locked inventory reports its interactive elevation boundary without blocki
     fetchImpl: async (url, options = {}) => {
       calls.push({ url, options });
       if (url.endsWith("/server/version")) {
-        return jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null });
+        return jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null });
       }
       if (url.endsWith("/users/me")) {
         return jsonResponse({
@@ -713,7 +713,7 @@ test("locked inventory reports its interactive elevation boundary without blocki
   });
   assert.deepEqual(result, {
     schemaVersion: IMMICH_COMPANION_SCHEMA_VERSION,
-    immichVersion: "3.0.3",
+    immichVersion: "3.1.0",
     visibility: "locked",
     accessState: "elevated_session_required",
     items: [],
@@ -732,7 +732,7 @@ test("authentication, upstream bodies and invalid payloads fail with stable reda
     apiKey: "synthetic-secret-key",
     fetchImpl: async (url) =>
       url.endsWith("/server/version")
-        ? jsonResponse({ major: 3, minor: 0, patch: 3, prerelease: null })
+        ? jsonResponse({ major: 3, minor: 1, patch: 0, prerelease: null })
         : jsonResponse({ error: "private upstream detail" }, 401),
   });
   const unauthorizedStatus = await unauthorized.status();

@@ -141,7 +141,7 @@ demographic fairness or suitability for another person's archive.
 
 ## Try Cimmich with fictional data
 
-The supported public operator creates a fresh, loopback-only Immich 3.0.3
+The supported public operator creates a fresh, loopback-only Immich 3.1.0
 instance, a separate Cimmich PostgreSQL/API stack and a production-built Cimmich
 UI. It owns one exact Compose project and does not discover or operate on other
 Immich/Cimmich installations.
@@ -478,7 +478,7 @@ separate, explicit and licence-gated.
   provider-specific.
 - Optional hosted Guided use inherits the privacy behavior of the client the
   operator chooses.
-- The supported companion baseline is Immich 3.0.3. Later Immich versions and
+- The supported companion baseline is Immich 3.1.0. Later Immich versions and
   sustained large-archive behavior require their own proof.
 
 ## Contributing and security

@@ -132,7 +132,7 @@ Build Week tag, release and downloadable assets are unchanged.
 
 ## Current proved baseline
 
-- Supported companion base: Immich 3.0.3.
+- Supported companion base: Immich 3.1.0.
 - Preserved public-release dataset: 51 Cedar House assets plus six Space Trip
   assets (57 total). The keeper recording runtime adds two film-only synthetic
   scenes and runs on schema 75/patch 1.

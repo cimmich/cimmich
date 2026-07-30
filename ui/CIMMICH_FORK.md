@@ -3,8 +3,9 @@
 Current release review: 2026-07-22
 
 This directory contains Cimmich's product UI. Its shell lineage began from the
-Immich 3.0.1 web application; the supported companion-server baseline for this
-release is Immich 3.0.3. Cimmich retains the upstream AGPL licence and notices
+Immich 3.0.1 web application. The UI remains a Cimmich-owned fork rather than an
+upstream-version claim; its proved companion-server baseline is Immich 3.1.0.
+Cimmich retains the upstream AGPL licence and notices
 while owning its separate routes, evidence model, service and database.
 
 ## Product scope

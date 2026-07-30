@@ -46,7 +46,7 @@ manifests, ledgers and contact sheets.
 ## Preferred isolated operator path
 
 Use the repository-root operator. It creates only the exact
-`cimmich-public-demo` Compose project, pins Immich 3.0.3, builds a production UI
+`cimmich-public-demo` Compose project, pins Immich 3.1.0, builds a production UI
 and wires the Cimmich API, origins, read-only Immich companion credential and
 display bridge automatically. Never point any Cedar House tooling at an
 ordinary or private library.

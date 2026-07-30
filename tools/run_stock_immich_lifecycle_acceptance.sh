@@ -3,7 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
-COMPOSE_FILE="$ROOT/ops/stock-immich-v3.0.3.compose.yml"
+COMPOSE_FILE="$ROOT/ops/stock-immich-v3.1.0.compose.yml"
 RUN_ID=${CIMMICH_STOCK_RUN_ID:-$$}
 PROJECT="cimmich-stock-${RUN_ID}"
 STAGE=${CIMMICH_STOCK_STAGE:-"/private/tmp/${PROJECT}"}
@@ -116,5 +116,5 @@ REMOVAL_DIGEST=$(curl -fsS -H "x-api-key: $API_KEY" \
   "$IMMICH_API_URL/assets/$ASSET_ID/original" | sha256sum | cut -d ' ' -f 1)
 test "$REMOVAL_DIGEST" = "$CIMMICH_PUBLIC_FIXTURE_SHA256"
 
-printf '{"backupSha256":"%s","cimmichDatabase":"separate","cimmichDisableKeepsImmichReady":true,"cimmichRemoveKeepsImmichReady":true,"fixtureSha256":"%s","immichVersion":"3.0.3","independentRestore":{"identityClaims":0,"projectedAssets":1,"embeddings":1},"schemaPatchLevel":1,"schemaVersion":%s,"sourceMutation":"none-during-cimmich-run","status":"PASS"}\n' \
+printf '{"backupSha256":"%s","cimmichDatabase":"separate","cimmichDisableKeepsImmichReady":true,"cimmichRemoveKeepsImmichReady":true,"fixtureSha256":"%s","immichVersion":"3.1.0","independentRestore":{"identityClaims":0,"projectedAssets":1,"embeddings":1},"schemaPatchLevel":1,"schemaVersion":%s,"sourceMutation":"none-during-cimmich-run","status":"PASS"}\n' \
   "$BACKUP_SHA256" "$CIMMICH_PUBLIC_FIXTURE_SHA256" "$SCHEMA_VERSION"

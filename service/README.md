@@ -354,7 +354,7 @@ The first stock-Immich boundary is exposed through
   Immich database, and Cimmich retains its separate credentials, migrations,
   backup/restore and failure domain.
 
-The release-certified companion compatibility target is exact Immich `3.0.3`.
+The release-certified companion compatibility target is exact Immich `3.1.0`.
 Missing configuration leaves
 the Cimmich service healthy with companion state `not_configured`; incompatible,
 unauthorized, unavailable and invalid upstreams fail asset reads closed with
@@ -420,7 +420,7 @@ replay, changed revision, two-pass absence and re-entry. The source-owned
 an API key in Terminal or importing before signed-in preview. The advanced
 `tools/companion.sh` lifecycle additionally proves configure/up/sync/status,
 checksummed Cimmich-only backup/restore, disable and exact removal against
-official Immich 3.0.3 without touching the Immich database or source media.
+official Immich 3.1.0 without touching the Immich database or source media.
 Representative concurrent-library rate/latency behavior remains a
 release-performance gate.
 
@@ -477,7 +477,7 @@ detector, pipeline continuation and recognizer workers. Status returns only a
 redacted provider receipt. Disabled remains the default; no model is fetched or
 enabled implicitly. One public-safe Immich-compatible journey persists one real
 SFace embedding with zero identity claims/source writes and stable replay. A
-second journey now uses official Immich 3.0.3: one quiesced timeline asset
+second journey now uses official Immich 3.1.0: one quiesced timeline asset
 completes through the same operator, Cimmich database stop/remove leaves Immich
 healthy, and an independent restore reproduces 1 projected asset/1 embedding/0
 claims. Full all-lane stock inventory and representative load remain open.

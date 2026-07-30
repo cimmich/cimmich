@@ -157,7 +157,7 @@ test("preview counts assigned source truth without media, names or Locked leakag
     }),
     status: async () => ({
       capabilities: { mediaRead: true },
-      immichVersion: "3.0.3",
+      immichVersion: "3.1.0",
       principal: { userId: "owner-fixture" },
       state: "ready",
     }),
@@ -227,7 +227,7 @@ test("unlabelled Face clusters omitted from the People list still preview as hel
     }),
     status: async () => ({
       capabilities: { mediaRead: true },
-      immichVersion: "3.0.3",
+      immichVersion: "3.1.0",
       principal: { userId: "owner-fixture" },
       state: "ready",
     }),
@@ -407,7 +407,7 @@ const createAnonymousImportHarness = ({ resolutionAction = null } = {}) => {
     listPeople: async () => ({ items: [], nextCursor: null }),
     status: async () => ({
       capabilities: { mediaRead: true },
-      immichVersion: "3.0.3",
+      immichVersion: "3.1.0",
       principal: { userId: "owner-fixture" },
       state: "ready",
     }),

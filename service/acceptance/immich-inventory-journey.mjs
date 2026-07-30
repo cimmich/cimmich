@@ -52,7 +52,7 @@ const asset = (id, visibility, revision, type = "image") => ({
 const companion = {
   async status() {
     return {
-      immichVersion: "3.0.3",
+      immichVersion: "3.1.0",
       principal: { userId: "synthetic-inventory-principal" },
       state: "ready",
     };
@@ -394,7 +394,7 @@ try {
   const rolloverCompanion = {
     async status() {
       return {
-        immichVersion: "3.0.3",
+        immichVersion: "3.1.0",
         principal: { userId: "synthetic-rollover-principal" },
         state: "ready",
       };
@@ -455,7 +455,7 @@ try {
   await assert.rejects(
     () => sql`
       SELECT * FROM begin_immich_inventory_run(
-        'synthetic-immich-primary', '3.0.3', ${"9".repeat(64)}
+        'synthetic-immich-primary', '3.1.0', ${"9".repeat(64)}
       )
     `,
     /principal changed/,

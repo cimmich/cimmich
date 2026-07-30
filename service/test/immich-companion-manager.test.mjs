@@ -13,7 +13,7 @@ const json = (value, status = 200) =>
 
 const readyFetch = async (url) => {
   if (url.endsWith("/server/version")) {
-    return json({ major: 3, minor: 0, patch: 3, prerelease: null });
+    return json({ major: 3, minor: 1, patch: 0, prerelease: null });
   }
   if (url.endsWith("/users/me")) {
     return json({ id: "owner-fixture", isAdmin: true });
@@ -69,7 +69,7 @@ test("a principal-valid but under-scoped key is rejected before persistence", as
     credentialFile: filename,
     fetchImpl: async (url) => {
       if (url.endsWith("/server/version")) {
-        return json({ major: 3, minor: 0, patch: 3, prerelease: null });
+        return json({ major: 3, minor: 1, patch: 0, prerelease: null });
       }
       if (url.endsWith("/users/me")) {
         return json({ id: "owner-fixture", isAdmin: true });
@@ -97,7 +97,7 @@ test("failed validation cannot create the credential store", async () => {
     credentialFile: filename,
     fetchImpl: async (url) =>
       url.endsWith("/server/version")
-        ? json({ major: 3, minor: 0, patch: 3, prerelease: null })
+        ? json({ major: 3, minor: 1, patch: 0, prerelease: null })
         : json({}, 401),
   });
   await assert.rejects(

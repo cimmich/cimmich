@@ -50,7 +50,7 @@ const companion = {
   listPeople: async () => ({ items: people, nextCursor: null }),
   status: async () => ({
     capabilities: { mediaRead: true },
-    immichVersion: "3.0.3",
+    immichVersion: "3.1.0",
     principal: { userId: "owner-onboarding-fixture" },
     state: "ready",
   }),
@@ -89,7 +89,7 @@ try {
       source_id, principal_digest, companion_schema_version, immich_version,
       state
     ) VALUES (
-      ${sourceId}, ${"6".repeat(64)}, 'cimmich.immich-companion.v1', '3.0.3',
+      ${sourceId}, ${"6".repeat(64)}, 'cimmich.immich-companion.v1', '3.1.0',
       'active'
     ) ON CONFLICT (source_id) DO NOTHING
   `;
@@ -108,7 +108,7 @@ try {
       state, observed_asset_count, completed_at
     ) VALUES (
       'immich_inventory_run_onboarding_fixture', ${sourceId},
-      'snapshot_immich_onboarding_fixture', '3.0.3', ${"6".repeat(64)},
+      'snapshot_immich_onboarding_fixture', '3.1.0', ${"6".repeat(64)},
       'completed', 1, now()
     ) ON CONFLICT (run_id) DO NOTHING
   `;
