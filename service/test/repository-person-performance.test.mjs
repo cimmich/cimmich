@@ -783,14 +783,20 @@ test("owner Face review comparisons are visible same-space evidence without Sour
   );
   assert.match(statement, /similarity DESC NULLS LAST/);
   assert.equal(parameters.at(-1), 12);
+  // Asset and person visibility run through the materialized hidden sets;
+  // per-row rank calls multiplied the accepted-reference walk.
+  assert.match(statement, /hidden_assets AS MATERIALIZED/);
+  assert.match(statement, /hidden_people AS MATERIALIZED/);
   assert.match(
     statement,
-    /cimmich_visibility_asset_rank\(reference_asset\.asset_id\)/,
+    /NOT EXISTS \(\s+SELECT 1 FROM hidden_assets hidden\s+WHERE hidden\.object_id = reference_asset\.asset_id\s+\)/,
   );
   assert.match(
     statement,
-    /cimmich_visibility_person_rank\(person\.person_id\)/,
+    /NOT EXISTS \(\s+SELECT 1 FROM hidden_people hidden\s+WHERE hidden\.object_id = person\.person_id\s+\)/,
   );
+  assert.doesNotMatch(statement, /cimmich_visibility_asset_rank\(/);
+  assert.doesNotMatch(statement, /cimmich_visibility_person_rank\(/);
   assert.doesNotMatch(statement, /matching_gallery/);
   assert.doesNotMatch(statement, /source_pack/i);
 });

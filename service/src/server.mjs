@@ -59,11 +59,15 @@ const sendBinary = (
 };
 
 const readJsonBody = async (request, maximumBytes = 32_768) => {
-  let body = "";
+  // Chunks are Buffers: concatenating strings per chunk decodes each chunk
+  // separately, so a multi-byte UTF-8 character split across a TCP boundary
+  // became U+FFFD (or broke JSON.parse) non-deterministically.
+  const chunks = [];
   let bytes = 0;
   for await (const chunk of request) {
-    bytes += Buffer.byteLength(chunk);
-    body += chunk;
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    chunks.push(buffer);
     if (bytes > maximumBytes) {
       throw Object.assign(new Error("Request body too large"), {
         code: "REQUEST_BODY_TOO_LARGE",
@@ -71,7 +75,8 @@ const readJsonBody = async (request, maximumBytes = 32_768) => {
       });
     }
   }
-  if (!body) return {};
+  if (bytes === 0) return {};
+  const body = Buffer.concat(chunks).toString("utf8");
   try {
     return JSON.parse(body);
   } catch {
@@ -3024,15 +3029,18 @@ export const createCimmichServer = ({
       );
       if (request.method === "POST" && faceSpecialtyMatch) {
         const body = await readJsonBody(request);
+        // Dispatch to the specialty writer, not the modifier writer: the two
+        // produce different bucket provenance and decision kinds, and this
+        // route silently wrote modifier rows for specialty requests.
         sendJson(
           response,
           200,
-          await repository.setFaceModifier({
+          await repository.setFaceSpecialty({
             actorId: request.headers["x-cimmich-actor"],
             faceId: decodeURIComponent(faceSpecialtyMatch[2]),
-            modifierName: body.specialtyName,
             personId: decodeURIComponent(faceSpecialtyMatch[1]),
             selected: body.selected,
+            specialtyName: body.specialtyName,
           }),
           allowedOrigin,
         );
@@ -3589,13 +3597,30 @@ export const createCimmichServer = ({
       else console.warn(diagnostic);
     }
   };
-  const server = createServer((request, response) =>
-    visibility
-      ? visibility.runRequest(request, response, () =>
-          handleRequest(request, response),
-        )
-      : handleRequest(request, response),
-  );
+  // The dispatch promise must never escape unhandled: the process treats an
+  // unhandledRejection as fatal, so one transient database error in the
+  // visibility prologue (which runs outside handleRequest's try/catch) would
+  // shut the whole service down from a single request.
+  const server = createServer((request, response) => {
+    void Promise.resolve()
+      .then(() =>
+        visibility
+          ? visibility.runRequest(request, response, () =>
+              handleRequest(request, response),
+            )
+          : handleRequest(request, response),
+      )
+      .catch((error) => {
+        console.error("Cimmich request dispatch failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+        if (!response.headersSent) {
+          sendJson(response, 500, { error: "Internal error" });
+        } else {
+          response.destroy();
+        }
+      });
+  });
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
   server.maxRequestsPerSocket = 1_000;
