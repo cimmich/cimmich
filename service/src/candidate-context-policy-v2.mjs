@@ -563,7 +563,7 @@ export const evaluateContextualCandidatePrior = (input) => {
   );
 
   let status = "unchanged";
-  let reasons = [];
+  let reasons;
   let proposedCandidateToken = null;
   let adjustments = new Map();
 

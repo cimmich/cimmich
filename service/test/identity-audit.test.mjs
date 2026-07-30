@@ -27,6 +27,18 @@ test("untagged audit suppresses weaker duplicate detections before matching", as
   );
 });
 
+test("prime reference gallery is transaction-safe across both audit phases", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /const primeReferenceGallery = \(executor\) => executor`/,
+  );
+  assert.equal(source.match(/primeReferenceGallery\(tx\)/g)?.length, 2);
+});
+
 test("incremental audit carries its completed base and scopes expensive work", async () => {
   const source = await readFile(
     new URL("../src/identity-audit.mjs", import.meta.url),

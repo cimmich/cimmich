@@ -145,7 +145,6 @@ test("Prime membership, weak support, wide gap and scout ambiguity abstain", asy
         value.candidateEnvelope.candidates[3].candidateToken;
       value.scoutEvidence[0].scoutScore = 0.72;
       value.scoutEvidence[1].scoutScore = 0.66;
-      value.candidateEnvelope = value.candidateEnvelope;
     },
     (value) => {
       value.scoutEvidence[1].scoutScore = 0.69;

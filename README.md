@@ -444,7 +444,7 @@ automatic identity authority.
 Core source checks:
 
 ```sh
-cd service && npm ci && npm run check:syntax && npm run format && npm test
+cd service && npm ci && npm run check:syntax && npm run format && npm run lint && npm test
 cd ../ui && corepack enable && pnpm install --frozen-lockfile
 pnpm --filter @immich/sdk build
 cd web && pnpm exec prettier --check .

@@ -246,10 +246,10 @@ export const createEnhancedComponent = ({
           409,
         );
       }
-      let selected = null;
+      let selected;
       let activeReleaseId = head.active_release_id;
       let previousReleaseId = head.previous_release_id;
-      let enabled = head.enabled;
+      let enabled;
       if (action === "enable" || action === "update") {
         selected = targetVersion
           ? available.find((item) => item.componentVersion === targetVersion)

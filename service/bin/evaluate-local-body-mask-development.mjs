@@ -338,7 +338,7 @@ try {
 } catch (error) {
   if (process.env.CIMMICH_EVALUATION_DEBUG === "1") {
     const message = String(error?.message || "")
-      .replace(/[^A-Za-z0-9 ._\[\]-]/g, "")
+      .replace(/[^A-Za-z0-9 ._[\]-]/g, "")
       .slice(0, 160);
     process.stderr.write(
       `${JSON.stringify({ diagnostic: { message, stage: evaluationStage } })}\n`,

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { projectValidatedBodyResultForRepository } from "./body-detector-contract.mjs";
-import { consumeCurrentBodyPoseProjection } from "./body-pose-current-projection.mjs";
 import {
   bodyObjectConflictDigest,
   bodyObjectConflictEvaluationSchemaVersion,

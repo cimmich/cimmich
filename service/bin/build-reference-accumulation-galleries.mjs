@@ -17,7 +17,7 @@ const faces = (payload.faces || []).map((face) => {
   for (let index = 0; index < vector.length; index += 1) {
     vector[index] = bytes.readFloatLE(index * 4);
   }
-  const { vectorBase64, ...rest } = face;
+  const { vectorBase64: _vectorBase64, ...rest } = face;
   return { ...rest, vector };
 });
 const result = Array.isArray(payload.primePolicies)

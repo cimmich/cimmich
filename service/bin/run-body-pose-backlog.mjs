@@ -283,7 +283,7 @@ try {
         });
         const bodyValidation =
           consumeCurrentBodyPoseProjection(current).validation;
-        const prepared = prepareLocalBodyPoseJobFromCurrent({
+        prepareLocalBodyPoseJobFromCurrent({
           current,
           manifest: poseManifest,
         });

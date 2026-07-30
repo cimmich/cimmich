@@ -176,7 +176,6 @@ const prepareConditionEvidence = (
   const qualityClassification = projectValidatedFaceConditionClassification(
     input.qualityClassification,
   );
-  const qualityBucket = qualityClassification.qualityBucket;
   if (
     qualityClassification.queryRevisionDigest !==
     candidateEnvelope.binding.queryRevisionDigest
@@ -389,7 +388,7 @@ export const resolveProviderConditionConsensusEvidence = (envelope) => {
     runnerUpEvidence.lowQualityScore >= envelope.policy.supportFloor &&
     secondaryAdvantage >= envelope.policy.secondaryAdvantage &&
     lowQualityAdvantage >= envelope.policy.lowQualityAdvantage;
-  let reason = "QUALITY_FAMILY_NOT_ELIGIBLE";
+  let reason;
   if (qualityBucket === "unknown") reason = "QUALITY_CLASSIFICATION_UNKNOWN";
   else if (margin > envelope.policy.primeMarginCeiling)
     reason = "PRIME_SEPARATED";

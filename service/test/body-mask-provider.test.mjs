@@ -9,7 +9,6 @@ import {
   validateBodyDetectionResult,
 } from "../src/body-detector-contract.mjs";
 import {
-  bodyMaskDigest,
   bodyMaskPayloadDigest,
   bodyMaskEvaluationSchemaVersion,
   bodyMaskProviderSchemaVersion,

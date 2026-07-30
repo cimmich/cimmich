@@ -167,6 +167,29 @@ const auditSql = async (
       }),
     );
   };
+  // One definition of the visible prime reference gallery shared across both
+  // transactions used by the untagged and accepted-contradiction audits.
+  const primeReferenceGallery = (executor) => executor`
+      SELECT reference.person_id, reference.face_id,
+        face.asset_id, reference.embedding,
+        coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
+      FROM source_pack_matching_gallery reference
+      JOIN current_person person
+        ON person.person_id = reference.person_id
+        AND person.status = 'active'
+        AND person.subject_kind = 'person'
+        AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank}
+      JOIN face_observation face
+        ON face.face_id = reference.face_id AND face.state = 'valid'
+      LEFT JOIN face_contexts context ON context.face_id = reference.face_id
+      WHERE reference.pack_id = ${packId}
+        AND reference.bucket_kind = 'prime'
+        AND reference.reference_kind = 'face'
+        AND NOT EXISTS (
+          SELECT 1 FROM current_person_category category
+          WHERE category.person_id = person.person_id
+            AND category.slug IN ('sort', 'holding')
+        )`;
   await sql.begin(async (tx) => {
     await tx`
       SELECT set_config('statement_timeout',
@@ -214,30 +237,6 @@ const auditSql = async (
           )
       `;
     }
-    // One definition of the visible prime reference gallery shared by the
-    // untagged-match and accepted-contradiction audit statements.
-    const primeReferenceGallery = () => tx`
-        SELECT reference.person_id, reference.face_id,
-          face.asset_id, reference.embedding,
-          coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-        FROM source_pack_matching_gallery reference
-        JOIN current_person person
-          ON person.person_id = reference.person_id
-          AND person.status = 'active'
-          AND person.subject_kind = 'person'
-          AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank}
-        JOIN face_observation face
-          ON face.face_id = reference.face_id AND face.state = 'valid'
-        LEFT JOIN face_contexts context ON context.face_id = reference.face_id
-        WHERE reference.pack_id = ${packId}
-          AND reference.bucket_kind = 'prime'
-          AND reference.reference_kind = 'face'
-          AND NOT EXISTS (
-            SELECT 1 FROM current_person_category category
-            WHERE category.person_id = person.person_id
-              AND category.slug IN ('sort', 'holding')
-          )`;
-
     const [untaggedFrontier] = await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
@@ -356,7 +355,7 @@ const auditSql = async (
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
       ), gallery AS MATERIALIZED (
-        ${primeReferenceGallery()}
+        ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
         SELECT query.face_id, query.asset_id, gallery.person_id,
           max((1 - (gallery.embedding <=> query.embedding))::float8) AS score,
@@ -524,7 +523,7 @@ const auditSql = async (
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
       ), gallery AS MATERIALIZED (
-        ${primeReferenceGallery()}
+        ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
         SELECT query.face_id, query.asset_id, query.assigned_person_id,
           gallery.person_id,
