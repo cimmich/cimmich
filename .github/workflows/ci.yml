@@ -68,6 +68,10 @@ jobs:
         working-directory: service
         run: npm run format
 
+      - name: Lint service
+        working-directory: service
+        run: npm run lint
+
       - name: Run service and release-schema tests
         working-directory: service
         run: npm test

@@ -209,7 +209,6 @@ await sql.begin(async (tx) => {
   }
 
   const duplicateNoraId = stable("person", "cedar-house:Nora duplicate");
-  const nora = plan.people.find((person) => person.shortName === "Nora");
   await tx`
     INSERT INTO person (
       person_id, display_name, status, created_by_receipt_id, privacy_class,
@@ -399,7 +398,6 @@ await sql.begin(async (tx) => {
     for (const targetName of documentLinks[document.publicAssetId]) {
       const person = personByShortName.get(targetName);
       const context = contextByName.get(targetName);
-      const target = person || context;
       const subjectKind = person ? person.subjectKind : context.entityKind;
       const subjectId = person ? person.personId : context.entityId;
       const decisionId = decision(

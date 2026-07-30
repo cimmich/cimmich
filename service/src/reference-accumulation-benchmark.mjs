@@ -29,7 +29,7 @@ export const buildReferenceAccumulationGalleries = (
     const standardFaceIds = [];
     const cimmichFaceIds = [];
     let acceptedFaces = 0;
-    for (const [personId, ordered] of [...orderedByPerson.entries()].sort(
+    for (const [, ordered] of [...orderedByPerson.entries()].sort(
       ([left], [right]) => left.localeCompare(right),
     )) {
       const available =

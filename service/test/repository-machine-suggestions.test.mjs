@@ -204,7 +204,7 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
   };
   sql.begin = async (callback) => {
     begins += 1;
-    return callback(async (strings, ...values) => {
+    return callback(async (strings, ..._values) => {
       const statement = strings.join("?");
       txStatements.push(statement);
       const rows = answer(statement);

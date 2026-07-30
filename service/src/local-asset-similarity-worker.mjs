@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   assetSimilarityDigest,
-  assetSimilarityResultDigest,
   createAssetSimilarityValidationReceipt,
   validateAssetSimilarityContext,
   validateAssetSimilarityEvidence,

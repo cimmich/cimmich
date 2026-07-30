@@ -42,6 +42,7 @@
     "storage-budget-preflight": "node ../tools/storage_budget_preflight.mjs",
     "format": "prettier --check \"{acceptance,bin,src,test}/**/*.mjs\" \"package*.json\"",
     "format:fix": "prettier --write \"{acceptance,bin,src,test}/**/*.mjs\" \"package*.json\"",
+    "lint": "eslint \"{acceptance,bin,src,test}/**/*.mjs\"",
     "check:syntax": "../tools/run_service_syntax_check.sh",
     "validate-recognition-provider": "node bin/validate-recognition-provider.mjs",
     "visibility-credential": "node bin/visibility-credential.mjs",
@@ -51,6 +52,9 @@
     "postgres": "3.4.9"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "globals": "^17.0.0",
     "prettier": "^3.8.3"
   }
 }

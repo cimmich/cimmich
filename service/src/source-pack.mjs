@@ -47,10 +47,8 @@ const dot = (left, right) => {
 
 const normalizedCenter = (faces) => {
   const center = new Float64Array(faces[0].vector.length);
-  let totalWeight = 0;
   for (const face of faces) {
     const weight = 0.5 + (Number(face.cleanScore ?? face.quality) || 0) * 0.5;
-    totalWeight += weight;
     for (let index = 0; index < center.length; index += 1)
       center[index] += face.vector[index] * weight;
   }

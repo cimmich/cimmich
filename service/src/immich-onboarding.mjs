@@ -514,7 +514,7 @@ const scanSource = async ({ companion, scope }) => {
   for (const visibility of scope.visibilities) {
     let cursor = "";
     let count = 0;
-    let accessState = "available";
+    let accessState;
     do {
       const page = await companion.listAssets({
         cursor,

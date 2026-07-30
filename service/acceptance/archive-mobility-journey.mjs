@@ -21,8 +21,6 @@ const exactFingerprint = normalizeContentFingerprint(exactChecksum);
 const changedFingerprint = normalizeContentFingerprint(changedChecksum);
 const exactAssetId = cimmichAssetIdForContent(exactFingerprint);
 const changedAssetId = cimmichAssetIdForContent(changedFingerprint);
-const sources = ["mobility-mac", "mobility-server"];
-
 const projectedAsset = ({ checksum, id, revision }) => ({
   assetType: "image",
   captureTime: "2026-01-01T00:00:00.000Z",
