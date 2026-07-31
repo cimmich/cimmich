@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => {
     detachContext: vi.fn(),
     getAlbums: vi.fn(() => Promise.resolve([])),
     getAsset: vi.fn(),
-    getEntities: vi.fn(() => Promise.resolve([])),
+    getEntities: vi.fn((family: string, options: unknown) => {
+      void family;
+      void options;
+      return Promise.resolve([]);
+    }),
     getPeople: vi.fn(() => Promise.resolve([])),
     getPets: vi.fn(() => Promise.resolve([])),
     getTags: vi.fn(() => Promise.resolve([])),
@@ -95,6 +99,24 @@ describe('CimmichEntityMediaActions', () => {
     expect(action.querySelector('option[value="presence-current"]')).toHaveTextContent('Mark Benji present');
     expect(action.querySelector('option[value="visibility-private"]')).toHaveTextContent('Set to Private');
     expect(action.querySelector('option[value="context-detach"]')).toHaveTextContent('Remove from Gulmarrad');
+  });
+
+  it('loads only the current destination list and deduplicates a slow request', async () => {
+    let resolveEvents: (value: []) => void = () => undefined;
+    mocks.getEntities.mockImplementation((family: string, options: unknown) => {
+      void options;
+      return family === 'events' ? new Promise<[]>((resolve) => (resolveEvents = resolve)) : Promise.resolve([]);
+    });
+
+    render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
+
+    await waitFor(() => expect(mocks.getEntities).toHaveBeenCalledTimes(1));
+    expect(mocks.getEntities).toHaveBeenCalledWith('events', { limit: 500 });
+    expect(mocks.getAlbums).not.toHaveBeenCalled();
+    expect(mocks.getTags).not.toHaveBeenCalled();
+    expect(mocks.getPeople).not.toHaveBeenCalled();
+    expect(mocks.getPets).not.toHaveBeenCalled();
+    resolveEvents([]);
   });
 
   it('sets photo privacy through one Cimmich visibility decision and saves Undo', async () => {

@@ -32,6 +32,7 @@
   } from '@immich/sdk';
   import { Icon, toastManager } from '@immich/ui';
   import { mdiAlertCircleOutline, mdiCheckCircleOutline, mdiUndoVariant } from '@mdi/js';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import {
     cimmichEntityMediaActionLabel,
     cimmichEntityMediaActionNeedsTarget,
@@ -66,12 +67,14 @@
   let events = $state<CimmichContextEntity[]>([]);
   let objects = $state<CimmichContextEntity[]>([]);
   let loadingOptions = $state(false);
-  let optionsLoaded = $state(false);
   let busy = $state(false);
   let error = $state('');
   let progress = $state('');
   let receipt = $state<CimmichEntityMediaActionReceipt | null>(null);
   let receiptLoaded = false;
+  type OptionKind = 'album' | 'event' | 'object' | 'person' | 'pet' | 'place' | 'tag';
+  const loadedOptionKinds = new SvelteSet<OptionKind>();
+  const optionRequests = new SvelteMap<OptionKind, Promise<void>>();
 
   const selectedCount = $derived(items.length);
   const allDirectlyAssigned = $derived(items.length > 0 && items.every((item) => item.directlyAssigned !== false));
@@ -146,51 +149,104 @@
     }
   });
 
-  const loadOptions = async () => {
-    if (optionsLoaded || loadingOptions) {
-      return;
-    }
-    loadingOptions = true;
-    let unavailable = 0;
-    const safely = async <T,>(promise: Promise<T>, fallback: T) => {
-      try {
-        return await promise;
-      } catch {
-        unavailable += 1;
-        return fallback;
+  const optionKindForAction = (selectedAction: CimmichEntityMediaActionKind): OptionKind | null => {
+    switch (selectedAction) {
+      case 'album-add': {
+        return 'album';
       }
-    };
-    try {
-      const [albumItems, tagItems, subjectItems, petItems, placeItems, eventItems, objectItems] = await Promise.all([
-        safely(getAllAlbums({ isOwned: true }), [] as AlbumResponseDto[]),
-        safely(getAllTags(), [] as TagResponseDto[]),
-        safely(getCimmichPeople(500, '', { presentation: false }), [] as CimmichPerson[]),
-        safely(getCimmichPets({ limit: 500 }), [] as CimmichPet[]),
-        safely(getCimmichContextEntities('places', { limit: 500 }), [] as CimmichContextEntity[]),
-        safely(getCimmichContextEntities('events', { limit: 500 }), [] as CimmichContextEntity[]),
-        safely(getCimmichContextEntities('objects', { limit: 500 }), [] as CimmichContextEntity[]),
-      ]);
-      albums = [...albumItems].sort((left, right) => left.albumName.localeCompare(right.albumName));
-      tags = [...tagItems].sort((left, right) => left.name.localeCompare(right.name));
-      people = [...subjectItems].sort((left, right) => left.display_name.localeCompare(right.display_name));
-      pets = [...petItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
-      places = [...placeItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
-      events = [...eventItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
-      objects = [...objectItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
-      optionsLoaded = true;
-      if (unavailable > 0) {
-        error = `${unavailable} ${unavailable === 1 ? 'choice list is' : 'choice lists are'} unavailable. Other actions still work.`;
+      case 'event-attach': {
+        return 'event';
       }
-    } catch (error_) {
-      error = `${asError(error_)} Direct privacy and library actions remain available.`;
-    } finally {
-      loadingOptions = false;
+      case 'object-attach': {
+        return 'object';
+      }
+      case 'presence-person': {
+        return 'person';
+      }
+      case 'presence-pet': {
+        return 'pet';
+      }
+      case 'place-attach': {
+        return 'place';
+      }
+      case 'tag-add':
+      case 'tag-remove': {
+        return 'tag';
+      }
+      default: {
+        return null;
+      }
     }
   };
 
+  const loadOptionKind = async (kind: OptionKind) => {
+    if (loadedOptionKinds.has(kind)) {
+      return;
+    }
+    const existing = optionRequests.get(kind);
+    if (existing) {
+      await existing;
+      return;
+    }
+
+    const request = (async () => {
+      loadingOptions = true;
+      try {
+        switch (kind) {
+          case 'album': {
+            albums = [...(await getAllAlbums({ isOwned: true }))].sort((left, right) =>
+              left.albumName.localeCompare(right.albumName),
+            );
+            break;
+          }
+          case 'tag': {
+            tags = [...(await getAllTags())].sort((left, right) => left.name.localeCompare(right.name));
+            break;
+          }
+          case 'person': {
+            people = [...(await getCimmichPeople(500, '', { presentation: false }))].sort((left, right) =>
+              left.display_name.localeCompare(right.display_name),
+            );
+            break;
+          }
+          case 'pet': {
+            pets = [...(await getCimmichPets({ limit: 500 }))].sort((left, right) =>
+              left.displayName.localeCompare(right.displayName),
+            );
+            break;
+          }
+          case 'event':
+          case 'object':
+          case 'place': {
+            const family = kind === 'event' ? 'events' : kind === 'place' ? 'places' : 'objects';
+            const contextItems = await getCimmichContextEntities(family, { limit: 500 });
+            const sorted = [...contextItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
+            if (kind === 'event') {
+              events = sorted;
+            } else if (kind === 'place') {
+              places = sorted;
+            } else {
+              objects = sorted;
+            }
+            break;
+          }
+        }
+        loadedOptionKinds.add(kind);
+      } catch (error_) {
+        error = `${asError(error_)} This choice list is unavailable; other actions still work.`;
+      } finally {
+        optionRequests.delete(kind);
+        loadingOptions = optionRequests.size > 0;
+      }
+    })();
+    optionRequests.set(kind, request);
+    await request;
+  };
+
   $effect(() => {
-    if (selectedCount > 0) {
-      void loadOptions();
+    const kind = optionKindForAction(action);
+    if (selectedCount > 0 && kind) {
+      void loadOptionKind(kind);
     }
   });
 
