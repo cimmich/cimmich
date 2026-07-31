@@ -138,11 +138,11 @@
         <Icon icon={mdiArchiveEyeOutline} size="24" />
       </div>
       <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-immich-primary dark:text-immich-dark-primary">
+        <p class="text-xs font-semibold tracking-[0.18em] text-immich-primary uppercase dark:text-immich-dark-primary">
           Imported archive truth
         </p>
         <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">Resolve names already in the sidecars</h2>
-        <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-300">
+        <p class="mt-1 text-sm/6 text-gray-500 dark:text-gray-300">
           One confirmation resolves every still-anonymous face carrying that source name. Cimmich never creates or
           chooses a Person until you do.
         </p>
@@ -192,7 +192,7 @@
         </div>
 
         {#if active.rawNameVariants.length > 1}
-          <p class="mt-4 text-xs leading-5 text-gray-400">
+          <p class="mt-4 text-xs/5 text-gray-400">
             Source variants: {active.rawNameVariants.join(' · ')}
           </p>
         {/if}
@@ -229,7 +229,7 @@
         </div>
 
         {#if selectorMode === 'existing'}
-          <label class="mt-5 block text-xs font-semibold uppercase tracking-wide text-gray-500" for="xmp-person">
+          <label class="mt-5 block text-xs font-semibold tracking-wide text-gray-500 uppercase" for="xmp-person">
             Person
           </label>
           <select
@@ -243,7 +243,7 @@
             {/each}
           </select>
         {:else}
-          <label class="mt-5 block text-xs font-semibold uppercase tracking-wide text-gray-500" for="xmp-new-person">
+          <label class="mt-5 block text-xs font-semibold tracking-wide text-gray-500 uppercase" for="xmp-new-person">
             Display name
           </label>
           <input
@@ -254,7 +254,7 @@
           />
         {/if}
 
-        <p class="mt-4 text-xs leading-5 text-gray-500 dark:text-gray-300">
+        <p class="mt-4 text-xs/5 text-gray-500 dark:text-gray-300">
           The imported label is retained as an alias when it differs from the Person’s display name. Every resulting
           identity is recorded as your decision, not as model authority.
         </p>

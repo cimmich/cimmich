@@ -3570,7 +3570,6 @@
       isArrivalCueVisible = false;
     };
   });
-
 </script>
 
 <svelte:window

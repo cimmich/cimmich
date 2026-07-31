@@ -1,9 +1,9 @@
+import { describe, expect, it } from 'vitest';
 import {
   cimmichSquareCropBackgroundStyle,
   cimmichSquareCropFrame,
   cimmichSquareObservationStyle,
 } from '$lib/utils/cimmich-crop';
-import { describe, expect, it } from 'vitest';
 
 const box = { boxH: 0.2, boxW: 0.1, boxX: 0.4, boxY: 0.3 };
 

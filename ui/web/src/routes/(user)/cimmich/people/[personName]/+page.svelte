@@ -5,6 +5,11 @@
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
+  import {
+    PERSON_CANDIDATE_SELECTION_LIMIT,
+    selectPersonCandidates,
+    togglePersonCandidateSelection,
+  } from '$lib/components/cimmich/person-candidate-selection';
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
   import {
     groupPersonPhotos,
@@ -122,7 +127,7 @@
     mdiTagMultipleOutline,
     mdiViewGridOutline,
   } from '@mdi/js';
-  import { Icon, Tooltip } from '@immich/ui';
+  import { Icon, Tooltip, toastManager } from '@immich/ui';
   import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PageData } from './$types';
 
@@ -584,7 +589,7 @@
     }),
   );
   const cimmichPersonReviewItems = $derived.by<CimmichPersonReviewItem[]>(() => {
-    const merged = new Map<string, CimmichPersonReviewItem>(
+    const merged = new SvelteMap<string, CimmichPersonReviewItem>(
       cimmichIdentityAuditItems.map((item) => [item.faceId, item]),
     );
     for (const candidate of cimmichCandidateReviewItems) {
@@ -1521,7 +1526,13 @@
 
   const cimmichAuditSelected = (faceId: string) => cimmichIdentityAuditSelection.includes(faceId);
 
-  const toggleCimmichAuditSelection = (faceId: string) => {
+  const showCandidateSelectionLimit = () => {
+    toastManager.warning(
+      `Maximum ${PERSON_CANDIDATE_SELECTION_LIMIT} faces. Accept or clear your current selection before choosing more.`,
+    );
+  };
+
+  const toggleCimmichAuditSelection = (faceId: string, event?: MouseEvent) => {
     const item = cimmichPersonReviewItems.find((candidate) => candidate.faceId === faceId);
     const sameQueueSelection = item
       ? cimmichIdentityAuditSelection.filter((selectedFaceId) =>
@@ -1530,9 +1541,17 @@
           ),
         )
       : cimmichIdentityAuditSelection;
-    cimmichIdentityAuditSelection = cimmichAuditSelected(faceId)
-      ? sameQueueSelection.filter((id) => id !== faceId)
-      : [...sameQueueSelection, faceId];
+    if (!cimmichAuditSelected(faceId) && sameQueueSelection.length >= PERSON_CANDIDATE_SELECTION_LIMIT) {
+      event?.preventDefault();
+      showCandidateSelectionLimit();
+      cimmichIdentityAuditConfirmAction = '';
+      return;
+    }
+    const update = togglePersonCandidateSelection(sameQueueSelection, faceId);
+    cimmichIdentityAuditSelection = update.selection;
+    if (update.limitReached) {
+      showCandidateSelectionLimit();
+    }
     cimmichIdentityAuditConfirmAction = '';
   };
 
@@ -1542,7 +1561,13 @@
 
   const selectShownCimmichAuditItems = (kind: CimmichIdentityAuditItem['kind'], items: CimmichPersonReviewItem[]) => {
     const sectionId = `identity-audit:${kind}`;
-    cimmichIdentityAuditSelection = items.slice(0, cimmichIdentitySectionLimit(sectionId)).map(({ faceId }) => faceId);
+    const update = selectPersonCandidates(
+      items.slice(0, cimmichIdentitySectionLimit(sectionId)).map(({ faceId }) => faceId),
+    );
+    cimmichIdentityAuditSelection = update.selection;
+    if (update.limitReached) {
+      showCandidateSelectionLimit();
+    }
     cimmichIdentityAuditConfirmAction = '';
   };
 
@@ -1566,7 +1591,6 @@
   const showMoreCimmichIdentityAudit = async (
     kind: CimmichIdentityAuditItem['kind'],
     loadedItems: CimmichPersonReviewItem[],
-    _total: number,
   ) => {
     if (!cimmichPerson || cimmichIdentityAuditLoadingKind) {
       return;
@@ -1704,6 +1728,11 @@
     cimmichMachineSuggestionSaving = true;
     try {
       const batch = await setCimmichFaceIdentitiesBatch(selectedFaceIds.map((faceId) => ({ faceId, personId })));
+      if (batch.failureCount > 0) {
+        throw new Error(
+          `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
+        );
+      }
       const [machineSuggestions, candidates, assetsPage, people] = await Promise.all([
         getCimmichMachineSuggestions(80, personId),
         getCimmichPersonCandidates(personId),
@@ -1735,8 +1764,7 @@
       // Keep the selection so the operator can retry; a silent stop here left
       // no trace that the batch never saved.
       cimmichMachineSuggestionConfirm = false;
-      cimmichIdentityError =
-        error instanceof Error ? error.message : 'Unable to confirm the selected suggestions';
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to confirm the selected suggestions';
     } finally {
       if (generation === personProjectionGeneration) {
         cimmichMachineSuggestionSaving = false;
@@ -3650,7 +3678,7 @@
                                 type="checkbox"
                                 checked={cimmichAuditSelected(item.faceId)}
                                 disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                onchange={() => toggleCimmichAuditSelection(item.faceId)}
+                                onclick={(event) => toggleCimmichAuditSelection(item.faceId, event)}
                               />
                             </label>
                           </div>
@@ -3663,7 +3691,8 @@
                                   {item.kind === 'untagged_match' ? 'Previously untagged' : 'Existing tag disputed'}
                                 </span>
                                 <span class="text-xs text-gray-500 dark:text-gray-400">
-                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin > item.suggestedPerson.score
+                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin >
+                                  item.suggestedPerson.score
                                     ? 'no competing person'
                                     : `${item.margin.toFixed(2)} ahead of the next person`}
                                 </span>
@@ -3905,8 +3934,7 @@
                         class="mx-auto min-h-11 rounded-md bg-white px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
                         type="button"
                         disabled={Boolean(cimmichIdentityAuditLoadingKind)}
-                        onclick={() =>
-                          void showMoreCimmichIdentityAudit(auditGroup.kind, auditGroup.items, auditGroup.total)}
+                        onclick={() => void showMoreCimmichIdentityAudit(auditGroup.kind, auditGroup.items)}
                       >
                         {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 20 more'}
                       </button>

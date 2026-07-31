@@ -341,10 +341,12 @@
   let listRequestGeneration = 0;
   let detailRequestGeneration = 0;
 
-  const loadEntities = async () => {
+  const loadEntities = async ({ preserveCollection = false }: { preserveCollection?: boolean } = {}) => {
     const generation = ++listRequestGeneration;
     const selectedEntityId = selected?.entity.entityId;
-    loaded = false;
+    if (!preserveCollection) {
+      loaded = false;
+    }
     error = null;
     try {
       const next = await getCimmichContextEntities(activeFamily, {
@@ -2032,6 +2034,7 @@
       entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
       onAdd={openCreate}
       onOpen={openEntity}
+      onPlacesChanged={() => loadEntities({ preserveCollection: true })}
     />
   {/if}
 </div>

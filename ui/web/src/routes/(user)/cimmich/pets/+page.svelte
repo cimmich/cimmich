@@ -95,6 +95,7 @@
     Tooltip,
     type ActionItem,
   } from '@immich/ui';
+  import { SvelteSet } from 'svelte/reactivity';
   import { t } from 'svelte-i18n';
   import { untrack } from 'svelte';
 
@@ -191,10 +192,10 @@
   let petPhotoSize = $state<PetPhotoSize>('medium');
   // A failed thumbnail must not fall back to the browser's alt-text rendering:
   // the raw source filename then overflows the frame and collides with the badge.
-  let unreadableObservations = $state(new Set<string>());
+  const unreadableObservations = new SvelteSet<string>();
   const markObservationUnreadable = (observationId: string) => {
     if (!unreadableObservations.has(observationId)) {
-      unreadableObservations = new Set(unreadableObservations).add(observationId);
+      unreadableObservations.add(observationId);
     }
   };
   let sortMode = $state<PetSortMode>('name-asc');
@@ -2555,11 +2556,7 @@
               <span
                 class={[
                   'relative block w-full rounded-full',
-                  petThumbnailSize === 'small'
-                    ? 'max-w-24'
-                    : petThumbnailSize === 'large'
-                      ? 'max-w-48'
-                      : 'max-w-36',
+                  petThumbnailSize === 'small' ? 'max-w-24' : petThumbnailSize === 'large' ? 'max-w-48' : 'max-w-36',
                 ]}
               >
                 <span

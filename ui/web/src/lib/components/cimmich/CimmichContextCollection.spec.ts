@@ -1,8 +1,23 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import type { CimmichContextDetail, CimmichContextEntity } from '$lib/services/cimmich.service';
 import CimmichContextCollection from './CimmichContextCollection.svelte';
 import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
+
+const mocks = vi.hoisted(() => ({
+  getMapMarkers: vi.fn().mockResolvedValue([]),
+  getVisibleMapAssetIds: vi.fn().mockResolvedValue(new Set<string>()),
+}));
+
+vi.mock('@immich/sdk', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getMapMarkers: mocks.getMapMarkers,
+}));
+
+vi.mock('$lib/services/cimmich.service', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getCimmichVisibleMapAssetIds: mocks.getVisibleMapAssetIds,
+}));
 
 vi.hoisted(() => {
   const values = new Map<string, string>();
@@ -45,6 +60,10 @@ const entity = (overrides: Partial<CimmichContextEntity> = {}): CimmichContextEn
 const entityHref = (candidate: CimmichContextEntity) => `/cimmich/test/${candidate.entityId}`;
 
 describe('Cimmich context collections', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('presents Things as durable identities and filters without changing the object contract', () => {
     const { getByRole, getByText, queryByRole, queryByText } = render(CimmichContextCollection, {
       controlledTypeFilter: 'device',
@@ -115,9 +134,23 @@ describe('Cimmich context collections', () => {
 
     expect(getByRole('button', { name: 'Places' })).toHaveAttribute('aria-pressed', 'true');
     expect(getByRole('button', { name: 'Map' })).toHaveAttribute('aria-pressed', 'false');
+    expect(getByRole('button', { name: 'GPS' })).toHaveAttribute('aria-pressed', 'false');
     expect(getByText('No places yet')).toBeInTheDocument();
+    expect(mocks.getMapMarkers).not.toHaveBeenCalled();
     await fireEvent.click(getByRole('button', { name: 'Map' }));
     expect(getByText('Your atlas starts with a place')).toBeInTheDocument();
+    await fireEvent.click(getByRole('button', { name: 'GPS' }));
+    expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.getMapMarkers).toHaveBeenCalledOnce());
+
+    await fireEvent.click(getByRole('button', { name: 'Places' }));
+    expect(getByText('No places yet')).toBeInTheDocument();
+    await fireEvent.click(getByRole('button', { name: 'GPS' }));
+    expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
+    expect(mocks.getMapMarkers).toHaveBeenCalledOnce();
+
+    await fireEvent.click(getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(mocks.getMapMarkers).toHaveBeenCalledTimes(2));
   });
 
   it('wraps a Place, cover photo and all, in a link to that place', () => {
@@ -144,6 +177,54 @@ describe('Cimmich context collections', () => {
     const card = cover.closest('a');
     expect(card).not.toBeNull();
     expect(card).toHaveAttribute('href', '/cimmich/test/place_home');
+  });
+
+  it('groups the Places directory by country and exposes duplicate and sort views', async () => {
+    const { getAllByRole, getByLabelText, getByRole, getByText, queryByText } = render(CimmichContextCollection, {
+      entities: [
+        entity({
+          assetCount: 15,
+          displayName: 'Zagreb, Croatia',
+          entityId: 'place_zagreb_point',
+          entityKind: 'place',
+          typeKind: 'point',
+        }),
+        entity({
+          assetCount: 16,
+          displayName: 'Zagreb, Croatia',
+          entityId: 'place_zagreb_area',
+          entityKind: 'place',
+          typeKind: 'area',
+        }),
+        entity({
+          assetCount: 3,
+          displayName: "Parent's Home",
+          entityId: 'place_home',
+          entityKind: 'place',
+          typeKind: 'point',
+        }),
+      ],
+      entityHref,
+      family: 'places',
+      onAdd: vi.fn(),
+      onOpen: vi.fn(),
+    });
+
+    expect(getByRole('heading', { name: /^Croatia$/ })).toBeInTheDocument();
+    expect(getByRole('heading', { name: /^Personal & named places$/ })).toBeInTheDocument();
+    expect(getByText('1 repeated name')).toBeInTheDocument();
+
+    await fireEvent.change(getByLabelText('Group places'), { target: { value: 'duplicates' } });
+    await waitFor(() => expect(getByText('2 saved records need consolidation')).toBeInTheDocument());
+    expect(queryByText("Parent's Home")).not.toBeInTheDocument();
+
+    await fireEvent.change(getByLabelText('Sort places'), { target: { value: 'photos-desc' } });
+    await waitFor(() =>
+      expect(getAllByRole('link', { name: /Zagreb, Croatia/ }).map((link) => link.getAttribute('href'))).toEqual([
+        '/cimmich/test/place_zagreb_area',
+        '/cimmich/test/place_zagreb_point',
+      ]),
+    );
   });
 });
 

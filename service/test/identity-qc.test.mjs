@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dedupeAssetFaces, identityQcFields } from "../src/repository.mjs";
+import {
+  dedupeAssetBodies,
+  dedupeAssetFaces,
+  identityQcFields,
+} from "../src/repository.mjs";
 import {
   isLowQualityEvidence,
   lowQualityReasons,
@@ -158,6 +162,66 @@ test("asset evidence retains nearby faces whose centres and boxes are distinct",
   assert.deepEqual(
     faces.map((face) => face.face_id),
     ["nearby_unknown", "accepted"],
+  );
+});
+
+test("asset evidence keeps one tagged Body over a near-identical raw detection", () => {
+  const bodies = dedupeAssetBodies([
+    {
+      body_id: "raw_body",
+      box_h: 0.317236,
+      box_w: 0.432023,
+      box_x: 0.567977,
+      box_y: 0.341075,
+    },
+    {
+      body_id: "linked_body",
+      box_h: 0.321984375,
+      box_w: 0.4104175365,
+      box_x: 0.5890605428,
+      box_y: 0.3413828125,
+      person_id: "person_benji",
+      supporting_face_id: "face_benji",
+    },
+  ]);
+
+  assert.deepEqual(
+    bodies.map((body) => body.body_id),
+    ["linked_body"],
+  );
+});
+
+test("asset evidence preserves distinct Bodies and conflicting accepted ownership", () => {
+  const bodies = dedupeAssetBodies([
+    {
+      body_id: "left",
+      box_h: 0.4,
+      box_w: 0.25,
+      box_x: 0.05,
+      box_y: 0.2,
+      person_id: "person_left",
+    },
+    {
+      body_id: "right",
+      box_h: 0.4,
+      box_w: 0.25,
+      box_x: 0.7,
+      box_y: 0.2,
+      person_id: "person_right",
+    },
+    {
+      body_id: "conflict",
+      box_h: 0.4,
+      box_w: 0.25,
+      box_x: 0.7,
+      box_y: 0.2,
+      person_id: "person_conflict",
+    },
+  ]);
+
+  assert.deepEqual(
+    bodies.map((body) => body.body_id),
+    ["left", "conflict", "right"],
   );
 });
 

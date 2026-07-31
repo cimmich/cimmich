@@ -28,6 +28,7 @@
     mdiMap,
     mdiMapOutline,
     mdiPawOutline,
+    mdiTuneVariant,
     mdiTextSearch,
     mdiTagMultipleOutline,
     mdiToolbox,
@@ -67,6 +68,7 @@
       { title: 'Places & Things', href: Route.cimmichPlaces(), icon: mdiMapOutline, activeIcon: mdiMap },
       { title: 'Events', href: Route.cimmichEvents(), icon: mdiImageMultipleOutline, activeIcon: mdiImageMultiple },
       { title: 'Documents', href: Route.cimmichDocuments(), icon: mdiFileDocumentOutline },
+      { title: 'Organise', href: Route.cimmichOrganise(), icon: mdiTuneVariant },
       { title: 'Smart Search', href: Route.cimmichSmartSearch(), icon: mdiTextSearch },
     ]}
   />

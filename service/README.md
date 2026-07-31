@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 104. Schema 76 adds
+patch level 1. Current post-submission source is schema 107. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -86,7 +86,20 @@ so run liveness is judged on recorded progress instead of start age, plus a
 BRIN index on identity_claim(created_at) for the incremental-audit staleness
 probe. Schema 104 re-issues the same-photo derivative guard to select one
 deterministic Immich projection per side, so multi-projection assets no longer
-fail guarded audit statements closed.
+fail guarded audit statements closed. Schema 105 adds explicit, replay-safe
+Immich inventory-source rollover lineage. A completed full successor inventory
+must exist before the predecessor can be disabled; predecessor projections and
+bindings become historical/missing, only now-unavailable jobs pause, and no
+Face, Body, identity or source media is deleted.
+Schema 106 adds an explicit, replay-safe storage command for one historical
+zero-work shape: paused `inventory-only-v1` placeholders that never received a
+lease, attempt, checkpoint, result, receipt, pipeline link or derived result
+and retain exactly their queued/disabled events. General job history,
+SourcePacks and biometric evidence are outside that command.
+Schema 107 adds the missing partial index for the media-pipeline detection-job
+foreign key. It changes no stored truth; it makes dependency checks and
+confirmed deletion of unrelated zero-work jobs bounded instead of repeatedly
+scanning the pipeline ledger.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
