@@ -32,10 +32,12 @@ describe('shared entity media action integration', () => {
   it('starts with no implied action and provides a typeable destination', async () => {
     const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
 
-    expect(source).toContain("$state<CimmichEntityMediaActionKind | null>(null)");
+    expect(source).toContain('$state<CimmichEntityMediaActionKind | null>(null)');
     expect(source).toContain('Pick action…');
-    expect(source).toContain('Type to search…');
-    expect(source).toContain('list="entity-media-destinations"');
+    expect(source).toContain('<Combobox');
+    expect(source).toContain('Choose or type…');
+    expect(source).toContain('defaultFirstOption');
+    expect(source).toContain('clearSelectionOnInput');
   });
 
   it('persists one exact Undo receipt and blocks a second action until disposition', async () => {

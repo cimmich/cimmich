@@ -42,6 +42,10 @@
      */
     allowCreate?: boolean;
     /**
+     * Clear a previously selected option as soon as the owner edits the query.
+     */
+    clearSelectionOnInput?: boolean;
+    /**
      * select first matching option on enter key.
      */
     defaultFirstOption?: boolean;
@@ -57,6 +61,7 @@
     selectedOption = $bindable(),
     placeholder = '',
     allowCreate = false,
+    clearSelectionOnInput = false,
     defaultFirstOption = false,
     onSelect = () => {},
     forceFocus = false,
@@ -160,6 +165,10 @@
 
   const onInput: FormEventHandler<HTMLInputElement> = (event) => {
     openDropdown();
+    if (clearSelectionOnInput && selectedOption) {
+      selectedOption = undefined;
+      onSelect(undefined);
+    }
     searchQuery = event.currentTarget.value;
     selectedIndex = defaultFirstOption ? 0 : undefined;
     optionRefs[0]?.scrollIntoView({ block: 'nearest' });

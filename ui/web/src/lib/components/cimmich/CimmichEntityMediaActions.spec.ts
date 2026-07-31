@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, waitFor } from '@testing-library/svelte';
 import type { CimmichContextEntity } from '$lib/services/cimmich.service';
+import { renderWithTooltips } from '$tests/helpers';
 import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
 import { ENTITY_MEDIA_ACTION_RECEIPT_KEY } from './entity-media-actions';
 
@@ -15,6 +16,14 @@ const mocks = vi.hoisted(() => {
     },
   });
   Object.defineProperty(globalThis, 'confirm', { configurable: true, value: vi.fn(() => true) });
+  Object.defineProperty(globalThis, 'visualViewport', {
+    configurable: true,
+    value: {
+      addEventListener: vi.fn(),
+      height: 800,
+      removeEventListener: vi.fn(),
+    },
+  });
   return {
     addAlbum: vi.fn(),
     attachContext: vi.fn(),
@@ -87,7 +96,7 @@ describe('CimmichEntityMediaActions', () => {
   });
 
   it('starts neutrally and presents page-aware context, presence, privacy and metadata actions', () => {
-    const { getByLabelText, getByText, queryByLabelText } = render(CimmichEntityMediaActions, {
+    const { getByLabelText, getByText, queryByLabelText } = renderWithTooltips(CimmichEntityMediaActions, {
       currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
       currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
       items,
@@ -111,7 +120,7 @@ describe('CimmichEntityMediaActions', () => {
       return family === 'events' ? new Promise<[]>((resolve) => (resolveEvents = resolve)) : Promise.resolve([]);
     });
 
-    const { getByLabelText } = render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
+    const { getByLabelText } = renderWithTooltips(CimmichEntityMediaActions, { items, onClear: vi.fn() });
 
     expect(mocks.getEntities).not.toHaveBeenCalled();
     await fireEvent.change(getByLabelText('Action'), { target: { value: 'event-attach' } });
@@ -124,7 +133,7 @@ describe('CimmichEntityMediaActions', () => {
     resolveEvents([]);
   });
 
-  it('accepts a typed destination and requires an exact match before Apply', async () => {
+  it('opens a smart destination dropdown, filters it by typing and requires selection before Apply', async () => {
     mocks.getEntities.mockResolvedValue([
       {
         aliases: [],
@@ -144,23 +153,37 @@ describe('CimmichEntityMediaActions', () => {
         typeKind: 'event',
       },
     ]);
-    const { getByLabelText, getByRole } = render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
+    const { getByLabelText, getByRole } = renderWithTooltips(CimmichEntityMediaActions, {
+      items,
+      onClear: vi.fn(),
+    });
 
     await fireEvent.change(getByLabelText('Action'), { target: { value: 'event-attach' } });
     const destination = await waitFor(() => getByLabelText('Destination'));
     await waitFor(() => expect(destination).toBeEnabled());
 
+    await fireEvent.focus(destination);
+    expect(getByRole('option', { name: 'Birthday' })).toBeInTheDocument();
+
     await fireEvent.input(destination, { target: { value: 'Birth' } });
     expect(getByRole('button', { name: 'Apply' })).toBeDisabled();
+    expect(getByRole('option', { name: 'Birthday' })).toBeInTheDocument();
 
-    await fireEvent.input(destination, { target: { value: 'Birthday' } });
+    await fireEvent.click(getByRole('option', { name: 'Birthday' }));
     expect(getByRole('button', { name: 'Apply' })).toBeEnabled();
+
+    await fireEvent.focus(destination);
+    await fireEvent.input(destination, { target: { value: 'Something else' } });
+    expect(getByRole('button', { name: 'Apply' })).toBeDisabled();
   });
 
   it('sets photo privacy through one Cimmich visibility decision and saves Undo', async () => {
     mocks.setVisibility.mockResolvedValue({ decisionId: 'visibility-decision' });
     const onClear = vi.fn();
-    const { getByLabelText, getByRole, getByText } = render(CimmichEntityMediaActions, { items, onClear });
+    const { getByLabelText, getByRole, getByText } = renderWithTooltips(CimmichEntityMediaActions, {
+      items,
+      onClear,
+    });
 
     await fireEvent.change(getByLabelText('Action'), { target: { value: 'visibility-private' } });
     await fireEvent.click(getByRole('button', { name: 'Apply' }));
@@ -184,7 +207,7 @@ describe('CimmichEntityMediaActions', () => {
       decisionId: 'presence-decision',
       undo: { eligible: true },
     });
-    const { getByLabelText, getByRole } = render(CimmichEntityMediaActions, {
+    const { getByLabelText, getByRole } = renderWithTooltips(CimmichEntityMediaActions, {
       currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
       items: [items[0]],
       onClear: vi.fn(),
@@ -223,7 +246,7 @@ describe('CimmichEntityMediaActions', () => {
       }),
     );
 
-    const { getByRole, getByText, queryByLabelText } = render(CimmichEntityMediaActions, {
+    const { getByRole, getByText, queryByLabelText } = renderWithTooltips(CimmichEntityMediaActions, {
       items: [],
       onClear: vi.fn(),
       showControls: false,
