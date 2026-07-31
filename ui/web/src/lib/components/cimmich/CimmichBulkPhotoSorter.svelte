@@ -45,6 +45,7 @@
   } from '@mdi/js';
   import { SvelteSet } from 'svelte/reactivity';
   import {
+    BULK_PHOTO_SORTER_BATCH_SIZE,
     BULK_PHOTO_SORTER_PAGE_SIZE,
     BULK_PHOTO_SORTER_PREVIEW_SIZE,
     buildBulkPhotoSorterSearch,
@@ -52,29 +53,16 @@
     bulkPhotoSorterActionNeedsTarget,
     bulkPhotoSorterChangedAssets,
     bulkPhotoSorterFilterFingerprint,
+    bulkPhotoSorterSameSnapshot,
     chunkBulkPhotoSorterItems,
+    createBulkPhotoSorterOperationId,
     emptyBulkPhotoSorterFilters,
+    loadBulkPhotoSorterReceipt,
+    saveBulkPhotoSorterReceipt,
     type BulkPhotoSorterActionKind,
+    type BulkPhotoSorterOperationReceipt,
+    type BulkPhotoSorterUndoReceipt,
   } from './bulk-photo-sorter';
-
-  type UndoReceipt = {
-    action: BulkPhotoSorterActionKind;
-    assetIds: string[];
-    contextDecisionIds: string[];
-    label: string;
-    targetId: string;
-    visibilityDecisionIds: string[];
-  };
-
-  type OperationReceipt = {
-    applied: number;
-    completedAt: Date;
-    label: string;
-    partial: boolean;
-    selected: number;
-    skipped: number;
-    undo: UndoReceipt | null;
-  };
 
   let filters = $state(emptyBulkPhotoSorterFilters());
   let action = $state<BulkPhotoSorterActionKind>('tag-add');
@@ -85,24 +73,27 @@
   let places = $state<CimmichContextEntity[]>([]);
   let events = $state<CimmichContextEntity[]>([]);
   let optionsLoading = $state(true);
+  let optionSearching = $state(false);
   let optionsError = $state('');
+  let personOptionQuery = $state('');
+  let targetOptionQuery = $state('');
   let previewAssets = $state<AssetResponseDto[]>([]);
   let previewTotal = $state<number | null>(null);
   let previewHasMore = $state(false);
   let previewFingerprint = $state('');
-  let previewPersonSourceIds = $state<Set<string> | null>(null);
   let previewing = $state(false);
   let busy = $state(false);
   let undoing = $state(false);
   let progress = $state('');
   let error = $state('');
-  let receipt = $state<OperationReceipt | null>(null);
+  let receipt = $state<BulkPhotoSorterOperationReceipt | null>(null);
+  let receiptStorageLoaded = false;
 
   const filterFingerprint = $derived(bulkPhotoSorterFilterFingerprint(filters));
   const previewIsCurrent = $derived(previewTotal !== null && previewFingerprint === filterFingerprint);
   const needsTarget = $derived(bulkPhotoSorterActionNeedsTarget(action));
   const canApply = $derived(
-    previewIsCurrent && previewTotal !== null && previewTotal > 0 && (!needsTarget || targetId),
+    previewIsCurrent && previewTotal !== null && previewTotal > 0 && (!needsTarget || targetId) && !receipt?.undo,
   );
   const targetOptions = $derived(
     action === 'album-add'
@@ -120,13 +111,25 @@
   const asErrorMessage = (caught: unknown) =>
     caught instanceof Error ? caught.message : 'The operation could not be completed.';
 
+  const storeReceipt = (next: BulkPhotoSorterOperationReceipt | null) => {
+    receipt = next;
+    saveBulkPhotoSorterReceipt(globalThis.localStorage, next);
+  };
+
+  $effect(() => {
+    if (!receiptStorageLoaded) {
+      receiptStorageLoaded = true;
+      receipt = loadBulkPhotoSorterReceipt(globalThis.localStorage);
+    }
+  });
+
   const loadOptions = async () => {
     optionsLoading = true;
     optionsError = '';
     try {
       const [albumItems, peopleResult, tagItems, placeItems, eventItems] = await Promise.all([
         getAllAlbums({ isOwned: true }),
-        getCimmichPeople(500),
+        getCimmichPeople(500, '', { presentation: false }),
         getAllTags(),
         getCimmichContextEntities('places', { limit: 500 }),
         getCimmichContextEntities('events', { limit: 500 }),
@@ -142,6 +145,43 @@
       optionsError = `${asErrorMessage(error_)} You can still use filters and actions that do not need these lists.`;
     } finally {
       optionsLoading = false;
+    }
+  };
+
+  const searchPeopleOptions = async () => {
+    optionSearching = true;
+    optionsError = '';
+    try {
+      const result = await getCimmichPeople(500, personOptionQuery, { presentation: false });
+      people = result
+        .filter((person) => person.subject_kind === 'person' && person.status === 'active')
+        .sort((left, right) => left.display_name.localeCompare(right.display_name));
+    } catch (error_) {
+      optionsError = asErrorMessage(error_);
+    } finally {
+      optionSearching = false;
+    }
+  };
+
+  const searchContextOptions = async () => {
+    if (action !== 'place-attach' && action !== 'event-attach') {
+      return;
+    }
+    optionSearching = true;
+    optionsError = '';
+    try {
+      const family = action === 'place-attach' ? 'places' : 'events';
+      const result = await getCimmichContextEntities(family, { limit: 500, query: targetOptionQuery });
+      const items = result.sort((left, right) => left.displayName.localeCompare(right.displayName));
+      if (family === 'places') {
+        places = items;
+      } else {
+        events = items;
+      }
+    } catch (error_) {
+      optionsError = asErrorMessage(error_);
+    } finally {
+      optionSearching = false;
     }
   };
 
@@ -167,7 +207,6 @@
     previewing = true;
     error = '';
     progress = 'Finding matching photos…';
-    receipt = null;
     try {
       const fingerprint = filterFingerprint;
       if (filters.personId) {
@@ -186,7 +225,6 @@
         previewAssets = samples;
         previewTotal = matches.length;
         previewHasMore = false;
-        previewPersonSourceIds = personSourceIds;
         previewFingerprint = fingerprint;
         progress = `${matches.length.toLocaleString()} ${matches.length === 1 ? 'photo matches' : 'photos match'}. Nothing has changed.`;
         return;
@@ -200,14 +238,12 @@
       previewAssets = result.assets.items;
       previewTotal = result.assets.items.length;
       previewHasMore = Boolean(result.assets.nextPage);
-      previewPersonSourceIds = null;
       previewFingerprint = fingerprint;
       progress = `${result.assets.items.length.toLocaleString()}${result.assets.nextPage ? '+' : ''} ${result.assets.items.length === 1 && !result.assets.nextPage ? 'photo matches' : 'photos match'}. Nothing has changed.`;
     } catch (error_) {
       previewAssets = [];
       previewTotal = null;
       previewHasMore = false;
-      previewPersonSourceIds = null;
       previewFingerprint = '';
       error = `${asErrorMessage(error_)} Nothing has changed.`;
       progress = '';
@@ -224,6 +260,7 @@
     sampleTarget?: AssetResponseDto[],
   ) => {
     const collected: AssetResponseDto[] = [];
+    const seen = new SvelteSet<string>();
     let page = 1;
     while (true) {
       progress = expectedTotal
@@ -232,9 +269,15 @@
       const result = await searchAssets({
         metadataSearchDto: { ...query, page, size: BULK_PHOTO_SORTER_PAGE_SIZE },
       });
-      const matchingItems = acceptedSourceIds
-        ? result.assets.items.filter((asset) => acceptedSourceIds.has(asset.id))
-        : result.assets.items;
+      const matchingItems = (
+        acceptedSourceIds ? result.assets.items.filter((asset) => acceptedSourceIds.has(asset.id)) : result.assets.items
+      ).filter((asset) => {
+        if (seen.has(asset.id)) {
+          return false;
+        }
+        seen.add(asset.id);
+        return true;
+      });
       if (sampleTarget && sampleTarget.length < BULK_PHOTO_SORTER_PREVIEW_SIZE) {
         sampleTarget.push(...matchingItems.slice(0, BULK_PHOTO_SORTER_PREVIEW_SIZE - sampleTarget.length));
       }
@@ -261,7 +304,11 @@
     progress = `Applying ${bulkPhotoSorterActionLabel(action)}… ${completed.toLocaleString()} of ${total.toLocaleString()}`;
   };
 
-  const applyNativeAction = async (assets: AssetResponseDto[], undoReceipt: UndoReceipt) => {
+  const applyNativeAction = async (
+    assets: AssetResponseDto[],
+    undoReceipt: BulkPhotoSorterUndoReceipt,
+    persistUndo: () => void,
+  ) => {
     const changed = bulkPhotoSorterChangedAssets(assets, action, targetId);
     let applied = 0;
     for (const batch of chunkBulkPhotoSorterItems(changed)) {
@@ -297,13 +344,18 @@
         // No default
       }
       undoReceipt.assetIds.push(...ids);
+      persistUndo();
       applied += ids.length;
       updateProgress(applied, changed.length);
     }
     return { applied, assetIds: changed.map(({ id }) => id) };
   };
 
-  const applyAlbumAction = async (assets: AssetResponseDto[], undoReceipt: UndoReceipt) => {
+  const applyAlbumAction = async (
+    assets: AssetResponseDto[],
+    undoReceipt: BulkPhotoSorterUndoReceipt,
+    persistUndo: () => void,
+  ) => {
     const targetAssets = await collectAssets(
       buildBulkPhotoSorterSearch({ ...emptyBulkPhotoSorterFilters(), albumId: targetId }),
       undefined,
@@ -313,12 +365,14 @@
     const assetIds = assets.map(({ id }) => id).filter((id) => !existing.has(id));
     let applied = 0;
     for (const batch of chunkBulkPhotoSorterItems(assetIds)) {
-      await addAssetsToAlbum({ id: targetId, bulkIdsDto: { ids: batch } });
-      undoReceipt.assetIds.push(...batch);
-      applied += batch.length;
+      const results = await addAssetsToAlbum({ id: targetId, bulkIdsDto: { ids: batch } });
+      const changedIds = results.filter(({ success }) => success).map(({ id }) => id);
+      undoReceipt.assetIds.push(...changedIds);
+      persistUndo();
+      applied += changedIds.length;
       updateProgress(applied, assetIds.length);
     }
-    return { applied, assetIds };
+    return { applied, assetIds: undoReceipt.assetIds };
   };
 
   const mappedCimmichAssets = async (assets: AssetResponseDto[]) => {
@@ -330,7 +384,11 @@
     });
   };
 
-  const applyVisibilityAction = async (assets: AssetResponseDto[], undoReceipt: UndoReceipt) => {
+  const applyVisibilityAction = async (
+    assets: AssetResponseDto[],
+    undoReceipt: BulkPhotoSorterUndoReceipt,
+    persistUndo: () => void,
+  ) => {
     const mappedIds = await mappedCimmichAssets(assets);
     const tier = action.replace('visibility-', '') as CimmichVisibilityTier;
     const decisionIds: string[] = [];
@@ -344,6 +402,7 @@
         decisionIds.push(result.decisionId);
         undoReceipt.visibilityDecisionIds.push(result.decisionId);
         undoReceipt.assetIds.push(...batch);
+        persistUndo();
       }
       applied += batch.length;
       updateProgress(applied, mappedIds.length);
@@ -352,7 +411,11 @@
     return { applied, assetIds: mappedIds, decisionIds };
   };
 
-  const applyContextAction = async (assets: AssetResponseDto[], undoReceipt: UndoReceipt) => {
+  const applyContextAction = async (
+    assets: AssetResponseDto[],
+    undoReceipt: BulkPhotoSorterUndoReceipt,
+    persistUndo: () => void,
+  ) => {
     const mappedIds = await mappedCimmichAssets(assets);
     const family = action === 'place-attach' ? 'places' : 'events';
     const associationKind = action === 'place-attach' ? 'captured_at' : 'direct';
@@ -365,15 +428,17 @@
         createCimmichContextCommandId(`organise-${family}`),
         batch.map((assetId) => ({ assetId, associationKind })),
       );
-      if (result.decisionId && result.undo?.eligible) {
+      const changedIds = result.changedAssetIds ?? (result.status === 'applied' ? batch : []);
+      if (changedIds.length > 0 && result.decisionId && result.undo?.eligible) {
         decisionIds.push(result.decisionId);
         undoReceipt.contextDecisionIds.push(result.decisionId);
-        undoReceipt.assetIds.push(...batch);
+        undoReceipt.assetIds.push(...changedIds);
+        persistUndo();
       }
-      applied += result.changedAssetIds?.length ?? (result.status === 'applied' ? batch.length : 0);
+      applied += changedIds.length;
       updateProgress(Math.min(applied, mappedIds.length), mappedIds.length);
     }
-    return { applied, assetIds: mappedIds, decisionIds };
+    return { applied, assetIds: undoReceipt.assetIds, decisionIds };
   };
 
   const apply = async () => {
@@ -383,23 +448,43 @@
     const label = `${bulkPhotoSorterActionLabel(action)}${targetLabel ? ` · ${targetLabel}` : ''}`;
     busy = true;
     error = '';
-    receipt = null;
-    let partialUndo: UndoReceipt | null = null;
+    let partialUndo: BulkPhotoSorterUndoReceipt | null = null;
+    let operationId = '';
     let selectedCount = previewTotal;
     try {
       const fingerprint = filterFingerprint;
+      const snapshotPersonSourceIds = filters.personId ? await loadCimmichPersonSourceIds(filters.personId) : undefined;
       const snapshot = await collectAssets(
         buildBulkPhotoSorterSearch(filters),
         previewHasMore ? undefined : previewTotal,
         'Taking a stable snapshot',
-        filters.personId ? (previewPersonSourceIds ?? (await loadCimmichPersonSourceIds(filters.personId))) : undefined,
+        snapshotPersonSourceIds,
       );
       selectedCount = snapshot.length;
-      if (fingerprint !== filterFingerprint || (!previewHasMore && snapshot.length !== previewTotal)) {
+      const verificationPersonSourceIds = filters.personId
+        ? await loadCimmichPersonSourceIds(filters.personId)
+        : undefined;
+      const verifiedSnapshot = await collectAssets(
+        buildBulkPhotoSorterSearch(filters),
+        snapshot.length,
+        'Verifying the stable snapshot',
+        verificationPersonSourceIds,
+      );
+      const samePersonSources =
+        !snapshotPersonSourceIds ||
+        !verificationPersonSourceIds ||
+        bulkPhotoSorterSameSnapshot([...snapshotPersonSourceIds], [...verificationPersonSourceIds]);
+      if (
+        fingerprint !== filterFingerprint ||
+        (!previewHasMore && snapshot.length !== previewTotal) ||
+        !samePersonSources ||
+        !bulkPhotoSorterSameSnapshot(
+          snapshot.map(({ id }) => id),
+          verifiedSnapshot.map(({ id }) => id),
+        )
+      ) {
         previewFingerprint = '';
-        throw new Error(
-          'The matching set changed while the snapshot was taken. Preview it again before applying anything.',
-        );
+        throw new Error('The matching set changed between two exact reads. Preview it again before applying anything.');
       }
 
       const confirmed = globalThis.confirm(
@@ -418,54 +503,68 @@
         targetId,
         visibilityDecisionIds: [],
       };
+      operationId = createBulkPhotoSorterOperationId();
+      const persistPartialUndo = () => {
+        if (!partialUndo || partialUndo.assetIds.length === 0) {
+          return;
+        }
+        storeReceipt({
+          applied: partialUndo.assetIds.length,
+          completedAt: new Date().toISOString(),
+          label,
+          operationId,
+          partial: true,
+          selected: snapshot.length,
+          skipped: Math.max(0, snapshot.length - partialUndo.assetIds.length),
+          undo: {
+            ...partialUndo,
+            assetIds: [...partialUndo.assetIds],
+            contextDecisionIds: [...partialUndo.contextDecisionIds],
+            visibilityDecisionIds: [...partialUndo.visibilityDecisionIds],
+          },
+          version: 1,
+        });
+      };
+
+      const createReceipt = (result: {
+        applied: number;
+        undo: BulkPhotoSorterUndoReceipt | null;
+      }): BulkPhotoSorterOperationReceipt => ({
+        applied: result.applied,
+        completedAt: new Date().toISOString(),
+        label,
+        operationId,
+        partial: false,
+        selected: snapshot.length,
+        skipped: snapshot.length - result.applied,
+        undo: result.undo,
+        version: 1,
+      });
+
+      let completedReceipt: BulkPhotoSorterOperationReceipt;
 
       if (action === 'album-add') {
-        const result = await applyAlbumAction(snapshot, partialUndo);
-        receipt = {
-          applied: result.applied,
-          completedAt: new Date(),
-          label,
-          partial: false,
-          selected: snapshot.length,
-          skipped: snapshot.length - result.applied,
-          undo: result.applied ? partialUndo : null,
-        };
+        const result = await applyAlbumAction(snapshot, partialUndo, persistPartialUndo);
+        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
       } else if (action.startsWith('visibility-')) {
-        const result = await applyVisibilityAction(snapshot, partialUndo);
-        receipt = {
+        const result = await applyVisibilityAction(snapshot, partialUndo, persistPartialUndo);
+        completedReceipt = createReceipt({
           applied: result.applied,
-          completedAt: new Date(),
-          label,
-          partial: false,
-          selected: snapshot.length,
-          skipped: snapshot.length - result.applied,
           undo: result.decisionIds.length > 0 ? partialUndo : null,
-        };
+        });
       } else if (action === 'place-attach' || action === 'event-attach') {
-        const result = await applyContextAction(snapshot, partialUndo);
-        receipt = {
+        const result = await applyContextAction(snapshot, partialUndo, persistPartialUndo);
+        completedReceipt = createReceipt({
           applied: result.applied,
-          completedAt: new Date(),
-          label,
-          partial: false,
-          selected: snapshot.length,
-          skipped: snapshot.length - result.applied,
           undo: result.decisionIds.length > 0 ? partialUndo : null,
-        };
+        });
       } else {
-        const result = await applyNativeAction(snapshot, partialUndo);
-        receipt = {
-          applied: result.applied,
-          completedAt: new Date(),
-          label,
-          partial: false,
-          selected: snapshot.length,
-          skipped: snapshot.length - result.applied,
-          undo: result.applied ? partialUndo : null,
-        };
+        const result = await applyNativeAction(snapshot, partialUndo, persistPartialUndo);
+        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
       }
-      progress = receipt.applied
-        ? `${receipt.applied.toLocaleString()} ${receipt.applied === 1 ? 'photo was' : 'photos were'} changed.`
+      storeReceipt(completedReceipt);
+      progress = completedReceipt.applied
+        ? `${completedReceipt.applied.toLocaleString()} ${completedReceipt.applied === 1 ? 'photo was' : 'photos were'} changed.`
         : 'Everything already matched. No changes were needed.';
       previewFingerprint = '';
     } catch (error_) {
@@ -477,15 +576,17 @@
       );
       error = `${asErrorMessage(error_)}${hasUndoWork ? ' You can undo the completed part below.' : ' Nothing has changed.'}`;
       if (partialUndo && hasUndoWork) {
-        receipt = {
+        storeReceipt({
           applied: partialUndo.assetIds.length,
-          completedAt: new Date(),
+          completedAt: new Date().toISOString(),
           label: partialUndo.label,
+          operationId,
           partial: true,
           selected: selectedCount,
           skipped: Math.max(0, selectedCount - partialUndo.assetIds.length),
           undo: partialUndo,
-        };
+          version: 1,
+        });
       }
       progress = '';
     } finally {
@@ -498,73 +599,112 @@
     if (!undoReceipt) {
       return;
     }
+    const receiptBeforeUndo = receipt!;
+    const remaining: BulkPhotoSorterUndoReceipt = {
+      ...undoReceipt,
+      assetIds: [...undoReceipt.assetIds],
+      contextDecisionIds: [...undoReceipt.contextDecisionIds],
+      visibilityDecisionIds: [...undoReceipt.visibilityDecisionIds],
+    };
+    const persistRemaining = () =>
+      storeReceipt({
+        ...receiptBeforeUndo,
+        undo: {
+          ...remaining,
+          assetIds: [...remaining.assetIds],
+          contextDecisionIds: [...remaining.contextDecisionIds],
+          visibilityDecisionIds: [...remaining.visibilityDecisionIds],
+        },
+      });
+    const undoAssetBatches = async (applyBatch: (batch: string[]) => Promise<unknown>) => {
+      while (remaining.assetIds.length > 0) {
+        const batch = remaining.assetIds.slice(0, BULK_PHOTO_SORTER_BATCH_SIZE);
+        await applyBatch(batch);
+        remaining.assetIds.splice(0, batch.length);
+        persistRemaining();
+        progress = `Undoing ${remaining.label}… ${remaining.assetIds.length.toLocaleString()} remaining`;
+      }
+    };
     undoing = true;
     error = '';
-    progress = `Undoing ${undoReceipt.label}…`;
+    progress = `Undoing ${remaining.label}…`;
     try {
-      switch (undoReceipt.action) {
+      switch (remaining.action) {
         case 'album-add': {
-          for (const batch of chunkBulkPhotoSorterItems(undoReceipt.assetIds)) {
-            await removeAssetFromAlbum({ id: undoReceipt.targetId, bulkIdsDto: { ids: batch } });
-          }
+          await undoAssetBatches(async (batch) => {
+            const results = await removeAssetFromAlbum({ id: remaining.targetId, bulkIdsDto: { ids: batch } });
+            const succeeded = new Set(results.filter(({ success }) => success).map(({ id }) => id));
+            if (succeeded.size !== batch.length) {
+              remaining.assetIds = [
+                ...batch.filter((id) => !succeeded.has(id)),
+                ...remaining.assetIds.slice(batch.length),
+              ];
+              persistRemaining();
+              throw new Error('Some album memberships could not be removed');
+            }
+          });
 
           break;
         }
         case 'favorite':
         case 'unfavorite': {
-          for (const batch of chunkBulkPhotoSorterItems(undoReceipt.assetIds)) {
+          await undoAssetBatches(async (batch) => {
             await updateAssets({
-              assetBulkUpdateDto: { ids: batch, isFavorite: undoReceipt.action === 'unfavorite' },
+              assetBulkUpdateDto: { ids: batch, isFavorite: remaining.action === 'unfavorite' },
             });
-          }
+          });
 
           break;
         }
         case 'archive':
         case 'unarchive': {
-          for (const batch of chunkBulkPhotoSorterItems(undoReceipt.assetIds)) {
+          await undoAssetBatches(async (batch) => {
             await updateAssets({
               assetBulkUpdateDto: {
                 ids: batch,
-                visibility: undoReceipt.action === 'archive' ? AssetVisibility.Timeline : AssetVisibility.Archive,
+                visibility: remaining.action === 'archive' ? AssetVisibility.Timeline : AssetVisibility.Archive,
               },
             });
-          }
+          });
 
           break;
         }
         case 'tag-add': {
-          for (const batch of chunkBulkPhotoSorterItems(undoReceipt.assetIds)) {
-            await untagAssets({ id: undoReceipt.targetId, bulkIdsDto: { ids: batch } });
-          }
+          await undoAssetBatches((batch) => untagAssets({ id: remaining.targetId, bulkIdsDto: { ids: batch } }));
 
           break;
         }
         case 'tag-remove': {
-          for (const batch of chunkBulkPhotoSorterItems(undoReceipt.assetIds)) {
-            await bulkTagAssets({ tagBulkAssetsDto: { assetIds: batch, tagIds: [undoReceipt.targetId] } });
-          }
+          await undoAssetBatches((batch) =>
+            bulkTagAssets({ tagBulkAssetsDto: { assetIds: batch, tagIds: [remaining.targetId] } }),
+          );
 
           break;
         }
         default: {
-          if (undoReceipt.action.startsWith('visibility-')) {
-            for (const decisionId of [...undoReceipt.visibilityDecisionIds].reverse()) {
+          if (remaining.action.startsWith('visibility-')) {
+            while (remaining.visibilityDecisionIds.length > 0) {
+              const decisionId = remaining.visibilityDecisionIds.at(-1)!;
               await undoCimmichVisibilityDecision(decisionId, createCimmichVisibilityCommandId('organise-undo'));
+              remaining.visibilityDecisionIds.pop();
+              persistRemaining();
             }
             cimmichVisibilityManager.notify();
           } else {
-            for (const decisionId of [...undoReceipt.contextDecisionIds].reverse()) {
+            while (remaining.contextDecisionIds.length > 0) {
+              const decisionId = remaining.contextDecisionIds.at(-1)!;
               await undoCimmichContextDecision(decisionId, createCimmichContextCommandId('organise-undo'));
+              remaining.contextDecisionIds.pop();
+              persistRemaining();
             }
           }
         }
       }
-      receipt = { ...receipt!, undo: null };
+      storeReceipt({ ...receiptBeforeUndo, undo: null });
       progress = 'The operation was undone.';
       previewFingerprint = '';
     } catch (error_) {
-      error = `${asErrorMessage(error_)} The Undo did not complete; do not repeat the original action.`;
+      error = `${asErrorMessage(error_)} The completed Undo steps were saved; resume Undo before starting another action.`;
       progress = '';
     } finally {
       undoing = false;
@@ -573,20 +713,31 @@
 
   const reset = () => {
     filters = emptyBulkPhotoSorterFilters();
+    personOptionQuery = '';
+    targetOptionQuery = '';
     previewAssets = [];
     previewTotal = null;
     previewHasMore = false;
-    previewPersonSourceIds = null;
     previewFingerprint = '';
-    receipt = null;
     error = '';
     progress = '';
+    void loadOptions();
   };
 
   const selectAction = (event: Event) => {
     action = (event.currentTarget as HTMLSelectElement).value as BulkPhotoSorterActionKind;
     targetId = '';
-    receipt = null;
+    targetOptionQuery = '';
+  };
+
+  const dismissReceipt = () => {
+    if (
+      receipt?.undo &&
+      !globalThis.confirm('Keep these changes and dismiss the saved Undo receipt? This cannot be undone from Organise.')
+    ) {
+      return;
+    }
+    storeReceipt(null);
   };
 
   const previewUrl = (asset: AssetResponseDto) =>
@@ -651,18 +802,32 @@
           placeholder="/Photos/Trips/Croatia"
         />
       </label>
-      <label class="grid gap-1.5 text-sm font-medium"
-        >Cimmich person
+      <div class="grid gap-1.5 text-sm font-medium">
+        <span>Cimmich person</span>
+        <div class="flex gap-2">
+          <input
+            class="min-w-0 flex-1 rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
+            bind:value={personOptionQuery}
+            placeholder="Search all people"
+          />
+          <button
+            class="rounded-xl border border-black/15 px-3 py-2 text-xs font-semibold hover:bg-black/5 disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/5"
+            type="button"
+            onclick={searchPeopleOptions}
+            disabled={optionSearching}>Search</button
+          >
+        </div>
         <select
           class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
           bind:value={filters.personId}
-          disabled={optionsLoading}
+          disabled={optionsLoading || optionSearching}
+          aria-label="Cimmich person"
         >
           <option value="">Any Cimmich person</option>
           {#each people as person (person.person_id)}<option value={person.person_id}>{person.display_name}</option
             >{/each}
         </select>
-      </label>
+      </div>
       <label class="grid gap-1.5 text-sm font-medium"
         >Tag
         <select
@@ -807,6 +972,11 @@
     <p class="mt-2 text-sm text-immich-fg/65 dark:text-immich-dark-fg/65">
       One action per run keeps the receipt and Undo exact.
     </p>
+    {#if receipt?.undo}<p
+        class="mt-4 rounded-2xl border border-amber-400/35 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:bg-amber-950/25 dark:text-amber-100"
+      >
+        A saved Undo receipt is still active. Undo it or keep those changes before applying another action.
+      </p>{/if}
     <div class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
       <label class="grid gap-1.5 text-sm font-medium"
         >Action
@@ -837,18 +1007,32 @@
         </select>
       </label>
       {#if needsTarget}
-        <label class="grid gap-1.5 text-sm font-medium"
-          >Destination
+        <div class="grid gap-1.5 text-sm font-medium">
+          <span>Destination</span>
+          {#if action === 'place-attach' || action === 'event-attach'}<div class="flex gap-2">
+              <input
+                class="min-w-0 flex-1 rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
+                bind:value={targetOptionQuery}
+                placeholder={`Search all ${action === 'place-attach' ? 'places' : 'events'}`}
+              />
+              <button
+                class="rounded-xl border border-black/15 px-3 py-2 text-xs font-semibold hover:bg-black/5 disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/5"
+                type="button"
+                onclick={searchContextOptions}
+                disabled={optionSearching}>Search</button
+              >
+            </div>{/if}
           <select
             class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
             bind:value={targetId}
-            disabled={optionsLoading}
+            disabled={optionsLoading || optionSearching}
+            aria-label="Destination"
           >
             <option value="">Choose…</option>{#each targetOptions as option (option.id)}<option value={option.id}
                 >{option.label}</option
               >{/each}
           </select>
-        </label>
+        </div>
       {:else}<div class="hidden sm:block"></div>{/if}
       <button
         class="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -888,15 +1072,24 @@
           <h2 class="mt-2 text-xl font-semibold">{receipt.label}</h2>
           <p class="mt-2 text-sm opacity-75">
             Selected {receipt.selected.toLocaleString()} · changed {receipt.applied.toLocaleString()} · unchanged or unavailable
-            {receipt.skipped.toLocaleString()} · {receipt.completedAt.toLocaleTimeString()}
+            {receipt.skipped.toLocaleString()} · {new Date(receipt.completedAt).toLocaleTimeString()} · saved on this device
           </p>
         </div>
-        {#if receipt.undo}<button
-            class="inline-flex items-center gap-2 rounded-full border border-emerald-700/30 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-200"
+        <div class="flex flex-wrap items-center gap-2">
+          {#if receipt.undo}<button
+              class="inline-flex items-center gap-2 rounded-full border border-emerald-700/30 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-200"
+              type="button"
+              onclick={undo}
+              disabled={busy || undoing}
+              ><Icon icon={mdiUndoVariant} size="19" /> {undoing ? 'Undoing…' : 'Undo'}</button
+            >{/if}
+          <button
+            class="rounded-full px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-200"
             type="button"
-            onclick={undo}
-            disabled={busy || undoing}><Icon icon={mdiUndoVariant} size="19" /> {undoing ? 'Undoing…' : 'Undo'}</button
-          >{/if}
+            onclick={dismissReceipt}
+            disabled={busy || undoing}>{receipt.undo ? 'Keep changes' : 'Dismiss receipt'}</button
+          >
+        </div>
       </div>
     </section>
   {/if}

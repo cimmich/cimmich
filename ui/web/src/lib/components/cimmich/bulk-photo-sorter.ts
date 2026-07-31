@@ -3,6 +3,7 @@ import { AssetOrder, AssetTypeEnum, AssetVisibility, type AssetResponseDto, type
 export const BULK_PHOTO_SORTER_BATCH_SIZE = 100;
 export const BULK_PHOTO_SORTER_PAGE_SIZE = 500;
 export const BULK_PHOTO_SORTER_PREVIEW_SIZE = 24;
+export const BULK_PHOTO_SORTER_RECEIPT_KEY = 'cimmich.bulk-photo-sorter.receipt.v1';
 
 export type BulkPhotoSorterFilters = {
   albumId: string;
@@ -30,6 +31,144 @@ export type BulkPhotoSorterActionKind =
   | 'visibility-personal'
   | 'visibility-private'
   | 'visibility-standard';
+
+export type BulkPhotoSorterUndoReceipt = {
+  action: BulkPhotoSorterActionKind;
+  assetIds: string[];
+  contextDecisionIds: string[];
+  label: string;
+  targetId: string;
+  visibilityDecisionIds: string[];
+};
+
+export type BulkPhotoSorterOperationReceipt = {
+  applied: number;
+  completedAt: string;
+  label: string;
+  operationId: string;
+  partial: boolean;
+  selected: number;
+  skipped: number;
+  undo: BulkPhotoSorterUndoReceipt | null;
+  version: 1;
+};
+
+type BulkPhotoSorterReceiptStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
+
+const bulkPhotoSorterActionKinds = new Set<BulkPhotoSorterActionKind>([
+  'album-add',
+  'archive',
+  'event-attach',
+  'favorite',
+  'place-attach',
+  'tag-add',
+  'tag-remove',
+  'unarchive',
+  'unfavorite',
+  'visibility-personal',
+  'visibility-private',
+  'visibility-standard',
+]);
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+const isUndoReceipt = (value: unknown): value is BulkPhotoSorterUndoReceipt => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const item = value as Record<string, unknown>;
+  return (
+    bulkPhotoSorterActionKinds.has(item.action as BulkPhotoSorterActionKind) &&
+    isStringArray(item.assetIds) &&
+    isStringArray(item.contextDecisionIds) &&
+    typeof item.label === 'string' &&
+    typeof item.targetId === 'string' &&
+    isStringArray(item.visibilityDecisionIds)
+  );
+};
+
+const isReceiptCount = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
+
+const isOperationReceipt = (value: unknown): value is BulkPhotoSorterOperationReceipt => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const item = value as Record<string, unknown>;
+  return (
+    item.version === 1 &&
+    isReceiptCount(item.applied) &&
+    typeof item.completedAt === 'string' &&
+    Number.isFinite(Date.parse(item.completedAt)) &&
+    typeof item.label === 'string' &&
+    typeof item.operationId === 'string' &&
+    item.operationId.length > 0 &&
+    typeof item.partial === 'boolean' &&
+    isReceiptCount(item.selected) &&
+    isReceiptCount(item.skipped) &&
+    (item.undo === null || isUndoReceipt(item.undo))
+  );
+};
+
+export const loadBulkPhotoSorterReceipt = (
+  storage: BulkPhotoSorterReceiptStorage,
+): BulkPhotoSorterOperationReceipt | null => {
+  try {
+    const serialized = storage.getItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
+    if (!serialized) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(serialized);
+    if (isOperationReceipt(parsed)) {
+      return parsed;
+    }
+    storage.removeItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
+  } catch {
+    // A blocked or corrupt browser store must not prevent Organise from loading.
+  }
+  return null;
+};
+
+export const saveBulkPhotoSorterReceipt = (
+  storage: BulkPhotoSorterReceiptStorage,
+  receipt: BulkPhotoSorterOperationReceipt | null,
+) => {
+  try {
+    if (receipt) {
+      storage.setItem(BULK_PHOTO_SORTER_RECEIPT_KEY, JSON.stringify(receipt));
+    } else {
+      storage.removeItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
+    }
+  } catch {
+    // The receipt remains usable in this page even when storage is unavailable.
+  }
+};
+
+export const bulkPhotoSorterSameSnapshot = (left: string[], right: string[]) => {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const leftIds = new Set(left);
+  if (leftIds.size !== left.length) {
+    return false;
+  }
+  return right.every((id) => leftIds.has(id));
+};
+
+export const createBulkPhotoSorterOperationId = () => {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return `organise.${globalThis.crypto.randomUUID()}`;
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index++) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `organise.${Date.now().toString(36)}.${[...bytes].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+};
 
 export const emptyBulkPhotoSorterFilters = (): BulkPhotoSorterFilters => ({
   albumId: '',
