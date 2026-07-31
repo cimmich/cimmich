@@ -7,6 +7,27 @@ Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
 
+## Current source audit addendum — 2026-08-01
+
+The deployed schema-107/patch-1 feature source is
+`d05f60464218790f38ce602384c93c420e757bc5`. It reconciles the migration-ledger
+source with the private archive and adds recoverable bulk Organise operations.
+The final source gate passes 798
+service tests with two skipped, 894 web tests with two skipped, zero Svelte
+errors or warnings, TypeScript, formatting, lint, production build, migration
+acceptance through schema 107, and the complete disposable synthetic lifecycle.
+
+Bulk Organise now confirms two identical complete asset enumerations before a
+write, records only API-confirmed changed asset IDs, checkpoints its receipt
+after every bounded batch, survives reload, resumes Undo, and blocks a second
+operation until the prior receipt is undone or explicitly kept. Person and
+Place/Event selectors are searchable rather than silently limited by a
+page-sized response.
+
+CI audits each provider requirements file as a fully resolved dependency graph.
+The former direct-only `pip-audit --no-deps --disable-pip` check is not accepted
+as transitive dependency proof.
+
 This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.

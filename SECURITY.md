@@ -40,9 +40,13 @@ the operator is responsible for that disclosure.
 The canonical API is a local, single-owner service. Its product containers bind
 to loopback, and actor/device headers provide audit attribution rather than a
 remote authentication perimeter. Do not expose the API, database, or provider
-ports directly to a LAN or the public Internet. A remote or multi-user install
-must add a separately reviewed authenticated reverse proxy, TLS, network access
-controls, and backup protection; Cimmich does not claim those controls itself.
+ports directly to a LAN or the public Internet. If a same-origin gateway makes
+the UI reachable beyond loopback, every API route except an intentionally
+minimal health check must validate the current Immich session before proxying
+the request; forwarding cookies or actor/device headers alone is not
+authentication. A remote or multi-user install must add a separately reviewed
+authenticated reverse proxy, TLS, network access controls, and backup
+protection; Cimmich does not claim those controls itself.
 
 Treat backups, provider artifacts, configuration volumes, and Document-store
 exports as sensitive. Keep them mode-restricted and encrypted at rest where the

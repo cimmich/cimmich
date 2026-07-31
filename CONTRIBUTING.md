@@ -31,15 +31,25 @@ Run the smallest focused test first, then the relevant full checks. A normal
 cross-layer change is expected to pass:
 
 ```sh
-cd service && npm test
-cd ../ui/web && pnpm run check:typescript && pnpm run check:svelte
-cd ../.. && ./tools/run_synthetic_acceptance.sh
+cd service
+npm run check:syntax && npm run format && npm run lint && npm test
+cd ../ui/web
+pnpm run format && pnpm run lint
+pnpm run check:typescript && pnpm run check:svelte
+pnpm run test -- --run && pnpm run build
+cd ../..
+./tools/run_migration_runner_acceptance.sh
+./tools/run_synthetic_acceptance.sh
 ```
 
-Web changes should also pass the affected Vitest files, Prettier, scoped ESLint,
-and the production build. Migration changes must pass fresh, upgrade,
+Start with affected tests while iterating; the commands above are the final
+cross-layer gate. Migration changes must pass fresh, upgrade,
 interruption, concurrency, checksum-drift, and restart proof. Never edit an
 applied migration; add the next contiguous migration instead.
+
+Provider dependency changes must keep every top-level requirement pinned and
+pass an audit of the fully resolved dependency graph. A direct-only audit is
+not sufficient release proof.
 
 ## Change design
 
