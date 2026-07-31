@@ -33,6 +33,7 @@
   import { Icon, toastManager } from '@immich/ui';
   import { mdiAlertCircleOutline, mdiCheckCircleOutline, mdiUndoVariant } from '@mdi/js';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+  import Combobox, { type ComboBoxOption } from '../shared-components/Combobox.svelte';
   import {
     cimmichEntityMediaActionLabel,
     cimmichEntityMediaActionNeedsTarget,
@@ -59,7 +60,7 @@
 
   let action = $state<CimmichEntityMediaActionKind | null>(null);
   let targetId = $state('');
-  let targetQuery = $state('');
+  let targetOption = $state<ComboBoxOption>();
   let albums = $state<AlbumResponseDto[]>([]);
   let tags = $state<TagResponseDto[]>([]);
   let people = $state<CimmichPerson[]>([]);
@@ -130,7 +131,7 @@
     }
     return [];
   });
-  const targetLabel = $derived(targetOptions.find((option) => option.id === targetId)?.label ?? '');
+  const targetLabel = $derived(targetOption?.label ?? '');
   const canApply = $derived(
     selectedCount > 0 &&
       !busy &&
@@ -260,14 +261,11 @@
     const value = (event.currentTarget as HTMLSelectElement).value;
     action = (value as CimmichEntityMediaActionKind) || null;
     targetId = '';
-    targetQuery = '';
+    targetOption = undefined;
   };
 
-  const selectTarget = (event: Event) => {
-    targetQuery = (event.currentTarget as HTMLInputElement).value;
-    const normalizedQuery = targetQuery.trim().toLocaleLowerCase();
-    const exactMatches = targetOptions.filter((option) => option.label.trim().toLocaleLowerCase() === normalizedQuery);
-    targetId = exactMatches.length === 1 ? exactMatches[0].id : '';
+  const selectTarget = (option: ComboBoxOption | undefined) => {
+    targetId = option?.value ?? '';
   };
 
   const emptyReceipt = (
@@ -556,7 +554,7 @@
         <button class="entity-media-clear" type="button" disabled={busy || selectedCount === 0} onclick={onClear}
           >Clear</button
         >
-        <label>
+        <label class="entity-media-field">
           <span>Action</span>
           <select value={action ?? ''} disabled={busy || Boolean(receipt)} onchange={selectAction}>
             <option value="">Pick action…</option>
@@ -593,25 +591,18 @@
           </select>
         </label>
         {#if needsTarget}
-          <label>
-            <span>Destination</span>
-            <input
-              aria-label="Destination"
-              aria-describedby="entity-media-destination-help"
-              autocomplete="off"
-              list="entity-media-destinations"
-              placeholder={loadingOptions ? 'Loading…' : 'Type to search…'}
-              value={targetQuery}
+          <div class="entity-media-combobox-field">
+            <Combobox
+              label="Destination"
+              options={targetOptions.map((option) => ({ ...option, value: option.id }))}
+              bind:selectedOption={targetOption}
+              placeholder={loadingOptions ? 'Loading…' : 'Choose or type…'}
               disabled={busy || loadingOptions || Boolean(receipt)}
-              oninput={selectTarget}
+              defaultFirstOption
+              clearSelectionOnInput
+              onSelect={selectTarget}
             />
-            <datalist id="entity-media-destinations">
-              {#each targetOptions as option (option.id)}<option value={option.label}></option>{/each}
-            </datalist>
-            <span id="entity-media-destination-help" class="sr-only"
-              >Type a destination name, then choose an exact match.</span
-            >
-          </label>
+          </div>
         {/if}
         <button class="entity-media-apply" type="button" disabled={!canApply} onclick={() => void apply()}>
           {busy ? 'Working…' : 'Apply'}
@@ -656,7 +647,8 @@
     opacity: 0.65;
   }
 
-  label {
+  .entity-media-field,
+  .entity-media-combobox-field {
     display: grid;
     gap: 0.25rem;
     min-width: 11rem;
@@ -665,7 +657,6 @@
   }
 
   select,
-  input,
   button {
     min-height: 2.5rem;
     border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
@@ -681,8 +672,7 @@
   }
 
   button:disabled,
-  select:disabled,
-  input:disabled {
+  select:disabled {
     cursor: not-allowed;
     opacity: 0.45;
   }
