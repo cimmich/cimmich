@@ -135,3 +135,59 @@ test("Place directory visibility is a closed contract", () => {
     "nested_only",
   ]);
 });
+
+test("Painted Place areas accept only 3 to 500 distinct canonical points", async () => {
+  const reachedPersistence = new Error("reached persistence");
+  const sql = Object.assign(async () => [], {
+    begin: async () => {
+      throw reachedPersistence;
+    },
+  });
+  const store = createContextEntityStore(sql);
+  const input = {
+    actorId: "local-operator",
+    commandId: "painted-area-test-0001",
+    datePrecision: "unknown",
+    displayName: "Office",
+    entityKind: "place",
+    geometry: {
+      points: [
+        { latitude: -29.45, longitude: 153.21 },
+        { latitude: -29.45, longitude: 153.22 },
+        { latitude: -29.46, longitude: 153.22 },
+      ],
+    },
+    typeKind: "area",
+  };
+
+  await assert.rejects(
+    store.create(input),
+    (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "painted-area-test-0002",
+      geometry: { points: input.geometry.points.slice(0, 2) },
+    }),
+    (error) =>
+      error.code === "CONTEXT_GEOMETRY_INVALID" &&
+      /3 to 500 points/.test(error.message),
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "painted-area-test-0003",
+      geometry: {
+        points: [
+          input.geometry.points[0],
+          input.geometry.points[0],
+          input.geometry.points[1],
+        ],
+      },
+    }),
+    (error) =>
+      error.code === "CONTEXT_GEOMETRY_INVALID" &&
+      /three distinct points/.test(error.message),
+  );
+});

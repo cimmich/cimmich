@@ -49,6 +49,23 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(map).toContain('zoom={locatorCenter ? 15 : undefined}');
   });
 
+  it('supports subsection painting and bounded bulk photo assignment without hidden limits', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const canvas = await read('src/lib/components/cimmich/CimmichPlaceCanvas.svelte');
+    const map = await read('src/lib/components/shared-components/map/Map.svelte');
+
+    expect(browser).toContain('<CimmichPlaceCanvas');
+    expect(browser).toContain('const placeBulkSelectionLimit = 100;');
+    expect(browser).toContain('if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit)');
+    expect(browser).toContain('toastManager.warning(');
+    expect(browser).toContain('assignSelectedPlaceAssets');
+    expect(canvas).toContain('satelliteInitiallyEnabled');
+    expect(canvas).toContain('Paint outline');
+    expect(canvas).toContain('Save zone');
+    expect(canvas).toContain('GPS can suggest a zone later');
+    expect(map).toContain('onPlaceAreaSelect');
+  });
+
   it('caps the card body track so a long location line cannot widen the whole card', async () => {
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
 

@@ -69,6 +69,7 @@
     onOpenInMapView?: (() => Promise<void> | void) | undefined;
     onSelect?: (assetIds: string[]) => void;
     onPlaceSelect?: (placeMarker: PlaceMarker) => void;
+    onPlaceAreaSelect?: (placeId: string) => void;
     onPlaceMarkerDragEnd?: (point: { id: string; lat: number; lng: number }) => void;
     onClusterSelect?: (assetIds: string[], bbox: SelectionBBox) => void;
     onBrushPoint?: ({ lat, lng }: { lat: number; lng: number }) => void;
@@ -78,6 +79,7 @@
     showSimpleControls?: boolean;
     autoFitBounds?: boolean;
     showSatelliteControl?: boolean;
+    satelliteInitiallyEnabled?: boolean;
     placeMarkersDraggable?: boolean;
     showPlaceMarkerLabels?: boolean;
     visibilityFiltered?: boolean;
@@ -93,6 +95,7 @@
   };
 
   export type PlaceArea = {
+    color?: string;
     corridorMeters?: number | null;
     geometryKind?: 'area' | 'route' | 'unlocated';
     geometrySource?: 'derived' | 'gps_best_guess' | 'manual' | 'unlocated';
@@ -125,6 +128,7 @@
     onOpenInMapView = undefined,
     onSelect = () => {},
     onPlaceSelect = () => {},
+    onPlaceAreaSelect = () => {},
     onPlaceMarkerDragEnd = () => {},
     onClusterSelect,
     onBrushPoint = () => {},
@@ -134,6 +138,7 @@
     showSimpleControls = true,
     autoFitBounds = true,
     showSatelliteControl = false,
+    satelliteInitiallyEnabled = false,
     placeMarkersDraggable = false,
     showPlaceMarkerLabels = true,
     visibilityFiltered = false,
@@ -164,7 +169,7 @@
   let marker: MapLibreMarker | null = null;
   let abortController: AbortController;
   let isBrushDragging = false;
-  let satelliteOverlayEnabled = $state(false);
+  let satelliteOverlayEnabled = $state(untrack(() => satelliteInitiallyEnabled));
   let mapBackgroundState = $state<'loading' | 'ready' | 'unavailable'>('loading');
 
   const satelliteSourceId = 'cimmich-satellite-imagery';
@@ -235,6 +240,14 @@
   }
 
   function handleMapClick(event: MapMouseEvent) {
+    if (!brushable && map?.getLayer(placeAreaFillLayerId)) {
+      const area = map.queryRenderedFeatures(event.point, { layers: [placeAreaFillLayerId] })[0];
+      const placeId = area?.properties?.id;
+      if (typeof placeId === 'string' && placeId) {
+        onPlaceAreaSelect(placeId);
+        return;
+      }
+    }
     if (clickable && !brushable) {
       const { lng, lat } = event.lngLat;
       onClickPoint({ lng, lat });
@@ -348,6 +361,7 @@
             coordinates: [ring],
           },
           properties: {
+            color: area.color ?? '#ff6b35',
             id: area.id,
             name: area.name,
             parentName: area.parentName,
@@ -375,7 +389,7 @@
         type: 'fill',
         source: placeAreaSourceId,
         paint: {
-          'fill-color': '#ff6b35',
+          'fill-color': ['get', 'color'],
           'fill-opacity': 0.22,
         },
       });
@@ -387,7 +401,7 @@
         type: 'line',
         source: placeAreaSourceId,
         paint: {
-          'line-color': '#ff6b35',
+          'line-color': ['get', 'color'],
           'line-opacity': 0.9,
           'line-width': 3,
         },

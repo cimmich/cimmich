@@ -16,7 +16,8 @@ test("release dependency policy is fail-closed and CI actions are immutable", as
 
   assert.match(workflow, /npm audit --audit-level=low/);
   assert.match(workflow, /pnpm audit --audit-level=low/);
-  assert.match(workflow, /pip-audit --no-deps --disable-pip/);
+  assert.match(workflow, /pip-audit --cache-dir[^\n]+--requirement/);
+  assert.doesNotMatch(workflow, /pip-audit --no-deps --disable-pip/);
   assert.doesNotMatch(workflow, /uses:\s+[^\s]+@v\d+/);
   for (const action of [
     "actions/checkout",

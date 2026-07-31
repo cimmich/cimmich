@@ -169,6 +169,25 @@ test("schema 108 separates Place directory placement and assignment operations",
   assert.match(source, /'assign'/);
 });
 
+test("schema 109 admits bounded owner-painted Place areas without invalidating bounds", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0109_place_painted_area_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /DROP CONSTRAINT context_entity_place_geometry/);
+  assert.match(source, /geometry \?& ARRAY\['north','south','east','west'\]/);
+  assert.match(
+    source,
+    /jsonb_array_length\(geometry->'points'\) BETWEEN 3 AND 500/,
+  );
+  assert.match(source, /receipt_cimmich_place_painted_area_v1/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

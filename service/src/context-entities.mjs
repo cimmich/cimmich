@@ -251,9 +251,36 @@ const cleanGeometry = (entityKind, typeKind, value) => {
       );
     }
     const keys = Object.keys(value).sort();
+    if (keys.join(",") === "points") {
+      if (
+        !Array.isArray(value.points) ||
+        value.points.length < 3 ||
+        value.points.length > 500
+      ) {
+        throw typedError(
+          "Painted area geometry requires 3 to 500 points",
+          400,
+          "CONTEXT_GEOMETRY_INVALID",
+        );
+      }
+      const points = value.points.map((point, index) =>
+        cleanPoint(point, `geometry.points[${index}]`),
+      );
+      const uniquePoints = new Set(
+        points.map((point) => `${point.latitude},${point.longitude}`),
+      );
+      if (uniquePoints.size < 3) {
+        throw typedError(
+          "Painted area geometry requires at least three distinct points",
+          400,
+          "CONTEXT_GEOMETRY_INVALID",
+        );
+      }
+      return { points };
+    }
     if (keys.join(",") !== "east,north,south,west") {
       throw typedError(
-        "Area geometry must contain only north, south, east and west",
+        "Area geometry must be bounds or painted points",
         400,
         "CONTEXT_GEOMETRY_INVALID",
       );

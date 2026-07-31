@@ -534,6 +534,15 @@ export const contextPlaceMapProjection = (entities: CimmichContextEntity[]) => {
         parentName,
         points: entity.geometry.points.map((point) => ({ lat: point.latitude, lon: point.longitude })),
       });
+    } else if (entity.typeKind === 'area' && entity.geometry && 'points' in entity.geometry) {
+      areas.push({
+        geometryKind: 'area',
+        geometrySource: 'manual',
+        id: entity.entityId,
+        name: entity.displayName,
+        parentName,
+        points: entity.geometry.points.map((point) => ({ lat: point.latitude, lon: point.longitude })),
+      });
     } else if (entity.typeKind === 'area' && entity.geometry && 'north' in entity.geometry) {
       const { east, north, south, west } = entity.geometry;
       areas.push({
