@@ -55,7 +55,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     const map = await read('src/lib/components/shared-components/map/Map.svelte');
 
     expect(browser).toContain('<CimmichPlaceCanvas');
-    expect(browser).toContain('const placeBulkSelectionLimit = 100;');
+    expect(browser).toContain('const placeBulkSelectionLimit = ENTITY_MEDIA_SELECTION_LIMIT;');
     expect(browser).toContain('if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit)');
     expect(browser).toContain('toastManager.warning(');
     expect(browser).toContain('assignSelectedPlaceAssets');
@@ -64,6 +64,17 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(canvas).toContain('Save zone');
     expect(canvas).toContain('GPS can suggest a zone later');
     expect(map).toContain('onPlaceAreaSelect');
+  });
+
+  it('separates moving the Place record from shared selected-photo actions', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+
+    expect(browser).toContain('Move this Place');
+    expect(browser).toContain('Changes the Place itself, not its photos.');
+    expect(browser).toContain("editorIntent === 'move'");
+    expect(browser).toContain('<CimmichEntityMediaActions');
+    expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
+    expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
   });
 
   it('caps the card body track so a long location line cannot widen the whole card', async () => {

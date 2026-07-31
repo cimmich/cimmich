@@ -169,6 +169,17 @@ describe('Person profile layout', () => {
     expect(source).toContain('date.getTime() > Date.now()');
   });
 
+  it('adds the shared selected-photo workspace without turning presence into face evidence', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain('<CimmichEntityMediaActions');
+    expect(source).toContain('currentSubject={{');
+    expect(source).toContain('subjectKind: cimmichPerson.subject_kind');
+    expect(source).toContain('Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos');
+    expect(source).toContain('cimmichPhotoSelectionMode');
+    expect(source).not.toContain("tagType: 'face'");
+  });
+
   it('renders the primary photo page without waiting for matching or secondary profile data', async () => {
     const source = await readPersonProfile();
     const projectionStart = source.indexOf('const loadPersonProjection = async');

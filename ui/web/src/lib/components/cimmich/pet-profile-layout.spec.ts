@@ -57,6 +57,16 @@ describe('Pet profile layout', () => {
     expect(source).not.toContain('<h2 class="text-xl font-semibold">Photos of {selectedPet.displayName}</h2>');
   });
 
+  it('adds the shared selected-photo workspace to confirmed Pet media', async () => {
+    const source = await readPetWorkspace();
+
+    expect(source).toContain('<CimmichEntityMediaActions');
+    expect(source).toContain("subjectKind: 'pet'");
+    expect(source).toContain('petMediaSelectionMode');
+    expect(source).toContain('Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos');
+    expect(source).not.toContain("tagType: 'face'");
+  });
+
   it('gives Pet profiles the same durable information architecture as People', async () => {
     const source = await readPetWorkspace();
 
