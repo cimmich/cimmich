@@ -100,6 +100,53 @@ test("schema 88 keeps a content asset available while another binding remains ac
   );
 });
 
+test("schema 105 records explicit Immich inventory source rollover lineage", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0105_immich_inventory_source_rollover_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /superseded_by_source_id/);
+  assert.match(source, /immich_inventory_source_rollover_command/);
+  assert.match(source, /predecessor_source_id <> successor_source_id/);
+  assert.match(source, /receipt_cimmich_immich_inventory_source_rollover_v1/);
+});
+
+test("schema 106 records replay-safe inventory placeholder pruning", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0106_inventory_placeholder_job_prune_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /inventory_placeholder_job_prune_command/);
+  assert.match(source, /expected_job_count integer NOT NULL/);
+  assert.match(source, /request_digest/);
+  assert.match(source, /receipt_cimmich_inventory_placeholder_job_prune_v1/);
+});
+
+test("schema 107 indexes the media pipeline detection-job dependency", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0107_media_pipeline_detection_job_lookup_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /media_pipeline_run_detection_job_lookup/);
+  assert.match(source, /media_pipeline_run \(detection_job_id\)/);
+  assert.match(source, /WHERE detection_job_id IS NOT NULL/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

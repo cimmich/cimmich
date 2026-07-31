@@ -284,7 +284,8 @@ export type CimmichAddressGeocodingResult = {
 };
 
 export type CimmichVisibleMapAssetsResult = {
-  schemaVersion: 'cimmich.visible-map-assets.v1';
+  assets: Array<{ assetId: string; sourceAssetId: string }>;
+  schemaVersion: 'cimmich.visible-map-assets.v2';
   sourceAssetIds: string[];
 };
 
@@ -508,17 +509,15 @@ export type CimmichIdentityCandidate = {
   width: number;
 };
 
-export type CimmichPersonCandidateSummaryItem = {
-  assetCount: number;
-  bestMargin: number | null;
-  bestScore: number | null;
-  displayName: string;
-  personId: string;
-  suggestionCount: number;
-};
-
 export type CimmichPersonCandidateSummary = {
-  items: CimmichPersonCandidateSummaryItem[];
+  items: Array<{
+    assetCount: number;
+    bestMargin: number | null;
+    bestScore: number | null;
+    displayName: string;
+    personId: string;
+    suggestionCount: number;
+  }>;
   schemaVersion: 'cimmich.person-candidate-summary.v1';
   totalCandidates: number;
   totalPeople: number;
@@ -1041,6 +1040,17 @@ export type CimmichPersonProjectionPage<T> = {
   schemaVersion: 'cimmich.person-projection-page.v1';
 };
 
+export type CimmichPersonAssetAssociationFilter = 'body' | 'presence';
+
+export type CimmichPersonAssetPage = CimmichPersonProjectionPage<CimmichPersonAsset> & {
+  summary: {
+    body: number;
+    bodyCandidate: number;
+    presence: number;
+    total: number;
+  };
+};
+
 export type CimmichIdentityFaceSummary = {
   all: number;
   head: number;
@@ -1459,7 +1469,7 @@ export type CimmichAssetEvidence = {
   ownerSummary?: CimmichAssetOwnerSummary;
   presence: Array<{ display_name: string; person_id: string; reason_code: string }>;
   sourceAssetId: string;
-  schemaVersion: 'cimmich.asset-detailed-evidence.v3';
+  schemaVersion: 'cimmich.asset-detailed-evidence.v2' | 'cimmich.asset-detailed-evidence.v3';
   thingRegions?: CimmichManualObjectRegionTag[];
   width: number;
 };
@@ -1526,7 +1536,7 @@ export type CimmichManualSubjectTagResult = {
   changed: boolean;
   replayed: boolean;
   resolvedLocatorId?: string;
-  schemaVersion: 'cimmich.typed-manual-subject-tag.v2';
+  schemaVersion: 'cimmich.typed-manual-subject-tag.v1' | 'cimmich.typed-manual-subject-tag.v2';
   status: 'applied' | 'no_change' | 'replaced' | 'restored' | 'reverted';
   supersedesDecisionId?: string;
   tag: CimmichManualSubjectTag;
@@ -1546,6 +1556,14 @@ export type CimmichFaceIdentityResult = {
 };
 
 export type CimmichFaceIdentitySelector = { newPersonName: string } | { personId: string } | { personName: string };
+
+export type CimmichFaceIdentityBatchResult = {
+  assigned: CimmichFaceIdentityResult[];
+  assignedCount: number;
+  changed: boolean;
+  failureCount: number;
+  failures: Array<{ code: string | null; error: string; faceId: string; statusCode: number }>;
+};
 
 export type CimmichFaceMatch = {
   display_name: string;
@@ -1727,6 +1745,19 @@ export type CimmichIdentityAuditPage = {
   run: CimmichIdentityAuditRun | null;
   schemaVersion: 'cimmich.identity-audit.v2';
   total: number;
+};
+
+export type CimmichIdentityAuditDismissBatchResult = {
+  changed: boolean;
+  dismissedCount: number;
+  items: Array<{
+    changed: boolean;
+    faceId: string;
+    kind: CimmichIdentityAuditItem['kind'];
+    schemaVersion: 'cimmich.identity-audit.v2';
+    state: 'dismissed' | 'unchanged';
+  }>;
+  schemaVersion: 'cimmich.identity-audit.v2';
 };
 
 export type CimmichIdentityAuditLead = {
@@ -1958,9 +1989,9 @@ export type CimmichImmichPersonCluster = {
     assetInputRevision: string;
     box: { h: number; w: number; x: number; y: number };
     faceId: string;
-    height?: number | null;
+    height: number | null;
     sourceAssetId: string;
-    width?: number | null;
+    width: number | null;
   };
   resolution:
     | { state: 'stale' | 'unresolved' }
@@ -2146,7 +2177,7 @@ export type CimmichFaceMatchingOperatorResult = {
     referenceEvidence: number;
     referencePeople: number;
     reviewability: 'balanced_open_set_holdout_ready' | 'operator_hold_required';
-    schemaVersion: 'cimmich.owner-source-pack-plan.v2';
+    schemaVersion: 'cimmich.owner-source-pack-plan.v1';
     strategy: 'all_current_evidence_proposed_only' | 'deterministic_three_window';
   };
   replayed: boolean;
@@ -2690,18 +2721,7 @@ export const dismissCimmichIdentityAuditItem = (kind: CimmichIdentityAuditItem['
 export const dismissCimmichIdentityAuditItemsBatch = (
   items: Array<{ faceId: string; kind: CimmichIdentityAuditItem['kind'] }>,
 ) =>
-  request<{
-    changed: boolean;
-    dismissedCount: number;
-    items: Array<{
-      changed: boolean;
-      faceId: string;
-      kind: CimmichIdentityAuditItem['kind'];
-      schemaVersion: 'cimmich.identity-audit.v2';
-      state: 'dismissed' | 'unchanged';
-    }>;
-    schemaVersion: 'cimmich.identity-audit.v2';
-  }>('/v1/review/identity-audit/items/dismiss:batch', {
+  request<CimmichIdentityAuditDismissBatchResult>('/v1/review/identity-audit/items/dismiss:batch', {
     body: JSON.stringify({ items }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
@@ -2727,26 +2747,17 @@ export const markCimmichMachineSuggestionUnknown = (faceId: string) =>
     method: 'POST',
   });
 
-export const getCimmichPeople = async (
-  limit = 500,
-  query = '',
-  options: { presentation?: boolean } = {},
-) => {
+export const getCimmichPeople = async (limit = 500, query = '', options: { presentation?: boolean } = {}) => {
   const search = new URLSearchParams({ limit: String(limit) });
   if (query.trim()) {
     search.set('q', query.trim());
   }
-  if (!options.presentation) {
-    // Presentation media doubles the server-side cost of the hottest list
-    // query; only surfaces that render saved presentation crops opt in.
-    search.set('presentation', '0');
+  if (options.presentation !== undefined) {
+    search.set('presentation', options.presentation ? '1' : '0');
   }
   const result = await request<{ items: CimmichPerson[] }>(`/v1/people?${search.toString()}`);
   return result.items;
 };
-
-export const getCimmichPersonCandidateSummary = () =>
-  request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary');
 
 export const createCimmichCommandId = (kind: string) =>
   `pet.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 32)}.${createCimmichUuid()}`;
@@ -2897,6 +2908,16 @@ export const createCimmichContextEntity = (family: CimmichContextFamily, input: 
     method: 'POST',
   });
 
+export const createCimmichGpsPlaceEntity = (input: CimmichContextEntityInput) =>
+  request<CimmichContextMutationResult>('/v1/places', {
+    body: JSON.stringify(input),
+    headers: {
+      'x-cimmich-actor': 'local-operator',
+      'x-cimmich-gps-contract': 'preflight-v2',
+    },
+    method: 'POST',
+  });
+
 export const updateCimmichContextEntity = (
   family: CimmichContextFamily,
   entityId: string,
@@ -2913,18 +2934,23 @@ export const searchCimmichAddresses = (query: string, limit = 5) => {
   return request<CimmichAddressGeocodingResult>(`/v1/geocoding/addresses?${search.toString()}`);
 };
 
-export const getCimmichVisibleMapAssetIds = async (sourceAssetIds: string[]) => {
-  const visible = new Set<string>();
+export const getCimmichVisibleMapAssetBindings = async (sourceAssetIds: string[]) => {
+  const bindings = new Map<string, string>();
   for (let offset = 0; offset < sourceAssetIds.length; offset += 500) {
     const result = await request<CimmichVisibleMapAssetsResult>('/v1/map/visible-assets', {
       body: JSON.stringify({ sourceAssetIds: sourceAssetIds.slice(offset, offset + 500) }),
       method: 'POST',
     });
-    for (const sourceAssetId of result.sourceAssetIds) {
-      visible.add(sourceAssetId);
+    for (const asset of result.assets) {
+      bindings.set(asset.sourceAssetId, asset.assetId);
     }
   }
-  return visible;
+  return bindings;
+};
+
+export const getCimmichVisibleMapAssetIds = async (sourceAssetIds: string[]) => {
+  const bindings = await getCimmichVisibleMapAssetBindings(sourceAssetIds);
+  return new Set(bindings.keys());
 };
 
 export const deleteCimmichPlace = (
@@ -3416,7 +3442,7 @@ export const updateCimmichPet = (petId: string, input: CimmichPetUpdateInput) =>
   });
 
 export const getCimmichPetMedia = async (petId: string, limit = 500) => {
-  const result = await request<{ items: CimmichPetMedia[]; schemaVersion: 'cimmich.pet-manual.v2' }>(
+  const result = await request<{ items: CimmichPetMedia[]; schemaVersion: 'cimmich.pet-manual.v1' }>(
     `/v1/pets/${encodeURIComponent(petId)}/media?limit=${Math.max(1, Math.min(500, limit))}`,
   );
   return result.items;
@@ -3542,9 +3568,14 @@ export const getCimmichPersonAssets = async (personId: string, limit = 5000) => 
   return result.items;
 };
 
-export const getCimmichPersonAssetsPage = (personId: string, pageSize = 120, cursor?: string) =>
-  request<CimmichPersonProjectionPage<CimmichPersonAsset>>(
-    `/v1/people/${encodeURIComponent(personId)}/assets?pageSize=${Math.max(1, Math.min(250, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+export const getCimmichPersonAssetsPage = (
+  personId: string,
+  pageSize = 120,
+  cursor?: string,
+  associationType?: CimmichPersonAssetAssociationFilter,
+) =>
+  request<CimmichPersonAssetPage>(
+    `/v1/people/${encodeURIComponent(personId)}/assets?pageSize=${Math.max(1, Math.min(250, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${associationType ? `&associationType=${encodeURIComponent(associationType)}` : ''}`,
   );
 
 export const getCimmichPersonCandidates = async (personId: string, limit = 5000) => {
@@ -3553,6 +3584,9 @@ export const getCimmichPersonCandidates = async (personId: string, limit = 5000)
   );
   return result.items;
 };
+
+export const getCimmichPersonCandidateSummary = () =>
+  request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary');
 
 export const bulkAcceptCimmichPersonCandidates = (personId: string, claimIds: string[]) =>
   request<{
@@ -3776,6 +3810,13 @@ export const unmergeCimmichPeople = (mergeOperationId: string, commandId: string
     method: 'POST',
   });
 
+export const getCimmichIdentityFaces = async (personId: string, limit = 5000) => {
+  const result = await request<{ items: CimmichIdentityFace[] }>(
+    `/v1/people/${encodeURIComponent(personId)}/identity?limit=${Math.max(1, Math.min(5000, limit))}`,
+  );
+  return result.items;
+};
+
 export const getCimmichIdentityFacesPage = (
   personId: string,
   pageSize = 24,
@@ -3944,7 +3985,7 @@ export const getCimmichManualSubjectTags = (assetId: string) =>
   request<{
     assetId: string;
     items: CimmichManualSubjectTag[];
-    schemaVersion: 'cimmich.typed-manual-subject-tag.v2';
+    schemaVersion: 'cimmich.typed-manual-subject-tag.v1' | 'cimmich.typed-manual-subject-tag.v2';
   }>(`/v1/assets/${encodeURIComponent(assetId)}/manual-subject-tags`);
 
 export const attachCimmichManualSubjectTag = (
@@ -4103,23 +4144,8 @@ export const setCimmichFaceIdentity = (faceId: string, selector: CimmichFaceIden
     method: 'POST',
   });
 
-export type CimmichFaceIdentityBatchFailure = {
-  code: string | null;
-  error: string;
-  faceId: string;
-  statusCode: number;
-};
-
-export const setCimmichFaceIdentitiesBatch = (
-  items: Array<CimmichFaceIdentitySelector & { faceId: string }>,
-) =>
-  request<{
-    assigned: CimmichFaceIdentityResult[];
-    assignedCount: number;
-    changed: boolean;
-    failureCount: number;
-    failures: CimmichFaceIdentityBatchFailure[];
-  }>('/v1/faces/identity:batch', {
+export const setCimmichFaceIdentitiesBatch = (items: Array<{ faceId: string } & CimmichFaceIdentitySelector>) =>
+  request<CimmichFaceIdentityBatchResult>('/v1/faces/identity:batch', {
     body: JSON.stringify({ items }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',

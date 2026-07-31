@@ -191,7 +191,7 @@ export const createCimmichServer = ({
     if (request.method === "OPTIONS") {
       response.writeHead(204, {
         "access-control-allow-headers":
-          "authorization,content-type,x-cimmich-actor,x-cimmich-principal-id,x-cimmich-device-id,x-cimmich-private-session,x-cimmich-surface,x-cimmich-document-metadata",
+          "authorization,content-type,x-cimmich-actor,x-cimmich-principal-id,x-cimmich-device-id,x-cimmich-private-session,x-cimmich-surface,x-cimmich-document-metadata,x-cimmich-gps-contract",
         // DELETE is required by /v1/visibility/credential (turning the Private
         // filter off). It is the only DELETE route, so this widens nothing else.
         "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
@@ -2328,6 +2328,21 @@ export const createCimmichServer = ({
         }
         if (request.method === "POST") {
           const body = await readJsonBody(request);
+          if (
+            family.entityKind === "place" &&
+            String(body.commandId || "").startsWith("context.gps-create.") &&
+            request.headers["x-cimmich-gps-contract"] !== "preflight-v2"
+          ) {
+            throw Object.assign(
+              new Error(
+                "Cimmich was updated. Refresh this page before creating a GPS Place",
+              ),
+              {
+                code: "GPS_CLIENT_REFRESH_REQUIRED",
+                statusCode: 409,
+              },
+            );
+          }
           sendJson(
             response,
             201,
@@ -2520,6 +2535,18 @@ export const createCimmichServer = ({
             actorId: request.headers["x-cimmich-actor"],
             commandId: body.commandId,
             decisionId: decodeURIComponent(contextUndoMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/assets/display") {
+        requireProjection("asset_evidence");
+        sendJson(
+          response,
+          200,
+          await repository.assetDisplay({
+            sourceAssetId: url.searchParams.get("sourceAssetId"),
           }),
           allowedOrigin,
         );
@@ -2849,6 +2876,7 @@ export const createCimmichServer = ({
           : null;
         const cursor = url.searchParams.get("cursor") || "";
         const result = await repository.personAssets({
+          associationType: url.searchParams.get("associationType"),
           cursor,
           limit: url.searchParams.get("limit"),
           pageSize,

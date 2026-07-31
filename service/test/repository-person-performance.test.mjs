@@ -466,7 +466,24 @@ test("Person assets resolve scoped associations without expanding person_assets"
   ]);
   assert.match(statement, /associations AS MATERIALIZED/);
   assert.match(statement, /active_heads AS MATERIALIZED/);
+  assert.match(statement, /active_face_buckets AS MATERIALIZED/);
+  assert.match(statement, /same_person_detector_faces AS MATERIALIZED/);
+  assert.match(statement, /same_photo_usable_face_assets AS MATERIALIZED/);
+  assert.match(statement, /body_interest_exports AS MATERIALIZED/);
+  assert.match(statement, /usable_face_exports AS MATERIALIZED/);
+  assert.match(statement, /body\.content_hash = face\.content_hash/);
+  assert.match(statement, /body\.filename = face\.filename/);
+  assert.match(statement, /body_hint\.face_id IS NULL/);
   assert.match(statement, /FROM current_manual_head_tag/);
+  assert.match(statement, /FROM imported_identity_locator locator/);
+  assert.match(statement, /locator\.state = 'unresolved'/);
+  assert.match(
+    statement,
+    /locator\.resolution_kind = 'stronger_existing_truth'/,
+  );
+  assert.match(statement, /'body_hint_face'::text/);
+  assert.match(statement, /effective_gallery_permission/);
+  assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
   assert.match(statement, /FROM current_context_asset context_link/);
   assert.match(statement, /cimmich_visibility_context_entity_rank/);
   assert.match(
@@ -476,6 +493,94 @@ test("Person assets resolve scoped associations without expanding person_assets"
   assert.doesNotMatch(statement, /FROM person_assets/);
   assert.doesNotMatch(statement, /FROM asset_people/);
   assert.doesNotMatch(statement, /FROM current_reference_gallery/);
+});
+
+test("Asset display recovery prefers a newer same-photo projection", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    if (statements.length === 1) {
+      return [
+        {
+          asset_id: "asset-stale",
+          asset_state: "active",
+          filename: "photo.jpg",
+          projection_state: "active",
+          source_asset_id: "source-stale",
+        },
+      ];
+    }
+    return [
+      {
+        asset_id: "asset-current",
+        filename: "photo.jpg",
+        source_asset_id: "source-current",
+      },
+    ];
+  };
+  const repository = createCimmichRepository(sql);
+
+  assert.deepEqual(
+    await repository.assetDisplay({ sourceAssetId: "source-stale" }),
+    {
+      assetId: "asset-current",
+      filename: "photo.jpg",
+      schemaVersion: "cimmich.asset-display.v1",
+      sourceAssetId: "source-current",
+    },
+  );
+  assert.match(
+    statements[1],
+    /candidate_projection\.last_seen_at[\s\S]*> requested_projection\.last_seen_at/,
+  );
+  assert.match(
+    statements[1],
+    /requested_asset\.content_hash = candidate_asset\.content_hash/,
+  );
+  assert.match(
+    statements[1],
+    /lower\(requested_projection\.original_file_name\)[\s\S]*lower\(candidate_projection\.original_file_name\)/,
+  );
+});
+
+test("Asset display recovery resolves a retired source projection through a newer equivalent", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    if (statements.length === 1) {
+      return [
+        {
+          asset_id: "asset-retired",
+          asset_state: "missing",
+          filename: "photo.jpg",
+          projection_state: "missing",
+          source_asset_id: "source-retired",
+        },
+      ];
+    }
+    return [
+      {
+        asset_id: "asset-current",
+        filename: "photo.jpg",
+        source_asset_id: "source-current",
+      },
+    ];
+  };
+  const repository = createCimmichRepository(sql);
+
+  assert.deepEqual(
+    await repository.assetDisplay({ sourceAssetId: "source-retired" }),
+    {
+      assetId: "asset-current",
+      filename: "photo.jpg",
+      schemaVersion: "cimmich.asset-display.v1",
+      sourceAssetId: "source-current",
+    },
+  );
+  assert.doesNotMatch(statements[0], /WHERE projection\.state = 'active'/);
+  assert.doesNotMatch(statements[1], /requested_projection\.state = 'active'/);
 });
 
 test("legacy Body-lane imports project as placement candidates rather than Presence", async () => {
@@ -514,6 +619,36 @@ test("legacy Body-lane imports project as placement candidates rather than Prese
   assert.match(statement, /legacy_body_placement_pending/);
 });
 
+test("Person assets keep face-linked geometry out of standalone Body and Presence", async () => {
+  const sql = async () => [
+    {
+      asset_head_evidence: false,
+      asset_id: "asset-multi-role",
+      capture_time: null,
+      contexts: [],
+      has_body: false,
+      has_body_candidate: true,
+      has_face: true,
+      has_head: false,
+      has_linked_body: true,
+      has_presence: true,
+      height: 100,
+      media_kind: "image",
+      mime_type: "image/jpeg",
+      presence_evidence: true,
+      width: 100,
+    },
+  ];
+  const repository = createCimmichRepository(sql);
+
+  const assets = await repository.personAssets({
+    limit: 100,
+    personId: "person-1",
+  });
+
+  assert.deepEqual(assets[0].association_types, ["face"]);
+});
+
 test("Person asset pages return an opaque subject-bound continuation", async () => {
   const rows = ["asset-1", "asset-2", "asset-3"].map((assetId, index) => ({
     asset_head_evidence: false,
@@ -530,6 +665,10 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
     media_kind: "image",
     mime_type: "image/jpeg",
     presence_evidence: false,
+    body_candidate_count: 7,
+    confirmed_body_count: 41,
+    presence_count: 3,
+    total_count: 51,
     width: 100,
   }));
   const sql = async () => rows;
@@ -543,6 +682,12 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
   assert.equal(page.schemaVersion, "cimmich.person-projection-page.v1");
   assert.equal(page.items.length, 2);
   assert.equal(page.pageSize, 2);
+  assert.deepEqual(page.summary, {
+    body: 41,
+    bodyCandidate: 7,
+    presence: 3,
+    total: 51,
+  });
   assert.ok(page.nextCursor);
   await assert.rejects(
     repository.personAssets({
@@ -551,6 +696,63 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
       personId: "person-2",
     }),
     (error) => error.code === "PERSON_PAGE_CURSOR_INVALID",
+  );
+});
+
+test("Person Body pages bind their filter into the cursor scope", async () => {
+  const rows = ["asset-1", "asset-2"].map((assetId, index) => ({
+    asset_head_evidence: false,
+    asset_id: assetId,
+    body_candidate_count: 1,
+    capture_time: new Date(Date.UTC(2026, 0, 2 - index)),
+    confirmed_body_count: 2,
+    contexts: [],
+    has_body: true,
+    has_body_candidate: false,
+    has_face: false,
+    has_head: false,
+    has_linked_body: false,
+    has_presence: false,
+    height: 100,
+    media_kind: "image",
+    mime_type: "image/jpeg",
+    presence_count: 0,
+    presence_evidence: false,
+    total_count: 3,
+    width: 100,
+  }));
+  const sql = async () => rows;
+  const repository = createCimmichRepository(sql);
+
+  const page = await repository.personAssets({
+    associationType: "body",
+    pageSize: 1,
+    personId: "person-1",
+  });
+
+  assert.deepEqual(page.items[0].association_types, ["body"]);
+  assert.deepEqual(page.summary, {
+    body: 2,
+    bodyCandidate: 1,
+    presence: 0,
+    total: 3,
+  });
+  await assert.rejects(
+    repository.personAssets({
+      associationType: "presence",
+      cursor: page.nextCursor,
+      pageSize: 1,
+      personId: "person-1",
+    }),
+    (error) => error.code === "PERSON_PAGE_CURSOR_INVALID",
+  );
+  await assert.rejects(
+    repository.personAssets({
+      associationType: "face",
+      pageSize: 1,
+      personId: "person-1",
+    }),
+    (error) => error.code === "PERSON_ASSET_ASSOCIATION_INVALID",
   );
 });
 

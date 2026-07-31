@@ -7,6 +7,8 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
+  import CimmichGpsPlaceDiscovery from './CimmichGpsPlaceDiscovery.svelte';
+  import { normalizeGpsPlaceName } from './gps-place-discovery';
   import {
     mdiCalendarBlankOutline,
     mdiCameraOutline,
@@ -14,6 +16,7 @@
     mdiDiamondStone,
     mdiHomeOutline,
     mdiMapMarkerOutline,
+    mdiMapMarkerMultipleOutline,
     mdiMapOutline,
     mdiPackageVariantClosed,
     mdiRepeat,
@@ -46,13 +49,25 @@
     entityHref: (entity: CimmichContextEntity) => string;
     family: CimmichContextFamily;
     onAdd: () => void;
+    onPlacesChanged?: () => Promise<void> | void;
     // Still needed for the atlas view, where a map marker is not an anchor.
     onOpen: (entity: CimmichContextEntity) => void;
   }
 
-  let { controlledTypeFilter, entities, entityHref, family, onAdd, onOpen }: Props = $props();
+  let {
+    controlledTypeFilter,
+    entities,
+    entityHref,
+    family,
+    onAdd,
+    onOpen,
+    onPlacesChanged = () => {},
+  }: Props = $props();
   let activeTypeFilter = $state<ContextTypeFilter>('all');
-  let placeView = $state<'atlas' | 'list'>('list');
+  let placeView = $state<'atlas' | 'gps' | 'list'>('list');
+  let gpsWasOpened = $state(false);
+  let placeGroupMode = $state<'country' | 'duplicates' | 'none'>('country');
+  let placeSortMode = $state<'name' | 'photos-asc' | 'photos-desc'>('name');
 
   const effectiveTypeFilter = $derived(controlledTypeFilter ?? activeTypeFilter);
   const filteredEntities = $derived(
@@ -63,6 +78,67 @@
   );
   const placeProjection = $derived(contextPlaceMapProjection(entities));
   const mappedPlaceCount = $derived(placeProjection.markers.length + placeProjection.areas.length);
+
+  const sortPlaceDirectoryItems = (items: CimmichContextEntity[]) =>
+    [...items].sort((left, right) => {
+      if (placeSortMode === 'photos-desc') {
+        return right.assetCount - left.assetCount || left.displayName.localeCompare(right.displayName);
+      }
+      if (placeSortMode === 'photos-asc') {
+        return left.assetCount - right.assetCount || left.displayName.localeCompare(right.displayName);
+      }
+      return left.displayName.localeCompare(right.displayName) || right.assetCount - left.assetCount;
+    });
+
+  const placeCountry = (entity: CimmichContextEntity) => {
+    const parts = entity.displayName
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    return parts.length > 1 ? parts.at(-1)! : 'Personal & named places';
+  };
+
+  const buildPlaceDirectorySections = (items: CimmichContextEntity[]) => {
+    if (placeGroupMode === 'none') {
+      return [{ duplicate: false, entities: sortPlaceDirectoryItems(items), key: 'all', label: '' }];
+    }
+    const groups: Array<[string, CimmichContextEntity[]]> = [];
+    for (const entity of items) {
+      const key = placeGroupMode === 'duplicates' ? normalizeGpsPlaceName(entity.displayName) : placeCountry(entity);
+      const existing = groups.find(([candidate]) => candidate === key);
+      if (existing) {
+        existing[1].push(entity);
+      } else {
+        groups.push([key, [entity]]);
+      }
+    }
+    return groups
+      .filter(([, group]) => placeGroupMode !== 'duplicates' || group.length > 1)
+      .map(([key, group]) => ({
+        duplicate: placeGroupMode === 'duplicates',
+        entities: sortPlaceDirectoryItems(group),
+        key,
+        label: placeGroupMode === 'duplicates' ? group[0]!.displayName : key,
+      }))
+      .sort((left, right) => {
+        if (left.label === 'Personal & named places') {
+          return -1;
+        }
+        if (right.label === 'Personal & named places') {
+          return 1;
+        }
+        return left.label.localeCompare(right.label);
+      });
+  };
+
+  const placeDirectorySections = $derived(buildPlaceDirectorySections(filteredEntities));
+  const duplicatePlaceNameCount = $derived(
+    new Set(
+      filteredEntities
+        .map((entity) => normalizeGpsPlaceName(entity.displayName))
+        .filter((name, _index, names) => names.filter((candidate) => candidate === name).length > 1),
+    ).size,
+  );
 
   $effect(() => {
     const nextFamily = family;
@@ -89,10 +165,13 @@
     }
     let current = true;
     void Promise.allSettled(
-      pending.map(async (entity) => ({
-        entityId: entity.entityId,
-        label: formatImmichPlaceLocation((await getAssetInfo({ id: entity.coverAssetId! })).exifInfo),
-      })),
+      pending.map(async (entity) => {
+        const asset = await getAssetInfo({ id: entity.coverAssetId! });
+        return {
+          entityId: entity.entityId,
+          label: formatImmichPlaceLocation(asset.exifInfo),
+        };
+      }),
     ).then((results) => {
       if (!current) {
         return;
@@ -146,6 +225,11 @@
       onOpen(entity);
     }
   };
+
+  const openGps = () => {
+    gpsWasOpened = true;
+    placeView = 'gps';
+  };
 </script>
 
 <section class="pt-7" aria-label={contextFamilyLabels[family]} data-testid={`cimmich-${family}-collection`}>
@@ -166,8 +250,21 @@
           aria-pressed={placeView === 'list'}
           onclick={() => (placeView = 'list')}><Icon icon={mdiViewGridOutline} size="17" /> Places</button
         >
+        <button
+          class:context-view-active={placeView === 'gps'}
+          class="context-view-button"
+          type="button"
+          aria-pressed={placeView === 'gps'}
+          onclick={openGps}><Icon icon={mdiMapMarkerMultipleOutline} size="17" /> GPS</button
+        >
       </div>
     </header>
+  {/if}
+
+  {#if family === 'places' && gpsWasOpened}
+    <div class:hidden={placeView !== 'gps'} aria-hidden={placeView !== 'gps'}>
+      <CimmichGpsPlaceDiscovery {entities} {onPlacesChanged} />
+    </div>
   {/if}
 
   {#if family === 'places' && placeView === 'atlas'}
@@ -221,7 +318,7 @@
         </div>
       </aside>
     </div>
-  {:else if family === 'places'}
+  {:else if family === 'places' && placeView === 'list'}
     {#if filteredEntities.length === 0}
       <div class="context-first-state">
         <span><Icon icon={mdiMapMarkerOutline} size="34" /></span>
@@ -230,61 +327,132 @@
         <button type="button" onclick={onAdd}>Add a place</button>
       </div>
     {:else}
-      <div class="context-place-card-grid">
-        {#each filteredEntities as entity (entity.entityId)}
-          {@const hierarchy = contextPlaceHierarchy(entity, entities)}
-          <a class="context-place-card" href={entityHref(entity)}>
-            <div class="context-cover context-cover--place">
-              {#if coverUrl(entity)}
-                <img
-                  src={coverUrl(entity)}
-                  alt=""
-                  loading="lazy"
-                  data-testid={`cimmich-place-cover-${entity.entityId}`}
-                />
-              {:else}
-                <Icon icon={iconForType(entity.typeKind)} size="34" />
+      <div class="context-place-directory-toolbar">
+        <div>
+          <p>{filteredEntities.length.toLocaleString()} saved places</p>
+          <span>
+            {duplicatePlaceNameCount === 0
+              ? 'Each name is unique'
+              : `${duplicatePlaceNameCount.toLocaleString()} repeated ${
+                  duplicatePlaceNameCount === 1 ? 'name' : 'names'
+                }`}
+          </span>
+        </div>
+        <div class="context-place-directory-controls">
+          <label>
+            <span>Group</span>
+            <select
+              aria-label="Group places"
+              value={placeGroupMode}
+              onchange={(event) => (placeGroupMode = event.currentTarget.value as 'country' | 'duplicates' | 'none')}
+            >
+              <option value="country">Country</option>
+              <option value="none">No grouping</option>
+              <option value="duplicates">Repeated names</option>
+            </select>
+          </label>
+          <label>
+            <span>Sort</span>
+            <select
+              aria-label="Sort places"
+              value={placeSortMode}
+              onchange={(event) => (placeSortMode = event.currentTarget.value as 'name' | 'photos-asc' | 'photos-desc')}
+            >
+              <option value="name">Name A–Z</option>
+              <option value="photos-desc">Most photos</option>
+              <option value="photos-asc">Fewest photos</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {#if placeGroupMode === 'duplicates' && placeDirectorySections.length === 0}
+        <div class="context-place-directory-empty">
+          <Icon icon={mdiMapMarkerMultipleOutline} size="28" />
+          <p>No repeated Place names</p>
+          <span>GPS will now continue a matching locality instead of creating another record.</span>
+        </div>
+      {:else}
+        <div class="context-place-directory">
+          {#each placeDirectorySections as section (section.key)}
+            <section class="context-place-directory-section">
+              {#if section.label}
+                <header>
+                  <div>
+                    <h2>{section.label}</h2>
+                    <span>
+                      {section.duplicate
+                        ? `${section.entities.length} saved records need consolidation`
+                        : `${section.entities.length} ${section.entities.length === 1 ? 'place' : 'places'}`}
+                    </span>
+                  </div>
+                  {#if section.duplicate}<strong>Repeated name</strong>{/if}
+                </header>
               {/if}
-              <span class="context-cover-chip"
-                ><Icon icon={iconForType(entity.typeKind)} size="14" /> {humanizeContextKind(entity.typeKind)}</span
-              >
-            </div>
-            <!-- Shares the Things card grammar: the two families sit behind one
+              <div class="context-place-card-grid">
+                {#each section.entities as entity (entity.entityId)}
+                  {@const hierarchy = contextPlaceHierarchy(entity, entities)}
+                  <a class="context-place-card" href={entityHref(entity)}>
+                    <div class="context-cover context-cover--place">
+                      {#if coverUrl(entity)}
+                        <img
+                          src={coverUrl(entity)}
+                          alt=""
+                          loading="lazy"
+                          data-testid={`cimmich-place-cover-${entity.entityId}`}
+                        />
+                      {:else}
+                        <Icon icon={iconForType(entity.typeKind)} size="34" />
+                      {/if}
+                      <span class="context-cover-chip"
+                        ><Icon icon={iconForType(entity.typeKind)} size="14" />
+                        {humanizeContextKind(entity.typeKind)}</span
+                      >
+                    </div>
+                    <!-- Shares the Things card grammar: the two families sit behind one
                  segmented control, so differing type scales and meta patterns
                  read as two designs in one section. The place-specific part is
                  the location line, because a place card that cannot say where
                  it is has not identified its subject. -->
-            <!-- grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is
+                    <!-- grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is
                  its MIN-CONTENT width, so a nowrap child (the truncated location
                  line) widens the whole track past the card and every sibling with
                  it, and `truncate` never gets to engage. An explicit minmax(0,1fr)
                  track caps the column at the container. Same family of defect as
                  the indefinite-height bug: an implicit min-size doing the sizing. -->
-            <div class="grid grid-cols-[minmax(0,1fr)] gap-2 p-4 text-left">
-              <h2 class="line-clamp-2 min-h-10 text-base/5 font-semibold">{entity.displayName}</h2>
-              {#if entity.description}<p class="line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
-                  {entity.description}
-                </p>{/if}
-              <p class="flex min-w-0 items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
-                <Icon class="shrink-0" icon={mdiMapMarkerOutline} size="14" />
-                <span class="truncate"
-                  >{contextPlaceLocationLabel(entity, hierarchy, geocodedByEntityId[entity.entityId] ?? '')}</span
-                >
-              </p>
-              <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-gray-500">
-                <span class="whitespace-nowrap"
-                  ><Icon class="inline" icon={mdiCameraOutline} size="14" />
-                  {entity.assetCount}
-                  {entity.assetCount === 1 ? 'photo' : 'photos'}</span
-                >
-                {#if formatContextDatePrecision(entity)}<span aria-hidden="true">·</span><span class="truncate"
-                    >{formatContextDatePrecision(entity)}</span
-                  >{/if}
+                    <div class="grid grid-cols-[minmax(0,1fr)] gap-2 p-4 text-left">
+                      <h2 class="line-clamp-2 min-h-10 text-base/5 font-semibold">{entity.displayName}</h2>
+                      {#if entity.description}<p class="line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
+                          {entity.description}
+                        </p>{/if}
+                      <p class="flex min-w-0 items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                        <Icon class="shrink-0" icon={mdiMapMarkerOutline} size="14" />
+                        <span class="truncate"
+                          >{contextPlaceLocationLabel(
+                            entity,
+                            hierarchy,
+                            geocodedByEntityId[entity.entityId] ?? '',
+                          )}</span
+                        >
+                      </p>
+                      <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-gray-500">
+                        <span class="whitespace-nowrap"
+                          ><Icon class="inline" icon={mdiCameraOutline} size="14" />
+                          {entity.assetCount}
+                          {entity.assetCount === 1 ? 'photo' : 'photos'}</span
+                        >
+                        {#if formatContextDatePrecision(entity)}<span aria-hidden="true">·</span><span class="truncate"
+                            >{formatContextDatePrecision(entity)}</span
+                          >{/if}
+                      </div>
+                    </div>
+                  </a>
+                {/each}
               </div>
-            </div>
-          </a>
-        {/each}
-      </div>
+            </section>
+          {/each}
+        </div>
+      {/if}
     {/if}
   {:else if family === 'objects'}
     {#if filteredEntities.length === 0}
@@ -548,6 +716,141 @@
     display: grid;
     gap: 16px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .context-place-directory {
+    display: grid;
+    gap: 2.25rem;
+  }
+
+  .context-place-directory-toolbar {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgb(229 231 235);
+    padding-bottom: 1rem;
+  }
+
+  :global(.dark) .context-place-directory-toolbar {
+    border-color: rgb(31 41 55);
+  }
+
+  .context-place-directory-toolbar > div:first-child p {
+    font-size: 0.88rem;
+    font-weight: 700;
+  }
+
+  .context-place-directory-toolbar > div:first-child span {
+    display: block;
+    margin-top: 0.18rem;
+    color: rgb(107 114 128);
+    font-size: 0.74rem;
+  }
+
+  .context-place-directory-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+
+  .context-place-directory-controls label {
+    display: grid;
+    gap: 0.25rem;
+    color: rgb(107 114 128);
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .context-place-directory-controls select {
+    min-width: 9.5rem;
+    height: 2.5rem;
+    border: 1px solid rgb(209 213 219);
+    border-radius: 0.75rem;
+    background: transparent;
+    padding: 0 2.25rem 0 0.75rem;
+    color: inherit;
+    font-size: 0.78rem;
+    font-weight: 650;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  :global(.dark) .context-place-directory-controls select {
+    border-color: rgb(55 65 81);
+  }
+
+  .context-place-directory-section {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .context-place-directory-section > header {
+    display: flex;
+    min-width: 0;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .context-place-directory-section > header h2 {
+    overflow: hidden;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .context-place-directory-section > header span {
+    display: block;
+    margin-top: 0.15rem;
+    color: rgb(107 114 128);
+    font-size: 0.72rem;
+  }
+
+  .context-place-directory-section > header strong {
+    flex: none;
+    border-radius: 999px;
+    background: rgb(254 243 199);
+    padding: 0.35rem 0.65rem;
+    color: rgb(146 64 14);
+    font-size: 0.68rem;
+  }
+
+  :global(.dark) .context-place-directory-section > header strong {
+    background: rgb(120 53 15 / 0.35);
+    color: rgb(253 230 138);
+  }
+
+  .context-place-directory-empty {
+    display: grid;
+    min-height: 17rem;
+    place-items: center;
+    align-content: center;
+    gap: 0.45rem;
+    border: 1px dashed rgb(209 213 219);
+    border-radius: 1.25rem;
+    color: rgb(107 114 128);
+    text-align: center;
+  }
+
+  .context-place-directory-empty p {
+    color: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .context-place-directory-empty span {
+    max-width: 28rem;
+    font-size: 0.78rem;
+  }
+
+  :global(.dark) .context-place-directory-empty {
+    border-color: rgb(55 65 81);
   }
 
   .context-first-state {
@@ -815,6 +1118,21 @@
 
     .context-event-cover {
       aspect-ratio: 4 / 3;
+    }
+
+    .context-place-directory-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .context-place-directory-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .context-place-directory-controls select {
+      width: 100%;
+      min-width: 0;
     }
   }
 </style>

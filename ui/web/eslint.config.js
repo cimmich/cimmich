@@ -124,6 +124,9 @@ export default typescriptEslint.config(
       'unicorn/import-style': 'off',
       'unicorn/no-array-sort': 'off',
       'unicorn/no-for-loop': 'off',
+      // Prettier canonicalizes hexadecimal literals to lowercase; enforcing
+      // Unicorn's opposite casing makes `format` and `lint` mutually exclusive.
+      'unicorn/number-literal-case': 'off',
       'svelte/button-has-type': 'error',
       '@typescript-eslint/await-thenable': 'error',
       '@typescript-eslint/no-floating-promises': 'error',

@@ -70,6 +70,18 @@ test("local runtime secrets, images and browser response headers are hardened", 
     assert.match(nginx, /Referrer-Policy "no-referrer" always/);
     assert.match(nginx, /X-Frame-Options "SAMEORIGIN" always/);
   }
+  assert.match(
+    gateway,
+    /location = \/_cimmich_immich_session \{[\s\S]*internal;[\s\S]*\/api\/users\/me;[\s\S]*proxy_set_header Cookie \$http_cookie;[\s\S]*proxy_set_header Authorization \$http_authorization;[\s\S]*proxy_set_header X-Api-Key \$http_x_api_key;/,
+  );
+  assert.match(
+    gateway,
+    /location \/cimmich-api\/ \{[\s\S]*auth_request \/_cimmich_immich_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
+  );
+  assert.match(
+    gateway,
+    /location = \/cimmich-api\/health \{[\s\S]*proxy_pass http:\/\/cimmich-api:3101\/health;/,
+  );
   for (const image of [
     "ghcr.io/immich-app/immich-server:v3.1.0",
     "ghcr.io/immich-app/immich-machine-learning:v3.1.0",

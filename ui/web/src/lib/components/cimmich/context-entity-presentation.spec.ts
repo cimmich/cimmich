@@ -342,7 +342,7 @@ describe('place location labels', () => {
 
   it('formats a point as signed-hemisphere coordinates', () => {
     // Parent's Home on the real archive: southern and eastern hemispheres.
-    expect(formatContextCoordinate(-29.491547, 153.231453)).toBe('29.4915°S, 153.2315°E');
+    expect(formatContextCoordinate(-29.491_547, 153.231_453)).toBe('29.4915°S, 153.2315°E');
     expect(formatContextCoordinate(48.8584, -2.2945)).toBe('48.8584°N, 2.2945°W');
   });
 
@@ -359,7 +359,7 @@ describe('place location labels', () => {
   it('prefers the containing hierarchy over everything, because it is owner-defined truth', () => {
     expect(
       contextPlaceLocationLabel(
-        place({ latitude: -29.491547, longitude: 153.231453 }),
+        place({ latitude: -29.491_547, longitude: 153.231_453 }),
         ['Australia', 'New South Wales', "Parent's Home"],
         'Gulmarrad, New South Wales, Australia',
       ),
@@ -369,7 +369,7 @@ describe('place location labels', () => {
   it("prefers Immich's geocoded name over raw coordinates when there is no hierarchy", () => {
     expect(
       contextPlaceLocationLabel(
-        place({ latitude: -29.491547, longitude: 153.231453 }),
+        place({ latitude: -29.491_547, longitude: 153.231_453 }),
         ["Parent's Home"],
         'Gulmarrad, New South Wales, Australia',
       ),
@@ -377,11 +377,11 @@ describe('place location labels', () => {
   });
 
   it('falls back to coordinates only when Immich has no geocoded name', () => {
-    expect(contextPlaceLocationLabel(place({ latitude: -29.491547, longitude: 153.231453 }), ["Parent's Home"])).toBe(
+    expect(contextPlaceLocationLabel(place({ latitude: -29.491_547, longitude: 153.231_453 }), ["Parent's Home"])).toBe(
       '29.4915°S, 153.2315°E',
     );
     expect(
-      contextPlaceLocationLabel(place({ latitude: -29.491547, longitude: 153.231453 }), ["Parent's Home"], '   '),
+      contextPlaceLocationLabel(place({ latitude: -29.491_547, longitude: 153.231_453 }), ["Parent's Home"], '   '),
     ).toBe('29.4915°S, 153.2315°E');
   });
 

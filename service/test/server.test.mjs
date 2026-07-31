@@ -318,7 +318,13 @@ test("map asset filtering keeps visibility ahead of a bounded exact source-ID pr
     filterVisibleMapAssetSourceIds: async (input) => {
       calls.push(["filter", input]);
       return {
-        schemaVersion: "cimmich.visible-map-assets.v1",
+        assets: [
+          {
+            assetId: "asset-1",
+            sourceAssetId: input.sourceAssetIds[0],
+          },
+        ],
+        schemaVersion: "cimmich.visible-map-assets.v2",
         sourceAssetIds: [input.sourceAssetIds[0]],
       };
     },
@@ -362,6 +368,47 @@ test("map asset filtering keeps visibility ahead of a bounded exact source-ID pr
     ],
     ["visibility", "map_assets"],
   ]);
+});
+
+test("stale GPS clients cannot create a Place before the mapping preflight", async () => {
+  const calls = [];
+  const repository = {
+    createContextEntity: async (input) => {
+      calls.push(input);
+      return { status: "applied" };
+    },
+  };
+  const body = {
+    commandId: "context.gps-create.11111111-1111-4111-8111-111111111111",
+    displayName: "Test GPS Place",
+    geometry: { latitude: 1, longitude: 2 },
+    typeKind: "point",
+  };
+  await withServer(repository, async (root) => {
+    const stale = await fetch(`${root}/v1/places`, {
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-cimmich-actor": "context-reviewer",
+      },
+      method: "POST",
+    });
+    assert.equal(stale.status, 409);
+    assert.equal((await stale.json()).code, "GPS_CLIENT_REFRESH_REQUIRED");
+    assert.equal(calls.length, 0);
+
+    const current = await fetch(`${root}/v1/places`, {
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json",
+        "x-cimmich-actor": "context-reviewer",
+        "x-cimmich-gps-contract": "preflight-v2",
+      },
+      method: "POST",
+    });
+    assert.equal(current.status, 201);
+    assert.equal(calls.length, 1);
+  });
 });
 
 test("server preserves a handled service status and JSON error body", async () => {
@@ -871,7 +918,7 @@ test("Person projection pages are additive to legacy limit responses", async () 
       assert.deepEqual(await legacy.json(), { items: [] });
 
       const assets = await fetch(
-        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one`,
+        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one&associationType=body`,
       );
       assert.deepEqual(await assets.json(), page);
 
@@ -884,11 +931,18 @@ test("Person projection pages are additive to legacy limit responses", async () 
   assert.deepEqual(calls, [
     [
       "assets",
-      { cursor: "", limit: "5000", pageSize: null, personId: "person-one" },
+      {
+        associationType: null,
+        cursor: "",
+        limit: "5000",
+        pageSize: null,
+        personId: "person-one",
+      },
     ],
     [
       "assets",
       {
+        associationType: "body",
         cursor: "cursor-one",
         limit: null,
         pageSize: "24",
@@ -906,6 +960,36 @@ test("Person projection pages are additive to legacy limit responses", async () 
       },
     ],
   ]);
+});
+
+test("Asset display exposes Cimmich recovery mapping for stale photo links", async () => {
+  const calls = [];
+  await withServer(
+    {
+      assetDisplay: async (input) => {
+        calls.push(input);
+        return {
+          assetId: "asset-current",
+          filename: "photo.jpg",
+          schemaVersion: "cimmich.asset-display.v1",
+          sourceAssetId: "source-current",
+        };
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/assets/display?sourceAssetId=source-stale`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        assetId: "asset-current",
+        filename: "photo.jpg",
+        schemaVersion: "cimmich.asset-display.v1",
+        sourceAssetId: "source-current",
+      });
+    },
+  );
+  assert.deepEqual(calls, [{ sourceAssetId: "source-stale" }]);
 });
 
 test("Head rescan route preserves Person scope and operator authority", async () => {

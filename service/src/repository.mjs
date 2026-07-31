@@ -131,6 +131,19 @@ const typedError = (message, statusCode, code, details) =>
     ...(details ? { details } : {}),
   });
 const personPageSchemaVersion = "cimmich.person-projection-page.v1";
+const cleanPersonAssetAssociationType = (value) => {
+  const associationType = String(value || "all")
+    .trim()
+    .toLowerCase();
+  if (!["all", "body", "presence"].includes(associationType)) {
+    throw typedError(
+      "associationType must be all, body, or presence",
+      400,
+      "PERSON_ASSET_ASSOCIATION_INVALID",
+    );
+  }
+  return associationType;
+};
 const cleanPageSize = (value, fallback = 120, maximum = 250) => {
   if (value === null || value === undefined || String(value).trim() === "") {
     return fallback;
@@ -885,6 +898,44 @@ export const dedupeAssetFaces = (rows) => {
   );
 };
 
+const samePhysicalBodyGeometry = (left, right) => {
+  const overlap = boxOverlap(left, right);
+  return (
+    overlap.iou >= 0.9 ||
+    (overlap.containment >= 0.94 &&
+      overlap.centerDx <= 0.12 &&
+      overlap.centerDy <= 0.12)
+  );
+};
+
+export const dedupeAssetBodies = (rows) => {
+  const ranked = [...rows].sort(
+    (left, right) =>
+      Number(Boolean(right.current_decision_id)) -
+        Number(Boolean(left.current_decision_id)) ||
+      Number(Boolean(right.person_id)) - Number(Boolean(left.person_id)) ||
+      Number(Boolean(right.supporting_face_id)) -
+        Number(Boolean(left.supporting_face_id)) ||
+      Number(Boolean(right.head_box_x != null)) -
+        Number(Boolean(left.head_box_x != null)) ||
+      String(left.body_id).localeCompare(String(right.body_id)),
+  );
+  const selected = [];
+  for (const row of ranked) {
+    const duplicate = selected.find(
+      (kept) =>
+        samePhysicalBodyGeometry(row, kept) &&
+        !(row.person_id && kept.person_id && row.person_id !== kept.person_id),
+    );
+    if (!duplicate) selected.push(row);
+  }
+  return selected.sort(
+    (left, right) =>
+      Number(left.box_x) - Number(right.box_x) ||
+      String(left.body_id).localeCompare(String(right.body_id)),
+  );
+};
+
 export const identityQcFields = (row) => {
   const facePixelWidth = Math.max(
     0,
@@ -977,25 +1028,76 @@ export const createCimmichRepository = (
     }
     const [projection] = await sql`
       SELECT projection.cimmich_asset_id AS asset_id,
-        projection.immich_asset_id AS source_asset_id
+        projection.immich_asset_id AS source_asset_id,
+        projection.original_file_name AS filename,
+        projection.state AS projection_state,
+        asset.state AS asset_state
       FROM immich_asset_projection projection
       JOIN asset ON asset.asset_id = projection.cimmich_asset_id
-        AND asset.state = 'active'
-      WHERE projection.state = 'active'
-        AND (projection.cimmich_asset_id = ${requestedId}
+      WHERE (projection.cimmich_asset_id = ${requestedId}
           OR projection.immich_asset_id = ${requestedId})
         AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
       ORDER BY CASE WHEN projection.immich_asset_id = ${requestedId} THEN 0 ELSE 1 END,
+        CASE WHEN projection.state = 'active' AND asset.state = 'active'
+          THEN 0 ELSE 1 END,
+        projection.last_seen_at DESC,
         projection.source_id
       LIMIT 1
     `;
+    const [newerEquivalent] = projection
+      ? await sql`
+        SELECT candidate_projection.cimmich_asset_id AS asset_id,
+          candidate_projection.immich_asset_id AS source_asset_id,
+          candidate_projection.original_file_name AS filename
+        FROM immich_asset_projection requested_projection
+        JOIN asset requested_asset
+          ON requested_asset.asset_id = requested_projection.cimmich_asset_id
+        JOIN asset candidate_asset
+          ON candidate_asset.state = 'active'
+          AND candidate_asset.asset_id <> requested_asset.asset_id
+        JOIN immich_asset_projection candidate_projection
+          ON candidate_projection.cimmich_asset_id = candidate_asset.asset_id
+          AND candidate_projection.state = 'active'
+          AND candidate_projection.last_seen_at
+            > requested_projection.last_seen_at
+        WHERE requested_projection.cimmich_asset_id = ${projection.asset_id}
+          AND requested_projection.immich_asset_id = ${projection.source_asset_id}
+          AND cimmich_visibility_asset_rank(candidate_asset.asset_id)
+            <= ${presentationRank()}
+          AND (
+            (
+              requested_asset.content_hash IS NOT NULL
+              AND requested_asset.content_hash = candidate_asset.content_hash
+            )
+            OR (
+              requested_projection.original_file_name IS NOT NULL
+              AND candidate_projection.original_file_name IS NOT NULL
+              AND lower(requested_projection.original_file_name)
+                = lower(candidate_projection.original_file_name)
+              AND requested_asset.capture_time = candidate_asset.capture_time
+              AND requested_asset.width = candidate_asset.width
+              AND requested_asset.height = candidate_asset.height
+            )
+          )
+        ORDER BY candidate_projection.last_seen_at DESC,
+          candidate_projection.source_id,
+          candidate_projection.immich_asset_id
+        LIMIT 1
+      `
+      : [];
+    const displayProjection =
+      newerEquivalent ||
+      ((projection?.projection_state ?? "active") === "active" &&
+      (projection?.asset_state ?? "active") === "active"
+        ? projection
+        : null);
     const legacy = projection
       ? null
       : bridgeAssetBySourceId(bridge, requestedId) ||
         (bridge.has(requestedId)
           ? { assetId: requestedId, ...bridge.get(requestedId) }
           : null);
-    const assetId = projection?.asset_id || legacy?.assetId;
+    const assetId = displayProjection?.asset_id || legacy?.assetId;
     if (!assetId) {
       throw typedError(
         "Cimmich asset display mapping not found",
@@ -1020,10 +1122,12 @@ export const createCimmichRepository = (
     const fields = bridgeFields(bridge, assetId);
     return {
       assetId,
-      filename: fields.filename,
+      filename: displayProjection?.filename || fields.filename,
       schemaVersion: "cimmich.asset-display.v1",
       sourceAssetId:
-        projection?.source_asset_id || legacy?.sourceAssetId || requestedId,
+        displayProjection?.source_asset_id ||
+        legacy?.sourceAssetId ||
+        requestedId,
     };
   };
   const petMatching = createPetMatchingStore(sql, {
@@ -1491,7 +1595,8 @@ export const createCimmichRepository = (
         );
       }
       const rows = await sql`
-        SELECT projection.immich_asset_id AS source_asset_id
+        SELECT projection.immich_asset_id AS source_asset_id,
+          projection.cimmich_asset_id AS asset_id
         FROM immich_asset_projection projection
         JOIN asset ON asset.asset_id = projection.cimmich_asset_id
           AND asset.state = 'active'
@@ -1501,7 +1606,11 @@ export const createCimmichRepository = (
         ORDER BY projection.immich_asset_id
       `;
       return {
-        schemaVersion: "cimmich.visible-map-assets.v1",
+        assets: rows.map((row) => ({
+          assetId: row.asset_id,
+          sourceAssetId: row.source_asset_id,
+        })),
+        schemaVersion: "cimmich.visible-map-assets.v2",
         sourceAssetIds: rows.map((row) => row.source_asset_id),
       };
     },
@@ -5981,6 +6090,7 @@ export const createCimmichRepository = (
     },
 
     async personAssets({
+      associationType = "all",
       cursor = "",
       limit = 1000,
       pageSize = null,
@@ -5992,9 +6102,12 @@ export const createCimmichRepository = (
         ? cleanPageSize(pageSize)
         : cleanLimit(limit, 1000, 5000);
       const id = String(personId || "");
+      const assetAssociation = cleanPersonAssetAssociationType(associationType);
+      const cursorKind =
+        assetAssociation === "all" ? "assets" : `assets:${assetAssociation}`;
       const visibleRank = presentationRank();
       const decodedCursor = decodePersonPageCursor(cursor, {
-        kind: "assets",
+        kind: cursorKind,
         personId: id,
         visibleRank,
       });
@@ -6014,16 +6127,206 @@ export const createCimmichRepository = (
         JOIN bucket_membership_event event ON event.bucket_id = bucket.bucket_id
         ORDER BY event.bucket_id, event.face_id, event.created_at DESC,
           event.membership_event_id DESC
+      ), active_face_buckets AS MATERIALIZED (
+        SELECT DISTINCT person_id, face_id
+        FROM gallery_latest
+        WHERE bucket_kind IN ('prime', 'secondary', 'lq', 'head')
+          AND action IN ('activate', 'pin', 'unpin')
       ), active_heads AS MATERIALIZED (
         SELECT person_id, face_id
         FROM gallery_latest
         WHERE bucket_kind = 'head' AND action IN ('activate', 'pin', 'unpin')
+      ), same_person_detector_faces AS MATERIALIZED (
+        SELECT DISTINCT imported_identity.person_id, imported.face_id
+        FROM current_face_identity imported_identity
+        JOIN face_observation imported
+          ON imported.face_id = imported_identity.face_id
+        JOIN current_face_identity detected_identity
+          ON detected_identity.person_id = imported_identity.person_id
+          AND detected_identity.face_id <> imported_identity.face_id
+          AND detected_identity.state IN ('accepted', 'superseded')
+          AND detected_identity.origin <> 'trusted_import'
+        JOIN face_observation detected
+          ON detected.face_id = detected_identity.face_id
+          AND detected.asset_id = imported.asset_id
+          AND detected.state = 'valid'
+        CROSS JOIN LATERAL (
+          SELECT
+            greatest(
+              0,
+              least(
+                imported.box_x + imported.box_w,
+                detected.box_x + detected.box_w
+              ) - greatest(imported.box_x, detected.box_x)
+            ) * greatest(
+              0,
+              least(
+                imported.box_y + imported.box_h,
+                detected.box_y + detected.box_h
+              ) - greatest(imported.box_y, detected.box_y)
+            ) AS intersection
+        ) overlap
+        WHERE imported_identity.person_id = ${id}
+          AND imported_identity.state = 'accepted'
+          AND imported.state = 'valid'
+          AND (
+            overlap.intersection / greatest(
+              0.000001,
+              imported.box_w * imported.box_h
+                + detected.box_w * detected.box_h
+                - overlap.intersection
+            ) >= 0.62
+            OR (
+              overlap.intersection / greatest(
+                0.000001,
+                least(
+                  imported.box_w * imported.box_h,
+                  detected.box_w * detected.box_h
+                )
+              ) >= 0.5
+              AND abs(
+                imported.box_x + imported.box_w / 2
+                  - detected.box_x - detected.box_w / 2
+              ) / greatest(
+                0.000001,
+                least(imported.box_w, detected.box_w)
+              ) <= 0.45
+              AND abs(
+                imported.box_y + imported.box_h / 2
+                  - detected.box_y - detected.box_h / 2
+              ) / greatest(
+                0.000001,
+                least(imported.box_h, detected.box_h)
+              ) <= 0.25
+            )
+          )
+      ), body_hint_faces AS MATERIALIZED (
+        SELECT DISTINCT identity.person_id, face.face_id, face.asset_id
+        FROM current_face_identity identity
+        JOIN face_observation face ON face.face_id = identity.face_id
+        LEFT JOIN active_face_buckets bucketed
+          ON bucketed.person_id = identity.person_id
+          AND bucketed.face_id = identity.face_id
+        LEFT JOIN same_person_detector_faces detected
+          ON detected.person_id = identity.person_id
+          AND detected.face_id = identity.face_id
+        WHERE identity.person_id = ${id}
+          AND identity.state = 'accepted'
+          AND bucketed.face_id IS NULL
+          AND detected.face_id IS NULL
+          AND coalesce(
+            face.quality_measurements->>'source_gallery_permission',
+            ''
+          ) = 'never'
+          AND coalesce(
+            face.quality_measurements->>'effective_gallery_permission',
+            ''
+          ) = 'never'
+          AND EXISTS (
+            SELECT 1
+            FROM imported_identity_locator locator
+            WHERE locator.person_id = identity.person_id
+              AND locator.asset_id = face.asset_id
+              AND locator.intended_tag_type = 'body'
+              AND (
+                locator.state = 'unresolved'
+                OR (
+                  locator.state = 'resolved'
+                  AND locator.resolution_kind = 'stronger_existing_truth'
+                )
+              )
+          )
+      ), standalone_body_interest_assets AS MATERIALIZED (
+        SELECT body.asset_id
+        FROM current_body_tag tag
+        JOIN body_observation body ON body.body_id = tag.body_id
+        WHERE tag.person_id = ${id}
+          AND tag.state = 'accepted'
+          AND (
+            tag.origin <> 'face_body_linkage'
+            OR tag.supporting_face_id IS NULL
+          )
+        UNION
+        SELECT locator.asset_id
+        FROM imported_identity_locator locator
+        WHERE locator.person_id = ${id}
+          AND locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
+            )
+          )
+        UNION
+        SELECT tag.asset_id
+        FROM current_presence_tag tag
+        WHERE tag.person_id = ${id}
+          AND tag.state = 'accepted'
+          AND tag.reason_code IN (
+            'legacy_non_gallery_person_presence',
+            'legacy_body_placement_pending'
+          )
+      ), body_interest_exports AS MATERIALIZED (
+        SELECT interest.asset_id, body_asset.content_hash,
+          body_asset.capture_time, body_asset.width, body_asset.height,
+          lower(body_projection.original_file_name) AS filename
+        FROM standalone_body_interest_assets interest
+        JOIN asset body_asset ON body_asset.asset_id = interest.asset_id
+          AND body_asset.state = 'active'
+        JOIN immich_asset_projection body_projection
+          ON body_projection.cimmich_asset_id = body_asset.asset_id
+          AND body_projection.state = 'active'
+      ), usable_face_exports AS MATERIALIZED (
+        SELECT face.asset_id, face_asset.content_hash,
+          face_asset.capture_time, face_asset.width, face_asset.height,
+          lower(face_projection.original_file_name) AS filename
+        FROM current_face_identity identity
+        JOIN face_observation face ON face.face_id = identity.face_id
+          AND face.state = 'valid'
+        JOIN asset face_asset ON face_asset.asset_id = face.asset_id
+          AND face_asset.state = 'active'
+        JOIN immich_asset_projection face_projection
+          ON face_projection.cimmich_asset_id = face_asset.asset_id
+          AND face_projection.state = 'active'
+        LEFT JOIN body_hint_faces body_hint
+          ON body_hint.person_id = identity.person_id
+          AND body_hint.face_id = identity.face_id
+        WHERE identity.person_id = ${id}
+          AND identity.state = 'accepted'
+          AND body_hint.face_id IS NULL
+          AND cimmich_visibility_asset_rank(face_asset.asset_id)
+            <= ${visibleRank}
+      ), same_photo_usable_face_assets AS MATERIALIZED (
+        SELECT body.asset_id
+        FROM body_interest_exports body
+        JOIN usable_face_exports face
+          ON face.asset_id <> body.asset_id
+          AND body.content_hash IS NOT NULL
+          AND body.content_hash = face.content_hash
+        UNION
+        SELECT body.asset_id
+        FROM body_interest_exports body
+        JOIN usable_face_exports face
+          ON face.asset_id <> body.asset_id
+          AND body.filename IS NOT NULL
+          AND body.filename = face.filename
+          AND body.capture_time = face.capture_time
+          AND body.width = face.width
+          AND body.height = face.height
       ), associations AS MATERIALIZED (
         SELECT face.asset_id, identity.person_id,
-          CASE WHEN head.face_id IS NULL THEN 'face'::text ELSE 'head'::text END AS association_type,
+          CASE
+            WHEN head.face_id IS NOT NULL THEN 'head'::text
+            WHEN body_hint.face_id IS NOT NULL THEN 'body_hint_face'::text
+            ELSE 'face'::text
+          END AS association_type,
           face.face_id AS geometry_id
         FROM current_face_identity identity
         JOIN face_observation face ON face.face_id = identity.face_id
+        LEFT JOIN body_hint_faces body_hint
+          ON body_hint.person_id = identity.person_id
+          AND body_hint.face_id = identity.face_id
         LEFT JOIN active_heads head ON head.person_id = identity.person_id
           AND head.face_id = identity.face_id
         WHERE identity.person_id = ${id} AND identity.state = 'accepted'
@@ -6031,12 +6334,18 @@ export const createCimmichRepository = (
         SELECT body.asset_id, tag.person_id,
           CASE
             WHEN tag.origin = 'face_body_linkage' AND tag.supporting_face_id IS NOT NULL
-              THEN 'body_link'::text
+              THEN CASE
+                WHEN body_hint.face_id IS NOT NULL THEN 'body'::text
+                ELSE 'body_link'::text
+              END
             ELSE 'body'::text
           END,
           body.body_id
         FROM current_body_tag tag
         JOIN body_observation body ON body.body_id = tag.body_id
+        LEFT JOIN body_hint_faces body_hint
+          ON body_hint.person_id = tag.person_id
+          AND body_hint.face_id = tag.supporting_face_id
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
         UNION ALL
         SELECT tag.asset_id, tag.person_id,
@@ -6056,87 +6365,146 @@ export const createCimmichRepository = (
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
         WHERE tag.subject_id = ${id}
-      )
-      SELECT a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time,
-        bool_or(association.association_type = 'face') AS has_face,
-        bool_or(association.association_type = 'head') AS has_head,
-        bool_or(association.association_type = 'body') AS has_body,
-        bool_or(association.association_type = 'body_candidate') AS has_body_candidate,
-        bool_or(association.association_type = 'body_link') AS has_linked_body,
-        bool_or(association.association_type = 'presence') AS has_presence,
-        bool_or(association.association_type = 'head' AND association.geometry_id IS NULL) AS asset_head_evidence,
-        bool_or(association.association_type = 'presence') AS presence_evidence,
-        coalesce((
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'entityId', entity.entity_id,
-              'entityKind', entity.entity_kind,
-              'typeKind', CASE entity.entity_kind
-                WHEN 'place' THEN entity.place_kind
-                WHEN 'object' THEN entity.object_kind
-                WHEN 'event' THEN entity.event_kind
-              END,
-              'displayName', entity.display_name
+        UNION ALL
+        SELECT locator.asset_id, locator.person_id, 'body_candidate'::text, NULL::text
+        FROM imported_identity_locator locator
+        WHERE locator.person_id = ${id}
+          AND locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
             )
-            ORDER BY entity.entity_kind, lower(entity.display_name), entity.entity_id
           )
-          FROM current_context_asset context_link
-          JOIN context_entity entity ON entity.entity_id = context_link.entity_id
-          WHERE context_link.asset_id = a.asset_id
-            AND entity.status = 'active'
-            AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
-        ), '[]'::jsonb) AS contexts
-      FROM associations association
-      JOIN asset a ON a.asset_id = association.asset_id
-      WHERE association.person_id = ${id}
-        AND a.state = 'active'
-        AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
-        AND (
+      ), projected_assets AS MATERIALIZED (
+        SELECT a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time,
+          (
+            bool_or(association.association_type = 'face')
+            OR same_photo_face.asset_id IS NOT NULL
+          ) AS has_face,
+          bool_or(association.association_type = 'head') AS has_head,
+          bool_or(association.association_type = 'body') AS has_body,
+          bool_or(association.association_type = 'body_candidate') AS has_body_candidate,
+          bool_or(association.association_type = 'body_hint_face') AS has_body_hint_face,
+          bool_or(association.association_type = 'body_link') AS has_linked_body,
+          bool_or(association.association_type = 'presence') AS has_presence,
+          bool_or(association.association_type = 'head' AND association.geometry_id IS NULL) AS asset_head_evidence,
+          bool_or(association.association_type = 'presence') AS presence_evidence,
+          coalesce((
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'entityId', entity.entity_id,
+                'entityKind', entity.entity_kind,
+                'typeKind', CASE entity.entity_kind
+                  WHEN 'place' THEN entity.place_kind
+                  WHEN 'object' THEN entity.object_kind
+                  WHEN 'event' THEN entity.event_kind
+                END,
+                'displayName', entity.display_name
+              )
+              ORDER BY entity.entity_kind, lower(entity.display_name), entity.entity_id
+            )
+            FROM current_context_asset context_link
+            JOIN context_entity entity ON entity.entity_id = context_link.entity_id
+            WHERE context_link.asset_id = a.asset_id
+              AND entity.status = 'active'
+              AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
+          ), '[]'::jsonb) AS contexts
+        FROM associations association
+        JOIN asset a ON a.asset_id = association.asset_id
+        LEFT JOIN same_photo_usable_face_assets same_photo_face
+          ON same_photo_face.asset_id = a.asset_id
+        WHERE association.person_id = ${id}
+          AND a.state = 'active'
+          AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
+        GROUP BY a.asset_id, a.media_kind, a.mime_type, a.width, a.height,
+          a.capture_time, same_photo_face.asset_id
+      ), filtered_assets AS (
+        SELECT projected_assets.*,
+          (count(*) OVER ())::int AS total_count,
+          (count(*) FILTER (
+            WHERE has_body AND NOT has_face AND NOT has_head
+          ) OVER ())::int AS confirmed_body_count,
+          (count(*) FILTER (
+            WHERE has_body_candidate
+              AND NOT has_face
+              AND NOT has_head
+              AND NOT has_body
+          ) OVER ())::int AS body_candidate_count,
+          (count(*) FILTER (WHERE has_presence) OVER ())::int AS presence_count
+        FROM projected_assets
+        WHERE
+          ${assetAssociation === "all"}
+          OR (
+            ${assetAssociation === "body"}
+            AND (
+              (has_body AND NOT has_face AND NOT has_head)
+              OR (
+                has_body_candidate
+                AND NOT has_face
+                AND NOT has_head
+                AND NOT has_body
+              )
+            )
+          )
+          OR (${assetAssociation === "presence"} AND has_presence)
+      )
+      SELECT *
+      FROM filtered_assets
+      WHERE (
           ${decodedCursor === null}
           OR (
             ${cursorCaptureTime !== null}
             AND (
-              a.capture_time IS NULL
-              OR a.capture_time < ${cursorCaptureTime}
-              OR (a.capture_time = ${cursorCaptureTime} AND a.asset_id > ${cursorAssetId})
+              capture_time IS NULL
+              OR capture_time < ${cursorCaptureTime}
+              OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
             )
           )
           OR (
             ${cursorCaptureTime === null}
-            AND a.capture_time IS NULL
-            AND a.asset_id > ${cursorAssetId}
+            AND capture_time IS NULL
+            AND asset_id > ${cursorAssetId}
           )
         )
-      GROUP BY a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time
-      ORDER BY a.capture_time DESC NULLS LAST, a.asset_id
+      ORDER BY capture_time DESC NULLS LAST, asset_id
       LIMIT ${boundedLimit + (paged ? 1 : 0)}
     `;
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map((row) => ({
-        ...row,
-        association_types: [
-          ...(row.has_face ? ["face"] : []),
-          ...(row.has_head ? ["head"] : []),
-          ...(row.has_body && !row.has_face && !row.has_head ? ["body"] : []),
-          ...(row.has_body_candidate &&
-          !row.has_face &&
-          !row.has_head &&
-          !row.has_body
-            ? ["body_candidate"]
-            : []),
-          ...(row.has_presence &&
-          !row.has_face &&
-          !row.has_head &&
-          !row.has_body &&
-          !row.has_body_candidate
-            ? ["presence"]
-            : []),
-        ],
-        contexts: Array.isArray(row.contexts) ? row.contexts : [],
-        ...bridgeFields(bridge, row.asset_id),
-      }));
+      const items = pageRows.map(
+        ({
+          body_candidate_count: _bodyCandidateCount,
+          confirmed_body_count: _confirmedBodyCount,
+          presence_count: _presenceCount,
+          total_count: _totalCount,
+          ...row
+        }) => ({
+          ...row,
+          association_types: [
+            ...(row.has_face ? ["face"] : []),
+            ...(row.has_head ? ["head"] : []),
+            ...(row.has_body && !row.has_face && !row.has_head ? ["body"] : []),
+            ...(row.has_body_candidate &&
+            !row.has_face &&
+            !row.has_head &&
+            !row.has_body
+              ? ["body_candidate"]
+              : []),
+            ...(row.has_presence &&
+            !row.has_face &&
+            !row.has_head &&
+            !row.has_body &&
+            !row.has_body_candidate
+              ? ["presence"]
+              : []),
+          ],
+          contexts: Array.isArray(row.contexts) ? row.contexts : [],
+          ...bridgeFields(bridge, row.asset_id),
+        }),
+      );
       if (!paged) return items;
       const last = pageRows.at(-1);
       return {
@@ -6148,13 +6516,19 @@ export const createCimmichRepository = (
                 captureTime: last.capture_time
                   ? new Date(last.capture_time).toISOString()
                   : null,
-                kind: "assets",
+                kind: cursorKind,
                 personId: id,
                 visibleRank,
               })
             : null,
         pageSize: boundedLimit,
         schemaVersion: personPageSchemaVersion,
+        summary: {
+          body: Number(pageRows[0]?.confirmed_body_count || 0),
+          bodyCandidate: Number(pageRows[0]?.body_candidate_count || 0),
+          presence: Number(pageRows[0]?.presence_count || 0),
+          total: Number(pageRows[0]?.total_count || 0),
+        },
       };
     },
 
@@ -6618,6 +6992,10 @@ export const createCimmichRepository = (
       };
     },
 
+    async assetDisplay({ sourceAssetId }) {
+      return resolveVisibleAssetDisplay(sourceAssetId);
+    },
+
     async assetEvidence({ sourceAssetId }) {
       const linked = await resolveVisibleAssetDisplay(sourceAssetId);
       const [asset] = await sql`
@@ -6811,6 +7189,7 @@ export const createCimmichRepository = (
       ]);
 
       const displayFaces = dedupeAssetFaces(faceRows);
+      const displayBodies = dedupeAssetBodies(bodyRows);
       // Same bounded fan-out as faceMatchesBatch: each faceMatches call is a
       // whole-gallery pgvector scan, and a crowded photo fired one per
       // unidentified face concurrently, exhausting the connection pool.
@@ -6877,7 +7256,7 @@ export const createCimmichRepository = (
       });
       const projectedBodies = projectAssetFaceBodyLinks({
         assetId: linked.assetId,
-        bodies: bodyRows.map((body) => ({
+        bodies: displayBodies.map((body) => ({
           bodyId: body.body_id,
           boxH: body.box_h,
           boxW: body.box_w,
@@ -6912,7 +7291,7 @@ export const createCimmichRepository = (
         filename: linked.filename,
         schemaVersion: "cimmich.asset-detailed-evidence.v3",
         sourceAssetId: linked.sourceAssetId,
-        bodies: bodyRows.map((body) => {
+        bodies: displayBodies.map((body) => {
           const projection = projectedBodyById.get(body.body_id);
           const bodyEvidence = stripBodyPoseStorage(body);
           return {

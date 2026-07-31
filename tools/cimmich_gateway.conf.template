@@ -11,7 +11,33 @@ server {
   proxy_buffers 8 32k;
   proxy_busy_buffers_size 64k;
 
+  # Keep the liveness probe available to operators and container health checks.
+  # Every owner-data route below it must prove the caller has a live Immich
+  # session (or a valid Immich API key) before Cimmich sees the request.
+  location = /cimmich-api/health {
+    proxy_pass http://cimmich-api:3101/health;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Origin "";
+  }
+
+  location = /_cimmich_immich_session {
+    internal;
+    proxy_pass ${CIMMICH_IMMICH_WEB_ORIGIN}/api/users/me;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-Api-Key $http_x_api_key;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
   location /cimmich-api/ {
+    auth_request /_cimmich_immich_session;
     proxy_pass http://cimmich-api:3101/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;

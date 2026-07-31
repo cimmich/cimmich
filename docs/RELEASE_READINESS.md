@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 104/patch 1
+Current source/disposable candidate: migration-ledger schema 107/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -11,7 +11,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 104; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 107; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -89,6 +89,23 @@ active Immich projections (legitimate under schema-84 content-hash mobility)
 contribute one deterministic projection per side instead of multiplying the
 verdict subquery into a "more than one row" failure that closed every guarded
 audit statement. The conservative verdict body is unchanged.
+
+Schema 105 closes the inventory-authority rollover gap. An explicit,
+replay-safe owner command requires a completed full successor inventory before
+disabling its named predecessor, moving predecessor projections and bindings
+to historical/missing state, pausing only jobs whose assets no longer have an
+active binding, and recording predecessor-to-successor lineage. It deletes no
+Face, Body, identity, media or source evidence.
+
+Schema 106 provides a separately confirmed, replay-safe prune for never-run
+inventory-only placeholder jobs. Its predicate fails closed on any attempt,
+lease, checkpoint, payload, result, receipt, pipeline dependency, derived
+result or unexpected history event. It cannot prune completed or general media
+job history, SourcePacks, observations, embeddings, identities or source media.
+Schema 107 adds the missing partial index supporting the
+media_pipeline_run.detection_job_id foreign key. This is an index-only
+maintenance correction: it changes no evidence or identity authority and keeps
+dependency enforcement bounded during the schema-106 confirmed prune.
 
 ## Public Beta Patch 6 candidate
 

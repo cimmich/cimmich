@@ -7,7 +7,12 @@ test("map source-ID filtering returns only current assets admitted at the reques
   const calls = [];
   const sql = async (strings, ...values) => {
     calls.push({ statement: strings.join("?"), values });
-    return [{ source_asset_id: "11111111-1111-4111-8111-111111111111" }];
+    return [
+      {
+        asset_id: "asset-1",
+        source_asset_id: "11111111-1111-4111-8111-111111111111",
+      },
+    ];
   };
   const repository = createCimmichRepository(sql, new Map(), {
     currentRank: () => 1,
@@ -19,7 +24,13 @@ test("map source-ID filtering returns only current assets admitted at the reques
     ],
   });
   assert.deepEqual(result, {
-    schemaVersion: "cimmich.visible-map-assets.v1",
+    assets: [
+      {
+        assetId: "asset-1",
+        sourceAssetId: "11111111-1111-4111-8111-111111111111",
+      },
+    ],
+    schemaVersion: "cimmich.visible-map-assets.v2",
     sourceAssetIds: ["11111111-1111-4111-8111-111111111111"],
   });
   assert.equal(calls.length, 1);

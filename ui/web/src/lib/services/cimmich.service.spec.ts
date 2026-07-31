@@ -7,10 +7,12 @@ import {
   attachCimmichContextRelations,
   attachCimmichDocumentLinks,
   attachCimmichPetDocuments,
+  bulkRejectCimmichPersonCandidates,
   correctCimmichBodyGeometry,
   correctCimmichFaceGeometry,
   createCimmichContextCommandId,
   createCimmichContextEntity,
+  createCimmichGpsPlaceEntity,
   createCimmichDocumentCommandId,
   createCimmichEnhancedCommandId,
   createCimmichCommandId,
@@ -43,6 +45,8 @@ import {
   getCimmichPersonDetailsDisplayDefaults,
   getCimmichPersonAssetsPage,
   getCimmichPersonByName,
+  getCimmichPersonCandidateSummary,
+  getCimmichPeople,
   getCimmichSourcePack,
   getCimmichVisibilityObject,
   getCimmichVisibilityProjections,
@@ -57,6 +61,7 @@ import {
   patchCimmichPersonDetailsDisplay,
   patchCimmichPersonDetailsDisplayDefaults,
   setCimmichManualPresence,
+  setCimmichFaceIdentitiesBatch,
   setCimmichFaceIdentity,
   setCimmichViewingMode,
   searchCimmichSmart,
@@ -83,6 +88,7 @@ import {
   updateCimmichContextEntity,
   updateCimmichDocument,
   updateCimmichEnhancedComponent,
+  dismissCimmichIdentityAuditItemsBatch,
 } from './cimmich.service';
 
 describe('Cimmich Immich Person resolution owner contract', () => {
@@ -365,6 +371,56 @@ describe('Cimmich selected Face identity client contract', () => {
     });
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       body: JSON.stringify({ personId: 'person_1' }),
+      method: 'POST',
+    });
+    fetchMock.mockRestore();
+  });
+});
+
+describe('Cimmich bounded People review client contracts', () => {
+  it('calls the summary, presentation, reject, dismiss and batch-assignment routes exactly', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({
+          items: [],
+          schemaVersion: 'cimmich.person-candidate-summary.v1',
+          totalCandidates: 0,
+          totalPeople: 0,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ items: [] }))
+      .mockResolvedValueOnce(Response.json({ changed: true, personId: 'person-1', rejected: [], rejectedCount: 0 }))
+      .mockResolvedValueOnce(
+        Response.json({ changed: true, dismissedCount: 1, items: [], schemaVersion: 'cimmich.identity-audit.v2' }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ assigned: [], assignedCount: 0, changed: false, failureCount: 0, failures: [] }),
+      );
+
+    await getCimmichPersonCandidateSummary();
+    await getCimmichPeople(25, 'Synthetic Person', { presentation: false });
+    await bulkRejectCimmichPersonCandidates('person/1', ['claim-1']);
+    await dismissCimmichIdentityAuditItemsBatch([{ faceId: 'face-1', kind: 'untagged_match' }]);
+    await setCimmichFaceIdentitiesBatch([{ faceId: 'face/1', personId: 'person-1' }]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:3101/v1/people/candidate-summary',
+      'http://127.0.0.1:3101/v1/people?limit=25&q=Synthetic+Person&presentation=0',
+      'http://127.0.0.1:3101/v1/people/person%2F1/candidates/bulk-reject',
+      'http://127.0.0.1:3101/v1/review/identity-audit/items/dismiss:batch',
+      'http://127.0.0.1:3101/v1/faces/identity:batch',
+    ]);
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      body: JSON.stringify({ claimIds: ['claim-1'] }),
+      method: 'POST',
+    });
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      body: JSON.stringify({ items: [{ faceId: 'face-1', kind: 'untagged_match' }] }),
+      method: 'POST',
+    });
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+      body: JSON.stringify({ items: [{ faceId: 'face/1', personId: 'person-1' }] }),
       method: 'POST',
     });
     fetchMock.mockRestore();
@@ -813,12 +869,13 @@ describe('Cimmich Person projection page client contract', () => {
       nextCursor: 'next-cursor',
       pageSize: 120,
       schemaVersion: 'cimmich.person-projection-page.v1',
+      summary: { body: 41, bodyCandidate: 7, presence: 3, total: 51 },
     } as const;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(page));
 
-    await expect(getCimmichPersonAssetsPage('person/1', 120, 'opaque+/=')).resolves.toEqual(page);
+    await expect(getCimmichPersonAssetsPage('person/1', 120, 'opaque+/=', 'body')).resolves.toEqual(page);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'http://127.0.0.1:3101/v1/people/person%2F1/assets?pageSize=120&cursor=opaque%2B%2F%3D',
+      'http://127.0.0.1:3101/v1/people/person%2F1/assets?pageSize=120&cursor=opaque%2B%2F%3D&associationType=body',
     );
     fetchMock.mockRestore();
   });
@@ -1110,6 +1167,39 @@ describe('Cimmich context entity and Basic Smart Search client contracts', () =>
       headers: { 'x-cimmich-actor': 'local-operator' },
       method: 'PATCH',
     });
+    fetchMock.mockRestore();
+  });
+
+  it('marks GPS Place creation as preflighted', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({
+        commandId: 'context.gps-create.command-1',
+        decisionId: 'decision_1',
+        replayed: false,
+        schemaVersion: 'cimmich.context-entity.v1',
+        status: 'applied',
+      }),
+    );
+    const input = {
+      commandId: 'context.gps-create.command-1',
+      displayName: 'Test GPS Place',
+      geometry: { latitude: 1, longitude: 2 },
+      typeKind: 'point' as const,
+    };
+
+    await createCimmichGpsPlaceEntity(input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3101/v1/places',
+      expect.objectContaining({
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({
+          'x-cimmich-actor': 'local-operator',
+          'x-cimmich-gps-contract': 'preflight-v2',
+        }),
+        method: 'POST',
+      }),
+    );
     fetchMock.mockRestore();
   });
 
