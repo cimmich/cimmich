@@ -38,6 +38,7 @@ const datePrecisions = new Set([
   "unknown",
 ]);
 const statuses = new Set(["active", "hidden", "archived"]);
+const directoryVisibilities = new Set(["listed", "nested_only"]);
 const associationKinds = {
   event: new Set(["direct", "route_stop", "context", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
@@ -355,6 +356,9 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
               : cleanEntityId(value.parentEntityId, "parentEntityId"),
         }
       : {}),
+    ...(value.directoryVisibility !== undefined
+      ? { directoryVisibility: String(value.directoryVisibility).trim() }
+      : {}),
     ...(value.status !== undefined
       ? { status: String(value.status).trim() }
       : {}),
@@ -368,6 +372,27 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
   }
   if (requested.status && !statuses.has(requested.status)) {
     throw typedError("status is unsupported", 400, "CONTEXT_STATUS_INVALID");
+  }
+  if (
+    requested.directoryVisibility &&
+    !directoryVisibilities.has(requested.directoryVisibility)
+  ) {
+    throw typedError(
+      "directoryVisibility is unsupported",
+      400,
+      "CONTEXT_DIRECTORY_VISIBILITY_INVALID",
+    );
+  }
+  if (
+    !partial &&
+    entityKind !== "place" &&
+    requested.directoryVisibility !== undefined
+  ) {
+    throw typedError(
+      "Only Places may change directory visibility",
+      400,
+      "CONTEXT_DIRECTORY_VISIBILITY_INVALID",
+    );
   }
   if (!partial) {
     requested.typeKind = cleanKind(entityKind, value.typeKind);
@@ -601,6 +626,7 @@ const entityStateSnapshot = (row, aliases) => ({
   datePrecision: row.date_precision,
   dateStart: projectDate(row.date_start),
   description: row.description || null,
+  directoryVisibility: row.directory_visibility || "listed",
   displayName: row.display_name,
   entityId: row.entity_id,
   entityKind: row.entity_kind,
@@ -634,6 +660,7 @@ const sourceAssetIdFor = (assetId, bridgeFields) => {
 const projectEntityRow = (row, { bridgeFields } = {}) => ({
   aliases: row.aliases || [],
   assetCount: Number(row.asset_count || 0),
+  childCount: Number(row.child_count || 0),
   coverAssetId: sourceAssetIdFor(
     row.effective_cover_asset_id ?? row.cover_asset_id,
     bridgeFields,
@@ -648,6 +675,8 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
   datePrecision: row.date_precision,
   dateStart: projectDate(row.date_start),
   description: row.description || null,
+  directAssetCount: Number(row.direct_asset_count ?? row.asset_count ?? 0),
+  directoryVisibility: row.directory_visibility || "listed",
   displayName: row.display_name,
   entityId: row.entity_id,
   entityKind: row.entity_kind,
@@ -667,6 +696,7 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
     : {}),
   revision: Number(row.revision),
   status: row.status,
+  subtreeAssetCount: Number(row.subtree_asset_count ?? row.asset_count ?? 0),
   typeKind: row.place_kind || row.object_kind || row.event_kind,
   visibility: {
     decisionId: row.entity_visibility_decision_id || null,
@@ -715,6 +745,29 @@ const loadEntities = async (
       coalesce((SELECT count(*)::int FROM current_context_asset link
         WHERE link.entity_id = entity.entity_id
           AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}), 0)::int AS asset_count,
+      coalesce((SELECT count(*)::int FROM context_entity child
+        WHERE child.parent_entity_id = entity.entity_id
+          AND child.status = 'active'
+          AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}), 0)::int AS child_count,
+      CASE WHEN entity.entity_kind = 'place' THEN coalesce((
+        WITH RECURSIVE descendants(entity_id) AS (
+          SELECT entity.entity_id
+          UNION ALL
+          SELECT child.entity_id
+          FROM context_entity child
+          JOIN descendants parent ON child.parent_entity_id = parent.entity_id
+          WHERE child.entity_kind = 'place' AND child.status = 'active'
+            AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}
+        )
+        SELECT count(DISTINCT link.asset_id)::int
+        FROM descendants place
+        JOIN current_context_asset link ON link.entity_id = place.entity_id
+        JOIN asset ON asset.asset_id = link.asset_id AND asset.state = 'active'
+        WHERE cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
+      ), 0)::int ELSE coalesce((SELECT count(*)::int FROM current_context_asset link
+        WHERE link.entity_id = entity.entity_id
+          AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}), 0)::int
+      END AS subtree_asset_count,
       entity.cover_asset_id AS selected_cover_asset_id,
       cover.asset_id AS effective_cover_asset_id,
       coalesce(preview.asset_ids, ARRAY[]::text[]) AS preview_asset_ids
@@ -790,6 +843,46 @@ const loadDetail = async (
       AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
     ORDER BY asset.capture_time DESC NULLS LAST, link.asset_id
   `;
+  const subtreeAssets =
+    entity.entity_kind === "place"
+      ? await executor`
+          WITH RECURSIVE place_tree(entity_id, branch_entity_id, depth) AS (
+            SELECT ${entity.entity_id}::text, NULL::text, 0
+            UNION ALL
+            SELECT child.entity_id,
+              CASE WHEN parent.depth = 0 THEN child.entity_id ELSE parent.branch_entity_id END,
+              parent.depth + 1
+            FROM context_entity child
+            JOIN place_tree parent ON child.parent_entity_id = parent.entity_id
+            WHERE child.entity_kind = 'place' AND child.status = 'active'
+              AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}
+          )
+          SELECT link.asset_id, asset.capture_time, asset.media_kind,
+            asset.mime_type, asset.width, asset.height,
+            max(link.created_at) AS linked_at,
+            max(link.link_id) FILTER (WHERE link.entity_id = ${entity.entity_id}) AS direct_link_id,
+            max(link.association_kind) FILTER (WHERE link.entity_id = ${entity.entity_id}) AS direct_association_kind,
+            array_agg(DISTINCT link.entity_id ORDER BY link.entity_id) AS assigned_entity_ids,
+            coalesce(array_agg(DISTINCT place.branch_entity_id ORDER BY place.branch_entity_id)
+              FILTER (WHERE place.branch_entity_id IS NOT NULL), ARRAY[]::text[]) AS branch_entity_ids
+          FROM place_tree place
+          JOIN current_context_asset link ON link.entity_id = place.entity_id
+          JOIN asset ON asset.asset_id = link.asset_id AND asset.state = 'active'
+          WHERE cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
+          GROUP BY link.asset_id, asset.capture_time, asset.media_kind,
+            asset.mime_type, asset.width, asset.height
+          ORDER BY asset.capture_time DESC NULLS LAST, link.asset_id
+        `
+      : [];
+  const [childSummary = { count: 0 }] =
+    entity.entity_kind === "place"
+      ? await executor`
+          SELECT count(*)::int AS count FROM context_entity child
+          WHERE child.parent_entity_id = ${entity.entity_id}
+            AND child.status = 'active'
+            AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}
+        `
+      : [];
   const relations = await executor`
     SELECT link.link_id, link.target_kind, link.target_id, link.relation_kind,
       link.created_at,
@@ -813,6 +906,21 @@ const loadDetail = async (
     ORDER BY link.relation_kind, lower(coalesce(subject.display_name, target.display_name, '')),
       link.target_id
   `;
+  const projectedSubtreeAssets = subtreeAssets.map((row) => ({
+    assetId: row.asset_id,
+    assignedEntityIds: row.assigned_entity_ids || [],
+    associationId: row.direct_link_id || `place-rollup:${row.asset_id}`,
+    associationKind: row.direct_association_kind || "descendant",
+    branchEntityIds: row.branch_entity_ids || [],
+    captureTime: row.capture_time,
+    directlyAssigned: Boolean(row.direct_link_id),
+    height: row.height,
+    linkedAt: row.linked_at,
+    mediaKind: row.media_kind,
+    mimeType: row.mime_type,
+    ...bridgeFields(row.asset_id),
+    width: row.width,
+  }));
   return {
     assets: assets.map((row) => ({
       assetId: row.asset_id,
@@ -835,6 +943,11 @@ const loadDetail = async (
           ...entity,
           aliases: aliases.map((row) => row.label),
           asset_count: assets.length,
+          child_count: Number(childSummary.count || 0),
+          subtree_asset_count:
+            entity.entity_kind === "place"
+              ? projectedSubtreeAssets.length
+              : assets.length,
           effective_cover_asset_id:
             selected?.asset_id || assets[0]?.asset_id || null,
           selected_cover_asset_id: selected?.asset_id || null,
@@ -851,6 +964,9 @@ const loadDetail = async (
       targetName: row.target_name || "",
     })),
     schemaVersion,
+    ...(entity.entity_kind === "place"
+      ? { subtreeAssets: projectedSubtreeAssets }
+      : {}),
   };
 };
 
@@ -1191,11 +1307,21 @@ export const createContextEntityStore = (
           null,
           presentationRank,
         );
+        if (
+          requested.directoryVisibility === "nested_only" &&
+          !requested.parentEntityId
+        ) {
+          throw typedError(
+            "A Place shown only inside its parent must have a parent Place",
+            400,
+            "CONTEXT_DIRECTORY_PARENT_REQUIRED",
+          );
+        }
         await tx`
           INSERT INTO context_entity (
             entity_id, entity_kind, place_kind, object_kind, event_kind,
             display_name, description, date_start, date_end, date_precision,
-            geometry, parent_entity_id, status
+            geometry, parent_entity_id, status, directory_visibility
           ) VALUES (
             ${entityId}, ${requested.entityKind},
             ${requested.entityKind === "place" ? requested.typeKind : null},
@@ -1205,7 +1331,8 @@ export const createContextEntityStore = (
             ${requested.dateStart || null}, ${requested.dateEnd || null},
             ${requested.datePrecision},
             ${requested.geometry ? tx.json(requested.geometry) : null},
-            ${requested.parentEntityId || null}, ${requested.status || "active"}
+            ${requested.parentEntityId || null}, ${requested.status || "active"},
+            ${requested.entityKind === "place" ? requested.directoryVisibility || "listed" : "listed"}
           )
         `;
         await applyAliases(tx, entityId, requested.aliases || []);
@@ -1302,6 +1429,16 @@ export const createContextEntityStore = (
             "CONTEXT_UPDATE_STALE",
           );
         }
+        if (
+          current.entity_kind !== "place" &&
+          requested.directoryVisibility !== undefined
+        ) {
+          throw typedError(
+            "Only Places may change directory visibility",
+            400,
+            "CONTEXT_DIRECTORY_VISIBILITY_INVALID",
+          );
+        }
         const currentType =
           current.place_kind || current.object_kind || current.event_kind;
         const nextType =
@@ -1343,6 +1480,17 @@ export const createContextEntityStore = (
           current.entity_id,
           presentationRank,
         );
+        const nextDirectoryVisibility =
+          requested.directoryVisibility ??
+          current.directory_visibility ??
+          "listed";
+        if (nextDirectoryVisibility === "nested_only" && !nextParentId) {
+          throw typedError(
+            "A Place shown only inside its parent must have a parent Place",
+            400,
+            "CONTEXT_DIRECTORY_PARENT_REQUIRED",
+          );
+        }
         if (requested.status === "archived") {
           const [children] = await tx`
             SELECT count(*)::int AS count FROM context_entity
@@ -1371,6 +1519,7 @@ export const createContextEntityStore = (
           description: Object.hasOwn(requested, "description")
             ? requested.description
             : previousState.description,
+          directoryVisibility: nextDirectoryVisibility,
           displayName: requested.displayName ?? previousState.displayName,
           geometry: nextGeometry,
           parentEntityId: nextParentId || null,
@@ -1431,6 +1580,7 @@ export const createContextEntityStore = (
             geometry = ${nextGeometry ? tx.json(nextGeometry) : null},
             parent_entity_id = ${nextParentId},
             status = ${requested.status ?? current.status},
+            directory_visibility = ${nextDirectoryVisibility},
             revision = revision + 1, updated_at = now()
           WHERE entity_id = ${current.entity_id}
         `;
@@ -1833,6 +1983,229 @@ export const createContextEntityStore = (
   api.deleteObject = (input) =>
     deleteEntity({ ...input, entityKind: "object" });
 
+  api.assignPlaceAssetsToChild = ({
+    actorId,
+    assetIds,
+    childEntityId,
+    commandId,
+    entityId,
+  }) => {
+    const actor = cleanActor(actorId);
+    const parentId = cleanEntityId(entityId);
+    const childId = cleanEntityId(childEntityId, "childEntityId");
+    const ids = cleanIds(assetIds, "CONTEXT_PLACE_ASSIGNMENT_INVALID");
+    if (!parentId.startsWith("place_") || !childId.startsWith("place_")) {
+      throw typedError(
+        "Place assignment requires Place IDs",
+        400,
+        "CONTEXT_PLACE_ASSIGNMENT_INVALID",
+      );
+    }
+    return sql.begin(async (tx) => {
+      const command = await beginCommand(tx, {
+        actorId: actor,
+        commandId,
+        commandKind: "place_assignment",
+        payload: { assetIds: ids, childEntityId: childId, entityId: parentId },
+      });
+      if (command.replay) {
+        return refreshReplay(tx, command.replay, {
+          bridgeFields,
+          presentationRank,
+        });
+      }
+      const parent = await requireEntity(tx, parentId, {
+        entityKind: "place",
+        lock: true,
+        presentationRank,
+        requireVisible: true,
+      });
+      const child = await requireEntity(tx, childId, {
+        entityKind: "place",
+        lock: true,
+        presentationRank,
+        requireVisible: true,
+      });
+      if (child.parent_entity_id !== parent.entity_id) {
+        throw typedError(
+          "The destination must be an immediate subsection of this Place",
+          409,
+          "CONTEXT_PLACE_ASSIGNMENT_CHILD_INVALID",
+        );
+      }
+      const found = await tx`
+        SELECT asset_id FROM asset
+        WHERE asset_id = ANY(${ids}) AND state = 'active'
+        ORDER BY asset_id FOR UPDATE
+      `;
+      if (found.length !== ids.length) {
+        const foundIds = new Set(found.map((row) => row.asset_id));
+        throw typedError(
+          "One or more active assets were not found",
+          404,
+          "CONTEXT_ASSET_NOT_FOUND",
+          { missingAssetIds: ids.filter((id) => !foundIds.has(id)) },
+        );
+      }
+      const parentRows = await tx`
+        SELECT link_id, asset_id, association_kind, state
+        FROM context_asset_link
+        WHERE entity_id = ${parent.entity_id} AND asset_id = ANY(${ids})
+          AND state IN ('accepted','rejected')
+        ORDER BY asset_id FOR UPDATE
+      `;
+      const parentByAssetId = new Map(
+        parentRows.map((row) => [row.asset_id, row]),
+      );
+      const notDirect = ids.filter(
+        (assetId) => parentByAssetId.get(assetId)?.state !== "accepted",
+      );
+      const descendantRows = await tx`
+        WITH RECURSIVE descendants(entity_id) AS (
+          SELECT entity_id FROM context_entity
+          WHERE parent_entity_id = ${parent.entity_id}
+            AND entity_kind = 'place' AND status = 'active'
+          UNION ALL
+          SELECT child_place.entity_id
+          FROM context_entity child_place
+          JOIN descendants parent_place
+            ON child_place.parent_entity_id = parent_place.entity_id
+          WHERE child_place.entity_kind = 'place' AND child_place.status = 'active'
+        )
+        SELECT DISTINCT link.asset_id
+        FROM descendants place
+        JOIN current_context_asset link ON link.entity_id = place.entity_id
+        WHERE link.asset_id = ANY(${ids})
+        ORDER BY link.asset_id
+      `;
+      const alreadyAssigned = descendantRows.map((row) => row.asset_id);
+      if (notDirect.length || alreadyAssigned.length) {
+        throw typedError(
+          "Only photos currently unassigned within this Place may move to a subsection",
+          409,
+          "CONTEXT_PLACE_ASSIGNMENT_NOT_UNASSIGNED",
+          {
+            alreadyAssignedAssetIds: alreadyAssigned,
+            notDirectAssetIds: notDirect,
+          },
+        );
+      }
+      const childRows = await tx`
+        SELECT link_id, asset_id, association_kind, state
+        FROM context_asset_link
+        WHERE entity_id = ${child.entity_id} AND asset_id = ANY(${ids})
+          AND state IN ('accepted','rejected')
+        ORDER BY asset_id FOR UPDATE
+      `;
+      const childByAssetId = new Map(
+        childRows.map((row) => [row.asset_id, row]),
+      );
+      const decisionId = await createDecision(tx, {
+        action: "update",
+        actorId: actor,
+        entityId: parent.entity_id,
+        note: `Assign ${ids.length} Place asset(s) to ${child.display_name}`,
+        reasonCode: "context_place_subsection_assignment",
+        subjectType: "context_asset",
+      });
+      const snapshot = [];
+      for (const assetId of ids) {
+        const parentLink = parentByAssetId.get(assetId);
+        const childLink = childByAssetId.get(assetId);
+        await tx`
+          UPDATE context_asset_link SET state = 'superseded'
+          WHERE link_id = ${parentLink.link_id}
+        `;
+        const parentCreatedLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
+        await tx`
+          INSERT INTO context_asset_link (
+            link_id, entity_id, asset_id, association_kind, state, decision_id,
+            supersedes_link_id
+          ) VALUES (
+            ${parentCreatedLinkId}, ${parent.entity_id}, ${assetId},
+            ${parentLink.association_kind}, 'rejected', ${decisionId},
+            ${parentLink.link_id}
+          )
+        `;
+        if (childLink) {
+          await tx`
+            UPDATE context_asset_link SET state = 'superseded'
+            WHERE link_id = ${childLink.link_id}
+          `;
+        }
+        const childCreatedLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
+        await tx`
+          INSERT INTO context_asset_link (
+            link_id, entity_id, asset_id, association_kind, state, decision_id,
+            supersedes_link_id
+          ) VALUES (
+            ${childCreatedLinkId}, ${child.entity_id}, ${assetId}, 'manual',
+            'accepted', ${decisionId}, ${childLink?.link_id || null}
+          )
+        `;
+        snapshot.push({
+          assetId,
+          childCreatedLinkId,
+          childEntityId: child.entity_id,
+          childPreviousAssociationKind: childLink?.association_kind || null,
+          childPreviousLinkId: childLink?.link_id || null,
+          childPreviousState: childLink?.state || null,
+          parentCreatedLinkId,
+          parentPreviousAssociationKind: parentLink.association_kind,
+          parentPreviousCoverAssetId:
+            parent.cover_asset_id === assetId ? assetId : null,
+          parentPreviousLinkId: parentLink.link_id,
+          parentPreviousState: parentLink.state,
+        });
+      }
+      await tx`
+        UPDATE context_entity SET
+          cover_asset_id = CASE WHEN cover_asset_id = ANY(${ids}) THEN NULL ELSE cover_asset_id END,
+          revision = revision + 1, updated_at = now()
+        WHERE entity_id = ${parent.entity_id}
+      `;
+      await tx`
+        UPDATE context_entity SET revision = revision + 1, updated_at = now()
+        WHERE entity_id = ${child.entity_id}
+      `;
+      const operationId = `contextop_${randomUUID().replaceAll("-", "")}`;
+      const detail = await loadDetail(tx, {
+        bridgeFields,
+        entityId: parent.entity_id,
+        entityKind: "place",
+        presentationRank,
+      });
+      const response = {
+        changedAssetIds: ids,
+        childEntityId: child.entity_id,
+        commandId: command.commandId,
+        decisionId,
+        detail,
+        replayed: false,
+        schemaVersion,
+        status: "applied",
+        undo: { eligible: true, token: decisionId },
+      };
+      await completeCommand(tx, {
+        actorId: actor,
+        command,
+        commandKind: "place_assignment",
+        decisionId,
+        response,
+      });
+      await tx`
+        INSERT INTO context_operation (
+          operation_id, command_id, entity_id, operation_scope, action,
+          decision_id, state, snapshot
+        ) VALUES (
+          ${operationId}, ${command.commandId}, ${parent.entity_id},
+          'place_assignment', 'assign', ${decisionId}, 'active', ${tx.json(snapshot)}
+        )
+      `;
+      return response;
+    });
+  };
+
   const modifyAssets = async ({
     actorId,
     assetIds,
@@ -2208,6 +2581,7 @@ export const createContextEntityStore = (
         requireVisible: true,
       });
       const snapshot = operation.snapshot || [];
+      let assignmentChild = null;
       if (operation.operation_scope === "entity") {
         const [item] = snapshot;
         if (
@@ -2307,6 +2681,61 @@ export const createContextEntityStore = (
             );
           }
         }
+      } else if (operation.operation_scope === "place_assignment") {
+        const childIds = new Set(snapshot.map((item) => item.childEntityId));
+        if (
+          operation.action !== "assign" ||
+          snapshot.length < 1 ||
+          childIds.size !== 1
+        ) {
+          throw typedError(
+            "Place assignment undo snapshot is invalid",
+            409,
+            "CONTEXT_UNDO_NOT_AVAILABLE",
+          );
+        }
+        [assignmentChild] = await tx`
+          SELECT * FROM context_entity
+          WHERE entity_id = ${snapshot[0].childEntityId}
+            AND entity_kind = 'place' AND status IN ('active','hidden')
+            AND cimmich_visibility_context_entity_rank(entity_id) <= ${presentationRank()}
+          FOR UPDATE
+        `;
+        if (!assignmentChild) {
+          throw typedError(
+            "Place subsection is no longer available",
+            409,
+            "CONTEXT_UNDO_SUPERSEDED",
+          );
+        }
+        for (const item of snapshot) {
+          const rows = await tx`
+            SELECT link_id FROM context_asset_link
+            WHERE ((link_id = ${item.parentCreatedLinkId}
+                  AND entity_id = ${entity.entity_id})
+                OR (link_id = ${item.childCreatedLinkId}
+                  AND entity_id = ${assignmentChild.entity_id}))
+              AND state IN ('accepted','rejected')
+            ORDER BY link_id FOR UPDATE
+          `;
+          if (rows.length !== 2) {
+            throw typedError(
+              "Place assignment changed after this decision",
+              409,
+              "CONTEXT_UNDO_SUPERSEDED",
+            );
+          }
+          if (
+            item.parentPreviousCoverAssetId &&
+            entity.cover_asset_id !== null
+          ) {
+            throw typedError(
+              "Place cover changed after this assignment",
+              409,
+              "CONTEXT_UNDO_SUPERSEDED",
+            );
+          }
+        }
       } else {
         for (const item of snapshot) {
           const rows =
@@ -2344,7 +2773,9 @@ export const createContextEntityStore = (
               : `Undo ${entityLabels[entity.entity_kind]} update`
             : operation.operation_scope === "cover"
               ? `Undo ${entityLabels[entity.entity_kind]} cover`
-              : "Undo context association",
+              : operation.operation_scope === "place_assignment"
+                ? "Undo Place subsection assignment"
+                : "Undo context association",
         reasonCode:
           operation.operation_scope === "entity"
             ? operation.action === "create"
@@ -2352,17 +2783,50 @@ export const createContextEntityStore = (
               : "context_manual_update_undo"
             : operation.operation_scope === "cover"
               ? `context_${entity.entity_kind}_cover_undo`
-              : "context_manual_undo",
-        subjectType:
-          operation.operation_scope === "asset"
-            ? "context_asset"
-            : operation.operation_scope === "relation"
-              ? "context_relation"
-              : "context_entity",
+              : operation.operation_scope === "place_assignment"
+                ? "context_place_subsection_assignment_undo"
+                : "context_manual_undo",
+        subjectType: ["asset", "place_assignment"].includes(
+          operation.operation_scope,
+        )
+          ? "context_asset"
+          : operation.operation_scope === "relation"
+            ? "context_relation"
+            : "context_entity",
         supersedes: operation.decision_id,
       });
       for (const item of snapshot) {
-        if (operation.operation_scope === "asset") {
+        if (operation.operation_scope === "place_assignment") {
+          await tx`
+            UPDATE context_asset_link SET state = 'superseded'
+            WHERE link_id IN (${item.parentCreatedLinkId}, ${item.childCreatedLinkId})
+          `;
+          await tx`
+            INSERT INTO context_asset_link (
+              link_id, entity_id, asset_id, association_kind, state, decision_id,
+              supersedes_link_id
+            ) VALUES (
+              ${`contextasset_${randomUUID().replaceAll("-", "")}`},
+              ${entity.entity_id}, ${item.assetId},
+              ${item.parentPreviousAssociationKind || "manual"},
+              ${item.parentPreviousState === "accepted" ? "accepted" : "rejected"},
+              ${undoDecisionId}, ${item.parentCreatedLinkId}
+            ), (
+              ${`contextasset_${randomUUID().replaceAll("-", "")}`},
+              ${assignmentChild.entity_id}, ${item.assetId},
+              ${item.childPreviousAssociationKind || "manual"},
+              ${item.childPreviousState === "accepted" ? "accepted" : "rejected"},
+              ${undoDecisionId}, ${item.childCreatedLinkId}
+            )
+          `;
+          if (item.parentPreviousCoverAssetId) {
+            await tx`
+              UPDATE context_entity
+              SET cover_asset_id = ${item.parentPreviousCoverAssetId}
+              WHERE entity_id = ${entity.entity_id}
+            `;
+          }
+        } else if (operation.operation_scope === "asset") {
           await tx`UPDATE context_asset_link SET state = 'superseded' WHERE link_id = ${item.createdLinkId}`;
           await tx`
             INSERT INTO context_asset_link (
@@ -2421,6 +2885,7 @@ export const createContextEntityStore = (
               geometry = ${item.previous.geometry ? tx.json(item.previous.geometry) : null},
               parent_entity_id = ${item.previous.parentEntityId},
               status = ${item.previous.status},
+              directory_visibility = ${item.previous.directoryVisibility || "listed"},
               cover_asset_id = ${item.previous.coverAssetId}
             WHERE entity_id = ${entity.entity_id}
           `;
@@ -2432,12 +2897,15 @@ export const createContextEntityStore = (
           undo_decision_id = ${undoDecisionId}, reverted_at = now()
         WHERE operation_id = ${operation.operation_id}
       `;
-      if (
-        !(
-          operation.operation_scope === "entity" &&
-          operation.action === "create"
-        )
-      ) {
+      if (assignmentChild) {
+        await tx`
+          UPDATE context_entity SET revision = revision + 1, updated_at = now()
+          WHERE entity_id = ${assignmentChild.entity_id}
+        `;
+      }
+      if (!(
+        operation.operation_scope === "entity" && operation.action === "create"
+      )) {
         await tx`
           UPDATE context_entity SET revision = revision + 1, updated_at = now()
           WHERE entity_id = ${entity.entity_id}
@@ -2485,6 +2953,7 @@ export const contextEntityContract = Object.freeze({
     Object.entries(associationKinds).map(([key, values]) => [key, [...values]]),
   ),
   datePrecisions: [...datePrecisions],
+  directoryVisibilities: [...directoryVisibilities],
   entityKinds: [...entityKinds],
   eventCoverSchemaVersion,
   objectCoverSchemaVersion,

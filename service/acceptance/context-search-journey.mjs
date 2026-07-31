@@ -40,12 +40,21 @@ const assertPersisted = async () => {
   assert.equal(trip.coverMode, "explicit");
   assert.equal(beach.typeKind, "point");
   assert.deepEqual(beach.aliases, ["Greek beach"]);
-  assert.equal(beach.assetCount, 2);
+  assert.equal(beach.assetCount, 1);
+  assert.equal(beach.directAssetCount, 1);
+  assert.equal(beach.subtreeAssetCount, 2);
+  assert.equal(beach.childCount, 1);
   assert.equal(beach.coverAssetId, "source-identity-fixture");
   assert.equal(beach.coverMode, "explicit");
   const beachDetail = await request(`/v1/places/${beach.entityId}`);
   assert.equal(beachDetail.entity.coverAssetId, "source-identity-fixture");
   assert.equal(beachDetail.entity.coverMode, "explicit");
+  assert.equal(beachDetail.subtreeAssets.length, 2);
+  const yard = await byName("places", "Synthetic beach yard");
+  assert.ok(yard);
+  assert.equal(yard.parentEntityId, beach.entityId);
+  assert.equal(yard.directoryVisibility, "nested_only");
+  assert.equal(yard.assetCount, 1);
   assert.equal(car.assetCount, 2);
   assert.equal(car.coverAssetId, "source-identity-fixture");
   assert.equal(car.coverMode, "explicit");
@@ -116,6 +125,13 @@ if (phase === "write" || phase === "all") {
     typeKind: "point",
   });
   const beach = beachCreated.detail.entity;
+  const yardCreated = await create("places", "context.create.beach-yard01", {
+    directoryVisibility: "nested_only",
+    displayName: "Synthetic beach yard",
+    parentEntityId: beach.entityId,
+    typeKind: "unlocated",
+  });
+  const yard = yardCreated.detail.entity;
   await create("places", "context.create.area-00001", {
     displayName: "Synthetic island area",
     geometry: { east: 151.3, north: -33.7, south: -34, west: 151 },
@@ -296,6 +312,61 @@ if (phase === "write" || phase === "all") {
     "source-identity-fixture",
   );
   assert.equal(detachUndone.detail.entity.coverMode, "explicit");
+
+  const assignmentBody = {
+    assetIds: ["asset_service_fixture"],
+    childEntityId: yard.entityId,
+    commandId: "context.place.assign-yard01",
+  };
+  const assigned = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    { body: assignmentBody, method: "POST" },
+  );
+  assert.equal(assigned.status, "applied");
+  assert.deepEqual(assigned.changedAssetIds, ["asset_service_fixture"]);
+  assert.equal(assigned.detail.entity.assetCount, 1);
+  assert.equal(assigned.detail.entity.subtreeAssetCount, 2);
+  assert.equal(assigned.detail.subtreeAssets.length, 2);
+  assert.equal(
+    assigned.detail.subtreeAssets.find(
+      (asset) => asset.assetId === "asset_service_fixture",
+    ).directlyAssigned,
+    false,
+  );
+  const assignmentReplay = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    { body: assignmentBody, method: "POST" },
+  );
+  assert.equal(assignmentReplay.replayed, true);
+  const assignmentConflict = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    {
+      body: { ...assignmentBody, assetIds: ["asset_identity_fixture"] },
+      method: "POST",
+      status: 409,
+    },
+  );
+  assert.equal(assignmentConflict.code, "CONTEXT_COMMAND_CONFLICT");
+  const assignmentUndone = await request(
+    `/v1/context/decisions/${assigned.decisionId}/undo`,
+    {
+      body: { commandId: "context.place.assign-yard-undo01" },
+      method: "POST",
+    },
+  );
+  assert.equal(assignmentUndone.detail.entity.assetCount, 2);
+  assert.equal((await request(`/v1/places/${yard.entityId}`)).assets.length, 0);
+  const reassigned = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    {
+      body: {
+        ...assignmentBody,
+        commandId: "context.place.assign-yard02",
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(reassigned.detail.entity.subtreeAssetCount, 2);
 
   await request(`/v1/objects/${car.entityId}/assets:attach`, {
     body: {

@@ -147,6 +147,28 @@ test("schema 107 indexes the media pipeline detection-job dependency", async () 
   assert.match(source, /WHERE detection_job_id IS NOT NULL/);
 });
 
+test("schema 108 separates Place directory placement and assignment operations", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0108_place_hierarchy_directory_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /directory_visibility/);
+  assert.match(source, /'listed','nested_only'/);
+  assert.match(source, /context_command_command_kind_check/);
+  assert.match(source, /place_assignment/);
+  assert.match(
+    source,
+    /CREATE OR REPLACE FUNCTION cimmich_visibility_context_entity_rank/,
+  );
+  assert.match(source, /WITH RECURSIVE lineage/);
+  assert.match(source, /'assign'/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

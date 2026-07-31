@@ -48,6 +48,7 @@
     // copied. The owner supplies the href because it depends on the current URL.
     entityHref: (entity: CimmichContextEntity) => string;
     family: CimmichContextFamily;
+    includeNestedPlaces?: boolean;
     onAdd: () => void;
     onPlacesChanged?: () => Promise<void> | void;
     // Still needed for the atlas view, where a map marker is not an anchor.
@@ -59,6 +60,7 @@
     entities,
     entityHref,
     family,
+    includeNestedPlaces = false,
     onAdd,
     onOpen,
     onPlacesChanged = () => {},
@@ -70,9 +72,16 @@
   let placeSortMode = $state<'name' | 'photos-asc' | 'photos-desc'>('name');
 
   const effectiveTypeFilter = $derived(controlledTypeFilter ?? activeTypeFilter);
+  const directoryEntities = $derived(
+    family === 'places' && !includeNestedPlaces
+      ? entities.filter((entity) => entity.directoryVisibility !== 'nested_only')
+      : entities,
+  );
   const filteredEntities = $derived(
     sortContextEntities(
-      effectiveTypeFilter === 'all' ? entities : entities.filter((entity) => entity.typeKind === effectiveTypeFilter),
+      effectiveTypeFilter === 'all'
+        ? directoryEntities
+        : directoryEntities.filter((entity) => entity.typeKind === effectiveTypeFilter),
       family,
     ),
   );
@@ -81,13 +90,15 @@
 
   const sortPlaceDirectoryItems = (items: CimmichContextEntity[]) =>
     [...items].sort((left, right) => {
+      const leftCount = left.subtreeAssetCount ?? left.assetCount;
+      const rightCount = right.subtreeAssetCount ?? right.assetCount;
       if (placeSortMode === 'photos-desc') {
-        return right.assetCount - left.assetCount || left.displayName.localeCompare(right.displayName);
+        return rightCount - leftCount || left.displayName.localeCompare(right.displayName);
       }
       if (placeSortMode === 'photos-asc') {
-        return left.assetCount - right.assetCount || left.displayName.localeCompare(right.displayName);
+        return leftCount - rightCount || left.displayName.localeCompare(right.displayName);
       }
-      return left.displayName.localeCompare(right.displayName) || right.assetCount - left.assetCount;
+      return left.displayName.localeCompare(right.displayName) || rightCount - leftCount;
     });
 
   const placeCountry = (entity: CimmichContextEntity) => {
@@ -312,7 +323,7 @@
                   {hierarchy.length > 1 ? hierarchy.slice(0, -1).join(' / ') : contextTypeDescription(entity.typeKind)}
                 </span>
               </span>
-              <span class="text-xs text-gray-500">{entity.assetCount}</span>
+              <span class="text-xs text-gray-500">{entity.subtreeAssetCount ?? entity.assetCount}</span>
             </a>
           {/each}
         </div>
@@ -438,9 +449,12 @@
                       <div class="mt-1 flex min-w-0 items-center gap-2 text-xs text-gray-500">
                         <span class="whitespace-nowrap"
                           ><Icon class="inline" icon={mdiCameraOutline} size="14" />
-                          {entity.assetCount}
-                          {entity.assetCount === 1 ? 'photo' : 'photos'}</span
+                          {entity.subtreeAssetCount ?? entity.assetCount}
+                          {(entity.subtreeAssetCount ?? entity.assetCount) === 1 ? 'photo' : 'photos'}</span
                         >
+                        {#if (entity.childCount ?? 0) > 0}<span aria-hidden="true">·</span><span class="truncate"
+                            >{entity.childCount} {entity.childCount === 1 ? 'subplace' : 'subplaces'}</span
+                          >{/if}
                         {#if formatContextDatePrecision(entity)}<span aria-hidden="true">·</span><span class="truncate"
                             >{formatContextDatePrecision(entity)}</span
                           >{/if}

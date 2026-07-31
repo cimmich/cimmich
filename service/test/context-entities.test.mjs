@@ -94,18 +94,32 @@ test("Event collection projection bounds visible Main previews in the list query
 });
 
 test("Non-Event and detail projections do not gain the collection preview field", async () => {
-  const sql = async () => [
-    {
-      ...eventRow,
-      entity_id: "place_00000000000000000000000000000000",
-      entity_kind: "place",
-      event_kind: null,
-      place_kind: "unlocated",
-    },
-  ];
+  let query = "";
+  const sql = async (strings) => {
+    query = strings.join("?");
+    return [
+      {
+        ...eventRow,
+        entity_id: "place_00000000000000000000000000000000",
+        entity_kind: "place",
+        event_kind: null,
+        place_kind: "unlocated",
+        child_count: 2,
+        direct_asset_count: 8,
+        directory_visibility: "nested_only",
+        subtree_asset_count: 15,
+      },
+    ];
+  };
   const store = createContextEntityStore(sql);
   const items = await store.list({ entityKind: "place" });
   assert.equal(Object.hasOwn(items[0], "previewAssetIds"), false);
+  assert.equal(items[0].assetCount, 8);
+  assert.equal(items[0].childCount, 2);
+  assert.equal(items[0].directoryVisibility, "nested_only");
+  assert.equal(items[0].subtreeAssetCount, 15);
+  assert.match(query, /WITH RECURSIVE descendants/);
+  assert.match(query, /count\(DISTINCT link\.asset_id\)/);
 });
 
 test("Event cover authority has a dedicated versioned result contract", () => {
@@ -113,4 +127,11 @@ test("Event cover authority has a dedicated versioned result contract", () => {
     contextEntityContract.eventCoverSchemaVersion,
     "cimmich.event-cover.v1",
   );
+});
+
+test("Place directory visibility is a closed contract", () => {
+  assert.deepEqual(contextEntityContract.directoryVisibilities, [
+    "listed",
+    "nested_only",
+  ]);
 });
