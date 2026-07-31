@@ -2,10 +2,15 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
+  import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichSectionHeader from '$lib/components/cimmich/CimmichSectionHeader.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import { filterVisibleCimmichAssets } from '$lib/components/cimmich/asset-picker-visibility';
+  import {
+    ENTITY_MEDIA_SELECTION_LIMIT,
+    type CimmichEntityMediaItem,
+  } from '$lib/components/cimmich/entity-media-actions';
   import {
     getPetPresentation,
     getPetCollectionHref,
@@ -73,6 +78,7 @@
     mdiPencilOutline,
     mdiPlus,
     mdiShieldCheckOutline,
+    mdiSelectAll,
     mdiSortAlphabeticalAscending,
     mdiSortAlphabeticalDescending,
     mdiSortNumericAscending,
@@ -93,6 +99,7 @@
     Select,
     Textarea,
     Tooltip,
+    toastManager,
     type ActionItem,
   } from '@immich/ui';
   import { SvelteSet } from 'svelte/reactivity';
@@ -146,6 +153,8 @@
   let displayTab = $state<HTMLButtonElement | null>(null);
   let documentsTab = $state<HTMLButtonElement | null>(null);
   let petMedia = $state<CimmichPetMedia[]>([]);
+  let petMediaSelectionMode = $state(false);
+  let selectedPetMediaIds = $state<string[]>([]);
   let petMatchError = $state<CimmichServiceError | null>(null);
   let petMatches = $state<CimmichPetMatchSuggestion[]>([]);
   let petMatchesLoaded = $state(false);
@@ -297,6 +306,15 @@
   const photoTimeframe = $derived(getPetMediaTimeframe(petMedia));
   const selectablePetPresentationMedia = $derived(
     petMedia.filter((item) => Boolean(item.pet_face || item.pet_body) || item.association_types.includes('presence')),
+  );
+  const selectedPetMediaItems = $derived<CimmichEntityMediaItem[]>(
+    petMedia
+      .filter((item) => selectedPetMediaIds.includes(item.asset_id))
+      .map((item) => ({
+        assetId: item.asset_id,
+        filename: item.filename,
+        sourceAssetId: item.sourceAssetId,
+      })),
   );
 
   const parseLabels = (value: string) =>
@@ -662,6 +680,8 @@
         (name ? nextPets.find((pet) => pet.displayName.trim().toLocaleLowerCase() === name) : undefined) ||
         null;
       selectedPet = nextSelectedPet;
+      petMediaSelectionMode = false;
+      selectedPetMediaIds = [];
       return nextSelectedPet;
     } catch (error_) {
       if (generation !== petsLoadGeneration) {
@@ -704,6 +724,33 @@
       if (generation === mediaLoadGeneration) {
         mediaLoaded = true;
       }
+    }
+  };
+
+  const petMediaSelected = (assetId: string) => selectedPetMediaIds.includes(assetId);
+
+  const togglePetMediaSelection = (assetId: string) => {
+    if (petMediaSelected(assetId)) {
+      selectedPetMediaIds = selectedPetMediaIds.filter((id) => id !== assetId);
+      return;
+    }
+    if (selectedPetMediaIds.length >= ENTITY_MEDIA_SELECTION_LIMIT) {
+      toastManager.warning(`Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos. Apply or clear this selection first.`);
+      return;
+    }
+    selectedPetMediaIds = [...selectedPetMediaIds, assetId];
+  };
+
+  const selectShownPetMedia = () => {
+    selectedPetMediaIds = petMedia.slice(0, ENTITY_MEDIA_SELECTION_LIMIT).map(({ asset_id }) => asset_id);
+    if (petMedia.length > ENTITY_MEDIA_SELECTION_LIMIT) {
+      toastManager.warning(`Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos selected. Apply these before continuing.`);
+    }
+  };
+
+  const refreshSelectedPetMedia = async () => {
+    if (selectedPet) {
+      await loadMedia(selectedPet);
     }
   };
 
@@ -1761,6 +1808,20 @@
               <div
                 class="flex shrink-0 items-center border-l border-gray-200 bg-white pl-2 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
               >
+                <button
+                  class="mr-1 inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  class:text-primary={petMediaSelectionMode}
+                  type="button"
+                  aria-label={petMediaSelectionMode ? 'Exit photo selection' : 'Select photos'}
+                  aria-pressed={petMediaSelectionMode}
+                  onclick={() => {
+                    petMediaSelectionMode = !petMediaSelectionMode;
+                    selectedPetMediaIds = [];
+                  }}
+                >
+                  <Icon icon={mdiSelectAll} size="19" />
+                  <span class="hidden sm:inline">{petMediaSelectionMode ? 'Done' : 'Select'}</span>
+                </button>
                 <label
                   class="relative mr-2 inline-flex size-10 cursor-pointer items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   title="Photo size"
@@ -1836,10 +1897,41 @@
                   {/snippet}
                 </CimmichStatePanel>
               {:else}
+                {#if petMediaSelectionMode}
+                  <div
+                    class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-immich-dark-gray"
+                  >
+                    <strong>{selectedPetMediaIds.length} selected</strong>
+                    <span class="mr-auto text-xs text-gray-500">Up to {ENTITY_MEDIA_SELECTION_LIMIT} photos.</span>
+                    <button
+                      class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-600"
+                      type="button"
+                      onclick={selectShownPetMedia}>Select shown</button
+                    >
+                    {#if selectedPetMediaIds.length > 0}<button
+                        class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-600"
+                        type="button"
+                        onclick={() => (selectedPetMediaIds = [])}>Clear</button
+                      >{/if}
+                  </div>
+                {/if}
+                <CimmichEntityMediaActions
+                  currentSubject={{
+                    displayName: selectedPet.displayName,
+                    subjectId: selectedPet.petId,
+                    subjectKind: 'pet',
+                  }}
+                  items={selectedPetMediaItems}
+                  onChanged={refreshSelectedPetMedia}
+                  onClear={() => (selectedPetMediaIds = [])}
+                  showControls={petMediaSelectionMode}
+                />
                 <div class={petPhotoGridClass(petPhotoSize)}>
                   {#each petMedia as item (item.asset_id)}
                     <article
                       class="group relative aspect-square overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-800"
+                      class:ring-4={petMediaSelected(item.asset_id)}
+                      class:ring-primary={petMediaSelected(item.asset_id)}
                     >
                       <a
                         class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
@@ -1863,6 +1955,18 @@
                           <span class="line-clamp-1">{formatCaptureDate(item.capture_time)}</span>
                         </span>
                       </a>
+                      {#if petMediaSelectionMode}
+                        <button
+                          class="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full border-2 border-white bg-black/55 text-white shadow-lg"
+                          class:bg-primary={petMediaSelected(item.asset_id)}
+                          type="button"
+                          aria-label={`${petMediaSelected(item.asset_id) ? 'Deselect' : 'Select'} ${item.filename}`}
+                          aria-pressed={petMediaSelected(item.asset_id)}
+                          onclick={() => togglePetMediaSelection(item.asset_id)}
+                        >
+                          {#if petMediaSelected(item.asset_id)}<Icon icon={mdiCheck} size="19" />{/if}
+                        </button>
+                      {/if}
                       {#if petPresentation?.face?.assetId === item.asset_id || petPresentation?.hero?.assetId === item.asset_id}
                         <span
                           class="pointer-events-none absolute top-2 left-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm"
@@ -1874,13 +1978,15 @@
                               : 'Hero'}</span
                         >
                       {/if}
-                      <ContextMenuButton
-                        class="absolute top-1 right-1 size-9 bg-black/60 text-white opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-black/80"
-                        items={getMediaActions(item)}
-                        position="top-right"
-                        aria-label={`Photo actions for ${formatCaptureDate(item.capture_time)}`}
-                        disabled={isMutating}
-                      />
+                      {#if !petMediaSelectionMode}
+                        <ContextMenuButton
+                          class="absolute top-1 right-1 size-9 bg-black/60 text-white opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-black/80"
+                          items={getMediaActions(item)}
+                          position="top-right"
+                          aria-label={`Photo actions for ${formatCaptureDate(item.capture_time)}`}
+                          disabled={isMutating}
+                        />
+                      {/if}
                     </article>
                   {/each}
                 </div>

@@ -6,6 +6,7 @@
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
   import CimmichPlaceCanvas from './CimmichPlaceCanvas.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
+  import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
@@ -45,6 +46,7 @@
     type CimmichAddressGeocodingResult,
     type CimmichContextRelation,
   } from '$lib/services/cimmich.service';
+  import { ENTITY_MEDIA_SELECTION_LIMIT, type CimmichEntityMediaItem } from './entity-media-actions';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getMapMarkers, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { Icon, toastManager } from '@immich/ui';
@@ -130,6 +132,7 @@
   let showAssetPicker = $state(false);
   let showRelationPicker = $state(false);
   let editorMode = $state<'create' | 'edit'>('create');
+  let editorIntent = $state<'edit' | 'move'>('edit');
   let editorTarget = $state<{ entityId: string; revision: number } | null>(null);
   let editorTypeChosen = $state(false);
   let isSaving = $state(false);
@@ -180,6 +183,7 @@
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
   let selectedPlaceAssetIds = $state<string[]>([]);
+  let mediaSelectionMode = $state(false);
   let placeBulkTargetChildId = $state('');
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
@@ -329,7 +333,17 @@
   const placeDetailAssetCount = $derived(
     activeFamily === 'places' ? (selected?.subtreeAssets?.length ?? selected?.assets.length ?? 0) : 0,
   );
-  const placeBulkSelectionLimit = 100;
+  const placeBulkSelectionLimit = ENTITY_MEDIA_SELECTION_LIMIT;
+  const selectedEntityMediaItems = $derived<CimmichEntityMediaItem[]>(
+    visibleDetailAssets
+      .filter((asset) => selectedPlaceAssetIds.includes(asset.assetId))
+      .map((asset) => ({
+        assetId: asset.assetId,
+        directlyAssigned: !('directlyAssigned' in asset) || asset.directlyAssigned === true,
+        filename: asset.filename,
+        sourceAssetId: asset.sourceAssetId,
+      })),
+  );
   const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
   type ContextDetailTab = 'connections' | 'documents' | 'map' | 'photos';
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
@@ -460,6 +474,7 @@
     eventMediaLane = 'main';
     placeMediaLane = 'all';
     selectedPlaceAssetIds = [];
+    mediaSelectionMode = false;
     error = null;
     try {
       const next = await getCimmichContextEntity(activeFamily, entity.entityId, {
@@ -586,6 +601,7 @@
 
   const openCreate = () => {
     editorMode = 'create';
+    editorIntent = 'edit';
     editorTarget = null;
     resetForm();
     editorTypeChosen = false;
@@ -593,7 +609,7 @@
     showEditor = true;
   };
 
-  const openEdit = () => {
+  const openEdit = (intent: 'edit' | 'move' = 'edit') => {
     if (!selected) {
       return;
     }
@@ -604,6 +620,7 @@
     }
     placeSearchGeneration += 1;
     editorMode = 'edit';
+    editorIntent = intent;
     editorTarget = { entityId: entity.entityId, revision: entity.revision };
     editorTypeChosen = true;
     formName = entity.displayName;
@@ -1279,6 +1296,12 @@
     mediaMenuAssetId = null;
   };
 
+  const selectEventMediaLane = (lane: typeof eventMediaLane) => {
+    eventMediaLane = lane;
+    selectedPlaceAssetIds = [];
+    mediaMenuAssetId = null;
+  };
+
   const placeAssetSelected = (assetId: string) => selectedPlaceAssetIds.includes(assetId);
 
   const togglePlaceAssetSelection = (assetId: string) => {
@@ -1288,7 +1311,7 @@
     }
     if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit) {
       toastManager.warning(
-        `Maximum ${placeBulkSelectionLimit} photos. Move or clear your current selection before choosing more.`,
+        `Maximum ${placeBulkSelectionLimit} photos. Apply or clear your current selection before choosing more.`,
       );
       return;
     }
@@ -1300,9 +1323,19 @@
     selectedPlaceAssetIds = shownAssetIds.slice(0, placeBulkSelectionLimit);
     if (shownAssetIds.length > placeBulkSelectionLimit) {
       toastManager.warning(
-        `Maximum ${placeBulkSelectionLimit} photos selected. Move these before selecting the remaining photos.`,
+        `Maximum ${placeBulkSelectionLimit} photos selected. Apply these before selecting the remaining photos.`,
       );
     }
+  };
+
+  const refreshSelectedDetail = async () => {
+    if (!selected) {
+      return;
+    }
+    const entityId = selected.entity.entityId;
+    const includeArchived = selected.entity.status === 'archived';
+    await loadEntities({ preserveCollection: true });
+    selected = await getCimmichContextEntity(activeFamily, entityId, { includeArchived });
   };
 
   const assignAssetsToPlaceChild = async (assetIds: string[], child: CimmichContextEntity) => {
@@ -1925,7 +1958,7 @@
         type="button"
         aria-label={`Edit ${selected.entity.displayName}`}
         title={`Edit ${selected.entity.displayName}`}
-        onclick={openEdit}
+        onclick={() => openEdit()}
       >
         <Icon icon={mdiPencilOutline} size="20" />
       </button>
@@ -1985,6 +2018,18 @@
           </div>
         </section>
       {/if}
+
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          class="context-secondary-button"
+          type="button"
+          aria-label={`Move ${selected.entity.displayName} in the Place hierarchy`}
+          onclick={() => openEdit('move')}
+        >
+          <Icon icon={mdiImageMove} size="18" /> Move this Place
+        </button>
+        <span class="text-xs text-gray-500 dark:text-gray-400">Changes the Place itself, not its photos.</span>
+      </div>
     {/if}
 
     <div class="context-profile-rail mt-6">
@@ -2019,6 +2064,19 @@
            the accessible name computation, so on a phone each of these announced
            as an unnamed button. The aria-label carries the name at every width. -->
       {#if activeDetailTab === 'photos'}
+        <button
+          class="context-secondary-button context-profile-action"
+          class:context-profile-action--active={mediaSelectionMode}
+          type="button"
+          aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}
+          aria-pressed={mediaSelectionMode}
+          onclick={() => {
+            mediaSelectionMode = !mediaSelectionMode;
+            selectedPlaceAssetIds = [];
+          }}
+        >
+          <Icon icon={mdiSelectAll} size="19" /> <span>{mediaSelectionMode ? 'Done' : 'Select'}</span>
+        </button>
         <button
           class="context-primary-button context-profile-action"
           type="button"
@@ -2062,7 +2120,7 @@
                 class:context-detail-lane--active={eventMediaLane === lane.value}
                 type="button"
                 aria-pressed={eventMediaLane === lane.value}
-                onclick={() => (eventMediaLane = lane.value as typeof eventMediaLane)}>{lane.label}</button
+                onclick={() => selectEventMediaLane(lane.value as typeof eventMediaLane)}>{lane.label}</button
               >
             {/each}
           </div>
@@ -2104,11 +2162,11 @@
             {/each}
           </div>
         {/if}
-        {#if entityKind === 'place' && placeMediaLane === 'unassigned' && selectedPlaceChildren.length > 0 && visibleDetailAssets.length > 0}
-          <div class="context-place-bulk-bar" aria-label="Organise unassigned photos">
+        {#if mediaSelectionMode && visibleDetailAssets.length > 0}
+          <div class="context-place-bulk-bar" aria-label="Select photos on this page">
             <div class="context-place-bulk-count">
               <strong>{selectedPlaceAssetIds.length} selected</strong>
-              <span>Choose up to {placeBulkSelectionLimit} photos to move together.</span>
+              <span>Choose up to {placeBulkSelectionLimit} photos for one exact action.</span>
             </div>
             <div class="context-place-bulk-actions">
               <button type="button" disabled={isSaving} onclick={selectShownPlaceAssets}>
@@ -2119,26 +2177,48 @@
                   disabled={isSaving}
                   onclick={() => (selectedPlaceAssetIds = [])}>Clear</button
                 >{/if}
-              <label>
-                <span class="sr-only">Move selected photos to</span>
-                <select bind:value={placeBulkTargetChildId} disabled={isSaving || selectedPlaceAssetIds.length === 0}>
-                  {#each selectedPlaceChildren as child (child.entityId)}
-                    <option value={child.entityId}>{child.displayName}</option>
-                  {/each}
-                </select>
-              </label>
-              <button
-                class="context-place-bulk-move"
-                type="button"
-                disabled={isSaving || selectedPlaceAssetIds.length === 0 || !placeBulkTargetChildId}
-                onclick={() => void assignSelectedPlaceAssets()}
-              >
-                <Icon icon={mdiImageMove} size="18" />
-                {isSaving ? 'Moving…' : `Move ${selectedPlaceAssetIds.length || ''}`}
-              </button>
             </div>
           </div>
+
+          {#if entityKind === 'place' && placeMediaLane === 'unassigned' && selectedPlaceChildren.length > 0 && selectedPlaceAssetIds.length > 0}
+            <div class="context-place-bulk-bar" aria-label="Move unassigned photos">
+              <div class="context-place-bulk-count">
+                <strong>Move within {selected.entity.displayName}</strong>
+                <span>Reassigns direct photos to one immediate child with one Undo.</span>
+              </div>
+              <div class="context-place-bulk-actions">
+                <label>
+                  <span class="sr-only">Destination subsection</span>
+                  <select bind:value={placeBulkTargetChildId} disabled={isSaving}>
+                    {#each selectedPlaceChildren as child (child.entityId)}
+                      <option value={child.entityId}>{child.displayName}</option>
+                    {/each}
+                  </select>
+                </label>
+                <button
+                  class="context-place-bulk-move"
+                  type="button"
+                  disabled={isSaving || !placeBulkTargetChildId}
+                  onclick={() => void assignSelectedPlaceAssets()}
+                >
+                  <Icon icon={mdiImageMove} size="18" />
+                  {isSaving ? 'Moving…' : `Move ${selectedPlaceAssetIds.length}`}
+                </button>
+              </div>
+            </div>
+          {/if}
         {/if}
+        <CimmichEntityMediaActions
+          currentScope={{
+            displayName: selected.entity.displayName,
+            entityId: selected.entity.entityId,
+            family: activeFamily,
+          }}
+          items={selectedEntityMediaItems}
+          onChanged={refreshSelectedDetail}
+          onClear={() => (selectedPlaceAssetIds = [])}
+          showControls={mediaSelectionMode}
+        />
         {#if (entityKind === 'place' ? placeDetailAssetCount : selected.assets.length) === 0}
           <div
             class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center dark:border-gray-700"
@@ -2160,7 +2240,7 @@
               {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
               <article
                 class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800"
-                class:context-place-photo--selected={entityKind === 'place' && placeAssetSelected(asset.assetId)}
+                class:context-place-photo--selected={placeAssetSelected(asset.assetId)}
               >
                 <a
                   class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
@@ -2178,7 +2258,7 @@
                     >{contextAssociationLabel(entityKind, asset.associationKind)}</span
                   >
                 </a>
-                {#if entityKind === 'place' && placeMediaLane === 'unassigned'}
+                {#if mediaSelectionMode}
                   <button
                     class="context-place-photo-select"
                     class:context-place-photo-select--active={placeAssetSelected(asset.assetId)}
@@ -2432,8 +2512,15 @@
         <div>
           <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">{entityNoun}</p>
           <h2 class="mt-1 text-2xl font-semibold" id="context-editor-title">
-            {editorMode === 'create' ? `New ${entityNoun}` : `Edit ${selected?.entity.displayName}`}
+            {editorMode === 'create'
+              ? `New ${entityNoun}`
+              : editorIntent === 'move'
+                ? `Move ${selected?.entity.displayName}`
+                : `Edit ${selected?.entity.displayName}`}
           </h2>
+          {#if editorMode === 'edit' && editorIntent === 'move'}
+            <p class="mt-1 text-sm text-gray-500">Choose its parent under “Inside”. Photos are not changed.</p>
+          {/if}
         </div>
         <button
           class="context-icon-button"

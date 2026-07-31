@@ -1,10 +1,15 @@
 <script lang="ts">
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
+  import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
+  import {
+    ENTITY_MEDIA_SELECTION_LIMIT,
+    type CimmichEntityMediaItem,
+  } from '$lib/components/cimmich/entity-media-actions';
   import {
     PERSON_CANDIDATE_SELECTION_LIMIT,
     selectPersonCandidates,
@@ -123,6 +128,7 @@
     mdiMapMarkerOutline,
     mdiPencilOutline,
     mdiShapeOutline,
+    mdiSelectAll,
     mdiSortVariant,
     mdiTagMultipleOutline,
     mdiViewGridOutline,
@@ -203,6 +209,8 @@
   let cimmichPhotoSize = $state<PersonPhotoSize>('medium');
   let cimmichPhotoSort = $state<PersonPhotoSort>('newest');
   let cimmichAssets = $state<CimmichPersonAsset[]>([]);
+  let cimmichPhotoSelectionMode = $state(false);
+  let cimmichSelectedPhotoIds = $state<string[]>([]);
   let cimmichAssetsLoadingMore = $state(false);
   let cimmichAssetsNextCursor = $state<string | null>(null);
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
@@ -270,6 +278,7 @@
   let cimmichLoadError = $state('');
   let cimmichMode = $state<CimmichPersonMode>('photos');
   let cimmichPerson = $state<CimmichPerson>();
+  let cimmichPhotoSelectionPersonId = '';
   let cimmichTabsCanScrollRight = $state(false);
   let cimmichTabsScroller = $state<HTMLDivElement>();
   let personProjectionGeneration = 0;
@@ -648,6 +657,24 @@
     },
   ]);
   const groupedCimmichAssets = $derived(groupPersonPhotos(visibleCimmichAssets, cimmichPhotoGroup));
+  const selectedCimmichPhotoItems = $derived<CimmichEntityMediaItem[]>(
+    cimmichAssets
+      .filter((asset) => cimmichSelectedPhotoIds.includes(asset.asset_id) && Boolean(asset.sourceAssetId))
+      .map((asset) => ({
+        assetId: asset.asset_id,
+        filename: asset.filename,
+        sourceAssetId: asset.sourceAssetId,
+      })),
+  );
+
+  $effect(() => {
+    const personId = cimmichPerson?.person_id ?? '';
+    if (personId !== cimmichPhotoSelectionPersonId) {
+      cimmichPhotoSelectionPersonId = personId;
+      cimmichPhotoSelectionMode = false;
+      cimmichSelectedPhotoIds = [];
+    }
+  });
   const cimmichMergeOptions = $derived(
     cimmichSetupPeople.filter(
       (row) => row.person_id !== cimmichPerson?.person_id && row.subject_kind === cimmichPerson?.subject_kind,
@@ -1646,6 +1673,34 @@
     }
     cimmichAssets = page.items;
     cimmichAssetsNextCursor = page.nextCursor;
+  };
+
+  const cimmichPhotoSelected = (assetId: string) => cimmichSelectedPhotoIds.includes(assetId);
+
+  const toggleCimmichPhotoSelection = (assetId: string) => {
+    if (cimmichPhotoSelected(assetId)) {
+      cimmichSelectedPhotoIds = cimmichSelectedPhotoIds.filter((id) => id !== assetId);
+      return;
+    }
+    if (cimmichSelectedPhotoIds.length >= ENTITY_MEDIA_SELECTION_LIMIT) {
+      toastManager.warning(`Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos. Apply or clear this selection first.`);
+      return;
+    }
+    cimmichSelectedPhotoIds = [...cimmichSelectedPhotoIds, assetId];
+  };
+
+  const selectShownCimmichPhotos = () => {
+    const shown = visibleCimmichAssets.filter((asset) => Boolean(asset.sourceAssetId));
+    cimmichSelectedPhotoIds = shown.slice(0, ENTITY_MEDIA_SELECTION_LIMIT).map(({ asset_id }) => asset_id);
+    if (shown.length > ENTITY_MEDIA_SELECTION_LIMIT) {
+      toastManager.warning(`Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos selected. Apply these before continuing.`);
+    }
+  };
+
+  const refreshCimmichPersonMedia = async () => {
+    if (cimmichPerson) {
+      await resetCimmichAssetsPagination(cimmichPerson.person_id);
+    }
   };
 
   const loadMoreCimmichAssets = async () => {
@@ -3121,6 +3176,20 @@
                 class="ml-auto flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
                 aria-label="Photo view options"
               >
+                <button
+                  class="inline-flex min-h-10 items-center gap-2 px-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                  class:text-primary={cimmichPhotoSelectionMode}
+                  type="button"
+                  aria-label={cimmichPhotoSelectionMode ? 'Exit photo selection' : 'Select photos'}
+                  aria-pressed={cimmichPhotoSelectionMode}
+                  onclick={() => {
+                    cimmichPhotoSelectionMode = !cimmichPhotoSelectionMode;
+                    cimmichSelectedPhotoIds = [];
+                  }}
+                >
+                  <Icon icon={mdiSelectAll} size="19" />
+                  <span>{cimmichPhotoSelectionMode ? 'Done' : 'Select'}</span>
+                </button>
                 <label
                   class="relative inline-flex size-10 cursor-pointer items-center justify-center text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   title="Sort photos"
@@ -3188,6 +3257,35 @@
 
       {#if cimmichMode === 'photos'}
         <section id="cimmich-identity-workspace" class="grid scroll-mt-4 gap-4">
+          {#if cimmichPhotoSelectionMode}
+            <div
+              class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-immich-dark-gray"
+            >
+              <strong>{cimmichSelectedPhotoIds.length} selected</strong>
+              <span class="mr-auto text-xs text-gray-500">Up to {ENTITY_MEDIA_SELECTION_LIMIT} shown photos.</span>
+              <button
+                class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-600"
+                type="button"
+                onclick={selectShownCimmichPhotos}>Select shown</button
+              >
+              {#if cimmichSelectedPhotoIds.length > 0}<button
+                  class="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold dark:border-gray-600"
+                  type="button"
+                  onclick={() => (cimmichSelectedPhotoIds = [])}>Clear</button
+                >{/if}
+            </div>
+          {/if}
+          <CimmichEntityMediaActions
+            currentSubject={{
+              displayName: cimmichPerson.display_name,
+              subjectId: cimmichPerson.person_id,
+              subjectKind: cimmichPerson.subject_kind,
+            }}
+            items={selectedCimmichPhotoItems}
+            onChanged={refreshCimmichPersonMedia}
+            onClear={() => (cimmichSelectedPhotoIds = [])}
+            showControls={cimmichPhotoSelectionMode}
+          />
           {#each groupedCimmichAssets as group (group.id)}
             {#if group.label}
               <div class="flex items-center gap-3">
@@ -3206,7 +3304,11 @@
             <div class={personPhotoGridClass(cimmichPhotoSize)}>
               {#each group.items as asset (asset.asset_id)}
                 {#if asset.sourceAssetId}
-                  <article class="group relative aspect-square overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-800">
+                  <article
+                    class="group relative aspect-square overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-800"
+                    class:ring-4={cimmichPhotoSelected(asset.asset_id)}
+                    class:ring-primary={cimmichPhotoSelected(asset.asset_id)}
+                  >
                     <a
                       href={Route.viewCimmichPersonAsset({
                         id: asset.sourceAssetId,
@@ -3231,6 +3333,18 @@
                         {/if}
                       </span>
                     </a>
+                    {#if cimmichPhotoSelectionMode}
+                      <button
+                        class="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full border-2 border-white bg-black/55 text-white shadow-lg"
+                        class:bg-primary={cimmichPhotoSelected(asset.asset_id)}
+                        type="button"
+                        aria-label={`${cimmichPhotoSelected(asset.asset_id) ? 'Deselect' : 'Select'} ${asset.filename}`}
+                        aria-pressed={cimmichPhotoSelected(asset.asset_id)}
+                        onclick={() => toggleCimmichPhotoSelection(asset.asset_id)}
+                      >
+                        {#if cimmichPhotoSelected(asset.asset_id)}<Icon icon={mdiCheckCircleOutline} size="20" />{/if}
+                      </button>
+                    {/if}
                   </article>
                 {:else}
                   <div

@@ -1,0 +1,176 @@
+import '@testing-library/jest-dom';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
+import { ENTITY_MEDIA_ACTION_RECEIPT_KEY } from './entity-media-actions';
+
+const mocks = vi.hoisted(() => {
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+  });
+  Object.defineProperty(globalThis, 'confirm', { configurable: true, value: vi.fn(() => true) });
+  return {
+    addAlbum: vi.fn(),
+    attachContext: vi.fn(),
+    bulkTag: vi.fn(),
+    detachContext: vi.fn(),
+    getAlbums: vi.fn(() => Promise.resolve([])),
+    getAsset: vi.fn(),
+    getEntities: vi.fn(() => Promise.resolve([])),
+    getPeople: vi.fn(() => Promise.resolve([])),
+    getPets: vi.fn(() => Promise.resolve([])),
+    getTags: vi.fn(() => Promise.resolve([])),
+    removeAlbum: vi.fn(),
+    setPresence: vi.fn(),
+    setVisibility: vi.fn(),
+    untag: vi.fn(),
+    undoContext: vi.fn(),
+    undoPresence: vi.fn(),
+    undoVisibility: vi.fn(),
+    updateAssets: vi.fn(),
+    values,
+  };
+});
+
+vi.mock('$lib/services/cimmich.service', () => ({
+  attachCimmichContextAssets: mocks.attachContext,
+  createCimmichContextCommandId: () => 'context-command',
+  createCimmichManualPresenceCommandId: () => 'presence-command',
+  createCimmichVisibilityCommandId: () => 'visibility-command',
+  detachCimmichContextAssets: mocks.detachContext,
+  getCimmichContextEntities: mocks.getEntities,
+  getCimmichPeople: mocks.getPeople,
+  getCimmichPets: mocks.getPets,
+  setCimmichManualPresence: mocks.setPresence,
+  setCimmichVisibilityObjects: mocks.setVisibility,
+  undoCimmichContextDecision: mocks.undoContext,
+  undoCimmichManualPresence: mocks.undoPresence,
+  undoCimmichVisibilityDecision: mocks.undoVisibility,
+}));
+
+vi.mock('@immich/sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@immich/sdk')>()),
+  addAssetsToAlbum: mocks.addAlbum,
+  bulkTagAssets: mocks.bulkTag,
+  getAllAlbums: mocks.getAlbums,
+  getAllTags: mocks.getTags,
+  getAssetInfo: mocks.getAsset,
+  removeAssetFromAlbum: mocks.removeAlbum,
+  untagAssets: mocks.untag,
+  updateAssets: mocks.updateAssets,
+}));
+
+const items = [
+  { assetId: 'asset-1', directlyAssigned: true, filename: 'one.jpg', sourceAssetId: 'source-1' },
+  { assetId: 'asset-2', directlyAssigned: true, filename: 'two.jpg', sourceAssetId: 'source-2' },
+];
+
+describe('CimmichEntityMediaActions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.values.clear();
+    mocks.getAlbums.mockResolvedValue([]);
+    mocks.getTags.mockResolvedValue([]);
+    mocks.getPeople.mockResolvedValue([]);
+    mocks.getPets.mockResolvedValue([]);
+    mocks.getEntities.mockResolvedValue([]);
+  });
+
+  it('presents page-aware context, presence, privacy and metadata actions', () => {
+    const { getByLabelText, getByText } = render(CimmichEntityMediaActions, {
+      currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
+      currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
+      items,
+      onClear: vi.fn(),
+    });
+
+    expect(getByText('2 selected')).toBeInTheDocument();
+    const action = getByLabelText('Action');
+    expect(action.querySelector('option[value="event-attach"]')).toHaveTextContent('Add to Event');
+    expect(action.querySelector('option[value="presence-current"]')).toHaveTextContent('Mark Benji present');
+    expect(action.querySelector('option[value="visibility-private"]')).toHaveTextContent('Set to Private');
+    expect(action.querySelector('option[value="context-detach"]')).toHaveTextContent('Remove from Gulmarrad');
+  });
+
+  it('sets photo privacy through one Cimmich visibility decision and saves Undo', async () => {
+    mocks.setVisibility.mockResolvedValue({ decisionId: 'visibility-decision' });
+    const onClear = vi.fn();
+    const { getByLabelText, getByRole, getByText } = render(CimmichEntityMediaActions, { items, onClear });
+
+    await fireEvent.change(getByLabelText('Action'), { target: { value: 'visibility-private' } });
+    await fireEvent.click(getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(mocks.setVisibility).toHaveBeenCalledWith(
+        [
+          { objectId: 'asset-1', objectScope: 'asset', visibilityTier: 'private' },
+          { objectId: 'asset-2', objectScope: 'asset', visibilityTier: 'private' },
+        ],
+        'visibility-command',
+      ),
+    );
+    expect(getByText('Undo is saved across navigation and reload.')).toBeInTheDocument();
+    expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it('marks the current subject present without creating typed Face evidence', async () => {
+    mocks.setPresence.mockResolvedValue({
+      changed: true,
+      decisionId: 'presence-decision',
+      undo: { eligible: true },
+    });
+    const { getByLabelText, getByRole } = render(CimmichEntityMediaActions, {
+      currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
+      items: [items[0]],
+      onClear: vi.fn(),
+    });
+
+    await fireEvent.change(getByLabelText('Action'), { target: { value: 'presence-current' } });
+    await fireEvent.click(getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(mocks.setPresence).toHaveBeenCalledWith('asset-1', {
+        action: 'attach',
+        commandId: 'presence-command',
+        subjectId: 'person-1',
+        subjectKind: 'person',
+      }),
+    );
+  });
+
+  it('keeps a saved Undo visible after selection mode closes', async () => {
+    mocks.values.set(
+      ENTITY_MEDIA_ACTION_RECEIPT_KEY,
+      JSON.stringify({
+        action: 'visibility-private',
+        albumId: '',
+        assetIds: ['asset-1'],
+        completedAt: new Date().toISOString(),
+        contextDecisionIds: [],
+        label: 'Set photo privacy to Private',
+        nativePrevious: [],
+        presenceDecisionIds: [],
+        sourceAssetIds: ['source-1'],
+        tagId: '',
+        targetId: '',
+        version: 1,
+        visibilityDecisionIds: ['visibility-decision'],
+      }),
+    );
+
+    const { getByRole, getByText, queryByLabelText } = render(CimmichEntityMediaActions, {
+      items: [],
+      onClear: vi.fn(),
+      showControls: false,
+    });
+
+    await waitFor(() => expect(getByRole('button', { name: 'Undo' })).toBeInTheDocument());
+    expect(getByText('Undo is saved across navigation and reload.')).toBeInTheDocument();
+    expect(queryByLabelText('Action')).not.toBeInTheDocument();
+  });
+});
