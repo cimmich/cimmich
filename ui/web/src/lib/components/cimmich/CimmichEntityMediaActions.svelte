@@ -57,8 +57,9 @@
 
   let { currentScope = null, currentSubject = null, items, onChanged, onClear, showControls = true }: Props = $props();
 
-  let action = $state<CimmichEntityMediaActionKind>('event-attach');
+  let action = $state<CimmichEntityMediaActionKind | null>(null);
   let targetId = $state('');
+  let targetQuery = $state('');
   let albums = $state<AlbumResponseDto[]>([]);
   let tags = $state<TagResponseDto[]>([]);
   let people = $state<CimmichPerson[]>([]);
@@ -100,7 +101,7 @@
     ];
     return result;
   });
-  const needsTarget = $derived(cimmichEntityMediaActionNeedsTarget(action));
+  const needsTarget = $derived(action ? cimmichEntityMediaActionNeedsTarget(action) : false);
   const targetOptions = $derived.by(() => {
     if (action === 'event-attach') {
       return events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }));
@@ -131,7 +132,12 @@
   });
   const targetLabel = $derived(targetOptions.find((option) => option.id === targetId)?.label ?? '');
   const canApply = $derived(
-    selectedCount > 0 && !busy && !receipt && (!needsTarget || Boolean(targetId)) && availableActions.includes(action),
+    selectedCount > 0 &&
+      !busy &&
+      !receipt &&
+      Boolean(action) &&
+      (!needsTarget || Boolean(targetId)) &&
+      Boolean(action && availableActions.includes(action)),
   );
 
   const asError = (caught: unknown) =>
@@ -149,7 +155,7 @@
     }
   });
 
-  const optionKindForAction = (selectedAction: CimmichEntityMediaActionKind): OptionKind | null => {
+  const optionKindForAction = (selectedAction: CimmichEntityMediaActionKind | null): OptionKind | null => {
     switch (selectedAction) {
       case 'album-add': {
         return 'album';
@@ -251,13 +257,25 @@
   });
 
   const selectAction = (event: Event) => {
-    action = (event.currentTarget as HTMLSelectElement).value as CimmichEntityMediaActionKind;
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    action = (value as CimmichEntityMediaActionKind) || null;
     targetId = '';
+    targetQuery = '';
   };
 
-  const emptyReceipt = (label: string): CimmichEntityMediaActionReceipt => ({
-    action,
-    albumId: action === 'album-add' ? targetId : '',
+  const selectTarget = (event: Event) => {
+    targetQuery = (event.currentTarget as HTMLInputElement).value;
+    const normalizedQuery = targetQuery.trim().toLocaleLowerCase();
+    const exactMatches = targetOptions.filter((option) => option.label.trim().toLocaleLowerCase() === normalizedQuery);
+    targetId = exactMatches.length === 1 ? exactMatches[0].id : '';
+  };
+
+  const emptyReceipt = (
+    selectedAction: CimmichEntityMediaActionKind,
+    label: string,
+  ): CimmichEntityMediaActionReceipt => ({
+    action: selectedAction,
+    albumId: selectedAction === 'album-add' ? targetId : '',
     assetIds: [],
     completedAt: new Date().toISOString(),
     contextDecisionIds: [],
@@ -265,7 +283,7 @@
     nativePrevious: [],
     presenceDecisionIds: [],
     sourceAssetIds: [],
-    tagId: action === 'tag-add' || action === 'tag-remove' ? targetId : '',
+    tagId: selectedAction === 'tag-add' || selectedAction === 'tag-remove' ? targetId : '',
     targetId,
     version: 1,
     visibilityDecisionIds: [],
@@ -277,10 +295,11 @@
   };
 
   const apply = async () => {
-    if (!canApply) {
+    if (!canApply || !action) {
       return;
     }
-    const baseLabel = cimmichEntityMediaActionLabel(action, currentSubject, currentScope);
+    const selectedAction = action;
+    const baseLabel = cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
     const label = `${baseLabel}${targetLabel ? ` · ${targetLabel}` : ''}`;
     if (
       !globalThis.confirm(
@@ -293,9 +312,9 @@
     busy = true;
     error = '';
     progress = `Applying ${label}…`;
-    const next = emptyReceipt(label);
+    const next = emptyReceipt(selectedAction, label);
     try {
-      const visibilityTier = cimmichEntityMediaActionVisibilityTier(action);
+      const visibilityTier = cimmichEntityMediaActionVisibilityTier(selectedAction);
       if (visibilityTier) {
         const result = await setCimmichVisibilityObjects(
           items.map(({ assetId }) => ({ objectId: assetId, objectScope: 'asset', visibilityTier })),
@@ -305,10 +324,15 @@
           next.visibilityDecisionIds.push(result.decisionId);
           next.assetIds.push(...items.map(({ assetId }) => assetId));
         }
-      } else if (action === 'event-attach' || action === 'place-attach' || action === 'object-attach') {
-        const family = action === 'event-attach' ? 'events' : action === 'place-attach' ? 'places' : 'objects';
+      } else if (
+        selectedAction === 'event-attach' ||
+        selectedAction === 'place-attach' ||
+        selectedAction === 'object-attach'
+      ) {
+        const family =
+          selectedAction === 'event-attach' ? 'events' : selectedAction === 'place-attach' ? 'places' : 'objects';
         const associationKind =
-          action === 'event-attach' ? 'direct' : action === 'place-attach' ? 'captured_at' : 'depicts';
+          selectedAction === 'event-attach' ? 'direct' : selectedAction === 'place-attach' ? 'captured_at' : 'depicts';
         const result = await attachCimmichContextAssets(
           family,
           targetId,
@@ -319,7 +343,7 @@
           next.contextDecisionIds.push(result.decisionId);
           next.assetIds.push(...(result.changedAssetIds ?? items.map(({ assetId }) => assetId)));
         }
-      } else if (action === 'context-detach' && currentScope) {
+      } else if (selectedAction === 'context-detach' && currentScope) {
         const result = await detachCimmichContextAssets(
           currentScope.family,
           currentScope.entityId,
@@ -330,12 +354,16 @@
           next.contextDecisionIds.push(result.decisionId);
           next.assetIds.push(...(result.changedAssetIds ?? items.map(({ assetId }) => assetId)));
         }
-      } else if (action === 'presence-current' || action === 'presence-person' || action === 'presence-pet') {
+      } else if (
+        selectedAction === 'presence-current' ||
+        selectedAction === 'presence-person' ||
+        selectedAction === 'presence-pet'
+      ) {
         const selectedPerson =
-          action === 'presence-person' ? people.find((person) => person.person_id === targetId) : null;
-        const selectedPet = action === 'presence-pet' ? pets.find((pet) => pet.petId === targetId) : null;
+          selectedAction === 'presence-person' ? people.find((person) => person.person_id === targetId) : null;
+        const selectedPet = selectedAction === 'presence-pet' ? pets.find((pet) => pet.petId === targetId) : null;
         const subject =
-          action === 'presence-current'
+          selectedAction === 'presence-current'
             ? currentSubject
             : selectedPerson
               ? {
@@ -369,7 +397,7 @@
           }
           completed += 1;
         }
-      } else if (action === 'album-add') {
+      } else if (selectedAction === 'album-add') {
         const results = await addAssetsToAlbum({
           id: targetId,
           bulkIdsDto: { ids: items.map(({ sourceAssetId }) => sourceAssetId) },
@@ -377,25 +405,25 @@
         next.sourceAssetIds.push(...results.filter(({ success }) => success).map(({ id }) => id));
       } else {
         const nativeAssets = await loadNativeAssets();
-        if (action === 'tag-add' || action === 'tag-remove') {
+        if (selectedAction === 'tag-add' || selectedAction === 'tag-remove') {
           const changed = nativeAssets.filter((asset) =>
-            action === 'tag-add'
+            selectedAction === 'tag-add'
               ? !asset.tags?.some((tag) => tag.id === targetId)
               : asset.tags?.some((tag) => tag.id === targetId),
           );
           if (changed.length > 0) {
-            await (action === 'tag-add'
+            await (selectedAction === 'tag-add'
               ? bulkTagAssets({ tagBulkAssetsDto: { assetIds: changed.map(({ id }) => id), tagIds: [targetId] } })
               : untagAssets({ id: targetId, bulkIdsDto: { ids: changed.map(({ id }) => id) } }));
             next.sourceAssetIds.push(...changed.map(({ id }) => id));
           }
         } else {
           const changed = nativeAssets.filter((asset) =>
-            action === 'favorite'
+            selectedAction === 'favorite'
               ? !asset.isFavorite
-              : action === 'unfavorite'
+              : selectedAction === 'unfavorite'
                 ? asset.isFavorite
-                : action === 'archive'
+                : selectedAction === 'archive'
                   ? asset.visibility !== AssetVisibility.Archive
                   : asset.visibility === AssetVisibility.Archive,
           );
@@ -406,9 +434,11 @@
             await updateAssets({
               assetBulkUpdateDto: {
                 ids: changed.map(({ id }) => id),
-                ...(action === 'favorite' || action === 'unfavorite'
-                  ? { isFavorite: action === 'favorite' }
-                  : { visibility: action === 'archive' ? AssetVisibility.Archive : AssetVisibility.Timeline }),
+                ...(selectedAction === 'favorite' || selectedAction === 'unfavorite'
+                  ? { isFavorite: selectedAction === 'favorite' }
+                  : {
+                      visibility: selectedAction === 'archive' ? AssetVisibility.Archive : AssetVisibility.Timeline,
+                    }),
               },
             });
           }
@@ -528,7 +558,8 @@
         >
         <label>
           <span>Action</span>
-          <select value={action} disabled={busy || Boolean(receipt)} onchange={selectAction}>
+          <select value={action ?? ''} disabled={busy || Boolean(receipt)} onchange={selectAction}>
+            <option value="">Pick action…</option>
             <optgroup label="Cimmich context">
               <option value="event-attach">Add to Event</option>
               <option value="place-attach">Add to Place</option>
@@ -564,10 +595,22 @@
         {#if needsTarget}
           <label>
             <span>Destination</span>
-            <select bind:value={targetId} disabled={busy || loadingOptions || Boolean(receipt)}>
-              <option value="">{loadingOptions ? 'Loading…' : 'Choose…'}</option>
-              {#each targetOptions as option (option.id)}<option value={option.id}>{option.label}</option>{/each}
-            </select>
+            <input
+              aria-label="Destination"
+              aria-describedby="entity-media-destination-help"
+              autocomplete="off"
+              list="entity-media-destinations"
+              placeholder={loadingOptions ? 'Loading…' : 'Type to search…'}
+              value={targetQuery}
+              disabled={busy || loadingOptions || Boolean(receipt)}
+              oninput={selectTarget}
+            />
+            <datalist id="entity-media-destinations">
+              {#each targetOptions as option (option.id)}<option value={option.label}></option>{/each}
+            </datalist>
+            <span id="entity-media-destination-help" class="sr-only"
+              >Type a destination name, then choose an exact match.</span
+            >
           </label>
         {/if}
         <button class="entity-media-apply" type="button" disabled={!canApply} onclick={() => void apply()}>
@@ -622,6 +665,7 @@
   }
 
   select,
+  input,
   button {
     min-height: 2.5rem;
     border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
@@ -637,7 +681,8 @@
   }
 
   button:disabled,
-  select:disabled {
+  select:disabled,
+  input:disabled {
     cursor: not-allowed;
     opacity: 0.45;
   }

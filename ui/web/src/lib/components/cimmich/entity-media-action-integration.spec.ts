@@ -21,12 +21,21 @@ describe('shared entity media action integration', () => {
     const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
     const contract = await read('src/lib/components/cimmich/entity-media-actions.ts');
 
-    expect(source).toMatch(/associationKind\s*=\s*action === 'event-attach' \? 'direct'/);
-    expect(source).toContain("action === 'place-attach' ? 'captured_at' : 'depicts'");
+    expect(source).toMatch(/associationKind\s*=\s*selectedAction === 'event-attach' \? 'direct'/);
+    expect(source).toContain("selectedAction === 'place-attach' ? 'captured_at' : 'depicts'");
     expect(source).toContain("action: 'attach'");
     expect(contract).toContain("subjectKind: 'person' | 'pet'");
     expect(source).not.toContain('manual-subject-tags');
     expect(source).not.toContain("tagType: 'face'");
+  });
+
+  it('starts with no implied action and provides a typeable destination', async () => {
+    const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
+
+    expect(source).toContain("$state<CimmichEntityMediaActionKind | null>(null)");
+    expect(source).toContain('Pick action…');
+    expect(source).toContain('Type to search…');
+    expect(source).toContain('list="entity-media-destinations"');
   });
 
   it('persists one exact Undo receipt and blocks a second action until disposition', async () => {

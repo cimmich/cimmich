@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import type { CimmichContextEntity } from '$lib/services/cimmich.service';
 import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
 import { ENTITY_MEDIA_ACTION_RECEIPT_KEY } from './entity-media-actions';
 
@@ -21,7 +22,7 @@ const mocks = vi.hoisted(() => {
     detachContext: vi.fn(),
     getAlbums: vi.fn(() => Promise.resolve([])),
     getAsset: vi.fn(),
-    getEntities: vi.fn((family: string, options: unknown) => {
+    getEntities: vi.fn((family: string, options: unknown): Promise<CimmichContextEntity[]> => {
       void family;
       void options;
       return Promise.resolve([]);
@@ -85,8 +86,8 @@ describe('CimmichEntityMediaActions', () => {
     mocks.getEntities.mockResolvedValue([]);
   });
 
-  it('presents page-aware context, presence, privacy and metadata actions', () => {
-    const { getByLabelText, getByText } = render(CimmichEntityMediaActions, {
+  it('starts neutrally and presents page-aware context, presence, privacy and metadata actions', () => {
+    const { getByLabelText, getByText, queryByLabelText } = render(CimmichEntityMediaActions, {
       currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
       currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
       items,
@@ -95,6 +96,8 @@ describe('CimmichEntityMediaActions', () => {
 
     expect(getByText('2 selected')).toBeInTheDocument();
     const action = getByLabelText('Action');
+    expect(action).toHaveDisplayValue('Pick action…');
+    expect(queryByLabelText('Destination')).not.toBeInTheDocument();
     expect(action.querySelector('option[value="event-attach"]')).toHaveTextContent('Add to Event');
     expect(action.querySelector('option[value="presence-current"]')).toHaveTextContent('Mark Benji present');
     expect(action.querySelector('option[value="visibility-private"]')).toHaveTextContent('Set to Private');
@@ -108,8 +111,10 @@ describe('CimmichEntityMediaActions', () => {
       return family === 'events' ? new Promise<[]>((resolve) => (resolveEvents = resolve)) : Promise.resolve([]);
     });
 
-    render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
+    const { getByLabelText } = render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
 
+    expect(mocks.getEntities).not.toHaveBeenCalled();
+    await fireEvent.change(getByLabelText('Action'), { target: { value: 'event-attach' } });
     await waitFor(() => expect(mocks.getEntities).toHaveBeenCalledTimes(1));
     expect(mocks.getEntities).toHaveBeenCalledWith('events', { limit: 500 });
     expect(mocks.getAlbums).not.toHaveBeenCalled();
@@ -117,6 +122,39 @@ describe('CimmichEntityMediaActions', () => {
     expect(mocks.getPeople).not.toHaveBeenCalled();
     expect(mocks.getPets).not.toHaveBeenCalled();
     resolveEvents([]);
+  });
+
+  it('accepts a typed destination and requires an exact match before Apply', async () => {
+    mocks.getEntities.mockResolvedValue([
+      {
+        aliases: [],
+        assetCount: 0,
+        coverAssetId: null,
+        dateEnd: null,
+        datePrecision: 'unknown',
+        dateStart: null,
+        description: null,
+        displayName: 'Birthday',
+        entityId: 'event-1',
+        entityKind: 'event',
+        geometry: null,
+        parentEntityId: null,
+        revision: 1,
+        status: 'active',
+        typeKind: 'event',
+      },
+    ]);
+    const { getByLabelText, getByRole } = render(CimmichEntityMediaActions, { items, onClear: vi.fn() });
+
+    await fireEvent.change(getByLabelText('Action'), { target: { value: 'event-attach' } });
+    const destination = await waitFor(() => getByLabelText('Destination'));
+    await waitFor(() => expect(destination).toBeEnabled());
+
+    await fireEvent.input(destination, { target: { value: 'Birth' } });
+    expect(getByRole('button', { name: 'Apply' })).toBeDisabled();
+
+    await fireEvent.input(destination, { target: { value: 'Birthday' } });
+    expect(getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 
   it('sets photo privacy through one Cimmich visibility decision and saves Undo', async () => {
