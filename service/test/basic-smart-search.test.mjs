@@ -79,6 +79,11 @@ test("Basic Smart Search recognizes named subjects, context and year without pri
     /cimmich_visibility_context_entity_rank\(entity\.entity_id\) <=/,
   );
   assert.match(calls[1].statement, /cimmich_visibility_asset_rank/);
+  assert.match(calls[1].statement, /WITH RECURSIVE place_descendants/);
+  assert.match(
+    calls[1].statement,
+    /child\.parent_entity_id = parent\.entity_id/,
+  );
   assert.doesNotMatch(calls[0].statement, /person_profile|private_notes/i);
 });
 

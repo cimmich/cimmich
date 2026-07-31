@@ -2354,6 +2354,7 @@ export const createCimmichServer = ({
               datePrecision: body.datePrecision,
               dateStart: body.dateStart,
               description: body.description,
+              directoryVisibility: body.directoryVisibility,
               displayName: body.displayName,
               entityKind: family.entityKind,
               geometry: body.geometry,
@@ -2400,6 +2401,7 @@ export const createCimmichServer = ({
               datePrecision: body.datePrecision,
               dateStart: body.dateStart,
               description: body.description,
+              directoryVisibility: body.directoryVisibility,
               displayName: body.displayName,
               entityId,
               entityKind: family.entityKind,
@@ -2491,6 +2493,26 @@ export const createCimmichServer = ({
       const contextAssociationMatch = url.pathname.match(
         /^\/v1\/(places|objects|events)\/([^/]+)\/(assets|relations):(attach|detach)$/,
       );
+      const placeSubsectionAssignmentMatch = url.pathname.match(
+        /^\/v1\/places\/([^/]+)\/assets:assign-child$/,
+      );
+      if (request.method === "POST" && placeSubsectionAssignmentMatch) {
+        requireProjection("places");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.assignPlaceAssetsToChild({
+            actorId: request.headers["x-cimmich-actor"],
+            assetIds: body.assetIds,
+            childEntityId: body.childEntityId,
+            commandId: body.commandId,
+            entityId: decodeURIComponent(placeSubsectionAssignmentMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "POST" && contextAssociationMatch) {
         const family = contextFamilies[contextAssociationMatch[1]];
         requireProjection(family.surfaceKey);

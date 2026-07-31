@@ -13,6 +13,7 @@
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
     CimmichServiceError,
+    assignCimmichPlaceAssetsToChild,
     attachCimmichContextAssets,
     attachCimmichContextRelations,
     createCimmichContextCommandId,
@@ -52,6 +53,7 @@
     mdiArrowLeft,
     mdiCalendarBlankOutline,
     mdiCheck,
+    mdiChevronRight,
     mdiClose,
     mdiDotsVertical,
     mdiFileDocumentOutline,
@@ -79,6 +81,7 @@
     getContextDetailHref,
     resolveContextRouteEntity,
     contextPlaceSearchQualityLabel,
+    contextPlaceLineage,
     contextPlaceNearbyRadii,
     contextPlacePointDistanceMeters,
     contextRelationGroups,
@@ -172,6 +175,7 @@
   let connectionPresentationGeneration = 0;
   let connectionPresentationKey = '';
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
+  let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
@@ -199,6 +203,7 @@
   let formDateStart = $state('');
   let formDateEnd = $state('');
   let formParentId = $state('');
+  let formDirectoryVisibility = $state<'listed' | 'nested_only'>('listed');
   let formLatitude = $state('');
   let formLongitude = $state('');
   let formNorth = $state('');
@@ -235,7 +240,21 @@
   const filteredLibraryAssets = $derived(
     libraryAssets.filter((asset) => asset.originalFileName.toLowerCase().includes(libraryQuery.trim().toLowerCase())),
   );
-  const selectedAssetIds = $derived(new Set(selected?.assets.map((asset) => asset.sourceAssetId)));
+  const selectedAssetIds = $derived(
+    new Set(
+      (activeFamily === 'places' ? selected?.subtreeAssets : selected?.assets)?.map((asset) => asset.sourceAssetId),
+    ),
+  );
+  const selectedPlaceChildren = $derived(
+    activeFamily === 'places' && selected
+      ? entities
+          .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
+          .sort((left, right) => left.displayName.localeCompare(right.displayName))
+      : [],
+  );
+  const selectedPlaceLineage = $derived(
+    activeFamily === 'places' && selected ? contextPlaceLineage(selected.entity, entities) : [],
+  );
   const nearbyPlacePoint = $derived.by(() => {
     const geometry = selected?.entity.geometry;
     return activeFamily === 'places' && selected?.entity.typeKind === 'point' && geometry && 'latitude' in geometry
@@ -275,16 +294,34 @@
       state: null,
     })),
   );
-  const visibleDetailAssets = $derived(
-    !selected || entityKind !== 'event' || eventMediaLane === 'all'
-      ? (selected?.assets ?? [])
-      : selected.assets.filter((asset) =>
-          eventMediaLane === 'main'
-            ? asset.associationKind === 'direct' || asset.associationKind === 'manual'
-            : eventMediaLane === 'stops'
-              ? asset.associationKind === 'route_stop'
-              : asset.associationKind === 'context',
-        ),
+  const visibleDetailAssets = $derived.by(() => {
+    if (!selected) {
+      return [];
+    }
+    if (entityKind === 'place') {
+      const assets = selected.subtreeAssets ?? selected.assets;
+      if (placeMediaLane === 'all' || !selected.subtreeAssets) {
+        return assets;
+      }
+      return selected.subtreeAssets.filter((asset) =>
+        placeMediaLane === 'unassigned'
+          ? asset.directlyAssigned && asset.branchEntityIds.length === 0
+          : asset.branchEntityIds.includes(placeMediaLane),
+      );
+    }
+    if (entityKind !== 'event' || eventMediaLane === 'all') {
+      return selected.assets;
+    }
+    return selected.assets.filter((asset) =>
+      eventMediaLane === 'main'
+        ? asset.associationKind === 'direct' || asset.associationKind === 'manual'
+        : eventMediaLane === 'stops'
+          ? asset.associationKind === 'route_stop'
+          : asset.associationKind === 'context',
+    );
+  });
+  const placeDetailAssetCount = $derived(
+    activeFamily === 'places' ? (selected?.subtreeAssets?.length ?? selected?.assets.length ?? 0) : 0,
   );
   const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
   type ContextDetailTab = 'connections' | 'documents' | 'map' | 'photos';
@@ -404,6 +441,7 @@
     const generation = ++detailRequestGeneration;
     selectedLoading = true;
     eventMediaLane = 'main';
+    placeMediaLane = 'all';
     error = null;
     try {
       const next = await getCimmichContextEntity(activeFamily, entity.entityId, {
@@ -505,6 +543,7 @@
     formDateEnd = '';
     formDatePrecision = 'unknown';
     formParentId = '';
+    formDirectoryVisibility = 'listed';
     formLatitude = '';
     formLongitude = '';
     formNorth = '';
@@ -555,6 +594,7 @@
     formDateEnd = entity.dateEnd ?? '';
     formDatePrecision = entity.datePrecision;
     formParentId = entity.parentEntityId ?? '';
+    formDirectoryVisibility = entity.directoryVisibility ?? 'listed';
     formType = entity.typeKind;
     const geometry = entity.geometry;
     formLatitude = geometry && 'latitude' in geometry ? String(geometry.latitude) : '';
@@ -877,6 +917,7 @@
         datePrecision: formDateStart || formDateEnd ? formDatePrecision : ('unknown' as const),
         dateStart: formDateStart || null,
         description: formDescription.trim() || null,
+        directoryVisibility: entityKind === 'place' ? formDirectoryVisibility : undefined,
         displayName: formName.trim(),
         geometry,
         parentEntityId: entityKind === 'place' ? formParentId || null : undefined,
@@ -1172,6 +1213,31 @@
       delete remainingCommands[assetId];
       detachCommandIds = remainingCommands;
       await loadEntities();
+      selected = result.detail;
+    } catch (error_) {
+      error = asError(error_);
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  const assignAssetToPlaceChild = async (assetId: string, child: CimmichContextEntity) => {
+    if (!selected || activeFamily !== 'places') {
+      return;
+    }
+    isSaving = true;
+    error = null;
+    mediaMenuAssetId = null;
+    try {
+      const result = await assignCimmichPlaceAssetsToChild(selected.entity.entityId, {
+        assetIds: [assetId],
+        childEntityId: child.entityId,
+        commandId: createCimmichContextCommandId('place-assign-child'),
+      });
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('place-assign-child-undo') : '';
+      undoLabel = `Undo move to ${child.displayName}`;
+      await loadEntities({ preserveCollection: true });
       selected = result.detail;
     } catch (error_) {
       error = asError(error_);
@@ -1732,6 +1798,60 @@
       <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
     </div>
 
+    {#if activeFamily === 'places'}
+      <nav class="mt-5 flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm" aria-label="Place hierarchy">
+        <button class="shrink-0 font-semibold text-primary" type="button" onclick={closeDetail}>Places</button>
+        {#each selectedPlaceLineage as place, index (place.entityId)}
+          <Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="16" />
+          {#if index === selectedPlaceLineage.length - 1}
+            <span class="shrink-0 font-semibold" aria-current="page">{place.displayName}</span>
+          {:else}
+            <a
+              class="shrink-0 font-semibold text-primary"
+              href={getContextDetailHref(page.url, 'places', place.entityId, place.displayName)}>{place.displayName}</a
+            >
+          {/if}
+        {/each}
+      </nav>
+
+      {#if selectedPlaceChildren.length > 0}
+        <section class="mt-6" aria-labelledby="place-subplaces-title">
+          <div class="flex items-end justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold" id="place-subplaces-title">Inside {selected.entity.displayName}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Open a subsection or use it to organise this place’s photos.
+              </p>
+            </div>
+            <span class="shrink-0 text-xs font-semibold text-gray-500"
+              >{selectedPlaceChildren.length} {selectedPlaceChildren.length === 1 ? 'subplace' : 'subplaces'}</span
+            >
+          </div>
+          <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {#each selectedPlaceChildren as child (child.entityId)}
+              <a
+                class="rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
+                href={getContextDetailHref(page.url, 'places', child.entityId, child.displayName)}
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
+                    ><Icon icon={mdiMapMarkerOutline} size="20" /></span
+                  >
+                  <span class="text-xs font-semibold text-gray-500"
+                    >{child.subtreeAssetCount ?? child.assetCount} photos</span
+                  >
+                </div>
+                <h3 class="mt-3 font-semibold">{child.displayName}</h3>
+                <p class="mt-1 text-xs text-gray-500">
+                  {child.directoryVisibility === 'nested_only' ? 'Shown inside this place' : 'Also listed on Places'}
+                </p>
+              </a>
+            {/each}
+          </div>
+        </section>
+      {/if}
+    {/if}
+
     <div class="context-profile-rail mt-6">
       <div
         bind:this={detailTabRail}
@@ -1752,7 +1872,9 @@
           >
             <Icon icon={tab.icon} size="18" />
             {tab.label}
-            {#if tab.value === 'photos'}<span>{selected.assets.length}</span>{/if}
+            {#if tab.value === 'photos'}<span
+                >{activeFamily === 'places' ? placeDetailAssetCount : selected.assets.length}</span
+              >{/if}
             {#if tab.value === 'connections'}<span>{selected.relations.length}</span>{/if}
           </button>
         {/each}
@@ -1810,7 +1932,44 @@
             {/each}
           </div>
         {/if}
-        {#if selected.assets.length === 0}
+        {#if entityKind === 'place' && selectedPlaceChildren.length > 0 && placeDetailAssetCount > 0}
+          <div class="mt-5 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Place photo sections">
+            <button
+              class="context-detail-lane"
+              class:context-detail-lane--active={placeMediaLane === 'all'}
+              type="button"
+              aria-pressed={placeMediaLane === 'all'}
+              onclick={() => (placeMediaLane = 'all')}>All <span>{placeDetailAssetCount}</span></button
+            >
+            <button
+              class="context-detail-lane"
+              class:context-detail-lane--active={placeMediaLane === 'unassigned'}
+              type="button"
+              aria-pressed={placeMediaLane === 'unassigned'}
+              onclick={() => (placeMediaLane = 'unassigned')}
+              >Unassigned <span
+                >{selected.subtreeAssets?.filter(
+                  (asset) => asset.directlyAssigned && asset.branchEntityIds.length === 0,
+                ).length ?? selected.assets.length}</span
+              ></button
+            >
+            {#each selectedPlaceChildren as child (child.entityId)}
+              <button
+                class="context-detail-lane"
+                class:context-detail-lane--active={placeMediaLane === child.entityId}
+                type="button"
+                aria-pressed={placeMediaLane === child.entityId}
+                onclick={() => (placeMediaLane = child.entityId)}
+                >{child.displayName}
+                <span
+                  >{selected.subtreeAssets?.filter((asset) => asset.branchEntityIds.includes(child.entityId)).length ??
+                    0}</span
+                ></button
+              >
+            {/each}
+          </div>
+        {/if}
+        {#if (entityKind === 'place' ? placeDetailAssetCount : selected.assets.length) === 0}
           <div
             class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center dark:border-gray-700"
           >
@@ -1828,6 +1987,7 @@
         {:else}
           <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {#each visibleDetailAssets as asset (asset.associationId)}
+              {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
               <article class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
                 <a
                   class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
@@ -1851,20 +2011,20 @@
                     >Cover</span
                   >
                 {/if}
-                <button
-                  class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                  type="button"
-                  aria-label={`Options for ${asset.filename}`}
-                  aria-expanded={mediaMenuAssetId === asset.associationId}
-                  aria-haspopup="menu"
-                  title={`Options for ${asset.filename}`}
-                  disabled={isSaving}
-                  onclick={() =>
-                    (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
-                >
-                  <Icon icon={mdiDotsVertical} size="20" />
-                </button>
-                {#if mediaMenuAssetId === asset.associationId}
+                {#if directlyAssignedHere}<button
+                    class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    type="button"
+                    aria-label={`Options for ${asset.filename}`}
+                    aria-expanded={mediaMenuAssetId === asset.associationId}
+                    aria-haspopup="menu"
+                    title={`Options for ${asset.filename}`}
+                    disabled={isSaving}
+                    onclick={() =>
+                      (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
+                  >
+                    <Icon icon={mdiDotsVertical} size="20" />
+                  </button>{/if}
+                {#if directlyAssignedHere && mediaMenuAssetId === asset.associationId}
                   <div
                     class="absolute top-13 right-2 z-3 grid min-w-44 gap-1 rounded-2xl border border-white/15 bg-black/88 p-1.5 text-left text-xs font-semibold text-white shadow-2xl backdrop-blur-lg"
                     role="menu"
@@ -1888,6 +2048,18 @@
                           onclick={() => void changeContextCover(asset.sourceAssetId)}>Use as cover</button
                         >
                       {/if}
+                    {/if}
+                    {#if entityKind === 'place' && selectedPlaceChildren.length > 0}
+                      {#each selectedPlaceChildren as child (child.entityId)}
+                        <button
+                          class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                          type="button"
+                          role="menuitem"
+                          disabled={isSaving}
+                          onclick={() => void assignAssetToPlaceChild(asset.assetId, child)}
+                          >Move to {child.displayName}</button
+                        >
+                      {/each}
                     {/if}
                     <button
                       class="flex min-h-10 items-center gap-2 rounded-xl px-3 text-left text-red-200 hover:bg-red-500/18 focus-visible:bg-red-500/18 focus-visible:outline-none"
@@ -2030,6 +2202,7 @@
     <CimmichContextCollection
       family={activeFamily}
       entities={displayedEntities}
+      includeNestedPlaces={Boolean(query.trim())}
       controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
       entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
       onAdd={openCreate}
@@ -2289,13 +2462,28 @@
               </section>
             {/if}
             <label class="context-field"
-              ><span>Inside <small>Optional</small></span><select bind:value={formParentId}
+              ><span>Inside <small>Optional</small></span><select
+                bind:value={formParentId}
+                onchange={() => {
+                  if (!formParentId) formDirectoryVisibility = 'listed';
+                }}
                 ><option value="">No parent place</option
                 >{#each entities.filter((entity) => entity.entityId !== selected?.entity.entityId) as entity (entity.entityId)}<option
                     value={entity.entityId}>{entity.displayName}</option
                   >{/each}</select
               ></label
             >
+            <label class="context-field"
+              ><span>Places page</span><select bind:value={formDirectoryVisibility}
+                ><option value="listed">Show as its own Place</option><option
+                  value="nested_only"
+                  disabled={!formParentId}>Show only inside its parent</option
+                ></select
+              ></label
+            >
+            <p class="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+              This controls directory placement only. It does not change who can see the Place or its photos.
+            </p>
           {/if}
           {#if entityKind === 'place' && showPreciseGeometry && formType === 'point'}
             <div class="grid gap-4 sm:grid-cols-2">

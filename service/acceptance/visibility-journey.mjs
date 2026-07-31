@@ -335,21 +335,17 @@ if (phase === "write") {
     { status: 404 },
   );
   assert.equal(hiddenDirect.code, "VISIBILITY_OBJECT_NOT_VISIBLE");
-  const standardVisiblePlace = (
-    await request("/v1/places?q=Synthetic%20Greek%20beach")
-  ).items[0];
-  assert.equal(standardVisiblePlace.parentEntityId, null);
+  assert.equal(
+    (await request("/v1/places?q=Synthetic%20Greek%20beach")).items.length,
+    0,
+  );
   const standardVisibleObject = (
     await request("/v1/objects?q=Synthetic%20blue%20roadster")
   ).items[0];
   const standardVisibleEvent = (
     await request("/v1/events?q=Synthetic%20Greek%20holiday%202020")
   ).items[0];
-  for (const entity of [
-    standardVisiblePlace,
-    standardVisibleObject,
-    standardVisibleEvent,
-  ]) {
+  for (const entity of [standardVisibleObject, standardVisibleEvent]) {
     assert.ok(entity);
     assert.equal(entity.assetCount, 0);
     assert.equal(entity.visibility.visibilityTier, "standard");
@@ -374,7 +370,8 @@ if (phase === "write") {
     },
   );
   assert.equal(standardContextReplay.replayed, true);
-  assert.equal(standardContextReplay.detail.entity.assetCount, 0);
+  assert.equal(standardContextReplay.detail, null);
+  assert.equal(standardContextReplay.projectionUnavailable, true);
 
   const contextVisibilityChanged = await request("/v1/visibility/objects", {
     body: {
@@ -403,6 +400,10 @@ if (phase === "write") {
   assert.equal(contextVisibilityChanged.objects.length, 3);
   assert.equal(
     (await request("/v1/places?q=Synthetic%20Greek%20beach")).items.length,
+    0,
+  );
+  assert.equal(
+    (await request("/v1/places?q=Synthetic%20beach%20yard")).items.length,
     0,
   );
   assert.equal(
@@ -526,8 +527,18 @@ if (phase === "write") {
       extraHeaders: privateHeaders(token),
     })
   ).items[0];
-  assert.equal(privatePlace.assetCount, 2);
+  assert.equal(privatePlace.assetCount, 1);
+  assert.equal(privatePlace.directAssetCount, 1);
+  assert.equal(privatePlace.subtreeAssetCount, 2);
   assert.equal(privatePlace.visibility.visibilityTier, "private");
+  assert.equal(
+    (
+      await request("/v1/places?q=Synthetic%20beach%20yard", {
+        extraHeaders: privateHeaders(token),
+      })
+    ).items.length,
+    1,
+  );
   const privateObject = (
     await request("/v1/objects?q=Synthetic%20blue%20roadster", {
       extraHeaders: privateHeaders(token),

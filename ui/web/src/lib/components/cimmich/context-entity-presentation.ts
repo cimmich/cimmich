@@ -496,18 +496,21 @@ export const groupContextEventsByYear = (entities: CimmichContextEntity[]) => {
   });
 };
 
-export const contextPlaceHierarchy = (entity: CimmichContextEntity, entities: CimmichContextEntity[]) => {
+export const contextPlaceLineage = (entity: CimmichContextEntity, entities: CimmichContextEntity[]) => {
   const byId = new Map(entities.map((candidate) => [candidate.entityId, candidate]));
-  const names = [entity.displayName];
+  const lineage = [entity];
   let parent = entity.parentEntityId ? byId.get(entity.parentEntityId) : undefined;
   const visited = new Set([entity.entityId]);
-  while (parent && !visited.has(parent.entityId) && names.length < 8) {
-    names.unshift(parent.displayName);
+  while (parent && !visited.has(parent.entityId) && lineage.length < 8) {
+    lineage.unshift(parent);
     visited.add(parent.entityId);
     parent = parent.parentEntityId ? byId.get(parent.parentEntityId) : undefined;
   }
-  return names;
+  return lineage;
 };
+
+export const contextPlaceHierarchy = (entity: CimmichContextEntity, entities: CimmichContextEntity[]) =>
+  contextPlaceLineage(entity, entities).map((candidate) => candidate.displayName);
 
 export const contextPlaceMapProjection = (entities: CimmichContextEntity[]) => {
   const markers: ContextPlaceMapMarker[] = [];

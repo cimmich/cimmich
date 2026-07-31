@@ -494,9 +494,29 @@ export const createBasicSmartSearch = (
             (selector->>'selectorKind' = 'context' AND EXISTS (
               SELECT 1 FROM current_context_asset association
               WHERE association.asset_id = asset.asset_id
-                AND association.entity_id IN (
-                  SELECT jsonb_array_elements_text(selector->'ids')
-                )
+                AND (association.entity_id IN (
+                    SELECT jsonb_array_elements_text(selector->'ids')
+                  ) OR association.entity_id IN (
+                    WITH RECURSIVE place_descendants(entity_id) AS (
+                      SELECT entity.entity_id
+                      FROM context_entity entity
+                      WHERE entity.entity_kind = 'place'
+                        AND entity.status = 'active'
+                        AND entity.entity_id IN (
+                          SELECT jsonb_array_elements_text(selector->'ids')
+                        )
+                        AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
+                      UNION ALL
+                      SELECT child.entity_id
+                      FROM context_entity child
+                      JOIN place_descendants parent
+                        ON child.parent_entity_id = parent.entity_id
+                      WHERE child.entity_kind = 'place'
+                        AND child.status = 'active'
+                        AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${visibleRank}
+                    )
+                    SELECT entity_id FROM place_descendants
+                  ))
             ))
           )
         )

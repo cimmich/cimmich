@@ -226,6 +226,52 @@ describe('Cimmich context collections', () => {
       ]),
     );
   });
+
+  it('keeps nested-only subplaces out of the main directory while preserving subtree totals', () => {
+    const places = [
+      entity({
+        assetCount: 3,
+        childCount: 1,
+        displayName: "Parent's Home",
+        entityId: 'place_home',
+        entityKind: 'place',
+        subtreeAssetCount: 12,
+        typeKind: 'property',
+      }),
+      entity({
+        assetCount: 9,
+        directoryVisibility: 'nested_only',
+        displayName: 'Yard',
+        entityId: 'place_yard',
+        entityKind: 'place',
+        parentEntityId: 'place_home',
+        subtreeAssetCount: 9,
+        typeKind: 'unlocated',
+      }),
+    ];
+    const main = render(CimmichContextCollection, {
+      entities: places,
+      entityHref,
+      family: 'places',
+      onAdd: vi.fn(),
+      onOpen: vi.fn(),
+    });
+
+    expect(main.getByRole('link', { name: /Parent's Home/ })).toHaveTextContent('12 photos');
+    expect(main.getByRole('link', { name: /Parent's Home/ })).toHaveTextContent('1 subplace');
+    expect(main.queryByRole('link', { name: /Yard/ })).not.toBeInTheDocument();
+    main.unmount();
+
+    const search = render(CimmichContextCollection, {
+      entities: places,
+      entityHref,
+      family: 'places',
+      includeNestedPlaces: true,
+      onAdd: vi.fn(),
+      onOpen: vi.fn(),
+    });
+    expect(search.getByRole('link', { name: /Yard/ })).toBeInTheDocument();
+  });
 });
 
 describe('Cimmich context detail hero', () => {

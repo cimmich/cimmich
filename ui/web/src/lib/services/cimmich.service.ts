@@ -143,12 +143,15 @@ export type CimmichContextGeometry =
 export type CimmichContextEntity = {
   aliases: string[];
   assetCount: number;
+  childCount?: number;
   coverAssetId: string | null;
   coverMode?: 'automatic' | 'explicit';
   dateEnd: string | null;
   datePrecision: CimmichContextDatePrecision;
   dateStart: string | null;
   description: string | null;
+  directAssetCount?: number;
+  directoryVisibility?: 'listed' | 'nested_only';
   displayName: string;
   entityId: string;
   entityKind: CimmichContextEntityKind;
@@ -158,6 +161,7 @@ export type CimmichContextEntity = {
   previewAssetIds?: string[];
   revision: number;
   status: 'active' | 'archived' | 'hidden';
+  subtreeAssetCount?: number;
   typeKind: CimmichContextTypeKind;
   visibility?: CimmichVisibilityObject;
 };
@@ -176,6 +180,12 @@ export type CimmichContextAsset = {
   width: number;
 };
 
+export type CimmichPlaceRollupAsset = CimmichContextAsset & {
+  assignedEntityIds: string[];
+  branchEntityIds: string[];
+  directlyAssigned: boolean;
+};
+
 export type CimmichContextRelation = {
   linkedAt: string;
   relationId: string;
@@ -190,6 +200,7 @@ export type CimmichContextDetail = {
   entity: CimmichContextEntity;
   relations: CimmichContextRelation[];
   schemaVersion: 'cimmich.context-entity.v1';
+  subtreeAssets?: CimmichPlaceRollupAsset[];
 };
 
 export type CimmichContextEntityInput = {
@@ -199,6 +210,7 @@ export type CimmichContextEntityInput = {
   datePrecision?: CimmichContextDatePrecision;
   dateStart?: string | null;
   description?: string | null;
+  directoryVisibility?: 'listed' | 'nested_only';
   displayName: string;
   geometry?: CimmichContextGeometry;
   parentEntityId?: string | null;
@@ -208,6 +220,7 @@ export type CimmichContextEntityInput = {
 
 export type CimmichContextMutationResult = {
   changedAssetIds?: string[];
+  childEntityId?: string;
   commandId: string;
   decisionId: string | null;
   detail: CimmichContextDetail | null;
@@ -2927,6 +2940,16 @@ export const updateCimmichContextEntity = (
     body: JSON.stringify(input),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'PATCH',
+  });
+
+export const assignCimmichPlaceAssetsToChild = (
+  entityId: string,
+  input: { assetIds: string[]; childEntityId: string; commandId: string },
+) =>
+  request<CimmichContextMutationResult>(`/v1/places/${encodeURIComponent(entityId)}/assets:assign-child`, {
+    body: JSON.stringify(input),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
   });
 
 export const searchCimmichAddresses = (query: string, limit = 5) => {

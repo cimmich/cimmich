@@ -2416,6 +2416,7 @@ export const createCimmichRepository = (
     deletePlace: contextEntities.deletePlace,
     deleteObject: contextEntities.deleteObject,
     attachContextAssets: contextEntities.attachAssets,
+    assignPlaceAssetsToChild: contextEntities.assignPlaceAssetsToChild,
     detachContextAssets: contextEntities.detachAssets,
     attachContextRelations: contextEntities.attachRelations,
     detachContextRelations: contextEntities.detachRelations,
