@@ -2,7 +2,7 @@
 
 Updated: 2026-07-27
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 108/patch 1
+Current source/disposable candidate: migration-ledger schema 109/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -15,7 +15,7 @@ source with the private archive and adds recoverable bulk Organise operations.
 The final source gate passes 798
 service tests with two skipped, 894 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 108, and the complete disposable synthetic lifecycle.
+acceptance through schema 109, and the complete disposable synthetic lifecycle.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt
@@ -32,7 +32,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 108; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 109; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -133,6 +133,11 @@ undoable move from one parent's direct assignment to one immediate child. It
 does not infer room membership or inherit fabricated geometry. Context children
 inherit the strictest ancestor visibility tier, preventing hierarchy or asset
 leakage through a less-restricted descendant.
+Schema 109 preserves existing rectangular Place areas and adds bounded,
+owner-painted polygon geometry for real child-Place outlines. The Place canvas
+starts from a focused satellite view but stores only the owner's 3–500-point
+boundary; provider tiles are not copied into Cimmich. GPS remains suggestion
+evidence and cannot assign a subsection automatically.
 
 ## Public Beta Patch 6 candidate
 

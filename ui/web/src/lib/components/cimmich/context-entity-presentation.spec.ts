@@ -199,13 +199,27 @@ describe('Cimmich context entity presentation', () => {
         },
         typeKind: 'route',
       }),
+      entity({
+        displayName: 'Office',
+        entityId: 'place_office',
+        geometry: {
+          points: [
+            { latitude: 39.551, longitude: 19.831 },
+            { latitude: 39.552, longitude: 19.833 },
+            { latitude: 39.55, longitude: 19.834 },
+          ],
+        },
+        parentEntityId: 'place_point',
+        typeKind: 'area',
+      }),
     ];
     expect(contextPlaceHierarchy(places[3], places)).toEqual(['Greece', 'Corfu', 'The Pink Palace', 'Beach']);
     const projection = contextPlaceMapProjection(places);
     expect(projection.markers).toHaveLength(1);
     expect(projection.markers[0]?.parentName).toBe('Greece / Corfu');
-    expect(projection.areas).toHaveLength(2);
+    expect(projection.areas).toHaveLength(3);
     expect(projection.areas.find((area) => area.geometryKind === 'area')?.points).toHaveLength(5);
+    expect(projection.areas.find((area) => area.id === 'place_office')?.points).toHaveLength(3);
   });
 
   it('formats searchable addresses and accepts only valid latitude/longitude pairs', () => {

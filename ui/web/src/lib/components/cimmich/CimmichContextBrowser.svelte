@@ -4,6 +4,7 @@
   import CimmichDocuments from './CimmichDocuments.svelte';
   import CimmichContextCollection from './CimmichContextCollection.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
+  import CimmichPlaceCanvas from './CimmichPlaceCanvas.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
@@ -46,7 +47,7 @@
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getMapMarkers, searchAssets, type AssetResponseDto } from '@immich/sdk';
-  import { Icon } from '@immich/ui';
+  import { Icon, toastManager } from '@immich/ui';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { untrack } from 'svelte';
   import {
@@ -59,6 +60,7 @@
     mdiFileDocumentOutline,
     mdiFilterVariant,
     mdiImageMultipleOutline,
+    mdiImageMove,
     mdiLinkPlus,
     mdiMagnify,
     mdiMapMarkerOutline,
@@ -66,6 +68,7 @@
     mdiPackageVariantClosed,
     mdiPencilOutline,
     mdiPlus,
+    mdiSelectAll,
     mdiTrashCanOutline,
     mdiUndoVariant,
   } from '@mdi/js';
@@ -176,6 +179,8 @@
   let connectionPresentationKey = '';
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
+  let selectedPlaceAssetIds = $state<string[]>([]);
+  let placeBulkTargetChildId = $state('');
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
@@ -212,6 +217,7 @@
   let formWest = $state('');
   let formRoute = $state('');
   let formMapPoints = $state<Array<{ lat: number; lng: number }>>([]);
+  let formAreaUsesPoints = $state(false);
   let showPreciseGeometry = $state(false);
   let placeSearchQuery = $state('');
   let placeSearchResults = $state<CimmichAddressGeocodingItem[]>([]);
@@ -323,6 +329,7 @@
   const placeDetailAssetCount = $derived(
     activeFamily === 'places' ? (selected?.subtreeAssets?.length ?? selected?.assets.length ?? 0) : 0,
   );
+  const placeBulkSelectionLimit = 100;
   const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
   type ContextDetailTab = 'connections' | 'documents' | 'map' | 'photos';
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
@@ -344,6 +351,16 @@
   );
   const filteredRelationTargets = $derived(filterContextRelationTargets(relationTargets, relationTargetQuery));
   const selectedRelationTarget = $derived(relationTargets.find((target) => target.id === relationTargetId) ?? null);
+
+  $effect(() => {
+    if (selectedPlaceChildren.length === 0) {
+      placeBulkTargetChildId = '';
+      return;
+    }
+    if (!selectedPlaceChildren.some((child) => child.entityId === placeBulkTargetChildId)) {
+      placeBulkTargetChildId = selectedPlaceChildren[0].entityId;
+    }
+  });
 
   const iconForFamily = (family: CimmichContextFamily) => {
     if (family === 'places') {
@@ -442,6 +459,7 @@
     selectedLoading = true;
     eventMediaLane = 'main';
     placeMediaLane = 'all';
+    selectedPlaceAssetIds = [];
     error = null;
     try {
       const next = await getCimmichContextEntity(activeFamily, entity.entityId, {
@@ -552,6 +570,7 @@
     formWest = '';
     formRoute = '';
     formMapPoints = [];
+    formAreaUsesPoints = false;
     showPreciseGeometry = false;
     placeSearchQuery = '';
     placeSearchResults = [];
@@ -597,6 +616,7 @@
     formDirectoryVisibility = entity.directoryVisibility ?? 'listed';
     formType = entity.typeKind;
     const geometry = entity.geometry;
+    formAreaUsesPoints = entity.typeKind === 'area' && Boolean(geometry && 'points' in geometry);
     formLatitude = geometry && 'latitude' in geometry ? String(geometry.latitude) : '';
     formLongitude = geometry && 'longitude' in geometry ? String(geometry.longitude) : '';
     formNorth = geometry && 'north' in geometry ? String(geometry.north) : '';
@@ -651,6 +671,14 @@
       return { latitude: numberValue(formLatitude, 'Latitude'), longitude: numberValue(formLongitude, 'Longitude') };
     }
     if (formType === 'area') {
+      if (formAreaUsesPoints) {
+        if (formMapPoints.length < 3) {
+          throw new Error('A painted area needs at least three points.');
+        }
+        return {
+          points: formMapPoints.map((point) => ({ latitude: point.lat, longitude: point.lng })),
+        };
+      }
       return {
         east: numberValue(formEast, 'East'),
         north: numberValue(formNorth, 'North'),
@@ -687,6 +715,10 @@
       return;
     }
     if (formType === 'area' && formMapPoints.length > 0) {
+      if (formAreaUsesPoints) {
+        formRoute = formMapPoints.map((point) => `${point.lat}, ${point.lng}`).join('\n');
+        return;
+      }
       const latitudes = formMapPoints.map((point) => point.lat);
       const longitudes = formMapPoints.map((point) => point.lng);
       formNorth = String(Math.max(...latitudes));
@@ -707,11 +739,15 @@
     if (formType !== 'area' && formType !== 'route') {
       return;
     }
-    const last = formMapPoints.at(-1);
+    const nextMapPoints = formType === 'area' && !formAreaUsesPoints ? [] : formMapPoints;
+    if (formType === 'area') {
+      formAreaUsesPoints = true;
+    }
+    const last = nextMapPoints.at(-1);
     if (last && Math.hypot(last.lat - lat, last.lng - lng) < 0.000_02) {
       return;
     }
-    formMapPoints = [...formMapPoints, { lat, lng }].slice(-120);
+    formMapPoints = [...nextMapPoints, { lat, lng }].slice(-500);
     updateGeometryFromMapPoints();
   };
 
@@ -803,6 +839,7 @@
     formEast = '';
     formWest = '';
     formRoute = '';
+    formAreaUsesPoints = false;
   };
 
   const draftPlaceMarkers = $derived(
@@ -827,6 +864,18 @@
           geometrySource: 'manual' as const,
           id: 'draft-route',
           name: formName.trim() || 'New route',
+          parentName: '',
+          points: formMapPoints.map((point) => ({ lat: point.lat, lon: point.lng })),
+        },
+      ];
+    }
+    if (formType === 'area' && formAreaUsesPoints && formMapPoints.length >= 3) {
+      return [
+        {
+          geometryKind: 'area' as const,
+          geometrySource: 'manual' as const,
+          id: 'draft-area',
+          name: formName.trim() || 'New area',
           parentName: '',
           points: formMapPoints.map((point) => ({ lat: point.lat, lon: point.lng })),
         },
@@ -882,8 +931,11 @@
     }
     try {
       const geometry = formGeometry();
-      if (formType === 'area' && geometry && 'north' in geometry) {
-        return geometry.north > geometry.south && geometry.east > geometry.west;
+      if (formType === 'area' && geometry) {
+        if ('points' in geometry) {
+          return new Set(geometry.points.map((point) => `${point.latitude},${point.longitude}`)).size >= 3;
+        }
+        return 'north' in geometry && geometry.north > geometry.south && geometry.east > geometry.west;
       }
       return true;
     } catch {
@@ -1221,7 +1273,39 @@
     }
   };
 
-  const assignAssetToPlaceChild = async (assetId: string, child: CimmichContextEntity) => {
+  const selectPlaceMediaLane = (lane: typeof placeMediaLane) => {
+    placeMediaLane = lane;
+    selectedPlaceAssetIds = [];
+    mediaMenuAssetId = null;
+  };
+
+  const placeAssetSelected = (assetId: string) => selectedPlaceAssetIds.includes(assetId);
+
+  const togglePlaceAssetSelection = (assetId: string) => {
+    if (placeAssetSelected(assetId)) {
+      selectedPlaceAssetIds = selectedPlaceAssetIds.filter((candidate) => candidate !== assetId);
+      return;
+    }
+    if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit) {
+      toastManager.warning(
+        `Maximum ${placeBulkSelectionLimit} photos. Move or clear your current selection before choosing more.`,
+      );
+      return;
+    }
+    selectedPlaceAssetIds = [...selectedPlaceAssetIds, assetId];
+  };
+
+  const selectShownPlaceAssets = () => {
+    const shownAssetIds = visibleDetailAssets.map((asset) => asset.assetId);
+    selectedPlaceAssetIds = shownAssetIds.slice(0, placeBulkSelectionLimit);
+    if (shownAssetIds.length > placeBulkSelectionLimit) {
+      toastManager.warning(
+        `Maximum ${placeBulkSelectionLimit} photos selected. Move these before selecting the remaining photos.`,
+      );
+    }
+  };
+
+  const assignAssetsToPlaceChild = async (assetIds: string[], child: CimmichContextEntity) => {
     if (!selected || activeFamily !== 'places') {
       return;
     }
@@ -1230,17 +1314,60 @@
     mediaMenuAssetId = null;
     try {
       const result = await assignCimmichPlaceAssetsToChild(selected.entity.entityId, {
-        assetIds: [assetId],
+        assetIds,
         childEntityId: child.entityId,
         commandId: createCimmichContextCommandId('place-assign-child'),
       });
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId('place-assign-child-undo') : '';
       undoLabel = `Undo move to ${child.displayName}`;
+      selectedPlaceAssetIds = [];
       await loadEntities({ preserveCollection: true });
       selected = result.detail;
     } catch (error_) {
       error = asError(error_);
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  const assignAssetToPlaceChild = (assetId: string, child: CimmichContextEntity) =>
+    assignAssetsToPlaceChild([assetId], child);
+
+  const assignSelectedPlaceAssets = async () => {
+    const child = selectedPlaceChildren.find((candidate) => candidate.entityId === placeBulkTargetChildId);
+    if (!child || selectedPlaceAssetIds.length === 0) {
+      return;
+    }
+    await assignAssetsToPlaceChild(selectedPlaceAssetIds, child);
+  };
+
+  const savePlaceChildZone = async (child: CimmichContextEntity, geometry: CimmichContextGeometry) => {
+    if (!selected || activeFamily !== 'places') {
+      return;
+    }
+    isSaving = true;
+    error = null;
+    try {
+      const result = await updateCimmichContextEntity('places', child.entityId, {
+        commandId: createCimmichContextCommandId('place-painted-zone'),
+        expectedRevision: child.revision,
+        geometry,
+        typeKind: 'area',
+      });
+      if (!result.detail) {
+        throw new Error('The painted zone did not return its current Place detail.');
+      }
+      const updatedChild = result.detail.entity;
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('place-painted-zone-undo') : '';
+      undoLabel = `Undo ${child.displayName} outline`;
+      entities = entities.map((candidate) => (candidate.entityId === updatedChild.entityId ? updatedChild : candidate));
+      selected = await getCimmichContextEntity('places', selected.entity.entityId);
+    } catch (error_) {
+      const nextError = asError(error_);
+      error = nextError;
+      throw nextError;
     } finally {
       isSaving = false;
     }
@@ -1286,15 +1413,23 @@
     }
     isSaving = true;
     try {
+      const selectedEntityId = selected.entity.entityId;
       const result = await undoCimmichContextDecision(
         undoDecisionId,
         undoCommandId || createCimmichContextCommandId('asset-undo'),
       );
+      if (!result.detail) {
+        throw new Error('Undo did not return the current Place detail.');
+      }
       undoDecisionId = null;
       undoCommandId = '';
       undoLabel = 'Undo last change';
-      await loadEntities();
-      selected = result.detail;
+      selectedPlaceAssetIds = [];
+      await loadEntities({ preserveCollection: true });
+      selected =
+        result.detail.entity.entityId === selectedEntityId
+          ? result.detail
+          : await getCimmichContextEntity(activeFamily, selectedEntityId);
     } catch (error_) {
       error = asError(error_);
     } finally {
@@ -1939,14 +2074,14 @@
               class:context-detail-lane--active={placeMediaLane === 'all'}
               type="button"
               aria-pressed={placeMediaLane === 'all'}
-              onclick={() => (placeMediaLane = 'all')}>All <span>{placeDetailAssetCount}</span></button
+              onclick={() => selectPlaceMediaLane('all')}>All <span>{placeDetailAssetCount}</span></button
             >
             <button
               class="context-detail-lane"
               class:context-detail-lane--active={placeMediaLane === 'unassigned'}
               type="button"
               aria-pressed={placeMediaLane === 'unassigned'}
-              onclick={() => (placeMediaLane = 'unassigned')}
+              onclick={() => selectPlaceMediaLane('unassigned')}
               >Unassigned <span
                 >{selected.subtreeAssets?.filter(
                   (asset) => asset.directlyAssigned && asset.branchEntityIds.length === 0,
@@ -1959,7 +2094,7 @@
                 class:context-detail-lane--active={placeMediaLane === child.entityId}
                 type="button"
                 aria-pressed={placeMediaLane === child.entityId}
-                onclick={() => (placeMediaLane = child.entityId)}
+                onclick={() => selectPlaceMediaLane(child.entityId)}
                 >{child.displayName}
                 <span
                   >{selected.subtreeAssets?.filter((asset) => asset.branchEntityIds.includes(child.entityId)).length ??
@@ -1967,6 +2102,41 @@
                 ></button
               >
             {/each}
+          </div>
+        {/if}
+        {#if entityKind === 'place' && placeMediaLane === 'unassigned' && selectedPlaceChildren.length > 0 && visibleDetailAssets.length > 0}
+          <div class="context-place-bulk-bar" aria-label="Organise unassigned photos">
+            <div class="context-place-bulk-count">
+              <strong>{selectedPlaceAssetIds.length} selected</strong>
+              <span>Choose up to {placeBulkSelectionLimit} photos to move together.</span>
+            </div>
+            <div class="context-place-bulk-actions">
+              <button type="button" disabled={isSaving} onclick={selectShownPlaceAssets}>
+                <Icon icon={mdiSelectAll} size="17" /> Select shown
+              </button>
+              {#if selectedPlaceAssetIds.length > 0}<button
+                  type="button"
+                  disabled={isSaving}
+                  onclick={() => (selectedPlaceAssetIds = [])}>Clear</button
+                >{/if}
+              <label>
+                <span class="sr-only">Move selected photos to</span>
+                <select bind:value={placeBulkTargetChildId} disabled={isSaving || selectedPlaceAssetIds.length === 0}>
+                  {#each selectedPlaceChildren as child (child.entityId)}
+                    <option value={child.entityId}>{child.displayName}</option>
+                  {/each}
+                </select>
+              </label>
+              <button
+                class="context-place-bulk-move"
+                type="button"
+                disabled={isSaving || selectedPlaceAssetIds.length === 0 || !placeBulkTargetChildId}
+                onclick={() => void assignSelectedPlaceAssets()}
+              >
+                <Icon icon={mdiImageMove} size="18" />
+                {isSaving ? 'Moving…' : `Move ${selectedPlaceAssetIds.length || ''}`}
+              </button>
+            </div>
           </div>
         {/if}
         {#if (entityKind === 'place' ? placeDetailAssetCount : selected.assets.length) === 0}
@@ -1988,7 +2158,10 @@
           <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {#each visibleDetailAssets as asset (asset.associationId)}
               {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
-              <article class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800">
+              <article
+                class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800"
+                class:context-place-photo--selected={entityKind === 'place' && placeAssetSelected(asset.assetId)}
+              >
                 <a
                   class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
                   href={contextAssetViewerHref(asset.sourceAssetId)}
@@ -2005,6 +2178,19 @@
                     >{contextAssociationLabel(entityKind, asset.associationKind)}</span
                   >
                 </a>
+                {#if entityKind === 'place' && placeMediaLane === 'unassigned'}
+                  <button
+                    class="context-place-photo-select"
+                    class:context-place-photo-select--active={placeAssetSelected(asset.assetId)}
+                    type="button"
+                    aria-label={`${placeAssetSelected(asset.assetId) ? 'Deselect' : 'Select'} ${asset.filename}`}
+                    aria-pressed={placeAssetSelected(asset.assetId)}
+                    disabled={isSaving}
+                    onclick={() => togglePlaceAssetSelection(asset.assetId)}
+                  >
+                    {#if placeAssetSelected(asset.assetId)}<Icon icon={mdiCheck} size="18" />{/if}
+                  </button>
+                {/if}
                 {#if selected.entity.coverAssetId === asset.sourceAssetId}
                   <span
                     class="absolute top-2 left-2 z-1 rounded-full bg-black/62 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm"
@@ -2079,7 +2265,15 @@
         {/if}
       </div>
     {:else if activeDetailTab === 'map' && activeFamily === 'places'}
-      <div class="mt-7" role="tabpanel" aria-label="Map">
+      <div class="mt-7 grid gap-5" role="tabpanel" aria-label="Map">
+        {#if selectedPlaceChildren.length > 0}
+          <CimmichPlaceCanvas
+            children={selectedPlaceChildren}
+            onOpenPlace={openEntity}
+            onSaveZone={savePlaceChildZone}
+            parent={selected.entity}
+          />
+        {/if}
         <CimmichContextPlaceMap detail={selected} />
       </div>
     {:else if activeDetailTab === 'connections'}
@@ -2346,7 +2540,7 @@
                           ? 'Drag the marker to put it exactly where you want it.'
                           : 'Click once on the map, or search above. You can drag the marker afterwards.'
                         : formType === 'area'
-                          ? 'Drag across the place. Cimmich saves the honest rectangular boundary supported today.'
+                          ? 'Drag around the boundary. Cimmich saves the exact outline you paint.'
                           : 'Drag along the journey in order.'}
                     </p>
                   </div>
@@ -2465,7 +2659,9 @@
               ><span>Inside <small>Optional</small></span><select
                 bind:value={formParentId}
                 onchange={() => {
-                  if (!formParentId) formDirectoryVisibility = 'listed';
+                  if (!formParentId) {
+                    formDirectoryVisibility = 'listed';
+                  }
                 }}
                 ><option value="">No parent place</option
                 >{#each entities.filter((entity) => entity.entityId !== selected?.entity.entityId) as entity (entity.entityId)}<option
@@ -2501,6 +2697,10 @@
                 /></label
               >
             </div>
+          {:else if entityKind === 'place' && showPreciseGeometry && formType === 'area' && formAreaUsesPoints}
+            <p class="rounded-2xl bg-gray-100 p-4 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              Painted boundary · {formMapPoints.length} points. Use the map to adjust it without reducing it to a rectangle.
+            </p>
           {:else if entityKind === 'place' && showPreciseGeometry && formType === 'area'}
             <div class="grid grid-cols-2 gap-4">
               <label class="context-field"><span>North</span><input inputmode="decimal" bind:value={formNorth} /></label
@@ -3914,6 +4114,101 @@
     background: rgb(127 29 29 / 0.28);
   }
 
+  .context-place-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    border-radius: 1.1rem;
+    background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+    padding: 0.75rem;
+  }
+
+  .context-place-bulk-count {
+    display: grid;
+    min-width: 0;
+  }
+
+  .context-place-bulk-count strong {
+    font-size: 0.82rem;
+  }
+
+  .context-place-bulk-count span {
+    color: rgb(107 114 128);
+    font-size: 0.7rem;
+  }
+
+  .context-place-bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+
+  .context-place-bulk-actions button,
+  .context-place-bulk-actions select {
+    min-height: 2.5rem;
+    border: 1px solid rgb(209 213 219);
+    border-radius: 999px;
+    background: white;
+    padding: 0 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .context-place-bulk-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  :global(.dark) .context-place-bulk-actions button,
+  :global(.dark) .context-place-bulk-actions select {
+    border-color: rgb(75 85 99);
+    background: rgb(17 24 39);
+  }
+
+  .context-place-bulk-actions button:disabled,
+  .context-place-bulk-actions select:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .context-place-bulk-actions .context-place-bulk-move {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: white;
+  }
+
+  .context-place-photo--selected {
+    outline: 4px solid var(--color-primary);
+    outline-offset: -4px;
+  }
+
+  .context-place-photo-select {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 2;
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    border: 2px solid white;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 0.55);
+    color: white;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+  }
+
+  .context-place-photo-select--active {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+  }
+
   @media (min-width: 640px) {
     .context-type-choice-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3927,6 +4222,21 @@
   }
 
   @media (max-width: 520px) {
+    .context-place-bulk-bar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .context-place-bulk-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .context-place-bulk-actions label,
+    .context-place-bulk-actions select {
+      width: 100%;
+    }
+
     :global(.context-profile-edit) {
       width: 2.75rem;
       flex: 0 0 2.75rem;
