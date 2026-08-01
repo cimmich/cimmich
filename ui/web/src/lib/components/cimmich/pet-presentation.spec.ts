@@ -221,9 +221,9 @@ describe('Pet presentation', () => {
     ] as const;
 
     expect(groupPetConnections([...connections]).map(({ label }) => label)).toEqual(['Places', 'Things']);
-    expect(getPetConnectionHref(connections[0])).toBe('/cimmich/places?entityId=object-moss&family=objects');
+    expect(getPetConnectionHref(connections[0])).toBe('/cimmich/things?entityId=object-moss');
     expect(getPetRelatedConnectionsHref('Juniper', [...connections], 'object')).toBe(
-      '/cimmich/places?family=objects&relatedFrom=Juniper&relatedIds=object-moss',
+      '/cimmich/things?relatedFrom=Juniper&relatedIds=object-moss',
     );
   });
 

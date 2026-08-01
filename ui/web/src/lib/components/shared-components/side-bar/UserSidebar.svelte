@@ -28,6 +28,7 @@
     mdiMap,
     mdiMapOutline,
     mdiPawOutline,
+    mdiPackageVariantClosed,
     mdiTuneVariant,
     mdiTextSearch,
     mdiTagMultipleOutline,
@@ -65,7 +66,8 @@
     items={[
       { title: 'People', href: Route.cimmichPeople(), icon: mdiAccountOutline, activeIcon: mdiAccount },
       { title: 'Pets', href: Route.cimmichPets(), icon: mdiPawOutline },
-      { title: 'Places & Things', href: Route.cimmichPlaces(), icon: mdiMapOutline, activeIcon: mdiMap },
+      { title: 'Places', href: Route.cimmichPlaces(), icon: mdiMapOutline, activeIcon: mdiMap },
+      { title: 'Things', href: Route.cimmichThings(), icon: mdiPackageVariantClosed },
       { title: 'Events', href: Route.cimmichEvents(), icon: mdiImageMultipleOutline, activeIcon: mdiImageMultiple },
       { title: 'Documents', href: Route.cimmichDocuments(), icon: mdiFileDocumentOutline },
       { title: 'Organise', href: Route.cimmichOrganise(), icon: mdiTuneVariant },

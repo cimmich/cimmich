@@ -122,35 +122,34 @@ describe('Cimmich context collections', () => {
     ]);
   });
 
-  it('starts Places in Locations while keeping Geography, Map and GPS adjacent', async () => {
+  it('renders the controlled Places view and keeps GPS mounted after first entry', async () => {
     const onAdd = vi.fn();
-    const { getByRole, getByText } = render(CimmichContextCollection, {
+    const props = {
+      controlledPlaceView: 'locations' as 'atlas' | 'geography' | 'gps' | 'locations',
       entities: [],
       entityHref,
-      family: 'places',
+      family: 'places' as const,
       onAdd,
       onOpen: vi.fn(),
-    });
+    };
+    const rendered = render(CimmichContextCollection, props);
+    const { getByRole, getByText } = rendered;
 
-    expect(getByRole('button', { name: 'Locations' })).toHaveAttribute('aria-pressed', 'true');
-    expect(getByRole('button', { name: 'Geography' })).toHaveAttribute('aria-pressed', 'false');
-    expect(getByRole('button', { name: 'Map' })).toHaveAttribute('aria-pressed', 'false');
-    expect(getByRole('button', { name: 'GPS' })).toHaveAttribute('aria-pressed', 'false');
     expect(getByText('No locations yet')).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Add a location' }));
     expect(onAdd).toHaveBeenCalledWith('location');
     expect(mocks.getMapMarkers).not.toHaveBeenCalled();
-    await fireEvent.click(getByRole('button', { name: 'Map' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'atlas' });
     expect(getByText('Your atlas starts with a place')).toBeInTheDocument();
-    await fireEvent.click(getByRole('button', { name: 'GPS' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'gps' });
     expect(getByRole('heading', { name: 'Turn photo locations into Geography' })).toBeInTheDocument();
     await waitFor(() => expect(mocks.getMapMarkers).toHaveBeenCalledOnce());
 
-    await fireEvent.click(getByRole('button', { name: 'Geography' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'geography' });
     expect(getByText('No geography yet')).toBeInTheDocument();
-    await fireEvent.click(getByRole('button', { name: 'Locations' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'locations' });
     expect(getByText('No locations yet')).toBeInTheDocument();
-    await fireEvent.click(getByRole('button', { name: 'GPS' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'gps' });
     expect(getByRole('heading', { name: 'Turn photo locations into Geography' })).toBeInTheDocument();
     expect(mocks.getMapMarkers).toHaveBeenCalledOnce();
 
@@ -185,7 +184,11 @@ describe('Cimmich context collections', () => {
   });
 
   it('separates Locations from Geography and keeps geographic duplicate and sort views', async () => {
-    const { getAllByRole, getByLabelText, getByRole, getByText, queryByText } = render(CimmichContextCollection, {
+    const onAdd = vi.fn();
+    const props = {
+      controlledPlaceGroupMode: 'country' as 'country' | 'duplicates' | 'none',
+      controlledPlaceSortMode: 'name' as 'name' | 'photos-asc' | 'photos-desc',
+      controlledPlaceView: 'locations' as 'atlas' | 'geography' | 'gps' | 'locations',
       entities: [
         entity({
           assetCount: 15,
@@ -213,31 +216,43 @@ describe('Cimmich context collections', () => {
         }),
       ],
       entityHref,
-      family: 'places',
+      family: 'places' as const,
       geographyGroupHref: (groupName: string) =>
         `/cimmich/places/${encodeURIComponent(groupName)}?geographyGroup=${encodeURIComponent(groupName)}`,
-      onAdd: vi.fn(),
+      onAdd,
       onOpen: vi.fn(),
-    });
+    };
+    const rendered = render(CimmichContextCollection, props);
+    const { getAllByRole, getByRole, getByText, queryByText } = rendered;
 
     expect(getByRole('heading', { name: /^No geography set$/ })).toBeInTheDocument();
     expect(getByText("Parent's Home")).toBeInTheDocument();
     expect(queryByText('Each name is unique')).not.toBeInTheDocument();
     expect(queryByText('Zagreb, Croatia')).not.toBeInTheDocument();
 
-    await fireEvent.click(getByRole('button', { name: 'Geography' }));
+    await rendered.rerender({ ...props, controlledPlaceView: 'geography' });
     expect(getByRole('heading', { name: /^Croatia$/ })).toBeInTheDocument();
-    expect(getByRole('option', { name: 'Repeated names (1)' })).toBeInTheDocument();
     expect(getByRole('link', { name: 'Croatia' })).toHaveAttribute(
       'href',
       '/cimmich/places/Croatia?geographyGroup=Croatia',
     );
+    await fireEvent.click(getByRole('button', { name: 'Add subdivision in Croatia' }));
+    expect(onAdd).toHaveBeenCalledWith('geography', '', 'Croatia');
 
-    await fireEvent.change(getByLabelText('Group places'), { target: { value: 'duplicates' } });
+    await rendered.rerender({
+      ...props,
+      controlledPlaceGroupMode: 'duplicates',
+      controlledPlaceView: 'geography',
+    });
     await waitFor(() => expect(getByText('2 saved records need consolidation')).toBeInTheDocument());
     expect(queryByText("Parent's Home")).not.toBeInTheDocument();
 
-    await fireEvent.change(getByLabelText('Sort places'), { target: { value: 'photos-desc' } });
+    await rendered.rerender({
+      ...props,
+      controlledPlaceGroupMode: 'duplicates',
+      controlledPlaceSortMode: 'photos-desc',
+      controlledPlaceView: 'geography',
+    });
     await waitFor(() =>
       expect(getAllByRole('link', { name: /Zagreb, Croatia/ }).map((link) => link.getAttribute('href'))).toEqual([
         '/cimmich/test/place_zagreb_area',

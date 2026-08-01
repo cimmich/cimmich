@@ -4,5 +4,5 @@
 </script>
 
 <UserPageLayout>
-  <CimmichContextBrowser families={['places']} />
+  <CimmichContextBrowser families={['objects']} />
 </UserPageLayout>

@@ -10,6 +10,7 @@ import {
   contextFamilyLabels,
   contextPlaceLocationLabel,
   contextPlaceCountryLabel,
+  contextGeographySubdivisionName,
   contextPlaceDescendants,
   contextRequestedEntityId,
   formatContextCoordinate,
@@ -472,9 +473,14 @@ describe('named context detail routes', () => {
     );
   });
 
-  it('builds a named thing href under the shared places section', () => {
+  it('keeps a directory-created subdivision in its selected country group', () => {
+    expect(contextGeographySubdivisionName('NSW', 'Australia')).toBe('NSW, Australia');
+    expect(contextGeographySubdivisionName('Brisbane, Australia', 'Australia')).toBe('Brisbane, Australia');
+  });
+
+  it('builds a named thing href under its own section', () => {
     expect(getContextDetailHref(at('/cimmich/places?family=objects'), 'objects', 'object_1', 'ATV')).toBe(
-      '/cimmich/places/ATV?thingId=object_1',
+      '/cimmich/things/ATV?thingId=object_1',
     );
   });
 
@@ -491,19 +497,19 @@ describe('named context detail routes', () => {
 
   it('falls back to the query form when an entity has no usable name', () => {
     expect(getContextDetailHref(at('/cimmich/places'), 'places', 'place_3', '   ')).toBe(
-      '/cimmich/places?family=places&entityId=place_3',
+      '/cimmich/places?entityId=place_3',
     );
   });
 
   it('returns to the collection for the active family, dropping the named segment', () => {
     expect(getContextCollectionHref(at('/cimmich/places/ATV?thingId=object_1&tab=documents'), 'objects')).toBe(
-      '/cimmich/places?family=objects',
+      '/cimmich/things',
     );
     expect(getContextCollectionHref(at("/cimmich/places/Parent's%20Home?placeId=place_1"), 'places')).toBe(
-      '/cimmich/places?family=places',
+      '/cimmich/places',
     );
     expect(getContextCollectionHref(at('/cimmich/places/Australia?geographyGroup=Australia'), 'places')).toBe(
-      '/cimmich/places?family=places',
+      '/cimmich/places',
     );
   });
 

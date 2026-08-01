@@ -23,8 +23,8 @@ describe('Document presentation', () => {
 
     expect(documentSubjectHref(link('person'))).toBe('/cimmich/people/Maya%20%26%20friends?personId=person_1');
     expect(documentSubjectHref(link('pet'))).toBe('/cimmich/pets?entityId=pet_1');
-    expect(documentSubjectHref(link('place'))).toBe('/cimmich/places?family=places&entityId=place_1');
-    expect(documentSubjectHref(link('object'))).toBe('/cimmich/places?family=objects&entityId=object_1');
+    expect(documentSubjectHref(link('place'))).toBe('/cimmich/places?entityId=place_1');
+    expect(documentSubjectHref(link('object'))).toBe('/cimmich/things?entityId=object_1');
     expect(documentSubjectHref(link('event'))).toBe('/cimmich/events?family=events&entityId=event_1');
   });
 });

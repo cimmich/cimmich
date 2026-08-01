@@ -55,7 +55,7 @@ describe('Route', () => {
 
   describe(Route.cimmichThings.name, () => {
     it('opens the Things family in the shared Places and Objects workspace', () => {
-      expect(Route.cimmichThings()).toBe('/cimmich/places?family=objects');
+      expect(Route.cimmichThings()).toBe('/cimmich/things');
     });
   });
 
