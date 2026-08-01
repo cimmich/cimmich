@@ -100,6 +100,7 @@
     eventTypeFilters,
     objectTypeFilters,
     contextTypeDescription,
+    contextTypeLabel,
     contextTypeKinds,
     defaultContextRelationDraft,
     filterContextRelationTargets,
@@ -828,7 +829,7 @@
     placeSearchZoom = undefined;
     placeSearchAttribution = undefined;
     placeLocationPhotoName = '';
-    formType = contextTypeKinds[entityKind][0];
+    formType = entityKind === 'place' ? 'unlocated' : contextTypeKinds[entityKind][0];
     editorError = '';
   };
 
@@ -845,7 +846,9 @@
       formParentId = parentEntityId;
       formGeographyGroupName = geographyGroupName;
     }
-    editorTypeChosen = false;
+    // A Place is a Location or Geography; its map geometry is optional detail,
+    // not a second taxonomy people must understand before naming it.
+    editorTypeChosen = entityKind === 'place';
     editorCommandId = createCimmichContextCommandId('create');
     showEditor = true;
   };
@@ -1099,6 +1102,14 @@
     formWest = '';
     formRoute = '';
     formAreaUsesPoints = false;
+  };
+
+  const setPlaceMapMode = (mode: 'area' | 'point' | 'unlocated') => {
+    if (formType !== mode) {
+      clearPlaceMapPoints();
+    }
+    formType = mode;
+    showPreciseGeometry = false;
   };
 
   const draftPlaceMarkers = $derived(
@@ -2830,14 +2841,10 @@
           onclick={() => (showEditor = false)}><Icon icon={mdiClose} size="22" /></button
         >
       </div>
-      {#if editorMode === 'create' && !editorTypeChosen}
+      {#if editorMode === 'create' && !editorTypeChosen && entityKind !== 'place'}
         <section class="mt-7" aria-label={`Choose ${entityNoun} type`}>
           <p class="text-sm text-gray-600 dark:text-gray-300">
-            {entityKind === 'place'
-              ? 'How does this place exist on the map?'
-              : entityKind === 'event'
-                ? 'What kind of memory are you bringing together?'
-                : 'What kind of thing is it?'}
+            {entityKind === 'event' ? 'What kind of memory are you bringing together?' : 'What kind of thing is it?'}
           </p>
           <div class="context-type-choice-grid">
             {#each contextTypeKinds[entityKind] as kind (kind)}
@@ -2845,9 +2852,6 @@
                 class="context-type-choice"
                 type="button"
                 onclick={() => {
-                  if (entityKind === 'place' && formType !== kind) {
-                    clearPlaceMapPoints();
-                  }
                   if (entityKind === 'event' && formDatePrecision === 'unknown') {
                     formDatePrecision = 'exact';
                   }
@@ -2856,7 +2860,7 @@
                 }}
               >
                 <span><Icon icon={iconForFamily(activeFamily)} size="21" /></span>
-                <strong>{humanizeContextKind(kind)}</strong>
+                <strong>{contextTypeLabel(kind)}</strong>
                 <small>{contextTypeDescription(kind)}</small>
               </button>
             {/each}
@@ -2898,23 +2902,25 @@
               without becoming the same hierarchy.
             </p>
           {/if}
-          {#if editorMode === 'create'}
-            <div class="context-chosen-type">
-              <span><Icon icon={iconForFamily(activeFamily)} size="20" /></span>
-              <span class="min-w-0 flex-1">
-                <strong>{humanizeContextKind(formType)}</strong>
-                <small>{contextTypeDescription(formType)}</small>
-              </span>
-              <button type="button" onclick={() => (editorTypeChosen = false)}>Change</button>
-            </div>
-          {:else}
-            <label class="context-field"
-              ><span>Type</span><select bind:value={formType}
-                >{#each contextTypeKinds[entityKind] as kind (kind)}<option value={kind}
-                    >{humanizeContextKind(kind)}</option
-                  >{/each}</select
-              ></label
-            >
+          {#if entityKind !== 'place'}
+            {#if editorMode === 'create'}
+              <div class="context-chosen-type">
+                <span><Icon icon={iconForFamily(activeFamily)} size="20" /></span>
+                <span class="min-w-0 flex-1">
+                  <strong>{contextTypeLabel(formType)}</strong>
+                  <small>{contextTypeDescription(formType)}</small>
+                </span>
+                <button type="button" onclick={() => (editorTypeChosen = false)}>Change</button>
+              </div>
+            {:else}
+              <label class="context-field"
+                ><span>Type</span><select bind:value={formType}
+                  >{#each contextTypeKinds[entityKind] as kind (kind)}<option value={kind}
+                      >{contextTypeLabel(kind)}</option
+                    >{/each}</select
+                ></label
+              >
+            {/if}
           {/if}
           {#if entityKind === 'event'}
             <label class="context-field"
@@ -2934,23 +2940,16 @@
           {/if}
           {#if entityKind === 'place'}
             {#if formType === 'unlocated'}
-              <div class="rounded-2xl border border-dashed border-gray-300 p-5 dark:border-gray-700">
-                <p class="font-semibold">Name it now. Locate it later.</p>
-                <p class="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                  This place will remain searchable and can still hold photos, Events and connections without invented
-                  map geometry.
-                </p>
-              </div>
+              <button class="context-add-map-button" type="button" onclick={() => setPlaceMapMode('point')}>
+                <span><Icon icon={mdiMapMarkerOutline} size="20" /></span>
+                <strong>Add to map</strong>
+              </button>
             {:else}
               <section aria-label="Place geometry">
                 <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p class="font-semibold">
-                      {formType === 'point'
-                        ? 'Choose the point'
-                        : formType === 'area'
-                          ? 'Paint across the area'
-                          : 'Draw the route'}
+                      {formType === 'point' ? 'Map pin' : formType === 'area' ? 'Map boundary' : 'Saved map path'}
                     </p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {formType === 'point'
@@ -2959,11 +2958,27 @@
                           : 'Click once on the map, or search above. You can drag the marker afterwards.'
                         : formType === 'area'
                           ? 'Drag around the boundary. Cimmich saves the exact outline you paint.'
-                          : 'Drag along the journey in order.'}
+                          : 'This existing line remains editable; new journeys are created in Events.'}
                     </p>
                   </div>
-                  {#if formType === 'point' || formMapPoints.length > 0}
-                    <div class="flex gap-2">
+                  <div class="context-map-mode-actions" aria-label="Map shape">
+                    {#if formType !== 'route'}
+                      <button
+                        class:context-map-action--active={formType === 'point'}
+                        class="context-map-action"
+                        type="button"
+                        title="Use one map pin"
+                        onclick={() => setPlaceMapMode('point')}>Pin</button
+                      >
+                      <button
+                        class:context-map-action--active={formType === 'area'}
+                        class="context-map-action"
+                        type="button"
+                        title="Draw a boundary"
+                        onclick={() => setPlaceMapMode('area')}>Boundary</button
+                      >
+                    {/if}
+                    {#if formType === 'point' || formMapPoints.length > 0}
                       {#if formType === 'point'}<button
                           class="context-map-action"
                           type="button"
@@ -2976,8 +2991,14 @@
                           onclick={undoPlaceMapPoint}>Undo point</button
                         >{/if}
                       <button class="context-map-action" type="button" onclick={clearPlaceMapPoints}>Clear</button>
-                    </div>
-                  {/if}
+                    {/if}
+                    <button
+                      class="context-map-action"
+                      type="button"
+                      title="Keep this Place without map geometry"
+                      onclick={() => setPlaceMapMode('unlocated')}>Remove from map</button
+                    >
+                  </div>
                 </div>
                 <div class="context-editor-map-shell">
                   <div class="context-place-search">
@@ -4066,6 +4087,32 @@
     background: rgb(17 24 39);
   }
 
+  .context-add-map-button {
+    display: flex;
+    min-height: 56px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 1px dashed rgb(156 163 175);
+    border-radius: 18px;
+    color: rgb(var(--immich-primary));
+  }
+
+  .context-add-map-button:hover,
+  .context-add-map-button:focus-visible {
+    border-color: rgb(var(--immich-primary));
+    background: rgb(var(--immich-primary) / 0.06);
+    outline: none;
+  }
+
+  .context-map-mode-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .context-map-action {
     display: inline-flex;
     min-height: 36px;
@@ -4085,7 +4132,8 @@
   }
 
   .context-map-action:hover,
-  .context-map-action:focus-visible {
+  .context-map-action:focus-visible,
+  .context-map-action--active {
     border-color: rgb(var(--immich-primary) / 0.6);
     background: rgb(var(--immich-primary) / 0.08);
     color: rgb(var(--immich-primary));
