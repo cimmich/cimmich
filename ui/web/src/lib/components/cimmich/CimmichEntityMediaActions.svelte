@@ -30,7 +30,7 @@
     type AlbumResponseDto,
     type TagResponseDto,
   } from '@immich/sdk';
-  import { Icon, toastManager } from '@immich/ui';
+  import { Icon, Tooltip, toastManager } from '@immich/ui';
   import {
     mdiAccountMultipleOutline,
     mdiAlertCircleOutline,
@@ -38,6 +38,7 @@
     mdiArchiveArrowUpOutline,
     mdiCalendarBlankOutline,
     mdiCheckCircleOutline,
+    mdiClose,
     mdiHeartOutline,
     mdiImageAlbum,
     mdiImageMove,
@@ -700,45 +701,67 @@
 
     {#if showControls}
       <div class="entity-media-workspace">
-        <header class="entity-media-header">
-          <div class="entity-media-count">
-            <strong>{selectedCount} selected</strong>
-            <span>Choose one action. Every completed action keeps one exact Undo.</span>
-          </div>
-          <div class="entity-media-header-actions">
+        <div class="entity-media-toolbar" role="toolbar" aria-label="Selected photo actions">
+          <strong class="entity-media-count">{selectedCount.toLocaleString()} selected</strong>
+          <div class="entity-media-selection-tools">
             {#if onSelectShown}
-              <button type="button" disabled={busy || Boolean(receipt)} onclick={onSelectShown}>
-                <Icon icon={mdiSelectAll} size="17" /> Select shown
-              </button>
+              <Tooltip text="Select shown">
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    class="entity-media-tool"
+                    type="button"
+                    aria-label="Select shown"
+                    disabled={busy || Boolean(receipt)}
+                    onclick={onSelectShown}
+                  >
+                    <Icon icon={mdiSelectAll} size="20" />
+                  </button>
+                {/snippet}
+              </Tooltip>
             {/if}
-            <button class="entity-media-clear" type="button" disabled={busy || selectedCount === 0} onclick={onClear}
-              >Clear</button
-            >
+            <Tooltip text="Clear selection">
+              {#snippet child({ props })}
+                <button
+                  {...props}
+                  class="entity-media-tool"
+                  type="button"
+                  aria-label="Clear selection"
+                  disabled={busy || selectedCount === 0}
+                  onclick={onClear}
+                >
+                  <Icon icon={mdiClose} size="20" />
+                </button>
+              {/snippet}
+            </Tooltip>
           </div>
-        </header>
 
-        <div>
-          <p class="entity-media-eyebrow">What would you like to do?</p>
-          <div class="entity-media-toolbar" role="toolbar" aria-label="Photo action categories">
+          <span class="entity-media-divider" aria-hidden="true"></span>
+
+          <div class="entity-media-category-tools" aria-label="Action categories">
             {#each actionGroups as group (group.id)}
-              <button
-                class:entity-media-group--active={actionGroup === group.id}
-                class="entity-media-group"
-                type="button"
-                aria-pressed={actionGroup === group.id}
-                disabled={busy || Boolean(receipt) || selectedCount === 0}
-                onclick={() => selectGroup(group.id)}
-              >
-                <span class="entity-media-group-icon"><Icon icon={group.icon} size="20" /></span>
-                <span>{group.label}</span>
-              </button>
+              <Tooltip text={group.label}>
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    class:entity-media-group--active={actionGroup === group.id}
+                    class="entity-media-group"
+                    type="button"
+                    aria-label={group.label}
+                    aria-pressed={actionGroup === group.id}
+                    disabled={busy || Boolean(receipt) || selectedCount === 0}
+                    onclick={() => selectGroup(group.id)}
+                  >
+                    <Icon icon={group.icon} size="21" />
+                  </button>
+                {/snippet}
+              </Tooltip>
             {/each}
           </div>
         </div>
 
         {#if actionGroup}
           <div class="entity-media-panel">
-            <p class="entity-media-panel-label">{actionGroups.find((group) => group.id === actionGroup)?.label}</p>
             <div class="entity-media-options" role="group" aria-label="Choose an action">
               {#each visibleGroupActions as option (option)}
                 <button
@@ -759,11 +782,6 @@
               <div class="entity-media-detail">
                 <div class="entity-media-detail-copy">
                   <strong>{actionLabel(action)}</strong>
-                  <span>
-                    {action === 'place-move-within'
-                      ? 'Choose any subsection below this Place. Deeper levels are indented.'
-                      : 'Configure this action below, then apply it to only the selected photos.'}
-                  </span>
                 </div>
                 {#if needsTarget}
                   <div class="entity-media-combobox-field">
@@ -791,12 +809,8 @@
                       : 'Apply'}
                 </button>
               </div>
-            {:else}
-              <p class="entity-media-hint">Choose the exact action you want from this group.</p>
             {/if}
           </div>
-        {:else}
-          <p class="entity-media-hint">Choose an icon above to see its actions and controls here.</p>
         {/if}
       </div>
     {/if}
@@ -828,35 +842,50 @@
 
   .entity-media-workspace {
     display: grid;
-    gap: 0.875rem;
+    gap: 0.625rem;
   }
 
-  .entity-media-header {
+  .entity-media-toolbar {
     display: flex;
+    min-width: 0;
+    min-height: 3.25rem;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    gap: 0.25rem;
+    overflow-x: auto;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, currentColor 3%, transparent);
+    padding: 0.35rem;
+    scrollbar-width: thin;
   }
 
-  .entity-media-header-actions {
+  .entity-media-selection-tools,
+  .entity-media-category-tools {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.45rem;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.2rem;
   }
 
-  .entity-media-header-actions button {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
+  .entity-media-category-tools {
+    margin-inline-start: auto;
   }
 
   .entity-media-count {
-    display: grid;
-    min-width: 9rem;
+    flex: 0 0 auto;
+    padding-inline: 0.55rem 0.65rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
   }
 
-  .entity-media-count span,
+  .entity-media-divider {
+    width: 1px;
+    height: 1.75rem;
+    flex: 0 0 1px;
+    margin-inline: 0.25rem;
+    background: color-mix(in srgb, currentColor 15%, transparent);
+  }
+
   .entity-media-receipt p {
     font-size: 0.75rem;
     opacity: 0.65;
@@ -891,54 +920,37 @@
     opacity: 0.45;
   }
 
-  .entity-media-eyebrow,
-  .entity-media-panel-label {
-    margin-bottom: 0.45rem;
-    font-size: 0.6875rem;
-    font-weight: 750;
-    letter-spacing: 0.055em;
-    opacity: 0.58;
-    text-transform: uppercase;
-  }
-
-  .entity-media-toolbar {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
+  .entity-media-tool,
   .entity-media-group {
-    display: flex;
-    min-width: 0;
-    min-height: 3.75rem;
+    display: inline-flex;
+    width: 2.5rem;
+    min-width: 2.5rem;
+    min-height: 2.5rem;
     align-items: center;
-    justify-content: flex-start;
-    gap: 0.55rem;
-    text-align: left;
+    justify-content: center;
+    border-color: transparent;
+    border-radius: 0.65rem;
+    padding: 0;
+    color: var(--immich-primary-color);
   }
 
-  .entity-media-group-icon {
-    display: grid;
-    width: 2rem;
-    height: 2rem;
-    flex: 0 0 auto;
-    place-items: center;
-    border-radius: 0.65rem;
-    background: color-mix(in srgb, var(--immich-primary-color) 10%, transparent);
-    color: var(--immich-primary-color);
+  .entity-media-tool {
+    color: currentColor;
   }
 
   .entity-media-group--active {
-    border-color: color-mix(in srgb, var(--immich-primary-color) 70%, transparent);
-    background: color-mix(in srgb, var(--immich-primary-color) 9%, transparent);
-    color: var(--immich-primary-color);
+    border-color: var(--immich-primary-color);
+    background: var(--immich-primary-color);
+    color: white;
   }
 
   .entity-media-panel {
     display: grid;
-    gap: 0.75rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 11%, transparent);
-    padding-top: 0.875rem;
+    gap: 0.625rem;
+    border: 1px solid color-mix(in srgb, currentColor 11%, transparent);
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, currentColor 2.5%, transparent);
+    padding: 0.75rem;
   }
 
   .entity-media-options {
@@ -972,15 +984,7 @@
   }
 
   .entity-media-detail-copy {
-    display: grid;
-    gap: 0.2rem;
     align-self: center;
-  }
-
-  .entity-media-detail-copy span,
-  .entity-media-hint {
-    font-size: 0.75rem;
-    opacity: 0.65;
   }
 
   .entity-media-apply {
@@ -1020,10 +1024,6 @@
   }
 
   @media (max-width: 640px) {
-    .entity-media-toolbar {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .entity-media-detail {
       grid-template-columns: 1fr;
     }

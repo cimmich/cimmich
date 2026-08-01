@@ -96,7 +96,7 @@ describe('CimmichEntityMediaActions', () => {
   });
 
   it('starts neutrally and presents page-aware actions through an icon-led category bar', async () => {
-    const { getByRole, getByText, queryByLabelText } = renderWithTooltips(CimmichEntityMediaActions, {
+    const { getByRole, getByText, queryByLabelText, queryByText } = renderWithTooltips(CimmichEntityMediaActions, {
       currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
       currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
       items,
@@ -104,10 +104,13 @@ describe('CimmichEntityMediaActions', () => {
     });
 
     expect(getByText('2 selected')).toBeInTheDocument();
-    expect(getByRole('toolbar', { name: 'Photo action categories' })).toBeInTheDocument();
+    expect(getByRole('toolbar', { name: 'Selected photo actions' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Organise' })).toHaveAttribute('aria-pressed', 'false');
     expect(getByRole('button', { name: 'People & pets' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Privacy' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Clear selection' })).toBeInTheDocument();
+    expect(queryByText('What would you like to do?')).not.toBeInTheDocument();
+    expect(queryByText('Choose an icon above to see its actions and controls here.')).not.toBeInTheDocument();
     expect(queryByLabelText('Destination')).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Organise' }));
     expect(getByRole('button', { name: 'Add to Event' })).toBeInTheDocument();
@@ -261,7 +264,7 @@ describe('CimmichEntityMediaActions', () => {
 
     await waitFor(() => expect(getByRole('button', { name: 'Undo' })).toBeInTheDocument());
     expect(getByText('Undo is saved across navigation and reload.')).toBeInTheDocument();
-    expect(queryByRole('toolbar', { name: 'Photo action categories' })).not.toBeInTheDocument();
+    expect(queryByRole('toolbar', { name: 'Selected photo actions' })).not.toBeInTheDocument();
   });
 
   it('moves directly to an explicitly selected deeper Place subsection', async () => {
