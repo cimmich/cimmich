@@ -3,17 +3,18 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiCalendarBlankOutline, mdiMapMarkerOutline, mdiPackageVariantClosed } from '@mdi/js';
+  import { mdiCalendarBlankOutline, mdiMapMarkerOutline, mdiMapOutline, mdiPackageVariantClosed } from '@mdi/js';
   import {
     contextAssetViewerHref,
     contextFamilyEyebrows,
     contextPlaceHierarchy,
     contextPlaceLocationLabel,
     contextPlaceMapProjection,
+    contextPlaceRoleLabel,
     contextTypeDescription,
+    contextTypeLabel,
     formatContextDatePrecision,
     formatImmichPlaceLocation,
-    humanizeContextKind,
   } from './context-entity-presentation';
 
   interface Props {
@@ -76,14 +77,16 @@
   const eyebrow = $derived(isPlace ? placeLocation : contextFamilyEyebrows[family]);
   const familyIcon = $derived(
     family === 'places'
-      ? mdiMapMarkerOutline
+      ? detail.entity.placeRole === 'geography'
+        ? mdiMapOutline
+        : mdiMapMarkerOutline
       : family === 'objects'
         ? mdiPackageVariantClosed
         : mdiCalendarBlankOutline,
   );
   const subline = $derived(
     [
-      detail.entity.description || contextTypeDescription(detail.entity.typeKind),
+      detail.entity.description || (isPlace ? '' : contextTypeDescription(detail.entity.typeKind)),
       family === 'events' ? formatContextDatePrecision(detail.entity) || 'Not dated yet' : '',
       detail.entity.aliases.length > 0 ? `Also ${detail.entity.aliases.join(', ')}` : '',
     ]
@@ -134,7 +137,8 @@
         <!-- The type chip belongs with the rest of the metadata, not floating in
              the corner; that corner is worth more as the edit affordance. -->
         <span class="context-detail-kind"
-          ><Icon icon={familyIcon} size="13" /> {humanizeContextKind(detail.entity.typeKind)}</span
+          ><Icon icon={familyIcon} size="13" />
+          {isPlace ? contextPlaceRoleLabel(detail.entity.placeRole) : contextTypeLabel(detail.entity.typeKind)}</span
         >
         <!-- Icon and text in one flex item so a wrap never strands the marker on
              the line above its location. -->
@@ -143,7 +147,7 @@
         </span>
       </p>
       <h1 id="context-detail-title">{detail.entity.displayName}</h1>
-      <p class="context-detail-subline">{subline}</p>
+      {#if subline}<p class="context-detail-subline">{subline}</p>{/if}
     </div>
   </div>
 

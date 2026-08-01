@@ -6,6 +6,7 @@ import type {
   CimmichContextGeometry,
   CimmichContextRelation,
   CimmichContextTypeKind,
+  CimmichPlaceRole,
 } from '$lib/services/cimmich.service';
 
 const addressMatchQualityOrder: Record<CimmichAddressGeocodingItem['matchQuality'], number> = {
@@ -451,7 +452,7 @@ export const objectTypeFilters: Array<{ label: string; value: ContextTypeFilter 
 
 export const eventTypeFilters: Array<{ label: string; value: ContextTypeFilter }> = [
   { label: 'All', value: 'all' },
-  { label: 'Trips', value: 'trip' },
+  { label: 'Trips & routes', value: 'trip' },
   { label: 'Events', value: 'event' },
   { label: 'Activities', value: 'activity' },
   { label: 'Life periods', value: 'life_period' },
@@ -462,6 +463,13 @@ export const humanizeContextKind = (value: string) =>
     .split('_')
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(' ');
+
+/** Stable type values stay storage-facing; this is the vocabulary people see. */
+export const contextTypeLabel = (kind: CimmichContextTypeKind) =>
+  kind === 'trip' ? 'Trip or route' : humanizeContextKind(kind);
+
+export const contextPlaceRoleLabel = (role: CimmichPlaceRole | null | undefined) =>
+  role === 'location' ? 'Location' : role === 'geography' ? 'Geography' : 'Needs classification';
 
 export const contextTypeDescription = (kind: CimmichContextTypeKind) => {
   const descriptions: Partial<Record<CimmichContextTypeKind, string>> = {
@@ -476,7 +484,7 @@ export const contextTypeDescription = (kind: CimmichContextTypeKind) => {
     point: 'One specific location',
     property: 'A home, building or property',
     route: 'A path, journey or recurring route',
-    trip: 'Travel or a stay across places',
+    trip: 'Travel, a journey or an ordered route across places',
     unlocated: 'Meaningful even without a map location',
     vehicle: 'A car, motorbike, boat or other vehicle',
   };

@@ -24,9 +24,11 @@ import {
   contextPlaceNearbyRadii,
   contextPlacePointDistanceMeters,
   contextPlaceSearchQualityLabel,
+  contextPlaceRoleLabel,
   contextRelationGroups,
   contextTypeKinds,
   contextTypeDescription,
+  contextTypeLabel,
   eventTypeFilters,
   filterContextRelationTargets,
   defaultContextRelationDraft,
@@ -101,7 +103,11 @@ describe('Cimmich context entity presentation', () => {
       'other',
     ]);
     expect(eventTypeFilters.map((filter) => filter.value)).toEqual(['all', 'trip', 'event', 'activity', 'life_period']);
-    expect(contextTypeDescription('trip')).toMatch(/Travel/);
+    expect(eventTypeFilters.find((filter) => filter.value === 'trip')?.label).toBe('Trips & routes');
+    expect(contextTypeLabel('trip')).toBe('Trip or route');
+    expect(contextTypeDescription('trip')).toMatch(/ordered route/);
+    expect(contextPlaceRoleLabel('location')).toBe('Location');
+    expect(contextPlaceRoleLabel('geography')).toBe('Geography');
   });
 
   it('uses human labels without changing stable contract values', () => {

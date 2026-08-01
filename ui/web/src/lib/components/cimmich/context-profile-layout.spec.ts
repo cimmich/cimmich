@@ -108,6 +108,25 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('currentScope={selectedIsGeographyGroup');
   });
 
+  it('treats Place geometry as optional map detail and puts routes in Events', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+    const hero = await read('src/lib/components/cimmich/CimmichContextDetailHero.svelte');
+
+    expect(browser).toContain("formType = entityKind === 'place' ? 'unlocated'");
+    expect(browser).toContain("editorTypeChosen = entityKind === 'place';");
+    expect(browser).toContain("editorTypeChosen && entityKind !== 'place'");
+    expect(browser).toContain("{#if entityKind !== 'place'}");
+    expect(browser).toContain('>Add to map</strong>');
+    expect(browser).toContain('>Pin</button');
+    expect(browser).toContain('>Boundary</button');
+    expect(browser).toContain('>Remove from map</button');
+    expect(browser).not.toContain('How does this place exist on the map?');
+    expect(collection).toContain('Start with a trip or route');
+    expect(collection).not.toContain('Pins, areas and routes will appear here.');
+    expect(hero).toContain('contextPlaceRoleLabel(detail.entity.placeRole)');
+  });
+
   it('caps the card body track so a long location line cannot widen the whole card', async () => {
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
 

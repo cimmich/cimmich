@@ -34,7 +34,8 @@
     contextPlaceHierarchy,
     contextPlaceLocationLabel,
     contextPlaceMapProjection,
-    contextTypeDescription,
+    contextPlaceRoleLabel,
+    contextTypeLabel,
     formatContextDatePrecision,
     formatImmichPlaceLocation,
     humanizeContextKind,
@@ -313,8 +314,7 @@
             <span class="context-map-placeholder-icon"><Icon icon={mdiMapOutline} size="34" /></span>
             <p class="mt-4 font-semibold">Your atlas starts with a place</p>
             <p class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-              Pins, areas and routes will appear here. Named places can still exist before you know exactly where they
-              are.
+              Mapped Places will appear here. A Place can still be named and organised before its map location is known.
             </p>
           </div>
         {/if}
@@ -329,11 +329,13 @@
           {#each sortContextEntities(entities, 'places') as entity (entity.entityId)}
             {@const hierarchy = contextPlaceHierarchy(entity, entities)}
             <a class="context-place-row" href={entityHref(entity)}>
-              <span class="context-place-row-icon"><Icon icon={iconForType(entity.typeKind)} size="18" /></span>
+              <span class="context-place-row-icon"
+                ><Icon icon={entity.placeRole === 'geography' ? mdiMapOutline : mdiMapMarkerOutline} size="18" /></span
+              >
               <span class="min-w-0 flex-1">
                 <span class="block truncate font-semibold">{entity.displayName}</span>
                 <span class="mt-0.5 block truncate text-xs text-gray-500">
-                  {hierarchy.length > 1 ? hierarchy.slice(0, -1).join(' / ') : contextTypeDescription(entity.typeKind)}
+                  {hierarchy.length > 1 ? hierarchy.slice(0, -1).join(' / ') : contextPlaceRoleLabel(entity.placeRole)}
                 </span>
               </span>
               <span class="text-xs text-gray-500">{entity.subtreeAssetCount ?? entity.assetCount}</span>
@@ -414,15 +416,14 @@
                           data-testid={`cimmich-place-cover-${entity.entityId}`}
                         />
                       {:else}
-                        <Icon icon={iconForType(entity.typeKind)} size="34" />
+                        <Icon icon={entity.placeRole === 'geography' ? mdiMapOutline : mdiMapMarkerOutline} size="34" />
                       {/if}
                       <span class="context-cover-chip"
-                        ><Icon icon={iconForType(entity.typeKind)} size="14" />
-                        {entity.placeRole === 'unclassified' || !entity.placeRole
-                          ? 'Needs classification'
-                          : entity.placeRole === 'location'
-                            ? 'Location'
-                            : 'Geography'}</span
+                        ><Icon
+                          icon={entity.placeRole === 'geography' ? mdiMapOutline : mdiMapMarkerOutline}
+                          size="14"
+                        />
+                        {contextPlaceRoleLabel(entity.placeRole)}</span
                       >
                     </div>
                     <!-- Shares the Things card grammar: the two families sit behind one
@@ -544,7 +545,7 @@
         </h2>
         <p>
           {effectiveTypeFilter === 'all'
-            ? 'Start with a trip, one occasion, a recurring activity or a longer chapter of life.'
+            ? 'Start with a trip or route, one occasion, a recurring activity or a longer chapter of life.'
             : 'Choose another type or add the memory you want to organise.'}
         </p>
         {#if effectiveTypeFilter === 'all'}<button type="button" onclick={() => onAdd()}>Add to your timeline</button
@@ -577,7 +578,7 @@
               {/if}
               <span class="context-event-kind"
                 ><Icon icon={iconForType(entity.typeKind)} size="14" />
-                {humanizeContextKind(entity.typeKind)}</span
+                {contextTypeLabel(entity.typeKind)}</span
               >
             </div>
             <div class="context-event-copy">
