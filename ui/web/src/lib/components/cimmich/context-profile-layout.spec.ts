@@ -27,12 +27,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("activeFamily === 'events'");
     expect(source).toContain("? 'Add event'");
 
-    // The hero carries one control per side: back, and a pen that opens the
-    // editor. Visibility, Archive/Restore and Delete are all "change this
-    // record", so they live inside the editor rather than in a sibling menu.
-    expect(source).toContain('context-hero-edit');
-    expect(source).toContain('context-profile-edit');
-    expect(source).toContain('aria-label={`Edit ${selected.entity.displayName}`}');
+    // The hero carries one control per side: back, and a settings gear.
+    // Details, hierarchy, visibility, Archive/Restore and Delete all belong
+    // inside that single record-settings surface.
+    expect(source).toContain('context-hero-settings');
+    expect(source).toContain('context-profile-settings');
+    expect(source).toContain('aria-label={`Settings for ${selected.entity.displayName}`}');
+    expect(source).toContain('<Icon icon={mdiCogOutline}');
     expect(source).toContain('class="context-editor-record"');
     expect(source).toContain('Delete…');
     expect(source).not.toContain('More actions for');
@@ -71,12 +72,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(map).toContain('onPlaceAreaSelect');
   });
 
-  it('separates moving the Place record from shared selected-photo actions', async () => {
+  it('keeps hierarchy maintenance in settings and selected-photo actions on the photo rail', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(browser).toContain("Move this {selected.entity.placeRole === 'geography'");
-    expect(browser).toContain('Changes this hierarchy only, not its photos.');
-    expect(browser).toContain("editorIntent === 'move'");
+    expect(browser).toContain('Settings for ${selected?.entity.displayName}');
+    expect(browser).not.toContain('Move this {selected.entity.placeRole');
+    expect(browser).not.toContain('Changes this hierarchy only, not its photos.');
+    expect(browser).not.toContain('Open a subsection or use it to organise');
     expect(browser).toContain('<CimmichEntityMediaActions');
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
