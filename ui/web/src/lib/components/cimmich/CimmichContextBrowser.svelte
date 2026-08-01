@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichDocuments from './CimmichDocuments.svelte';
   import CimmichContextCollection from './CimmichContextCollection.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
@@ -47,6 +47,7 @@
     type CimmichAddressGeocodingItem,
     type CimmichAddressGeocodingResult,
     type CimmichContextRelation,
+    type CimmichPlaceRollupAsset,
   } from '$lib/services/cimmich.service';
   import { ENTITY_MEDIA_SELECTION_LIMIT, type CimmichEntityMediaItem } from './entity-media-actions';
   import { getAssetMediaUrl } from '$lib/utils';
@@ -83,8 +84,10 @@
     contextFamilyKind,
     contextFamilyLabels,
     contextRequestedEntityId,
+    contextPlaceCountryLabel,
     getContextCollectionHref,
     getContextDetailHref,
+    getContextGeographyGroupHref,
     resolveContextRouteEntity,
     contextPlaceSearchQualityLabel,
     contextPlaceDescendants,
@@ -129,6 +132,8 @@
   let loaded = $state(false);
   let query = $state('');
   let selected = $state<CimmichContextDetail | null>(null);
+  let selectedGeographyGroup = $state('');
+  let selectedGeographyGroupEntityIds = $state<string[]>([]);
   let selectedLoading = $state(false);
   let showEditor = $state(false);
   let showAssetPicker = $state(false);
@@ -264,13 +269,42 @@
       (activeFamily === 'places' ? selected?.subtreeAssets : selected?.assets)?.map((asset) => asset.sourceAssetId),
     ),
   );
-  const selectedPlaceChildren = $derived(
-    activeFamily === 'places' && selected
-      ? entities
-          .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
-          .sort((left, right) => left.displayName.localeCompare(right.displayName))
-      : [],
+  const selectedIsGeographyGroup = $derived(Boolean(selectedGeographyGroup));
+  const selectedGeographyGroupRoot = $derived(
+    selectedGeographyGroup
+      ? (entities.find(
+          (entity) =>
+            entity.placeRole === 'geography' &&
+            entity.displayName.trim().toLocaleLowerCase() === selectedGeographyGroup.trim().toLocaleLowerCase(),
+        ) ?? null)
+      : null,
   );
+  const selectedPlaceChildren = $derived.by(() => {
+    if (activeFamily !== 'places' || !selected) {
+      return [];
+    }
+    if (!selectedGeographyGroup) {
+      return entities
+        .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
+        .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    }
+    const memberIds = new Set(selectedGeographyGroupEntityIds);
+    const countryRoot = entities.find(
+      (entity) =>
+        memberIds.has(entity.entityId) &&
+        entity.displayName.trim().toLocaleLowerCase() === selectedGeographyGroup.trim().toLocaleLowerCase(),
+    );
+    return entities
+      .filter(
+        (entity) =>
+          memberIds.has(entity.entityId) &&
+          entity.entityId !== countryRoot?.entityId &&
+          (!entity.parentEntityId ||
+            entity.parentEntityId === countryRoot?.entityId ||
+            !memberIds.has(entity.parentEntityId)),
+      )
+      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+  });
   const placeChildNames = (entityId: string) =>
     entities
       .filter((entity) => entity.parentEntityId === entityId && entity.status === 'active')
@@ -305,10 +339,15 @@
   const selectedGeographyLocations = $derived(
     activeFamily === 'places' && selected?.entity.placeRole === 'geography'
       ? entities
-          .filter(
-            (entity) =>
-              entity.placeRole === 'location' && effectiveLocationGeographyId(entity) === selected?.entity.entityId,
-          )
+          .filter((entity) => {
+            if (entity.placeRole !== 'location') {
+              return false;
+            }
+            const geographyId = effectiveLocationGeographyId(entity);
+            return selectedGeographyGroup
+              ? selectedGeographyGroupEntityIds.includes(geographyId ?? '')
+              : geographyId === selected?.entity.entityId;
+          })
           .sort((left, right) => left.displayName.localeCompare(right.displayName))
       : [],
   );
@@ -396,8 +435,12 @@
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
     { icon: mdiImageMultipleOutline, label: 'Photos', value: 'photos' },
     ...(activeFamily === 'places' ? [{ icon: mdiMapOutline, label: 'Map', value: 'map' } as const] : []),
-    { icon: mdiLinkPlus, label: 'Connections', value: 'connections' },
-    { icon: mdiFileDocumentOutline, label: 'Documents', value: 'documents' },
+    ...(selectedIsGeographyGroup
+      ? []
+      : [
+          { icon: mdiLinkPlus, label: 'Connections', value: 'connections' } as const,
+          { icon: mdiFileDocumentOutline, label: 'Documents', value: 'documents' } as const,
+        ]),
   ]);
   const activeDetailTab = $derived.by<ContextDetailTab>(() => {
     const requested = page.url.searchParams.get('tab') as ContextDetailTab | null;
@@ -446,6 +489,154 @@
   let listRequestGeneration = 0;
   let detailRequestGeneration = 0;
 
+  const geographyGroupMembers = (groupName: string, candidates: CimmichContextEntity[]) => {
+    const memberIds = new SvelteSet(
+      candidates
+        .filter(
+          (entity) =>
+            entity.status === 'active' &&
+            entity.placeRole === 'geography' &&
+            contextPlaceCountryLabel(entity).toLocaleLowerCase() === groupName.trim().toLocaleLowerCase(),
+        )
+        .map((entity) => entity.entityId),
+    );
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const entity of candidates) {
+        if (
+          entity.status === 'active' &&
+          entity.placeRole === 'geography' &&
+          entity.parentEntityId &&
+          memberIds.has(entity.parentEntityId) &&
+          !memberIds.has(entity.entityId)
+        ) {
+          memberIds.add(entity.entityId);
+          changed = true;
+        }
+      }
+    }
+    return candidates.filter((entity) => memberIds.has(entity.entityId));
+  };
+
+  const openGeographyGroup = async (groupName: string, candidates: CimmichContextEntity[] = entities) => {
+    const generation = ++detailRequestGeneration;
+    selectedLoading = true;
+    eventMediaLane = 'main';
+    placeMediaLane = 'all';
+    selectedPlaceAssetIds = [];
+    mediaSelectionMode = false;
+    error = null;
+    try {
+      const members = geographyGroupMembers(groupName, candidates);
+      if (members.length === 0) {
+        throw new Error(`No Geography is currently grouped under ${groupName}.`);
+      }
+      const settled = await Promise.allSettled(
+        members.map((entity) => getCimmichContextEntity('places', entity.entityId)),
+      );
+      const details = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+      if (details.length === 0) {
+        throw new Error(`${groupName} could not load its Geography records.`);
+      }
+      const memberIds = new SvelteSet(members.map((entity) => entity.entityId));
+      const countryRoot = members.find(
+        (entity) => entity.displayName.trim().toLocaleLowerCase() === groupName.trim().toLocaleLowerCase(),
+      );
+      const topLevelMemberId = (member: CimmichContextEntity) => {
+        let current = member;
+        const visited = new SvelteSet<string>();
+        while (
+          current.parentEntityId &&
+          current.parentEntityId !== countryRoot?.entityId &&
+          memberIds.has(current.parentEntityId) &&
+          !visited.has(current.entityId)
+        ) {
+          visited.add(current.entityId);
+          current = members.find((candidate) => candidate.entityId === current.parentEntityId) ?? current;
+        }
+        return current.entityId === countryRoot?.entityId ? null : current.entityId;
+      };
+      const assetsBySourceId = new SvelteMap<string, CimmichPlaceRollupAsset>();
+      for (const detail of details) {
+        const topEntityId = topLevelMemberId(detail.entity);
+        for (const asset of detail.assets) {
+          const existing = assetsBySourceId.get(asset.sourceAssetId);
+          const assignedEntityIds = [...new Set([...(existing?.assignedEntityIds ?? []), detail.entity.entityId])];
+          const branchEntityIds = [
+            ...new Set([...(existing?.branchEntityIds ?? []), ...(topEntityId ? [topEntityId] : [])]),
+          ];
+          assetsBySourceId.set(asset.sourceAssetId, {
+            ...(existing ?? asset),
+            assignedEntityIds,
+            associationId: `geography-group:${groupName}:${asset.assetId}`,
+            branchEntityIds,
+            directlyAssigned: false,
+          });
+        }
+      }
+      const subtreeAssets = [...assetsBySourceId.values()].sort((left, right) =>
+        (right.captureTime ?? '').localeCompare(left.captureTime ?? ''),
+      );
+      const coverEntity =
+        countryRoot ??
+        [...members]
+          .filter((entity) => entity.coverAssetId)
+          .sort(
+            (left, right) =>
+              (right.subtreeAssetCount ?? right.assetCount) - (left.subtreeAssetCount ?? left.assetCount),
+          )[0];
+      const coverAssetId =
+        coverEntity?.coverAssetId && assetsBySourceId.has(coverEntity.coverAssetId)
+          ? coverEntity.coverAssetId
+          : (subtreeAssets[0]?.sourceAssetId ?? null);
+      if (generation === detailRequestGeneration) {
+        placeCollectionView = 'geography';
+        selectedGeographyGroup = groupName;
+        selectedGeographyGroupEntityIds = members.map((entity) => entity.entityId);
+        selected = {
+          assets: subtreeAssets,
+          entity: {
+            aliases: [],
+            assetCount: subtreeAssets.length,
+            childCount: members.length - (countryRoot ? 1 : 0),
+            coverAssetId,
+            dateEnd: null,
+            datePrecision: 'unknown',
+            dateStart: null,
+            description: `${members.length.toLocaleString()} grouped ${members.length === 1 ? 'geography' : 'geographies'}`,
+            directoryVisibility: 'listed',
+            displayName: groupName,
+            entityId: `geography-group:${groupName.toLocaleLowerCase()}`,
+            entityKind: 'place',
+            geometry: countryRoot?.geometry ?? null,
+            geographyEntityId: null,
+            parentEntityId: null,
+            placeRole: 'geography',
+            revision: 1,
+            status: 'active',
+            subtreeAssetCount: subtreeAssets.length,
+            typeKind: countryRoot?.typeKind ?? 'area',
+          },
+          relations: [],
+          schemaVersion: 'cimmich.context-entity.v1',
+          subtreeAssets,
+        };
+      }
+    } catch (error_) {
+      if (generation === detailRequestGeneration) {
+        error = asError(error_);
+        selected = null;
+        selectedGeographyGroup = '';
+        selectedGeographyGroupEntityIds = [];
+      }
+    } finally {
+      if (generation === detailRequestGeneration) {
+        selectedLoading = false;
+      }
+    }
+  };
+
   const loadEntities = async ({ preserveCollection = false }: { preserveCollection?: boolean } = {}) => {
     const generation = ++listRequestGeneration;
     const selectedEntityId = selected?.entity.entityId;
@@ -462,6 +653,12 @@
       });
       if (generation === listRequestGeneration) {
         entities = next;
+        const requestedGeographyGroup =
+          activeFamily === 'places' ? (page.url.searchParams.get('geographyGroup')?.trim() ?? '') : '';
+        if (requestedGeographyGroup) {
+          void openGeographyGroup(requestedGeographyGroup, next);
+          return;
+        }
         const requestedEntityId =
           contextRequestedEntityId(page.url.searchParams, activeFamily) || selectedEntityId || '';
         const requestedEntity = resolveContextRouteEntity(next, {
@@ -507,6 +704,8 @@
 
   const openDetail = async (entity: CimmichContextEntity) => {
     const generation = ++detailRequestGeneration;
+    selectedGeographyGroup = '';
+    selectedGeographyGroupEntityIds = [];
     selectedLoading = true;
     eventMediaLane = 'main';
     placeMediaLane = 'all';
@@ -638,12 +837,13 @@
     editorError = '';
   };
 
-  const openCreate = (placeRole: 'geography' | 'location' = 'location') => {
+  const openCreate = (placeRole: 'geography' | 'location' = 'location', parentEntityId = '') => {
     editorMode = 'create';
     editorTarget = null;
     resetForm();
     if (entityKind === 'place') {
       formPlaceRole = placeRole;
+      formParentId = parentEntityId;
     }
     editorTypeChosen = false;
     editorCommandId = createCimmichContextCommandId('create');
@@ -1017,6 +1217,7 @@
       return;
     }
     isSaving = true;
+    const createdFromGeographyGroup = editorMode === 'create' ? selectedGeographyGroup : '';
     try {
       const base = {
         aliases: formAliases
@@ -1056,6 +1257,13 @@
       editorTarget = null;
       await loadEntities();
       selected = result.detail;
+      if (createdFromGeographyGroup && result.detail) {
+        selectedGeographyGroup = '';
+        selectedGeographyGroupEntityIds = [];
+        void goto(
+          getContextDetailHref(page.url, 'places', result.detail.entity.entityId, result.detail.entity.displayName),
+        );
+      }
     } catch (error_) {
       editorError = asError(error_).message;
     } finally {
@@ -1375,6 +1583,10 @@
 
   const refreshSelectedDetail = async () => {
     if (!selected) {
+      return;
+    }
+    if (selectedGeographyGroup) {
+      await loadEntities({ preserveCollection: true });
       return;
     }
     const entityId = selected.entity.entityId;
@@ -1997,15 +2209,17 @@
 
       <!-- One settings control, opposite the back arrow. Record details,
            hierarchy, visibility, archive and delete all live in the same editor. -->
-      <button
-        class="context-hero-control context-hero-settings context-profile-settings"
-        type="button"
-        aria-label={`Settings for ${selected.entity.displayName}`}
-        title="Settings"
-        onclick={() => openEdit()}
-      >
-        <Icon icon={mdiCogOutline} size="20" />
-      </button>
+      {#if !selectedIsGeographyGroup}
+        <button
+          class="context-hero-control context-hero-settings context-profile-settings"
+          type="button"
+          aria-label={`Settings for ${selected.entity.displayName}`}
+          title="Settings"
+          onclick={() => openEdit()}
+        >
+          <Icon icon={mdiCogOutline} size="20" />
+        </button>
+      {/if}
 
       <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
     </div>
@@ -2061,9 +2275,24 @@
         <section class="mt-6" aria-labelledby="place-subplaces-title">
           <div class="flex items-center justify-between gap-4">
             <h2 class="text-lg font-semibold" id="place-subplaces-title">Inside {selected.entity.displayName}</h2>
-            <span class="shrink-0 text-xs font-semibold text-gray-500"
-              >{selectedPlaceChildren.length} {selectedPlaceChildren.length === 1 ? 'subplace' : 'subplaces'}</span
-            >
+            <div class="flex shrink-0 items-center gap-2">
+              <span class="text-xs font-semibold text-gray-500"
+                >{selectedPlaceChildren.length} {selectedPlaceChildren.length === 1 ? 'subplace' : 'subplaces'}</span
+              >
+              {#if selected.entity.placeRole === 'geography'}
+                <button
+                  class="context-secondary-button min-h-9 px-3 text-xs"
+                  type="button"
+                  onclick={() =>
+                    openCreate(
+                      'geography',
+                      selectedIsGeographyGroup
+                        ? (selectedGeographyGroupRoot?.entityId ?? '')
+                        : (selected?.entity.entityId ?? ''),
+                    )}><Icon icon={mdiPlus} size="16" /> Add subdivision</button
+                >
+              {/if}
+            </div>
           </div>
           <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each selectedPlaceChildren as child (child.entityId)}
@@ -2166,14 +2395,16 @@
         >
           <Icon icon={mdiSelectAll} size="19" /> <span>{mediaSelectionMode ? 'Done' : 'Select'}</span>
         </button>
-        <button
-          class="context-primary-button context-profile-action"
-          type="button"
-          aria-label="Add media"
-          onclick={openAssetPicker}
-        >
-          <Icon icon={mdiLinkPlus} size="19" /> <span>Add media</span>
-        </button>
+        {#if !selectedIsGeographyGroup}
+          <button
+            class="context-primary-button context-profile-action"
+            type="button"
+            aria-label="Add media"
+            onclick={openAssetPicker}
+          >
+            <Icon icon={mdiLinkPlus} size="19" /> <span>Add media</span>
+          </button>
+        {/if}
       {:else if activeDetailTab === 'connections'}
         <button
           class="context-secondary-button context-profile-action"
@@ -2216,25 +2447,25 @@
         {/if}
         {#if entityKind === 'place' && selectedPlaceChildren.length > 0 && placeDetailAssetCount > 0}
           <div class="mt-5 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Place photo sections">
-            <button
-              class="context-detail-lane"
-              class:context-detail-lane--active={placeMediaLane === 'all'}
-              type="button"
-              aria-pressed={placeMediaLane === 'all'}
-              onclick={() => selectPlaceMediaLane('all')}>All <span>{placeDetailAssetCount}</span></button
-            >
-            <button
-              class="context-detail-lane"
-              class:context-detail-lane--active={placeMediaLane === 'unassigned'}
-              type="button"
-              aria-pressed={placeMediaLane === 'unassigned'}
-              onclick={() => selectPlaceMediaLane('unassigned')}
-              >Unassigned <span
-                >{selected.subtreeAssets?.filter(
-                  (asset) => asset.directlyAssigned && asset.branchEntityIds.length === 0,
-                ).length ?? selected.assets.length}</span
-              ></button
-            >
+            {#if !selectedIsGeographyGroup}<button
+                class="context-detail-lane"
+                class:context-detail-lane--active={placeMediaLane === 'all'}
+                type="button"
+                aria-pressed={placeMediaLane === 'all'}
+                onclick={() => selectPlaceMediaLane('all')}>All <span>{placeDetailAssetCount}</span></button
+              >
+              <button
+                class="context-detail-lane"
+                class:context-detail-lane--active={placeMediaLane === 'unassigned'}
+                type="button"
+                aria-pressed={placeMediaLane === 'unassigned'}
+                onclick={() => selectPlaceMediaLane('unassigned')}
+                >Unassigned <span
+                  >{selected.subtreeAssets?.filter(
+                    (asset) => asset.directlyAssigned && asset.branchEntityIds.length === 0,
+                  ).length ?? selected.assets.length}</span
+                ></button
+              >{/if}
             {#each selectedPlaceChildren as child (child.entityId)}
               <button
                 class="context-detail-lane"
@@ -2252,11 +2483,13 @@
           </div>
         {/if}
         <CimmichEntityMediaActions
-          currentScope={{
-            displayName: selected.entity.displayName,
-            entityId: selected.entity.entityId,
-            family: activeFamily,
-          }}
+          currentScope={selectedIsGeographyGroup
+            ? null
+            : {
+                displayName: selected.entity.displayName,
+                entityId: selected.entity.entityId,
+                family: activeFamily,
+              }}
           items={selectedEntityMediaItems}
           moveWithinPlaceTargets={selected.entity.placeRole === 'location'
             ? selectedPlaceMoveTargets.map(({ depth, entity, path }) => ({
@@ -2533,6 +2766,7 @@
       includeNestedPlaces={Boolean(query.trim())}
       controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
       entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
+      geographyGroupHref={(groupName) => getContextGeographyGroupHref(page.url, groupName)}
       onAdd={openCreate}
       onOpen={openEntity}
       onPlaceViewChange={(view) => (placeCollectionView = view)}

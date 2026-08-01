@@ -89,6 +89,21 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
   });
 
+  it('renders country groups as real aggregate Geography pages without inventing a second taxonomy', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+
+    expect(collection).not.toContain('Each name is unique');
+    expect(collection).toContain('context-place-view-toolbar--directory');
+    expect(collection).toContain('geographyGroupHref(section.label)');
+    expect(browser).toContain("page.url.searchParams.get('geographyGroup')");
+    expect(browser).toContain('const geographyGroupMembers');
+    expect(browser).toContain('const assetsBySourceId = new SvelteMap<string, CimmichPlaceRollupAsset>()');
+    expect(browser).toContain('selectedGeographyGroupEntityIds');
+    expect(browser).toContain('Add subdivision');
+    expect(browser).toContain('currentScope={selectedIsGeographyGroup');
+  });
+
   it('caps the card body track so a long location line cannot widen the whole card', async () => {
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
 
