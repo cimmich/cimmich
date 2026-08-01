@@ -24,7 +24,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain('class="context-profile-rail');
     expect(source).toContain('<span>Add media</span>');
     expect(source).toContain('<span>Add connection</span>');
-    expect(source).toContain("activeFamily === 'events' ? 'Add event'");
+    expect(source).toContain("activeFamily === 'events'");
+    expect(source).toContain("? 'Add event'");
 
     // The hero carries one control per side: back, and a pen that opens the
     // editor. Visibility, Archive/Restore and Delete are all "change this
@@ -59,7 +60,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit)');
     expect(browser).toContain('toastManager.warning(');
     expect(browser).toContain('assignSelectedPlaceAssets');
-    expect(browser).toContain('moveWithinPlaceTargets={selectedPlaceMoveTargets.map');
+    expect(browser).toContain("moveWithinPlaceTargets={selected.entity.placeRole === 'location'");
     expect(browser).toContain('onMoveWithinPlace={assignSelectedPlaceAssets}');
     expect(browser).toContain('onSelectShown={visibleDetailAssets.length > 0 ? selectShownPlaceAssets : undefined}');
     expect(browser).not.toContain('aria-label="Move unassigned photos"');
@@ -73,8 +74,8 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('separates moving the Place record from shared selected-photo actions', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(browser).toContain('Move this Place');
-    expect(browser).toContain('Changes the Place itself, not its photos.');
+    expect(browser).toContain("Move this {selected.entity.placeRole === 'geography'");
+    expect(browser).toContain('Changes this hierarchy only, not its photos.');
     expect(browser).toContain("editorIntent === 'move'");
     expect(browser).toContain('<CimmichEntityMediaActions');
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");

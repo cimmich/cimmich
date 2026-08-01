@@ -122,7 +122,7 @@ describe('Cimmich context collections', () => {
     ]);
   });
 
-  it('starts Places in the photographic view while keeping the Map adjacent', async () => {
+  it('starts Places in Locations while keeping Geography, Map and GPS adjacent', async () => {
     const onAdd = vi.fn();
     const { getByRole, getByText } = render(CimmichContextCollection, {
       entities: [],
@@ -132,10 +132,13 @@ describe('Cimmich context collections', () => {
       onOpen: vi.fn(),
     });
 
-    expect(getByRole('button', { name: 'Places' })).toHaveAttribute('aria-pressed', 'true');
+    expect(getByRole('button', { name: 'Locations' })).toHaveAttribute('aria-pressed', 'true');
+    expect(getByRole('button', { name: 'Geography' })).toHaveAttribute('aria-pressed', 'false');
     expect(getByRole('button', { name: 'Map' })).toHaveAttribute('aria-pressed', 'false');
     expect(getByRole('button', { name: 'GPS' })).toHaveAttribute('aria-pressed', 'false');
-    expect(getByText('No places yet')).toBeInTheDocument();
+    expect(getByText('No locations yet')).toBeInTheDocument();
+    await fireEvent.click(getByRole('button', { name: 'Add a location' }));
+    expect(onAdd).toHaveBeenCalledWith('location');
     expect(mocks.getMapMarkers).not.toHaveBeenCalled();
     await fireEvent.click(getByRole('button', { name: 'Map' }));
     expect(getByText('Your atlas starts with a place')).toBeInTheDocument();
@@ -143,8 +146,10 @@ describe('Cimmich context collections', () => {
     expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
     await waitFor(() => expect(mocks.getMapMarkers).toHaveBeenCalledOnce());
 
-    await fireEvent.click(getByRole('button', { name: 'Places' }));
-    expect(getByText('No places yet')).toBeInTheDocument();
+    await fireEvent.click(getByRole('button', { name: 'Geography' }));
+    expect(getByText('No geography yet')).toBeInTheDocument();
+    await fireEvent.click(getByRole('button', { name: 'Locations' }));
+    expect(getByText('No locations yet')).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'GPS' }));
     expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
     expect(mocks.getMapMarkers).toHaveBeenCalledOnce();
@@ -179,7 +184,7 @@ describe('Cimmich context collections', () => {
     expect(card).toHaveAttribute('href', '/cimmich/test/place_home');
   });
 
-  it('groups the Places directory by country and exposes duplicate and sort views', async () => {
+  it('separates Locations from Geography and keeps geographic duplicate and sort views', async () => {
     const { getAllByRole, getByLabelText, getByRole, getByText, queryByText } = render(CimmichContextCollection, {
       entities: [
         entity({
@@ -187,6 +192,7 @@ describe('Cimmich context collections', () => {
           displayName: 'Zagreb, Croatia',
           entityId: 'place_zagreb_point',
           entityKind: 'place',
+          placeRole: 'geography',
           typeKind: 'point',
         }),
         entity({
@@ -194,6 +200,7 @@ describe('Cimmich context collections', () => {
           displayName: 'Zagreb, Croatia',
           entityId: 'place_zagreb_area',
           entityKind: 'place',
+          placeRole: 'geography',
           typeKind: 'area',
         }),
         entity({
@@ -201,6 +208,7 @@ describe('Cimmich context collections', () => {
           displayName: "Parent's Home",
           entityId: 'place_home',
           entityKind: 'place',
+          placeRole: 'location',
           typeKind: 'point',
         }),
       ],
@@ -210,8 +218,12 @@ describe('Cimmich context collections', () => {
       onOpen: vi.fn(),
     });
 
+    expect(getByRole('heading', { name: /^No geography set$/ })).toBeInTheDocument();
+    expect(getByText("Parent's Home")).toBeInTheDocument();
+    expect(queryByText('Zagreb, Croatia')).not.toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Geography' }));
     expect(getByRole('heading', { name: /^Croatia$/ })).toBeInTheDocument();
-    expect(getByRole('heading', { name: /^Personal & named places$/ })).toBeInTheDocument();
     expect(getByText('1 repeated name')).toBeInTheDocument();
 
     await fireEvent.change(getByLabelText('Group places'), { target: { value: 'duplicates' } });

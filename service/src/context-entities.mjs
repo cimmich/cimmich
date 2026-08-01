@@ -39,6 +39,7 @@ const datePrecisions = new Set([
 ]);
 const statuses = new Set(["active", "hidden", "archived"]);
 const directoryVisibilities = new Set(["listed", "nested_only"]);
+const placeRoles = new Set(["geography", "location", "unclassified"]);
 const associationKinds = {
   event: new Set(["direct", "route_stop", "context", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
@@ -383,6 +384,17 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
               : cleanEntityId(value.parentEntityId, "parentEntityId"),
         }
       : {}),
+    ...(value.placeRole !== undefined || (!partial && entityKind === "place")
+      ? { placeRole: String(value.placeRole || "unclassified").trim() }
+      : {}),
+    ...(value.geographyEntityId !== undefined
+      ? {
+          geographyEntityId:
+            value.geographyEntityId == null
+              ? null
+              : cleanEntityId(value.geographyEntityId, "geographyEntityId"),
+        }
+      : {}),
     ...(value.directoryVisibility !== undefined
       ? { directoryVisibility: String(value.directoryVisibility).trim() }
       : {}),
@@ -408,6 +420,25 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
       "directoryVisibility is unsupported",
       400,
       "CONTEXT_DIRECTORY_VISIBILITY_INVALID",
+    );
+  }
+  if (requested.placeRole && !placeRoles.has(requested.placeRole)) {
+    throw typedError(
+      "placeRole is unsupported",
+      400,
+      "CONTEXT_PLACE_ROLE_INVALID",
+    );
+  }
+  if (
+    !partial &&
+    entityKind !== "place" &&
+    (requested.placeRole !== undefined ||
+      requested.geographyEntityId !== undefined)
+  ) {
+    throw typedError(
+      "Only Places may use Place roles or geography links",
+      400,
+      "CONTEXT_PLACE_ROLE_INVALID",
     );
   }
   if (
@@ -658,7 +689,9 @@ const entityStateSnapshot = (row, aliases) => ({
   entityId: row.entity_id,
   entityKind: row.entity_kind,
   geometry: row.geometry || null,
+  geographyEntityId: row.geography_entity_id || null,
   parentEntityId: row.parent_entity_id || null,
+  placeRole: row.place_role || null,
   revision: Number(row.revision),
   status: row.status,
   typeKind: row.place_kind || row.object_kind || row.event_kind,
@@ -708,9 +741,11 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
   entityId: row.entity_id,
   entityKind: row.entity_kind,
   geometry: row.geometry || null,
+  geographyEntityId: row.geography_entity_id || null,
   parentEntityId: Object.hasOwn(row, "visible_parent_entity_id")
     ? row.visible_parent_entity_id || null
     : row.parent_entity_id || null,
+  placeRole: row.place_role || null,
   ...(row.entity_kind === "event" && Object.hasOwn(row, "preview_asset_ids")
     ? {
         previewAssetIds: (Array.isArray(row.preview_asset_ids)
@@ -743,6 +778,7 @@ const loadEntities = async (
     includeArchived = false,
     includeHidden = false,
     limit = 100,
+    placeRole = null,
     presentationRank,
     query = "",
   },
@@ -837,6 +873,7 @@ const loadEntities = async (
         WHERE alias.entity_id = entity.entity_id AND alias.state = 'active'
           AND alias.label ILIKE ${search}
       ))
+      AND (${placeRole === null} OR entity.place_role = ${placeRole})
       AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${presentationRank()}
     ORDER BY lower(entity.display_name), entity.entity_id
     LIMIT ${cleanLimit(limit)}
@@ -1153,10 +1190,11 @@ const requireParent = async (
   entityKind,
   entityId = null,
   presentationRank = () => 0,
+  placeRole = null,
 ) => {
   if (!parentEntityId) return;
   const [parent] = await executor`
-    SELECT entity_kind FROM context_entity
+    SELECT entity_kind, place_role FROM context_entity
     WHERE entity_id = ${parentEntityId} AND status <> 'archived'
       AND status <> 'deleted'
       AND cimmich_visibility_context_entity_rank(entity_id) <= ${presentationRank()}
@@ -1170,6 +1208,19 @@ const requireParent = async (
       "Context parent must be a current same-kind Place or Event",
       409,
       "CONTEXT_PARENT_INVALID",
+    );
+  }
+  if (
+    entityKind === "place" &&
+    placeRole &&
+    placeRole !== "unclassified" &&
+    parent.place_role !== "unclassified" &&
+    parent.place_role !== placeRole
+  ) {
+    throw typedError(
+      "Locations and Geography use separate parent hierarchies",
+      409,
+      "CONTEXT_PARENT_ROLE_INVALID",
     );
   }
   if (entityId) {
@@ -1191,6 +1242,39 @@ const requireParent = async (
         "CONTEXT_PARENT_CYCLE",
       );
     }
+  }
+};
+
+const requireGeography = async (
+  executor,
+  geographyEntityId,
+  placeRole,
+  entityId = null,
+  presentationRank = () => 0,
+) => {
+  if (!geographyEntityId) return;
+  if (placeRole !== "location" || geographyEntityId === entityId) {
+    throw typedError(
+      "Only a Location may link to a separate Geography",
+      409,
+      "CONTEXT_GEOGRAPHY_INVALID",
+    );
+  }
+  const [geography] = await executor`
+    SELECT entity_kind, place_role FROM context_entity
+    WHERE entity_id = ${geographyEntityId}
+      AND status IN ('active','hidden')
+      AND cimmich_visibility_context_entity_rank(entity_id) <= ${presentationRank()}
+  `;
+  if (
+    geography?.entity_kind !== "place" ||
+    geography.place_role !== "geography"
+  ) {
+    throw typedError(
+      "Location geography must be a current Geography Place",
+      409,
+      "CONTEXT_GEOGRAPHY_INVALID",
+    );
   }
 };
 
@@ -1269,12 +1353,29 @@ export const createContextEntityStore = (
   } = {},
 ) => {
   const api = {
-    list: ({ entityKind, includeArchived, includeHidden, limit, query }) => {
+    list: ({
+      entityKind,
+      includeArchived,
+      includeHidden,
+      limit,
+      placeRole = null,
+      query,
+    }) => {
       if (!entityKinds.has(entityKind)) {
         throw typedError(
           "entityKind is unsupported",
           400,
           "CONTEXT_KIND_INVALID",
+        );
+      }
+      if (
+        placeRole !== null &&
+        (entityKind !== "place" || !placeRoles.has(placeRole))
+      ) {
+        throw typedError(
+          "placeRole filter is unsupported",
+          400,
+          "CONTEXT_PLACE_ROLE_INVALID",
         );
       }
       return loadEntities(sql, {
@@ -1283,6 +1384,7 @@ export const createContextEntityStore = (
         includeArchived,
         includeHidden,
         limit,
+        placeRole,
         presentationRank,
         query,
       });
@@ -1333,6 +1435,14 @@ export const createContextEntityStore = (
           requested.entityKind,
           null,
           presentationRank,
+          requested.placeRole,
+        );
+        await requireGeography(
+          tx,
+          requested.geographyEntityId,
+          requested.placeRole,
+          null,
+          presentationRank,
         );
         if (
           requested.directoryVisibility === "nested_only" &&
@@ -1348,7 +1458,8 @@ export const createContextEntityStore = (
           INSERT INTO context_entity (
             entity_id, entity_kind, place_kind, object_kind, event_kind,
             display_name, description, date_start, date_end, date_precision,
-            geometry, parent_entity_id, status, directory_visibility
+            geometry, parent_entity_id, status, directory_visibility,
+            place_role, geography_entity_id
           ) VALUES (
             ${entityId}, ${requested.entityKind},
             ${requested.entityKind === "place" ? requested.typeKind : null},
@@ -1359,7 +1470,9 @@ export const createContextEntityStore = (
             ${requested.datePrecision},
             ${requested.geometry ? tx.json(requested.geometry) : null},
             ${requested.parentEntityId || null}, ${requested.status || "active"},
-            ${requested.entityKind === "place" ? requested.directoryVisibility || "listed" : "listed"}
+            ${requested.entityKind === "place" ? requested.directoryVisibility || "listed" : "listed"},
+            ${requested.entityKind === "place" ? requested.placeRole : null},
+            ${requested.entityKind === "place" ? requested.geographyEntityId || null : null}
           )
         `;
         await applyAliases(tx, entityId, requested.aliases || []);
@@ -1458,12 +1571,14 @@ export const createContextEntityStore = (
         }
         if (
           current.entity_kind !== "place" &&
-          requested.directoryVisibility !== undefined
+          (requested.directoryVisibility !== undefined ||
+            requested.placeRole !== undefined ||
+            requested.geographyEntityId !== undefined)
         ) {
           throw typedError(
-            "Only Places may change directory visibility",
+            "Only Places may change directory visibility, role, or geography",
             400,
-            "CONTEXT_DIRECTORY_VISIBILITY_INVALID",
+            "CONTEXT_PLACE_ROLE_INVALID",
           );
         }
         const currentType =
@@ -1500,13 +1615,72 @@ export const createContextEntityStore = (
         const nextParentId = Object.hasOwn(requested, "parentEntityId")
           ? requested.parentEntityId
           : current.parent_entity_id;
+        const nextPlaceRole =
+          current.entity_kind === "place"
+            ? (requested.placeRole ?? current.place_role ?? "unclassified")
+            : null;
+        const nextGeographyEntityId =
+          current.entity_kind === "place"
+            ? Object.hasOwn(requested, "geographyEntityId")
+              ? requested.geographyEntityId
+              : current.geography_entity_id
+            : null;
         await requireParent(
           tx,
           nextParentId,
           current.entity_kind,
           current.entity_id,
           presentationRank,
+          nextPlaceRole,
         );
+        await requireGeography(
+          tx,
+          nextGeographyEntityId,
+          nextPlaceRole,
+          current.entity_id,
+          presentationRank,
+        );
+        if (
+          current.entity_kind === "place" &&
+          nextPlaceRole !== "unclassified" &&
+          nextPlaceRole !== current.place_role
+        ) {
+          const [conflictingChildren] = await tx`
+            SELECT count(*)::int AS count FROM context_entity
+            WHERE parent_entity_id = ${current.entity_id}
+              AND status IN ('active','hidden')
+              AND place_role <> 'unclassified'
+              AND place_role <> ${nextPlaceRole}
+          `;
+          if (Number(conflictingChildren.count) > 0) {
+            throw typedError(
+              "Classified Place children must use the same hierarchy role",
+              409,
+              "CONTEXT_CHILD_ROLE_INVALID",
+            );
+          }
+        }
+        if (
+          current.entity_kind === "place" &&
+          current.place_role === "geography" &&
+          (nextPlaceRole !== "geography" ||
+            (requested.status &&
+              !["active", "hidden"].includes(requested.status)))
+        ) {
+          const [linkedLocations] = await tx`
+            SELECT count(*)::int AS count FROM context_entity
+            WHERE geography_entity_id = ${current.entity_id}
+              AND status IN ('active','hidden')
+          `;
+          if (Number(linkedLocations.count) > 0) {
+            throw typedError(
+              "Move linked Locations before changing or removing this Geography",
+              409,
+              "CONTEXT_GEOGRAPHY_HAS_LOCATIONS",
+              { locationCount: Number(linkedLocations.count) },
+            );
+          }
+        }
         const nextDirectoryVisibility =
           requested.directoryVisibility ??
           current.directory_visibility ??
@@ -1549,7 +1723,9 @@ export const createContextEntityStore = (
           directoryVisibility: nextDirectoryVisibility,
           displayName: requested.displayName ?? previousState.displayName,
           geometry: nextGeometry,
+          geographyEntityId: nextGeographyEntityId || null,
           parentEntityId: nextParentId || null,
+          placeRole: nextPlaceRole,
           revision: previousState.revision + 1,
           status: requested.status ?? previousState.status,
           typeKind: nextType,
@@ -1606,6 +1782,8 @@ export const createContextEntityStore = (
             date_precision = ${requested.datePrecision ?? current.date_precision},
             geometry = ${nextGeometry ? tx.json(nextGeometry) : null},
             parent_entity_id = ${nextParentId},
+            place_role = ${nextPlaceRole},
+            geography_entity_id = ${nextGeographyEntityId},
             status = ${requested.status ?? current.status},
             directory_visibility = ${nextDirectoryVisibility},
             revision = revision + 1, updated_at = now()
@@ -2661,6 +2839,16 @@ export const createContextEntityStore = (
             entity.entity_kind,
             entity.entity_id,
             presentationRank,
+            item.previous.placeRole,
+          );
+        }
+        if (operation.action === "update") {
+          await requireGeography(
+            tx,
+            item.previous.geographyEntityId,
+            item.previous.placeRole,
+            entity.entity_id,
+            presentationRank,
           );
         }
         if (operation.action === "create") {
@@ -2669,6 +2857,9 @@ export const createContextEntityStore = (
               (SELECT count(*)::int FROM context_entity child
                 WHERE child.parent_entity_id = ${entity.entity_id}
                   AND child.status <> 'deleted') AS child_count,
+              (SELECT count(*)::int FROM context_entity location
+                WHERE location.geography_entity_id = ${entity.entity_id}
+                  AND location.status <> 'deleted') AS geography_location_count,
               (SELECT count(*)::int FROM current_context_asset link
                 WHERE link.entity_id = ${entity.entity_id}) AS asset_count,
               (SELECT count(*)::int FROM current_context_relation link
@@ -2929,6 +3120,8 @@ export const createContextEntityStore = (
               date_precision = ${item.previous.datePrecision},
               geometry = ${item.previous.geometry ? tx.json(item.previous.geometry) : null},
               parent_entity_id = ${item.previous.parentEntityId},
+              place_role = ${item.previous.placeRole},
+              geography_entity_id = ${item.previous.geographyEntityId},
               status = ${item.previous.status},
               directory_visibility = ${item.previous.directoryVisibility || "listed"},
               cover_asset_id = ${item.previous.coverAssetId}
@@ -3004,6 +3197,7 @@ export const contextEntityContract = Object.freeze({
   objectCoverSchemaVersion,
   objectDeleteSchemaVersion,
   placeCoverSchemaVersion,
+  placeRoles: [...placeRoles],
   relationKinds: [...relationKinds],
   schemaVersion,
   placeDeleteSchemaVersion,
