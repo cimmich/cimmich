@@ -30,6 +30,7 @@
   import {
     contextEventYear,
     contextFamilyLabels,
+    contextPlaceCountryLabel,
     contextPlaceHierarchy,
     contextPlaceLocationLabel,
     contextPlaceMapProjection,
@@ -50,6 +51,7 @@
     // addressable and yet could not be opened in a new tab or have its link
     // copied. The owner supplies the href because it depends on the current URL.
     entityHref: (entity: CimmichContextEntity) => string;
+    geographyGroupHref?: (groupName: string) => string;
     family: CimmichContextFamily;
     includeNestedPlaces?: boolean;
     onAdd: (placeRole?: Exclude<CimmichPlaceRole, 'unclassified'>) => void;
@@ -64,6 +66,7 @@
     controlledPlaceView,
     entities,
     entityHref,
+    geographyGroupHref = () => '',
     family,
     includeNestedPlaces = false,
     onAdd,
@@ -146,11 +149,7 @@
         'No geography set'
       );
     }
-    const parts = entity.displayName
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean);
-    return parts.length > 1 ? parts.at(-1)! : 'Other geography';
+    return contextPlaceCountryLabel(entity);
   };
 
   const buildPlaceDirectorySections = (items: CimmichContextEntity[]) => {
@@ -195,7 +194,6 @@
         .filter((name, _index, names) => names.filter((candidate) => candidate === name).length > 1),
     ).size,
   );
-
   $effect(() => {
     const nextFamily = family;
     activeTypeFilter = 'all';
@@ -290,7 +288,10 @@
 
 <section class="pt-7" aria-label={contextFamilyLabels[family]} data-testid={`cimmich-${family}-collection`}>
   {#if family === 'places'}
-    <header class="mb-5 flex justify-end">
+    <header
+      class="context-place-view-toolbar"
+      class:context-place-view-toolbar--directory={placeView === 'locations' || placeView === 'geography'}
+    >
       <div class="flex rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Places view">
         <button
           class:context-view-active={placeView === 'atlas'}
@@ -321,6 +322,39 @@
           onclick={openGps}><Icon icon={mdiMapMarkerMultipleOutline} size="17" /> GPS</button
         >
       </div>
+      {#if (placeView === 'locations' || placeView === 'geography') && filteredEntities.length > 0}
+        <div class="context-place-directory-summary">
+          <div class="context-place-directory-controls">
+            <label>
+              <span>Group</span>
+              <select
+                aria-label="Group places"
+                value={placeGroupMode}
+                onchange={(event) => (placeGroupMode = event.currentTarget.value as 'country' | 'duplicates' | 'none')}
+              >
+                <option value="country">{placeView === 'geography' ? 'Country' : 'Geography'}</option>
+                <option value="none">No grouping</option>
+                <option value="duplicates"
+                  >Repeated names{duplicatePlaceNameCount > 0 ? ` (${duplicatePlaceNameCount})` : ''}</option
+                >
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select
+                aria-label="Sort places"
+                value={placeSortMode}
+                onchange={(event) =>
+                  (placeSortMode = event.currentTarget.value as 'name' | 'photos-asc' | 'photos-desc')}
+              >
+                <option value="name">Name A–Z</option>
+                <option value="photos-desc">Most photos</option>
+                <option value="photos-asc">Fewest photos</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      {/if}
     </header>
   {/if}
 
@@ -396,45 +430,6 @@
         </button>
       </div>
     {:else}
-      <div class="context-place-directory-toolbar">
-        <div>
-          <p>{filteredEntities.length.toLocaleString()} saved {placeView}</p>
-          <span>
-            {duplicatePlaceNameCount === 0
-              ? 'Each name is unique'
-              : `${duplicatePlaceNameCount.toLocaleString()} repeated ${
-                  duplicatePlaceNameCount === 1 ? 'name' : 'names'
-                }`}
-          </span>
-        </div>
-        <div class="context-place-directory-controls">
-          <label>
-            <span>Group</span>
-            <select
-              aria-label="Group places"
-              value={placeGroupMode}
-              onchange={(event) => (placeGroupMode = event.currentTarget.value as 'country' | 'duplicates' | 'none')}
-            >
-              <option value="country">{placeView === 'geography' ? 'Country' : 'Geography'}</option>
-              <option value="none">No grouping</option>
-              <option value="duplicates">Repeated names</option>
-            </select>
-          </label>
-          <label>
-            <span>Sort</span>
-            <select
-              aria-label="Sort places"
-              value={placeSortMode}
-              onchange={(event) => (placeSortMode = event.currentTarget.value as 'name' | 'photos-asc' | 'photos-desc')}
-            >
-              <option value="name">Name A–Z</option>
-              <option value="photos-desc">Most photos</option>
-              <option value="photos-asc">Fewest photos</option>
-            </select>
-          </label>
-        </div>
-      </div>
-
       {#if placeGroupMode === 'duplicates' && placeDirectorySections.length === 0}
         <div class="context-place-directory-empty">
           <Icon icon={mdiMapMarkerMultipleOutline} size="28" />
@@ -448,7 +443,13 @@
               {#if section.label}
                 <header>
                   <div>
-                    <h2>{section.label}</h2>
+                    <h2>
+                      {#if placeView === 'geography' && placeGroupMode === 'country'}
+                        <a href={geographyGroupHref(section.label)}>{section.label}</a>
+                      {:else}
+                        {section.label}
+                      {/if}
+                    </h2>
                     <span>
                       {section.duplicate
                         ? `${section.entities.length} saved records need consolidation`
@@ -800,30 +801,25 @@
     gap: 2.25rem;
   }
 
-  .context-place-directory-toolbar {
+  .context-place-view-toolbar {
     display: flex;
-    align-items: end;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: flex-start;
     gap: 1rem;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid rgb(229 231 235);
-    padding-bottom: 1rem;
+    margin-bottom: 1.25rem;
   }
 
-  :global(.dark) .context-place-directory-toolbar {
-    border-color: rgb(31 41 55);
+  .context-place-view-toolbar--directory {
+    flex-wrap: wrap;
+    justify-content: space-between;
   }
 
-  .context-place-directory-toolbar > div:first-child p {
-    font-size: 0.88rem;
-    font-weight: 700;
-  }
-
-  .context-place-directory-toolbar > div:first-child span {
-    display: block;
-    margin-top: 0.18rem;
-    color: rgb(107 114 128);
-    font-size: 0.74rem;
+  .context-place-directory-summary {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.8rem;
+    margin-left: auto;
   }
 
   .context-place-directory-controls {
@@ -833,8 +829,9 @@
   }
 
   .context-place-directory-controls label {
-    display: grid;
-    gap: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     color: rgb(107 114 128);
     font-size: 0.67rem;
     font-weight: 700;
@@ -843,8 +840,8 @@
   }
 
   .context-place-directory-controls select {
-    min-width: 9.5rem;
-    height: 2.5rem;
+    min-width: 8.75rem;
+    height: 2.25rem;
     border: 1px solid rgb(209 213 219);
     border-radius: 0.75rem;
     background: transparent;
@@ -880,6 +877,14 @@
     letter-spacing: -0.015em;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .context-place-directory-section > header h2 a:hover,
+  .context-place-directory-section > header h2 a:focus-visible {
+    color: rgb(var(--immich-primary));
+    outline: none;
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
   }
 
   .context-place-directory-section > header span {
@@ -1197,9 +1202,16 @@
       aspect-ratio: 4 / 3;
     }
 
-    .context-place-directory-toolbar {
+    .context-place-view-toolbar--directory {
       align-items: stretch;
       flex-direction: column;
+    }
+
+    .context-place-directory-summary {
+      width: 100%;
+      align-items: stretch;
+      flex-direction: column;
+      margin-left: 0;
     }
 
     .context-place-directory-controls {
@@ -1210,6 +1222,11 @@
     .context-place-directory-controls select {
       width: 100%;
       min-width: 0;
+    }
+
+    .context-place-directory-controls label {
+      align-items: stretch;
+      flex-direction: column;
     }
   }
 </style>

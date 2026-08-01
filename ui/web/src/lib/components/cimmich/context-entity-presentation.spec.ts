@@ -9,12 +9,14 @@ import {
   contextFamilyKind,
   contextFamilyLabels,
   contextPlaceLocationLabel,
+  contextPlaceCountryLabel,
   contextPlaceDescendants,
   contextRequestedEntityId,
   formatContextCoordinate,
   formatImmichPlaceLocation,
   getContextCollectionHref,
   getContextDetailHref,
+  getContextGeographyGroupHref,
   resolveContextRouteEntity,
   contextPlaceHierarchy,
   contextPlaceMapProjection,
@@ -462,6 +464,14 @@ describe('named context detail routes', () => {
     );
   });
 
+  it('builds data-derived country pages and keeps a country root in its own group', () => {
+    expect(contextPlaceCountryLabel('Gulmarrad, New South Wales, Australia')).toBe('Australia');
+    expect(contextPlaceCountryLabel('Australia')).toBe('Australia');
+    expect(getContextGeographyGroupHref(at('/cimmich/places?family=places'), 'New Zealand')).toBe(
+      '/cimmich/places/New%20Zealand?geographyGroup=New+Zealand',
+    );
+  });
+
   it('builds a named thing href under the shared places section', () => {
     expect(getContextDetailHref(at('/cimmich/places?family=objects'), 'objects', 'object_1', 'ATV')).toBe(
       '/cimmich/places/ATV?thingId=object_1',
@@ -490,6 +500,9 @@ describe('named context detail routes', () => {
       '/cimmich/places?family=objects',
     );
     expect(getContextCollectionHref(at("/cimmich/places/Parent's%20Home?placeId=place_1"), 'places')).toBe(
+      '/cimmich/places?family=places',
+    );
+    expect(getContextCollectionHref(at('/cimmich/places/Australia?geographyGroup=Australia'), 'places')).toBe(
       '/cimmich/places?family=places',
     );
   });

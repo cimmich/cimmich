@@ -214,17 +214,24 @@ describe('Cimmich context collections', () => {
       ],
       entityHref,
       family: 'places',
+      geographyGroupHref: (groupName: string) =>
+        `/cimmich/places/${encodeURIComponent(groupName)}?geographyGroup=${encodeURIComponent(groupName)}`,
       onAdd: vi.fn(),
       onOpen: vi.fn(),
     });
 
     expect(getByRole('heading', { name: /^No geography set$/ })).toBeInTheDocument();
     expect(getByText("Parent's Home")).toBeInTheDocument();
+    expect(queryByText('Each name is unique')).not.toBeInTheDocument();
     expect(queryByText('Zagreb, Croatia')).not.toBeInTheDocument();
 
     await fireEvent.click(getByRole('button', { name: 'Geography' }));
     expect(getByRole('heading', { name: /^Croatia$/ })).toBeInTheDocument();
-    expect(getByText('1 repeated name')).toBeInTheDocument();
+    expect(getByRole('option', { name: 'Repeated names (1)' })).toBeInTheDocument();
+    expect(getByRole('link', { name: 'Croatia' })).toHaveAttribute(
+      'href',
+      '/cimmich/places/Croatia?geographyGroup=Croatia',
+    );
 
     await fireEvent.change(getByLabelText('Group places'), { target: { value: 'duplicates' } });
     await waitFor(() => expect(getByText('2 saved records need consolidation')).toBeInTheDocument());

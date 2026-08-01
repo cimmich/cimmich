@@ -331,6 +331,7 @@ export const getContextDetailHref = (
   displayName: string,
 ) => {
   const url = new URL(currentUrl);
+  url.searchParams.delete('geographyGroup');
   url.searchParams.delete('entityId');
   url.searchParams.delete('tab');
   url.searchParams.delete('family');
@@ -349,8 +350,30 @@ export const getContextDetailHref = (
   return `${root}/${encodeURIComponent(displayName)}${url.search}`;
 };
 
+/** Country grouping comes from the canonical comma-separated Geography name
+ * already shown in the directory. A one-part Geography is itself the country
+ * root, so `Australia` joins the Australia section instead of an unrelated
+ * "Other" bucket. */
+export const contextPlaceCountryLabel = (place: Pick<CimmichContextEntity, 'displayName'> | string) => {
+  const displayName = typeof place === 'string' ? place : place.displayName;
+  const parts = displayName
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.at(-1) ?? 'Other geography';
+};
+
+export const getContextGeographyGroupHref = (currentUrl: URL, groupName: string) => {
+  const url = new URL(currentUrl);
+  url.pathname = `/cimmich/places/${encodeURIComponent(groupName.trim())}`;
+  url.search = '';
+  url.searchParams.set('geographyGroup', groupName.trim());
+  return `${url.pathname}${url.search}`;
+};
+
 export const getContextCollectionHref = (currentUrl: URL, family: CimmichContextFamily) => {
   const url = new URL(currentUrl);
+  url.searchParams.delete('geographyGroup');
   url.searchParams.delete('entityId');
   url.searchParams.delete('tab');
   for (const value of Object.values(contextFamilyIdParam)) {
