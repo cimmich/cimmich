@@ -46,6 +46,10 @@ describe('Place, Thing and Event profile information architecture', () => {
 
     expect(browser).toContain('<CimmichContextPlaceMap detail={selected} />');
     expect(hero).toContain('detail.entity.coverAssetId');
+    expect(hero).toContain('aria-label="Location view"');
+    expect(hero).toContain("placeVisualView = 'map'");
+    expect(hero).toContain("placeVisualView = 'plan'");
+    expect(hero).toContain('No plan yet');
     expect(map).toContain('The place itself and visible photos that carry location data.');
     expect(map).toContain('Open full map');
     expect(map).toContain('zoom={locatorCenter ? 15 : undefined}');
@@ -81,6 +85,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).not.toContain('Open a subsection or use it to organise');
     expect(browser).not.toContain('Also listed on Places');
     expect(browser).not.toContain('Shown inside this place');
+    expect(browser).toContain('{#if selectedPlaceLineage.length > 1}');
+    expect(browser).not.toContain('<span class="font-semibold">Geography</span>');
     expect(browser).toContain('const placeChildNames');
     expect(browser).toContain(".join(' · ')");
     expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
@@ -124,7 +130,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).not.toContain('How does this place exist on the map?');
     expect(collection).toContain('Start with a trip or route');
     expect(collection).not.toContain('Pins, areas and routes will appear here.');
-    expect(hero).toContain('contextPlaceRoleLabel(detail.entity.placeRole)');
+    expect(hero).not.toContain('contextPlaceRoleLabel(detail.entity.placeRole)');
+    expect(hero).toContain('!isPlace && detail.entity.aliases.length > 0');
   });
 
   it('does not promote a legacy role state into a Locations directory heading', async () => {
