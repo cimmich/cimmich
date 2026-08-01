@@ -59,6 +59,10 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('if (selectedPlaceAssetIds.length >= placeBulkSelectionLimit)');
     expect(browser).toContain('toastManager.warning(');
     expect(browser).toContain('assignSelectedPlaceAssets');
+    expect(browser).toContain('moveWithinPlaceTargets={selectedPlaceMoveTargets.map');
+    expect(browser).toContain('onMoveWithinPlace={assignSelectedPlaceAssets}');
+    expect(browser).toContain('onSelectShown={visibleDetailAssets.length > 0 ? selectShownPlaceAssets : undefined}');
+    expect(browser).not.toContain('aria-label="Move unassigned photos"');
     expect(canvas).toContain('satelliteInitiallyEnabled');
     expect(canvas).toContain('Paint outline');
     expect(canvas).toContain('Save zone');

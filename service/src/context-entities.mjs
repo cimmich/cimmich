@@ -2053,9 +2053,27 @@ export const createContextEntityStore = (
         presentationRank,
         requireVisible: true,
       });
-      if (child.parent_entity_id !== parent.entity_id) {
+      const [destination] = await tx`
+        WITH RECURSIVE descendants AS (
+          SELECT entity_id, parent_entity_id, 1 AS depth
+          FROM context_entity
+          WHERE parent_entity_id = ${parent.entity_id}
+            AND entity_kind = 'place' AND status IN ('active','hidden')
+          UNION ALL
+          SELECT child_entity.entity_id, child_entity.parent_entity_id,
+                 parent_entity.depth + 1
+          FROM context_entity child_entity
+          JOIN descendants parent_entity
+            ON child_entity.parent_entity_id = parent_entity.entity_id
+          WHERE child_entity.entity_kind = 'place'
+            AND child_entity.status IN ('active','hidden')
+            AND parent_entity.depth < 8
+        )
+        SELECT entity_id FROM descendants WHERE entity_id = ${child.entity_id}
+      `;
+      if (!destination) {
         throw typedError(
-          "The destination must be an immediate subsection of this Place",
+          "The destination must be a subsection within this Place",
           409,
           "CONTEXT_PLACE_ASSIGNMENT_CHILD_INVALID",
         );

@@ -31,7 +31,25 @@
     type TagResponseDto,
   } from '@immich/sdk';
   import { Icon, toastManager } from '@immich/ui';
-  import { mdiAlertCircleOutline, mdiCheckCircleOutline, mdiUndoVariant } from '@mdi/js';
+  import {
+    mdiAccountMultipleOutline,
+    mdiAlertCircleOutline,
+    mdiArchiveArrowDownOutline,
+    mdiArchiveArrowUpOutline,
+    mdiCalendarBlankOutline,
+    mdiCheckCircleOutline,
+    mdiHeartOutline,
+    mdiImageAlbum,
+    mdiImageMove,
+    mdiLinkOff,
+    mdiLockOutline,
+    mdiMapMarkerOutline,
+    mdiPackageVariantClosed,
+    mdiPawOutline,
+    mdiSelectAll,
+    mdiTagOutline,
+    mdiUndoVariant,
+  } from '@mdi/js';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import Combobox, { type ComboBoxOption } from '../shared-components/Combobox.svelte';
   import {
@@ -43,6 +61,7 @@
     type CimmichEntityMediaActionKind,
     type CimmichEntityMediaActionReceipt,
     type CimmichEntityMediaItem,
+    type CimmichEntityMediaPlaceTarget,
     type CimmichEntityMediaScope,
     type CimmichEntityMediaSubject,
   } from './entity-media-actions';
@@ -53,12 +72,30 @@
     items: CimmichEntityMediaItem[];
     onChanged?: () => Promise<void> | void;
     onClear: () => void;
+    onMoveWithinPlace?: (targetEntityId: string) => Promise<boolean>;
+    onSelectShown?: () => void;
+    moveWithinPlaceTargets?: CimmichEntityMediaPlaceTarget[];
     showControls?: boolean;
   }
 
-  let { currentScope = null, currentSubject = null, items, onChanged, onClear, showControls = true }: Props = $props();
+  let {
+    currentScope = null,
+    currentSubject = null,
+    items,
+    moveWithinPlaceTargets = [],
+    onChanged,
+    onClear,
+    onMoveWithinPlace,
+    onSelectShown,
+    showControls = true,
+  }: Props = $props();
 
-  let action = $state<CimmichEntityMediaActionKind | null>(null);
+  type PlaceMoveAction = 'place-move-within';
+  type MediaUiAction = CimmichEntityMediaActionKind | PlaceMoveAction;
+  type MediaActionGroup = 'context' | 'library' | 'metadata' | 'presence' | 'privacy';
+
+  let action = $state<MediaUiAction | null>(null);
+  let actionGroup = $state<MediaActionGroup | null>(null);
   let targetId = $state('');
   let targetOption = $state<ComboBoxOption>();
   let albums = $state<AlbumResponseDto[]>([]);
@@ -81,7 +118,13 @@
   const selectedCount = $derived(items.length);
   const allDirectlyAssigned = $derived(items.length > 0 && items.every((item) => item.directlyAssigned !== false));
   const availableActions = $derived.by(() => {
-    const result: CimmichEntityMediaActionKind[] = [
+    const result: MediaUiAction[] = [
+      ...(currentScope?.family === 'places' &&
+      allDirectlyAssigned &&
+      moveWithinPlaceTargets.length > 0 &&
+      onMoveWithinPlace
+        ? (['place-move-within'] as const)
+        : []),
       'event-attach',
       'place-attach',
       'object-attach',
@@ -102,36 +145,50 @@
     ];
     return result;
   });
-  const needsTarget = $derived(action ? cimmichEntityMediaActionNeedsTarget(action) : false);
-  const targetOptions = $derived.by(() => {
+  const needsTarget = $derived(
+    action === 'place-move-within' || (action ? cimmichEntityMediaActionNeedsTarget(action) : false),
+  );
+  const targetOptions = $derived.by<ComboBoxOption[]>(() => {
+    if (action === 'place-move-within') {
+      return moveWithinPlaceTargets.map(({ depth, entityId, label, path }) => ({
+        description: depth > 0 ? path : undefined,
+        id: entityId,
+        indent: depth,
+        label,
+        searchText: path,
+        value: entityId,
+      }));
+    }
     if (action === 'event-attach') {
-      return events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }));
+      return events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
     }
     if (action === 'place-attach') {
-      return places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }));
+      return places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
     }
     if (action === 'object-attach') {
-      return objects.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }));
+      return objects.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
     }
     if (action === 'presence-person') {
       return people
         .filter((person) => person.subject_kind === 'person' && person.status === 'active')
-        .map(({ person_id, display_name }) => ({ id: person_id, label: display_name }));
+        .map(({ person_id, display_name }) => ({ id: person_id, label: display_name, value: person_id }));
     }
     if (action === 'presence-pet') {
       return pets
         .filter((pet) => pet.status === 'active')
-        .map(({ petId, displayName }) => ({ id: petId, label: displayName }));
+        .map(({ petId, displayName }) => ({ id: petId, label: displayName, value: petId }));
     }
     if (action === 'tag-add' || action === 'tag-remove') {
-      return tags.map(({ id, name }) => ({ id, label: name }));
+      return tags.map(({ id, name }) => ({ id, label: name, value: id }));
     }
     if (action === 'album-add') {
-      return albums.map(({ id, albumName }) => ({ id, label: albumName }));
+      return albums.map(({ id, albumName }) => ({ id, label: albumName, value: id }));
     }
     return [];
   });
-  const targetLabel = $derived(targetOption?.label ?? '');
+  const targetLabel = $derived(
+    action === 'place-move-within' ? targetOption?.description || targetOption?.label || '' : targetOption?.label || '',
+  );
   const canApply = $derived(
     selectedCount > 0 &&
       !busy &&
@@ -140,6 +197,75 @@
       (!needsTarget || Boolean(targetId)) &&
       Boolean(action && availableActions.includes(action)),
   );
+  const actionGroupDefinitions: Array<{ actions: MediaUiAction[]; icon: string; id: MediaActionGroup; label: string }> =
+    [
+      {
+        actions: ['place-move-within', 'event-attach', 'place-attach', 'object-attach', 'context-detach'],
+        icon: mdiImageMove,
+        id: 'context',
+        label: 'Organise',
+      },
+      {
+        actions: ['presence-current', 'presence-person', 'presence-pet'],
+        icon: mdiAccountMultipleOutline,
+        id: 'presence',
+        label: 'People & pets',
+      },
+      {
+        actions: ['visibility-standard', 'visibility-personal', 'visibility-private'],
+        icon: mdiLockOutline,
+        id: 'privacy',
+        label: 'Privacy',
+      },
+      {
+        actions: ['tag-add', 'tag-remove', 'album-add'],
+        icon: mdiTagOutline,
+        id: 'metadata',
+        label: 'Tags & albums',
+      },
+      {
+        actions: ['favorite', 'unfavorite', 'archive', 'unarchive'],
+        icon: mdiImageAlbum,
+        id: 'library',
+        label: 'Library',
+      },
+    ];
+  const actionGroups = $derived(
+    actionGroupDefinitions
+      .map((group) => ({
+        ...group,
+        actions: group.actions.filter((candidate) => availableActions.includes(candidate)),
+      }))
+      .filter((group) => group.actions.length > 0),
+  );
+  const visibleGroupActions = $derived(actionGroups.find((group) => group.id === actionGroup)?.actions ?? []);
+
+  const actionLabel = (selectedAction: MediaUiAction) =>
+    selectedAction === 'place-move-within'
+      ? `Move within ${currentScope?.displayName || 'this Place'}`
+      : cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
+
+  const actionIcon = (selectedAction: MediaUiAction) =>
+    ({
+      'album-add': mdiImageAlbum,
+      archive: mdiArchiveArrowDownOutline,
+      'context-detach': mdiLinkOff,
+      'event-attach': mdiCalendarBlankOutline,
+      favorite: mdiHeartOutline,
+      'object-attach': mdiPackageVariantClosed,
+      'place-attach': mdiMapMarkerOutline,
+      'place-move-within': mdiImageMove,
+      'presence-current': currentSubject?.subjectKind === 'pet' ? mdiPawOutline : mdiAccountMultipleOutline,
+      'presence-person': mdiAccountMultipleOutline,
+      'presence-pet': mdiPawOutline,
+      'tag-add': mdiTagOutline,
+      'tag-remove': mdiTagOutline,
+      unarchive: mdiArchiveArrowUpOutline,
+      unfavorite: mdiHeartOutline,
+      'visibility-personal': mdiLockOutline,
+      'visibility-private': mdiLockOutline,
+      'visibility-standard': mdiLockOutline,
+    })[selectedAction];
 
   const asError = (caught: unknown) =>
     caught instanceof Error ? caught.message : 'The action could not be completed.';
@@ -156,7 +282,7 @@
     }
   });
 
-  const optionKindForAction = (selectedAction: CimmichEntityMediaActionKind | null): OptionKind | null => {
+  const optionKindForAction = (selectedAction: MediaUiAction | null): OptionKind | null => {
     switch (selectedAction) {
       case 'album-add': {
         return 'album';
@@ -257,9 +383,15 @@
     }
   });
 
-  const selectAction = (event: Event) => {
-    const value = (event.currentTarget as HTMLSelectElement).value;
-    action = (value as CimmichEntityMediaActionKind) || null;
+  const selectGroup = (group: MediaActionGroup) => {
+    actionGroup = actionGroup === group ? null : group;
+    action = null;
+    targetId = '';
+    targetOption = undefined;
+  };
+
+  const selectAction = (selectedAction: MediaUiAction) => {
+    action = action === selectedAction ? null : selectedAction;
     targetId = '';
     targetOption = undefined;
   };
@@ -297,11 +429,12 @@
       return;
     }
     const selectedAction = action;
-    const baseLabel = cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
+    const applyingCount = selectedCount;
+    const baseLabel = actionLabel(selectedAction);
     const label = `${baseLabel}${targetLabel ? ` · ${targetLabel}` : ''}`;
     if (
       !globalThis.confirm(
-        `${label} for ${selectedCount.toLocaleString()} ${selectedCount === 1 ? 'photo' : 'photos'}?\n\nThis changes only the selected photos. It does not move or delete source files.`,
+        `${label} for ${applyingCount.toLocaleString()} ${applyingCount === 1 ? 'photo' : 'photos'}?\n\nThis changes only the selected photos. It does not move or delete source files.`,
       )
     ) {
       return;
@@ -310,6 +443,25 @@
     busy = true;
     error = '';
     progress = `Applying ${label}…`;
+    if (selectedAction === 'place-move-within') {
+      try {
+        const changed = await onMoveWithinPlace?.(targetId);
+        if (!changed) {
+          throw new Error('The selected photos could not be moved');
+        }
+        progress = `${applyingCount.toLocaleString()} ${applyingCount === 1 ? 'photo was' : 'photos were'} moved. Undo is available above.`;
+        action = null;
+        actionGroup = null;
+        targetId = '';
+        targetOption = undefined;
+      } catch (error_) {
+        error = `${asError(error_)} Nothing changed.`;
+        progress = '';
+      } finally {
+        busy = false;
+      }
+      return;
+    }
     const next = emptyReceipt(selectedAction, label);
     try {
       const visibilityTier = cimmichEntityMediaActionVisibilityTier(selectedAction);
@@ -546,68 +698,108 @@
       </div>
     {/if}
 
-    {#if showControls}<div class="entity-media-row">
-        <div class="entity-media-count">
-          <strong>{selectedCount} selected</strong>
-          <span>One action per run keeps Undo exact.</span>
-        </div>
-        <button class="entity-media-clear" type="button" disabled={busy || selectedCount === 0} onclick={onClear}
-          >Clear</button
-        >
-        <label class="entity-media-field">
-          <span>Action</span>
-          <select value={action ?? ''} disabled={busy || Boolean(receipt)} onchange={selectAction}>
-            <option value="">Pick action…</option>
-            <optgroup label="Cimmich context">
-              <option value="event-attach">Add to Event</option>
-              <option value="place-attach">Add to Place</option>
-              <option value="object-attach">Mark Thing depicted</option>
-              {#if currentScope && allDirectlyAssigned}<option value="context-detach"
-                  >Remove from {currentScope.displayName}</option
-                >{/if}
-            </optgroup>
-            <optgroup label="People and Pets">
-              {#if currentSubject}<option value="presence-current">Mark {currentSubject.displayName} present</option
-                >{/if}
-              <option value="presence-person">Mark Person present</option>
-              <option value="presence-pet">Mark Pet present</option>
-            </optgroup>
-            <optgroup label="Photo privacy">
-              <option value="visibility-standard">Set to Standard</option>
-              <option value="visibility-personal">Set to Personal</option>
-              <option value="visibility-private">Set to Private</option>
-            </optgroup>
-            <optgroup label="Tags and albums">
-              <option value="tag-add">Add tag</option>
-              <option value="tag-remove">Remove tag</option>
-              <option value="album-add">Add to album</option>
-            </optgroup>
-            <optgroup label="Immich library">
-              <option value="favorite">Favourite</option>
-              <option value="unfavorite">Remove favourite</option>
-              <option value="archive">Archive</option>
-              <option value="unarchive">Unarchive</option>
-            </optgroup>
-          </select>
-        </label>
-        {#if needsTarget}
-          <div class="entity-media-combobox-field">
-            <Combobox
-              label="Destination"
-              options={targetOptions.map((option) => ({ ...option, value: option.id }))}
-              bind:selectedOption={targetOption}
-              placeholder={loadingOptions ? 'Loading…' : 'Choose or type…'}
-              disabled={busy || loadingOptions || Boolean(receipt)}
-              defaultFirstOption
-              clearSelectionOnInput
-              onSelect={selectTarget}
-            />
+    {#if showControls}
+      <div class="entity-media-workspace">
+        <header class="entity-media-header">
+          <div class="entity-media-count">
+            <strong>{selectedCount} selected</strong>
+            <span>Choose one action. Every completed action keeps one exact Undo.</span>
           </div>
+          <div class="entity-media-header-actions">
+            {#if onSelectShown}
+              <button type="button" disabled={busy || Boolean(receipt)} onclick={onSelectShown}>
+                <Icon icon={mdiSelectAll} size="17" /> Select shown
+              </button>
+            {/if}
+            <button class="entity-media-clear" type="button" disabled={busy || selectedCount === 0} onclick={onClear}
+              >Clear</button
+            >
+          </div>
+        </header>
+
+        <div>
+          <p class="entity-media-eyebrow">What would you like to do?</p>
+          <div class="entity-media-toolbar" role="toolbar" aria-label="Photo action categories">
+            {#each actionGroups as group (group.id)}
+              <button
+                class:entity-media-group--active={actionGroup === group.id}
+                class="entity-media-group"
+                type="button"
+                aria-pressed={actionGroup === group.id}
+                disabled={busy || Boolean(receipt) || selectedCount === 0}
+                onclick={() => selectGroup(group.id)}
+              >
+                <span class="entity-media-group-icon"><Icon icon={group.icon} size="20" /></span>
+                <span>{group.label}</span>
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        {#if actionGroup}
+          <div class="entity-media-panel">
+            <p class="entity-media-panel-label">{actionGroups.find((group) => group.id === actionGroup)?.label}</p>
+            <div class="entity-media-options" role="group" aria-label="Choose an action">
+              {#each visibleGroupActions as option (option)}
+                <button
+                  class:entity-media-option--active={action === option}
+                  class="entity-media-option"
+                  type="button"
+                  aria-pressed={action === option}
+                  disabled={busy || Boolean(receipt)}
+                  onclick={() => selectAction(option)}
+                >
+                  <Icon icon={actionIcon(option)} size="18" />
+                  <span>{actionLabel(option)}</span>
+                </button>
+              {/each}
+            </div>
+
+            {#if action}
+              <div class="entity-media-detail">
+                <div class="entity-media-detail-copy">
+                  <strong>{actionLabel(action)}</strong>
+                  <span>
+                    {action === 'place-move-within'
+                      ? 'Choose any subsection below this Place. Deeper levels are indented.'
+                      : 'Configure this action below, then apply it to only the selected photos.'}
+                  </span>
+                </div>
+                {#if needsTarget}
+                  <div class="entity-media-combobox-field">
+                    <Combobox
+                      label={action === 'place-move-within' ? 'Destination subsection' : 'Destination'}
+                      options={targetOptions}
+                      bind:selectedOption={targetOption}
+                      placeholder={loadingOptions
+                        ? 'Loading…'
+                        : action === 'place-move-within'
+                          ? 'Choose a subsection…'
+                          : 'Choose or type…'}
+                      disabled={busy || loadingOptions || Boolean(receipt)}
+                      defaultFirstOption
+                      clearSelectionOnInput
+                      onSelect={selectTarget}
+                    />
+                  </div>
+                {/if}
+                <button class="entity-media-apply" type="button" disabled={!canApply} onclick={() => void apply()}>
+                  {busy
+                    ? 'Working…'
+                    : action === 'place-move-within'
+                      ? `Move ${selectedCount.toLocaleString()}`
+                      : 'Apply'}
+                </button>
+              </div>
+            {:else}
+              <p class="entity-media-hint">Choose the exact action you want from this group.</p>
+            {/if}
+          </div>
+        {:else}
+          <p class="entity-media-hint">Choose an icon above to see its actions and controls here.</p>
         {/if}
-        <button class="entity-media-apply" type="button" disabled={!canApply} onclick={() => void apply()}>
-          {busy ? 'Working…' : 'Apply'}
-        </button>
-      </div>{/if}
+      </div>
+    {/if}
 
     {#if progress}<p class="entity-media-progress" role="status">{progress}</p>{/if}
     {#if error}
@@ -627,18 +819,41 @@
     padding: 0.875rem;
   }
 
-  .entity-media-row,
   .entity-media-receipt {
     display: flex;
     flex-wrap: wrap;
-    align-items: end;
+    align-items: center;
     gap: 0.625rem;
+  }
+
+  .entity-media-workspace {
+    display: grid;
+    gap: 0.875rem;
+  }
+
+  .entity-media-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .entity-media-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+
+  .entity-media-header-actions button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .entity-media-count {
     display: grid;
     min-width: 9rem;
-    margin-right: auto;
   }
 
   .entity-media-count span,
@@ -647,16 +862,14 @@
     opacity: 0.65;
   }
 
-  .entity-media-field,
   .entity-media-combobox-field {
     display: grid;
     gap: 0.25rem;
-    min-width: 11rem;
+    min-width: min(20rem, 100%);
     font-size: 0.75rem;
     font-weight: 650;
   }
 
-  select,
   button {
     min-height: 2.5rem;
     border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
@@ -672,9 +885,102 @@
   }
 
   button:disabled,
-  select:disabled {
+  .entity-media-group:disabled,
+  .entity-media-option:disabled {
     cursor: not-allowed;
     opacity: 0.45;
+  }
+
+  .entity-media-eyebrow,
+  .entity-media-panel-label {
+    margin-bottom: 0.45rem;
+    font-size: 0.6875rem;
+    font-weight: 750;
+    letter-spacing: 0.055em;
+    opacity: 0.58;
+    text-transform: uppercase;
+  }
+
+  .entity-media-toolbar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .entity-media-group {
+    display: flex;
+    min-width: 0;
+    min-height: 3.75rem;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.55rem;
+    text-align: left;
+  }
+
+  .entity-media-group-icon {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, var(--immich-primary-color) 10%, transparent);
+    color: var(--immich-primary-color);
+  }
+
+  .entity-media-group--active {
+    border-color: color-mix(in srgb, var(--immich-primary-color) 70%, transparent);
+    background: color-mix(in srgb, var(--immich-primary-color) 9%, transparent);
+    color: var(--immich-primary-color);
+  }
+
+  .entity-media-panel {
+    display: grid;
+    gap: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, currentColor 11%, transparent);
+    padding-top: 0.875rem;
+  }
+
+  .entity-media-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .entity-media-option {
+    display: inline-flex;
+    min-height: 2.6rem;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px;
+  }
+
+  .entity-media-option--active {
+    border-color: var(--immich-primary-color);
+    background: var(--immich-primary-color);
+    color: white;
+  }
+
+  .entity-media-detail {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 22rem) auto;
+    align-items: end;
+    gap: 0.75rem;
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, currentColor 4.5%, transparent);
+    padding: 0.75rem;
+  }
+
+  .entity-media-detail-copy {
+    display: grid;
+    gap: 0.2rem;
+    align-self: center;
+  }
+
+  .entity-media-detail-copy span,
+  .entity-media-hint {
+    font-size: 0.75rem;
+    opacity: 0.65;
   }
 
   .entity-media-apply {
@@ -714,7 +1020,15 @@
   }
 
   @media (max-width: 640px) {
-    label,
+    .entity-media-toolbar {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .entity-media-detail {
+      grid-template-columns: 1fr;
+    }
+
+    .entity-media-combobox-field,
     .entity-media-apply {
       width: 100%;
     }

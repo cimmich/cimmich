@@ -509,6 +509,50 @@ export const contextPlaceLineage = (entity: CimmichContextEntity, entities: Cimm
   return lineage;
 };
 
+export type ContextPlaceDescendant = {
+  depth: number;
+  entity: CimmichContextEntity;
+  path: string;
+};
+
+export const contextPlaceDescendants = (
+  entity: CimmichContextEntity,
+  entities: CimmichContextEntity[],
+): ContextPlaceDescendant[] => {
+  const childrenByParent = new Map<string, CimmichContextEntity[]>();
+  for (const candidate of entities) {
+    if (candidate.status !== 'active' || !candidate.parentEntityId) {
+      continue;
+    }
+    childrenByParent.set(candidate.parentEntityId, [
+      ...(childrenByParent.get(candidate.parentEntityId) ?? []),
+      candidate,
+    ]);
+  }
+  for (const children of childrenByParent.values()) {
+    children.sort((left, right) => left.displayName.localeCompare(right.displayName));
+  }
+
+  const descendants: ContextPlaceDescendant[] = [];
+  const visited = new Set([entity.entityId]);
+  const visit = (parentId: string, depth: number, parentPath: string) => {
+    if (depth >= 8) {
+      return;
+    }
+    for (const child of childrenByParent.get(parentId) ?? []) {
+      if (visited.has(child.entityId)) {
+        continue;
+      }
+      visited.add(child.entityId);
+      const path = parentPath ? `${parentPath} › ${child.displayName}` : child.displayName;
+      descendants.push({ depth, entity: child, path });
+      visit(child.entityId, depth + 1, path);
+    }
+  };
+  visit(entity.entityId, 0, '');
+  return descendants;
+};
+
 export const contextPlaceHierarchy = (entity: CimmichContextEntity, entities: CimmichContextEntity[]) =>
   contextPlaceLineage(entity, entities).map((candidate) => candidate.displayName);
 

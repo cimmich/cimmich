@@ -29,11 +29,12 @@ describe('shared entity media action integration', () => {
     expect(source).not.toContain("tagType: 'face'");
   });
 
-  it('starts with no implied action and provides a typeable destination', async () => {
+  it('starts with no implied action and provides an icon-led action bar plus typeable destination', async () => {
     const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
 
-    expect(source).toContain('$state<CimmichEntityMediaActionKind | null>(null)');
-    expect(source).toContain('Pick action…');
+    expect(source).toContain('$state<MediaUiAction | null>(null)');
+    expect(source).toContain('Photo action categories');
+    expect(source).toContain('What would you like to do?');
     expect(source).toContain('<Combobox');
     expect(source).toContain('Choose or type…');
     expect(source).toContain('defaultFirstOption');

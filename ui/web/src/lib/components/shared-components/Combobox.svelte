@@ -2,8 +2,11 @@
   import { get } from 'svelte/store';
 
   export type ComboBoxOption = {
+    description?: string;
     id?: string;
+    indent?: number;
     label: string;
+    searchText?: string;
     value: string;
   };
 
@@ -264,7 +267,10 @@
   const getInputPosition = () => input?.getBoundingClientRect();
 
   let filteredOptions = $derived.by(() => {
-    const _options = options.filter((option) => option.label.toLowerCase().includes(searchQuery.toLowerCase()));
+    const normalizedQuery = searchQuery.toLowerCase();
+    const _options = options.filter((option) =>
+      (option.searchText || `${option.label} ${option.description || ''}`).toLowerCase().includes(normalizedQuery),
+    );
 
     if (allowCreate && searchQuery !== '' && _options.filter((option) => option.label === searchQuery).length === 0) {
       _options.unshift({ label: searchQuery, value: searchQuery });
@@ -423,8 +429,12 @@
           id={`${listboxId}-${index}`}
           onclick={() => handleSelect(option)}
           role="option"
+          style:padding-inline-start={`${1 + (option.indent ?? 0) * 1.25}rem`}
         >
-          {option.label}
+          <span class="grid gap-0.5">
+            <span class="font-medium">{option.label}</span>
+            {#if option.description}<span class="text-xs opacity-60">{option.description}</span>{/if}
+          </span>
         </li>
       {/each}
     {/if}
