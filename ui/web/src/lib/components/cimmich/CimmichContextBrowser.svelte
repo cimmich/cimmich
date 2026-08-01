@@ -271,6 +271,12 @@
           .sort((left, right) => left.displayName.localeCompare(right.displayName))
       : [],
   );
+  const placeChildNames = (entityId: string) =>
+    entities
+      .filter((entity) => entity.parentEntityId === entityId && entity.status === 'active')
+      .sort((left, right) => left.displayName.localeCompare(right.displayName))
+      .map((entity) => entity.displayName)
+      .join(' · ');
   const selectedPlaceMoveTargets = $derived(
     activeFamily === 'places' && selected ? contextPlaceDescendants(selected.entity, entities) : [],
   );
@@ -2061,6 +2067,7 @@
           </div>
           <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each selectedPlaceChildren as child (child.entityId)}
+              {@const childNames = placeChildNames(child.entityId)}
               <a
                 class="rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
                 href={getContextDetailHref(page.url, 'places', child.entityId, child.displayName)}
@@ -2074,9 +2081,9 @@
                   >
                 </div>
                 <h3 class="mt-3 font-semibold">{child.displayName}</h3>
-                <p class="mt-1 text-xs text-gray-500">
-                  {child.directoryVisibility === 'nested_only' ? 'Shown inside this place' : 'Also listed on Places'}
-                </p>
+                {#if childNames}
+                  <p class="mt-1 truncate text-xs text-gray-500" title={childNames}>{childNames}</p>
+                {/if}
               </a>
             {/each}
           </div>
