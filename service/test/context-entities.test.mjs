@@ -137,6 +137,7 @@ test("Place directory visibility is a closed contract", () => {
 });
 
 test("Place role is closed and projections keep the geography cross-link", async () => {
+  assert.equal(contextEntityContract.defaultPlaceRole, "location");
   assert.deepEqual(contextEntityContract.placeRoles, [
     "geography",
     "location",
@@ -162,6 +163,37 @@ test("Place role is closed and projections keep the geography cross-link", async
     location.geographyEntityId,
     "place_11111111111111111111111111111111",
   );
+});
+
+test("Ordinary Place creation defaults to Location rather than migration state", async () => {
+  const reachedInsert = new Error("reached context insert");
+  let insertedValues = [];
+  const tx = Object.assign(
+    async (strings, ...values) => {
+      if (strings.join("?").includes("INSERT INTO context_entity (")) {
+        insertedValues = values;
+        throw reachedInsert;
+      }
+      return [];
+    },
+    { json: (value) => value },
+  );
+  const sql = Object.assign(async () => [], {
+    begin: async (callback) => callback(tx),
+  });
+
+  await assert.rejects(
+    createContextEntityStore(sql).create({
+      actorId: "local-operator",
+      commandId: "context-create-default-location-test",
+      displayName: "A named place",
+      entityKind: "place",
+      typeKind: "unlocated",
+    }),
+    (error) => error === reachedInsert,
+  );
+  assert.ok(insertedValues.includes("location"));
+  assert.equal(insertedValues.includes("unclassified"), false);
 });
 
 test("Painted Place areas accept only 3 to 500 distinct canonical points", async () => {

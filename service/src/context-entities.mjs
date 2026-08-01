@@ -40,6 +40,7 @@ const datePrecisions = new Set([
 const statuses = new Set(["active", "hidden", "archived"]);
 const directoryVisibilities = new Set(["listed", "nested_only"]);
 const placeRoles = new Set(["geography", "location", "unclassified"]);
+const defaultPlaceRole = "location";
 const associationKinds = {
   event: new Set(["direct", "route_stop", "context", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
@@ -385,7 +386,7 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
         }
       : {}),
     ...(value.placeRole !== undefined || (!partial && entityKind === "place")
-      ? { placeRole: String(value.placeRole || "unclassified").trim() }
+      ? { placeRole: String(value.placeRole || defaultPlaceRole).trim() }
       : {}),
     ...(value.geographyEntityId !== undefined
       ? {
@@ -3197,6 +3198,7 @@ export const contextEntityContract = Object.freeze({
   objectCoverSchemaVersion,
   objectDeleteSchemaVersion,
   placeCoverSchemaVersion,
+  defaultPlaceRole,
   placeRoles: [...placeRoles],
   relationKinds: [...relationKinds],
   schemaVersion,
