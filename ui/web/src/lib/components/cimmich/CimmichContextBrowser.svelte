@@ -60,17 +60,16 @@
     mdiCheck,
     mdiChevronRight,
     mdiClose,
+    mdiCogOutline,
     mdiDotsVertical,
     mdiFileDocumentOutline,
     mdiFilterVariant,
     mdiImageMultipleOutline,
-    mdiImageMove,
     mdiLinkPlus,
     mdiMagnify,
     mdiMapMarkerOutline,
     mdiMapOutline,
     mdiPackageVariantClosed,
-    mdiPencilOutline,
     mdiPlus,
     mdiSelectAll,
     mdiTrashCanOutline,
@@ -135,7 +134,6 @@
   let showAssetPicker = $state(false);
   let showRelationPicker = $state(false);
   let editorMode = $state<'create' | 'edit'>('create');
-  let editorIntent = $state<'edit' | 'move'>('edit');
   let editorTarget = $state<{ entityId: string; revision: number } | null>(null);
   let editorTypeChosen = $state(false);
   let isSaving = $state(false);
@@ -636,7 +634,6 @@
 
   const openCreate = (placeRole: 'geography' | 'location' = 'location') => {
     editorMode = 'create';
-    editorIntent = 'edit';
     editorTarget = null;
     resetForm();
     if (entityKind === 'place') {
@@ -647,7 +644,7 @@
     showEditor = true;
   };
 
-  const openEdit = (intent: 'edit' | 'move' = 'edit') => {
+  const openEdit = () => {
     if (!selected) {
       return;
     }
@@ -658,7 +655,6 @@
     }
     placeSearchGeneration += 1;
     editorMode = 'edit';
-    editorIntent = intent;
     editorTarget = { entityId: entity.entityId, revision: entity.revision };
     editorTypeChosen = true;
     formName = entity.displayName;
@@ -1993,20 +1989,16 @@
         <Icon icon={mdiArrowLeft} size="21" />
       </button>
 
-      <!-- One pen, opposite the back arrow. Editing is the only thing an owner
-           does to the record itself from here, so it gets an icon rather than a
-           labelled button and a sibling menu. Visibility, Archive and Delete all
-           live inside the editor now: they are all "change this record", and a
-           separate dots menu asked the owner to guess which of two places an
-           edit lived in. -->
+      <!-- One settings control, opposite the back arrow. Record details,
+           hierarchy, visibility, archive and delete all live in the same editor. -->
       <button
-        class="context-hero-control context-hero-edit context-profile-edit"
+        class="context-hero-control context-hero-settings context-profile-settings"
         type="button"
-        aria-label={`Edit ${selected.entity.displayName}`}
-        title={`Edit ${selected.entity.displayName}`}
+        aria-label={`Settings for ${selected.entity.displayName}`}
+        title="Settings"
         onclick={() => openEdit()}
       >
-        <Icon icon={mdiPencilOutline} size="20" />
+        <Icon icon={mdiCogOutline} size="20" />
       </button>
 
       <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
@@ -2061,13 +2053,8 @@
 
       {#if selectedPlaceChildren.length > 0}
         <section class="mt-6" aria-labelledby="place-subplaces-title">
-          <div class="flex items-end justify-between gap-4">
-            <div>
-              <h2 class="text-lg font-semibold" id="place-subplaces-title">Inside {selected.entity.displayName}</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Open a subsection or use it to organise this place’s photos.
-              </p>
-            </div>
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-lg font-semibold" id="place-subplaces-title">Inside {selected.entity.displayName}</h2>
             <span class="shrink-0 text-xs font-semibold text-gray-500"
               >{selectedPlaceChildren.length} {selectedPlaceChildren.length === 1 ? 'subplace' : 'subplaces'}</span
             >
@@ -2125,22 +2112,6 @@
           </div>
         </section>
       {/if}
-
-      <div class="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          class="context-secondary-button"
-          type="button"
-          aria-label={`Move ${selected.entity.displayName} in its hierarchy`}
-          onclick={() => openEdit('move')}
-        >
-          <Icon icon={mdiImageMove} size="18" /> Move this {selected.entity.placeRole === 'geography'
-            ? 'Geography'
-            : selected.entity.placeRole === 'location'
-              ? 'Location'
-              : 'Place'}
-        </button>
-        <span class="text-xs text-gray-500 dark:text-gray-400">Changes this hierarchy only, not its photos.</span>
-      </div>
     {/if}
 
     <div class="context-profile-rail mt-6">
@@ -2589,15 +2560,8 @@
         <div>
           <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">{entityNoun}</p>
           <h2 class="mt-1 text-2xl font-semibold" id="context-editor-title">
-            {editorMode === 'create'
-              ? `New ${entityNoun}`
-              : editorIntent === 'move'
-                ? `Move ${selected?.entity.displayName}`
-                : `Edit ${selected?.entity.displayName}`}
+            {editorMode === 'create' ? `New ${entityNoun}` : `Settings for ${selected?.entity.displayName}`}
           </h2>
-          {#if editorMode === 'edit' && editorIntent === 'move'}
-            <p class="mt-1 text-sm text-gray-500">Choose its parent under “Inside”. Photos are not changed.</p>
-          {/if}
         </div>
         <button
           class="context-icon-button"
@@ -3524,9 +3488,9 @@
     flex: none;
   }
 
-  /* Two overlay controls only: back, and edit. */
+  /* Two overlay controls only: back, and settings. */
   .context-hero-back,
-  .context-hero-edit {
+  .context-hero-settings {
     position: absolute;
     z-index: 12;
     top: 16px;
@@ -3536,7 +3500,7 @@
     left: 16px;
   }
 
-  .context-hero-edit {
+  .context-hero-settings {
     right: 16px;
   }
 
@@ -4372,13 +4336,13 @@
   }
 
   @media (max-width: 520px) {
-    :global(.context-profile-edit) {
+    :global(.context-profile-settings) {
       width: 2.75rem;
       flex: 0 0 2.75rem;
       padding: 0;
     }
 
-    :global(.context-profile-edit span) {
+    :global(.context-profile-settings span) {
       display: none;
     }
 
