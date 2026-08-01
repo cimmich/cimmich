@@ -337,11 +337,6 @@
     }
     return null;
   };
-  const selectedPlaceGeography = $derived(
-    activeFamily === 'places' && selected?.entity.placeRole === 'location'
-      ? (entities.find((entity) => entity.entityId === effectiveLocationGeographyId(selected?.entity)) ?? null)
-      : null,
-  );
   const selectedGeographyLocations = $derived(
     activeFamily === 'places' && selected?.entity.placeRole === 'geography'
       ? entities
@@ -2248,50 +2243,21 @@
     </div>
 
     {#if activeFamily === 'places'}
-      <nav class="mt-5 flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm" aria-label="Place hierarchy">
-        <button class="shrink-0 font-semibold text-primary" type="button" onclick={closeDetail}>
-          {selected.entity.placeRole === 'geography'
-            ? 'Geography'
-            : selected.entity.placeRole === 'location'
-              ? 'Locations'
-              : 'Needs classification'}
-        </button>
-        {#each selectedPlaceLineage as place, index (place.entityId)}
-          <Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="16" />
-          {#if index === selectedPlaceLineage.length - 1}
-            <span class="shrink-0 font-semibold" aria-current="page">{place.displayName}</span>
-          {:else}
-            <a
-              class="shrink-0 font-semibold text-primary"
-              href={getContextDetailHref(page.url, 'places', place.entityId, place.displayName)}>{place.displayName}</a
-            >
-          {/if}
-        {/each}
-      </nav>
-
-      {#if selected.entity.placeRole === 'location'}
-        <div class="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm dark:bg-gray-800">
-          <span class="font-semibold">Geography</span>
-          {#if selectedPlaceGeography}
-            <a
-              class="font-semibold text-primary"
-              href={getContextDetailHref(
-                page.url,
-                'places',
-                selectedPlaceGeography.entityId,
-                selectedPlaceGeography.displayName,
-              )}>{selectedPlaceGeography.displayName}</a
-            >
-          {:else}
-            <span class="text-gray-500">Not linked yet</span>
-          {/if}
-        </div>
-      {:else if selected.entity.placeRole === 'unclassified' || !selected.entity.placeRole}
-        <div
-          class="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
-        >
-          <strong>Needs classification.</strong> Edit this Place and choose whether it is a Location or Geography.
-        </div>
+      {#if selectedPlaceLineage.length > 1}
+        <nav class="mt-5 flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm" aria-label="Place hierarchy">
+          {#each selectedPlaceLineage as place, index (place.entityId)}
+            {#if index > 0}<Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="16" />{/if}
+            {#if index === selectedPlaceLineage.length - 1}
+              <span class="shrink-0 font-semibold" aria-current="page">{place.displayName}</span>
+            {:else}
+              <a
+                class="shrink-0 font-semibold text-primary"
+                href={getContextDetailHref(page.url, 'places', place.entityId, place.displayName)}
+                >{place.displayName}</a
+              >
+            {/if}
+          {/each}
+        </nav>
       {/if}
 
       {#if selectedPlaceChildren.length > 0}

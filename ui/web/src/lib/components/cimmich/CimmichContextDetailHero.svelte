@@ -3,14 +3,19 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiCalendarBlankOutline, mdiMapMarkerOutline, mdiMapOutline, mdiPackageVariantClosed } from '@mdi/js';
+  import {
+    mdiCalendarBlankOutline,
+    mdiFloorPlan,
+    mdiMapMarkerOutline,
+    mdiMapOutline,
+    mdiPackageVariantClosed,
+  } from '@mdi/js';
   import {
     contextAssetViewerHref,
     contextFamilyEyebrows,
     contextPlaceHierarchy,
     contextPlaceLocationLabel,
     contextPlaceMapProjection,
-    contextPlaceRoleLabel,
     contextTypeDescription,
     contextTypeLabel,
     formatContextDatePrecision,
@@ -31,6 +36,28 @@
   const placeProjection = $derived(contextPlaceMapProjection([detail.entity]));
   const hasMappedPlace = $derived(placeProjection.markers.length + placeProjection.areas.length > 0);
   const isPlace = $derived(family === 'places');
+  const placeChildren = $derived(
+    entities
+      .filter((entity) => entity.status === 'active' && entity.parentEntityId === detail.entity.entityId)
+      .sort((left, right) => left.displayName.localeCompare(right.displayName)),
+  );
+  const placeGeography = $derived.by(() => {
+    if (!isPlace || detail.entity.placeRole === 'geography') {
+      return null;
+    }
+    let current: CimmichContextEntity | undefined = detail.entity;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.entityId)) {
+      visited.add(current.entityId);
+      if (current.geographyEntityId) {
+        return entities.find((entity) => entity.entityId === current?.geographyEntityId) ?? null;
+      }
+      current = current.parentEntityId
+        ? entities.find((entity) => entity.entityId === current?.parentEntityId)
+        : undefined;
+    }
+    return null;
+  });
 
   // The strip's map MUST be told where to look. Immich's Map only auto-fits to its
   // markers when no `zoom` is supplied, and it only honours `jumpTo` when a `center`
@@ -71,7 +98,9 @@
     };
   });
 
-  const placeLocation = $derived(contextPlaceLocationLabel(detail.entity, placeHierarchy, geocodedLocation));
+  const placeLocation = $derived(
+    placeGeography?.displayName || contextPlaceLocationLabel(detail.entity, placeHierarchy, geocodedLocation),
+  );
   // A place's identity is where it is, so the line above the name states the
   // location rather than a family tagline.
   const eyebrow = $derived(isPlace ? placeLocation : contextFamilyEyebrows[family]);
@@ -88,12 +117,20 @@
     [
       detail.entity.description || (isPlace ? '' : contextTypeDescription(detail.entity.typeKind)),
       family === 'events' ? formatContextDatePrecision(detail.entity) || 'Not dated yet' : '',
-      detail.entity.aliases.length > 0 ? `Also ${detail.entity.aliases.join(', ')}` : '',
+      !isPlace && detail.entity.aliases.length > 0 ? `Also ${detail.entity.aliases.join(', ')}` : '',
     ]
       .filter(Boolean)
       .join('  ·  '),
   );
   const showMap = $derived(isPlace && hasMappedPlace);
+  let placeVisualView = $state<'map' | 'plan'>('map');
+  let shownPlaceId = $state('');
+  $effect(() => {
+    if (detail.entity.entityId !== shownPlaceId) {
+      shownPlaceId = detail.entity.entityId;
+      placeVisualView = 'map';
+    }
+  });
 </script>
 
 <!--
@@ -134,12 +171,11 @@
          cover image happens to be. -->
     <div class="context-detail-caption">
       <p class="context-detail-eyebrow">
-        <!-- The type chip belongs with the rest of the metadata, not floating in
-             the corner; that corner is worth more as the edit affordance. -->
-        <span class="context-detail-kind"
-          ><Icon icon={familyIcon} size="13" />
-          {isPlace ? contextPlaceRoleLabel(detail.entity.placeRole) : contextTypeLabel(detail.entity.typeKind)}</span
-        >
+        {#if !isPlace}
+          <span class="context-detail-kind"
+            ><Icon icon={familyIcon} size="13" /> {contextTypeLabel(detail.entity.typeKind)}</span
+          >
+        {/if}
         <!-- Icon and text in one flex item so a wrap never strands the marker on
              the line above its location. -->
         <span class="context-detail-eyebrow-text">
@@ -152,23 +188,64 @@
   </div>
 
   {#if showMap}
-    <!-- Explicit height, not min-height: a percentage height inside an
-         auto-height box is what rendered the Map tab's map at 0px. Immich's map
-         with its own controls and attribution left intact. -->
-    <div class="context-detail-map" aria-label={`Map showing ${detail.entity.displayName}`}>
-      {#await import('$lib/components/shared-components/map/Map.svelte')}
-        <div class="context-detail-map-pending">Loading the map…</div>
-      {:then { default: Map }}
-        <Map
-          center={locatorCenter}
-          mapMarkers={[]}
-          placeAreas={placeProjection.areas}
-          placeMarkers={placeProjection.markers}
-          showPlaceMarkerLabels={false}
-          showSettings={false}
-          zoom={13}
-        />
-      {/await}
+    <div class="context-detail-visual">
+      {#if detail.entity.placeRole === 'location'}
+        <div class="context-detail-visual-switch" role="group" aria-label="Location view">
+          <button
+            type="button"
+            aria-pressed={placeVisualView === 'map'}
+            class:context-detail-visual-switch--active={placeVisualView === 'map'}
+            onclick={() => (placeVisualView = 'map')}>Map</button
+          >
+          <button
+            type="button"
+            aria-pressed={placeVisualView === 'plan'}
+            class:context-detail-visual-switch--active={placeVisualView === 'plan'}
+            onclick={() => (placeVisualView = 'plan')}>Plan</button
+          >
+        </div>
+      {/if}
+
+      {#if placeVisualView === 'plan' && detail.entity.placeRole === 'location'}
+        <div
+          class="context-detail-plan"
+          id="context-detail-plan-view"
+          aria-label={`Plan for ${detail.entity.displayName}`}
+        >
+          <div class="context-detail-plan-sheet">
+            <span class="context-detail-plan-icon"><Icon icon={mdiFloorPlan} size="30" /></span>
+            <strong>No plan yet</strong>
+            {#if placeChildren.length > 0}
+              <div class="context-detail-plan-places" aria-label="Internal locations ready to place">
+                {#each placeChildren as child (child.entityId)}<span>{child.displayName}</span>{/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <!-- Explicit height, not min-height: a percentage height inside an
+             auto-height box is what rendered the Map tab's map at 0px. Immich's map
+             with its own controls and attribution left intact. -->
+        <div
+          class="context-detail-map"
+          id="context-detail-map-view"
+          aria-label={`Map showing ${detail.entity.displayName}`}
+        >
+          {#await import('$lib/components/shared-components/map/Map.svelte')}
+            <div class="context-detail-map-pending">Loading the map…</div>
+          {:then { default: Map }}
+            <Map
+              center={locatorCenter}
+              mapMarkers={[]}
+              placeAreas={placeProjection.areas}
+              placeMarkers={placeProjection.markers}
+              showPlaceMarkerLabels={false}
+              showSettings={false}
+              zoom={13}
+            />
+          {/await}
+        </div>
+      {/if}
     </div>
   {/if}
 </article>
@@ -300,11 +377,17 @@
     font-weight: 700;
   }
 
-  .context-detail-map,
-  .context-detail-map-pending {
+  .context-detail-visual {
     position: relative;
     min-height: 260px;
     background: rgb(15 23 42);
+  }
+
+  .context-detail-map,
+  .context-detail-map-pending,
+  .context-detail-plan {
+    position: absolute;
+    inset: 0;
   }
 
   .context-detail-map-pending {
@@ -320,10 +403,100 @@
     inset: 0;
   }
 
+  .context-detail-visual-switch {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    left: 50%;
+    display: flex;
+    gap: 2px;
+    border: 1px solid rgb(255 255 255 / 0.18);
+    border-radius: 999px;
+    padding: 3px;
+    background: rgb(2 6 23 / 0.78);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
+    transform: translateX(-50%);
+    backdrop-filter: blur(12px);
+  }
+
+  .context-detail-visual-switch button {
+    min-width: 64px;
+    min-height: 32px;
+    border-radius: 999px;
+    padding: 0 12px;
+    color: rgb(203 213 225);
+    font-size: 0.75rem;
+    font-weight: 750;
+  }
+
+  .context-detail-visual-switch button:hover,
+  .context-detail-visual-switch button:focus-visible {
+    color: white;
+  }
+
+  .context-detail-visual-switch button:focus-visible {
+    outline: 2px solid white;
+    outline-offset: 1px;
+  }
+
+  .context-detail-visual-switch button.context-detail-visual-switch--active {
+    background: white;
+    color: rgb(15 23 42);
+  }
+
+  .context-detail-plan {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    padding: 64px 24px 24px;
+    background-color: rgb(15 23 42);
+    background-image:
+      linear-gradient(rgb(148 163 184 / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(148 163 184 / 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .context-detail-plan-sheet {
+    display: grid;
+    max-width: 22rem;
+    justify-items: center;
+    gap: 10px;
+    color: rgb(226 232 240);
+    text-align: center;
+  }
+
+  .context-detail-plan-icon {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    place-items: center;
+    border: 1px solid rgb(148 163 184 / 0.22);
+    border-radius: 18px;
+    color: rgb(148 163 184);
+    background: rgb(30 41 59 / 0.82);
+  }
+
+  .context-detail-plan-places {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  .context-detail-plan-places span {
+    border: 1px solid rgb(148 163 184 / 0.2);
+    border-radius: 999px;
+    padding: 4px 9px;
+    color: rgb(148 163 184);
+    background: rgb(30 41 59 / 0.68);
+    font-size: 0.7rem;
+    font-weight: 650;
+  }
+
   @media (min-width: 768px) {
     .context-detail-frame,
-    .context-detail-map,
-    .context-detail-map-pending {
+    .context-detail-visual {
       min-height: 300px;
     }
 
@@ -339,8 +512,7 @@
       padding: 36px 18px 16px;
     }
 
-    .context-detail-map,
-    .context-detail-map-pending {
+    .context-detail-visual {
       min-height: 220px;
     }
   }
