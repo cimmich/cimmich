@@ -1,8 +1,8 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-01
+Updated: 2026-08-02
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 110/patch 1
+Current source/disposable candidate: migration-ledger schema 111/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -12,10 +12,10 @@ Current public-beta target: `v1.0.1-beta.6`
 The deployed schema-107/patch-1 feature source is
 `d05f60464218790f38ce602384c93c420e757bc5`. It reconciles the migration-ledger
 source with the private archive and adds recoverable bulk Organise operations.
-The final source gate passes 804
+The final source gate passes 805
 service tests with two skipped, 914 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 110, and the complete disposable synthetic lifecycle.
+acceptance through schema 111, and the complete disposable synthetic lifecycle.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt
@@ -32,7 +32,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 110; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 111; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -141,6 +141,9 @@ evidence and cannot assign a subsection automatically.
 Schema 110 separates geographic containment from human Locations, preserves
 all existing IDs and media links as unclassified reviewable rows, and adds a
 validated Location-to-Geography cross-link without merging the two hierarchies.
+Schema 111 removes needless follow-up from that compatibility state: exact
+GPS-create command provenance automatically classifies untouched GPS-generated
+Places as Geography, while manual and already reviewed Places are unchanged.
 
 ## Public Beta Patch 6 candidate
 

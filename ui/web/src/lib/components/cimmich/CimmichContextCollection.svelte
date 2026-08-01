@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity';
   import type {
     CimmichContextEntity,
     CimmichContextFamily,
@@ -122,7 +123,7 @@
 
   const effectiveLocationGeographyId = (location: CimmichContextEntity | undefined) => {
     let current: CimmichContextEntity | undefined = location;
-    const visited = new Set<string>();
+    const visited = new SvelteSet<string>();
     while (current && !visited.has(current.entityId)) {
       visited.add(current.entityId);
       if (current.geographyEntityId) {

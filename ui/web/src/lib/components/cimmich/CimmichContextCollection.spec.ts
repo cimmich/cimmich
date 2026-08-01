@@ -143,7 +143,7 @@ describe('Cimmich context collections', () => {
     await fireEvent.click(getByRole('button', { name: 'Map' }));
     expect(getByText('Your atlas starts with a place')).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'GPS' }));
-    expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Turn photo locations into Geography' })).toBeInTheDocument();
     await waitFor(() => expect(mocks.getMapMarkers).toHaveBeenCalledOnce());
 
     await fireEvent.click(getByRole('button', { name: 'Geography' }));
@@ -151,7 +151,7 @@ describe('Cimmich context collections', () => {
     await fireEvent.click(getByRole('button', { name: 'Locations' }));
     expect(getByText('No locations yet')).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'GPS' }));
-    expect(getByRole('heading', { name: 'Turn photo locations into Places' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Turn photo locations into Geography' })).toBeInTheDocument();
     expect(mocks.getMapMarkers).toHaveBeenCalledOnce();
 
     await fireEvent.click(getByRole('button', { name: 'Refresh' }));

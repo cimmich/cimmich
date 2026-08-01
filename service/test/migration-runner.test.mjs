@@ -215,6 +215,25 @@ test("schema 110 separates Location hierarchy from Geography without guessing ex
   assert.doesNotMatch(source, /SET place_role = 'location'\s+WHERE/);
 });
 
+test("schema 111 classifies only exact GPS-created unreviewed Places as Geography", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0111_gps_created_place_geography_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /command\.command_id LIKE 'context\.gps-create\.%'/);
+  assert.match(source, /entity\.place_role = 'unclassified'/);
+  assert.match(source, /entity\.status <> 'deleted'/);
+  assert.match(source, /SET place_role = 'geography'/);
+  assert.match(source, /operation\.operation_scope = 'entity'/);
+  assert.match(source, /operation\.action = 'create'/);
+  assert.doesNotMatch(source, /display_name/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
