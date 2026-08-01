@@ -134,6 +134,9 @@
     const visited = new SvelteSet<string>();
     while (current && !visited.has(current.entityId)) {
       visited.add(current.entityId);
+      if (current.placeRole === 'geography') {
+        return current.entityId;
+      }
       if (current.geographyEntityId) {
         return current.geographyEntityId;
       }
@@ -146,7 +149,10 @@
 
   const placeDirectoryGroup = (entity: CimmichContextEntity) => {
     if (!entity.placeRole || entity.placeRole === 'unclassified') {
-      return 'Needs classification';
+      return (
+        entities.find((candidate) => candidate.entityId === effectiveLocationGeographyId(entity))?.displayName ||
+        'No geography set'
+      );
     }
     if (entity.placeRole === 'location') {
       return (
@@ -181,10 +187,10 @@
         label: placeGroupMode === 'duplicates' ? group[0]!.displayName : key,
       }))
       .sort((left, right) => {
-        if (left.label === 'Needs classification' || left.label === 'No geography set') {
+        if (left.label === 'No geography set') {
           return -1;
         }
-        if (right.label === 'Needs classification' || right.label === 'No geography set') {
+        if (right.label === 'No geography set') {
           return 1;
         }
         return left.label.localeCompare(right.label);

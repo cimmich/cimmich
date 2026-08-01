@@ -127,6 +127,15 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(hero).toContain('contextPlaceRoleLabel(detail.entity.placeRole)');
   });
 
+  it('does not promote a legacy role state into a Locations directory heading', async () => {
+    const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+
+    expect(collection).toContain("if (current.placeRole === 'geography')");
+    expect(collection).not.toContain("return 'Needs classification';");
+    expect(collection).not.toContain("left.label === 'Needs classification'");
+    expect(collection).not.toContain("right.label === 'Needs classification'");
+  });
+
   it('caps the card body track so a long location line cannot widen the whole card', async () => {
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
 
