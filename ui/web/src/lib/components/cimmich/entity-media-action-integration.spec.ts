@@ -33,8 +33,10 @@ describe('shared entity media action integration', () => {
     const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
 
     expect(source).toContain('$state<MediaUiAction | null>(null)');
-    expect(source).toContain('Photo action categories');
-    expect(source).toContain('What would you like to do?');
+    expect(source).toContain('Selected photo actions');
+    expect(source).toContain('<Tooltip text={group.label}>');
+    expect(source).not.toContain('What would you like to do?');
+    expect(source).not.toContain('Choose an icon above to see its actions and controls here.');
     expect(source).toContain('<Combobox');
     expect(source).toContain('Choose or type…');
     expect(source).toContain('defaultFirstOption');
