@@ -2331,9 +2331,11 @@ export const createCimmichServer = ({
         }
         if (request.method === "POST") {
           const body = await readJsonBody(request);
-          if (
+          const isGpsPlaceCreate =
             family.entityKind === "place" &&
-            String(body.commandId || "").startsWith("context.gps-create.") &&
+            String(body.commandId || "").startsWith("context.gps-create.");
+          if (
+            isGpsPlaceCreate &&
             request.headers["x-cimmich-gps-contract"] !== "preflight-v2"
           ) {
             throw Object.assign(
@@ -2363,7 +2365,7 @@ export const createCimmichServer = ({
               geometry: body.geometry,
               geographyEntityId: body.geographyEntityId,
               parentEntityId: body.parentEntityId,
-              placeRole: body.placeRole,
+              placeRole: isGpsPlaceCreate ? "geography" : body.placeRole,
               status: body.status,
               typeKind: body.typeKind,
             }),

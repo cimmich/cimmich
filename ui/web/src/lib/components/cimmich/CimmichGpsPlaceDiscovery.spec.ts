@@ -105,7 +105,7 @@ describe('Cimmich GPS Place discovery', () => {
     expect(getByText('209 m').parentElement).toHaveTextContent('Near Circular Quay');
     expect(mocks.createEntity).not.toHaveBeenCalled();
     expect(mocks.attachAssets).not.toHaveBeenCalled();
-    expect(getByRole('button', { name: /Create Place/ })).toBeEnabled();
+    expect(getByRole('button', { name: /Create Geography/ })).toBeEnabled();
   });
 
   it('creates a named Place and attaches the group only after confirmation', async () => {
@@ -130,8 +130,8 @@ describe('Cimmich GPS Place discovery', () => {
       onPlacesChanged,
     });
     await waitFor(() => expect(getByText('Sydney, Australia')).toBeInTheDocument());
-    await fireEvent.input(getByLabelText('New Place name'), { target: { value: 'Harbour walk' } });
-    await fireEvent.click(getByRole('button', { name: /Create Place/ }));
+    await fireEvent.input(getByLabelText('New Geography name'), { target: { value: 'Harbour walk' } });
+    await fireEvent.click(getByRole('button', { name: /Create Geography/ }));
 
     await waitFor(() => expect(mocks.attachAssets).toHaveBeenCalledTimes(1));
     expect(mocks.createEntity).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe('Cimmich GPS Place discovery', () => {
     const { getByRole, getByText, queryByRole } = render(CimmichGpsPlaceDiscovery, { entities: [zagreb] });
 
     await waitFor(() => expect(getByText('Continuing in')).toHaveTextContent('Zagreb, Croatia'));
-    expect(queryByRole('button', { name: /Create Place/ })).not.toBeInTheDocument();
+    expect(queryByRole('button', { name: /Create Geography/ })).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Add photos to Zagreb, Croatia' }));
 
     await waitFor(() => expect(mocks.attachAssets).toHaveBeenCalledOnce());
@@ -208,15 +208,15 @@ describe('Cimmich GPS Place discovery', () => {
     );
     expect(getByText('Review pack 1 of 2 · 500 photos')).toBeInTheDocument();
     expect(getByText('500 / 501')).toBeInTheDocument();
-    await fireEvent.input(getByLabelText('New Place name'), { target: { value: 'Pink Palace' } });
-    await fireEvent.click(getByRole('button', { name: /Create Place/ }));
+    await fireEvent.input(getByLabelText('New Geography name'), { target: { value: 'Pink Palace' } });
+    await fireEvent.click(getByRole('button', { name: /Create Geography/ }));
 
     await waitFor(() => expect(mocks.attachAssets).toHaveBeenCalledTimes(5));
     expect(mocks.attachAssets.mock.calls.every((call) => call[3].length <= 100)).toBe(true);
     expect(mocks.attachAssets.mock.calls.flatMap((call) => call[3])).toHaveLength(500);
     expect(getByText('Review pack 2 of 2 · 1 photo')).toBeInTheDocument();
     expect(getByText('Continuing in')).toHaveTextContent('Pink Palace');
-    expect(queryByRole('button', { name: /Create Place/ })).not.toBeInTheDocument();
+    expect(queryByRole('button', { name: /Create Geography/ })).not.toBeInTheDocument();
     expect(getByRole('button', { name: 'Add photos to Pink Palace' })).toBeEnabled();
   });
 
@@ -230,7 +230,7 @@ describe('Cimmich GPS Place discovery', () => {
 
     const { getByRole, getByText } = render(CimmichGpsPlaceDiscovery, { entities: [] });
     await waitFor(() => expect(getByText('Sydney, Australia')).toBeInTheDocument());
-    await fireEvent.click(getByRole('button', { name: /Create Place/ }));
+    await fireEvent.click(getByRole('button', { name: /Create Geography/ }));
 
     await waitFor(() => expect(getByText(/1 photo is no longer available/)).toBeInTheDocument());
     expect(mocks.createEntity).not.toHaveBeenCalled();

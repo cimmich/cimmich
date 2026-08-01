@@ -258,10 +258,10 @@
   <div class="gps-intro">
     <span class="gps-intro-icon"><Icon icon={mdiMapMarkerMultipleOutline} size="24" /></span>
     <div class="min-w-0 flex-1">
-      <h2 id="gps-discovery-title">Turn photo locations into Places</h2>
+      <h2 id="gps-discovery-title">Turn photo locations into Geography</h2>
       <p>
-        Cimmich groups visible GPS-tagged photos nearby. These are suggestions only: nothing becomes a Place until you
-        choose it.
+        Cimmich groups visible GPS-tagged photos nearby. Creating one records Geography automatically; you can change
+        its role later in Edit.
       </p>
     </div>
     <button class="gps-refresh" type="button" disabled={loading} onclick={() => void loadGroups()}>
@@ -398,7 +398,7 @@
               </div>
             {:else}
               <div class="gps-create">
-                <label for={`gps-name-${group.groupId}`}>New Place name</label>
+                <label for={`gps-name-${group.groupId}`}>New Geography name</label>
                 <div>
                   <input
                     id={`gps-name-${group.groupId}`}
@@ -410,7 +410,7 @@
                       })}
                   />
                   <button type="button" disabled={Boolean(busyGroupId)} onclick={() => void createPlace(group)}>
-                    <Icon icon={mdiMapMarkerPlusOutline} size="18" /> Create Place
+                    <Icon icon={mdiMapMarkerPlusOutline} size="18" /> Create Geography
                   </button>
                 </div>
               </div>

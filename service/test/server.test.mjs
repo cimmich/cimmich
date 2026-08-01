@@ -382,6 +382,7 @@ test("stale GPS clients cannot create a Place before the mapping preflight", asy
     commandId: "context.gps-create.11111111-1111-4111-8111-111111111111",
     displayName: "Test GPS Place",
     geometry: { latitude: 1, longitude: 2 },
+    placeRole: "location",
     typeKind: "point",
   };
   await withServer(repository, async (root) => {
@@ -408,6 +409,7 @@ test("stale GPS clients cannot create a Place before the mapping preflight", asy
     });
     assert.equal(current.status, 201);
     assert.equal(calls.length, 1);
+    assert.equal(calls[0].placeRole, "geography");
   });
 });
 

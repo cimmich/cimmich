@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { SvelteSet } from 'svelte/reactivity';
   import CimmichDocuments from './CimmichDocuments.svelte';
   import CimmichContextCollection from './CimmichContextCollection.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
@@ -280,7 +281,7 @@
   );
   const effectiveLocationGeographyId = (location: CimmichContextEntity | undefined) => {
     let current: CimmichContextEntity | undefined = location;
-    const visited = new Set<string>();
+    const visited = new SvelteSet<string>();
     while (current && !visited.has(current.entityId)) {
       visited.add(current.entityId);
       if (current.geographyEntityId) {
