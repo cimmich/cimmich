@@ -114,7 +114,7 @@ export const Route = {
   cimmichPerson: ({ name, personId }: { name: string; personId?: string }) =>
     `/cimmich/people/${encodeURIComponent(name)}` + asQueryString(personId ? { personId } : undefined),
   cimmichPlaces: () => '/cimmich/places',
-  cimmichThings: () => '/cimmich/places?family=objects',
+  cimmichThings: () => '/cimmich/things',
   cimmichSmartSearch: () => '/cimmich/smart-search',
 
   // photos

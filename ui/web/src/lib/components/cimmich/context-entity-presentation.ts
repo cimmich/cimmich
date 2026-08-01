@@ -280,14 +280,14 @@ export const contextPlaceLocationLabel = (
  * name. The id param is family-specific, so a detail URL never needs a
  * separate `family` param — `?thingId=` already means Things.
  *
- * Places and Things live under one section route and both have a named
- * route. Events share this browser but have no `[entityName]` route yet, so
+ * Places and Things each have their own section and named route. Events share
+ * this browser but have no `[entityName]` route yet, so
  * they deliberately keep the legacy `?entityId=` form; sending them to a
  * named path would 404.
  */
 export const contextFamilySectionRoot: Record<CimmichContextFamily, string> = {
   events: '/cimmich/events',
-  objects: '/cimmich/places',
+  objects: '/cimmich/things',
   places: '/cimmich/places',
 };
 
@@ -341,7 +341,11 @@ export const getContextDetailHref = (
 
   const root = contextFamilySectionRoot[family];
   if (!contextFamilyHasNamedRoute(family) || !displayName.trim()) {
-    url.searchParams.set('family', family);
+    if (family === 'events') {
+      url.searchParams.set('family', family);
+    } else {
+      url.searchParams.delete('family');
+    }
     url.searchParams.set('entityId', entityId);
     return `${root}${url.search}`;
   }
@@ -363,6 +367,15 @@ export const contextPlaceCountryLabel = (place: Pick<CimmichContextEntity, 'disp
   return parts.at(-1) ?? 'Other geography';
 };
 
+export const contextGeographySubdivisionName = (name: string, geographyGroup: string) => {
+  const trimmedName = name.trim();
+  const trimmedGroup = geographyGroup.trim();
+  if (!trimmedGroup || contextPlaceCountryLabel(trimmedName).toLocaleLowerCase() === trimmedGroup.toLocaleLowerCase()) {
+    return trimmedName;
+  }
+  return `${trimmedName}, ${trimmedGroup}`;
+};
+
 export const getContextGeographyGroupHref = (currentUrl: URL, groupName: string) => {
   const url = new URL(currentUrl);
   url.pathname = `/cimmich/places/${encodeURIComponent(groupName.trim())}`;
@@ -379,7 +392,11 @@ export const getContextCollectionHref = (currentUrl: URL, family: CimmichContext
   for (const value of Object.values(contextFamilyIdParam)) {
     url.searchParams.delete(value);
   }
-  url.searchParams.set('family', family);
+  if (family === 'events') {
+    url.searchParams.set('family', family);
+  } else {
+    url.searchParams.delete('family');
+  }
   return `${contextFamilySectionRoot[family]}${url.search}`;
 };
 

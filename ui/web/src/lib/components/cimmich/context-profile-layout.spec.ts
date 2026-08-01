@@ -92,10 +92,14 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('renders country groups as real aggregate Geography pages without inventing a second taxonomy', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+    const controls = await read('src/lib/components/cimmich/CimmichPlaceCollectionControls.svelte');
 
     expect(collection).not.toContain('Each name is unique');
-    expect(collection).toContain('context-place-view-toolbar--directory');
+    expect(browser).toContain('<CimmichPlaceCollectionControls');
+    expect(controls).toContain('aria-label="Places view"');
+    expect(controls).toContain('aria-label="Group and sort"');
     expect(collection).toContain('geographyGroupHref(section.label)');
+    expect(collection).toContain('Add subdivision in ${section.label}');
     expect(browser).toContain("page.url.searchParams.get('geographyGroup')");
     expect(browser).toContain('const geographyGroupMembers');
     expect(browser).toContain('const assetsBySourceId = new SvelteMap<string, CimmichPlaceRollupAsset>()');

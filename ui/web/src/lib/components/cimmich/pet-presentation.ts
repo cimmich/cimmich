@@ -200,8 +200,16 @@ export const groupPetConnections = (connections: CimmichPetConnection[]) =>
 
 export const getPetConnectionHref = (connection: CimmichPetConnection) => {
   const family = `${connection.targetKind}s`;
-  const root = connection.targetKind === 'event' ? '/cimmich/events' : '/cimmich/places';
+  const root =
+    connection.targetKind === 'event'
+      ? '/cimmich/events'
+      : connection.targetKind === 'object'
+        ? '/cimmich/things'
+        : '/cimmich/places';
   const search = new URLSearchParams({ entityId: connection.targetId, family });
+  if (connection.targetKind !== 'event') {
+    search.delete('family');
+  }
   return `${root}?${search.toString()}`;
 };
 
@@ -211,7 +219,7 @@ export const getPetRelatedConnectionsHref = (
   kind: CimmichPetConnection['targetKind'],
 ) => {
   const family = `${kind}s`;
-  const root = kind === 'event' ? '/cimmich/events' : '/cimmich/places';
+  const root = kind === 'event' ? '/cimmich/events' : kind === 'object' ? '/cimmich/things' : '/cimmich/places';
   const search = new URLSearchParams({
     family,
     relatedFrom: petName,
@@ -220,6 +228,9 @@ export const getPetRelatedConnectionsHref = (
       .map((connection) => connection.targetId)
       .join(','),
   });
+  if (kind !== 'event') {
+    search.delete('family');
+  }
   return `${root}?${search.toString()}`;
 };
 

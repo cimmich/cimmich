@@ -4,6 +4,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichDocuments from './CimmichDocuments.svelte';
   import CimmichContextCollection from './CimmichContextCollection.svelte';
+  import CimmichPlaceCollectionControls from './CimmichPlaceCollectionControls.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
   import CimmichPlaceCanvas from './CimmichPlaceCanvas.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
@@ -85,6 +86,7 @@
     contextFamilyLabels,
     contextRequestedEntityId,
     contextPlaceCountryLabel,
+    contextGeographySubdivisionName,
     getContextCollectionHref,
     getContextDetailHref,
     getContextGeographyGroupHref,
@@ -194,6 +196,8 @@
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
   let placeCollectionView = $state<'atlas' | 'geography' | 'gps' | 'locations'>('locations');
+  let placeGroupMode = $state<'country' | 'duplicates' | 'none'>('country');
+  let placeSortMode = $state<'name' | 'photos-asc' | 'photos-desc'>('name');
   let deleteContextError = $state('');
   let deleteContextCommandId = $state('');
 
@@ -211,6 +215,7 @@
   );
 
   let formName = $state('');
+  let formGeographyGroupName = $state('');
   let formType = $state<CimmichContextTypeKind>('unlocated');
   let formDescription = $state('');
   let formAliases = $state('');
@@ -250,7 +255,7 @@
         ? 'Add geography'
         : `Add ${entityNoun}`,
   );
-  const collectionTitle = $derived(families.length > 1 ? 'Places & Things' : contextFamilyLabels[activeFamily]);
+  const collectionTitle = $derived(contextFamilyLabels[activeFamily]);
   const collectionMeta = $derived(
     `${entities.length.toLocaleString()} ${
       entities.length === 1
@@ -682,17 +687,6 @@
     }
   };
 
-  const selectFamily = (family: CimmichContextFamily) => {
-    if (activeFamily === family) {
-      return;
-    }
-    query = '';
-    collectionTypeFilter = 'all';
-    // Leaves any named detail segment behind, so switching family always lands
-    // on that family's collection rather than a path naming another entity.
-    void goto(getContextCollectionHref(page.url, family));
-  };
-
   const closeDetail = () => {
     selected = null;
     const collectionHref = getContextCollectionHref(page.url, activeFamily);
@@ -806,6 +800,7 @@
     }
     placeSearchGeneration += 1;
     formName = '';
+    formGeographyGroupName = '';
     formDescription = '';
     formAliases = '';
     formDateStart = '';
@@ -837,13 +832,18 @@
     editorError = '';
   };
 
-  const openCreate = (placeRole: 'geography' | 'location' = 'location', parentEntityId = '') => {
+  const openCreate = (
+    placeRole: 'geography' | 'location' = 'location',
+    parentEntityId = '',
+    geographyGroupName = '',
+  ) => {
     editorMode = 'create';
     editorTarget = null;
     resetForm();
     if (entityKind === 'place') {
       formPlaceRole = placeRole;
       formParentId = parentEntityId;
+      formGeographyGroupName = geographyGroupName;
     }
     editorTypeChosen = false;
     editorCommandId = createCimmichContextCommandId('create');
@@ -1217,7 +1217,7 @@
       return;
     }
     isSaving = true;
-    const createdFromGeographyGroup = editorMode === 'create' ? selectedGeographyGroup : '';
+    const createdFromGeographyGroup = editorMode === 'create' ? formGeographyGroupName || selectedGeographyGroup : '';
     try {
       const base = {
         aliases: formAliases
@@ -1230,7 +1230,10 @@
         dateStart: formDateStart || null,
         description: formDescription.trim() || null,
         directoryVisibility: entityKind === 'place' ? formDirectoryVisibility : undefined,
-        displayName: formName.trim(),
+        displayName:
+          createdFromGeographyGroup && formPlaceRole === 'geography'
+            ? contextGeographySubdivisionName(formName, createdFromGeographyGroup)
+            : formName.trim(),
         geometry,
         geographyEntityId:
           entityKind === 'place' && formPlaceRole === 'location' ? formGeographyEntityId || null : undefined,
@@ -2000,8 +2003,17 @@
       return `/cimmich/pets?entityId=${encodeURIComponent(relation.targetId)}`;
     }
     const family = `${relation.targetKind}s` as CimmichContextFamily;
-    const root = relation.targetKind === 'event' ? '/cimmich/events' : '/cimmich/places';
-    return `${root}?family=${family}&entityId=${encodeURIComponent(relation.targetId)}`;
+    const root =
+      relation.targetKind === 'event'
+        ? '/cimmich/events'
+        : relation.targetKind === 'object'
+          ? '/cimmich/things'
+          : '/cimmich/places';
+    const search = new SvelteURLSearchParams({ entityId: relation.targetId });
+    if (family === 'events') {
+      search.set('family', family);
+    }
+    return `${root}?${search.toString()}`;
   };
 
   const visitRelated = (relations: CimmichContextRelation[]) => {
@@ -2017,10 +2029,12 @@
           ? '/cimmich/pets'
           : targetKind === 'event'
             ? '/cimmich/events'
-            : '/cimmich/places';
+            : targetKind === 'object'
+              ? '/cimmich/things'
+              : '/cimmich/places';
     const family = targetKind === 'object' || targetKind === 'place' || targetKind === 'event' ? `${targetKind}s` : '';
     const search = new SvelteURLSearchParams({ relatedFrom: selected.entity.displayName, relatedIds: ids });
-    if (family) {
+    if (family === 'events') {
       search.set('family', family);
     }
     void goto(`${root}?${search.toString()}`);
@@ -2074,22 +2088,18 @@
     <div>
       <CimmichSectionHeader icon={iconForFamily(activeFamily)} title={collectionTitle} meta={collectionMeta}>
         {#snippet actions()}
-          {#if families.length > 1}
-            <nav class="flex min-h-11 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Context type">
-              {#each families as family (family)}
-                <button
-                  class="rounded-lg px-4 text-sm font-semibold transition {activeFamily === family
-                    ? 'bg-white text-primary shadow-sm dark:bg-gray-700'
-                    : 'text-gray-600 hover:text-gray-950 dark:text-gray-300'}"
-                  type="button"
-                  aria-current={activeFamily === family ? 'page' : undefined}
-                  onclick={() => selectFamily(family)}>{contextFamilyLabels[family]}</button
-                >
-              {/each}
-            </nav>
+          {#if activeFamily === 'places'}
+            <CimmichPlaceCollectionControls
+              view={placeCollectionView}
+              groupMode={placeGroupMode}
+              sortMode={placeSortMode}
+              onViewChange={(view) => (placeCollectionView = view)}
+              onGroupModeChange={(mode) => (placeGroupMode = mode)}
+              onSortModeChange={(mode) => (placeSortMode = mode)}
+            />
           {/if}
           <form
-            class="w-full min-w-0 sm:w-56 lg:w-64"
+            class={activeFamily === 'places' ? 'w-full min-w-0 sm:w-40 lg:w-44' : 'w-full min-w-0 sm:w-56 lg:w-64'}
             role="search"
             onsubmit={(event) => {
               event.preventDefault();
@@ -2166,13 +2176,15 @@
             {/if}
           </div>
           <button
-            class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
+            class="inline-flex size-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
             type="button"
+            aria-label={addLabel}
+            title={addLabel}
             onclick={() =>
               openCreate(activeFamily === 'places' && placeCollectionView === 'geography' ? 'geography' : 'location')}
           >
             <Icon icon={mdiPlus} size="18" />
-            {addLabel}
+            <span class="sr-only">{addLabel}</span>
           </button>
         {/snippet}
       </CimmichSectionHeader>
@@ -2289,6 +2301,7 @@
                       selectedIsGeographyGroup
                         ? (selectedGeographyGroupRoot?.entityId ?? '')
                         : (selected?.entity.entityId ?? ''),
+                      selectedIsGeographyGroup ? selectedGeographyGroup : '',
                     )}><Icon icon={mdiPlus} size="16" /> Add subdivision</button
                 >
               {/if}
@@ -2762,6 +2775,8 @@
     <CimmichContextCollection
       family={activeFamily}
       controlledPlaceView={activeFamily === 'places' ? placeCollectionView : undefined}
+      controlledPlaceGroupMode={activeFamily === 'places' ? placeGroupMode : undefined}
+      controlledPlaceSortMode={activeFamily === 'places' ? placeSortMode : undefined}
       entities={displayedEntities}
       includeNestedPlaces={Boolean(query.trim())}
       controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
@@ -2769,7 +2784,6 @@
       geographyGroupHref={(groupName) => getContextGeographyGroupHref(page.url, groupName)}
       onAdd={openCreate}
       onOpen={openEntity}
-      onPlaceViewChange={(view) => (placeCollectionView = view)}
       onPlacesChanged={() => loadEntities({ preserveCollection: true })}
     />
   {/if}
@@ -2801,7 +2815,11 @@
         <div>
           <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">{entityNoun}</p>
           <h2 class="mt-1 text-2xl font-semibold" id="context-editor-title">
-            {editorMode === 'create' ? `New ${entityNoun}` : `Settings for ${selected?.entity.displayName}`}
+            {editorMode === 'create'
+              ? formGeographyGroupName
+                ? `New subdivision in ${formGeographyGroupName}`
+                : `New ${entityNoun}`
+              : `Settings for ${selected?.entity.displayName}`}
           </h2>
         </div>
         <button

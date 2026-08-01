@@ -182,7 +182,7 @@ describe('CimmichDocuments', () => {
     await fireEvent.click(await findByRole('button', { name: /Synthetic certificate/ }));
     const subjectLink = await findByRole('link', { name: /Test Place/ });
     expect(subjectLink).toHaveTextContent('Place · Applies to');
-    expect(subjectLink).toHaveAttribute('href', '/cimmich/places?family=places&entityId=place_1');
+    expect(subjectLink).toHaveAttribute('href', '/cimmich/places?entityId=place_1');
     expect(await findByText('Imported · 4 B')).toBeInTheDocument();
   });
 

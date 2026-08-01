@@ -1,4 +1,3 @@
-import { redirect } from '@sveltejs/kit';
 import { authenticate } from '$lib/utils/auth';
 import type { PageLoad } from './$types';
 
@@ -6,17 +5,11 @@ export const load = (async ({ params, url }) => {
   await authenticate(url);
   const entityName = decodeURIComponent(params.entityName);
 
-  if (url.searchParams.get('thingId')) {
-    const next = new URL(url);
-    next.pathname = `/cimmich/things/${encodeURIComponent(entityName)}`;
-    redirect(307, `${next.pathname}${next.search}`);
-  }
-
   return {
     meta: {
       title: entityName,
     },
     entityName,
-    placeId: url.searchParams.get('placeId') || '',
+    thingId: url.searchParams.get('thingId') || '',
   };
 }) satisfies PageLoad;

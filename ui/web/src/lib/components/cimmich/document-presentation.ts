@@ -75,6 +75,6 @@ export const documentSubjectHref = (link: CimmichDocumentLink) => {
   if (link.subjectKind === 'event') {
     return `/cimmich/events?family=events&entityId=${encodeURIComponent(link.subjectId)}`;
   }
-  const family = link.subjectKind === 'object' ? 'objects' : 'places';
-  return `/cimmich/places?family=${family}&entityId=${encodeURIComponent(link.subjectId)}`;
+  const root = link.subjectKind === 'object' ? '/cimmich/things' : '/cimmich/places';
+  return `${root}?entityId=${encodeURIComponent(link.subjectId)}`;
 };

@@ -5947,7 +5947,7 @@
                   'flex items-center gap-1.5 px-3 font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white',
                   isContextEditing ? 'min-h-10' : 'min-h-8',
                 ]}
-                href={`/cimmich/places?family=objects&entityId=${encodeURIComponent(tag.entityId)}`}
+                href={`/cimmich/things?entityId=${encodeURIComponent(tag.entityId)}`}
               >
                 <span class="text-[10px] tracking-wide text-white/55 uppercase">Object</span>
                 <span>{tag.displayName}</span>
