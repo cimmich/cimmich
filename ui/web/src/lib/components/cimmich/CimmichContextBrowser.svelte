@@ -1346,7 +1346,7 @@
       });
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId('place-assign-child-undo') : '';
-      undoLabel = `Undo move to ${child.displayName}`;
+      undoLabel = 'Undo last';
       selectedPlaceAssetIds = [];
       await loadEntities({ preserveCollection: true });
       selected = result.detail;

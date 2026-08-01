@@ -206,7 +206,9 @@ describe('CimmichEntityMediaActions', () => {
         'visibility-command',
       ),
     );
+    expect(globalThis.confirm).not.toHaveBeenCalled();
     expect(getByText('Undo is saved across navigation and reload.')).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Undo last' })).toBeInTheDocument();
     expect(onClear).toHaveBeenCalledOnce();
   });
 
@@ -262,7 +264,7 @@ describe('CimmichEntityMediaActions', () => {
       showControls: false,
     });
 
-    await waitFor(() => expect(getByRole('button', { name: 'Undo' })).toBeInTheDocument());
+    await waitFor(() => expect(getByRole('button', { name: 'Undo last' })).toBeInTheDocument());
     expect(getByText('Undo is saved across navigation and reload.')).toBeInTheDocument();
     expect(queryByRole('toolbar', { name: 'Selected photo actions' })).not.toBeInTheDocument();
   });
