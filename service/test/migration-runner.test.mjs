@@ -203,6 +203,8 @@ test("schema 110 separates Location hierarchy from Geography without guessing ex
     /place_role IN \('geography','location','unclassified'\)/,
   );
   assert.match(source, /SET place_role = 'unclassified'/);
+  assert.match(source, /AND status <> 'deleted'/);
+  assert.match(source, /status = 'deleted' AND place_role IS NULL/);
   assert.match(source, /ADD COLUMN geography_entity_id text/);
   assert.match(
     source,

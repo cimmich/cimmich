@@ -8,12 +8,15 @@ ALTER TABLE context_entity
 
 UPDATE context_entity
 SET place_role = 'unclassified'
-WHERE entity_kind = 'place';
+WHERE entity_kind = 'place'
+  AND status <> 'deleted';
 
 ALTER TABLE context_entity
   ADD CONSTRAINT context_entity_place_role_check CHECK (
-    (entity_kind = 'place'
-      AND place_role IN ('geography','location','unclassified'))
+    (entity_kind = 'place' AND (
+      place_role IN ('geography','location','unclassified')
+      OR (status = 'deleted' AND place_role IS NULL)
+    ))
     OR (entity_kind <> 'place' AND place_role IS NULL)
   );
 
