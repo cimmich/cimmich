@@ -433,13 +433,6 @@
     const applyingCount = selectedCount;
     const baseLabel = actionLabel(selectedAction);
     const label = `${baseLabel}${targetLabel ? ` · ${targetLabel}` : ''}`;
-    if (
-      !globalThis.confirm(
-        `${label} for ${applyingCount.toLocaleString()} ${applyingCount === 1 ? 'photo' : 'photos'}?\n\nThis changes only the selected photos. It does not move or delete source files.`,
-      )
-    ) {
-      return;
-    }
 
     busy = true;
     error = '';
@@ -677,9 +670,7 @@
   };
 
   const dismissReceipt = () => {
-    if (!receipt || globalThis.confirm('Keep these changes and dismiss the saved Undo receipt?')) {
-      storeReceipt(null);
-    }
+    storeReceipt(null);
   };
 </script>
 
@@ -693,7 +684,7 @@
           <p>Undo is saved across navigation and reload.</p>
         </div>
         <button type="button" disabled={busy} onclick={() => void undo()}>
-          <Icon icon={mdiUndoVariant} size="17" /> Undo
+          <Icon icon={mdiUndoVariant} size="17" /> Undo last
         </button>
         <button type="button" disabled={busy} onclick={dismissReceipt}>Keep changes</button>
       </div>
@@ -897,6 +888,10 @@
     min-width: min(20rem, 100%);
     font-size: 0.75rem;
     font-weight: 650;
+  }
+
+  .entity-media-combobox-field :global([role='listbox']) {
+    z-index: 50;
   }
 
   button {

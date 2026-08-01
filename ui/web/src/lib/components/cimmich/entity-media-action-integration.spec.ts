@@ -13,6 +13,7 @@ describe('shared entity media action integration', () => {
 
     expect(context).toContain('<CimmichEntityMediaActions');
     expect(context).toContain('family: activeFamily');
+    expect(context).toContain("undoLabel = 'Undo last'");
     expect(people).toContain('<CimmichEntityMediaActions');
     expect(pets).toContain('<CimmichEntityMediaActions');
   });
@@ -41,6 +42,10 @@ describe('shared entity media action integration', () => {
     expect(source).toContain('Choose or type…');
     expect(source).toContain('defaultFirstOption');
     expect(source).toContain('clearSelectionOnInput');
+    expect(source).not.toContain('globalThis.confirm');
+    expect(source).not.toContain('This changes only the selected photos.');
+    expect(source).toContain(".entity-media-combobox-field :global([role='listbox'])");
+    expect(source).toContain('z-index: 50');
   });
 
   it('persists one exact Undo receipt and blocks a second action until disposition', async () => {
@@ -49,6 +54,7 @@ describe('shared entity media action integration', () => {
     expect(source).toContain('saveCimmichEntityMediaActionReceipt');
     expect(source).toContain('!receipt');
     expect(source).toContain('Undo is saved across navigation and reload.');
+    expect(source).toContain('Undo last');
     expect(source).toContain('undoCimmichContextDecision');
     expect(source).toContain('undoCimmichManualPresence');
     expect(source).toContain('undoCimmichVisibilityDecision');
