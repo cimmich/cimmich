@@ -79,6 +79,11 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).not.toContain('Move this {selected.entity.placeRole');
     expect(browser).not.toContain('Changes this hierarchy only, not its photos.');
     expect(browser).not.toContain('Open a subsection or use it to organise');
+    expect(browser).not.toContain('Also listed on Places');
+    expect(browser).not.toContain('Shown inside this place');
+    expect(browser).toContain('const placeChildNames');
+    expect(browser).toContain(".join(' · ')");
+    expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
     expect(browser).toContain('<CimmichEntityMediaActions');
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
