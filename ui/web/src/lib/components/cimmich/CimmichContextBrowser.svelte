@@ -86,6 +86,7 @@
     getContextDetailHref,
     resolveContextRouteEntity,
     contextPlaceSearchQualityLabel,
+    contextPlaceDescendants,
     contextPlaceLineage,
     contextPlaceNearbyRadii,
     contextPlacePointDistanceMeters,
@@ -184,7 +185,6 @@
   let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
   let selectedPlaceAssetIds = $state<string[]>([]);
   let mediaSelectionMode = $state(false);
-  let placeBulkTargetChildId = $state('');
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
@@ -261,6 +261,9 @@
           .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
           .sort((left, right) => left.displayName.localeCompare(right.displayName))
       : [],
+  );
+  const selectedPlaceMoveTargets = $derived(
+    activeFamily === 'places' && selected ? contextPlaceDescendants(selected.entity, entities) : [],
   );
   const selectedPlaceLineage = $derived(
     activeFamily === 'places' && selected ? contextPlaceLineage(selected.entity, entities) : [],
@@ -365,16 +368,6 @@
   );
   const filteredRelationTargets = $derived(filterContextRelationTargets(relationTargets, relationTargetQuery));
   const selectedRelationTarget = $derived(relationTargets.find((target) => target.id === relationTargetId) ?? null);
-
-  $effect(() => {
-    if (selectedPlaceChildren.length === 0) {
-      placeBulkTargetChildId = '';
-      return;
-    }
-    if (!selectedPlaceChildren.some((child) => child.entityId === placeBulkTargetChildId)) {
-      placeBulkTargetChildId = selectedPlaceChildren[0].entityId;
-    }
-  });
 
   const iconForFamily = (family: CimmichContextFamily) => {
     if (family === 'places') {
@@ -1340,7 +1333,7 @@
 
   const assignAssetsToPlaceChild = async (assetIds: string[], child: CimmichContextEntity) => {
     if (!selected || activeFamily !== 'places') {
-      return;
+      return false;
     }
     isSaving = true;
     error = null;
@@ -1357,8 +1350,10 @@
       selectedPlaceAssetIds = [];
       await loadEntities({ preserveCollection: true });
       selected = result.detail;
+      return true;
     } catch (error_) {
       error = asError(error_);
+      return false;
     } finally {
       isSaving = false;
     }
@@ -1367,12 +1362,12 @@
   const assignAssetToPlaceChild = (assetId: string, child: CimmichContextEntity) =>
     assignAssetsToPlaceChild([assetId], child);
 
-  const assignSelectedPlaceAssets = async () => {
-    const child = selectedPlaceChildren.find((candidate) => candidate.entityId === placeBulkTargetChildId);
+  const assignSelectedPlaceAssets = async (targetEntityId: string) => {
+    const child = selectedPlaceMoveTargets.find((candidate) => candidate.entity.entityId === targetEntityId)?.entity;
     if (!child || selectedPlaceAssetIds.length === 0) {
-      return;
+      return false;
     }
-    await assignAssetsToPlaceChild(selectedPlaceAssetIds, child);
+    return assignAssetsToPlaceChild(selectedPlaceAssetIds, child);
   };
 
   const savePlaceChildZone = async (child: CimmichContextEntity, geometry: CimmichContextGeometry) => {
@@ -2162,52 +2157,6 @@
             {/each}
           </div>
         {/if}
-        {#if mediaSelectionMode && visibleDetailAssets.length > 0}
-          <div class="context-place-bulk-bar" aria-label="Select photos on this page">
-            <div class="context-place-bulk-count">
-              <strong>{selectedPlaceAssetIds.length} selected</strong>
-              <span>Choose up to {placeBulkSelectionLimit} photos for one exact action.</span>
-            </div>
-            <div class="context-place-bulk-actions">
-              <button type="button" disabled={isSaving} onclick={selectShownPlaceAssets}>
-                <Icon icon={mdiSelectAll} size="17" /> Select shown
-              </button>
-              {#if selectedPlaceAssetIds.length > 0}<button
-                  type="button"
-                  disabled={isSaving}
-                  onclick={() => (selectedPlaceAssetIds = [])}>Clear</button
-                >{/if}
-            </div>
-          </div>
-
-          {#if entityKind === 'place' && placeMediaLane === 'unassigned' && selectedPlaceChildren.length > 0 && selectedPlaceAssetIds.length > 0}
-            <div class="context-place-bulk-bar" aria-label="Move unassigned photos">
-              <div class="context-place-bulk-count">
-                <strong>Move within {selected.entity.displayName}</strong>
-                <span>Reassigns direct photos to one immediate child with one Undo.</span>
-              </div>
-              <div class="context-place-bulk-actions">
-                <label>
-                  <span class="sr-only">Destination subsection</span>
-                  <select bind:value={placeBulkTargetChildId} disabled={isSaving}>
-                    {#each selectedPlaceChildren as child (child.entityId)}
-                      <option value={child.entityId}>{child.displayName}</option>
-                    {/each}
-                  </select>
-                </label>
-                <button
-                  class="context-place-bulk-move"
-                  type="button"
-                  disabled={isSaving || !placeBulkTargetChildId}
-                  onclick={() => void assignSelectedPlaceAssets()}
-                >
-                  <Icon icon={mdiImageMove} size="18" />
-                  {isSaving ? 'Moving…' : `Move ${selectedPlaceAssetIds.length}`}
-                </button>
-              </div>
-            </div>
-          {/if}
-        {/if}
         <CimmichEntityMediaActions
           currentScope={{
             displayName: selected.entity.displayName,
@@ -2215,8 +2164,16 @@
             family: activeFamily,
           }}
           items={selectedEntityMediaItems}
+          moveWithinPlaceTargets={selectedPlaceMoveTargets.map(({ depth, entity, path }) => ({
+            depth,
+            entityId: entity.entityId,
+            label: entity.displayName,
+            path,
+          }))}
           onChanged={refreshSelectedDetail}
           onClear={() => (selectedPlaceAssetIds = [])}
+          onMoveWithinPlace={assignSelectedPlaceAssets}
+          onSelectShown={visibleDetailAssets.length > 0 ? selectShownPlaceAssets : undefined}
           showControls={mediaSelectionMode}
         />
         {#if (entityKind === 'place' ? placeDetailAssetCount : selected.assets.length) === 0}
@@ -4201,75 +4158,6 @@
     background: rgb(127 29 29 / 0.28);
   }
 
-  .context-place-bulk-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-top: 0.8rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
-    border-radius: 1.1rem;
-    background: color-mix(in srgb, var(--color-primary) 7%, transparent);
-    padding: 0.75rem;
-  }
-
-  .context-place-bulk-count {
-    display: grid;
-    min-width: 0;
-  }
-
-  .context-place-bulk-count strong {
-    font-size: 0.82rem;
-  }
-
-  .context-place-bulk-count span {
-    color: rgb(107 114 128);
-    font-size: 0.7rem;
-  }
-
-  .context-place-bulk-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.4rem;
-  }
-
-  .context-place-bulk-actions button,
-  .context-place-bulk-actions select {
-    min-height: 2.5rem;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 999px;
-    background: white;
-    padding: 0 0.8rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .context-place-bulk-actions button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-  }
-
-  :global(.dark) .context-place-bulk-actions button,
-  :global(.dark) .context-place-bulk-actions select {
-    border-color: rgb(75 85 99);
-    background: rgb(17 24 39);
-  }
-
-  .context-place-bulk-actions button:disabled,
-  .context-place-bulk-actions select:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
-
-  .context-place-bulk-actions .context-place-bulk-move {
-    border-color: var(--color-primary);
-    background: var(--color-primary);
-    color: white;
-  }
-
   .context-place-photo--selected {
     outline: 4px solid var(--color-primary);
     outline-offset: -4px;
@@ -4309,21 +4197,6 @@
   }
 
   @media (max-width: 520px) {
-    .context-place-bulk-bar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .context-place-bulk-actions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .context-place-bulk-actions label,
-    .context-place-bulk-actions select {
-      width: 100%;
-    }
-
     :global(.context-profile-edit) {
       width: 2.75rem;
       flex: 0 0 2.75rem;

@@ -9,6 +9,7 @@ import {
   contextFamilyKind,
   contextFamilyLabels,
   contextPlaceLocationLabel,
+  contextPlaceDescendants,
   contextRequestedEntityId,
   formatContextCoordinate,
   formatImmichPlaceLocation,
@@ -212,8 +213,24 @@ describe('Cimmich context entity presentation', () => {
         parentEntityId: 'place_point',
         typeKind: 'area',
       }),
+      entity({
+        displayName: 'Desk',
+        entityId: 'place_desk',
+        parentEntityId: 'place_office',
+      }),
     ];
     expect(contextPlaceHierarchy(places[3], places)).toEqual(['Greece', 'Corfu', 'The Pink Palace', 'Beach']);
+    expect(
+      contextPlaceDescendants(places[2], places).map(({ depth, entity, path }) => ({
+        depth,
+        id: entity.entityId,
+        path,
+      })),
+    ).toEqual([
+      { depth: 0, id: 'place_area', path: 'Beach' },
+      { depth: 0, id: 'place_office', path: 'Office' },
+      { depth: 1, id: 'place_desk', path: 'Office › Desk' },
+    ]);
     const projection = contextPlaceMapProjection(places);
     expect(projection.markers).toHaveLength(1);
     expect(projection.markers[0]?.parentName).toBe('Greece / Corfu');

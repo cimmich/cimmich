@@ -23,6 +23,13 @@ export type CimmichEntityMediaSubject = {
   subjectKind: 'person' | 'pet';
 };
 
+export type CimmichEntityMediaPlaceTarget = {
+  depth: number;
+  entityId: string;
+  label: string;
+  path: string;
+};
+
 export type CimmichEntityMediaActionKind =
   | 'album-add'
   | 'archive'

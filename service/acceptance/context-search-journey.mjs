@@ -132,6 +132,13 @@ if (phase === "write" || phase === "all") {
     typeKind: "unlocated",
   });
   const yard = yardCreated.detail.entity;
+  const officeCreated = await create("places", "context.create.beach-office1", {
+    directoryVisibility: "nested_only",
+    displayName: "Synthetic beach office",
+    parentEntityId: yard.entityId,
+    typeKind: "unlocated",
+  });
+  const office = officeCreated.detail.entity;
   await create("places", "context.create.area-00001", {
     displayName: "Synthetic island area",
     geometry: { east: 151.3, north: -33.7, south: -34, west: 151 },
@@ -356,6 +363,26 @@ if (phase === "write" || phase === "all") {
   );
   assert.equal(assignmentUndone.detail.entity.assetCount, 2);
   assert.equal((await request(`/v1/places/${yard.entityId}`)).assets.length, 0);
+  const descendantAssigned = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    {
+      body: {
+        ...assignmentBody,
+        childEntityId: office.entityId,
+        commandId: "context.place.assign-office01",
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(descendantAssigned.childEntityId, office.entityId);
+  assert.equal(
+    (await request(`/v1/places/${office.entityId}`)).assets.length,
+    1,
+  );
+  await request(`/v1/context/decisions/${descendantAssigned.decisionId}/undo`, {
+    body: { commandId: "context.place.assign-office-undo01" },
+    method: "POST",
+  });
   const reassigned = await request(
     `/v1/places/${beach.entityId}/assets:assign-child`,
     {
