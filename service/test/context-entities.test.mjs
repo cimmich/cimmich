@@ -136,6 +136,34 @@ test("Place directory visibility is a closed contract", () => {
   ]);
 });
 
+test("Place role is closed and projections keep the geography cross-link", async () => {
+  assert.deepEqual(contextEntityContract.placeRoles, [
+    "geography",
+    "location",
+    "unclassified",
+  ]);
+  const sql = async () => [
+    {
+      ...eventRow,
+      entity_id: "place_00000000000000000000000000000000",
+      entity_kind: "place",
+      event_kind: null,
+      geography_entity_id: "place_11111111111111111111111111111111",
+      place_kind: "point",
+      place_role: "location",
+    },
+  ];
+  const [location] = await createContextEntityStore(sql).list({
+    entityKind: "place",
+    placeRole: "location",
+  });
+  assert.equal(location.placeRole, "location");
+  assert.equal(
+    location.geographyEntityId,
+    "place_11111111111111111111111111111111",
+  );
+});
+
 test("Painted Place areas accept only 3 to 500 distinct canonical points", async () => {
   const reachedPersistence = new Error("reached persistence");
   const sql = Object.assign(async () => [], {

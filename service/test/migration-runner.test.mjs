@@ -188,6 +188,31 @@ test("schema 109 admits bounded owner-painted Place areas without invalidating b
   assert.match(source, /receipt_cimmich_place_painted_area_v1/);
 });
 
+test("schema 110 separates Location hierarchy from Geography without guessing existing rows", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0110_place_geography_location_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    source,
+    /place_role IN \('geography','location','unclassified'\)/,
+  );
+  assert.match(source, /SET place_role = 'unclassified'/);
+  assert.match(source, /ADD COLUMN geography_entity_id text/);
+  assert.match(
+    source,
+    /Location and Geography use separate parent hierarchies/,
+  );
+  assert.match(source, /context_entity_geography_guard/);
+  assert.doesNotMatch(source, /SET place_role = 'geography'\s+WHERE/);
+  assert.doesNotMatch(source, /SET place_role = 'location'\s+WHERE/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

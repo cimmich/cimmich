@@ -3,6 +3,7 @@
     CimmichContextEntity,
     CimmichContextFamily,
     CimmichContextTypeKind,
+    CimmichPlaceRole,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
@@ -40,6 +41,7 @@
   } from './context-entity-presentation';
 
   interface Props {
+    controlledPlaceView?: 'atlas' | 'geography' | 'gps' | 'locations';
     controlledTypeFilter?: ContextTypeFilter;
     entities: CimmichContextEntity[];
     // Every card and row is a real link, matching People and Pets. The named
@@ -49,14 +51,16 @@
     entityHref: (entity: CimmichContextEntity) => string;
     family: CimmichContextFamily;
     includeNestedPlaces?: boolean;
-    onAdd: () => void;
+    onAdd: (placeRole?: Exclude<CimmichPlaceRole, 'unclassified'>) => void;
     onPlacesChanged?: () => Promise<void> | void;
+    onPlaceViewChange?: (view: 'atlas' | 'geography' | 'gps' | 'locations') => void;
     // Still needed for the atlas view, where a map marker is not an anchor.
     onOpen: (entity: CimmichContextEntity) => void;
   }
 
   let {
     controlledTypeFilter,
+    controlledPlaceView,
     entities,
     entityHref,
     family,
@@ -64,24 +68,39 @@
     onAdd,
     onOpen,
     onPlacesChanged = () => {},
+    onPlaceViewChange = () => {},
   }: Props = $props();
   let activeTypeFilter = $state<ContextTypeFilter>('all');
-  let placeView = $state<'atlas' | 'gps' | 'list'>('list');
+  let internalPlaceView = $state<'atlas' | 'geography' | 'gps' | 'locations'>('locations');
   let gpsWasOpened = $state(false);
   let placeGroupMode = $state<'country' | 'duplicates' | 'none'>('country');
   let placeSortMode = $state<'name' | 'photos-asc' | 'photos-desc'>('name');
 
   const effectiveTypeFilter = $derived(controlledTypeFilter ?? activeTypeFilter);
+  const placeView = $derived(controlledPlaceView ?? internalPlaceView);
+  const setPlaceView = (view: 'atlas' | 'geography' | 'gps' | 'locations') => {
+    internalPlaceView = view;
+    onPlaceViewChange(view);
+  };
   const directoryEntities = $derived(
     family === 'places' && !includeNestedPlaces
       ? entities.filter((entity) => entity.directoryVisibility !== 'nested_only')
       : entities,
   );
+  const roleDirectoryEntities = $derived(
+    family !== 'places' || !['locations', 'geography'].includes(placeView)
+      ? directoryEntities
+      : placeView === 'geography'
+        ? directoryEntities.filter((entity) => entity.placeRole === 'geography')
+        : directoryEntities.filter(
+            (entity) => entity.placeRole === 'location' || entity.placeRole === 'unclassified' || !entity.placeRole,
+          ),
+  );
   const filteredEntities = $derived(
     sortContextEntities(
       effectiveTypeFilter === 'all'
-        ? directoryEntities
-        : directoryEntities.filter((entity) => entity.typeKind === effectiveTypeFilter),
+        ? roleDirectoryEntities
+        : roleDirectoryEntities.filter((entity) => entity.typeKind === effectiveTypeFilter),
       family,
     ),
   );
@@ -101,12 +120,36 @@
       return left.displayName.localeCompare(right.displayName) || rightCount - leftCount;
     });
 
-  const placeCountry = (entity: CimmichContextEntity) => {
+  const effectiveLocationGeographyId = (location: CimmichContextEntity | undefined) => {
+    let current: CimmichContextEntity | undefined = location;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.entityId)) {
+      visited.add(current.entityId);
+      if (current.geographyEntityId) {
+        return current.geographyEntityId;
+      }
+      current = current.parentEntityId
+        ? entities.find((candidate) => candidate.entityId === current?.parentEntityId)
+        : undefined;
+    }
+    return null;
+  };
+
+  const placeDirectoryGroup = (entity: CimmichContextEntity) => {
+    if (!entity.placeRole || entity.placeRole === 'unclassified') {
+      return 'Needs classification';
+    }
+    if (entity.placeRole === 'location') {
+      return (
+        entities.find((candidate) => candidate.entityId === effectiveLocationGeographyId(entity))?.displayName ||
+        'No geography set'
+      );
+    }
     const parts = entity.displayName
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean);
-    return parts.length > 1 ? parts.at(-1)! : 'Personal & named places';
+    return parts.length > 1 ? parts.at(-1)! : 'Other geography';
   };
 
   const buildPlaceDirectorySections = (items: CimmichContextEntity[]) => {
@@ -115,7 +158,8 @@
     }
     const groups: Array<[string, CimmichContextEntity[]]> = [];
     for (const entity of items) {
-      const key = placeGroupMode === 'duplicates' ? normalizeGpsPlaceName(entity.displayName) : placeCountry(entity);
+      const key =
+        placeGroupMode === 'duplicates' ? normalizeGpsPlaceName(entity.displayName) : placeDirectoryGroup(entity);
       const existing = groups.find(([candidate]) => candidate === key);
       if (existing) {
         existing[1].push(entity);
@@ -132,10 +176,10 @@
         label: placeGroupMode === 'duplicates' ? group[0]!.displayName : key,
       }))
       .sort((left, right) => {
-        if (left.label === 'Personal & named places') {
+        if (left.label === 'Needs classification' || left.label === 'No geography set') {
           return -1;
         }
-        if (right.label === 'Personal & named places') {
+        if (right.label === 'Needs classification' || right.label === 'No geography set') {
           return 1;
         }
         return left.label.localeCompare(right.label);
@@ -154,7 +198,7 @@
   $effect(() => {
     const nextFamily = family;
     activeTypeFilter = 'all';
-    placeView = nextFamily === 'places' ? 'list' : 'atlas';
+    internalPlaceView = nextFamily === 'places' ? 'locations' : 'atlas';
   });
 
   // Immich already knows each place's city/state/country from its own reverse
@@ -239,7 +283,7 @@
 
   const openGps = () => {
     gpsWasOpened = true;
-    placeView = 'gps';
+    setPlaceView('gps');
   };
 </script>
 
@@ -252,14 +296,21 @@
           class="context-view-button"
           type="button"
           aria-pressed={placeView === 'atlas'}
-          onclick={() => (placeView = 'atlas')}><Icon icon={mdiMapOutline} size="17" /> Map</button
+          onclick={() => setPlaceView('atlas')}><Icon icon={mdiMapOutline} size="17" /> Map</button
         >
         <button
-          class:context-view-active={placeView === 'list'}
+          class:context-view-active={placeView === 'locations'}
           class="context-view-button"
           type="button"
-          aria-pressed={placeView === 'list'}
-          onclick={() => (placeView = 'list')}><Icon icon={mdiViewGridOutline} size="17" /> Places</button
+          aria-pressed={placeView === 'locations'}
+          onclick={() => setPlaceView('locations')}><Icon icon={mdiHomeOutline} size="17" /> Locations</button
+        >
+        <button
+          class:context-view-active={placeView === 'geography'}
+          class="context-view-button"
+          type="button"
+          aria-pressed={placeView === 'geography'}
+          onclick={() => setPlaceView('geography')}><Icon icon={mdiViewGridOutline} size="17" /> Geography</button
         >
         <button
           class:context-view-active={placeView === 'gps'}
@@ -329,18 +380,24 @@
         </div>
       </aside>
     </div>
-  {:else if family === 'places' && placeView === 'list'}
+  {:else if family === 'places' && (placeView === 'locations' || placeView === 'geography')}
     {#if filteredEntities.length === 0}
       <div class="context-first-state">
         <span><Icon icon={mdiMapMarkerOutline} size="34" /></span>
-        <h2>No places yet</h2>
-        <p>Name a point, property, route or meaningful place you cannot locate yet.</p>
-        <button type="button" onclick={onAdd}>Add a place</button>
+        <h2>No {placeView === 'geography' ? 'geography' : 'locations'} yet</h2>
+        <p>
+          {placeView === 'geography'
+            ? 'Add a country, region, town or other geographic area.'
+            : 'Add a home, venue, room or other place with human meaning.'}
+        </p>
+        <button type="button" onclick={() => onAdd(placeView === 'geography' ? 'geography' : 'location')}>
+          Add {placeView === 'geography' ? 'geography' : 'a location'}
+        </button>
       </div>
     {:else}
       <div class="context-place-directory-toolbar">
         <div>
-          <p>{filteredEntities.length.toLocaleString()} saved places</p>
+          <p>{filteredEntities.length.toLocaleString()} saved {placeView}</p>
           <span>
             {duplicatePlaceNameCount === 0
               ? 'Each name is unique'
@@ -357,7 +414,7 @@
               value={placeGroupMode}
               onchange={(event) => (placeGroupMode = event.currentTarget.value as 'country' | 'duplicates' | 'none')}
             >
-              <option value="country">Country</option>
+              <option value="country">{placeView === 'geography' ? 'Country' : 'Geography'}</option>
               <option value="none">No grouping</option>
               <option value="duplicates">Repeated names</option>
             </select>
@@ -417,7 +474,11 @@
                       {/if}
                       <span class="context-cover-chip"
                         ><Icon icon={iconForType(entity.typeKind)} size="14" />
-                        {humanizeContextKind(entity.typeKind)}</span
+                        {entity.placeRole === 'unclassified' || !entity.placeRole
+                          ? 'Needs classification'
+                          : entity.placeRole === 'location'
+                            ? 'Location'
+                            : 'Geography'}</span
                       >
                     </div>
                     <!-- Shares the Things card grammar: the two families sit behind one
@@ -480,7 +541,7 @@
             ? 'Vehicles, homes, devices, keepsakes and equipment become useful when they have their own name and history.'
             : 'Choose another type or add the particular thing you have in mind.'}
         </p>
-        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add a thing</button>{/if}
+        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={() => onAdd()}>Add a thing</button>{/if}
       </div>
     {:else}
       <div class="context-thing-grid">
@@ -542,7 +603,8 @@
             ? 'Start with a trip, one occasion, a recurring activity or a longer chapter of life.'
             : 'Choose another type or add the memory you want to organise.'}
         </p>
-        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={onAdd}>Add to your timeline</button>{/if}
+        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={() => onAdd()}>Add to your timeline</button
+          >{/if}
       </div>
     {:else}
       <div class="context-event-grid">

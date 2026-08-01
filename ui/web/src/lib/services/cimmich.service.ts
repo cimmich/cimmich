@@ -134,6 +134,7 @@ export type CimmichContextTypeKind =
   | 'unlocated'
   | 'vehicle';
 export type CimmichContextDatePrecision = 'approximate' | 'exact' | 'month' | 'unknown' | 'year';
+export type CimmichPlaceRole = 'geography' | 'location' | 'unclassified';
 export type CimmichContextGeometry =
   | { east: number; north: number; south: number; west: number }
   | { latitude: number; longitude: number }
@@ -156,7 +157,9 @@ export type CimmichContextEntity = {
   entityId: string;
   entityKind: CimmichContextEntityKind;
   geometry: CimmichContextGeometry;
+  geographyEntityId?: string | null;
   parentEntityId: string | null;
+  placeRole?: CimmichPlaceRole | null;
   /** Event collection rows only: up to four visible active Main-media source IDs, cover first when eligible. */
   previewAssetIds?: string[];
   revision: number;
@@ -213,7 +216,9 @@ export type CimmichContextEntityInput = {
   directoryVisibility?: 'listed' | 'nested_only';
   displayName: string;
   geometry?: CimmichContextGeometry;
+  geographyEntityId?: string | null;
   parentEntityId?: string | null;
+  placeRole?: CimmichPlaceRole;
   status?: 'active' | 'archived' | 'hidden';
   typeKind: CimmichContextTypeKind;
 };
@@ -2887,7 +2892,13 @@ export const getCimmichVisibilityProjections = () =>
 
 export const getCimmichContextEntities = async (
   family: CimmichContextFamily,
-  options: { includeArchived?: boolean; includeHidden?: boolean; limit?: number; query?: string } = {},
+  options: {
+    includeArchived?: boolean;
+    includeHidden?: boolean;
+    limit?: number;
+    placeRole?: CimmichPlaceRole;
+    query?: string;
+  } = {},
 ) => {
   const search = new URLSearchParams({ limit: String(Math.max(1, Math.min(500, options.limit ?? 200))) });
   if (options.query?.trim()) {
@@ -2898,6 +2909,9 @@ export const getCimmichContextEntities = async (
   }
   if (options.includeHidden) {
     search.set('includeHidden', 'true');
+  }
+  if (options.placeRole) {
+    search.set('placeRole', options.placeRole);
   }
   const result = await request<{ items: CimmichContextEntity[]; schemaVersion: 'cimmich.context-entity.v1' }>(
     `/v1/${family}?${search.toString()}`,

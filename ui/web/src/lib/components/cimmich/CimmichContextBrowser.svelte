@@ -42,6 +42,7 @@
     type CimmichContextFamily,
     type CimmichContextGeometry,
     type CimmichContextTypeKind,
+    type CimmichPlaceRole,
     type CimmichAddressGeocodingItem,
     type CimmichAddressGeocodingResult,
     type CimmichContextRelation,
@@ -188,6 +189,7 @@
   let showDeleteContext = $state(false);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
+  let placeCollectionView = $state<'atlas' | 'geography' | 'gps' | 'locations'>('locations');
   let deleteContextError = $state('');
   let deleteContextCommandId = $state('');
 
@@ -212,6 +214,8 @@
   let formDateStart = $state('');
   let formDateEnd = $state('');
   let formParentId = $state('');
+  let formPlaceRole = $state<CimmichPlaceRole>('location');
+  let formGeographyEntityId = $state('');
   let formDirectoryVisibility = $state<'listed' | 'nested_only'>('listed');
   let formLatitude = $state('');
   let formLongitude = $state('');
@@ -235,7 +239,13 @@
 
   const entityKind = $derived(contextFamilyKind[activeFamily]);
   const entityNoun = $derived(entityKind === 'object' ? 'thing' : entityKind);
-  const addLabel = $derived(activeFamily === 'events' ? 'Add event' : `Add ${entityNoun}`);
+  const addLabel = $derived(
+    activeFamily === 'events'
+      ? 'Add event'
+      : activeFamily === 'places' && placeCollectionView === 'geography'
+        ? 'Add geography'
+        : `Add ${entityNoun}`,
+  );
   const collectionTitle = $derived(families.length > 1 ? 'Places & Things' : contextFamilyLabels[activeFamily]);
   const collectionMeta = $derived(
     `${entities.length.toLocaleString()} ${
@@ -267,6 +277,35 @@
   );
   const selectedPlaceLineage = $derived(
     activeFamily === 'places' && selected ? contextPlaceLineage(selected.entity, entities) : [],
+  );
+  const effectiveLocationGeographyId = (location: CimmichContextEntity | undefined) => {
+    let current: CimmichContextEntity | undefined = location;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.entityId)) {
+      visited.add(current.entityId);
+      if (current.geographyEntityId) {
+        return current.geographyEntityId;
+      }
+      current = current.parentEntityId
+        ? entities.find((entity) => entity.entityId === current?.parentEntityId)
+        : undefined;
+    }
+    return null;
+  };
+  const selectedPlaceGeography = $derived(
+    activeFamily === 'places' && selected?.entity.placeRole === 'location'
+      ? (entities.find((entity) => entity.entityId === effectiveLocationGeographyId(selected?.entity)) ?? null)
+      : null,
+  );
+  const selectedGeographyLocations = $derived(
+    activeFamily === 'places' && selected?.entity.placeRole === 'geography'
+      ? entities
+          .filter(
+            (entity) =>
+              entity.placeRole === 'location' && effectiveLocationGeographyId(entity) === selected?.entity.entityId,
+          )
+          .sort((left, right) => left.displayName.localeCompare(right.displayName))
+      : [],
   );
   const nearbyPlacePoint = $derived.by(() => {
     const geometry = selected?.entity.geometry;
@@ -569,6 +608,8 @@
     formDateEnd = '';
     formDatePrecision = 'unknown';
     formParentId = '';
+    formPlaceRole = 'location';
+    formGeographyEntityId = '';
     formDirectoryVisibility = 'listed';
     formLatitude = '';
     formLongitude = '';
@@ -592,11 +633,14 @@
     editorError = '';
   };
 
-  const openCreate = () => {
+  const openCreate = (placeRole: 'geography' | 'location' = 'location') => {
     editorMode = 'create';
     editorIntent = 'edit';
     editorTarget = null;
     resetForm();
+    if (entityKind === 'place') {
+      formPlaceRole = placeRole;
+    }
     editorTypeChosen = false;
     editorCommandId = createCimmichContextCommandId('create');
     showEditor = true;
@@ -623,6 +667,8 @@
     formDateEnd = entity.dateEnd ?? '';
     formDatePrecision = entity.datePrecision;
     formParentId = entity.parentEntityId ?? '';
+    formPlaceRole = entity.placeRole ?? 'unclassified';
+    formGeographyEntityId = entity.geographyEntityId ?? '';
     formDirectoryVisibility = entity.directoryVisibility ?? 'listed';
     formType = entity.typeKind;
     const geometry = entity.geometry;
@@ -982,7 +1028,10 @@
         directoryVisibility: entityKind === 'place' ? formDirectoryVisibility : undefined,
         displayName: formName.trim(),
         geometry,
+        geographyEntityId:
+          entityKind === 'place' && formPlaceRole === 'location' ? formGeographyEntityId || null : undefined,
         parentEntityId: entityKind === 'place' ? formParentId || null : undefined,
+        placeRole: entityKind === 'place' ? formPlaceRole : undefined,
         typeKind: formType,
       };
       const mutation = resolveContextEditorMutation(editorMode, editorTarget);
@@ -1904,7 +1953,8 @@
           <button
             class="inline-flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
             type="button"
-            onclick={openCreate}
+            onclick={() =>
+              openCreate(activeFamily === 'places' && placeCollectionView === 'geography' ? 'geography' : 'location')}
           >
             <Icon icon={mdiPlus} size="18" />
             {addLabel}
@@ -1963,7 +2013,13 @@
 
     {#if activeFamily === 'places'}
       <nav class="mt-5 flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm" aria-label="Place hierarchy">
-        <button class="shrink-0 font-semibold text-primary" type="button" onclick={closeDetail}>Places</button>
+        <button class="shrink-0 font-semibold text-primary" type="button" onclick={closeDetail}>
+          {selected.entity.placeRole === 'geography'
+            ? 'Geography'
+            : selected.entity.placeRole === 'location'
+              ? 'Locations'
+              : 'Needs classification'}
+        </button>
         {#each selectedPlaceLineage as place, index (place.entityId)}
           <Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="16" />
           {#if index === selectedPlaceLineage.length - 1}
@@ -1976,6 +2032,31 @@
           {/if}
         {/each}
       </nav>
+
+      {#if selected.entity.placeRole === 'location'}
+        <div class="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm dark:bg-gray-800">
+          <span class="font-semibold">Geography</span>
+          {#if selectedPlaceGeography}
+            <a
+              class="font-semibold text-primary"
+              href={getContextDetailHref(
+                page.url,
+                'places',
+                selectedPlaceGeography.entityId,
+                selectedPlaceGeography.displayName,
+              )}>{selectedPlaceGeography.displayName}</a
+            >
+          {:else}
+            <span class="text-gray-500">Not linked yet</span>
+          {/if}
+        </div>
+      {:else if selected.entity.placeRole === 'unclassified' || !selected.entity.placeRole}
+        <div
+          class="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <strong>Needs classification.</strong> Edit this Place and choose whether it is a Location or Geography.
+        </div>
+      {/if}
 
       {#if selectedPlaceChildren.length > 0}
         <section class="mt-6" aria-labelledby="place-subplaces-title">
@@ -2014,16 +2095,50 @@
         </section>
       {/if}
 
+      {#if selectedGeographyLocations.length > 0}
+        <section class="mt-6" aria-labelledby="geography-locations-title">
+          <div class="flex items-end justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold" id="geography-locations-title">
+                Locations in {selected.entity.displayName}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Human places linked to this geography. Their Location hierarchy remains independent.
+              </p>
+            </div>
+            <span class="shrink-0 text-xs font-semibold text-gray-500">{selectedGeographyLocations.length}</span>
+          </div>
+          <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {#each selectedGeographyLocations as location (location.entityId)}
+              <a
+                class="rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                href={getContextDetailHref(page.url, 'places', location.entityId, location.displayName)}
+              >
+                <span class="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"
+                  ><Icon icon={mdiMapMarkerOutline} size="20" /></span
+                >
+                <h3 class="mt-3 font-semibold">{location.displayName}</h3>
+                <p class="mt-1 text-xs text-gray-500">{location.subtreeAssetCount ?? location.assetCount} photos</p>
+              </a>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <div class="mt-4 flex flex-wrap items-center gap-2">
         <button
           class="context-secondary-button"
           type="button"
-          aria-label={`Move ${selected.entity.displayName} in the Place hierarchy`}
+          aria-label={`Move ${selected.entity.displayName} in its hierarchy`}
           onclick={() => openEdit('move')}
         >
-          <Icon icon={mdiImageMove} size="18" /> Move this Place
+          <Icon icon={mdiImageMove} size="18" /> Move this {selected.entity.placeRole === 'geography'
+            ? 'Geography'
+            : selected.entity.placeRole === 'location'
+              ? 'Location'
+              : 'Place'}
         </button>
-        <span class="text-xs text-gray-500 dark:text-gray-400">Changes the Place itself, not its photos.</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400">Changes this hierarchy only, not its photos.</span>
       </div>
     {/if}
 
@@ -2164,12 +2279,14 @@
             family: activeFamily,
           }}
           items={selectedEntityMediaItems}
-          moveWithinPlaceTargets={selectedPlaceMoveTargets.map(({ depth, entity, path }) => ({
-            depth,
-            entityId: entity.entityId,
-            label: entity.displayName,
-            path,
-          }))}
+          moveWithinPlaceTargets={selected.entity.placeRole === 'location'
+            ? selectedPlaceMoveTargets.map(({ depth, entity, path }) => ({
+                depth,
+                entityId: entity.entityId,
+                label: entity.displayName,
+                path,
+              }))
+            : []}
           onChanged={refreshSelectedDetail}
           onClear={() => (selectedPlaceAssetIds = [])}
           onMoveWithinPlace={assignSelectedPlaceAssets}
@@ -2432,12 +2549,14 @@
     {/if}
     <CimmichContextCollection
       family={activeFamily}
+      controlledPlaceView={activeFamily === 'places' ? placeCollectionView : undefined}
       entities={displayedEntities}
       includeNestedPlaces={Boolean(query.trim())}
       controlledTypeFilter={activeFamily === 'places' ? undefined : collectionTypeFilter}
       entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
       onAdd={openCreate}
       onOpen={openEntity}
+      onPlaceViewChange={(view) => (placeCollectionView = view)}
       onPlacesChanged={() => loadEntities({ preserveCollection: true })}
     />
   {/if}
@@ -2524,6 +2643,37 @@
           <label class="context-field"
             ><span>Name</span><input bind:value={formName} maxlength="160" autocomplete="off" /></label
           >
+          {#if entityKind === 'place'}
+            <label class="context-field">
+              <span>Place role</span>
+              <select
+                bind:value={formPlaceRole}
+                onchange={() => {
+                  const parent = entities.find((entity) => entity.entityId === formParentId);
+                  if (
+                    parent?.placeRole &&
+                    parent.placeRole !== 'unclassified' &&
+                    formPlaceRole !== 'unclassified' &&
+                    parent.placeRole !== formPlaceRole
+                  ) {
+                    formParentId = '';
+                    formDirectoryVisibility = 'listed';
+                  }
+                  if (formPlaceRole !== 'location') {
+                    formGeographyEntityId = '';
+                  }
+                }}
+              >
+                <option value="location">Location — home, venue, room or yard</option>
+                <option value="geography">Geography — country, region, town or area</option>
+                {#if editorMode === 'edit'}<option value="unclassified">Needs classification</option>{/if}
+              </select>
+            </label>
+            <p class="-mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Locations describe where life happens. Geography describes where it sits on Earth; the two stay linked
+              without becoming the same hierarchy.
+            </p>
+          {/if}
           {#if editorMode === 'create'}
             <div class="context-chosen-type">
               <span><Icon icon={iconForFamily(activeFamily)} size="20" /></span>
@@ -2700,24 +2850,48 @@
               </section>
             {/if}
             <label class="context-field"
-              ><span>Inside <small>Optional</small></span><select
+              ><span
+                >{formPlaceRole === 'location'
+                  ? 'Inside location'
+                  : formPlaceRole === 'geography'
+                    ? 'Inside geography'
+                    : 'Inside'} <small>Optional</small></span
+              ><select
                 bind:value={formParentId}
                 onchange={() => {
                   if (!formParentId) {
                     formDirectoryVisibility = 'listed';
                   }
                 }}
-                ><option value="">No parent place</option
-                >{#each entities.filter((entity) => entity.entityId !== selected?.entity.entityId) as entity (entity.entityId)}<option
+                ><option value="">No parent {formPlaceRole === 'unclassified' ? 'place' : formPlaceRole}</option
+                >{#each entities.filter((entity) => entity.entityId !== selected?.entity.entityId && (formPlaceRole === 'unclassified' || entity.placeRole === 'unclassified' || entity.placeRole === formPlaceRole)) as entity (entity.entityId)}<option
                     value={entity.entityId}>{entity.displayName}</option
                   >{/each}</select
               ></label
             >
+            {#if formPlaceRole === 'location'}
+              <label class="context-field">
+                <span>Geography <small>Optional</small></span>
+                <select bind:value={formGeographyEntityId}>
+                  <option value="">
+                    {formParentId &&
+                    effectiveLocationGeographyId(entities.find((entity) => entity.entityId === formParentId))
+                      ? 'Inherit from parent location'
+                      : 'Not linked yet'}
+                  </option>
+                  {#each entities.filter((entity) => entity.placeRole === 'geography') as geography (geography.entityId)}
+                    <option value={geography.entityId}>{geography.displayName}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
             <label class="context-field"
-              ><span>Places page</span><select bind:value={formDirectoryVisibility}
-                ><option value="listed">Show as its own Place</option><option
-                  value="nested_only"
-                  disabled={!formParentId}>Show only inside its parent</option
+              ><span>{formPlaceRole === 'geography' ? 'Geography page' : 'Locations page'}</span><select
+                bind:value={formDirectoryVisibility}
+                ><option value="listed"
+                  >Show as its own {formPlaceRole === 'geography' ? 'Geography' : 'Location'}</option
+                ><option value="nested_only" disabled={!formParentId}
+                  >Show only inside its parent {formPlaceRole === 'unclassified' ? 'Place' : formPlaceRole}</option
                 ></select
               ></label
             >

@@ -176,6 +176,7 @@
         commandId: createCimmichContextCommandId('gps-create'),
         displayName,
         geometry,
+        placeRole: 'geography',
         typeKind: geometry && 'north' in geometry ? 'area' : 'point',
       });
       createdEntityId = result.detail?.entity.entityId ?? '';
