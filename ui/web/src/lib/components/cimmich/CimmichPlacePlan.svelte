@@ -9,7 +9,6 @@
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
-    mdiArrowRight,
     mdiBrush,
     mdiCheck,
     mdiClose,
@@ -41,7 +40,7 @@
   interface Props {
     children: CimmichContextEntity[];
     coverSourceAssetId?: string | null;
-    onCreateLocation: () => void;
+    onCreateSublocation: (displayName: string) => Promise<CimmichContextEntity>;
     onOpenPlace: (child: CimmichContextEntity) => void;
     onSave: (input: {
       backgroundKind: CimmichPlacePlan['backgroundKind'];
@@ -58,7 +57,15 @@
     plans: CimmichPlacePlan[];
   }
 
-  let { children, coverSourceAssetId = null, onCreateLocation, onOpenPlace, onSave, parent, plans }: Props = $props();
+  let {
+    children,
+    coverSourceAssetId = null,
+    onCreateSublocation,
+    onOpenPlace,
+    onSave,
+    parent,
+    plans,
+  }: Props = $props();
   let activePlanId = $state('');
   let editing = $state(false);
   let draftName = $state('');
@@ -80,6 +87,9 @@
   } | null>(null);
   let saving = $state(false);
   let saveError = $state('');
+  let addingSublocation = $state(false);
+  let sublocationName = $state('');
+  let creatingSublocation = $state(false);
   let drag = $state<{
     childEntityId: string;
     kind: 'move' | 'resize';
@@ -180,6 +190,8 @@
     selectedChildId = '';
     paintingChildId = '';
     paint = null;
+    addingSublocation = false;
+    sublocationName = '';
     saveError = '';
     editing = true;
   };
@@ -206,6 +218,8 @@
     selectedChildId = '';
     paintingChildId = '';
     paint = null;
+    addingSublocation = false;
+    sublocationName = '';
     saveError = '';
     editing = true;
   };
@@ -216,6 +230,8 @@
     paintingChildId = '';
     paint = null;
     drag = null;
+    addingSublocation = false;
+    sublocationName = '';
     saveError = '';
   };
 
@@ -227,6 +243,26 @@
       brushRadius = PLAN_BRUSH_RADIUS_DEFAULT;
     }
     paint = null;
+  };
+
+  const createSublocation = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const displayName = sublocationName.trim();
+    if (!displayName || creatingSublocation) {
+      return;
+    }
+    creatingSublocation = true;
+    saveError = '';
+    try {
+      const child = await onCreateSublocation(displayName);
+      sublocationName = '';
+      addingSublocation = false;
+      startPainting(child, 'outline');
+    } catch (error) {
+      saveError = error instanceof Error ? error.message : 'The sublocation could not be added.';
+    } finally {
+      creatingSublocation = false;
+    }
   };
 
   const canvasPoint = (event: PointerEvent) => {
@@ -270,7 +306,9 @@
     const finalPoint = canvasPoint(event);
     const previous = paint.points.at(-1);
     const points =
-      finalPoint && (!previous || Math.hypot(finalPoint.x - previous.x, finalPoint.y - previous.y) >= 0.006)
+      paint.points.length < 256 &&
+      finalPoint &&
+      (!previous || Math.hypot(finalPoint.x - previous.x, finalPoint.y - previous.y) >= 0.006)
         ? [...paint.points, finalPoint]
         : paint.points;
     paint = null;
@@ -731,14 +769,29 @@
               aria-hidden="true"
             >
               {#each item.geometry.strokes as stroke, strokeIndex (strokeIndex)}
-                <path
-                  d={paintPath(stroke.points)}
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width={stroke.radius * 2}
-                />
+                {@const maskId = `place-plan-paint-outline-${item.childEntityId}-${strokeIndex}`}
+                <defs>
+                  <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="1" height="1">
+                    <rect width="1" height="1" fill="black" />
+                    <path
+                      d={paintPath(stroke.points)}
+                      fill="none"
+                      stroke="white"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width={stroke.radius * 2 + 0.008}
+                    />
+                    <path
+                      d={paintPath(stroke.points)}
+                      fill="none"
+                      stroke="black"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width={Math.max(stroke.radius * 2 - 0.008, 0.001)}
+                    />
+                  </mask>
+                </defs>
+                <rect width="1" height="1" fill="currentColor" mask={`url(#${maskId})`} />
               {/each}
             </svg>
             <button
@@ -756,7 +809,6 @@
               }}
             >
               <span>{item.childName}</span>
-              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
             </button>
           {:else if item.geometry.kind === 'polygon'}
             <svg
@@ -792,7 +844,6 @@
               }}
             >
               <span>{item.childName}</span>
-              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
             </button>
           {:else}
             <button
@@ -814,7 +865,6 @@
               }}
             >
               <span>{item.childName}</span>
-              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
               {#if editing && item.geometry.kind === 'rect'}
                 <i
                   role="button"
@@ -840,9 +890,36 @@
             <strong>Locations</strong>
             <span>{draftItems.length} placed</span>
           </div>
-          <button class="place-plan__new-location" type="button" onclick={onCreateLocation}>
-            <Icon icon={mdiMapMarkerPlusOutline} size="18" /> New location
-          </button>
+          {#if addingSublocation}
+            <form class="place-plan__add-sublocation" onsubmit={(event) => void createSublocation(event)}>
+              <label>
+                <span class="sr-only">Sublocation name</span>
+                <input
+                  aria-label="Sublocation name"
+                  bind:value={sublocationName}
+                  maxlength="160"
+                  autocomplete="off"
+                  placeholder="Sublocation name"
+                />
+              </label>
+              <button type="submit" disabled={creatingSublocation || !sublocationName.trim()}>
+                {creatingSublocation ? 'Adding…' : 'Add'}
+              </button>
+              <button
+                type="button"
+                aria-label="Cancel adding sublocation"
+                disabled={creatingSublocation}
+                onclick={() => {
+                  addingSublocation = false;
+                  sublocationName = '';
+                }}><Icon icon={mdiClose} size="18" /></button
+              >
+            </form>
+          {:else}
+            <button class="place-plan__new-location" type="button" onclick={() => (addingSublocation = true)}>
+              <Icon icon={mdiMapMarkerPlusOutline} size="18" /> Add sublocation
+            </button>
+          {/if}
           <ul>
             {#each children as child (child.entityId)}
               <li
@@ -1199,7 +1276,7 @@
     stroke-width: 6px;
   }
   .place-plan__outline-line {
-    fill: rgb(var(--immich-primary-color) / 0.1);
+    fill: none;
     stroke: rgb(var(--immich-primary-color));
     stroke-width: 3px;
   }
@@ -1212,7 +1289,6 @@
     filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.13));
   }
   .place-plan__outline-zone--selected .place-plan__outline-line {
-    fill: rgb(var(--immich-primary-color) / 0.22);
     stroke-width: 4px;
   }
   .place-plan__brush-preview,
@@ -1229,32 +1305,36 @@
   }
   .place-plan__paint-zone {
     z-index: 1;
-    color: rgb(var(--immich-primary-color) / 0.45);
-    filter: drop-shadow(0 4px 8px rgb(15 23 42 / 0.12));
+    color: rgb(var(--immich-primary-color));
+    filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.95)) drop-shadow(0 1px 2px rgb(15 23 42 / 0.7));
   }
   .place-plan__paint-zone--selected {
-    color: rgb(var(--immich-primary-color) / 0.7);
-    filter: drop-shadow(0 0 5px rgb(var(--immich-primary-color) / 0.7));
+    color: rgb(56 189 248);
+    filter: drop-shadow(0 0 1px white) drop-shadow(0 0 4px rgb(56 189 248 / 0.9));
   }
   .place-plan__paint-label {
     position: absolute;
     z-index: 3;
     display: inline-flex;
-    min-height: 2rem;
+    min-height: 1.8rem;
     align-items: center;
     gap: 0.3rem;
     transform: translate(-50%, -50%);
-    border: 2px solid rgb(var(--immich-primary-color) / 0.8);
-    border-radius: 999px;
-    padding: 0 0.65rem;
-    color: rgb(30 41 59);
-    background: rgb(255 255 255 / 0.88);
-    box-shadow: 0 5px 16px rgb(15 23 42 / 0.14);
-    backdrop-filter: blur(6px);
-  }
-  :global(.dark) .place-plan__paint-label {
+    border: 0;
+    border-radius: 0.4rem;
+    padding: 0.15rem 0.35rem;
     color: white;
-    background: rgb(15 23 42 / 0.86);
+    background: transparent;
+    text-shadow:
+      0 1px 2px rgb(15 23 42),
+      0 0 5px rgb(15 23 42 / 0.9);
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+  .place-plan__paint-label:hover,
+  .place-plan__paint-label.place-plan__zone--selected {
+    outline: 2px solid rgb(var(--immich-primary-color));
+    background: rgb(15 23 42 / 0.62);
   }
   .place-plan__zone {
     position: absolute;
@@ -1269,15 +1349,17 @@
     border: 2px solid rgb(var(--immich-primary-color) / 0.8);
     border-radius: 0.75rem;
     padding: 0.4rem;
-    color: rgb(30 41 59);
-    background: rgb(255 255 255/0.84);
-    box-shadow: 0 8px 24px rgb(15 23 42/0.12);
-    backdrop-filter: blur(6px);
+    color: white;
+    background: transparent;
+    box-shadow: none;
+    text-shadow:
+      0 1px 2px rgb(15 23 42),
+      0 0 5px rgb(15 23 42 / 0.9);
     user-select: none;
   }
   :global(.dark) .place-plan__zone {
     color: white;
-    background: rgb(15 23 42/0.82);
+    background: transparent;
   }
   .place-plan__zone:hover,
   .place-plan__zone--selected {
@@ -1455,6 +1537,44 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+  }
+  .place-plan__add-sublocation {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.35rem;
+  }
+  .place-plan__add-sublocation input {
+    width: 100%;
+    min-height: 2.5rem;
+    border: 1px solid rgb(203 213 225);
+    border-radius: 0.65rem;
+    padding: 0 0.7rem;
+    color: rgb(15 23 42);
+    background: white;
+    font-size: 0.8rem;
+  }
+  .place-plan__add-sublocation button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    border-radius: 0.65rem;
+    padding: 0 0.65rem;
+    color: white;
+    background: rgb(var(--immich-primary-color));
+    font-size: 0.75rem;
+    font-weight: 750;
+  }
+  .place-plan__add-sublocation button:last-child {
+    padding: 0;
+    color: rgb(71 85 105);
+    background: rgb(241 245 249);
+  }
+  .place-plan__add-sublocation button:disabled {
+    opacity: 0.55;
+  }
+  :global(.dark) .place-plan__add-sublocation input {
+    border-color: rgb(51 65 85);
+    color: white;
+    background: rgb(15 23 42);
   }
   .place-plan__new-location {
     width: 100%;

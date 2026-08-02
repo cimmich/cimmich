@@ -317,14 +317,29 @@
                     aria-hidden="true"
                   >
                     {#each item.geometry.strokes as stroke, strokeIndex (strokeIndex)}
-                      <path
-                        d={paintPath(stroke.points)}
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width={stroke.radius * 2}
-                      />
+                      {@const maskId = `context-detail-plan-paint-outline-${item.planItemId}-${strokeIndex}`}
+                      <defs>
+                        <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="1" height="1">
+                          <rect width="1" height="1" fill="black" />
+                          <path
+                            d={paintPath(stroke.points)}
+                            fill="none"
+                            stroke="white"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width={stroke.radius * 2 + 0.008}
+                          />
+                          <path
+                            d={paintPath(stroke.points)}
+                            fill="none"
+                            stroke="black"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width={Math.max(stroke.radius * 2 - 0.008, 0.001)}
+                          />
+                        </mask>
+                      </defs>
+                      <rect width="1" height="1" fill="currentColor" mask={`url(#${maskId})`} />
                     {/each}
                   </svg>
                   <span class="context-detail-plan-paint-label" style={paintLabelStyle(item.geometry)}
@@ -652,8 +667,11 @@
     border-radius: 9px;
     padding: 4px;
     color: white;
-    background: rgb(2 132 199 / 0.52);
-    box-shadow: 0 5px 16px rgb(0 0 0 / 0.16);
+    background: transparent;
+    box-shadow: none;
+    text-shadow:
+      0 1px 2px rgb(15 23 42),
+      0 0 5px rgb(15 23 42 / 0.9);
     font-size: 0.64rem;
     font-weight: 750;
     text-overflow: ellipsis;
@@ -666,8 +684,8 @@
     width: 100%;
     height: 100%;
     overflow: visible;
-    color: rgb(var(--immich-primary-color) / 0.52);
-    filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.16));
+    color: rgb(var(--immich-primary-color));
+    filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.95)) drop-shadow(0 1px 2px rgb(15 23 42 / 0.7));
     pointer-events: none;
   }
   .context-detail-plan-outline {
@@ -689,7 +707,7 @@
     stroke-width: 4px;
   }
   .context-detail-plan-outline-line {
-    fill: rgb(var(--immich-primary-color) / 0.12);
+    fill: none;
     stroke: rgb(125 211 252);
     stroke-width: 2px;
   }
@@ -697,14 +715,15 @@
     position: absolute;
     z-index: 2;
     transform: translate(-50%, -50%);
-    border: 1px solid rgb(var(--immich-primary-color) / 0.75);
-    border-radius: 999px;
-    padding: 0.2rem 0.5rem;
-    color: rgb(30 41 59);
-    background: rgb(255 255 255 / 0.84);
-    box-shadow: 0 4px 12px rgb(15 23 42 / 0.12);
-    font-size: 0.68rem;
-    font-weight: 750;
+    border: 0;
+    padding: 0.15rem 0.3rem;
+    color: white;
+    background: transparent;
+    text-shadow:
+      0 1px 2px rgb(15 23 42),
+      0 0 5px rgb(15 23 42 / 0.9);
+    font-size: 0.72rem;
+    font-weight: 800;
     pointer-events: none;
   }
 
