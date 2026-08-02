@@ -2928,35 +2928,41 @@
               {@const childNames = placeChildNames(child.entityId)}
               {@const childCoverAssetId = cimmichPlaceChildCoverAssetId(child, selected.subtreeAssets ?? [])}
               <a
-                class="group flex min-h-44 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
+                class="context-place-child-card group relative min-h-44 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 transition hover:border-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
                 href={getContextDetailHref(page.url, 'places', child.entityId, child.displayName)}
               >
-                <div class="relative h-28 overflow-hidden bg-gray-100 dark:bg-gray-800">
-                  {#if childCoverAssetId}
-                    <img
-                      class="size-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                      src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}
-                      alt=""
-                      loading="lazy"
-                    />
-                  {:else}
-                    <span class="grid size-full place-items-center text-gray-400 dark:text-gray-500"
-                      ><Icon icon={mdiMapMarkerOutline} size="24" /></span
-                    >
-                  {/if}
-                  <span
-                    class={[
-                      'absolute top-3 right-3 rounded-full px-2.5 py-1 text-xs font-semibold backdrop-blur-sm',
-                      childCoverAssetId
-                        ? 'bg-black/60 text-white'
-                        : 'bg-white/80 text-gray-600 dark:bg-black/35 dark:text-gray-300',
-                    ]}>{child.subtreeAssetCount ?? child.assetCount} photos</span
+                {#if childCoverAssetId}
+                  <img
+                    class="absolute inset-0 size-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}
+                    alt=""
+                    loading="lazy"
+                  />
+                {:else}
+                  <span class="absolute inset-0 grid place-items-center text-gray-400 dark:text-gray-500"
+                    ><Icon icon={mdiMapMarkerOutline} size="28" /></span
                   >
-                </div>
-                <div class="p-4">
-                  <h3 class="font-semibold">{child.displayName}</h3>
+                {/if}
+                <span
+                  class={[
+                    'pointer-events-none absolute inset-0',
+                    childCoverAssetId
+                      ? 'bg-gradient-to-t from-black/85 via-black/10 to-black/15'
+                      : 'bg-gradient-to-t from-black/65 via-transparent to-transparent',
+                  ]}
+                ></span>
+                <span
+                  class={[
+                    'absolute top-3 right-3 rounded-full px-2.5 py-1 text-xs font-semibold backdrop-blur-sm',
+                    childCoverAssetId
+                      ? 'bg-black/60 text-white'
+                      : 'bg-white/80 text-gray-600 dark:bg-black/35 dark:text-gray-300',
+                  ]}>{child.subtreeAssetCount ?? child.assetCount} photos</span
+                >
+                <div class="absolute inset-x-0 bottom-0 p-4 text-white drop-shadow-sm">
+                  <h3 class="text-base font-semibold">{child.displayName}</h3>
                   {#if childNames}
-                    <p class="mt-1 truncate text-xs text-gray-500" title={childNames}>{childNames}</p>
+                    <p class="mt-0.5 truncate text-xs text-white/75" title={childNames}>{childNames}</p>
                   {/if}
                 </div>
               </a>
@@ -3140,12 +3146,17 @@
             </button>
           {/if}
           <button
-            class="context-primary-button context-profile-action"
+            class={[
+              'context-profile-action',
+              activeFamily === 'places' ? 'context-profile-add-media' : 'context-primary-button',
+            ]}
             type="button"
             aria-label="Add media"
+            title="Add media"
             onclick={openAssetPicker}
           >
-            <Icon icon={mdiLinkPlus} size="19" /> <span>Add media</span>
+            <Icon icon={mdiLinkPlus} size="19" />
+            {#if activeFamily !== 'places'}<span>Add media</span>{/if}
           </button>
         {/if}
       {:else if activeDetailTab === 'journey'}
@@ -5922,6 +5933,43 @@
     align-self: center;
     flex: 0 0 auto;
     margin-left: 0.75rem;
+  }
+
+  .context-profile-add-media {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    border: 1px solid rgb(229 231 235);
+    border-radius: 0.75rem;
+    background: white;
+    color: rgb(75 85 99);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    transition:
+      background 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .context-profile-add-media:hover,
+  .context-profile-add-media:focus-visible {
+    border-color: rgb(var(--immich-primary) / 0.45);
+    background: rgb(243 244 246);
+    color: rgb(var(--immich-primary));
+    outline: none;
+  }
+
+  :global(.dark) .context-profile-add-media {
+    border-color: rgb(55 65 81);
+    background: rgb(17 24 39);
+    color: rgb(209 213 219);
+  }
+
+  :global(.dark) .context-profile-add-media:hover,
+  :global(.dark) .context-profile-add-media:focus-visible {
+    border-color: rgb(var(--immich-primary) / 0.55);
+    background: rgb(31 41 55);
+    color: rgb(var(--immich-primary));
   }
 
   .context-place-photo-options {

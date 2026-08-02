@@ -26,7 +26,9 @@ describe('Place, Thing and Event profile information architecture', () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
     expect(source).toContain('class="context-profile-rail');
-    expect(source).toContain('<span>Add media</span>');
+    expect(source).toContain("activeFamily === 'places' ? 'context-profile-add-media' : 'context-primary-button'");
+    expect(source).toContain("{#if activeFamily !== 'places'}<span>Add media</span>{/if}");
+    expect(source).toContain('title="Add media"');
     expect(source).toContain('<span>Add connection</span>');
     expect(source).toContain("activeFamily === 'events'");
     expect(source).toContain("? 'Add event'");
@@ -41,6 +43,16 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain('class="context-editor-record"');
     expect(source).toContain('Delete…');
     expect(source).not.toContain('More actions for');
+  });
+
+  it('renders Place subsections as full-bleed image cards with overlaid labels', async () => {
+    const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+
+    expect(source).toContain('class="context-place-child-card group relative');
+    expect(source).toContain('class="absolute inset-0 size-full object-cover');
+    expect(source).toContain("'bg-gradient-to-t from-black/85 via-black/10 to-black/15'");
+    expect(source).toContain('class="absolute inset-x-0 bottom-0 p-4 text-white drop-shadow-sm"');
+    expect(source).not.toContain('class="relative h-28 overflow-hidden bg-gray-100 dark:bg-gray-800"');
   });
 
   it('gives Places a focused map tab while retaining a photo-led hero', async () => {
@@ -165,7 +177,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     );
     expect(browser).not.toContain('>{contextAssociationLabel(entityKind, asset.associationKind)}</span');
     expect(browser).toContain(".join(' · ')");
-    expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
+    expect(browser).toContain('class="mt-0.5 truncate text-xs text-white/75"');
     expect(browser).toContain('<CimmichEntityMediaActions');
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
