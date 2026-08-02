@@ -7,7 +7,9 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('keeps each profile destination compact, reloadable and keyboard navigable', async () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(source).toContain("type ContextDetailTab = 'connections' | 'documents' | 'map' | 'plan' | 'photos';");
+    expect(source).toContain(
+      "type ContextDetailTab = 'connections' | 'documents' | 'journey' | 'map' | 'plan' | 'photos';",
+    );
     expect(source).toContain("page.url.searchParams.get('tab')");
     expect(source).toContain("url.searchParams.delete('tab')");
     expect(source).toContain("url.searchParams.set('tab', tab)");
@@ -15,6 +17,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End']");
     expect(source).toContain("label: 'Map', value: 'map'");
     expect(source).toContain("label: 'Plan', value: 'plan'");
+    expect(source).toContain("label: 'Journey', value: 'journey'");
     expect(source).toContain("label: 'Connections', value: 'connections'");
     expect(source).toContain("label: 'Documents', value: 'documents'");
   });

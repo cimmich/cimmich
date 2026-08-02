@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 116. Schema 76 adds
+patch level 1. Current post-submission source is schema 117. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -138,6 +138,11 @@ Schema 116 separates two Plan authoring gestures: Outline remains one closed
 polygon, while Paint stores bounded multi-stroke brush coverage so the same
 child Location can occupy disconnected parts of one Plan without inventing a
 connecting area.
+Schema 117 gives Activity Events one normalized optional recurrence rule and
+gives Trip location relations bounded stop positions. Recurrence remains inside
+the Event's honest exact, approximate or open-ended date window; Trip stops
+remain ordinary Place connections with the existing correction and Undo
+lifecycle instead of forming a second route-membership truth.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

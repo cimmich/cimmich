@@ -66,6 +66,8 @@
   import {
     mdiArrowLeft,
     mdiArrowRight,
+    mdiArrowDown,
+    mdiArrowUp,
     mdiCalendarBlankOutline,
     mdiCheck,
     mdiChevronRight,
@@ -192,6 +194,7 @@
   let undoLabel = $state('Undo last change');
   let statusCommandId = $state('');
   let relationCommandId = $state('');
+  let relationPickerPurpose = $state<'connection' | 'trip-stop'>('connection');
   let relationKind = $state('related');
   let relationTargetKind = $state<'event' | 'object' | 'person' | 'pet' | 'place'>('place');
   let relationTargetId = $state('');
@@ -236,6 +239,10 @@
   let formDatePrecision = $state<CimmichContextDatePrecision>('unknown');
   let formDateStart = $state('');
   let formDateEnd = $state('');
+  let formRecurrenceEnabled = $state(false);
+  let formRecurrenceFrequency = $state<'daily' | 'monthly' | 'weekly' | 'yearly'>('weekly');
+  let formRecurrenceInterval = $state(1);
+  let formRecurrenceWeekdays = $state<number[]>([1]);
   let formParentId = $state('');
   let formPlaceRole = $state<CimmichPlaceRole>('location');
   let formGeographyEntityId = $state('');
@@ -463,9 +470,22 @@
       })),
   );
   const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
-  type ContextDetailTab = 'connections' | 'documents' | 'map' | 'plan' | 'photos';
+  const selectedEventStops = $derived.by(() =>
+    (selected?.relations ?? [])
+      .filter((relation) => relation.relationKind === 'location' && relation.targetKind === 'place')
+      .sort(
+        (left, right) =>
+          (left.sortOrder ?? Number.MAX_SAFE_INTEGER) - (right.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+          left.linkedAt.localeCompare(right.linkedAt) ||
+          left.targetName.localeCompare(right.targetName),
+      ),
+  );
+  type ContextDetailTab = 'connections' | 'documents' | 'journey' | 'map' | 'plan' | 'photos';
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
     { icon: mdiImageMultipleOutline, label: 'Photos', value: 'photos' },
+    ...(activeFamily === 'events' && selected?.entity.typeKind === 'trip'
+      ? [{ icon: mdiMapMarkerOutline, label: 'Journey', value: 'journey' } as const]
+      : []),
     ...(activeFamily === 'places' ? [{ icon: mdiMapOutline, label: 'Map', value: 'map' } as const] : []),
     ...(activeFamily === 'places' && selected?.entity.placeRole === 'location'
       ? [{ icon: mdiFloorPlan, label: 'Plan', value: 'plan' } as const]
@@ -867,6 +887,10 @@
     formDateStart = '';
     formDateEnd = '';
     formDatePrecision = 'unknown';
+    formRecurrenceEnabled = false;
+    formRecurrenceFrequency = 'weekly';
+    formRecurrenceInterval = 1;
+    formRecurrenceWeekdays = [1];
     formParentId = '';
     formPlaceRole = 'location';
     formGeographyEntityId = '';
@@ -981,6 +1005,10 @@
     formDateStart = entity.dateStart ?? '';
     formDateEnd = entity.dateEnd ?? '';
     formDatePrecision = entity.datePrecision;
+    formRecurrenceEnabled = Boolean(entity.recurrence);
+    formRecurrenceFrequency = entity.recurrence?.frequency ?? 'weekly';
+    formRecurrenceInterval = entity.recurrence?.interval ?? 1;
+    formRecurrenceWeekdays = entity.recurrence?.weekdays ?? [1];
     formParentId = entity.parentEntityId ?? '';
     formPlaceRole = entity.placeRole ?? 'unclassified';
     formGeographyEntityId = entity.geographyEntityId ?? '';
@@ -1305,6 +1333,17 @@
     if (!formName.trim()) {
       return false;
     }
+    if (
+      entityKind === 'event' &&
+      formType === 'activity' &&
+      formRecurrenceEnabled &&
+      (!Number.isInteger(formRecurrenceInterval) ||
+        formRecurrenceInterval < 1 ||
+        formRecurrenceInterval > 99 ||
+        (formRecurrenceFrequency === 'weekly' && formRecurrenceWeekdays.length === 0))
+    ) {
+      return false;
+    }
     if (entityKind !== 'place' || formType === 'unlocated') {
       return true;
     }
@@ -1359,6 +1398,16 @@
           entityKind === 'place' && formPlaceRole === 'location' ? formGeographyEntityId || null : undefined,
         parentEntityId: entityKind === 'place' ? formParentId || null : undefined,
         placeRole: entityKind === 'place' ? formPlaceRole : undefined,
+        recurrence:
+          entityKind === 'event' && formType === 'activity' && formRecurrenceEnabled
+            ? {
+                frequency: formRecurrenceFrequency,
+                interval: formRecurrenceInterval,
+                ...(formRecurrenceFrequency === 'weekly' ? { weekdays: formRecurrenceWeekdays } : {}),
+              }
+            : entityKind === 'event'
+              ? null
+              : undefined,
         typeKind: formType,
       };
       const mutation = resolveContextEditorMutation(editorMode, editorTarget);
@@ -2054,7 +2103,12 @@
         const family = `${targetKind}s` as CimmichContextFamily;
         const contextEntities = await getCimmichContextEntities(family, { limit: 500 });
         relationTargets = contextEntities
-          .filter((entity) => entity.entityId !== selected?.entity.entityId)
+          .filter(
+            (entity) =>
+              entity.entityId !== selected?.entity.entityId &&
+              (relationPickerPurpose !== 'trip-stop' ||
+                !selectedEventStops.some((stop) => stop.targetId === entity.entityId)),
+          )
           .map((entity) => ({ id: entity.entityId, name: entity.displayName }));
       }
     } catch (error_) {
@@ -2066,12 +2120,25 @@
   };
 
   const openRelationPicker = () => {
+    relationPickerPurpose = 'connection';
     const draft = defaultContextRelationDraft(entityKind, relationKinds);
     relationKind = draft.relationKind;
     relationTargetKind = draft.relationTargetKind;
     relationTargetId = '';
     relationTargetQuery = '';
     relationCommandId = createCimmichContextCommandId('relation-attach');
+    relationError = '';
+    showRelationPicker = true;
+    void loadRelationTargets();
+  };
+
+  const openTripStopPicker = () => {
+    relationPickerPurpose = 'trip-stop';
+    relationKind = 'location';
+    relationTargetKind = 'place';
+    relationTargetId = '';
+    relationTargetQuery = '';
+    relationCommandId = createCimmichContextCommandId('trip-stop-attach');
     relationError = '';
     showRelationPicker = true;
     void loadRelationTargets();
@@ -2084,11 +2151,28 @@
     isSaving = true;
     relationError = '';
     try {
+      const requestedRelations =
+        relationPickerPurpose === 'trip-stop'
+          ? [
+              ...selectedEventStops.map((stop, sortOrder) => ({
+                relationKind: 'location',
+                sortOrder,
+                targetId: stop.targetId,
+                targetKind: 'place',
+              })),
+              {
+                relationKind: 'location',
+                sortOrder: selectedEventStops.length,
+                targetId: relationTargetId,
+                targetKind: 'place',
+              },
+            ]
+          : [{ relationKind, targetId: relationTargetId, targetKind: targetKindForRelation(relationKind) }];
       const result = await attachCimmichContextRelations(
         activeFamily,
         selected.entity.entityId,
         relationCommandId || createCimmichContextCommandId('relation-attach'),
-        [{ relationKind, targetId: relationTargetId, targetKind: targetKindForRelation(relationKind) }],
+        requestedRelations,
       );
       relationCommandId = '';
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
@@ -2102,6 +2186,48 @@
     } finally {
       isSaving = false;
     }
+  };
+
+  const moveTripStop = async (index: number, direction: -1 | 1) => {
+    if (!selected) {
+      return;
+    }
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= selectedEventStops.length) {
+      return;
+    }
+    const reordered = [...selectedEventStops];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    isSaving = true;
+    error = null;
+    try {
+      const result = await attachCimmichContextRelations(
+        activeFamily,
+        selected.entity.entityId,
+        createCimmichContextCommandId('trip-stops-reorder'),
+        reordered.map((relation, sortOrder) => ({
+          relationKind: 'location',
+          sortOrder,
+          targetId: relation.targetId,
+          targetKind: 'place',
+        })),
+      );
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('trip-stops-reorder-undo') : '';
+      undoLabel = 'Undo stop order';
+      await loadEntities();
+      selected = result.detail;
+    } catch (error_) {
+      error = asError(error_);
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  const toggleRecurrenceWeekday = (weekday: number) => {
+    formRecurrenceWeekdays = formRecurrenceWeekdays.includes(weekday)
+      ? formRecurrenceWeekdays.filter((candidate) => candidate !== weekday)
+      : [...formRecurrenceWeekdays, weekday].sort();
   };
 
   const removeRelation = async (relationId: string) => {
@@ -2602,6 +2728,7 @@
                 >{activeFamily === 'places' ? placeDetailAssetCount : selected.assets.length}</span
               >{/if}
             {#if tab.value === 'connections'}<span>{selected.relations.length}</span>{/if}
+            {#if tab.value === 'journey'}<span>{selectedEventStops.length}</span>{/if}
           </button>
         {/each}
       </div>
@@ -2633,6 +2760,15 @@
             <Icon icon={mdiLinkPlus} size="19" /> <span>Add media</span>
           </button>
         {/if}
+      {:else if activeDetailTab === 'journey'}
+        <button
+          class="context-primary-button context-profile-action"
+          type="button"
+          aria-label="Add trip stop"
+          onclick={openTripStopPicker}
+        >
+          <Icon icon={mdiMapMarkerOutline} size="19" /> <span>Add stop</span>
+        </button>
       {:else if activeDetailTab === 'connections'}
         <button
           class="context-secondary-button context-profile-action"
@@ -2863,6 +2999,66 @@
               </article>
             {/each}
           </div>
+        {/if}
+      </div>
+    {:else if activeDetailTab === 'journey' && selected.entity.typeKind === 'trip'}
+      <div class="context-journey" role="tabpanel" aria-label="Journey">
+        <div class="context-journey-heading">
+          <div>
+            <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">Route</p>
+            <h2>Build the journey in order</h2>
+            <p>Stops are Places, not text labels—so each one stays useful across your whole library.</p>
+          </div>
+          <span>{selectedEventStops.length} {selectedEventStops.length === 1 ? 'stop' : 'stops'}</span>
+        </div>
+        {#if selectedEventStops.length === 0}
+          <button class="context-journey-empty" type="button" onclick={openTripStopPicker}>
+            <span><Icon icon={mdiMapMarkerOutline} size="24" /></span>
+            <strong>Add the first stop</strong>
+            <small>Choose a Place now; reorder or remove it at any time.</small>
+          </button>
+        {:else}
+          <ol class="context-stop-list">
+            {#each selectedEventStops as stop, index (stop.relationId)}
+              <li>
+                <div class="context-stop-number" aria-hidden="true">{index + 1}</div>
+                <div class="context-stop-copy">
+                  <strong>{stop.targetName}</strong>
+                  <small
+                    >{index === 0
+                      ? 'Start'
+                      : index === selectedEventStops.length - 1
+                        ? 'Final stop'
+                        : `Stop ${index + 1}`}</small
+                  >
+                </div>
+                <div class="context-stop-actions">
+                  <button
+                    type="button"
+                    aria-label={`Move ${stop.targetName} earlier`}
+                    disabled={isSaving || index === 0}
+                    onclick={() => void moveTripStop(index, -1)}><Icon icon={mdiArrowUp} size="18" /></button
+                  ><button
+                    type="button"
+                    aria-label={`Move ${stop.targetName} later`}
+                    disabled={isSaving || index === selectedEventStops.length - 1}
+                    onclick={() => void moveTripStop(index, 1)}><Icon icon={mdiArrowDown} size="18" /></button
+                  ><button
+                    class="context-stop-remove"
+                    type="button"
+                    aria-label={`Remove ${stop.targetName} from trip`}
+                    disabled={isSaving}
+                    onclick={() => void removeRelation(stop.relationId)}
+                    ><Icon icon={mdiTrashCanOutline} size="18" /></button
+                  >
+                </div>
+              </li>
+            {/each}
+          </ol>
+          <p class="context-journey-note">
+            Stop media remains in the separate Stops photo lane, so the defining story never gets muddled with route
+            context.
+          </p>
         {/if}
       </div>
     {:else if activeDetailTab === 'map' && activeFamily === 'places'}
@@ -3184,6 +3380,53 @@
                 /></label
               >
             </div>
+            {#if formType === 'activity'}
+              <section class="context-recurrence-card" aria-label="Activity recurrence">
+                <label class="context-recurrence-toggle">
+                  <input type="checkbox" bind:checked={formRecurrenceEnabled} />
+                  <span>
+                    <strong>Repeats</strong>
+                    <small>Keep one Activity while its rhythm stays explicit.</small>
+                  </span>
+                </label>
+                {#if formRecurrenceEnabled}
+                  <div class="context-recurrence-rule">
+                    <label class="context-field">
+                      <span>Every</span>
+                      <input bind:value={formRecurrenceInterval} min="1" max="99" step="1" type="number" />
+                    </label>
+                    <label class="context-field">
+                      <span>Period</span>
+                      <select bind:value={formRecurrenceFrequency}>
+                        <option value="daily">Day</option>
+                        <option value="weekly">Week</option>
+                        <option value="monthly">Month</option>
+                        <option value="yearly">Year</option>
+                      </select>
+                    </label>
+                  </div>
+                  {#if formRecurrenceFrequency === 'weekly'}
+                    <fieldset class="context-weekday-picker">
+                      <legend>On</legend>
+                      <div>
+                        {#each [{ value: 1, label: 'M' }, { value: 2, label: 'T' }, { value: 3, label: 'W' }, { value: 4, label: 'T' }, { value: 5, label: 'F' }, { value: 6, label: 'S' }, { value: 0, label: 'S' }] as weekday (weekday.value)}
+                          <button
+                            class:context-weekday--active={formRecurrenceWeekdays.includes(weekday.value)}
+                            type="button"
+                            aria-label={`${formRecurrenceWeekdays.includes(weekday.value) ? 'Remove' : 'Add'} ${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday.value]}`}
+                            aria-pressed={formRecurrenceWeekdays.includes(weekday.value)}
+                            onclick={() => toggleRecurrenceWeekday(weekday.value)}>{weekday.label}</button
+                          >
+                        {/each}
+                      </div>
+                      {#if formRecurrenceWeekdays.length === 0}
+                        <p role="alert">Choose at least one day.</p>
+                      {/if}
+                    </fieldset>
+                  {/if}
+                {/if}
+              </section>
+            {/if}
           {/if}
           {#if entityKind === 'place'}
             {#if formType === 'unlocated'}
@@ -3847,8 +4090,12 @@
     >
       <div class="flex items-center justify-between gap-4">
         <div>
-          <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">Connected context</p>
-          <h2 class="mt-1 text-2xl font-semibold" id="context-relation-title">Add connection</h2>
+          <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">
+            {relationPickerPurpose === 'trip-stop' ? 'Journey' : 'Connected context'}
+          </p>
+          <h2 class="mt-1 text-2xl font-semibold" id="context-relation-title">
+            {relationPickerPurpose === 'trip-stop' ? 'Add a stop' : 'Add connection'}
+          </h2>
         </div>
         <button
           class="context-icon-button"
@@ -3859,17 +4106,17 @@
         >
       </div>
       <div class="mt-7 grid gap-5">
-        <label class="context-field"
-          ><span>Relationship</span><select
-            bind:value={relationKind}
-            onchange={() => {
-              relationTargetKind = defaultContextRelationDraft(entityKind, [relationKind]).relationTargetKind;
-              void loadRelationTargets();
-            }}
-            >{#each relationKinds as kind (kind)}<option value={kind}>{humanizeContextKind(kind)}</option
-              >{/each}</select
-          ></label
-        >
+        {#if relationPickerPurpose === 'connection'}<label class="context-field"
+            ><span>Relationship</span><select
+              bind:value={relationKind}
+              onchange={() => {
+                relationTargetKind = defaultContextRelationDraft(entityKind, [relationKind]).relationTargetKind;
+                void loadRelationTargets();
+              }}
+              >{#each relationKinds as kind (kind)}<option value={kind}>{humanizeContextKind(kind)}</option
+                >{/each}</select
+            ></label
+          >{/if}
         {#if relationKind === 'related'}
           <label class="context-field"
             ><span>Connect to</span><select bind:value={relationTargetKind} onchange={() => void loadRelationTargets()}
@@ -3949,7 +4196,8 @@
             type="button"
             disabled={isSaving || !relationTargetId}
             onclick={() => void addRelation()}
-            ><Icon icon={mdiLinkPlus} size="19" /> {isSaving ? 'Adding…' : 'Add connection'}</button
+            ><Icon icon={relationPickerPurpose === 'trip-stop' ? mdiMapMarkerOutline : mdiLinkPlus} size="19" />
+            {isSaving ? 'Adding…' : relationPickerPurpose === 'trip-stop' ? 'Add stop' : 'Add connection'}</button
           >
         </div>
       </div>
@@ -4171,6 +4419,96 @@
   }
 
   :global(.dark) .context-event-form-guidance p {
+    color: rgb(209 213 219);
+  }
+
+  .context-recurrence-card {
+    border: 1px solid rgb(229 231 235);
+    border-radius: 20px;
+    background: rgb(249 250 251);
+    padding: 16px;
+  }
+
+  :global(.dark) .context-recurrence-card {
+    border-color: rgb(55 65 81);
+    background: rgb(31 41 55 / 0.55);
+  }
+
+  .context-recurrence-toggle {
+    display: flex;
+    min-height: 44px;
+    cursor: pointer;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .context-recurrence-toggle input {
+    width: 20px;
+    height: 20px;
+    accent-color: rgb(var(--immich-primary));
+  }
+
+  .context-recurrence-toggle strong,
+  .context-recurrence-toggle small {
+    display: block;
+  }
+
+  .context-recurrence-toggle small {
+    margin-top: 2px;
+    color: rgb(107 114 128);
+    font-size: 0.75rem;
+  }
+
+  .context-recurrence-rule {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.45fr) minmax(150px, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .context-weekday-picker {
+    margin-top: 14px;
+  }
+
+  .context-weekday-picker legend {
+    margin-bottom: 7px;
+    color: rgb(75 85 99);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .context-weekday-picker > div {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(38px, 1fr));
+    gap: 6px;
+  }
+
+  .context-weekday-picker button {
+    min-height: 40px;
+    border: 1px solid rgb(209 213 219);
+    border-radius: 999px;
+    color: rgb(75 85 99);
+    font-size: 0.75rem;
+    font-weight: 800;
+  }
+
+  .context-weekday-picker button:hover,
+  .context-weekday-picker button:focus-visible,
+  .context-weekday-picker .context-weekday--active {
+    border-color: rgb(var(--immich-primary) / 0.55);
+    background: rgb(var(--immich-primary) / 0.11);
+    color: rgb(var(--immich-primary));
+    outline: none;
+  }
+
+  .context-weekday-picker p {
+    margin-top: 8px;
+    color: rgb(185 28 28);
+    font-size: 0.75rem;
+  }
+
+  :global(.dark) .context-weekday-picker button {
+    border-color: rgb(75 85 99);
     color: rgb(209 213 219);
   }
 
@@ -4490,6 +4828,165 @@
     background: rgb(var(--immich-primary) / 0.1);
     color: rgb(var(--immich-primary));
     outline: none;
+  }
+
+  .context-journey {
+    margin-top: 28px;
+  }
+
+  .context-journey-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .context-journey-heading h2 {
+    margin-top: 4px;
+    font-size: 1.25rem;
+    font-weight: 650;
+  }
+
+  .context-journey-heading p:not(:first-child),
+  .context-journey-note {
+    margin-top: 5px;
+    max-width: 620px;
+    color: rgb(107 114 128);
+    font-size: 0.8rem;
+    line-height: 1.55;
+  }
+
+  .context-journey-heading > span {
+    flex: none;
+    color: rgb(107 114 128);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .context-journey-empty {
+    display: grid;
+    width: 100%;
+    min-height: 190px;
+    margin-top: 18px;
+    place-items: center;
+    align-content: center;
+    border: 1px dashed rgb(209 213 219);
+    border-radius: 28px;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .context-journey-empty > span {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 16px;
+    background: rgb(var(--immich-primary) / 0.1);
+    color: rgb(var(--immich-primary));
+  }
+
+  .context-journey-empty strong {
+    margin-top: 12px;
+  }
+
+  .context-journey-empty small {
+    margin-top: 4px;
+    color: rgb(107 114 128);
+  }
+
+  .context-journey-empty:hover,
+  .context-journey-empty:focus-visible {
+    border-color: rgb(var(--immich-primary) / 0.55);
+    background: rgb(var(--immich-primary) / 0.035);
+    outline: none;
+  }
+
+  .context-stop-list {
+    display: grid;
+    margin-top: 18px;
+  }
+
+  .context-stop-list li {
+    position: relative;
+    display: grid;
+    min-height: 72px;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .context-stop-list li:not(:last-child)::after {
+    position: absolute;
+    top: 57px;
+    bottom: -15px;
+    left: 20px;
+    width: 2px;
+    background: rgb(var(--immich-primary) / 0.19);
+    content: '';
+  }
+
+  .context-stop-number {
+    z-index: 1;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid rgb(var(--immich-primary) / 0.32);
+    border-radius: 14px;
+    background: white;
+    color: rgb(var(--immich-primary));
+    font-size: 0.78rem;
+    font-weight: 850;
+  }
+
+  :global(.dark) .context-stop-number {
+    background: rgb(17 24 39);
+  }
+
+  .context-stop-copy strong,
+  .context-stop-copy small {
+    display: block;
+  }
+
+  .context-stop-copy small {
+    margin-top: 3px;
+    color: rgb(107 114 128);
+    font-size: 0.72rem;
+  }
+
+  .context-stop-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .context-stop-actions button {
+    display: grid;
+    width: 40px;
+    min-height: 40px;
+    place-items: center;
+    border-radius: 999px;
+    color: rgb(75 85 99);
+  }
+
+  .context-stop-actions button:hover:not(:disabled),
+  .context-stop-actions button:focus-visible:not(:disabled) {
+    background: rgb(243 244 246);
+    color: rgb(var(--immich-primary));
+    outline: none;
+  }
+
+  .context-stop-actions button:disabled {
+    opacity: 0.28;
+  }
+
+  .context-stop-actions .context-stop-remove:hover:not(:disabled) {
+    background: rgb(254 242 242);
+    color: rgb(185 28 28);
+  }
+
+  .context-journey-note {
+    margin-top: 18px;
   }
 
   .context-relation-group {
