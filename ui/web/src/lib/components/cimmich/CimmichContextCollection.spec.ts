@@ -86,8 +86,8 @@ describe('Cimmich context collections', () => {
     expect(getByRole('link', { name: /Old camera/ })).toHaveAttribute('href', '/cimmich/test/object_device');
   });
 
-  it('renders Events as a compact newest-first photo collection', () => {
-    const { getAllByRole, getByTestId, getByText, queryByRole } = render(CimmichContextCollection, {
+  it('renders Events as a year-grouped newest-first memory timeline', () => {
+    const { getAllByRole, getByRole, getByTestId, getByText } = render(CimmichContextCollection, {
       entities: [
         entity({
           dateStart: '2024-07-01',
@@ -111,8 +111,8 @@ describe('Cimmich context collections', () => {
       onOpen: vi.fn(),
     });
 
-    expect(queryByRole('heading', { name: '2024' })).not.toBeInTheDocument();
-    expect(queryByRole('heading', { name: '2023' })).not.toBeInTheDocument();
+    expect(getByRole('heading', { name: '2024' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: '2023' })).toBeInTheDocument();
     expect(getByText('Corfu trip')).toBeInTheDocument();
     expect(getByText('Summer football')).toBeInTheDocument();
     expect(getByTestId('cimmich-event-contact-sheet').querySelectorAll('img')).toHaveLength(4);
@@ -120,6 +120,28 @@ describe('Cimmich context collections', () => {
       expect.stringContaining('Corfu trip'),
       expect.stringContaining('Summer football'),
     ]);
+  });
+
+  it('starts an empty Events collection from photos while preserving a metadata-first path', async () => {
+    const onAdd = vi.fn();
+    const onEventStartFromPhotos = vi.fn();
+    const { getByRole, getByText } = render(CimmichContextCollection, {
+      entities: [],
+      entityHref,
+      family: 'events',
+      onAdd,
+      onEventStartFromPhotos,
+      onOpen: vi.fn(),
+    });
+
+    expect(getByText('Bring the first memory together')).toBeInTheDocument();
+    expect(getByText('Recurring activity')).toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Choose photos' }));
+    expect(onEventStartFromPhotos).toHaveBeenCalledOnce();
+
+    await fireEvent.click(getByRole('button', { name: 'Start without photos' }));
+    expect(onAdd).toHaveBeenCalledOnce();
   });
 
   it('renders the controlled Places view and keeps GPS mounted after first entry', async () => {
