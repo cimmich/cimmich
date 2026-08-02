@@ -11,6 +11,7 @@
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
   import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from './media-card-selection';
+  import { cimmichPlaceChildCoverAssetId } from './place-child-cover';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
@@ -2387,22 +2388,39 @@
           <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {#each selectedPlaceChildren as child (child.entityId)}
               {@const childNames = placeChildNames(child.entityId)}
+              {@const childCoverAssetId = cimmichPlaceChildCoverAssetId(child, selected.subtreeAssets ?? [])}
               <a
-                class="rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
+                class="group flex min-h-44 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-primary hover:shadow-sm focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-800 dark:bg-gray-900"
                 href={getContextDetailHref(page.url, 'places', child.entityId, child.displayName)}
               >
-                <div class="flex items-start justify-between gap-3">
-                  <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
-                    ><Icon icon={mdiMapMarkerOutline} size="20" /></span
-                  >
-                  <span class="text-xs font-semibold text-gray-500"
-                    >{child.subtreeAssetCount ?? child.assetCount} photos</span
+                <div class="relative h-28 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                  {#if childCoverAssetId}
+                    <img
+                      class="size-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                      src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}
+                      alt=""
+                      loading="lazy"
+                    />
+                  {:else}
+                    <span class="grid size-full place-items-center text-gray-400 dark:text-gray-500"
+                      ><Icon icon={mdiMapMarkerOutline} size="24" /></span
+                    >
+                  {/if}
+                  <span
+                    class={[
+                      'absolute top-3 right-3 rounded-full px-2.5 py-1 text-xs font-semibold backdrop-blur-sm',
+                      childCoverAssetId
+                        ? 'bg-black/60 text-white'
+                        : 'bg-white/80 text-gray-600 dark:bg-black/35 dark:text-gray-300',
+                    ]}>{child.subtreeAssetCount ?? child.assetCount} photos</span
                   >
                 </div>
-                <h3 class="mt-3 font-semibold">{child.displayName}</h3>
-                {#if childNames}
-                  <p class="mt-1 truncate text-xs text-gray-500" title={childNames}>{childNames}</p>
-                {/if}
+                <div class="p-4">
+                  <h3 class="font-semibold">{child.displayName}</h3>
+                  {#if childNames}
+                    <p class="mt-1 truncate text-xs text-gray-500" title={childNames}>{childNames}</p>
+                  {/if}
+                </div>
               </a>
             {/each}
           </div>

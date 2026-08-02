@@ -151,6 +151,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('{#if selectedPlaceLineage.length > 1}');
     expect(browser).not.toContain('<span class="font-semibold">Geography</span>');
     expect(browser).toContain('const placeChildNames');
+    expect(browser).toContain('cimmichPlaceChildCoverAssetId(child, selected.subtreeAssets ?? [])');
+    expect(browser).toContain('src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}');
     expect(browser).toContain(".join(' · ')");
     expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
     expect(browser).toContain('<CimmichEntityMediaActions');
