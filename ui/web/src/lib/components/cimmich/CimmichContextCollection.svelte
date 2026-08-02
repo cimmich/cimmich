@@ -20,6 +20,7 @@
     mdiMapMarkerOutline,
     mdiMapMarkerMultipleOutline,
     mdiMapOutline,
+    mdiImageMultipleOutline,
     mdiPackageVariantClosed,
     mdiPlus,
     mdiRepeat,
@@ -38,6 +39,7 @@
     contextTypeLabel,
     formatContextDatePrecision,
     formatImmichPlaceLocation,
+    groupContextEventsByYear,
     humanizeContextKind,
     sortContextEntities,
     type ContextTypeFilter,
@@ -62,6 +64,7 @@
       parentEntityId?: string,
       geographyGroup?: string,
     ) => void;
+    onEventStartFromPhotos?: () => void;
     onPlacesChanged?: () => Promise<void> | void;
     // Still needed for the atlas view, where a map marker is not an anchor.
     onOpen: (entity: CimmichContextEntity) => void;
@@ -78,6 +81,7 @@
     family,
     includeNestedPlaces = false,
     onAdd,
+    onEventStartFromPhotos,
     onOpen,
     onPlacesChanged = () => {},
   }: Props = $props();
@@ -113,6 +117,7 @@
       family,
     ),
   );
+  const eventTimelineSections = $derived(family === 'events' ? groupContextEventsByYear(filteredEntities) : []);
   const placeProjection = $derived(contextPlaceMapProjection(entities));
   const mappedPlaceCount = $derived(placeProjection.markers.length + placeProjection.areas.length);
 
@@ -288,6 +293,14 @@
     if (entity) {
       onOpen(entity);
     }
+  };
+
+  const startEventFromPhotos = () => {
+    if (onEventStartFromPhotos) {
+      onEventStartFromPhotos();
+      return;
+    }
+    onAdd();
   };
 </script>
 
@@ -542,66 +555,89 @@
     {/if}
   {:else}
     {#if filteredEntities.length === 0}
-      <div class="context-first-state">
-        <span><Icon icon={mdiCalendarBlankOutline} size="34" /></span>
-        <h2>
-          {effectiveTypeFilter === 'all'
-            ? 'Bring the first memory together'
-            : 'Nothing in this part of your timeline yet'}
-        </h2>
-        <p>
-          {effectiveTypeFilter === 'all'
-            ? 'Start with a trip or route, one occasion, a recurring activity or a longer chapter of life.'
-            : 'Choose another type or add the memory you want to organise.'}
-        </p>
-        {#if effectiveTypeFilter === 'all'}<button type="button" onclick={() => onAdd()}>Add to your timeline</button
-          >{/if}
-      </div>
+      {#if effectiveTypeFilter === 'all'}
+        <div class="context-event-first-state">
+          <div class="context-event-first-mark"><Icon icon={mdiCalendarBlankOutline} size="30" /></div>
+          <p class="context-event-first-kicker">Your story over time</p>
+          <h2>Bring the first memory together</h2>
+          <p class="context-event-first-copy">
+            Begin with photos you already have. You choose whether they belong to a trip, one occasion, a recurring
+            activity or a longer chapter of life.
+          </p>
+          <div class="context-event-first-actions">
+            <button class="context-event-first-primary" type="button" onclick={startEventFromPhotos}>
+              <Icon icon={mdiImageMultipleOutline} size="19" /> Choose photos
+            </button>
+            <button class="context-event-first-secondary" type="button" onclick={() => onAdd()}>
+              Start without photos
+            </button>
+          </div>
+          <div class="context-event-shapes" aria-label="Ways to organise a memory">
+            <span>Trip or route</span><span>One occasion</span><span>Recurring activity</span><span>Life period</span>
+          </div>
+        </div>
+      {:else}
+        <div class="context-first-state">
+          <span><Icon icon={mdiCalendarBlankOutline} size="34" /></span>
+          <h2>Nothing in this part of your timeline yet</h2>
+          <p>Choose another type or add the memory you want to organise.</p>
+        </div>
+      {/if}
     {:else}
-      <div class="context-event-grid">
-        {#each filteredEntities as entity (entity.entityId)}
-          {@const previewIds = eventPreviewIds(entity)}
-          {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
-          <a class={eventCardClass(entity)} href={entityHref(entity)}>
-            <div
-              class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
-              class="context-event-cover"
-              data-preview-count={visiblePreviewIds.length}
-              data-testid={entity.typeKind === 'trip' && visiblePreviewIds.length > 1
-                ? 'cimmich-event-contact-sheet'
-                : undefined}
-            >
-              {#if visiblePreviewIds.length > 0}
-                {#each visiblePreviewIds as previewAssetId (previewAssetId)}
-                  <img
-                    src={getAssetMediaUrl({ id: previewAssetId, size: AssetMediaSize.Preview })}
-                    alt=""
-                    loading="lazy"
-                  />
-                {/each}
-              {:else}
-                <span><Icon icon={iconForType(entity.typeKind)} size="36" /></span>
-              {/if}
-              <span class="context-event-kind"
-                ><Icon icon={iconForType(entity.typeKind)} size="14" />
-                {contextTypeLabel(entity.typeKind)}</span
-              >
+      <div class="context-event-timeline">
+        {#each eventTimelineSections as [year, yearEntities] (year)}
+          <section class="context-event-year" aria-labelledby={`context-event-year-${year}`}>
+            <header class="context-event-year-header">
+              <h2 id={`context-event-year-${year}`}>{year}</h2>
+              <span>{yearEntities.length} {yearEntities.length === 1 ? 'memory' : 'memories'}</span>
+            </header>
+            <div class="context-event-grid">
+              {#each yearEntities as entity (entity.entityId)}
+                {@const previewIds = eventPreviewIds(entity)}
+                {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
+                <a class={eventCardClass(entity)} href={entityHref(entity)}>
+                  <div
+                    class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
+                    class="context-event-cover"
+                    data-preview-count={visiblePreviewIds.length}
+                    data-testid={entity.typeKind === 'trip' && visiblePreviewIds.length > 1
+                      ? 'cimmich-event-contact-sheet'
+                      : undefined}
+                  >
+                    {#if visiblePreviewIds.length > 0}
+                      {#each visiblePreviewIds as previewAssetId (previewAssetId)}
+                        <img
+                          src={getAssetMediaUrl({ id: previewAssetId, size: AssetMediaSize.Preview })}
+                          alt=""
+                          loading="lazy"
+                        />
+                      {/each}
+                    {:else}
+                      <span><Icon icon={iconForType(entity.typeKind)} size="36" /></span>
+                    {/if}
+                    <span class="context-event-kind"
+                      ><Icon icon={iconForType(entity.typeKind)} size="14" />
+                      {contextTypeLabel(entity.typeKind)}</span
+                    >
+                  </div>
+                  <div class="context-event-copy">
+                    <p class="truncate text-lg font-semibold">{entity.displayName}</p>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {formatContextDatePrecision(entity) ||
+                        (contextEventYear(entity) === 'Undated' ? 'Date not set' : contextEventYear(entity))}
+                    </p>
+                    {#if entity.description}<p class="mt-3 line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
+                        {entity.description}
+                      </p>{/if}
+                    <p class="mt-4 text-xs font-medium text-gray-500">
+                      {entity.assetCount}
+                      {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}
+                    </p>
+                  </div>
+                </a>
+              {/each}
             </div>
-            <div class="context-event-copy">
-              <p class="truncate text-lg font-semibold">{entity.displayName}</p>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {formatContextDatePrecision(entity) ||
-                  (contextEventYear(entity) === 'Undated' ? 'Date not set' : contextEventYear(entity))}
-              </p>
-              {#if entity.description}<p class="mt-3 line-clamp-2 text-sm/5 text-gray-600 dark:text-gray-300">
-                  {entity.description}
-                </p>{/if}
-              <p class="mt-4 text-xs font-medium text-gray-500">
-                {entity.assetCount}
-                {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}
-              </p>
-            </div>
-          </a>
+          </section>
         {/each}
       </div>
     {/if}
@@ -893,6 +929,118 @@
     font-weight: 700;
   }
 
+  .context-event-first-state {
+    display: flex;
+    min-height: 56vh;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 52px 20px;
+    text-align: center;
+  }
+
+  .context-event-first-mark {
+    display: grid;
+    width: 64px;
+    height: 64px;
+    place-items: center;
+    border-radius: 22px;
+    background: rgb(var(--immich-primary) / 0.11);
+    color: rgb(var(--immich-primary));
+  }
+
+  .context-event-first-kicker {
+    margin-top: 18px;
+    color: rgb(var(--immich-primary));
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .context-event-first-state h2 {
+    max-width: 640px;
+    margin-top: 7px;
+    font-size: clamp(1.6rem, 3vw, 2.3rem);
+    font-weight: 720;
+    letter-spacing: -0.035em;
+  }
+
+  .context-event-first-copy {
+    max-width: 570px;
+    margin-top: 12px;
+    color: rgb(107 114 128);
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .context-event-first-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .context-event-first-actions button {
+    display: inline-flex;
+    min-height: 46px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 18px;
+    font-size: 0.86rem;
+    font-weight: 720;
+  }
+
+  .context-event-first-primary {
+    gap: 8px;
+    background: rgb(var(--immich-primary));
+    color: white;
+    box-shadow: 0 10px 24px rgb(var(--immich-primary) / 0.2);
+  }
+
+  .context-event-first-secondary {
+    border: 1px solid rgb(209 213 219);
+    color: rgb(75 85 99);
+  }
+
+  :global(.dark) .context-event-first-secondary {
+    border-color: rgb(55 65 81);
+    color: rgb(209 213 219);
+  }
+
+  .context-event-first-primary:hover,
+  .context-event-first-primary:focus-visible,
+  .context-event-first-secondary:hover,
+  .context-event-first-secondary:focus-visible {
+    transform: translateY(-1px);
+    outline: 2px solid rgb(var(--immich-primary) / 0.45);
+    outline-offset: 2px;
+  }
+
+  .context-event-shapes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 30px;
+  }
+
+  .context-event-shapes span {
+    border-radius: 999px;
+    background: rgb(243 244 246);
+    padding: 7px 11px;
+    color: rgb(75 85 99);
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+
+  :global(.dark) .context-event-shapes span {
+    background: rgb(31 41 55);
+    color: rgb(209 213 219);
+  }
+
   /* These are anchors, not buttons, so the button defaults they used to inherit
      (block-level box, inherited colour, no underline, left-aligned text) have to
      be stated. Everything else about the card is unchanged. */
@@ -997,6 +1145,39 @@
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 
+  .context-event-timeline {
+    display: grid;
+    gap: 34px;
+  }
+
+  .context-event-year {
+    display: grid;
+    gap: 13px;
+  }
+
+  .context-event-year-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    border-bottom: 1px solid rgb(229 231 235);
+    padding-bottom: 9px;
+  }
+
+  :global(.dark) .context-event-year-header {
+    border-color: rgb(31 41 55);
+  }
+
+  .context-event-year-header h2 {
+    font-size: 1.08rem;
+    font-weight: 720;
+    letter-spacing: -0.02em;
+  }
+
+  .context-event-year-header span {
+    color: rgb(107 114 128);
+    font-size: 0.72rem;
+  }
+
   .context-event-card {
     display: flex;
     overflow: hidden;
@@ -1033,6 +1214,8 @@
   }
 
   .context-event-cover--contact img {
+    position: static;
+    inset: auto;
     min-width: 0;
     min-height: 0;
   }
@@ -1075,6 +1258,14 @@
     .context-event-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+
+    .context-event-card--trip {
+      grid-column: span 2;
+    }
+
+    .context-event-card--trip .context-event-cover {
+      aspect-ratio: 16 / 9;
+    }
   }
 
   @media (min-width: 1180px) {
@@ -1112,6 +1303,19 @@
 
     .context-event-cover {
       aspect-ratio: 4 / 3;
+    }
+
+    .context-event-first-state {
+      min-height: 50vh;
+      padding-inline: 8px;
+    }
+
+    .context-event-first-actions {
+      width: 100%;
+    }
+
+    .context-event-first-actions button {
+      width: 100%;
     }
   }
 </style>

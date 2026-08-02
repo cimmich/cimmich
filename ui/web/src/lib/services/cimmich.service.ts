@@ -141,6 +141,13 @@ export type CimmichContextGeometry =
   | { points: Array<{ latitude: number; longitude: number }> }
   | null;
 
+export type CimmichEventRecurrence = {
+  frequency: 'daily' | 'monthly' | 'weekly' | 'yearly';
+  interval: number;
+  /** Sunday = 0 through Saturday = 6; present only for weekly rules. */
+  weekdays?: number[];
+};
+
 export type CimmichContextEntity = {
   aliases: string[];
   assetCount: number;
@@ -162,6 +169,7 @@ export type CimmichContextEntity = {
   placeRole?: CimmichPlaceRole | null;
   /** Event collection rows only: up to four visible active Main-media source IDs, cover first when eligible. */
   previewAssetIds?: string[];
+  recurrence?: CimmichEventRecurrence | null;
   revision: number;
   status: 'active' | 'archived' | 'hidden';
   subtreeAssetCount?: number;
@@ -193,6 +201,7 @@ export type CimmichContextRelation = {
   linkedAt: string;
   relationId: string;
   relationKind: 'companion' | 'location' | 'object' | 'parent' | 'participant' | 'related';
+  sortOrder?: number | null;
   targetId: string;
   targetKind: 'event' | 'object' | 'person' | 'pet' | 'place';
   targetName: string;
@@ -219,6 +228,7 @@ export type CimmichContextEntityInput = {
   geographyEntityId?: string | null;
   parentEntityId?: string | null;
   placeRole?: CimmichPlaceRole;
+  recurrence?: CimmichEventRecurrence | null;
   status?: 'active' | 'archived' | 'hidden';
   typeKind: CimmichContextTypeKind;
 };
@@ -3146,7 +3156,7 @@ export const attachCimmichContextRelations = (
   family: CimmichContextFamily,
   entityId: string,
   commandId: string,
-  relations: Array<{ relationKind: string; targetId: string; targetKind: string }>,
+  relations: Array<{ relationKind: string; sortOrder?: number | null; targetId: string; targetKind: string }>,
 ) =>
   request<CimmichContextMutationResult>(`/v1/${family}/${encodeURIComponent(entityId)}/relations:attach`, {
     body: JSON.stringify({ commandId, relations }),

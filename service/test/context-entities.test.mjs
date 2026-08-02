@@ -389,3 +389,105 @@ test("Painted Place areas accept only 3 to 500 distinct canonical points", async
       /three distinct points/.test(error.message),
   );
 });
+
+test("Activity recurrence is normalized, closed and limited to Activities", async () => {
+  assert.deepEqual(contextEntityContract.recurrenceFrequencies, [
+    "daily",
+    "weekly",
+    "monthly",
+    "yearly",
+  ]);
+  const reachedPersistence = new Error("reached event persistence");
+  const sql = Object.assign(async () => [], {
+    begin: async () => {
+      throw reachedPersistence;
+    },
+  });
+  const store = createContextEntityStore(sql);
+  const input = {
+    actorId: "local-operator",
+    commandId: "activity-recurrence-test-0001",
+    displayName: "Weekly walk",
+    entityKind: "event",
+    recurrence: { frequency: "weekly", interval: 2, weekdays: [5, 1] },
+    typeKind: "activity",
+  };
+
+  await assert.rejects(
+    store.create(input),
+    (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "activity-recurrence-test-0002",
+      recurrence: { frequency: "weekly", interval: 1, weekdays: [] },
+    }),
+    (error) => error.code === "CONTEXT_RECURRENCE_INVALID",
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "activity-recurrence-test-0003",
+      recurrence: { frequency: "daily", interval: 1, weekdays: [1] },
+    }),
+    (error) => error.code === "CONTEXT_RECURRENCE_INVALID",
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "activity-recurrence-test-0004",
+      typeKind: "trip",
+    }),
+    (error) =>
+      error.code === "CONTEXT_RECURRENCE_INVALID" &&
+      /Only Activities/.test(error.message),
+  );
+});
+
+test("Trip stop order accepts bounded unique Place locations only", async () => {
+  const reachedPersistence = new Error("reached relation persistence");
+  const sql = Object.assign(async () => [], {
+    begin: async () => {
+      throw reachedPersistence;
+    },
+  });
+  const store = createContextEntityStore(sql);
+  const base = {
+    actorId: "local-operator",
+    commandId: "trip-stop-order-test-0001",
+    entityId: "event_00000000000000000000000000000000",
+    entityKind: "event",
+  };
+  const stop = {
+    relationKind: "location",
+    sortOrder: 0,
+    targetId: "place_00000000000000000000000000000000",
+    targetKind: "place",
+  };
+
+  await assert.rejects(
+    store.attachRelations({ ...base, relations: [stop] }),
+    (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
+    store.attachRelations({
+      ...base,
+      relations: [{ ...stop, sortOrder: 100 }],
+    }),
+    (error) => error.code === "CONTEXT_RELATIONS_INVALID",
+  );
+  await assert.rejects(
+    store.attachRelations({
+      ...base,
+      relations: [
+        stop,
+        {
+          ...stop,
+          targetId: "place_11111111111111111111111111111111",
+        },
+      ],
+    }),
+    (error) => error.code === "CONTEXT_RELATIONS_INVALID",
+  );
+});

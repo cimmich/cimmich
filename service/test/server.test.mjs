@@ -2991,8 +2991,9 @@ test("context routes preserve typed family scope, bounded inputs and command ide
             commandId: "context.create.event-one",
             datePrecision: "year",
             dateStart: "2025-01-01",
-            displayName: "Test trip",
-            typeKind: "trip",
+            displayName: "Weekly walk",
+            recurrence: { frequency: "weekly", interval: 1, weekdays: [1] },
+            typeKind: "activity",
           }),
           headers,
           method: "POST",
@@ -3038,6 +3039,7 @@ test("context routes preserve typed family scope, bounded inputs and command ide
           relations: [
             {
               relationKind: "location",
+              sortOrder: 0,
               targetId: "place-one",
               targetKind: "place",
             },
@@ -3115,6 +3117,11 @@ test("context routes preserve typed family scope, bounded inputs and command ide
   assert.equal(calls[3][0], "create");
   assert.equal(calls[3][1].entityKind, "event");
   assert.equal(calls[3][1].actorId, "context-reviewer");
+  assert.deepEqual(calls[3][1].recurrence, {
+    frequency: "weekly",
+    interval: 1,
+    weekdays: [1],
+  });
   assert.deepEqual(calls[4], [
     "get",
     { entityId: "object/one", entityKind: "object", includeArchived: true },
@@ -3125,6 +3132,7 @@ test("context routes preserve typed family scope, bounded inputs and command ide
   assert.equal(calls[6][0], "attach-assets");
   assert.equal(calls[7][0], "detach-assets");
   assert.equal(calls[8][0], "attach-relations");
+  assert.equal(calls[8][1].relations[0].sortOrder, 0);
   assert.equal(calls[9][0], "detach-relations");
   assert.deepEqual(calls[10], [
     "undo",

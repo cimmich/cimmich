@@ -7,7 +7,9 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('keeps each profile destination compact, reloadable and keyboard navigable', async () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(source).toContain("type ContextDetailTab = 'connections' | 'documents' | 'map' | 'plan' | 'photos';");
+    expect(source).toContain(
+      "type ContextDetailTab = 'connections' | 'documents' | 'journey' | 'map' | 'plan' | 'photos';",
+    );
     expect(source).toContain("page.url.searchParams.get('tab')");
     expect(source).toContain("url.searchParams.delete('tab')");
     expect(source).toContain("url.searchParams.set('tab', tab)");
@@ -15,6 +17,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End']");
     expect(source).toContain("label: 'Map', value: 'map'");
     expect(source).toContain("label: 'Plan', value: 'plan'");
+    expect(source).toContain("label: 'Journey', value: 'journey'");
     expect(source).toContain("label: 'Connections', value: 'connections'");
     expect(source).toContain("label: 'Documents', value: 'documents'");
   });
@@ -197,10 +200,26 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('>Boundary</button');
     expect(browser).toContain('>Remove from map</button');
     expect(browser).not.toContain('How does this place exist on the map?');
-    expect(collection).toContain('Start with a trip or route');
+    expect(collection).toContain('Trip or route');
     expect(collection).not.toContain('Pins, areas and routes will appear here.');
     expect(hero).not.toContain('contextPlaceRoleLabel(detail.entity.placeRole)');
     expect(hero).toContain('!isPlace && detail.entity.aliases.length > 0');
+  });
+
+  it('builds Events from evidence first and preserves relationship meaning after creation', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+
+    expect(collection).toContain('Bring the first memory together');
+    expect(collection).toContain('onEventStartFromPhotos');
+    expect(collection).toContain('groupContextEventsByYear(filteredEntities)');
+    expect(browser).toContain("assetPickerPurpose = $state<'attach' | 'seed-event'>('attach')");
+    expect(browser).toContain("createCimmichContextCommandId('event-seed-attach')");
+    expect(browser).toContain("associationKind: 'direct'");
+    expect(browser).toContain('Choose photos for this memory');
+    expect(browser).toContain('Create memory');
+    expect(browser).toContain('eventDateLabels.start');
+    expect(browser).toContain('eventMediaLaneDescription');
   });
 
   it('does not promote a legacy role state into a Locations directory heading', async () => {
