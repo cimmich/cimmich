@@ -13,6 +13,7 @@
     mdiBrushVariant,
     mdiCheck,
     mdiClose,
+    mdiFountainPenTip,
     mdiFloorPlan,
     mdiImageOutline,
     mdiMapMarkerPlusOutline,
@@ -20,7 +21,6 @@
     mdiPlus,
     mdiRestore,
     mdiSatelliteVariant,
-    mdiVectorPolygon,
   } from '@mdi/js';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
   import { contextPlaceMapProjection } from './context-entity-presentation';
@@ -84,6 +84,9 @@
 
   const activePlan = $derived(plans.find((plan) => plan.planId === activePlanId) ?? plans[0] ?? null);
   const visibleItems = $derived(editing ? draftItems : (activePlan?.items ?? []));
+  const renderedItems = $derived.by(() =>
+    [...visibleItems].sort((left, right) => geometryArea(right.geometry) - geometryArea(left.geometry)),
+  );
   const visibleBackground = $derived(
     editing ? draftBackgroundSourceAssetId : (activePlan?.backgroundSourceAssetId ?? null),
   );
@@ -188,7 +191,7 @@
     draftItems = activePlan.items.map((item) => ({
       childEntityId: item.childEntityId,
       childName: item.childName,
-      geometry: structuredClone(item.geometry),
+      geometry: cloneGeometry(item.geometry),
       zIndex: item.zIndex,
     }));
     draftDefault = activePlan.isDefault;
@@ -325,6 +328,63 @@
   };
 
   const clamp = (number: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, number));
+
+  // API results received through Svelte props can be reactive proxies. Native
+  // structuredClone rejects proxies, which previously aborted Edit before the
+  // editor became visible. Clone the small geometry union explicitly instead.
+  const cloneGeometry = (geometry: CimmichPlacePlanGeometry): CimmichPlacePlanGeometry => {
+    if (geometry.kind === 'paint') {
+      return {
+        kind: 'paint',
+        strokes: geometry.strokes.map((stroke) => ({
+          points: stroke.points.map((point) => ({ ...point })),
+          radius: stroke.radius,
+        })),
+      };
+    }
+    if (geometry.kind === 'polygon') {
+      return { kind: 'polygon', points: geometry.points.map((point) => ({ ...point })) };
+    }
+    return { ...geometry };
+  };
+
+  const geometryArea = (geometry: CimmichPlacePlanGeometry) => {
+    if (geometry.kind === 'rect') {
+      return geometry.w * geometry.h;
+    }
+    if (geometry.kind === 'point') {
+      return 0;
+    }
+    if (geometry.kind === 'paint') {
+      const points = geometry.strokes.flatMap((stroke) => stroke.points);
+      if (points.length === 0) {
+        return 0;
+      }
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      const radius = Math.max(...geometry.strokes.map((stroke) => stroke.radius), 0);
+      return (Math.max(...xs) - Math.min(...xs) + radius * 2) * (Math.max(...ys) - Math.min(...ys) + radius * 2);
+    }
+    let area = 0;
+    for (const [index, point] of geometry.points.entries()) {
+      const next = geometry.points[(index + 1) % geometry.points.length] ?? point;
+      area += point.x * next.y - next.x * point.y;
+    }
+    return Math.abs(area / 2);
+  };
+
+  const polygonPoints = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'polygon' }>) =>
+    geometry.points.map((point) => `${point.x},${point.y}`).join(' ');
+
+  const polygonLabelStyle = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'polygon' }>) => {
+    const point = { x: 0, y: 0 };
+    for (const current of geometry.points) {
+      point.x += current.x;
+      point.y += current.y;
+    }
+    const count = Math.max(geometry.points.length, 1);
+    return `left:${(point.x / count) * 100}%;top:${(point.y / count) * 100}%`;
+  };
 
   const beginDrag = (event: PointerEvent, item: DraftItem, kind: 'move' | 'resize') => {
     if (!editing || item.geometry.kind !== 'rect') {
@@ -608,15 +668,15 @@
             onpointercancel={() => (paint = null)}
           >
             <span class="place-plan__paint-hint"
-              ><Icon icon={paintingMode === 'outline' ? mdiVectorPolygon : mdiBrushVariant} size="17" />
+              ><Icon icon={paintingMode === 'outline' ? mdiFountainPenTip : mdiBrushVariant} size="17" />
               {paintingMode === 'outline'
                 ? `Drag around ${paintingChild.displayName}`
                 : `Hold to paint ${paintingChild.displayName} · repeat anywhere`}</span
             >
             {#if outlinePreview}
-              <div class="place-plan__paint-preview" style={itemStyle(outlinePreview)}>
-                <span>{paintingChild.displayName}</span>
-              </div>
+              <svg class="place-plan__outline-preview" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+                <polygon points={polygonPoints(outlinePreview)} vector-effect="non-scaling-stroke" />
+              </svg>
             {/if}
             {#if brushPreview}
               <svg class="place-plan__brush-preview" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
@@ -634,7 +694,7 @@
             {/if}
           </div>
         {/if}
-        {#each visibleItems as item (item.childEntityId)}
+        {#each renderedItems as item (item.childEntityId)}
           {@const child = children.find((candidate) => candidate.entityId === item.childEntityId)}
           {#if item.geometry.kind === 'paint'}
             <svg
@@ -661,6 +721,33 @@
               type="button"
               style={paintLabelStyle(item.geometry)}
               aria-label={`${item.childName}${editing ? ', select painted Location' : ', open Location'}`}
+              onclick={() => {
+                if (editing) {
+                  selectedChildId = item.childEntityId;
+                } else if (child) {
+                  onOpenPlace(child);
+                }
+              }}
+            >
+              <span>{item.childName}</span>
+              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
+            </button>
+          {:else if item.geometry.kind === 'polygon'}
+            <svg
+              class="place-plan__outline-zone"
+              class:place-plan__outline-zone--selected={editing && selectedChildId === item.childEntityId}
+              viewBox="0 0 1 1"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <polygon points={polygonPoints(item.geometry)} vector-effect="non-scaling-stroke" />
+            </svg>
+            <button
+              class="place-plan__paint-label"
+              class:place-plan__zone--selected={editing && selectedChildId === item.childEntityId}
+              type="button"
+              style={polygonLabelStyle(item.geometry)}
+              aria-label={`${item.childName}${editing ? ', select outlined Location' : ', open Location'}`}
               onclick={() => {
                 if (editing) {
                   selectedChildId = item.childEntityId;
@@ -740,7 +827,7 @@
                     title={`Outline ${child.displayName}`}
                     onclick={() => startPainting(child, 'outline')}
                   >
-                    <Icon icon={mdiVectorPolygon} size="15" /> Outline
+                    <Icon icon={mdiFountainPenTip} size="15" /> Outline
                   </button>
                   <button
                     type="button"
@@ -1035,17 +1122,33 @@
     font-weight: 750;
     pointer-events: none;
   }
-  .place-plan__paint-preview {
+  .place-plan__outline-preview,
+  .place-plan__outline-zone {
     position: absolute;
-    display: grid;
-    place-items: center;
-    border: 2px dashed rgb(var(--immich-primary-color));
-    border-radius: 0.75rem;
-    color: rgb(30 41 59);
-    background: rgb(255 255 255 / 0.72);
-    font-size: 0.78rem;
-    font-weight: 750;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
     pointer-events: none;
+  }
+  .place-plan__outline-preview polygon,
+  .place-plan__outline-zone polygon {
+    fill: rgb(var(--immich-primary-color) / 0.13);
+    stroke: rgb(var(--immich-primary-color) / 0.92);
+    stroke-width: 2px;
+    stroke-linejoin: round;
+  }
+  .place-plan__outline-preview polygon {
+    fill: rgb(var(--immich-primary-color) / 0.18);
+    stroke-dasharray: 7 5;
+  }
+  .place-plan__outline-zone {
+    z-index: 1;
+    filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.13));
+  }
+  .place-plan__outline-zone--selected polygon {
+    fill: rgb(var(--immich-primary-color) / 0.22);
+    stroke-width: 3px;
   }
   .place-plan__brush-preview,
   .place-plan__paint-zone {

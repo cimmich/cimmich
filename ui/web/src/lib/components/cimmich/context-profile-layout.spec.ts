@@ -58,6 +58,7 @@ describe('Place, Thing and Event profile information architecture', () => {
 
   it('gives Locations a real normalized Plan workspace instead of reusing map geometry', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const hero = await read('src/lib/components/cimmich/CimmichContextDetailHero.svelte');
     const plan = await read('src/lib/components/cimmich/CimmichPlacePlan.svelte');
 
     expect(browser).toContain('<CimmichPlacePlan');
@@ -76,6 +77,12 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(plan).toContain('updateSatelliteViewport');
     expect(plan).toContain('Reset satellite position and zoom');
     expect(plan).toContain('mdiBrushVariant');
+    expect(plan).toContain('mdiFountainPenTip');
+    expect(plan).toContain('const cloneGeometry');
+    expect(plan).not.toContain('geometry: structuredClone(item.geometry)');
+    expect(plan).toContain('class="place-plan__outline-zone"');
+    expect(plan).toContain('geometryArea(right.geometry) - geometryArea(left.geometry)');
+    expect(hero).toContain('class="context-detail-plan-outline"');
     expect(plan).toContain('aria-label={`Outline ${child.displayName}`}');
     expect(plan).toContain('aria-label={`Paint ${child.displayName}`}');
     expect(plan).toContain('Hold to paint ${paintingChild.displayName} · repeat anywhere');

@@ -85,6 +85,44 @@
     const point = geometry.strokes[0]?.points[0] ?? { x: 0.5, y: 0.5 };
     return `left:${point.x * 100}%;top:${point.y * 100}%`;
   };
+  const polygonPoints = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'polygon' }>) =>
+    geometry.points.map((point) => `${point.x},${point.y}`).join(' ');
+  const polygonLabelStyle = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'polygon' }>) => {
+    const point = { x: 0, y: 0 };
+    for (const current of geometry.points) {
+      point.x += current.x;
+      point.y += current.y;
+    }
+    const count = Math.max(geometry.points.length, 1);
+    return `left:${(point.x / count) * 100}%;top:${(point.y / count) * 100}%`;
+  };
+  const geometryArea = (geometry: CimmichPlacePlanGeometry) => {
+    if (geometry.kind === 'rect') {
+      return geometry.w * geometry.h;
+    }
+    if (geometry.kind === 'point') {
+      return 0;
+    }
+    if (geometry.kind === 'paint') {
+      const points = geometry.strokes.flatMap((stroke) => stroke.points);
+      if (points.length === 0) {
+        return 0;
+      }
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      const radius = Math.max(...geometry.strokes.map((stroke) => stroke.radius), 0);
+      return (Math.max(...xs) - Math.min(...xs) + radius * 2) * (Math.max(...ys) - Math.min(...ys) + radius * 2);
+    }
+    let area = 0;
+    for (const [index, point] of geometry.points.entries()) {
+      const next = geometry.points[(index + 1) % geometry.points.length] ?? point;
+      area += point.x * next.y - next.x * point.y;
+    }
+    return Math.abs(area / 2);
+  };
+  const renderedPlanItems = $derived.by(() =>
+    [...(defaultPlan?.items ?? [])].sort((left, right) => geometryArea(right.geometry) - geometryArea(left.geometry)),
+  );
   const placeGeography = $derived.by(() => {
     if (!isPlace || detail.entity.placeRole === 'geography') {
       return null;
@@ -270,7 +308,7 @@
                 />
               {/if}
               <div class="context-detail-plan-grid"></div>
-              {#each defaultPlan.items as item (item.planItemId)}
+              {#each renderedPlanItems as item (item.planItemId)}
                 {#if item.geometry.kind === 'paint'}
                   <svg
                     class="context-detail-plan-paint"
@@ -290,6 +328,18 @@
                     {/each}
                   </svg>
                   <span class="context-detail-plan-paint-label" style={paintLabelStyle(item.geometry)}
+                    >{item.childName}</span
+                  >
+                {:else if item.geometry.kind === 'polygon'}
+                  <svg
+                    class="context-detail-plan-outline"
+                    viewBox="0 0 1 1"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <polygon points={polygonPoints(item.geometry)} vector-effect="non-scaling-stroke" />
+                  </svg>
+                  <span class="context-detail-plan-paint-label" style={polygonLabelStyle(item.geometry)}
                     >{item.childName}</span
                   >
                 {:else}
@@ -610,6 +660,22 @@
     color: rgb(var(--immich-primary-color) / 0.52);
     filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.16));
     pointer-events: none;
+  }
+  .context-detail-plan-outline {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.16));
+    pointer-events: none;
+  }
+  .context-detail-plan-outline polygon {
+    fill: rgb(var(--immich-primary-color) / 0.15);
+    stroke: rgb(125 211 252 / 0.92);
+    stroke-width: 1.5px;
+    stroke-linejoin: round;
   }
   .context-detail-plan-paint-label {
     position: absolute;
