@@ -76,8 +76,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(plan).toContain("item.geometry.kind === 'paint' ? [...item.geometry.strokes, stroke] : [stroke]");
     expect(plan).toContain('updateSatelliteViewport');
     expect(plan).toContain('Reset satellite position and zoom');
-    expect(plan).toContain('mdiBrushVariant');
-    expect(plan).toContain('mdiFountainPenTip');
+    expect(plan).toContain('mdiBrush');
+    expect(plan).toContain('mdiPencil');
+    expect(plan).toContain("url('/cimmich/cursors/plan-pencil.svg')");
+    expect(plan).toContain("url('/cimmich/cursors/plan-brush.svg')");
+    expect(plan).not.toContain('cursor: crosshair');
+    expect(plan).toContain('Brush size');
+    expect(plan).toContain('preparePlacePlanGeometryForSave(geometry)');
     expect(plan).toContain('const cloneGeometry');
     expect(plan).not.toContain('geometry: structuredClone(item.geometry)');
     expect(plan).toContain('class="place-plan__outline-zone"');
@@ -85,7 +90,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(hero).toContain('class="context-detail-plan-outline"');
     expect(plan).toContain('aria-label={`Outline ${child.displayName}`}');
     expect(plan).toContain('aria-label={`Paint ${child.displayName}`}');
-    expect(plan).toContain('Hold to paint ${paintingChild.displayName} · repeat anywhere');
+    expect(plan).toContain('Brush ${paintingChild.displayName} · size ${brushSizeLabel}');
     expect(plan).toContain("paintingMode === 'paint' ? 'Done painting' : 'Cancel outline'");
     expect(plan).toContain('New location');
     expect(browser).toContain('onCreateLocation={openPlanChildCreate}');
