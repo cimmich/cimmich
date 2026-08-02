@@ -74,7 +74,9 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(plan).not.toContain('latitude');
     expect(plan).not.toContain('longitude');
     const satellite = await read('src/lib/components/cimmich/CimmichPlanSatellite.svelte');
+    const map = await read('src/lib/components/shared-components/map/Map.svelte');
     expect(satellite).toContain('satelliteOnly');
+    expect(map).toContain('maxzoom: 18');
     expect(satellite).toContain('Satellite © Esri');
   });
 
