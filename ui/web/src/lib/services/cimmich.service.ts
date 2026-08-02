@@ -237,6 +237,60 @@ export type CimmichContextMutationResult = {
   undo?: { eligible: boolean; token: string | null };
 };
 
+export type CimmichPlacePlanGeometry =
+  | { kind: 'point'; x: number; y: number }
+  | { h: number; kind: 'rect'; w: number; x: number; y: number }
+  | { kind: 'polygon'; points: Array<{ x: number; y: number }> };
+
+export type CimmichPlacePlanItem = {
+  childEntityId: string;
+  childName: string;
+  geometry: CimmichPlacePlanGeometry;
+  planItemId: string;
+  zIndex: number;
+};
+
+export type CimmichPlacePlan = {
+  backgroundSourceAssetId: string | null;
+  displayName: string;
+  isDefault: boolean;
+  items: CimmichPlacePlanItem[];
+  locationEntityId: string;
+  planId: string;
+  planKind: 'floor' | 'other' | 'outdoor' | 'property';
+  revision: number;
+};
+
+export type CimmichPlacePlansResult = {
+  items: CimmichPlacePlan[];
+  locationEntityId: string;
+  schemaVersion: 'cimmich.location-plan.v1';
+};
+
+export type CimmichPlacePlanSaveInput = {
+  backgroundSourceAssetId?: string | null;
+  commandId: string;
+  displayName: string;
+  expectedRevision: number;
+  isDefault?: boolean;
+  items: Array<{ childEntityId: string; geometry: CimmichPlacePlanGeometry; zIndex?: number }>;
+  planId?: string | null;
+  planKind: CimmichPlacePlan['planKind'];
+};
+
+export type CimmichPlacePlanMutationResult = {
+  changed: boolean;
+  commandId: string;
+  decisionId: string;
+  detail: CimmichContextDetail;
+  plan: CimmichPlacePlan;
+  plans: CimmichPlacePlan[];
+  replayed: boolean;
+  schemaVersion: 'cimmich.location-plan.v1';
+  status: 'applied';
+  undo: { eligible: boolean; token: string };
+};
+
 export type CimmichPlaceCoverResult = {
   changed: boolean;
   commandId: string;
@@ -2961,6 +3015,16 @@ export const assignCimmichPlaceAssetsToChild = (
   input: { assetIds: string[]; childEntityId: string; commandId: string },
 ) =>
   request<CimmichContextMutationResult>(`/v1/places/${encodeURIComponent(entityId)}/assets:assign-child`, {
+    body: JSON.stringify(input),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
+export const getCimmichPlacePlans = (entityId: string) =>
+  request<CimmichPlacePlansResult>(`/v1/places/${encodeURIComponent(entityId)}/plans`);
+
+export const saveCimmichPlacePlan = (entityId: string, input: CimmichPlacePlanSaveInput) =>
+  request<CimmichPlacePlanMutationResult>(`/v1/places/${encodeURIComponent(entityId)}/plans`, {
     body: JSON.stringify(input),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',

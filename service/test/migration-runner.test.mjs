@@ -234,6 +234,29 @@ test("schema 111 classifies only exact GPS-created unreviewed Places as Geograph
   assert.doesNotMatch(source, /display_name/);
 });
 
+test("schema 112 keeps normalized Location Plans separate from geographic geometry", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0112_location_plan_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /CREATE TABLE place_plan \(/);
+  assert.match(migration, /CREATE TABLE place_plan_item \(/);
+  assert.match(
+    migration,
+    /plan is deliberately not stored in context_entity\.geometry/i,
+  );
+  assert.match(migration, /immediate child Location/);
+  assert.match(migration, /context_entity_plan_membership_guard/);
+  assert.match(
+    migration,
+    /Remove this Location from its Plans before moving it/,
+  );
+  assert.match(migration, /'plan_save'/);
+  assert.match(migration, /'place_assignment','plan'/);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

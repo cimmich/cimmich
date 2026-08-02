@@ -165,6 +165,51 @@ test("Place role is closed and projections keep the geography cross-link", async
   );
 });
 
+test("Location Plans use a closed kind contract and normalized bounded geometry", async () => {
+  assert.deepEqual(contextEntityContract.placePlanKinds, [
+    "property",
+    "floor",
+    "outdoor",
+    "other",
+  ]);
+  const reachedPersistence = new Error("reached plan persistence");
+  const sql = Object.assign(async () => [], {
+    begin: async () => {
+      throw reachedPersistence;
+    },
+  });
+  const store = createContextEntityStore(sql);
+  const input = {
+    actorId: "local-operator",
+    commandId: "context.location-plan-test.00000001",
+    displayName: "Ground floor",
+    entityId: "place_00000000000000000000000000000000",
+    expectedRevision: 0,
+    items: [
+      {
+        childEntityId: "place_11111111111111111111111111111111",
+        geometry: { h: 0.2, kind: "rect", w: 0.3, x: 0.1, y: 0.1 },
+      },
+    ],
+    planKind: "floor",
+  };
+  await assert.rejects(store.savePlacePlan(input), (error) => error === reachedPersistence);
+  await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      items: [
+        {
+          ...input.items[0],
+          geometry: { h: 0.4, kind: "rect", w: 0.4, x: 0.8, y: 0.8 },
+        },
+      ],
+    }),
+    (error) =>
+      error.code === "PLACE_PLAN_GEOMETRY_INVALID" &&
+      /remain inside the canvas/.test(error.message),
+  );
+});
+
 test("Ordinary Place creation defaults to Location rather than migration state", async () => {
   const reachedInsert = new Error("reached context insert");
   let insertedValues = [];
