@@ -370,6 +370,42 @@ test("map asset filtering keeps visibility ahead of a bounded exact source-ID pr
   ]);
 });
 
+test("satellite map tiles are same-origin, bounded and cacheable", async () => {
+  const calls = [];
+  const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const satelliteTileFetch = async (url, options) => {
+    calls.push([url, Boolean(options?.signal)]);
+    return new Response(bytes, {
+      headers: { "content-type": "image/jpeg" },
+      status: 200,
+    });
+  };
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/map/satellite/18/153563/242651`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), "image/jpeg");
+      assert.match(response.headers.get("cache-control"), /max-age=86400/);
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
+
+      const invalid = await fetch(`${root}/v1/map/satellite/19/0/0`);
+      assert.equal(invalid.status, 400);
+      assert.equal(
+        (await invalid.json()).code,
+        "SATELLITE_TILE_COORDINATES_INVALID",
+      );
+    },
+    { satelliteTileFetch },
+  );
+  assert.deepEqual(calls, [
+    [
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/153563/242651",
+      true,
+    ],
+  ]);
+});
+
 test("stale GPS clients cannot create a Place before the mapping preflight", async () => {
   const calls = [];
   const repository = {

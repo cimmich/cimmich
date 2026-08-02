@@ -58,6 +58,20 @@ const sendBinary = (
   response.end(bytes);
 };
 
+const sendMapTile = (response, { bytes, mimeType }, origin = "") => {
+  response.writeHead(200, {
+    "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
+    "content-length": bytes.length,
+    "content-security-policy": "default-src 'none'",
+    "content-type": mimeType,
+    "x-content-type-options": "nosniff",
+    ...(origin
+      ? { "access-control-allow-origin": origin, vary: "Origin" }
+      : {}),
+  });
+  response.end(bytes);
+};
+
 const readJsonBody = async (request, maximumBytes = 32_768) => {
   // Chunks are Buffers: concatenating strings per chunk decodes each chunk
   // separately, so a multi-byte UTF-8 character split across a TCP boundary
@@ -173,6 +187,7 @@ export const createCimmichServer = ({
   mediaOperator,
   memorySteward,
   repository,
+  satelliteTileFetch = globalThis.fetch,
   visibility,
 }) => {
   const requireProjection = (surfaceKey) =>
@@ -1009,6 +1024,75 @@ export const createCimmichServer = ({
           }),
           allowedOrigin,
         );
+        return;
+      }
+      const satelliteTileMatch = url.pathname.match(
+        /^\/v1\/map\/satellite\/(\d+)\/(\d+)\/(\d+)$/,
+      );
+      if (request.method === "GET" && satelliteTileMatch) {
+        const zoom = Number(satelliteTileMatch[1]);
+        const tileY = Number(satelliteTileMatch[2]);
+        const tileX = Number(satelliteTileMatch[3]);
+        const tileLimit = 2 ** zoom;
+        if (
+          !Number.isSafeInteger(zoom) ||
+          zoom < 0 ||
+          zoom > 18 ||
+          !Number.isSafeInteger(tileX) ||
+          !Number.isSafeInteger(tileY) ||
+          tileX < 0 ||
+          tileY < 0 ||
+          tileX >= tileLimit ||
+          tileY >= tileLimit
+        ) {
+          throw Object.assign(
+            new Error("Satellite tile coordinates are invalid"),
+            {
+              code: "SATELLITE_TILE_COORDINATES_INVALID",
+              statusCode: 400,
+            },
+          );
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8_000);
+        let tileResponse;
+        try {
+          tileResponse = await satelliteTileFetch(
+            `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${tileX}`,
+            { signal: controller.signal },
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!tileResponse?.ok) {
+          throw Object.assign(new Error("Satellite tile is unavailable"), {
+            code: "SATELLITE_TILE_UNAVAILABLE",
+            statusCode: 502,
+          });
+        }
+        const mimeType = String(
+          tileResponse.headers?.get?.("content-type") || "",
+        )
+          .split(";")[0]
+          .trim()
+          .toLowerCase();
+        if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)) {
+          throw Object.assign(
+            new Error("Satellite tile format is unsupported"),
+            {
+              code: "SATELLITE_TILE_FORMAT_INVALID",
+              statusCode: 502,
+            },
+          );
+        }
+        const bytes = Buffer.from(await tileResponse.arrayBuffer());
+        if (bytes.length === 0 || bytes.length > 2 * 1024 * 1024) {
+          throw Object.assign(new Error("Satellite tile payload is invalid"), {
+            code: "SATELLITE_TILE_PAYLOAD_INVALID",
+            statusCode: 502,
+          });
+        }
+        sendMapTile(response, { bytes, mimeType }, allowedOrigin);
         return;
       }
       if (request.method === "GET" && url.pathname === "/v1/companion/assets") {
