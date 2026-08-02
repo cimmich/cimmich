@@ -170,6 +170,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
     expect(browser).toContain('handleCimmichMediaCardClick(event, mediaSelectionMode');
+    expect(browser).toContain('aria-label="Photo view options"');
+    expect(browser).toContain('aria-label="Sort photos"');
+    expect(browser).toContain('aria-label="Group photos"');
+    expect(browser).toContain('<option value="subsection">Subsection</option>');
+    expect(browser).toContain('aria-label="Thumbnail size"');
+    expect(browser).toContain('groupPlacePhotos(presentedDetailAssets, placePhotoGroup, selectedPlaceChildren)');
+    expect(browser).toContain('placePhotoGridClass(placePhotoSize)');
     expect(hero).toContain("family === 'places' ? (detail.subtreeAssets ?? detail.assets) : detail.assets");
     expect(hero).toContain('heroAssets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId)');
   });
