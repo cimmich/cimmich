@@ -307,6 +307,22 @@ test("schema 117 persists normalized Activity recurrence and ordered Trip Place 
   assert.match(migration, /CREATE OR REPLACE VIEW current_context_relation/);
 });
 
+test("schema 119 remembers bounded Event source folders without copying assets", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0119_event_folder_graph_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /ADD COLUMN source_folders jsonb/);
+  assert.match(migration, /jsonb_array_length\(value\) > 20/);
+  assert.match(migration, /entity_kind = 'event'/);
+  assert.doesNotMatch(migration, /INSERT INTO (asset|context_asset_link)/i);
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

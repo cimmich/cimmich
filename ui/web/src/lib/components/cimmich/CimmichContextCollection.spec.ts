@@ -137,7 +137,7 @@ describe('Cimmich context collections', () => {
     expect(getByText('Bring the first memory together')).toBeInTheDocument();
     expect(getByText('Recurring activity')).toBeInTheDocument();
 
-    await fireEvent.click(getByRole('button', { name: 'Choose photos' }));
+    await fireEvent.click(getByRole('button', { name: 'Choose folders or photos' }));
     expect(onEventStartFromPhotos).toHaveBeenCalledOnce();
 
     await fireEvent.click(getByRole('button', { name: 'Start without photos' }));

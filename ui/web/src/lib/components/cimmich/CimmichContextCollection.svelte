@@ -44,6 +44,7 @@
     sortContextEntities,
     type ContextTypeFilter,
   } from './context-entity-presentation';
+  import { eventLineage } from './event-folder-graph';
 
   interface Props {
     controlledPlaceGroupMode?: 'country' | 'duplicates' | 'none';
@@ -566,7 +567,7 @@
           </p>
           <div class="context-event-first-actions">
             <button class="context-event-first-primary" type="button" onclick={startEventFromPhotos}>
-              <Icon icon={mdiImageMultipleOutline} size="19" /> Choose photos
+              <Icon icon={mdiImageMultipleOutline} size="19" /> Choose folders or photos
             </button>
             <button class="context-event-first-secondary" type="button" onclick={() => onAdd()}>
               Start without photos
@@ -595,6 +596,7 @@
               {#each yearEntities as entity (entity.entityId)}
                 {@const previewIds = eventPreviewIds(entity)}
                 {@const visiblePreviewIds = entity.typeKind === 'trip' ? previewIds : previewIds.slice(0, 1)}
+                {@const lineage = eventLineage(entity, entities)}
                 <a class={eventCardClass(entity)} href={entityHref(entity)}>
                   <div
                     class:context-event-cover--contact={entity.typeKind === 'trip' && visiblePreviewIds.length > 1}
@@ -622,6 +624,14 @@
                   </div>
                   <div class="context-event-copy">
                     <p class="truncate text-lg font-semibold">{entity.displayName}</p>
+                    {#if lineage.length > 1}
+                      <p class="mt-1 truncate text-xs font-semibold text-primary">
+                        Part of {lineage
+                          .slice(0, -1)
+                          .map(({ displayName }) => displayName)
+                          .join(' › ')}
+                      </p>
+                    {/if}
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                       {formatContextDatePrecision(entity) ||
                         (contextEventYear(entity) === 'Undated' ? 'Date not set' : contextEventYear(entity))}
@@ -631,7 +641,8 @@
                       </p>{/if}
                     <p class="mt-4 text-xs font-medium text-gray-500">
                       {entity.assetCount}
-                      {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}
+                      {entity.assetCount === 1 ? 'photo or video' : 'photos & videos'}{#if (entity.childCount ?? 0) > 0}
+                        · {entity.childCount} {entity.childCount === 1 ? 'chapter' : 'chapters'}{/if}
                     </p>
                   </div>
                 </a>

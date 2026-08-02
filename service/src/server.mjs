@@ -2451,6 +2451,7 @@ export const createCimmichServer = ({
               parentEntityId: body.parentEntityId,
               placeRole: isGpsPlaceCreate ? "geography" : body.placeRole,
               recurrence: body.recurrence,
+              sourceFolders: body.sourceFolders,
               status: body.status,
               typeKind: body.typeKind,
             }),
@@ -2503,6 +2504,7 @@ export const createCimmichServer = ({
               parentEntityId: body.parentEntityId,
               placeRole: body.placeRole,
               recurrence: body.recurrence,
+              sourceFolders: body.sourceFolders,
               status: body.status,
               typeKind: body.typeKind,
             }),
@@ -2697,6 +2699,7 @@ export const createCimmichServer = ({
             entityKind: family.entityKind,
             relationIds: body.relationIds,
             relations: body.relations,
+            sourceFolders: body.sourceFolders,
           }),
           allowedOrigin,
         );

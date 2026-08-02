@@ -81,7 +81,7 @@ const assertPersisted = async () => {
   assert.equal(detail.assets.length, 2);
   assert.deepEqual(
     detail.relations.map((relation) => relation.relationKind).sort(),
-    ["companion", "location", "object", "participant"],
+    ["companion", "location", "object", "participant", "related"],
   );
   const search = await request(
     "/v1/search/smart?q=photo%20with%20Synthetic%20Person%20at%20Greek%20beach%20in%202020&limit=20",
@@ -186,22 +186,105 @@ if (phase === "write" || phase === "all") {
     datePrecision: "exact",
     dateStart: "2020-01-01",
     displayName: "Synthetic Greek holiday 2020",
+    sourceFolders: ["/archive/Greek holiday", "/archive/Consulting overlap"],
     typeKind: "trip",
   });
   const trip = tripCreated.detail.entity;
-  await create("events", "context.create.activity-01", {
+  assert.deepEqual(trip.sourceFolders, [
+    "/archive/Greek holiday",
+    "/archive/Consulting overlap",
+  ]);
+  const activityCreated = await create("events", "context.create.activity-01", {
     datePrecision: "month",
     dateStart: "2020-06-01",
     displayName: "Synthetic beach tour",
     parentEntityId: trip.entityId,
     typeKind: "activity",
   });
-  await create("events", "context.create.lifeperiod1", {
-    datePrecision: "year",
-    dateStart: "2020-01-01",
-    displayName: "Synthetic overseas employment",
-    typeKind: "life_period",
+  assert.equal(activityCreated.detail.entity.parentEntityId, trip.entityId);
+  const lifePeriodCreated = await create(
+    "events",
+    "context.create.lifeperiod1",
+    {
+      datePrecision: "year",
+      dateStart: "2020-01-01",
+      displayName: "Synthetic overseas employment",
+      typeKind: "life_period",
+    },
+  );
+  const lifePeriod = lifePeriodCreated.detail.entity;
+  const connected = await request(
+    `/v1/events/${trip.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context.relations.event-overlap1",
+        relations: [
+          {
+            relationKind: "related",
+            targetId: lifePeriod.entityId,
+            targetKind: "event",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(connected.changedRelationIds.length, 1);
+  const inverseDetail = await request(`/v1/events/${lifePeriod.entityId}`);
+  assert.deepEqual(
+    inverseDetail.relations.map((relation) => ({
+      direction: relation.direction,
+      targetId: relation.targetId,
+    })),
+    [{ direction: "incoming", targetId: trip.entityId }],
+  );
+  const inverseReplay = await request(
+    `/v1/events/${lifePeriod.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context.relations.event-overlap2",
+        relations: [
+          {
+            relationKind: "related",
+            targetId: trip.entityId,
+            targetKind: "event",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(inverseReplay.status, "no_change");
+  assert.equal(inverseReplay.unchangedRelationIds.length, 1);
+  const folderUndoEvent = await create("events", "context.create.folderundo1", {
+    displayName: "Synthetic folder refresh Undo",
+    typeKind: "event",
   });
+  const folderAttached = await request(
+    `/v1/events/${folderUndoEvent.detail.entity.entityId}/assets:attach`,
+    {
+      body: {
+        assets: [
+          { assetId: "asset_service_fixture", associationKind: "direct" },
+        ],
+        commandId: "context.assets.folderundo1",
+        sourceFolders: ["/archive/Folder refresh"],
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(folderAttached.detail.entity.sourceFolders, [
+    "/archive/Folder refresh",
+  ]);
+  const folderAttachUndone = await request(
+    `/v1/context/decisions/${folderAttached.decisionId}/undo`,
+    {
+      body: { commandId: "context.assets.folderundou1" },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(folderAttachUndone.detail.entity.sourceFolders, []);
+  assert.equal(folderAttachUndone.detail.assets.length, 0);
 
   const assetBody = {
     assets: [
