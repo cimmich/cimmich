@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import type { Action } from '$lib/components/asset-viewer/actions/action';
   import type { AssetCursor } from '$lib/components/asset-viewer/AssetViewer.svelte';
   import { AssetAction } from '$lib/constants';
@@ -98,6 +99,11 @@
 
   const handleClose = async (assetId: string) => {
     invisible = true;
+    const returnRoute = assetViewerManager.takeReturnRoute();
+    if (returnRoute) {
+      await goto(returnRoute);
+      return;
+    }
     assetViewerManager.gridScrollTarget = { at: assetId };
     await navigate({
       targetRoute: 'current',

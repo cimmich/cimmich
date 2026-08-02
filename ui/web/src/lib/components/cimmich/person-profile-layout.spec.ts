@@ -177,6 +177,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('subjectKind: cimmichPerson.subject_kind');
     expect(source).toContain('Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos');
     expect(source).toContain('cimmichPhotoSelectionMode');
+    expect(source).toContain('handleCimmichMediaCardClick(event, cimmichPhotoSelectionMode');
     expect(source).not.toContain("tagType: 'face'");
   });
 

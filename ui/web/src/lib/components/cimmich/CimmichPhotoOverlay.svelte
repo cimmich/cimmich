@@ -3658,7 +3658,7 @@
             <button
               {...props}
               class={[
-                'flex h-11 items-center justify-center gap-2 rounded-full px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isPeopleSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',
@@ -3670,7 +3670,6 @@
               data-testid="cimmich-people-view"
             >
               <Icon icon={mdiAccountMultipleOutline} size="20" />
-              <span class="hidden text-sm font-medium sm:inline">People</span>
             </button>
           {/snippet}
         </Tooltip>
@@ -3680,7 +3679,7 @@
             <button
               {...props}
               class={[
-                'flex h-11 items-center justify-center gap-2 rounded-full px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isContextSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',
@@ -3692,7 +3691,6 @@
               data-testid="cimmich-context-view"
             >
               <Icon icon={mdiImageOutline} size="20" />
-              <span class="hidden text-sm font-medium sm:inline">Context</span>
             </button>
           {/snippet}
         </Tooltip>
