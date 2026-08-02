@@ -2,7 +2,7 @@
 
 Updated: 2026-08-02
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 115/patch 1
+Current source/disposable candidate: migration-ledger schema 116/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -15,7 +15,7 @@ source with the private archive and adds recoverable bulk Organise operations.
 The final source gate passes 805
 service tests with two skipped, 914 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 115, and the complete disposable synthetic lifecycle.
+acceptance through schema 116, and the complete disposable synthetic lifecycle.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt
@@ -32,7 +32,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 115; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 116; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -151,6 +151,10 @@ arrangement as one revisioned command with one exact Undo.
 Schema 113 adds satellite as the primary Plan background for mapped Locations
 without copying provider tiles into the photo library or changing geographic
 Place geometry.
+Schema 114 persists the owner-aligned satellite centre and zoom, and schema 115
+permits honest Plan-only digital enlargement past the provider's final real
+tile. Schema 116 keeps Outline as one closed polygon and adds bounded
+multi-stroke Paint coverage for disconnected parts of the same child Location.
 
 ## Public Beta Patch 6 candidate
 

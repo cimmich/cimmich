@@ -240,7 +240,11 @@ export type CimmichContextMutationResult = {
 export type CimmichPlacePlanGeometry =
   | { kind: 'point'; x: number; y: number }
   | { h: number; kind: 'rect'; w: number; x: number; y: number }
-  | { kind: 'polygon'; points: Array<{ x: number; y: number }> };
+  | { kind: 'polygon'; points: Array<{ x: number; y: number }> }
+  | {
+      kind: 'paint';
+      strokes: Array<{ points: Array<{ x: number; y: number }>; radius: number }>;
+    };
 
 export type CimmichPlacePlanItem = {
   childEntityId: string;
