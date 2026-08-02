@@ -184,6 +184,7 @@
     version: 8,
     sources: {
       [satelliteSourceId]: {
+        maxzoom: 18,
         type: 'raster',
         tiles: [satelliteTileUrl],
         tileSize: 256,
@@ -322,6 +323,7 @@
 
     if (!map.getSource(satelliteSourceId)) {
       map.addSource(satelliteSourceId, {
+        maxzoom: 18,
         type: 'raster',
         tiles: [satelliteTileUrl],
         tileSize: 256,
