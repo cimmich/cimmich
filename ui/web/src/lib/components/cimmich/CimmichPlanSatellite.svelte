@@ -36,7 +36,9 @@
         placeAreas={[]}
         placeMarkers={[]}
         rounded
+        satelliteOnly
         satelliteInitiallyEnabled
+        simplified
         showSatelliteControl={false}
         showSettings={false}
         showSimpleControls={false}
@@ -46,6 +48,7 @@
   {:else}
     <div class="plan-satellite__loading">Satellite needs a mapped Location</div>
   {/if}
+  {#if center}<span class="plan-satellite__credit">Satellite © Esri</span>{/if}
 </div>
 
 <style>
@@ -53,6 +56,18 @@
   .plan-satellite__loading {
     position: absolute;
     inset: 0;
+  }
+  .plan-satellite__credit {
+    position: absolute;
+    right: 0.35rem;
+    bottom: 0.3rem;
+    z-index: 1;
+    border-radius: 0.25rem;
+    padding: 0.12rem 0.3rem;
+    color: rgb(15 23 42);
+    background: rgb(255 255 255 / 0.78);
+    font-size: 0.58rem;
+    line-height: 1;
   }
   .plan-satellite {
     pointer-events: none;
