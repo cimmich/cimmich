@@ -172,6 +172,30 @@ INSERT INTO context_relation_link (
   'decision_schema_117_route',
   'contextrel_11700000000000000000000000000002'
 );
+
+-- Undo uses the same all-at-once release before restoring the prior order.
+UPDATE context_relation_link
+SET state = 'superseded', sort_order = NULL
+WHERE link_id IN (
+  'contextrel_11700000000000000000000000000003',
+  'contextrel_11700000000000000000000000000004'
+);
+INSERT INTO context_relation_link (
+  link_id, entity_id, target_kind, target_id, relation_kind, state,
+  sort_order, decision_id, supersedes_link_id
+) VALUES (
+  'contextrel_11700000000000000000000000000005',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000001', 'location', 'accepted', 0,
+  'decision_schema_117_route',
+  'contextrel_11700000000000000000000000000003'
+), (
+  'contextrel_11700000000000000000000000000006',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000002', 'location', 'accepted', 1,
+  'decision_schema_117_route',
+  'contextrel_11700000000000000000000000000004'
+);
 SQL
 read -r recurrence_frequency stop_orders retired_positions <<EOF
 $(docker exec "$CONTAINER" psql -U cimmich_migration_test -d cimmich_migration_test -AtF ' ' -c \
