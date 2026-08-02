@@ -146,6 +146,7 @@
   let selectedGeographyGroupEntityIds = $state<string[]>([]);
   let selectedLoading = $state(false);
   let showEditor = $state(false);
+  let planCreateParentId = $state('');
   let showAssetPicker = $state(false);
   let showRelationPicker = $state(false);
   let editorMode = $state<'create' | 'edit'>('create');
@@ -850,6 +851,7 @@
     parentEntityId = '',
     geographyGroupName = '',
   ) => {
+    planCreateParentId = '';
     editorMode = 'create';
     editorTarget = null;
     resetForm();
@@ -863,6 +865,21 @@
     editorTypeChosen = entityKind === 'place';
     editorCommandId = createCimmichContextCommandId('create');
     showEditor = true;
+  };
+
+  const openPlanChildCreate = () => {
+    if (!selected || activeFamily !== 'places' || selected.entity.placeRole !== 'location') {
+      return;
+    }
+    const parentId = selected.entity.entityId;
+    openCreate('location', parentId);
+    planCreateParentId = parentId;
+    formDirectoryVisibility = 'nested_only';
+  };
+
+  const closeEditor = () => {
+    showEditor = false;
+    planCreateParentId = '';
   };
 
   const openEdit = () => {
@@ -1265,6 +1282,7 @@
         typeKind: formType,
       };
       const mutation = resolveContextEditorMutation(editorMode, editorTarget);
+      const returnToPlanParentId = mutation.kind === 'create' ? planCreateParentId : '';
       const result =
         mutation.kind === 'update'
           ? await updateCimmichContextEntity(activeFamily, mutation.entityId, {
@@ -1282,7 +1300,12 @@
       editorCommandId = '';
       editorTarget = null;
       await loadEntities();
-      selected = result.detail;
+      if (returnToPlanParentId) {
+        selected = await getCimmichContextEntity('places', returnToPlanParentId);
+        planCreateParentId = '';
+      } else {
+        selected = result.detail;
+      }
       if (createdFromGeographyGroup && result.detail) {
         selectedGeographyGroup = '';
         selectedGeographyGroupEntityIds = [];
@@ -2696,6 +2719,7 @@
         <CimmichPlacePlan
           children={selectedPlaceChildren}
           coverSourceAssetId={selected.entity.coverAssetId}
+          onCreateLocation={openPlanChildCreate}
           onOpenPlace={openEntity}
           onSave={saveLocationPlan}
           parent={selected.entity}
@@ -2842,12 +2866,12 @@
     role="presentation"
     onkeydown={(event) => {
       if (event.key === 'Escape' && !isSaving) {
-        showEditor = false;
+        closeEditor();
       }
     }}
     onclick={(event) => {
       if (event.currentTarget === event.target && !isSaving) {
-        showEditor = false;
+        closeEditor();
       }
     }}
   >
@@ -2869,12 +2893,8 @@
               : `Settings for ${selected?.entity.displayName}`}
           </h2>
         </div>
-        <button
-          class="context-icon-button"
-          type="button"
-          aria-label="Close"
-          disabled={isSaving}
-          onclick={() => (showEditor = false)}><Icon icon={mdiClose} size="22" /></button
+        <button class="context-icon-button" type="button" aria-label="Close" disabled={isSaving} onclick={closeEditor}
+          ><Icon icon={mdiClose} size="22" /></button
         >
       </div>
       {#if editorMode === 'create' && !editorTypeChosen && entityKind !== 'place'}
@@ -3305,11 +3325,8 @@
           <div
             class="sticky bottom-0 -mx-2 flex justify-end gap-3 bg-white/95 px-2 py-3 backdrop-blur-sm dark:bg-gray-900/95"
           >
-            <button
-              class="context-secondary-button"
-              type="button"
-              disabled={isSaving}
-              onclick={() => (showEditor = false)}>Cancel</button
+            <button class="context-secondary-button" type="button" disabled={isSaving} onclick={closeEditor}
+              >Cancel</button
             ><button class="context-primary-button" type="submit" disabled={isSaving || !entityDraftCanSave}
               ><Icon icon={mdiCheck} size="19" />
               {isSaving ? 'Saving…' : editorMode === 'create' ? `Add ${entityNoun}` : 'Save changes'}</button

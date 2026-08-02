@@ -10,10 +10,12 @@
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
+    mdiBrushVariant,
     mdiCheck,
     mdiClose,
     mdiFloorPlan,
     mdiImageOutline,
+    mdiMapMarkerPlusOutline,
     mdiPencilOutline,
     mdiPlus,
     mdiRestore,
@@ -32,6 +34,7 @@
   interface Props {
     children: CimmichContextEntity[];
     coverSourceAssetId?: string | null;
+    onCreateLocation: () => void;
     onOpenPlace: (child: CimmichContextEntity) => void;
     onSave: (input: {
       backgroundKind: CimmichPlacePlan['backgroundKind'];
@@ -48,7 +51,7 @@
     plans: CimmichPlacePlan[];
   }
 
-  let { children, coverSourceAssetId = null, onOpenPlace, onSave, parent, plans }: Props = $props();
+  let { children, coverSourceAssetId = null, onCreateLocation, onOpenPlace, onSave, parent, plans }: Props = $props();
   let activePlanId = $state('');
   let editing = $state(false);
   let draftName = $state('');
@@ -61,6 +64,11 @@
   let draftRevision = $state(0);
   let draftDefault = $state(false);
   let selectedChildId = $state('');
+  let paintingChildId = $state('');
+  let paint = $state<{
+    pointerId: number;
+    points: Array<{ x: number; y: number }>;
+  } | null>(null);
   let saving = $state(false);
   let saveError = $state('');
   let drag = $state<{
@@ -87,6 +95,13 @@
   });
   const placedIds = $derived(new Set(visibleItems.map((item) => item.childEntityId)));
   const unplacedChildren = $derived(children.filter((child) => !placedIds.has(child.entityId)));
+  const paintingChild = $derived(children.find((child) => child.entityId === paintingChildId) ?? null);
+  const paintPreview = $derived.by(() => {
+    if (!paint) {
+      return null;
+    }
+    return paint.points.length >= 3 ? { kind: 'polygon' as const, points: paint.points } : null;
+  });
 
   $effect(() => {
     if (plans.length > 0 && !plans.some((plan) => plan.planId === activePlanId)) {
@@ -141,6 +156,8 @@
     draftItems = [];
     draftDefault = plans.length === 0;
     selectedChildId = '';
+    paintingChildId = '';
+    paint = null;
     saveError = '';
     editing = true;
   };
@@ -165,6 +182,8 @@
     }));
     draftDefault = activePlan.isDefault;
     selectedChildId = '';
+    paintingChildId = '';
+    paint = null;
     saveError = '';
     editing = true;
   };
@@ -172,27 +191,82 @@
   const cancelEdit = () => {
     editing = false;
     selectedChildId = '';
+    paintingChildId = '';
+    paint = null;
     drag = null;
     saveError = '';
   };
 
-  const addChild = (child: CimmichContextEntity) => {
+  const startPainting = (child: CimmichContextEntity) => {
     if (placedIds.has(child.entityId)) {
+      selectedChildId = child.entityId;
       return;
     }
+    selectedChildId = '';
+    paintingChildId = child.entityId;
+    paint = null;
+  };
+
+  const canvasPoint = (event: PointerEvent) => {
+    if (!canvas) {
+      return null;
+    }
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: clamp((event.clientX - bounds.left) / bounds.width, 0, 1),
+      y: clamp((event.clientY - bounds.top) / bounds.height, 0, 1),
+    };
+  };
+
+  const beginPaint = (event: PointerEvent) => {
+    const point = canvasPoint(event);
+    if (!editing || !paintingChild || !point) {
+      return;
+    }
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    paint = { pointerId: event.pointerId, points: [point] };
+  };
+
+  const continuePaint = (event: PointerEvent) => {
+    const point = canvasPoint(event);
+    if (!paint || paint.pointerId !== event.pointerId || !point) {
+      return;
+    }
+    const previous = paint.points.at(-1);
+    if (previous && Math.hypot(point.x - previous.x, point.y - previous.y) < 0.006) {
+      return;
+    }
+    paint = { ...paint, points: [...paint.points, point] };
+  };
+
+  const finishPaint = (event: PointerEvent) => {
+    if (!paint || paint.pointerId !== event.pointerId || !paintingChild) {
+      return;
+    }
+    const finalPoint = canvasPoint(event);
+    const previous = paint.points.at(-1);
+    const points =
+      finalPoint && (!previous || Math.hypot(finalPoint.x - previous.x, finalPoint.y - previous.y) >= 0.006)
+        ? [...paint.points, finalPoint]
+        : paint.points;
+    paint = null;
+    if (points.length < 3) {
+      return;
+    }
+    const geometry = { kind: 'polygon' as const, points };
     const index = draftItems.length;
-    const column = index % 3;
-    const row = Math.floor(index / 3) % 3;
     draftItems = [
       ...draftItems,
       {
-        childEntityId: child.entityId,
-        childName: child.displayName,
-        geometry: { h: 0.2, kind: 'rect', w: 0.26, x: 0.06 + column * 0.31, y: 0.08 + row * 0.28 },
+        childEntityId: paintingChild.entityId,
+        childName: paintingChild.displayName,
+        geometry,
         zIndex: index,
       },
     ];
-    selectedChildId = child.entityId;
+    selectedChildId = paintingChild.entityId;
+    paintingChildId = '';
   };
 
   const removeSelected = () => {
@@ -201,6 +275,7 @@
     }
     draftItems = draftItems.filter((item) => item.childEntityId !== selectedChildId);
     selectedChildId = '';
+    paint = null;
   };
 
   const clamp = (number: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, number));
@@ -290,6 +365,8 @@
       });
       editing = false;
       selectedChildId = '';
+      paintingChildId = '';
+      paint = null;
     } catch (error) {
       saveError = error instanceof Error ? error.message : 'The Plan could not be saved.';
     } finally {
@@ -457,6 +534,26 @@
           <img src={getAssetMediaUrl({ id: visibleBackground, size: AssetMediaSize.Preview })} alt="" />
         {/if}
         <div class="place-plan__grid"></div>
+        {#if editing && paintingChild}
+          <div
+            class="place-plan__paint-layer"
+            role="application"
+            aria-label={`Paint ${paintingChild.displayName} on this plan`}
+            onpointerdown={beginPaint}
+            onpointermove={continuePaint}
+            onpointerup={finishPaint}
+            onpointercancel={() => (paint = null)}
+          >
+            <span class="place-plan__paint-hint"
+              ><Icon icon={mdiBrushVariant} size="17" /> Drag to paint {paintingChild.displayName}</span
+            >
+            {#if paintPreview}
+              <div class="place-plan__paint-preview" style={itemStyle(paintPreview)}>
+                <span>{paintingChild.displayName}</span>
+              </div>
+            {/if}
+          </div>
+        {/if}
         {#each visibleItems as item (item.childEntityId)}
           {@const child = children.find((candidate) => candidate.entityId === item.childEntityId)}
           <button
@@ -492,7 +589,7 @@
             {/if}
           </button>
         {/each}
-        {#if visibleItems.length === 0}
+        {#if visibleItems.length === 0 && !paintingChild}
           <div class="place-plan__canvas-empty">Choose a Location to place</div>
         {/if}
       </div>
@@ -503,22 +600,47 @@
             <strong>Locations</strong>
             <span>{draftItems.length} placed</span>
           </div>
+          <button class="place-plan__new-location" type="button" onclick={onCreateLocation}>
+            <Icon icon={mdiMapMarkerPlusOutline} size="18" /> New location
+          </button>
           <ul>
             {#each children as child (child.entityId)}
               <li>
                 <button
                   type="button"
-                  class:place-plan__tray-item--selected={selectedChildId === child.entityId}
-                  onclick={() => (placedIds.has(child.entityId) ? (selectedChildId = child.entityId) : addChild(child))}
+                  class:place-plan__tray-item--selected={selectedChildId === child.entityId ||
+                    paintingChildId === child.entityId}
+                  aria-label={placedIds.has(child.entityId)
+                    ? `Select ${child.displayName}`
+                    : `Paint ${child.displayName} on this plan`}
+                  onclick={() =>
+                    placedIds.has(child.entityId) ? (selectedChildId = child.entityId) : startPainting(child)}
                 >
                   <span>{child.displayName}</span>
-                  <small>{placedIds.has(child.entityId) ? 'Placed' : 'Add'}</small>
+                  <span class="place-plan__tray-action">
+                    <Icon icon={placedIds.has(child.entityId) ? mdiCheck : mdiBrushVariant} size="16" />
+                    <small
+                      >{placedIds.has(child.entityId)
+                        ? 'Placed'
+                        : paintingChildId === child.entityId
+                          ? 'Painting'
+                          : 'Paint'}</small
+                    >
+                  </span>
                 </button>
               </li>
             {/each}
           </ul>
-          {#if children.length === 0}<p>Add child Locations to {parent.displayName} before arranging them here.</p>{/if}
-          {#if selectedChildId}
+          {#if paintingChildId}
+            <button
+              class="place-plan__cancel-paint"
+              type="button"
+              onclick={() => {
+                paintingChildId = '';
+                paint = null;
+              }}>Cancel painting</button
+            >
+          {:else if selectedChildId}
             <button class="place-plan__remove" type="button" onclick={removeSelected}>Remove from this plan</button>
           {/if}
           {#if unplacedChildren.length > 0 && draftItems.length > 0}
@@ -764,6 +886,42 @@
   .place-plan__canvas--photo .place-plan__grid {
     background-color: rgb(15 23 42/0.12);
   }
+  .place-plan__paint-layer {
+    position: absolute;
+    z-index: 4;
+    inset: 0;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .place-plan__paint-hint {
+    position: absolute;
+    top: 0.7rem;
+    left: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    padding: 0.5rem 0.75rem;
+    color: white;
+    background: rgb(15 23 42 / 0.84);
+    box-shadow: 0 4px 16px rgb(15 23 42 / 0.25);
+    font-size: 0.75rem;
+    font-weight: 750;
+    pointer-events: none;
+  }
+  .place-plan__paint-preview {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    border: 2px dashed rgb(var(--immich-primary-color));
+    border-radius: 0.75rem;
+    color: rgb(30 41 59);
+    background: rgb(255 255 255 / 0.72);
+    font-size: 0.78rem;
+    font-weight: 750;
+    pointer-events: none;
+  }
   .place-plan__zone {
     position: absolute;
     z-index: 2;
@@ -850,8 +1008,7 @@
     justify-content: space-between;
     gap: 0.5rem;
   }
-  .place-plan__tray > div span,
-  .place-plan__tray p {
+  .place-plan__tray > div span {
     color: rgb(107 114 128);
     font-size: 0.75rem;
   }
@@ -882,6 +1039,26 @@
   }
   .place-plan__tray li small {
     color: rgb(var(--immich-primary-color));
+  }
+  .place-plan__new-location,
+  .place-plan__tray-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .place-plan__new-location {
+    width: 100%;
+    justify-content: center;
+    border: 1px dashed rgb(var(--immich-primary-color) / 0.55);
+    color: rgb(var(--immich-primary-color));
+    background: rgb(var(--immich-primary-color) / 0.06);
+  }
+  .place-plan__tray-action {
+    flex: none;
+  }
+  .place-plan__cancel-paint {
+    color: rgb(71 85 105);
+    background: rgb(241 245 249);
   }
   .place-plan__remove {
     color: rgb(185 28 28);
