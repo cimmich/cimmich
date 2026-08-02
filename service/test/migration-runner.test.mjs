@@ -260,12 +260,31 @@ test("schema 112 keeps normalized Location Plans separate from geographic geomet
 test("schema 113 adds satellite as a Location Plan background without storing map tiles as Assets", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
-      new URL("../../migrations/0113_location_plan_satellite_v1.sql", import.meta.url),
+      new URL(
+        "../../migrations/0113_location_plan_satellite_v1.sql",
+        import.meta.url,
+      ),
       "utf8",
     ),
   );
   assert.match(migration, /'blank','asset','satellite'/);
   assert.doesNotMatch(migration, /INSERT INTO asset/i);
+  assert.doesNotMatch(migration, /context_entity\.geometry/i);
+});
+
+test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0114_location_plan_satellite_viewport_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /ADD COLUMN background_viewport jsonb/);
+  assert.match(migration, /background_kind = 'satellite'/);
+  assert.match(migration, /BETWEEN 0 AND 18/);
   assert.doesNotMatch(migration, /context_entity\.geometry/i);
 });
 

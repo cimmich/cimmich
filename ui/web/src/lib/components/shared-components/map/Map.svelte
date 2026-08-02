@@ -76,6 +76,7 @@
     onClusterSelect?: (assetIds: string[], bbox: SelectionBBox) => void;
     onBrushPoint?: ({ lat, lng }: { lat: number; lng: number }) => void;
     onClickPoint?: ({ lat, lng }: { lat: number; lng: number }) => void;
+    onViewportChange?: (viewport: { latitude: number; longitude: number; zoom: number }) => void;
     popup?: import('svelte').Snippet<[{ marker: MapMarkerResponseDto }]>;
     rounded?: boolean;
     showSimpleControls?: boolean;
@@ -136,6 +137,7 @@
     onClusterSelect,
     onBrushPoint = () => {},
     onClickPoint = () => {},
+    onViewportChange,
     popup,
     rounded = false,
     showSimpleControls = true,
@@ -731,7 +733,7 @@
   });
 
   $effect(() => {
-    if (!center || !zoom) {
+    if (!center || zoom === undefined) {
       return;
     }
 
@@ -796,6 +798,13 @@
       event.on('style.load', syncPlaceBrushLayers);
       event.on('styleimagemissing', addMissingMapStyleImage);
       event.on('error', handleMapBackgroundError);
+      event.on('moveend', () => {
+        if (!onViewportChange) {
+          return;
+        }
+        const nextCenter = event.getCenter();
+        onViewportChange({ latitude: nextCenter.lat, longitude: nextCenter.lng, zoom: event.getZoom() });
+      });
       if (!simplified) {
         event.addControl(new GlobeControl(), 'top-left');
       }

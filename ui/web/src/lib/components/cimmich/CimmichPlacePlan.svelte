@@ -3,6 +3,7 @@
     type CimmichContextEntity,
     type CimmichPlacePlan,
     type CimmichPlacePlanGeometry,
+    type CimmichPlacePlanViewport,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
@@ -15,6 +16,7 @@
     mdiImageOutline,
     mdiPencilOutline,
     mdiPlus,
+    mdiRestore,
     mdiSatelliteVariant,
   } from '@mdi/js';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
@@ -34,6 +36,7 @@
     onSave: (input: {
       backgroundKind: CimmichPlacePlan['backgroundKind'];
       backgroundSourceAssetId: string | null;
+      backgroundViewport: CimmichPlacePlanViewport | null;
       displayName: string;
       expectedRevision: number;
       isDefault: boolean;
@@ -52,6 +55,7 @@
   let draftKind = $state<CimmichPlacePlan['planKind']>('property');
   let draftBackgroundKind = $state<CimmichPlacePlan['backgroundKind']>('blank');
   let draftBackgroundSourceAssetId = $state<string | null>(null);
+  let draftBackgroundViewport = $state<CimmichPlacePlanViewport | null>(null);
   let draftItems = $state<DraftItem[]>([]);
   let draftPlanId = $state<string | null>(null);
   let draftRevision = $state(0);
@@ -74,6 +78,9 @@
     editing ? draftBackgroundSourceAssetId : (activePlan?.backgroundSourceAssetId ?? null),
   );
   const visibleBackgroundKind = $derived(editing ? draftBackgroundKind : (activePlan?.backgroundKind ?? 'blank'));
+  const visibleBackgroundViewport = $derived(
+    editing ? draftBackgroundViewport : (activePlan?.backgroundViewport ?? null),
+  );
   const satelliteAvailable = $derived.by(() => {
     const projection = contextPlaceMapProjection([parent]);
     return projection.markers.length + projection.areas.length > 0;
@@ -87,6 +94,39 @@
     }
   });
 
+  const defaultSatelliteViewport = (): CimmichPlacePlanViewport | null => {
+    const projection = contextPlaceMapProjection([parent]);
+    const marker = projection.markers[0];
+    if (marker) {
+      return { latitude: marker.lat, longitude: marker.lon, zoom: 18 };
+    }
+    const points = projection.areas[0]?.points ?? [];
+    if (points.length === 0) {
+      return null;
+    }
+    return {
+      latitude: points.reduce((sum, point) => sum + point.lat, 0) / points.length,
+      longitude: points.reduce((sum, point) => sum + point.lon, 0) / points.length,
+      zoom: 18,
+    };
+  };
+
+  const updateSatelliteViewport = (viewport: CimmichPlacePlanViewport) => {
+    const next = {
+      latitude: Number(viewport.latitude.toFixed(7)),
+      longitude: Number(viewport.longitude.toFixed(7)),
+      zoom: Number(viewport.zoom.toFixed(2)),
+    };
+    if (
+      draftBackgroundViewport?.latitude === next.latitude &&
+      draftBackgroundViewport.longitude === next.longitude &&
+      draftBackgroundViewport.zoom === next.zoom
+    ) {
+      return;
+    }
+    draftBackgroundViewport = next;
+  };
+
   const startNew = (
     kind: CimmichPlacePlan['planKind'],
     backgroundKind: CimmichPlacePlan['backgroundKind'] = 'blank',
@@ -97,6 +137,7 @@
     draftKind = kind;
     draftBackgroundKind = backgroundKind;
     draftBackgroundSourceAssetId = backgroundKind === 'asset' ? coverSourceAssetId : null;
+    draftBackgroundViewport = backgroundKind === 'satellite' ? defaultSatelliteViewport() : null;
     draftItems = [];
     draftDefault = plans.length === 0;
     selectedChildId = '';
@@ -114,6 +155,8 @@
     draftKind = activePlan.planKind;
     draftBackgroundKind = activePlan.backgroundKind;
     draftBackgroundSourceAssetId = activePlan.backgroundSourceAssetId;
+    draftBackgroundViewport =
+      activePlan.backgroundKind === 'satellite' ? (activePlan.backgroundViewport ?? defaultSatelliteViewport()) : null;
     draftItems = activePlan.items.map((item) => ({
       childEntityId: item.childEntityId,
       childName: item.childName,
@@ -237,6 +280,7 @@
       await onSave({
         backgroundKind: draftBackgroundKind,
         backgroundSourceAssetId: draftBackgroundSourceAssetId,
+        backgroundViewport: draftBackgroundKind === 'satellite' ? draftBackgroundViewport : null,
         displayName: draftName.trim(),
         expectedRevision: draftRevision,
         isDefault: draftDefault,
@@ -342,6 +386,7 @@
             onclick={() => {
               draftBackgroundKind = 'satellite';
               draftBackgroundSourceAssetId = null;
+              draftBackgroundViewport ??= defaultSatelliteViewport();
             }}><Icon icon={mdiSatelliteVariant} size="17" /> Satellite</button
           >
         {/if}
@@ -353,6 +398,7 @@
             onclick={() => {
               draftBackgroundKind = 'asset';
               draftBackgroundSourceAssetId = coverSourceAssetId;
+              draftBackgroundViewport = null;
             }}><Icon icon={mdiImageOutline} size="17" /> Cover photo</button
           >
         {/if}
@@ -363,6 +409,7 @@
           onclick={() => {
             draftBackgroundKind = 'blank';
             draftBackgroundSourceAssetId = null;
+            draftBackgroundViewport = null;
           }}><Icon icon={mdiPlus} size="17" /> Blank</button
         >
         <div class="place-plan__save-actions">
@@ -389,7 +436,22 @@
         aria-label={`${editing ? 'Editing' : 'Viewing'} ${editing ? draftName : activePlan?.displayName}`}
       >
         {#if visibleBackgroundKind === 'satellite'}
-          <CimmichPlanSatellite location={parent} />
+          <CimmichPlanSatellite
+            interactive={editing}
+            location={parent}
+            onViewportChange={editing ? updateSatelliteViewport : undefined}
+            viewport={visibleBackgroundViewport}
+          />
+          {#if editing}
+            <button
+              class="place-plan__reset-view"
+              type="button"
+              aria-label="Reset satellite position and zoom"
+              title="Reset satellite position and zoom"
+              onclick={() => (draftBackgroundViewport = defaultSatelliteViewport())}
+              ><Icon icon={mdiRestore} size="19" /></button
+            >
+          {/if}
         {/if}
         {#if visibleBackground}
           <img src={getAssetMediaUrl({ id: visibleBackground, size: AssetMediaSize.Preview })} alt="" />
@@ -693,6 +755,7 @@
   }
   .place-plan__grid {
     z-index: 0;
+    pointer-events: none;
     background-image:
       linear-gradient(rgb(100 116 139/0.12) 1px, transparent 1px),
       linear-gradient(90deg, rgb(100 116 139/0.12) 1px, transparent 1px);
@@ -703,7 +766,7 @@
   }
   .place-plan__zone {
     position: absolute;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -750,12 +813,31 @@
   }
   .place-plan__canvas-empty {
     position: absolute;
+    z-index: 1;
     inset: 0;
     display: grid;
     place-items: center;
     color: rgb(107 114 128);
     font-size: 0.85rem;
     font-weight: 650;
+    pointer-events: none;
+  }
+  .place-plan__reset-view {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    z-index: 3;
+    display: grid;
+    width: 2.5rem;
+    min-height: 2.5rem;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 0.55);
+    border-radius: 0.65rem;
+    padding: 0;
+    color: rgb(15 23 42);
+    background: rgb(255 255 255 / 0.9);
+    box-shadow: 0 2px 8px rgb(15 23 42 / 0.2);
+    backdrop-filter: blur(6px);
   }
   .place-plan__tray {
     display: flex;

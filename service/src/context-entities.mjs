@@ -1484,6 +1484,42 @@ const cleanPlacePlanInput = (value) => {
       "PLACE_PLAN_BACKGROUND_INVALID",
     );
   }
+  let backgroundViewport = null;
+  if (value?.backgroundViewport != null) {
+    if (
+      typeof value.backgroundViewport !== "object" ||
+      Array.isArray(value.backgroundViewport)
+    ) {
+      throw typedError(
+        "backgroundViewport must be a satellite centre and zoom",
+        400,
+        "PLACE_PLAN_VIEWPORT_INVALID",
+      );
+    }
+    const { latitude, longitude, zoom } = value.backgroundViewport;
+    if (
+      backgroundKind !== "satellite" ||
+      typeof latitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      latitude < -85.051129 ||
+      latitude > 85.051129 ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180 ||
+      typeof zoom !== "number" ||
+      !Number.isFinite(zoom) ||
+      zoom < 0 ||
+      zoom > 18
+    ) {
+      throw typedError(
+        "backgroundViewport must be a valid satellite centre and zoom",
+        400,
+        "PLACE_PLAN_VIEWPORT_INVALID",
+      );
+    }
+    backgroundViewport = { latitude, longitude, zoom };
+  }
   if (!Array.isArray(value?.items) || value.items.length > 200) {
     throw typedError(
       "Plan items must be an array with at most 200 entries",
@@ -1511,6 +1547,7 @@ const cleanPlacePlanInput = (value) => {
   return {
     backgroundKind,
     backgroundSourceAssetId,
+    backgroundViewport,
     displayName,
     isDefault: value?.isDefault === true,
     items,
@@ -1521,7 +1558,7 @@ const cleanPlacePlanInput = (value) => {
 const loadPlacePlanSnapshot = async (executor, planId) => {
   const [plan] = await executor`
     SELECT plan_id, location_entity_id, display_name, plan_kind,
-      background_kind, background_asset_id, is_default, revision
+      background_kind, background_asset_id, background_viewport, is_default, revision
     FROM place_plan WHERE plan_id = ${planId}
   `;
   if (!plan) return null;
@@ -1533,6 +1570,7 @@ const loadPlacePlanSnapshot = async (executor, planId) => {
   return {
     backgroundAssetId: plan.background_asset_id || null,
     backgroundKind: plan.background_kind,
+    backgroundViewport: plan.background_viewport || null,
     displayName: plan.display_name,
     isDefault: plan.is_default,
     items: items.map((item) => ({
@@ -1553,16 +1591,18 @@ const restorePlacePlanSnapshot = async (tx, snapshot) => {
   await tx`
     INSERT INTO place_plan (
       plan_id, location_entity_id, display_name, plan_kind, background_kind,
-      background_asset_id, is_default, revision, updated_at
+      background_asset_id, background_viewport, is_default, revision, updated_at
     ) VALUES (
       ${snapshot.planId}, ${snapshot.locationEntityId}, ${snapshot.displayName},
       ${snapshot.planKind}, ${snapshot.backgroundKind}, ${snapshot.backgroundAssetId},
+      ${snapshot.backgroundViewport ? tx.json(snapshot.backgroundViewport) : null},
       ${snapshot.isDefault}, ${snapshot.revision}, now()
     ) ON CONFLICT (plan_id) DO UPDATE SET
       display_name = excluded.display_name,
       plan_kind = excluded.plan_kind,
       background_kind = excluded.background_kind,
       background_asset_id = excluded.background_asset_id,
+      background_viewport = excluded.background_viewport,
       is_default = excluded.is_default,
       revision = excluded.revision,
       updated_at = now()
@@ -1645,6 +1685,7 @@ export const createContextEntityStore = (
       projected.push({
         backgroundKind: snapshot.backgroundKind,
         backgroundSourceAssetId,
+        backgroundViewport: snapshot.backgroundViewport,
         displayName: snapshot.displayName,
         isDefault: snapshot.isDefault,
         items: visibleItems,
@@ -1843,15 +1884,17 @@ export const createContextEntityStore = (
         await tx`
           INSERT INTO place_plan (
             plan_id, location_entity_id, display_name, plan_kind,
-            background_kind, background_asset_id, is_default, revision
+            background_kind, background_asset_id, background_viewport, is_default, revision
           ) VALUES (
             ${actualPlanId}, ${locationEntityId}, ${requested.displayName}, ${requested.planKind},
-            ${requested.backgroundKind}, ${backgroundAssetId}, ${isDefault}, 1
+            ${requested.backgroundKind}, ${backgroundAssetId},
+            ${requested.backgroundViewport ? tx.json(requested.backgroundViewport) : null}, ${isDefault}, 1
           ) ON CONFLICT (plan_id) DO UPDATE SET
             display_name = excluded.display_name,
             plan_kind = excluded.plan_kind,
             background_kind = excluded.background_kind,
             background_asset_id = excluded.background_asset_id,
+            background_viewport = excluded.background_viewport,
             is_default = excluded.is_default,
             revision = place_plan.revision + 1,
             updated_at = now()

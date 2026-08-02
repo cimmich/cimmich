@@ -198,7 +198,10 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     ],
     planKind: "floor",
   };
-  await assert.rejects(store.savePlacePlan(input), (error) => error === reachedPersistence);
+  await assert.rejects(
+    store.savePlacePlan(input),
+    (error) => error === reachedPersistence,
+  );
   await assert.rejects(
     store.savePlacePlan({ ...input, backgroundKind: "asset" }),
     (error) =>
@@ -206,8 +209,34 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
       /needs exactly one background photo/.test(error.message),
   );
   await assert.rejects(
-    store.savePlacePlan({ ...input, backgroundKind: "satellite" }),
+    store.savePlacePlan({
+      ...input,
+      backgroundKind: "satellite",
+      backgroundViewport: {
+        latitude: -29.489,
+        longitude: 153.232,
+        zoom: 17.25,
+      },
+    }),
     (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      backgroundKind: "satellite",
+      backgroundViewport: { latitude: -91, longitude: 153.232, zoom: 19 },
+    }),
+    (error) =>
+      error.code === "PLACE_PLAN_VIEWPORT_INVALID" &&
+      /valid satellite centre and zoom/.test(error.message),
+  );
+  await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      backgroundKind: "blank",
+      backgroundViewport: { latitude: -29.489, longitude: 153.232, zoom: 17 },
+    }),
+    (error) => error.code === "PLACE_PLAN_VIEWPORT_INVALID",
   );
   await assert.rejects(
     store.savePlacePlan({

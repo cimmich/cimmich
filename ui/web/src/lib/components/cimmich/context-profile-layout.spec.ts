@@ -69,14 +69,17 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(plan).toContain('<CimmichPlanSatellite');
     expect(plan).toContain("'satellite'");
     expect(plan).toContain("geometry: { h: 0.2, kind: 'rect'");
+    expect(plan).toContain('updateSatelliteViewport');
+    expect(plan).toContain('Reset satellite position and zoom');
     expect(plan).toContain('Remove from this plan');
     expect(plan).toContain('Save plan');
-    expect(plan).not.toContain('latitude');
-    expect(plan).not.toContain('longitude');
     const satellite = await read('src/lib/components/cimmich/CimmichPlanSatellite.svelte');
     const map = await read('src/lib/components/shared-components/map/Map.svelte');
     expect(satellite).toContain('satelliteOnly');
+    expect(satellite).toContain('showSimpleControls={interactive}');
+    expect(satellite).toContain('{onViewportChange}');
     expect(map).toContain('maxzoom: 18');
+    expect(map).toContain("event.on('moveend'");
     expect(satellite).toContain('Satellite © Esri');
   });
 
