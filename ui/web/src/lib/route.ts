@@ -107,6 +107,7 @@ export const Route = {
   cimmichEvents: () => '/cimmich/events',
   cimmichMaintenance: () => '/cimmich/maintenance',
   cimmichOrganise: () => '/cimmich/organise',
+  cimmichOrganiseBulk: () => '/cimmich/organise/bulk',
   cimmichPets: () => '/cimmich/pets',
   cimmichPet: ({ name, petId }: { name: string; petId?: string }) =>
     `/cimmich/pets/${encodeURIComponent(name)}` + asQueryString(petId ? { petId } : undefined),
