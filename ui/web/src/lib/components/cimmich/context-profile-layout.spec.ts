@@ -153,6 +153,9 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('const placeChildNames');
     expect(browser).toContain('cimmichPlaceChildCoverAssetId(child, selected.subtreeAssets ?? [])');
     expect(browser).toContain('src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}');
+    expect(browser).toContain('cimmichPlaceAssetSectionNames(asset, selectedPlaceChildren)');
+    expect(browser).toContain('>Select for actions</button');
+    expect(browser).not.toContain('>{contextAssociationLabel(entityKind, asset.associationKind)}</span');
     expect(browser).toContain(".join(' · ')");
     expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
     expect(browser).toContain('<CimmichEntityMediaActions');

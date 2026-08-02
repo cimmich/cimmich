@@ -119,6 +119,21 @@ describe('CimmichEntityMediaActions', () => {
     expect(getByRole('button', { name: 'Mark Benji present' })).toBeInTheDocument();
   });
 
+  it('keeps parent-scope actions available for photos already inside a subsection', async () => {
+    const onMoveWithinPlace = vi.fn();
+    const { getByRole, queryByRole } = renderWithTooltips(CimmichEntityMediaActions, {
+      currentScope: { displayName: "Parent's Home", entityId: 'parent-home', family: 'places' },
+      items: [{ ...items[0], directlyAssigned: false }],
+      moveWithinPlaceTargets: [{ depth: 0, entityId: 'office', label: 'Office', path: 'Office' }],
+      onClear: vi.fn(),
+      onMoveWithinPlace,
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Organise' }));
+    expect(getByRole('button', { name: "Move within Parent's Home" })).toBeInTheDocument();
+    expect(queryByRole('button', { name: "Remove from Parent's Home" })).not.toBeInTheDocument();
+  });
+
   it('loads only the current destination list and deduplicates a slow request', async () => {
     let resolveEvents: (value: []) => void = () => undefined;
     mocks.getEntities.mockImplementation((family: string, options: unknown) => {
