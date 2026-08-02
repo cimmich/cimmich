@@ -108,15 +108,17 @@
     {#if isCimmichSurface}
       <CimmichViewingMode variant="overlay" />
     {:else}
-      <div
-        class="flex min-h-11 items-center gap-2 rounded-full bg-black/20 px-3 text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)] backdrop-blur-sm"
-        aria-label="Immich view. All photos are visible."
-        title="Immich view · All photos are visible"
-      >
-        <Icon icon={mdiEyeOutline} size="22" />
-        <span class="text-xs font-semibold sm:hidden">Immich · All visible</span>
-        <span class="hidden text-xs font-semibold sm:inline">Immich view · All photos visible</span>
-      </div>
+      <Tooltip text="Immich view · All photos are visible">
+        {#snippet child({ props })}
+          <div
+            {...props}
+            class="grid size-11 shrink-0 place-items-center rounded-full bg-black/20 text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)] backdrop-blur-sm"
+            aria-label="Immich view. All photos are visible."
+          >
+            <Icon icon={mdiEyeOutline} size="22" />
+          </div>
+        {/snippet}
+      </Tooltip>
     {/if}
   </div>
 

@@ -64,6 +64,7 @@ class AssetViewerManager extends BaseEventManager<Events> {
   #highlightedFaces = $state<Faces[]>([]);
   #showingHiddenPeople = $state(false);
   gridScrollTarget = $state<AssetGridRouteSearchParams | null | undefined>();
+  #returnRoute = $state<string | null>(null);
 
   get asset() {
     return this.#viewingAssetStoreState;
@@ -71,6 +72,16 @@ class AssetViewerManager extends BaseEventManager<Events> {
 
   get isViewing() {
     return this.#viewState;
+  }
+
+  setReturnRoute(route: string | null) {
+    this.#returnRoute = route;
+  }
+
+  takeReturnRoute() {
+    const route = this.#returnRoute;
+    this.#returnRoute = null;
+    return route;
   }
 
   get isImageLoading() {

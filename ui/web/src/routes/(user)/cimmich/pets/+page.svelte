@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
+  import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichSectionHeader from '$lib/components/cimmich/CimmichSectionHeader.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
@@ -1942,6 +1943,10 @@
                         })}
                         aria-label={`Open ${formatCaptureDate(item.capture_time)} photo of ${selectedPet.displayName}`}
                         title={item.filename || undefined}
+                        onclick={(event) =>
+                          handleCimmichMediaCardClick(event, petMediaSelectionMode, () =>
+                            togglePetMediaSelection(item.asset_id),
+                          )}
                       >
                         <img
                           class="size-full object-cover transition-transform group-hover:scale-[1.02] motion-reduce:transform-none motion-reduce:transition-none"

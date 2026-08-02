@@ -10,6 +10,7 @@
   import CimmichPlacePlan from './CimmichPlacePlan.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
   import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
+  import { handleCimmichMediaCardClick } from './media-card-selection';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
@@ -2621,6 +2622,10 @@
                   class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
                   href={contextAssetViewerHref(asset.sourceAssetId)}
                   aria-label={`Open ${asset.filename}`}
+                  onclick={(event) =>
+                    handleCimmichMediaCardClick(event, mediaSelectionMode, () =>
+                      togglePlaceAssetSelection(asset.assetId),
+                    )}
                 >
                   <img
                     class="size-full object-cover transition duration-200 group-hover:scale-[1.025]"

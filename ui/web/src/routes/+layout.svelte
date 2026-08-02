@@ -9,6 +9,7 @@
   import UploadPanel from './UploadPanel.svelte';
   import VersionAnnouncement from './VersionAnnouncement.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { eventManager } from '$lib/managers/event-manager.svelte';
   import { serverConfigManager } from '$lib/managers/server-config-manager.svelte';
   import ServerRestartingModal from '$lib/modals/ServerRestartingModal.svelte';
@@ -17,6 +18,7 @@
   import { sidebarStore } from '$lib/stores/sidebar.svelte';
   import { closeWebsocketConnection, openWebsocketConnection, websocketStore } from '$lib/stores/websocket';
   import { maintenanceShouldRedirect } from '$lib/utils/maintenance';
+  import { isAssetViewerRoute, isPhotosRoute } from '$lib/utils/navigation';
   import { getServerConfig } from '@immich/sdk';
   import {
     CommandPaletteProvider,
@@ -178,6 +180,16 @@
   eventManager.emit('AppInit');
 
   beforeNavigate(({ from, to }) => {
+    const enteringAssetViewer = isAssetViewerRoute(to) && !isAssetViewerRoute(from);
+    const leavingAssetViewer = !isAssetViewerRoute(to) && isAssetViewerRoute(from);
+    if (enteringAssetViewer) {
+      assetViewerManager.setReturnRoute(
+        from?.url && !isPhotosRoute(from.route?.id) ? `${from.url.pathname}${from.url.search}${from.url.hash}` : null,
+      );
+    } else if (leavingAssetViewer) {
+      assetViewerManager.setReturnRoute(null);
+    }
+
     if (sidebarStore.isOpen) {
       sidebarStore.reset();
     }

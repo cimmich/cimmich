@@ -156,6 +156,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('<CimmichEntityMediaActions');
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
+    expect(browser).toContain('handleCimmichMediaCardClick(event, mediaSelectionMode');
   });
 
   it('renders country groups as real aggregate Geography pages without inventing a second taxonomy', async () => {

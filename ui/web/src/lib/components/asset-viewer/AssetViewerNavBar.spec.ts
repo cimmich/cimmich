@@ -13,9 +13,8 @@ describe('AssetViewerNavBar component', () => {
   const additionalProps = {
     preAction: () => {},
     onAction: () => {},
-    onPlaySlideshow: () => {},
     onClose: () => {},
-    playOriginalVideo: false,
+    isPlayingOriginalVideo: false,
     setPlayOriginalVideo: () => Promise.resolve(),
   };
 
@@ -73,9 +72,10 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('<CimmichViewingMode variant="overlay" />');
     expect(source).toContain('<span class="hidden md:inline">This </span>photo');
     expect(source).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />');
-    expect(source).toContain('{:else}\n      <div');
-    expect(source).toContain('Immich view · All photos visible');
-    expect(source).toContain('Immich · All visible');
+    expect(source).toContain('{:else}\n      <Tooltip');
+    expect(source).toContain('Tooltip text="Immich view · All photos are visible"');
+    expect(source).not.toContain('Immich view · All photos visible</span>');
+    expect(source).not.toContain('Immich · All visible</span>');
   });
 
   describe('if the current user owns the asset', () => {

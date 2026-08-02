@@ -1,6 +1,7 @@
 <script lang="ts">
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
+  import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
@@ -3317,6 +3318,10 @@
                       })}
                       class="block size-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       title={asset.filename}
+                      onclick={(event) =>
+                        handleCimmichMediaCardClick(event, cimmichPhotoSelectionMode, () =>
+                          toggleCimmichPhotoSelection(asset.asset_id),
+                        )}
                     >
                       <img
                         src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}

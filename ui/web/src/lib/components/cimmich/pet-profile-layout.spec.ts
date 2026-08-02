@@ -64,6 +64,7 @@ describe('Pet profile layout', () => {
     expect(source).toContain("subjectKind: 'pet'");
     expect(source).toContain('petMediaSelectionMode');
     expect(source).toContain('Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos');
+    expect(source).toContain('handleCimmichMediaCardClick(event, petMediaSelectionMode');
     expect(source).not.toContain("tagType: 'face'");
   });
 
