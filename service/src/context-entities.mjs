@@ -1510,7 +1510,7 @@ const cleanPlacePlanInput = (value) => {
       typeof zoom !== "number" ||
       !Number.isFinite(zoom) ||
       zoom < 0 ||
-      zoom > 18
+      zoom > 22
     ) {
       throw typedError(
         "backgroundViewport must be a valid satellite centre and zoom",

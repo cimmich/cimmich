@@ -62,6 +62,7 @@
     placeBrushPoints?: PlaceBrushPoint[];
     showSettings?: boolean;
     zoom?: number | undefined;
+    maxZoom?: number;
     center?: LngLatLike | undefined;
     hash?: boolean;
     simplified?: boolean;
@@ -123,6 +124,7 @@
     placeBrushPoints = [],
     showSettings = true,
     zoom = undefined,
+    maxZoom = 18,
     center = $bindable(undefined),
     hash = false,
     simplified = false,
@@ -785,7 +787,7 @@
     attributionControl={false}
     diffStyleUpdates={true}
     onload={(event: Map) => {
-      event.setMaxZoom(18);
+      event.setMaxZoom(maxZoom);
       event.on('click', handleMapClick);
       event.on('mousedown', handleBrushMouseDown);
       event.on('mousemove', handleBrushMouseMove);

@@ -224,11 +224,19 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     store.savePlacePlan({
       ...input,
       backgroundKind: "satellite",
-      backgroundViewport: { latitude: -91, longitude: 153.232, zoom: 19 },
+      backgroundViewport: { latitude: -91, longitude: 153.232, zoom: 23 },
     }),
     (error) =>
       error.code === "PLACE_PLAN_VIEWPORT_INVALID" &&
       /valid satellite centre and zoom/.test(error.message),
+  );
+  await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      backgroundKind: "satellite",
+      backgroundViewport: { latitude: -29.489, longitude: 153.232, zoom: 22 },
+    }),
+    (error) => error === reachedPersistence,
   );
   await assert.rejects(
     store.savePlacePlan({

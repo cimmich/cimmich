@@ -78,7 +78,9 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(satellite).toContain('satelliteOnly');
     expect(satellite).toContain('showSimpleControls={interactive}');
     expect(satellite).toContain('{onViewportChange}');
+    expect(satellite).toContain('maxZoom={22}');
     expect(map).toContain('maxzoom: 18');
+    expect(map).toContain('event.setMaxZoom(maxZoom)');
     expect(map).toContain("event.on('moveend'");
     expect(satellite).toContain('Satellite © Esri');
   });

@@ -39,6 +39,7 @@
         autoFitBounds={false}
         {center}
         mapMarkers={[]}
+        maxZoom={22}
         placeAreas={[]}
         placeMarkers={[]}
         rounded
