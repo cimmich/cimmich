@@ -2851,7 +2851,7 @@ export const createContextEntityStore = (
         WHERE entity_id = ${entity.entity_id} AND state = 'active'
       `;
       await tx`
-        UPDATE context_relation_link SET state = 'superseded'
+        UPDATE context_relation_link SET state = 'superseded', sort_order = NULL
         WHERE state = 'accepted' AND (
           entity_id = ${entity.entity_id}
           OR (target_kind = ${entityKind} AND target_id = ${entity.entity_id})
@@ -3446,7 +3446,7 @@ export const createContextEntityStore = (
       );
       if (preSupersededLinkIds.size)
         await tx`
-          UPDATE context_relation_link SET state = 'superseded'
+          UPDATE context_relation_link SET state = 'superseded', sort_order = NULL
           WHERE link_id = ANY(${[...preSupersededLinkIds]})
         `;
       for (const item of items) {
@@ -3475,7 +3475,7 @@ export const createContextEntityStore = (
         }
         if (current && !preSupersededLinkIds.has(current.link_id))
           await tx`
-          UPDATE context_relation_link SET state = 'superseded'
+          UPDATE context_relation_link SET state = 'superseded', sort_order = NULL
           WHERE link_id = ${current.link_id}
         `;
         const linkId = `contextrel_${randomUUID().replaceAll("-", "")}`;
@@ -3898,6 +3898,15 @@ export const createContextEntityStore = (
                 : "context_entity",
         supersedes: operation.decision_id,
       });
+      // Relation Undo can restore several prior stop positions at once. Release
+      // every replacement position first so a swap does not collide while the
+      // other replacement row is still current.
+      if (operation.operation_scope === "relation")
+        await tx`
+          UPDATE context_relation_link SET state = 'superseded', sort_order = NULL
+          WHERE entity_id = ${entity.entity_id}
+            AND link_id = ANY(${snapshot.map((item) => item.createdLinkId)})
+        `;
       for (const item of snapshot) {
         if (operation.operation_scope === "plan") {
           if (item.next.isDefault) {
@@ -3993,7 +4002,6 @@ export const createContextEntityStore = (
             `;
           }
         } else if (operation.operation_scope === "relation") {
-          await tx`UPDATE context_relation_link SET state = 'superseded' WHERE link_id = ${item.createdLinkId}`;
           await tx`
             INSERT INTO context_relation_link (
               link_id, entity_id, target_kind, target_id, relation_kind, state,
