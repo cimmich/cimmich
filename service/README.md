@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 113. Schema 76 adds
+patch level 1. Current post-submission source is schema 114. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -126,6 +126,10 @@ Schema 113 makes satellite imagery a first-class Location Plan background.
 It reuses the Location's existing mapped position and the configured map tile
 provider; it stores neither map tiles as Assets nor satellite coordinates in
 the Plan's normalized child layout.
+Schema 114 persists the owner-aligned satellite centre and zoom with each Plan.
+The editor can pan and zoom the imagery directly; Save, reload, Undo and the
+Location hero render the same bounded viewport without changing geographic
+Place geometry or the Plan's normalized child layout.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

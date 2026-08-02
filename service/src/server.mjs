@@ -2536,6 +2536,7 @@ export const createCimmichServer = ({
                 ![
                   "backgroundKind",
                   "backgroundSourceAssetId",
+                  "backgroundViewport",
                   "commandId",
                   "displayName",
                   "expectedRevision",
@@ -2558,6 +2559,7 @@ export const createCimmichServer = ({
               actorId: request.headers["x-cimmich-actor"],
               backgroundKind: body.backgroundKind,
               backgroundSourceAssetId: body.backgroundSourceAssetId,
+              backgroundViewport: body.backgroundViewport,
               commandId: body.commandId,
               displayName: body.displayName,
               entityId,

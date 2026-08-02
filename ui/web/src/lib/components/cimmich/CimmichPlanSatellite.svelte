@@ -1,14 +1,20 @@
 <script lang="ts">
-  import type { CimmichContextEntity } from '$lib/services/cimmich.service';
+  import type { CimmichContextEntity, CimmichPlacePlanViewport } from '$lib/services/cimmich.service';
   import { contextPlaceMapProjection } from './context-entity-presentation';
 
   interface Props {
+    interactive?: boolean;
     location: CimmichContextEntity;
+    onViewportChange?: (viewport: CimmichPlacePlanViewport) => void;
+    viewport?: CimmichPlacePlanViewport | null;
   }
 
-  let { location }: Props = $props();
+  let { interactive = false, location, onViewportChange, viewport = null }: Props = $props();
   const projection = $derived(contextPlaceMapProjection([location]));
   const center = $derived.by(() => {
+    if (viewport) {
+      return { lat: viewport.latitude, lng: viewport.longitude };
+    }
     const marker = projection.markers[0];
     if (marker) {
       return { lat: marker.lat, lng: marker.lon };
@@ -24,7 +30,7 @@
   });
 </script>
 
-<div class="plan-satellite" aria-hidden="true">
+<div class="plan-satellite" class:plan-satellite--interactive={interactive} aria-hidden={!interactive}>
   {#if center}
     {#await import('$lib/components/shared-components/map/Map.svelte')}
       <div class="plan-satellite__loading">Loading satellite…</div>
@@ -41,8 +47,9 @@
         simplified
         showSatelliteControl={false}
         showSettings={false}
-        showSimpleControls={false}
-        zoom={18}
+        showSimpleControls={interactive}
+        {onViewportChange}
+        zoom={viewport?.zoom ?? 18}
       />
     {/await}
   {:else}
@@ -71,6 +78,15 @@
   }
   .plan-satellite {
     pointer-events: none;
+  }
+  .plan-satellite--interactive {
+    pointer-events: auto;
+  }
+  .plan-satellite--interactive :global(.maplibregl-canvas) {
+    cursor: grab;
+  }
+  .plan-satellite--interactive :global(.maplibregl-canvas:active) {
+    cursor: grabbing;
   }
   .plan-satellite__loading {
     display: grid;

@@ -245,7 +245,7 @@
           <div class="context-detail-plan-sheet">
             {#if defaultPlan}
               {#if defaultPlan.backgroundKind === 'satellite'}
-                <CimmichPlanSatellite location={detail.entity} />
+                <CimmichPlanSatellite location={detail.entity} viewport={defaultPlan.backgroundViewport} />
               {/if}
               {#if defaultPlan.backgroundSourceAssetId}
                 <img

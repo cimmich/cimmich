@@ -250,9 +250,16 @@ export type CimmichPlacePlanItem = {
   zIndex: number;
 };
 
+export type CimmichPlacePlanViewport = {
+  latitude: number;
+  longitude: number;
+  zoom: number;
+};
+
 export type CimmichPlacePlan = {
   backgroundKind: 'asset' | 'blank' | 'satellite';
   backgroundSourceAssetId: string | null;
+  backgroundViewport: CimmichPlacePlanViewport | null;
   displayName: string;
   isDefault: boolean;
   items: CimmichPlacePlanItem[];
@@ -271,6 +278,7 @@ export type CimmichPlacePlansResult = {
 export type CimmichPlacePlanSaveInput = {
   backgroundKind?: CimmichPlacePlan['backgroundKind'];
   backgroundSourceAssetId?: string | null;
+  backgroundViewport?: CimmichPlacePlanViewport | null;
   commandId: string;
   displayName: string;
   expectedRevision: number;
