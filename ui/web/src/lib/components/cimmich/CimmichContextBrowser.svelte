@@ -74,9 +74,11 @@
     mdiChevronRight,
     mdiClose,
     mdiCogOutline,
+    mdiContentCopy,
     mdiDotsVertical,
     mdiFileDocumentOutline,
     mdiFloorPlan,
+    mdiFolderMultipleOutline,
     mdiFilterVariant,
     mdiImageMultipleOutline,
     mdiLinkPlus,
@@ -123,6 +125,13 @@
     sortContextPlaceSearchResults,
     type ContextTypeFilter,
   } from './context-entity-presentation';
+  import {
+    eventAssetBelongsToFolder,
+    eventCopyName,
+    eventFolderCandidates,
+    eventFolderLabel,
+    eventLineage,
+  } from './event-folder-graph';
 
   interface Props {
     families: CimmichContextFamily[];
@@ -164,7 +173,7 @@
   let libraryLoaded = $state(false);
   let libraryLoading = $state(false);
   let libraryQuery = $state('');
-  let assetPickerMode = $state<'library' | 'nearby'>('library');
+  let assetPickerMode = $state<'folders' | 'library' | 'nearby'>('library');
   let assetPickerPurpose = $state<'attach' | 'seed-event'>('attach');
   let nearbyAssets = $state<
     Array<{ distanceMeters: number; latitude: number; longitude: number; sourceAssetId: string }>
@@ -184,10 +193,18 @@
   let selectedSourceIds = $state<string[]>([]);
   let eventSeedSourceIds = $state<string[]>([]);
   let eventSeedAttachCommandId = $state('');
+  let folderQuery = $state('');
+  let folderSearchAssets = $state<AssetResponseDto[]>([]);
+  let folderSearchLoading = $state(false);
+  let folderError = $state('');
+  let selectedFolderPaths = $state<string[]>([]);
+  let folderAssetIds = $state<Record<string, string[]>>({});
   let associationKind = $state('manual');
   let undoDecisionId = $state<string | null>(null);
   let showArchived = $state(false);
   let editorCommandId = $state('');
+  let editorForm = $state<HTMLFormElement | undefined>();
+  let continueWithAnotherEvent = $state(false);
   let assetAttachCommandId = $state('');
   let detachCommandIds = $state<Record<string, string>>({});
   let mediaMenuAssetId = $state<string | null>(null);
@@ -244,6 +261,7 @@
   let formRecurrenceFrequency = $state<'daily' | 'monthly' | 'weekly' | 'yearly'>('weekly');
   let formRecurrenceInterval = $state(1);
   let formRecurrenceWeekdays = $state<number[]>([1]);
+  let formSourceFolders = $state<string[]>([]);
   let formParentId = $state('');
   let formPlaceRole = $state<CimmichPlaceRole>('location');
   let formGeographyEntityId = $state('');
@@ -291,6 +309,7 @@
   const filteredLibraryAssets = $derived(
     libraryAssets.filter((asset) => asset.originalFileName.toLowerCase().includes(libraryQuery.trim().toLowerCase())),
   );
+  const folderCandidates = $derived(eventFolderCandidates(folderSearchAssets));
   const selectedAssetIds = $derived(
     new Set(
       (activeFamily === 'places' ? selected?.subtreeAssets : selected?.assets)?.map((asset) => asset.sourceAssetId),
@@ -480,6 +499,32 @@
           left.linkedAt.localeCompare(right.linkedAt) ||
           left.targetName.localeCompare(right.targetName),
       ),
+  );
+  const selectedEventLineage = $derived(
+    activeFamily === 'events' && selected ? eventLineage(selected.entity, entities) : [],
+  );
+  const selectedEventChildren = $derived(
+    activeFamily === 'events' && selected
+      ? entities
+          .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
+          .sort(
+            (left, right) =>
+              (left.dateStart ?? '').localeCompare(right.dateStart ?? '') ||
+              left.displayName.localeCompare(right.displayName),
+          )
+      : [],
+  );
+  const eventParentChoices = $derived(
+    entities
+      .filter(
+        (candidate) =>
+          candidate.entityKind === 'event' &&
+          candidate.status === 'active' &&
+          candidate.entityId !== editorTarget?.entityId &&
+          (!editorTarget ||
+            !eventLineage(candidate, entities).some((ancestor) => ancestor.entityId === editorTarget?.entityId)),
+      )
+      .sort((left, right) => left.displayName.localeCompare(right.displayName)),
   );
   type ContextDetailTab = 'connections' | 'documents' | 'journey' | 'map' | 'plan' | 'photos';
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
@@ -892,6 +937,7 @@
     formRecurrenceFrequency = 'weekly';
     formRecurrenceInterval = 1;
     formRecurrenceWeekdays = [1];
+    formSourceFolders = [];
     formParentId = '';
     formPlaceRole = 'location';
     formGeographyEntityId = '';
@@ -981,6 +1027,7 @@
 
   const closeEditor = () => {
     showEditor = false;
+    continueWithAnotherEvent = false;
     if (editorMode === 'create' && entityKind === 'event') {
       eventSeedSourceIds = [];
       eventSeedAttachCommandId = '';
@@ -1010,6 +1057,7 @@
     formRecurrenceFrequency = entity.recurrence?.frequency ?? 'weekly';
     formRecurrenceInterval = entity.recurrence?.interval ?? 1;
     formRecurrenceWeekdays = entity.recurrence?.weekdays ?? [1];
+    formSourceFolders = entity.sourceFolders ?? [];
     formParentId = entity.parentEntityId ?? '';
     formPlaceRole = entity.placeRole ?? 'unclassified';
     formGeographyEntityId = entity.geographyEntityId ?? '';
@@ -1052,6 +1100,38 @@
     placeLocationPhotoName = '';
     editorError = '';
     editorCommandId = createCimmichContextCommandId('update');
+    showEditor = true;
+  };
+
+  const openEventCopy = () => {
+    if (!selected || activeFamily !== 'events') {
+      return;
+    }
+    const entity = selected.entity;
+    editorMode = 'create';
+    editorTarget = null;
+    resetForm();
+    editorTypeChosen = true;
+    formName = eventCopyName(entity.displayName);
+    formDescription = entity.description ?? '';
+    formAliases = entity.aliases.join(', ');
+    formDateStart = entity.dateStart ?? '';
+    formDateEnd = entity.dateEnd ?? '';
+    formDatePrecision = entity.datePrecision;
+    formRecurrenceEnabled = Boolean(entity.recurrence);
+    formRecurrenceFrequency = entity.recurrence?.frequency ?? 'weekly';
+    formRecurrenceInterval = entity.recurrence?.interval ?? 1;
+    formRecurrenceWeekdays = entity.recurrence?.weekdays ?? [1];
+    formParentId = entity.parentEntityId ?? '';
+    formSourceFolders = entity.sourceFolders ?? [];
+    formType = entity.typeKind;
+    eventSeedSourceIds = selected.assets
+      .filter((asset) => asset.associationKind === 'direct' || asset.associationKind === 'manual')
+      .map((asset) => asset.sourceAssetId)
+      .slice(0, 1000);
+    eventSeedAttachCommandId = createCimmichContextCommandId('event-copy-attach');
+    editorCommandId = createCimmichContextCommandId('event-copy');
+    editorError = '';
     showEditor = true;
   };
 
@@ -1377,6 +1457,8 @@
       return;
     }
     isSaving = true;
+    const reusableEventSeedIds = [...eventSeedSourceIds];
+    const reusableEventSourceFolders = [...formSourceFolders];
     const createdFromGeographyGroup = editorMode === 'create' ? formGeographyGroupName || selectedGeographyGroup : '';
     try {
       const base = {
@@ -1397,7 +1479,7 @@
         geometry,
         geographyEntityId:
           entityKind === 'place' && formPlaceRole === 'location' ? formGeographyEntityId || null : undefined,
-        parentEntityId: entityKind === 'place' ? formParentId || null : undefined,
+        parentEntityId: entityKind === 'place' || entityKind === 'event' ? formParentId || null : undefined,
         placeRole: entityKind === 'place' ? formPlaceRole : undefined,
         recurrence:
           entityKind === 'event' && formType === 'activity' && formRecurrenceEnabled
@@ -1409,6 +1491,7 @@
             : entityKind === 'event'
               ? null
               : undefined,
+        sourceFolders: entityKind === 'event' ? formSourceFolders : undefined,
         typeKind: formType,
       };
       const mutation = resolveContextEditorMutation(editorMode, editorTarget);
@@ -1448,16 +1531,25 @@
       await loadEntities();
       selected = finalResult.detail;
       if (mutation.kind === 'create' && activeFamily === 'events' && finalResult.detail) {
-        eventSeedSourceIds = [];
-        eventSeedAttachCommandId = '';
-        void goto(
-          getContextDetailHref(
-            page.url,
-            'events',
-            finalResult.detail.entity.entityId,
-            finalResult.detail.entity.displayName,
-          ),
-        );
+        if (continueWithAnotherEvent) {
+          continueWithAnotherEvent = false;
+          eventSeedSourceIds = reusableEventSeedIds;
+          eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
+          openCreate('location', '', '', true);
+          formSourceFolders = reusableEventSourceFolders;
+        } else {
+          eventSeedSourceIds = [];
+          eventSeedAttachCommandId = '';
+          selectedFolderPaths = [];
+          void goto(
+            getContextDetailHref(
+              page.url,
+              'events',
+              finalResult.detail.entity.entityId,
+              finalResult.detail.entity.displayName,
+            ),
+          );
+        }
       }
       if (createdFromGeographyGroup && finalResult.detail) {
         selectedGeographyGroup = '';
@@ -1490,6 +1582,93 @@
       assetError = 'Your library could not be loaded. Nothing has changed.';
     } finally {
       libraryLoading = false;
+    }
+  };
+
+  const searchEventFolders = async () => {
+    const needle = folderQuery.trim();
+    if (needle.length < 2) {
+      folderError = 'Type at least two characters from the folder name or path.';
+      return;
+    }
+    folderSearchLoading = true;
+    folderError = '';
+    try {
+      const result = await searchAssets({ metadataSearchDto: { originalPath: needle, size: 100, withExif: true } });
+      const candidates = result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline);
+      folderSearchAssets = await filterVisibleCimmichAssets(candidates, getCimmichAssetEvidence);
+      if (folderSearchAssets.length === 0) {
+        folderError = 'No visible folders matched that name or path.';
+      }
+    } catch {
+      folderSearchAssets = [];
+      folderError = 'Folders could not be searched. Nothing has changed.';
+    } finally {
+      folderSearchLoading = false;
+    }
+  };
+
+  const loadVisibleEventFolderAssets = async (folderPath: string, limit = 1000) => {
+    const matches: AssetResponseDto[] = [];
+    let pageNumber = 1;
+    for (let pageIndex = 0; pageIndex < 10 && matches.length < limit; pageIndex += 1) {
+      const result = await searchAssets({
+        metadataSearchDto: { originalPath: folderPath, page: pageNumber, size: 100, withExif: true },
+      });
+      matches.push(
+        ...result.assets.items.filter(
+          (asset) => !asset.isTrashed && !asset.isOffline && eventAssetBelongsToFolder(asset, folderPath),
+        ),
+      );
+      if (!result.assets.nextPage) {
+        break;
+      }
+      const nextPage = Number(result.assets.nextPage);
+      if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
+        break;
+      }
+      pageNumber = nextPage;
+    }
+    const uniqueMatches = matches
+      .filter((asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index)
+      .slice(0, limit);
+    return filterVisibleCimmichAssets(uniqueMatches, getCimmichAssetEvidence);
+  };
+
+  const addEventFolder = async (folderPath: string) => {
+    if (selectedFolderPaths.includes(folderPath)) {
+      const remainingFolders = selectedFolderPaths.filter((path) => path !== folderPath);
+      const remainingFolderIds = new Set(remainingFolders.flatMap((path) => folderAssetIds[path] ?? []));
+      const removedIds = new Set(folderAssetIds[folderPath]);
+      selectedSourceIds = selectedSourceIds.filter((id) => !removedIds.has(id) || remainingFolderIds.has(id));
+      selectedFolderPaths = remainingFolders;
+      folderAssetIds = Object.fromEntries(Object.entries(folderAssetIds).filter(([path]) => path !== folderPath));
+      return;
+    }
+    folderSearchLoading = true;
+    folderError = '';
+    try {
+      const visible = await loadVisibleEventFolderAssets(folderPath);
+      const capacity = Math.max(0, 1000 - selectedSourceIds.length);
+      const added = visible.filter((asset) => !selectedSourceIds.includes(asset.id)).slice(0, capacity);
+      if (added.length === 0) {
+        folderError =
+          capacity === 0 ? 'The 1,000-item import limit is already reached.' : 'No new visible media was found.';
+        return;
+      }
+      libraryAssets = [...libraryAssets, ...added].filter(
+        (asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index,
+      );
+      selectedSourceIds = [...selectedSourceIds, ...added.map((asset) => asset.id)];
+      selectedFolderPaths = [...selectedFolderPaths, folderPath];
+      folderAssetIds = { ...folderAssetIds, [folderPath]: added.map((asset) => asset.id) };
+      if (visible.length > added.length) {
+        folderError = `Added the first ${added.length.toLocaleString()} visible items. Refine the folder if you need a narrower memory.`;
+      }
+    } catch {
+      folderError = 'That folder could not be loaded. Nothing has changed.';
+    } finally {
+      folderSearchLoading = false;
     }
   };
 
@@ -1654,7 +1833,7 @@
     assetError = '';
     if (mode === 'nearby') {
       void loadNearbyAssets();
-    } else if (!libraryLoaded) {
+    } else if (mode === 'library' && !libraryLoaded) {
       void loadLibrary();
     }
   };
@@ -1672,6 +1851,11 @@
     assetAttachCommandId = createCimmichContextCommandId('asset-attach');
     assetError = '';
     nearbyError = '';
+    folderError = '';
+    folderQuery = '';
+    folderSearchAssets = [];
+    selectedFolderPaths = [];
+    folderAssetIds = {};
     showAssetPicker = true;
     assetPickerMode = nearbyPlacePoint ? 'nearby' : 'library';
     if (assetPickerMode === 'nearby') {
@@ -1690,11 +1874,16 @@
     selectedSourceIds = [];
     eventSeedSourceIds = [];
     eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
+    selectedFolderPaths = [];
+    folderAssetIds = {};
+    folderQuery = '';
+    folderSearchAssets = [];
+    folderError = '';
     libraryQuery = '';
     associationKind = 'direct';
     assetError = '';
     showAssetPicker = true;
-    assetPickerMode = 'library';
+    assetPickerMode = 'folders';
     if (!libraryLoaded) {
       void loadLibrary();
     }
@@ -1705,8 +1894,10 @@
       return;
     }
     eventSeedSourceIds = [...selectedSourceIds];
+    formSourceFolders = [...selectedFolderPaths];
     showAssetPicker = false;
     openCreate('location', '', '', true);
+    formSourceFolders = [...selectedFolderPaths];
   };
 
   const toggleAsset = (sourceAssetId: string) => {
@@ -1715,7 +1906,7 @@
     }
     selectedSourceIds = selectedSourceIds.includes(sourceAssetId)
       ? selectedSourceIds.filter((id) => id !== sourceAssetId)
-      : selectedSourceIds.length < 100
+      : selectedSourceIds.length < (activeFamily === 'events' ? 1000 : 100)
         ? [...selectedSourceIds, sourceAssetId]
         : selectedSourceIds;
   };
@@ -1739,6 +1930,7 @@
         selected.entity.entityId,
         assetAttachCommandId || createCimmichContextCommandId('asset-attach'),
         assetIds.map((assetId) => ({ assetId, associationKind })),
+        activeFamily === 'events' && selectedFolderPaths.length > 0 ? selectedFolderPaths : undefined,
       );
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId('asset-undo') : '';
@@ -1749,6 +1941,55 @@
       selected = result.detail;
     } catch (error_) {
       assetError = asError(error_).message;
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  const refreshEventFolders = async () => {
+    if (!selected || activeFamily !== 'events' || !(selected.entity.sourceFolders?.length ?? 0)) {
+      return;
+    }
+    isSaving = true;
+    error = null;
+    try {
+      const gathered: AssetResponseDto[] = [];
+      for (const folderPath of selected.entity.sourceFolders ?? []) {
+        if (gathered.length >= 1000) {
+          break;
+        }
+        gathered.push(...(await loadVisibleEventFolderAssets(folderPath, 1000 - gathered.length)));
+      }
+      const currentSourceIds = new Set(selected.assets.map((asset) => asset.sourceAssetId));
+      const additions = gathered
+        .filter(
+          (asset, index, items) =>
+            !currentSourceIds.has(asset.id) && items.findIndex((candidate) => candidate.id === asset.id) === index,
+        )
+        .slice(0, 1000);
+      if (additions.length === 0) {
+        toastManager.info('Source folders are already up to date.');
+        return;
+      }
+      const evidence = await Promise.allSettled(additions.map((asset) => getCimmichAssetEvidence(asset.id)));
+      const assetIds = evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
+      if (assetIds.length !== additions.length) {
+        throw new Error('One or more new folder photos are unavailable in this viewing mode. Nothing was added.');
+      }
+      const result = await attachCimmichContextAssets(
+        'events',
+        selected.entity.entityId,
+        createCimmichContextCommandId('event-folder-refresh'),
+        assetIds.map((assetId) => ({ assetId, associationKind: 'direct' })),
+      );
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('event-folder-refresh-undo') : '';
+      undoLabel = 'Undo folder refresh';
+      selected = result.detail;
+      await loadEntities({ preserveCollection: true });
+      toastManager.success(`Added ${assetIds.length} new ${assetIds.length === 1 ? 'item' : 'items'} from folders.`);
+    } catch (error_) {
+      error = asError(error_);
     } finally {
       isSaving = false;
     }
@@ -2107,6 +2348,12 @@
           .filter(
             (entity) =>
               entity.entityId !== selected?.entity.entityId &&
+              !selected?.relations.some(
+                (relation) =>
+                  relation.targetId === entity.entityId &&
+                  relation.targetKind === targetKind &&
+                  relation.relationKind === relationKind,
+              ) &&
               (relationPickerPurpose !== 'trip-stop' ||
                 !selectedEventStops.some((stop) => stop.targetId === entity.entityId)),
           )
@@ -2705,6 +2952,53 @@
       {/if}
     {/if}
 
+    {#if activeFamily === 'events'}
+      {#if selectedEventLineage.length > 1}
+        <nav class="mt-5 flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm" aria-label="Event hierarchy">
+          {#each selectedEventLineage as memory, index (memory.entityId)}
+            {#if index > 0}<Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="16" />{/if}
+            {#if index === selectedEventLineage.length - 1}
+              <span class="shrink-0 font-semibold" aria-current="page">{memory.displayName}</span>
+            {:else}
+              <a
+                class="shrink-0 font-semibold text-primary"
+                href={getContextDetailHref(page.url, 'events', memory.entityId, memory.displayName)}
+                >{memory.displayName}</a
+              >
+            {/if}
+          {/each}
+        </nav>
+      {/if}
+      {#if selectedEventChildren.length > 0}
+        <section
+          class="mt-6 rounded-3xl border border-gray-200 p-5 dark:border-gray-800"
+          aria-labelledby="event-chapters-title"
+        >
+          <div class="flex items-end justify-between gap-4">
+            <div>
+              <p class="text-xs font-bold tracking-[0.14em] text-primary uppercase">Inside this memory</p>
+              <h2 class="mt-1 text-lg font-semibold" id="event-chapters-title">Chapters and moments</h2>
+            </div>
+            <span class="text-xs font-semibold text-gray-500">{selectedEventChildren.length}</span>
+          </div>
+          <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {#each selectedEventChildren as child (child.entityId)}
+              <a
+                class="rounded-2xl bg-gray-50 p-4 transition hover:bg-primary/10 dark:bg-gray-800/70"
+                href={getContextDetailHref(page.url, 'events', child.entityId, child.displayName)}
+              >
+                <strong class="block">{child.displayName}</strong>
+                <span class="mt-1 block text-xs text-gray-500"
+                  >{contextTypeLabel(child.typeKind)} · {child.assetCount}
+                  {child.assetCount === 1 ? 'item' : 'items'}</span
+                >
+              </a>
+            {/each}
+          </div>
+        </section>
+      {/if}
+    {/if}
+
     <div class="context-profile-rail mt-6">
       <div
         bind:this={detailTabRail}
@@ -2752,6 +3046,27 @@
           <Icon icon={mdiSelectAll} size="19" /> <span>{mediaSelectionMode ? 'Done' : 'Select'}</span>
         </button>
         {#if !selectedIsGeographyGroup}
+          {#if activeFamily === 'events'}
+            {#if (selected.entity.sourceFolders?.length ?? 0) > 0}
+              <button
+                class="context-secondary-button context-profile-action"
+                type="button"
+                aria-label="Refresh source folders"
+                disabled={isSaving}
+                onclick={() => void refreshEventFolders()}
+              >
+                <Icon icon={mdiFolderMultipleOutline} size="18" /> <span>Refresh folders</span>
+              </button>
+            {/if}
+            <button
+              class="context-secondary-button context-profile-action"
+              type="button"
+              aria-label={`Copy ${selected.entity.displayName} into another event`}
+              onclick={openEventCopy}
+            >
+              <Icon icon={mdiContentCopy} size="18" /> <span>Copy event</span>
+            </button>
+          {/if}
           <button
             class="context-primary-button context-profile-action"
             type="button"
@@ -3150,15 +3465,17 @@
                       </div>
                       <div class="context-relation-actions">
                         <button type="button" onclick={() => void goto(contextRelationRoute(relation))}>Show</button>
-                        <button
-                          class="context-relation-remove"
-                          type="button"
-                          aria-label={`Remove connection to ${relation.targetName}`}
-                          title={`Remove connection to ${relation.targetName}`}
-                          disabled={isSaving}
-                          onclick={() => void removeRelation(relation.relationId)}
-                          ><Icon icon={mdiTrashCanOutline} size="17" /></button
-                        >
+                        {#if relation.direction !== 'incoming'}
+                          <button
+                            class="context-relation-remove"
+                            type="button"
+                            aria-label={`Remove connection to ${relation.targetName}`}
+                            title={`Remove connection to ${relation.targetName}`}
+                            disabled={isSaving}
+                            onclick={() => void removeRelation(relation.relationId)}
+                            ><Icon icon={mdiTrashCanOutline} size="17" /></button
+                          >
+                        {/if}
                       </div>
                     </li>
                   {/each}
@@ -3314,7 +3631,7 @@
           </div>
         </section>
       {:else}
-        <form class="mt-7 grid gap-5" onsubmit={(event) => void saveEntity(event)}>
+        <form bind:this={editorForm} class="mt-7 grid gap-5" onsubmit={(event) => void saveEntity(event)}>
           <label class="context-field"
             ><span>Name</span><input bind:value={formName} maxlength="160" autocomplete="off" /></label
           >
@@ -3400,6 +3717,40 @@
                 /></label
               >
             </div>
+            <label class="context-field">
+              <span>Part of <small>Optional</small></span>
+              <select bind:value={formParentId}>
+                <option value="">No parent memory</option>
+                {#each eventParentChoices as parent (parent.entityId)}
+                  <option value={parent.entityId}
+                    >{eventLineage(parent, entities)
+                      .map(({ displayName }) => displayName)
+                      .join(' › ')}</option
+                  >
+                {/each}
+              </select>
+            </label>
+            <p class="-mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Use containment for chapters such as Pink Palace › 2015 › June. Use Connections after saving for
+              overlapping stories such as Manila Trip and TTR Consulting.
+            </p>
+            {#if formSourceFolders.length > 0}
+              <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4" aria-label="Source folders">
+                <div class="flex items-start gap-3">
+                  <Icon class="mt-0.5 shrink-0 text-primary" icon={mdiFolderMultipleOutline} size="20" />
+                  <div class="min-w-0">
+                    <strong class="block"
+                      >{formSourceFolders.length}
+                      {formSourceFolders.length === 1 ? 'source folder' : 'source folders'}</strong
+                    >
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {formSourceFolders.map((folderPath) => eventFolderLabel(folderPath)).join(' · ')} — remembered for later
+                      refresh.
+                    </p>
+                  </div>
+                </div>
+              </section>
+            {/if}
             {#if formType === 'activity'}
               <section class="context-recurrence-card" aria-label="Activity recurrence">
                 <label class="context-recurrence-toggle">
@@ -3781,7 +4132,19 @@
           >
             <button class="context-secondary-button" type="button" disabled={isSaving} onclick={closeEditor}
               >Cancel</button
-            ><button class="context-primary-button" type="submit" disabled={isSaving || !entityDraftCanSave}
+            >{#if editorMode === 'create' && entityKind === 'event'}<button
+                class="context-secondary-button"
+                type="button"
+                disabled={isSaving || !entityDraftCanSave}
+                onclick={() => {
+                  continueWithAnotherEvent = true;
+                  editorForm?.requestSubmit();
+                }}><Icon icon={mdiPlus} size="18" /> Save & add another</button
+              >{/if}<button
+              class="context-primary-button"
+              type="submit"
+              disabled={isSaving || !entityDraftCanSave}
+              onclick={() => (continueWithAnotherEvent = false)}
               ><Icon icon={mdiCheck} size="19" />
               {isSaving
                 ? 'Saving…'
@@ -3898,7 +4261,8 @@
             {assetPickerPurpose === 'seed-event' ? 'Choose photos for this memory' : 'Add media'}
           </h2>
           <p class="mt-1 text-sm text-gray-500">
-            {selectedSourceIds.length}/100 selected{assetPickerPurpose === 'seed-event'
+            {selectedSourceIds.length}/{activeFamily === 'events' ? '1,000' : '100'} selected{assetPickerPurpose ===
+            'seed-event'
               ? ' · Choose the photos that tell it best.'
               : ''}
           </p>
@@ -3921,19 +4285,30 @@
         >
       </div>
       <div class="space-y-3 p-4 sm:px-6">
-        {#if nearbyPlacePoint}
+        {#if nearbyPlacePoint || activeFamily === 'events'}
           <div class="flex gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Choose media source">
-            <button
-              class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
-              class:bg-white={assetPickerMode === 'nearby'}
-              class:text-primary={assetPickerMode === 'nearby'}
-              class:shadow-sm={assetPickerMode === 'nearby'}
-              class:dark:bg-gray-700={assetPickerMode === 'nearby'}
-              type="button"
-              aria-pressed={assetPickerMode === 'nearby'}
-              onclick={() => selectAssetPickerMode('nearby')}
-              ><Icon icon={mdiMapMarkerOutline} size="18" /> Nearby</button
-            ><button
+            {#if nearbyPlacePoint}<button
+                class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
+                class:bg-white={assetPickerMode === 'nearby'}
+                class:text-primary={assetPickerMode === 'nearby'}
+                class:shadow-sm={assetPickerMode === 'nearby'}
+                class:dark:bg-gray-700={assetPickerMode === 'nearby'}
+                type="button"
+                aria-pressed={assetPickerMode === 'nearby'}
+                onclick={() => selectAssetPickerMode('nearby')}
+                ><Icon icon={mdiMapMarkerOutline} size="18" /> Nearby</button
+              >{/if}
+            {#if activeFamily === 'events'}<button
+                class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
+                class:bg-white={assetPickerMode === 'folders'}
+                class:text-primary={assetPickerMode === 'folders'}
+                class:shadow-sm={assetPickerMode === 'folders'}
+                class:dark:bg-gray-700={assetPickerMode === 'folders'}
+                type="button"
+                aria-pressed={assetPickerMode === 'folders'}
+                onclick={() => selectAssetPickerMode('folders')}
+                ><Icon icon={mdiFolderMultipleOutline} size="18" /> Folders</button
+              >{/if}<button
               class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
               class:bg-white={assetPickerMode === 'library'}
               class:text-primary={assetPickerMode === 'library'}
@@ -3962,6 +4337,45 @@
               {/each}
             </div>
           </div>
+        {:else if assetPickerMode === 'folders'}
+          <form
+            class="flex gap-2"
+            onsubmit={(event) => {
+              event.preventDefault();
+              void searchEventFolders();
+            }}
+          >
+            <label class="relative min-w-0 flex-1"
+              ><span class="sr-only">Search folders</span><Icon
+                class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-gray-500"
+                icon={mdiMagnify}
+                size="19"
+              /><input
+                class="min-h-11 w-full rounded-full border border-gray-300 pr-4 pl-11 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800"
+                bind:value={folderQuery}
+                placeholder="Folder name or path — e.g. Manila Trip"
+              /></label
+            ><button class="context-secondary-button shrink-0" type="submit" disabled={folderSearchLoading}
+              >{folderSearchLoading ? 'Searching…' : 'Find folders'}</button
+            >
+          </form>
+          {#if selectedFolderPaths.length > 0}
+            <div class="flex flex-wrap gap-2" aria-label="Selected folders">
+              {#each selectedFolderPaths as folderPath (folderPath)}
+                <button
+                  class="rounded-full bg-primary/10 px-3 py-2 text-xs font-semibold text-primary"
+                  type="button"
+                  title={folderPath}
+                  aria-label={`Remove folder ${eventFolderLabel(folderPath)}`}
+                  onclick={() => void addEventFolder(folderPath)}
+                  ><Icon icon={mdiFolderMultipleOutline} size="15" />
+                  {eventFolderLabel(folderPath)} ·
+                  {(folderAssetIds[folderPath] ?? []).length}
+                  <Icon icon={mdiClose} size="14" /></button
+                >
+              {/each}
+            </div>
+          {/if}
         {:else}
           <label class="relative block"
             ><span class="sr-only">Filter recent media by filename</span><Icon
@@ -4038,6 +4452,40 @@
               {/each}
             </div>
           {/if}
+        {:else if assetPickerMode === 'folders'}
+          {#if folderSearchLoading}
+            <p class="py-16 text-center text-sm text-gray-500" role="status">Searching visible folder paths…</p>
+          {:else if folderCandidates.length === 0}
+            <div class="py-16 text-center">
+              <Icon class="mx-auto text-gray-400" icon={mdiFolderMultipleOutline} size="34" />
+              <p class="mt-3 font-semibold">Use the organisation you already have</p>
+              <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
+                Find one or several folders. Their visible photos are selected together, and the Event remembers the
+                folder sources for later refresh. Subfolders are included.
+              </p>
+            </div>
+          {:else}
+            <div class="grid gap-2 sm:grid-cols-2">
+              {#each folderCandidates as folder (folder.path)}
+                <button
+                  class="flex min-h-20 items-center gap-3 rounded-2xl border border-gray-200 p-4 text-left transition hover:border-primary dark:border-gray-700"
+                  class:border-primary={selectedFolderPaths.includes(folder.path)}
+                  type="button"
+                  title={folder.path}
+                  aria-pressed={selectedFolderPaths.includes(folder.path)}
+                  onclick={() => void addEventFolder(folder.path)}
+                >
+                  <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
+                    ><Icon icon={mdiFolderMultipleOutline} size="22" /></span
+                  ><span class="min-w-0 flex-1"
+                    ><strong class="block truncate">{folder.label}</strong><small
+                      class="mt-1 block truncate text-gray-500">{folder.path}</small
+                    ></span
+                  ><span class="shrink-0 text-xs font-semibold text-gray-500">{folder.assetCount}+</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
         {:else if libraryLoading}<p class="py-16 text-center text-sm text-gray-500" role="status">
             Loading your library…
           </p>{:else}<div class="grid grid-cols-3 gap-1 sm:grid-cols-5 lg:grid-cols-8">
@@ -4067,6 +4515,12 @@
           role="alert"
         >
           {assetError}
+        </p>{/if}
+      {#if folderError}<p
+          class="mx-5 mb-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/35 dark:text-amber-100"
+          role="status"
+        >
+          {folderError}
         </p>{/if}
       <div class="flex justify-end gap-3 border-t border-gray-200 p-4 sm:px-6 dark:border-gray-800">
         <button

@@ -2,7 +2,7 @@
 
 Updated: 2026-08-03
 Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 118/patch 1
+Current source/disposable candidate: migration-ledger schema 119/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current public-beta target: `v1.0.1-beta.6`
@@ -15,7 +15,7 @@ source with the private archive and adds recoverable bulk Organise operations.
 The final source gate passes 816
 service tests with two skipped, 938 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 118, and the complete disposable synthetic lifecycle.
+acceptance through schema 119, and the complete disposable synthetic lifecycle.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt
@@ -32,7 +32,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 118; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 119; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -164,6 +164,8 @@ Schema 118 lets a Place use an active accepted photo from any bounded subsection
 as its explicit cover. Direct Place covers and Object/Event exact-link cover
 rules remain valid; collection, detail and hero projections resolve the same
 subtree cover.
+Schema 119 lets Events remember bounded source folders for refresh while one
+asset identity can participate in several nested or connected memories.
 
 ## Public Beta Patch 6 candidate
 

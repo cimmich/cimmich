@@ -445,6 +445,46 @@ test("Activity recurrence is normalized, closed and limited to Activities", asyn
   );
 });
 
+test("Event source folders are normalized, bounded and Event-only", async () => {
+  const reachedPersistence = new Error("reached event persistence");
+  const sql = Object.assign(async () => [], {
+    begin: async () => {
+      throw reachedPersistence;
+    },
+  });
+  const store = createContextEntityStore(sql);
+  const input = {
+    actorId: "local-operator",
+    commandId: "event-folder-source-test-0001",
+    displayName: "Manila Trip",
+    entityKind: "event",
+    sourceFolders: [" D:\\Photos\\Manila Trip\\ ", "/archive/TTR Consulting"],
+    typeKind: "trip",
+  };
+
+  await assert.rejects(
+    store.create(input),
+    (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "event-folder-source-test-0002",
+      sourceFolders: ["/archive/Manila", "/archive/Manila"],
+    }),
+    (error) => error.code === "CONTEXT_SOURCE_FOLDERS_INVALID",
+  );
+  await assert.rejects(
+    store.create({
+      ...input,
+      commandId: "event-folder-source-test-0003",
+      entityKind: "object",
+      typeKind: "other",
+    }),
+    (error) => error.code === "CONTEXT_SOURCE_FOLDERS_INVALID",
+  );
+});
+
 test("Trip stop order accepts bounded unique Place locations only", async () => {
   const reachedPersistence = new Error("reached relation persistence");
   const sql = Object.assign(async () => [], {
