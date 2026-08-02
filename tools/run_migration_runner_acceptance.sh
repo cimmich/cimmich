@@ -74,6 +74,89 @@ if [ "$migration_count" != "$CURRENT_SCHEMA_VERSION" ] || \
   exit 1
 fi
 
+# Schema 117 keeps recurring time on Activity Events and stop order on the
+# existing Trip -> Place location relation. Exercise the real constraints and
+# current projection on the fully migrated disposable database.
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_migration_test <<'SQL'
+INSERT INTO context_entity (
+  entity_id, entity_kind, event_kind, display_name, recurrence
+) VALUES (
+  'event_11700000000000000000000000000001', 'event', 'activity',
+  'Schema 117 Activity', '{"frequency":"weekly","interval":1,"weekdays":[1,5]}'
+), (
+  'event_11700000000000000000000000000002', 'event', 'trip',
+  'Schema 117 Trip', NULL
+);
+INSERT INTO context_entity (
+  entity_id, entity_kind, place_kind, place_role, display_name
+) VALUES (
+  'place_11700000000000000000000000000001', 'place', 'unlocated', 'location',
+  'Schema 117 Start'
+), (
+  'place_11700000000000000000000000000002', 'place', 'unlocated', 'location',
+  'Schema 117 Finish'
+);
+INSERT INTO decision (
+  decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+  reason_code, producer_receipt_id
+) VALUES (
+  'decision_schema_117_route', 'context_relation',
+  'event_11700000000000000000000000000002', 'accept', 'user',
+  'migration-acceptance', 'context_relation_attach',
+  'receipt_cimmich_context_entity_v1'
+);
+INSERT INTO context_relation_link (
+  link_id, entity_id, target_kind, target_id, relation_kind, state,
+  sort_order, decision_id
+) VALUES (
+  'contextrel_11700000000000000000000000000001',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000001', 'location', 'accepted', 0,
+  'decision_schema_117_route'
+), (
+  'contextrel_11700000000000000000000000000002',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000002', 'location', 'accepted', 1,
+  'decision_schema_117_route'
+);
+DO $$
+BEGIN
+  BEGIN
+    UPDATE context_entity
+    SET recurrence = '{"frequency":"weekly","interval":"often","weekdays":["Monday"]}'
+    WHERE entity_id = 'event_11700000000000000000000000000001';
+    RAISE EXCEPTION 'Activity accepted a malformed recurrence rule';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  BEGIN
+    UPDATE context_entity
+    SET recurrence = '{"frequency":"daily","interval":1}'
+    WHERE entity_id = 'event_11700000000000000000000000000002';
+    RAISE EXCEPTION 'Trip accepted Activity recurrence';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  BEGIN
+    UPDATE context_relation_link SET sort_order = 0
+    WHERE link_id = 'contextrel_11700000000000000000000000000002';
+    RAISE EXCEPTION 'Trip accepted a duplicate current stop position';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+END;
+$$;
+SQL
+read -r recurrence_frequency stop_orders <<EOF
+$(docker exec "$CONTAINER" psql -U cimmich_migration_test -d cimmich_migration_test -AtF ' ' -c \
+  "SELECT (SELECT recurrence->>'frequency' FROM context_entity WHERE entity_id='event_11700000000000000000000000000001'), (SELECT string_agg(sort_order::text, ',' ORDER BY sort_order) FROM current_context_relation WHERE entity_id='event_11700000000000000000000000000002')")
+EOF
+if [ "$recurrence_frequency" != "weekly" ] || [ "$stop_orders" != "0,1" ]; then
+  echo "schema-117 Event time/route verification failed" >&2
+  exit 1
+fi
+
 # Reproduce the supported semantic-restore boundary: an older export may
 # contain a candidate row that predates the schema-19 source-reconciliation
 # guard. Schema 72 must retain that historical row while enforcing the guard

@@ -289,6 +289,24 @@ test("schema 116 adds bounded multi-stroke paint without changing Outline polygo
   );
 });
 
+test("schema 117 persists normalized Activity recurrence and ordered Trip Place stops", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0117_event_time_and_route_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /ADD COLUMN recurrence jsonb/);
+  assert.match(migration, /event_kind = 'activity'/);
+  assert.match(migration, /ADD COLUMN sort_order integer/);
+  assert.match(migration, /v_source_event_kind = 'trip'/);
+  assert.match(migration, /context_relation_link_current_stop_order/);
+  assert.match(migration, /CREATE OR REPLACE VIEW current_context_relation/);
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

@@ -195,10 +195,31 @@
         ? mdiPackageVariantClosed
         : mdiCalendarBlankOutline,
   );
+  const recurrenceLabel = $derived.by(() => {
+    const recurrence = detail.entity.recurrence;
+    if (!recurrence) {
+      return '';
+    }
+    const period =
+      recurrence.frequency === 'daily'
+        ? 'day'
+        : recurrence.frequency === 'weekly'
+          ? 'week'
+          : recurrence.frequency === 'monthly'
+            ? 'month'
+            : 'year';
+    const cadence = recurrence.interval === 1 ? `Every ${period}` : `Every ${recurrence.interval} ${period}s`;
+    if (recurrence.frequency !== 'weekly' || !recurrence.weekdays?.length) {
+      return cadence;
+    }
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return `${cadence} · ${recurrence.weekdays.map((weekday) => names[weekday]).join(', ')}`;
+  });
   const subline = $derived(
     [
       detail.entity.description || (isPlace ? '' : contextTypeDescription(detail.entity.typeKind)),
       family === 'events' ? formatContextDatePrecision(detail.entity) || 'Not dated yet' : '',
+      family === 'events' ? recurrenceLabel : '',
       !isPlace && detail.entity.aliases.length > 0 ? `Also ${detail.entity.aliases.join(', ')}` : '',
     ]
       .filter(Boolean)
