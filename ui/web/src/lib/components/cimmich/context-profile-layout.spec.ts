@@ -68,9 +68,17 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(plan).toContain('Use cover photo');
     expect(plan).toContain('<CimmichPlanSatellite');
     expect(plan).toContain("'satellite'");
-    expect(plan).toContain("geometry: { h: 0.2, kind: 'rect'");
+    expect(plan).toContain('const finishPaint');
+    expect(plan).toContain("const geometry = { kind: 'polygon' as const, points }");
     expect(plan).toContain('updateSatelliteViewport');
     expect(plan).toContain('Reset satellite position and zoom');
+    expect(plan).toContain('mdiBrushVariant');
+    expect(plan).toContain('Paint ${child.displayName} on this plan');
+    expect(plan).toContain('Drag to paint {paintingChild.displayName}');
+    expect(plan).toContain('New location');
+    expect(browser).toContain('onCreateLocation={openPlanChildCreate}');
+    expect(browser).toContain("formDirectoryVisibility = 'nested_only'");
+    expect(browser).toContain("selected = await getCimmichContextEntity('places', returnToPlanParentId)");
     expect(plan).toContain('Remove from this plan');
     expect(plan).toContain('Save plan');
     const satellite = await read('src/lib/components/cimmich/CimmichPlanSatellite.svelte');
