@@ -695,7 +695,7 @@ export const contextRelationGroups = (
       { label: 'Pets', targetKinds: ['pet'] },
       { label: 'Places', targetKinds: ['place'] },
       { label: 'Things', targetKinds: ['object'] },
-      { label: 'Related events', targetKinds: ['event'] },
+      { label: 'Connected events', targetKinds: ['event'] },
     ],
     objects: [
       { label: 'Seen with people', targetKinds: ['person'] },
