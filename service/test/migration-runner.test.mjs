@@ -288,6 +288,21 @@ test("schema 114 persists a bounded satellite Plan viewport without changing Pla
   assert.doesNotMatch(migration, /context_entity\.geometry/i);
 });
 
+test("schema 115 permits honest Plan overzoom without claiming higher-resolution satellite tiles", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0115_location_plan_satellite_overzoom_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /BETWEEN 0 AND 22/);
+  assert.match(migration, /provider supplies real tiles through zoom 18/i);
+  assert.doesNotMatch(migration, /context_entity\.geometry/i);
+});
+
 test("schema 90 binds a batch worker to its exact recognition job", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
