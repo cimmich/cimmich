@@ -37,6 +37,7 @@ const datePrecisions = new Set([
   "approximate",
   "unknown",
 ]);
+const recurrenceFrequencies = new Set(["daily", "weekly", "monthly", "yearly"]);
 const statuses = new Set(["active", "hidden", "archived"]);
 const directoryVisibilities = new Set(["listed", "nested_only"]);
 const placeRoles = new Set(["geography", "location", "unclassified"]);
@@ -187,6 +188,70 @@ const cleanDate = (value, field) => {
     );
   }
   return date;
+};
+
+const cleanRecurrence = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw typedError(
+      "recurrence must be an object or null",
+      400,
+      "CONTEXT_RECURRENCE_INVALID",
+    );
+  }
+  const keys = Object.keys(value).sort();
+  if (
+    keys.some((key) => !["frequency", "interval", "weekdays"].includes(key)) ||
+    !keys.includes("frequency") ||
+    !keys.includes("interval")
+  ) {
+    throw typedError(
+      "recurrence contains unsupported fields",
+      400,
+      "CONTEXT_RECURRENCE_INVALID",
+    );
+  }
+  const frequency = String(value.frequency || "").trim();
+  const interval = Number(value.interval);
+  if (
+    !recurrenceFrequencies.has(frequency) ||
+    !Number.isInteger(interval) ||
+    interval < 1 ||
+    interval > 99
+  ) {
+    throw typedError(
+      "recurrence frequency or interval is invalid",
+      400,
+      "CONTEXT_RECURRENCE_INVALID",
+    );
+  }
+  if (frequency !== "weekly") {
+    if (value.weekdays !== undefined) {
+      throw typedError(
+        "weekdays belong only to weekly recurrence",
+        400,
+        "CONTEXT_RECURRENCE_INVALID",
+      );
+    }
+    return { frequency, interval };
+  }
+  if (
+    !Array.isArray(value.weekdays) ||
+    value.weekdays.length < 1 ||
+    value.weekdays.length > 7 ||
+    value.weekdays.some(
+      (day) => !Number.isInteger(day) || day < 0 || day > 6,
+    ) ||
+    new Set(value.weekdays).size !== value.weekdays.length
+  ) {
+    throw typedError(
+      "weekly recurrence needs unique weekdays from 0 to 6",
+      400,
+      "CONTEXT_RECURRENCE_INVALID",
+    );
+  }
+  return { frequency, interval, weekdays: [...value.weekdays].sort() };
 };
 
 const cleanPoint = (value, field = "geometry") => {
@@ -379,6 +444,9 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
     ...(value.datePrecision !== undefined || !partial
       ? { datePrecision: String(value.datePrecision || "unknown").trim() }
       : {}),
+    ...(value.recurrence !== undefined
+      ? { recurrence: cleanRecurrence(value.recurrence) }
+      : {}),
     ...(value.parentEntityId !== undefined
       ? {
           parentEntityId:
@@ -457,6 +525,17 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
   }
   if (!partial) {
     requested.typeKind = cleanKind(entityKind, value.typeKind);
+    if (
+      requested.recurrence !== undefined &&
+      requested.recurrence !== null &&
+      (entityKind !== "event" || requested.typeKind !== "activity")
+    ) {
+      throw typedError(
+        "Only Activities may repeat",
+        400,
+        "CONTEXT_RECURRENCE_INVALID",
+      );
+    }
     requested.geometry = cleanGeometry(
       entityKind,
       requested.typeKind,
@@ -695,6 +774,7 @@ const entityStateSnapshot = (row, aliases) => ({
   geographyEntityId: row.geography_entity_id || null,
   parentEntityId: row.parent_entity_id || null,
   placeRole: row.place_role || null,
+  recurrence: row.recurrence || null,
   revision: Number(row.revision),
   status: row.status,
   typeKind: row.place_kind || row.object_kind || row.event_kind,
@@ -749,6 +829,7 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
     ? row.visible_parent_entity_id || null
     : row.parent_entity_id || null,
   placeRole: row.place_role || null,
+  recurrence: row.recurrence || null,
   ...(row.entity_kind === "event" && Object.hasOwn(row, "preview_asset_ids")
     ? {
         previewAssetIds: (Array.isArray(row.preview_asset_ids)
@@ -952,7 +1033,7 @@ const loadDetail = async (
       : [];
   const relations = await executor`
     SELECT link.link_id, link.target_kind, link.target_id, link.relation_kind,
-      link.created_at,
+      link.created_at, link.sort_order,
       coalesce(subject.display_name, target.display_name, '') AS target_name
     FROM current_context_relation link
     LEFT JOIN current_person subject
@@ -1026,6 +1107,7 @@ const loadDetail = async (
       linkedAt: row.created_at,
       relationId: row.link_id,
       relationKind: row.relation_kind,
+      sortOrder: row.sort_order === null ? null : Number(row.sort_order),
       targetId: row.target_id,
       targetKind: row.target_kind,
       targetName: row.target_name || "",
@@ -1152,6 +1234,10 @@ const cleanRelations = (value, entityKind) => {
   }
   const items = value.map((item) => ({
     relationKind: String(item?.relationKind || "").trim(),
+    sortOrder:
+      item?.sortOrder === undefined || item?.sortOrder === null
+        ? null
+        : Number(item.sortOrder),
     targetId: String(item?.targetId || "").trim(),
     targetKind: String(item?.targetKind || "").trim(),
   }));
@@ -1170,13 +1256,25 @@ const cleanRelations = (value, entityKind) => {
         (entityKind !== "event" &&
           ["participant", "companion", "location", "object"].includes(
             item.relationKind,
-          )),
+          )) ||
+        (item.sortOrder !== null &&
+          (!Number.isInteger(item.sortOrder) ||
+            item.sortOrder < 0 ||
+            item.sortOrder > 99 ||
+            entityKind !== "event" ||
+            item.relationKind !== "location" ||
+            item.targetKind !== "place")),
     ) ||
     new Set(
       items.map(
         (item) => `${item.targetKind}:${item.targetId}:${item.relationKind}`,
       ),
-    ).size !== items.length
+    ).size !== items.length ||
+    new Set(
+      items.flatMap((item) =>
+        item.sortOrder === null ? [] : [item.sortOrder],
+      ),
+    ).size !== items.filter((item) => item.sortOrder !== null).length
   ) {
     throw typedError(
       "Context relations are invalid",
@@ -2080,7 +2178,7 @@ export const createContextEntityStore = (
           INSERT INTO context_entity (
             entity_id, entity_kind, place_kind, object_kind, event_kind,
             display_name, description, date_start, date_end, date_precision,
-            geometry, parent_entity_id, status, directory_visibility,
+            recurrence, geometry, parent_entity_id, status, directory_visibility,
             place_role, geography_entity_id
           ) VALUES (
             ${entityId}, ${requested.entityKind},
@@ -2090,6 +2188,7 @@ export const createContextEntityStore = (
             ${requested.displayName}, ${requested.description || null},
             ${requested.dateStart || null}, ${requested.dateEnd || null},
             ${requested.datePrecision},
+            ${requested.recurrence ? tx.json(requested.recurrence) : null},
             ${requested.geometry ? tx.json(requested.geometry) : null},
             ${requested.parentEntityId || null}, ${requested.status || "active"},
             ${requested.entityKind === "place" ? requested.directoryVisibility || "listed" : "listed"},
@@ -2227,6 +2326,21 @@ export const createContextEntityStore = (
         const nextDateEnd = Object.hasOwn(requested, "dateEnd")
           ? requested.dateEnd
           : projectDate(current.date_end);
+        const nextRecurrence = Object.hasOwn(requested, "recurrence")
+          ? requested.recurrence
+          : nextType === "activity"
+            ? current.recurrence
+            : null;
+        if (
+          nextRecurrence !== null &&
+          (current.entity_kind !== "event" || nextType !== "activity")
+        ) {
+          throw typedError(
+            "Only Activities may repeat",
+            400,
+            "CONTEXT_RECURRENCE_INVALID",
+          );
+        }
         if (nextDateStart && nextDateEnd && nextDateEnd < nextDateStart) {
           throw typedError(
             "dateEnd cannot precede dateStart",
@@ -2348,6 +2462,7 @@ export const createContextEntityStore = (
           geographyEntityId: nextGeographyEntityId || null,
           parentEntityId: nextParentId || null,
           placeRole: nextPlaceRole,
+          recurrence: nextRecurrence,
           revision: previousState.revision + 1,
           status: requested.status ?? previousState.status,
           typeKind: nextType,
@@ -2402,6 +2517,7 @@ export const createContextEntityStore = (
             event_kind = ${current.entity_kind === "event" ? nextType : null},
             date_start = ${nextDateStart}, date_end = ${nextDateEnd},
             date_precision = ${requested.datePrecision ?? current.date_precision},
+            recurrence = ${nextRecurrence ? tx.json(nextRecurrence) : null},
             geometry = ${nextGeometry ? tx.json(nextGeometry) : null},
             parent_entity_id = ${nextParentId},
             place_role = ${nextPlaceRole},
@@ -3272,14 +3388,14 @@ export const createContextEntityStore = (
       let currentRows;
       if (selected) {
         currentRows = await tx`
-          SELECT link_id, target_kind, target_id, relation_kind, state
+          SELECT link_id, target_kind, target_id, relation_kind, sort_order, state
           FROM context_relation_link
           WHERE entity_id = ${entity.entity_id} AND state IN ('accepted','rejected')
           FOR UPDATE
         `;
       } else {
         currentRows = await tx`
-          SELECT link_id, target_kind, target_id, relation_kind, state
+          SELECT link_id, target_kind, target_id, relation_kind, sort_order, state
           FROM context_relation_link
           WHERE entity_id = ${entity.entity_id}
             AND link_id = ANY(${items.map((item) => item.relationId)})
@@ -3307,13 +3423,43 @@ export const createContextEntityStore = (
       });
       const snapshot = [];
       const unchangedRelationIds = [];
+      // Release every changed stop position before inserting any replacement.
+      // A one-at-a-time update makes a simple swap (0 <-> 1) collide with the
+      // unique current-position index while the second old row is still live.
+      const preSupersededLinkIds = new Set(
+        selected
+          ? items.flatMap((item) => {
+              const current = currentByKey.get(
+                `${item.targetKind}:${item.targetId}:${item.relationKind}`,
+              );
+              const currentSortOrder =
+                current?.sort_order === null ||
+                current?.sort_order === undefined
+                  ? null
+                  : Number(current.sort_order);
+              return current?.state === "accepted" &&
+                currentSortOrder !== item.sortOrder
+                ? [current.link_id]
+                : [];
+            })
+          : [],
+      );
+      if (preSupersededLinkIds.size)
+        await tx`
+          UPDATE context_relation_link SET state = 'superseded'
+          WHERE link_id = ANY(${[...preSupersededLinkIds]})
+        `;
       for (const item of items) {
         const key = selected
           ? `${item.targetKind}:${item.targetId}:${item.relationKind}`
           : item.relationId;
         const current = currentByKey.get(key);
         if (
-          (selected && current?.state === "accepted") ||
+          (selected &&
+            current?.state === "accepted" &&
+            (current.sort_order === null
+              ? null
+              : Number(current.sort_order)) === item.sortOrder) ||
           (!selected && current?.state !== "accepted")
         ) {
           unchangedRelationIds.push(current?.link_id || item.relationId);
@@ -3327,7 +3473,7 @@ export const createContextEntityStore = (
             { relationId: item.relationId },
           );
         }
-        if (current)
+        if (current && !preSupersededLinkIds.has(current.link_id))
           await tx`
           UPDATE context_relation_link SET state = 'superseded'
           WHERE link_id = ${current.link_id}
@@ -3338,21 +3484,27 @@ export const createContextEntityStore = (
         const relationKind = selected
           ? item.relationKind
           : current.relation_kind;
+        const sortOrder = selected ? item.sortOrder : null;
         await tx`
           INSERT INTO context_relation_link (
             link_id, entity_id, target_kind, target_id, relation_kind, state,
-            decision_id, supersedes_link_id
+            sort_order, decision_id, supersedes_link_id
           ) VALUES (
             ${linkId}, ${entity.entity_id}, ${targetKind}, ${targetId},
             ${relationKind}, ${selected ? "accepted" : "rejected"},
-            ${decisionId}, ${current?.link_id || null}
+            ${sortOrder}, ${decisionId}, ${current?.link_id || null}
           )
         `;
         snapshot.push({
           createdLinkId: linkId,
           previousLinkId: current?.link_id || null,
+          previousSortOrder:
+            current?.sort_order === null || current?.sort_order === undefined
+              ? null
+              : Number(current.sort_order),
           previousState: current?.state || null,
           relationKind,
+          sortOrder,
           targetId,
           targetKind,
         });
@@ -3845,11 +3997,12 @@ export const createContextEntityStore = (
           await tx`
             INSERT INTO context_relation_link (
               link_id, entity_id, target_kind, target_id, relation_kind, state,
-              decision_id, supersedes_link_id
+              sort_order, decision_id, supersedes_link_id
             ) VALUES (
               ${`contextrel_${randomUUID().replaceAll("-", "")}`}, ${entity.entity_id},
               ${item.targetKind}, ${item.targetId}, ${item.relationKind},
               ${item.previousState === "accepted" ? "accepted" : "rejected"},
+              ${item.previousState === "accepted" ? item.previousSortOrder : null},
               ${undoDecisionId}, ${item.createdLinkId}
             )
           `;
@@ -3876,6 +4029,7 @@ export const createContextEntityStore = (
               date_start = ${item.previous.dateStart},
               date_end = ${item.previous.dateEnd},
               date_precision = ${item.previous.datePrecision},
+              recurrence = ${item.previous.recurrence ? tx.json(item.previous.recurrence) : null},
               geometry = ${item.previous.geometry ? tx.json(item.previous.geometry) : null},
               parent_entity_id = ${item.previous.parentEntityId},
               place_role = ${item.previous.placeRole},
@@ -3970,6 +4124,7 @@ export const contextEntityContract = Object.freeze({
   placePlanKinds: [...placePlanKinds],
   placePlanBackgroundKinds: [...placePlanBackgroundKinds],
   placeRoles: [...placeRoles],
+  recurrenceFrequencies: [...recurrenceFrequencies],
   relationKinds: [...relationKinds],
   schemaVersion,
   placeDeleteSchemaVersion,
