@@ -171,6 +171,8 @@ export type CimmichContextEntity = {
   previewAssetIds?: string[];
   recurrence?: CimmichEventRecurrence | null;
   revision: number;
+  /** Immich original-path folders remembered by an Event for later refresh. */
+  sourceFolders?: string[];
   status: 'active' | 'archived' | 'hidden';
   subtreeAssetCount?: number;
   typeKind: CimmichContextTypeKind;
@@ -198,6 +200,7 @@ export type CimmichPlaceRollupAsset = CimmichContextAsset & {
 };
 
 export type CimmichContextRelation = {
+  direction?: 'incoming' | 'outgoing';
   linkedAt: string;
   relationId: string;
   relationKind: 'companion' | 'location' | 'object' | 'parent' | 'participant' | 'related';
@@ -229,6 +232,7 @@ export type CimmichContextEntityInput = {
   parentEntityId?: string | null;
   placeRole?: CimmichPlaceRole;
   recurrence?: CimmichEventRecurrence | null;
+  sourceFolders?: string[];
   status?: 'active' | 'archived' | 'hidden';
   typeKind: CimmichContextTypeKind;
 };
@@ -3133,9 +3137,10 @@ export const attachCimmichContextAssets = (
   entityId: string,
   commandId: string,
   assets: Array<{ assetId: string; associationKind: string }>,
+  sourceFolders?: string[],
 ) =>
   request<CimmichContextMutationResult>(`/v1/${family}/${encodeURIComponent(entityId)}/assets:attach`, {
-    body: JSON.stringify({ assets, commandId }),
+    body: JSON.stringify({ assets, commandId, ...(sourceFolders === undefined ? {} : { sourceFolders }) }),
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });

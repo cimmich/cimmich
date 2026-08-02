@@ -412,6 +412,37 @@ const cleanKind = (entityKind, value) => {
   return kind;
 };
 
+const cleanSourceFolders = (value) => {
+  if (!Array.isArray(value) || value.length > 20) {
+    throw typedError(
+      "sourceFolders must contain no more than 20 folders",
+      400,
+      "CONTEXT_SOURCE_FOLDERS_INVALID",
+    );
+  }
+  const folders = value.map((item) =>
+    String(item || "")
+      .trim()
+      .replaceAll("\\", "/")
+      .replace(/\/{2,}/g, "/")
+      .replace(/\/$/, ""),
+  );
+  if (
+    folders.some(
+      (folder) =>
+        !folder || folder.length > 1000 || /[\u0000-\u001f\u007f]/.test(folder),
+    ) ||
+    new Set(folders).size !== folders.length
+  ) {
+    throw typedError(
+      "sourceFolders must be unique, non-blank folder paths",
+      400,
+      "CONTEXT_SOURCE_FOLDERS_INVALID",
+    );
+  }
+  return folders;
+};
+
 const cleanEntityInput = (value, { partial = false } = {}) => {
   const entityKind =
     value.entityKind === undefined && partial
@@ -446,6 +477,9 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
       : {}),
     ...(value.recurrence !== undefined
       ? { recurrence: cleanRecurrence(value.recurrence) }
+      : {}),
+    ...(value.sourceFolders !== undefined
+      ? { sourceFolders: cleanSourceFolders(value.sourceFolders) }
       : {}),
     ...(value.parentEntityId !== undefined
       ? {
@@ -510,6 +544,17 @@ const cleanEntityInput = (value, { partial = false } = {}) => {
       "Only Places may use Place roles or geography links",
       400,
       "CONTEXT_PLACE_ROLE_INVALID",
+    );
+  }
+  if (
+    !partial &&
+    entityKind !== "event" &&
+    requested.sourceFolders !== undefined
+  ) {
+    throw typedError(
+      "Only Events may remember source folders",
+      400,
+      "CONTEXT_SOURCE_FOLDERS_INVALID",
     );
   }
   if (
@@ -775,6 +820,7 @@ const entityStateSnapshot = (row, aliases) => ({
   parentEntityId: row.parent_entity_id || null,
   placeRole: row.place_role || null,
   recurrence: row.recurrence || null,
+  sourceFolders: row.source_folders || [],
   revision: Number(row.revision),
   status: row.status,
   typeKind: row.place_kind || row.object_kind || row.event_kind,
@@ -830,6 +876,7 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
     : row.parent_entity_id || null,
   placeRole: row.place_role || null,
   recurrence: row.recurrence || null,
+  sourceFolders: row.source_folders || [],
   ...(row.entity_kind === "event" && Object.hasOwn(row, "preview_asset_ids")
     ? {
         previewAssetIds: (Array.isArray(row.preview_asset_ids)
@@ -1065,6 +1112,26 @@ const loadDetail = async (
     ORDER BY link.relation_kind, lower(coalesce(subject.display_name, target.display_name, '')),
       link.target_id
   `;
+  // Event connections are conceptually symmetric even though the append-only
+  // relation ledger has one owning side. Project the inverse so either memory
+  // can explain the overlap without writing a duplicate edge.
+  const incomingEventRelations =
+    entity.entity_kind === "event"
+      ? await executor`
+          SELECT link.link_id, 'event'::text AS target_kind,
+            source.entity_id AS target_id, link.relation_kind,
+            link.created_at, link.sort_order, source.display_name AS target_name
+          FROM current_context_relation link
+          JOIN context_entity source ON source.entity_id = link.entity_id
+            AND source.entity_kind = 'event'
+            AND source.status IN ('active','hidden')
+          WHERE link.target_kind = 'event'
+            AND link.target_id = ${entity.entity_id}
+            AND link.relation_kind = 'related'
+            AND cimmich_visibility_context_entity_rank(source.entity_id) <= ${presentationRank()}
+          ORDER BY lower(source.display_name), source.entity_id
+        `
+      : [];
   const projectedSubtreeAssets = subtreeAssets.map((row) => ({
     assetId: row.asset_id,
     assignedEntityIds: row.assigned_entity_ids || [],
@@ -1119,15 +1186,32 @@ const loadDetail = async (
         { bridgeFields },
       );
     })(),
-    relations: relations.map((row) => ({
-      linkedAt: row.created_at,
-      relationId: row.link_id,
-      relationKind: row.relation_kind,
-      sortOrder: row.sort_order === null ? null : Number(row.sort_order),
-      targetId: row.target_id,
-      targetKind: row.target_kind,
-      targetName: row.target_name || "",
-    })),
+    relations: [
+      ...relations.map((row) => ({ ...row, direction: "outgoing" })),
+      ...incomingEventRelations.map((row) => ({
+        ...row,
+        direction: "incoming",
+      })),
+    ]
+      .filter(
+        (row, index, rows) =>
+          rows.findIndex(
+            (candidate) =>
+              candidate.target_kind === row.target_kind &&
+              candidate.target_id === row.target_id &&
+              candidate.relation_kind === row.relation_kind,
+          ) === index,
+      )
+      .map((row) => ({
+        direction: row.direction,
+        linkedAt: row.created_at,
+        relationId: row.link_id,
+        relationKind: row.relation_kind,
+        sortOrder: row.sort_order === null ? null : Number(row.sort_order),
+        targetId: row.target_id,
+        targetKind: row.target_kind,
+        targetName: row.target_name || "",
+      })),
     schemaVersion,
     ...(entity.entity_kind === "place"
       ? { subtreeAssets: projectedSubtreeAssets }
@@ -1186,9 +1270,10 @@ const applyAliases = async (tx, entityId, aliases) => {
 };
 
 const cleanAssetItems = (value, entityKind) => {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
+  const maximum = entityKind === "event" ? 1000 : 100;
+  if (!Array.isArray(value) || value.length < 1 || value.length > maximum) {
     throw typedError(
-      "assets must contain 1 to 100 items",
+      `assets must contain 1 to ${maximum} items`,
       400,
       "CONTEXT_ASSETS_INVALID",
     );
@@ -2194,7 +2279,7 @@ export const createContextEntityStore = (
           INSERT INTO context_entity (
             entity_id, entity_kind, place_kind, object_kind, event_kind,
             display_name, description, date_start, date_end, date_precision,
-            recurrence, geometry, parent_entity_id, status, directory_visibility,
+            recurrence, source_folders, geometry, parent_entity_id, status, directory_visibility,
             place_role, geography_entity_id
           ) VALUES (
             ${entityId}, ${requested.entityKind},
@@ -2205,6 +2290,7 @@ export const createContextEntityStore = (
             ${requested.dateStart || null}, ${requested.dateEnd || null},
             ${requested.datePrecision},
             ${requested.recurrence ? tx.json(requested.recurrence) : null},
+            ${requested.entityKind === "event" ? tx.json(requested.sourceFolders || []) : tx.json([])},
             ${requested.geometry ? tx.json(requested.geometry) : null},
             ${requested.parentEntityId || null}, ${requested.status || "active"},
             ${requested.entityKind === "place" ? requested.directoryVisibility || "listed" : "listed"},
@@ -2318,6 +2404,16 @@ export const createContextEntityStore = (
             "CONTEXT_PLACE_ROLE_INVALID",
           );
         }
+        if (
+          current.entity_kind !== "event" &&
+          requested.sourceFolders !== undefined
+        ) {
+          throw typedError(
+            "Only Events may remember source folders",
+            400,
+            "CONTEXT_SOURCE_FOLDERS_INVALID",
+          );
+        }
         const currentType =
           current.place_kind || current.object_kind || current.event_kind;
         const nextType =
@@ -2347,6 +2443,9 @@ export const createContextEntityStore = (
           : nextType === "activity"
             ? current.recurrence
             : null;
+        const nextSourceFolders = Object.hasOwn(requested, "sourceFolders")
+          ? requested.sourceFolders
+          : current.source_folders || [];
         if (
           nextRecurrence !== null &&
           (current.entity_kind !== "event" || nextType !== "activity")
@@ -2479,6 +2578,7 @@ export const createContextEntityStore = (
           parentEntityId: nextParentId || null,
           placeRole: nextPlaceRole,
           recurrence: nextRecurrence,
+          sourceFolders: nextSourceFolders,
           revision: previousState.revision + 1,
           status: requested.status ?? previousState.status,
           typeKind: nextType,
@@ -2534,6 +2634,7 @@ export const createContextEntityStore = (
             date_start = ${nextDateStart}, date_end = ${nextDateEnd},
             date_precision = ${requested.datePrecision ?? current.date_precision},
             recurrence = ${nextRecurrence ? tx.json(nextRecurrence) : null},
+            source_folders = ${tx.json(nextSourceFolders)},
             geometry = ${nextGeometry ? tx.json(nextGeometry) : null},
             parent_entity_id = ${nextParentId},
             place_role = ${nextPlaceRole},
@@ -3203,6 +3304,7 @@ export const createContextEntityStore = (
     entityId,
     entityKind,
     selected,
+    sourceFolders,
   }) => {
     const actor = cleanActor(actorId);
     const items = selected
@@ -3211,12 +3313,23 @@ export const createContextEntityStore = (
           assetId,
         }));
     const commandKind = selected ? "asset_attach" : "asset_detach";
+    const requestedSourceFolders =
+      selected && sourceFolders !== undefined
+        ? cleanSourceFolders(sourceFolders)
+        : undefined;
+    if (requestedSourceFolders !== undefined && entityKind !== "event") {
+      throw typedError(
+        "Only Events may remember source folders",
+        400,
+        "CONTEXT_SOURCE_FOLDERS_INVALID",
+      );
+    }
     return sql.begin(async (tx) => {
       const command = await beginCommand(tx, {
         actorId: actor,
         commandId,
         commandKind,
-        payload: { entityId, items },
+        payload: { entityId, items, sourceFolders: requestedSourceFolders },
       });
       if (command.replay)
         return refreshReplay(tx, command.replay, {
@@ -3304,6 +3417,31 @@ export const createContextEntityStore = (
           previousState: current?.state || null,
         });
       }
+      const previousSourceFolders = entity.source_folders || [];
+      const nextSourceFolders =
+        requestedSourceFolders === undefined
+          ? previousSourceFolders
+          : [
+              ...previousSourceFolders,
+              ...requestedSourceFolders.filter(
+                (folder) => !previousSourceFolders.includes(folder),
+              ),
+            ];
+      if (nextSourceFolders.length > 20) {
+        throw typedError(
+          "An Event may remember no more than 20 source folders",
+          400,
+          "CONTEXT_SOURCE_FOLDERS_INVALID",
+        );
+      }
+      const sourceFoldersChanged =
+        digest(previousSourceFolders) !== digest(nextSourceFolders);
+      if (sourceFoldersChanged)
+        snapshot.push({
+          nextSourceFolders,
+          operationKind: "source_folders",
+          previousSourceFolders,
+        });
       if (snapshot.length)
         await tx`
         UPDATE context_entity SET
@@ -3311,6 +3449,7 @@ export const createContextEntityStore = (
             WHEN ${!selected} AND cover_asset_id = ANY(${ids}) THEN NULL
             ELSE cover_asset_id
           END,
+          source_folders = ${tx.json(nextSourceFolders)},
           revision = revision + 1, updated_at = now()
         WHERE entity_id = ${entity.entity_id}
       `;
@@ -3324,7 +3463,9 @@ export const createContextEntityStore = (
         presentationRank,
       });
       const response = {
-        changedAssetIds: snapshot.map((item) => item.assetId),
+        changedAssetIds: snapshot.flatMap((item) =>
+          item.assetId ? [item.assetId] : [],
+        ),
         commandId: command.commandId,
         decisionId,
         detail,
@@ -3391,6 +3532,29 @@ export const createContextEntityStore = (
         requireVisible: true,
       });
       if (selected) await requireRelationTargets(tx, items, presentationRank);
+      const relatedEventTargetIds = items
+        .filter(
+          (item) =>
+            item.targetKind === "event" && item.relationKind === "related",
+        )
+        .map((item) => item.targetId);
+      const inverseRelatedRows =
+        selected &&
+        entity.entity_kind === "event" &&
+        relatedEventTargetIds.length
+          ? await tx`
+              SELECT link_id, entity_id
+              FROM current_context_relation
+              WHERE target_kind = 'event'
+                AND target_id = ${entity.entity_id}
+                AND relation_kind = 'related'
+                AND entity_id = ANY(${relatedEventTargetIds})
+              FOR UPDATE
+            `
+          : [];
+      const inverseRelatedByTargetId = new Map(
+        inverseRelatedRows.map((row) => [row.entity_id, row]),
+      );
       let currentRows;
       if (selected) {
         currentRows = await tx`
@@ -3460,6 +3624,17 @@ export const createContextEntityStore = (
           ? `${item.targetKind}:${item.targetId}:${item.relationKind}`
           : item.relationId;
         const current = currentByKey.get(key);
+        const inverseRelated =
+          selected &&
+          item.targetKind === "event" &&
+          item.relationKind === "related" &&
+          !current
+            ? inverseRelatedByTargetId.get(item.targetId)
+            : null;
+        if (inverseRelated) {
+          unchangedRelationIds.push(inverseRelated.link_id);
+          continue;
+        }
         if (
           (selected &&
             current?.state === "accepted" &&
@@ -3843,6 +4018,22 @@ export const createContextEntityStore = (
         }
       } else {
         for (const item of snapshot) {
+          if (
+            operation.operation_scope === "asset" &&
+            item.operationKind === "source_folders"
+          ) {
+            if (
+              digest(entity.source_folders || []) !==
+              digest(item.nextSourceFolders || [])
+            ) {
+              throw typedError(
+                "Event source folders changed after this decision",
+                409,
+                "CONTEXT_UNDO_SUPERSEDED",
+              );
+            }
+            continue;
+          }
           const rows =
             operation.operation_scope === "asset"
               ? await tx`SELECT link_id FROM context_asset_link WHERE link_id = ${item.createdLinkId} AND entity_id = ${entity.entity_id} AND state IN ('accepted','rejected') FOR UPDATE`
@@ -3989,24 +4180,32 @@ export const createContextEntityStore = (
             `;
           }
         } else if (operation.operation_scope === "asset") {
-          await tx`UPDATE context_asset_link SET state = 'superseded' WHERE link_id = ${item.createdLinkId}`;
-          await tx`
-            INSERT INTO context_asset_link (
-              link_id, entity_id, asset_id, association_kind, state, decision_id,
-              supersedes_link_id
-            ) VALUES (
-              ${`contextasset_${randomUUID().replaceAll("-", "")}`}, ${entity.entity_id},
-              ${item.assetId}, ${item.previousAssociationKind || "manual"},
-              ${item.previousState === "accepted" ? "accepted" : "rejected"},
-              ${undoDecisionId}, ${item.createdLinkId}
-            )
-          `;
-          if (item.previousCoverAssetId) {
+          if (item.operationKind === "source_folders") {
             await tx`
               UPDATE context_entity
-              SET cover_asset_id = ${item.previousCoverAssetId}
+              SET source_folders = ${tx.json(item.previousSourceFolders || [])}
               WHERE entity_id = ${entity.entity_id}
             `;
+          } else {
+            await tx`UPDATE context_asset_link SET state = 'superseded' WHERE link_id = ${item.createdLinkId}`;
+            await tx`
+              INSERT INTO context_asset_link (
+                link_id, entity_id, asset_id, association_kind, state, decision_id,
+                supersedes_link_id
+              ) VALUES (
+                ${`contextasset_${randomUUID().replaceAll("-", "")}`}, ${entity.entity_id},
+                ${item.assetId}, ${item.previousAssociationKind || "manual"},
+                ${item.previousState === "accepted" ? "accepted" : "rejected"},
+                ${undoDecisionId}, ${item.createdLinkId}
+              )
+            `;
+            if (item.previousCoverAssetId) {
+              await tx`
+                UPDATE context_entity
+                SET cover_asset_id = ${item.previousCoverAssetId}
+                WHERE entity_id = ${entity.entity_id}
+              `;
+            }
           }
         } else if (operation.operation_scope === "relation") {
           await tx`
@@ -4045,6 +4244,7 @@ export const createContextEntityStore = (
               date_end = ${item.previous.dateEnd},
               date_precision = ${item.previous.datePrecision},
               recurrence = ${item.previous.recurrence ? tx.json(item.previous.recurrence) : null},
+              source_folders = ${tx.json(item.previous.sourceFolders || [])},
               geometry = ${item.previous.geometry ? tx.json(item.previous.geometry) : null},
               parent_entity_id = ${item.previous.parentEntityId},
               place_role = ${item.previous.placeRole},
@@ -4076,9 +4276,12 @@ export const createContextEntityStore = (
           WHERE entity_id = ${assignmentChild.entity_id}
         `;
       }
-      if (!(
-        operation.operation_scope === "entity" && operation.action === "create"
-      )) {
+      if (
+        !(
+          operation.operation_scope === "entity" &&
+          operation.action === "create"
+        )
+      ) {
         await tx`
           UPDATE context_entity SET revision = revision + 1, updated_at = now()
           WHERE entity_id = ${entity.entity_id}
