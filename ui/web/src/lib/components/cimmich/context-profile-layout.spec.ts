@@ -79,6 +79,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('onCreateLocation={openPlanChildCreate}');
     expect(browser).toContain("formDirectoryVisibility = 'nested_only'");
     expect(browser).toContain("selected = await getCimmichContextEntity('places', returnToPlanParentId)");
+    expect(browser).toContain('entity.entityId !== editorTarget?.entityId');
     expect(plan).toContain('Remove from this plan');
     expect(plan).toContain('Save plan');
     const satellite = await read('src/lib/components/cimmich/CimmichPlanSatellite.svelte');

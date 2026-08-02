@@ -3165,7 +3165,7 @@
                   }
                 }}
                 ><option value="">No parent {formPlaceRole === 'unclassified' ? 'place' : formPlaceRole}</option
-                >{#each entities.filter((entity) => entity.entityId !== selected?.entity.entityId && (formPlaceRole === 'unclassified' || entity.placeRole === 'unclassified' || entity.placeRole === formPlaceRole)) as entity (entity.entityId)}<option
+                >{#each entities.filter((entity) => entity.entityId !== editorTarget?.entityId && (formPlaceRole === 'unclassified' || entity.placeRole === 'unclassified' || entity.placeRole === formPlaceRole)) as entity (entity.entityId)}<option
                     value={entity.entityId}>{entity.displayName}</option
                   >{/each}</select
               ></label
