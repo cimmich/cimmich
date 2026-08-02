@@ -2955,8 +2955,8 @@
                   class={[
                     'pointer-events-none absolute inset-0',
                     childCoverAssetId
-                      ? 'bg-gradient-to-t from-black/85 via-black/10 to-black/15'
-                      : 'bg-gradient-to-t from-black/65 via-transparent to-transparent',
+                      ? 'bg-linear-to-t from-black/85 via-black/10 to-black/15'
+                      : 'bg-linear-to-t from-black/65 via-transparent to-transparent',
                   ]}
                 ></span>
                 <span
