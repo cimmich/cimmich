@@ -147,12 +147,38 @@ BEGIN
   END;
 END;
 $$;
+
+-- Exercise the supported atomic-swap shape: retired ordered rows release
+-- their live positions before replacements claim the swapped positions.
+UPDATE context_relation_link
+SET state = 'superseded', sort_order = NULL
+WHERE link_id IN (
+  'contextrel_11700000000000000000000000000001',
+  'contextrel_11700000000000000000000000000002'
+);
+INSERT INTO context_relation_link (
+  link_id, entity_id, target_kind, target_id, relation_kind, state,
+  sort_order, decision_id, supersedes_link_id
+) VALUES (
+  'contextrel_11700000000000000000000000000003',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000001', 'location', 'accepted', 1,
+  'decision_schema_117_route',
+  'contextrel_11700000000000000000000000000001'
+), (
+  'contextrel_11700000000000000000000000000004',
+  'event_11700000000000000000000000000002', 'place',
+  'place_11700000000000000000000000000002', 'location', 'accepted', 0,
+  'decision_schema_117_route',
+  'contextrel_11700000000000000000000000000002'
+);
 SQL
-read -r recurrence_frequency stop_orders <<EOF
+read -r recurrence_frequency stop_orders retired_positions <<EOF
 $(docker exec "$CONTAINER" psql -U cimmich_migration_test -d cimmich_migration_test -AtF ' ' -c \
-  "SELECT (SELECT recurrence->>'frequency' FROM context_entity WHERE entity_id='event_11700000000000000000000000000001'), (SELECT string_agg(sort_order::text, ',' ORDER BY sort_order) FROM current_context_relation WHERE entity_id='event_11700000000000000000000000000002')")
+  "SELECT (SELECT recurrence->>'frequency' FROM context_entity WHERE entity_id='event_11700000000000000000000000000001'), (SELECT string_agg(sort_order::text, ',' ORDER BY sort_order) FROM current_context_relation WHERE entity_id='event_11700000000000000000000000000002'), (SELECT count(sort_order) FROM context_relation_link WHERE state='superseded' AND entity_id='event_11700000000000000000000000000002')")
 EOF
-if [ "$recurrence_frequency" != "weekly" ] || [ "$stop_orders" != "0,1" ]; then
+if [ "$recurrence_frequency" != "weekly" ] || [ "$stop_orders" != "0,1" ] || \
+  [ "$retired_positions" != "0" ]; then
   echo "schema-117 Event time/route verification failed" >&2
   exit 1
 fi
