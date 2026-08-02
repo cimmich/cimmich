@@ -65,6 +65,7 @@
   import { untrack } from 'svelte';
   import {
     mdiArrowLeft,
+    mdiArrowRight,
     mdiCalendarBlankOutline,
     mdiCheck,
     mdiChevronRight,
@@ -161,6 +162,7 @@
   let libraryLoading = $state(false);
   let libraryQuery = $state('');
   let assetPickerMode = $state<'library' | 'nearby'>('library');
+  let assetPickerPurpose = $state<'attach' | 'seed-event'>('attach');
   let nearbyAssets = $state<
     Array<{ distanceMeters: number; latitude: number; longitude: number; sourceAssetId: string }>
   >([]);
@@ -177,6 +179,8 @@
   let photoLocationGeneration = 0;
   let placeLocationPhotoName = $state('');
   let selectedSourceIds = $state<string[]>([]);
+  let eventSeedSourceIds = $state<string[]>([]);
+  let eventSeedAttachCommandId = $state('');
   let associationKind = $state('manual');
   let undoDecisionId = $state<string | null>(null);
   let showArchived = $state(false);
@@ -426,6 +430,24 @@
           : asset.associationKind === 'context',
     );
   });
+  const eventMediaLaneCounts = $derived.by(() => {
+    const assets = selected?.assets ?? [];
+    return {
+      all: assets.length,
+      main: assets.filter((asset) => asset.associationKind === 'direct' || asset.associationKind === 'manual').length,
+      nearby: assets.filter((asset) => asset.associationKind === 'context').length,
+      stops: assets.filter((asset) => asset.associationKind === 'route_stop').length,
+    };
+  });
+  const eventMediaLaneDescription = $derived(
+    eventMediaLane === 'main'
+      ? 'The defining photos and videos you explicitly placed in this memory.'
+      : eventMediaLane === 'stops'
+        ? 'Media attached to Places along this trip or route.'
+        : eventMediaLane === 'nearby'
+          ? 'Useful time or location context kept separate from the main memory.'
+          : 'Everything linked to this memory, with each relationship still visible.',
+  );
   const placeDetailAssetCount = $derived(
     activeFamily === 'places' ? (selected?.subtreeAssets?.length ?? selected?.assets.length ?? 0) : 0,
   );
@@ -466,6 +488,30 @@
         ? ['parent', 'related']
         : ['related'],
   );
+  const eventDateLabels = $derived.by(() => {
+    if (formType === 'trip') {
+      return { end: 'Returns', start: 'Leaves' };
+    }
+    if (formType === 'activity') {
+      return { end: 'Until', start: 'Begins' };
+    }
+    if (formType === 'life_period') {
+      return { end: 'Ends', start: 'Begins' };
+    }
+    return { end: 'Ends', start: 'Starts' };
+  });
+  const eventCreationGuidance = $derived.by(() => {
+    if (formType === 'trip') {
+      return 'Set the journey window now. After creation, add Places as ordered stops and keep stop media separate from the main story.';
+    }
+    if (formType === 'activity') {
+      return 'Use the dates for the span in which this activity happened. Individual occurrences stay visible through their linked media.';
+    }
+    if (formType === 'life_period') {
+      return 'Approximate or open-ended dates are welcome. Choose representative media rather than trying to include every photo.';
+    }
+    return 'Name the occasion and its honest time boundary. You can add People, Pets, Places and Things immediately afterwards.';
+  });
   const filteredRelationTargets = $derived(filterContextRelationTargets(relationTargets, relationTargetQuery));
   const selectedRelationTarget = $derived(relationTargets.find((target) => target.id === relationTargetId) ?? null);
 
@@ -851,10 +897,15 @@
     placeRole: 'geography' | 'location' = 'location',
     parentEntityId = '',
     geographyGroupName = '',
+    preserveEventSeed = false,
   ) => {
     editorMode = 'create';
     editorTarget = null;
     resetForm();
+    if (entityKind === 'event' && !preserveEventSeed) {
+      eventSeedSourceIds = [];
+      eventSeedAttachCommandId = '';
+    }
     if (entityKind === 'place') {
       formPlaceRole = placeRole;
       formParentId = parentEntityId;
@@ -905,6 +956,10 @@
 
   const closeEditor = () => {
     showEditor = false;
+    if (editorMode === 'create' && entityKind === 'event') {
+      eventSeedSourceIds = [];
+      eventSeedAttachCommandId = '';
+    }
   };
 
   const openEdit = () => {
@@ -1317,19 +1372,53 @@
       if (mutation.kind === 'update' && result.detail?.entity.entityId !== mutation.entityId) {
         throw new Error('The update returned a different Thing or Place. Nothing else will be created from this edit.');
       }
-      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      let finalResult = result;
+      if (mutation.kind === 'create' && activeFamily === 'events' && result.detail && eventSeedSourceIds.length > 0) {
+        const evidence = await Promise.allSettled(eventSeedSourceIds.map((id) => getCimmichAssetEvidence(id)));
+        const assetIds = evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
+        if (assetIds.length !== eventSeedSourceIds.length) {
+          throw new Error(
+            'The memory was created, but one or more selected photos are no longer available. Try again to reuse this memory and finish linking its photos.',
+          );
+        }
+        finalResult = await attachCimmichContextAssets(
+          'events',
+          result.detail.entity.entityId,
+          eventSeedAttachCommandId || createCimmichContextCommandId('event-seed-attach'),
+          assetIds.map((assetId) => ({ assetId, associationKind: 'direct' })),
+        );
+      }
+      undoDecisionId = finalResult.undo?.eligible ? finalResult.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId(`${editorMode}-undo`) : '';
-      undoLabel = editorMode === 'edit' ? 'Undo edit' : 'Undo creation';
+      undoLabel =
+        editorMode === 'edit' ? 'Undo edit' : eventSeedSourceIds.length > 0 ? 'Undo added photos' : 'Undo creation';
       showEditor = false;
       editorCommandId = '';
       editorTarget = null;
       await loadEntities();
-      selected = result.detail;
-      if (createdFromGeographyGroup && result.detail) {
+      selected = finalResult.detail;
+      if (mutation.kind === 'create' && activeFamily === 'events' && finalResult.detail) {
+        eventSeedSourceIds = [];
+        eventSeedAttachCommandId = '';
+        void goto(
+          getContextDetailHref(
+            page.url,
+            'events',
+            finalResult.detail.entity.entityId,
+            finalResult.detail.entity.displayName,
+          ),
+        );
+      }
+      if (createdFromGeographyGroup && finalResult.detail) {
         selectedGeographyGroup = '';
         selectedGeographyGroupEntityIds = [];
         void goto(
-          getContextDetailHref(page.url, 'places', result.detail.entity.entityId, result.detail.entity.displayName),
+          getContextDetailHref(
+            page.url,
+            'places',
+            finalResult.detail.entity.entityId,
+            finalResult.detail.entity.displayName,
+          ),
         );
       }
     } catch (error_) {
@@ -1526,6 +1615,7 @@
   };
 
   const openAssetPicker = () => {
+    assetPickerPurpose = 'attach';
     selectedSourceIds = [];
     libraryQuery = '';
     associationKind = contextAssociationKinds[entityKind][0];
@@ -1539,6 +1629,34 @@
     } else if (!libraryLoaded) {
       void loadLibrary();
     }
+  };
+
+  const openEventSeedPicker = () => {
+    if (activeFamily !== 'events') {
+      openCreate();
+      return;
+    }
+    assetPickerPurpose = 'seed-event';
+    selectedSourceIds = [];
+    eventSeedSourceIds = [];
+    eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
+    libraryQuery = '';
+    associationKind = 'direct';
+    assetError = '';
+    showAssetPicker = true;
+    assetPickerMode = 'library';
+    if (!libraryLoaded) {
+      void loadLibrary();
+    }
+  };
+
+  const continueEventSeed = () => {
+    if (selectedSourceIds.length === 0) {
+      return;
+    }
+    eventSeedSourceIds = [...selectedSourceIds];
+    showAssetPicker = false;
+    openCreate('location', '', '', true);
   };
 
   const toggleAsset = (sourceAssetId: string) => {
@@ -2199,83 +2317,85 @@
               onSortModeChange={(mode) => (placeSortMode = mode)}
             />
           {/if}
-          <form
-            class={activeFamily === 'places' ? 'w-full min-w-0 sm:w-40 lg:w-44' : 'w-full min-w-0 sm:w-56 lg:w-64'}
-            role="search"
-            onsubmit={(event) => {
-              event.preventDefault();
-              void loadEntities();
-            }}
-          >
-            <label class="relative block">
-              <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
-              <Icon
-                class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-500"
-                icon={mdiMagnify}
-                size="18"
-              />
-              <input
-                class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
-                bind:value={query}
-                maxlength="500"
-                placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
-              />
-            </label>
-          </form>
-          <div class="relative">
-            <button
-              class="flex size-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-              class:text-primary={showArchived || collectionTypeFilter !== 'all'}
-              type="button"
-              aria-label="Filter collection"
-              aria-expanded={showCollectionFilters}
-              aria-haspopup="menu"
-              title="Filter"
-              onclick={() => (showCollectionFilters = !showCollectionFilters)}
+          {#if !(activeFamily === 'events' && loaded && entities.length === 0 && !query)}
+            <form
+              class={activeFamily === 'places' ? 'w-full min-w-0 sm:w-40 lg:w-44' : 'w-full min-w-0 sm:w-56 lg:w-64'}
+              role="search"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void loadEntities();
+              }}
             >
-              <Icon icon={mdiFilterVariant} size="20" />
-            </button>
-            {#if showCollectionFilters}
-              <div
-                class="absolute top-12 right-0 z-30 grid min-w-52 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
-                role="menu"
-                aria-label="Collection filters"
+              <label class="relative block">
+                <span class="sr-only">Search {contextFamilyLabels[activeFamily]}</span>
+                <Icon
+                  class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-gray-500"
+                  icon={mdiMagnify}
+                  size="18"
+                />
+                <input
+                  class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
+                  bind:value={query}
+                  maxlength="500"
+                  placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
+                />
+              </label>
+            </form>
+            <div class="relative">
+              <button
+                class="flex size-11 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                class:text-primary={showArchived || collectionTypeFilter !== 'all'}
+                type="button"
+                aria-label="Filter collection"
+                aria-expanded={showCollectionFilters}
+                aria-haspopup="menu"
+                title="Filter"
+                onclick={() => (showCollectionFilters = !showCollectionFilters)}
               >
-                <button
-                  class="flex min-h-11 items-center justify-between gap-4 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={showArchived}
-                  onclick={() => {
-                    showArchived = !showArchived;
-                    showCollectionFilters = false;
-                    void loadEntities();
-                  }}
+                <Icon icon={mdiFilterVariant} size="20" />
+              </button>
+              {#if showCollectionFilters}
+                <div
+                  class="absolute top-12 right-0 z-30 grid min-w-52 gap-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-sm font-semibold shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                  role="menu"
+                  aria-label="Collection filters"
                 >
-                  <span>{showArchived ? 'Hide archived' : 'Include archived'}</span>
-                  {#if showArchived}<Icon icon={mdiCheck} size="18" />{/if}
-                </button>
-                {#if activeFamily !== 'places'}
-                  <label class="grid gap-1 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">Type</span>
-                    <select
-                      class="min-h-10 rounded-xl bg-gray-100 px-3 outline-none dark:bg-gray-800"
-                      aria-label={`Filter ${contextFamilyLabels[activeFamily]}`}
-                      value={collectionTypeFilter}
-                      onchange={(event) => {
-                        collectionTypeFilter = (event.currentTarget as HTMLSelectElement).value as ContextTypeFilter;
-                        showCollectionFilters = false;
-                      }}
-                    >
-                      {#each collectionTypeFilters as filter (filter.value)}
-                        <option value={filter.value}>{filter.label}</option>
-                      {/each}
-                    </select>
-                  </label>
-                {/if}
-              </div>
-            {/if}
-          </div>
+                  <button
+                    class="flex min-h-11 items-center justify-between gap-4 rounded-xl px-3 text-left hover:bg-gray-100 focus-visible:bg-gray-100 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showArchived}
+                    onclick={() => {
+                      showArchived = !showArchived;
+                      showCollectionFilters = false;
+                      void loadEntities();
+                    }}
+                  >
+                    <span>{showArchived ? 'Hide archived' : 'Include archived'}</span>
+                    {#if showArchived}<Icon icon={mdiCheck} size="18" />{/if}
+                  </button>
+                  {#if activeFamily !== 'places'}
+                    <label class="grid gap-1 border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+                      <span class="text-xs text-gray-500 dark:text-gray-400">Type</span>
+                      <select
+                        class="min-h-10 rounded-xl bg-gray-100 px-3 outline-none dark:bg-gray-800"
+                        aria-label={`Filter ${contextFamilyLabels[activeFamily]}`}
+                        value={collectionTypeFilter}
+                        onchange={(event) => {
+                          collectionTypeFilter = (event.currentTarget as HTMLSelectElement).value as ContextTypeFilter;
+                          showCollectionFilters = false;
+                        }}
+                      >
+                        {#each collectionTypeFilters as filter (filter.value)}
+                          <option value={filter.value}>{filter.label}</option>
+                        {/each}
+                      </select>
+                    </label>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
           <button
             class="inline-flex size-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
             type="button"
@@ -2548,10 +2668,13 @@
                 class:context-detail-lane--active={eventMediaLane === lane.value}
                 type="button"
                 aria-pressed={eventMediaLane === lane.value}
-                onclick={() => selectEventMediaLane(lane.value as typeof eventMediaLane)}>{lane.label}</button
+                onclick={() => selectEventMediaLane(lane.value as typeof eventMediaLane)}
+                >{lane.label}
+                <span>{eventMediaLaneCounts[lane.value as keyof typeof eventMediaLaneCounts]}</span></button
               >
             {/each}
           </div>
+          <p class="context-detail-lane-note">{eventMediaLaneDescription}</p>
         {/if}
         {#if entityKind === 'place' && selectedPlaceChildren.length > 0 && placeDetailAssetCount > 0}
           <div class="mt-5 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Place photo sections">
@@ -2894,6 +3017,7 @@
       entityHref={(entity) => getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName)}
       geographyGroupHref={(groupName) => getContextGeographyGroupHref(page.url, groupName)}
       onAdd={openCreate}
+      onEventStartFromPhotos={activeFamily === 'events' ? openEventSeedPicker : undefined}
       onOpen={openEntity}
       onPlacesChanged={() => loadEntities({ preserveCollection: true })}
     />
@@ -2929,7 +3053,9 @@
             {editorMode === 'create'
               ? formGeographyGroupName
                 ? `New subdivision in ${formGeographyGroupName}`
-                : `New ${entityNoun}`
+                : entityKind === 'event'
+                  ? 'New memory'
+                  : `New ${entityNoun}`
               : `Settings for ${selected?.entity.displayName}`}
           </h2>
         </div>
@@ -2942,6 +3068,15 @@
           <p class="text-sm text-gray-600 dark:text-gray-300">
             {entityKind === 'event' ? 'What kind of memory are you bringing together?' : 'What kind of thing is it?'}
           </p>
+          {#if entityKind === 'event' && eventSeedSourceIds.length > 0}
+            <div class="context-event-seed-summary">
+              <Icon icon={mdiImageMultipleOutline} size="19" />
+              <span
+                >{eventSeedSourceIds.length}
+                {eventSeedSourceIds.length === 1 ? 'photo' : 'photos'} ready for this memory</span
+              >
+            </div>
+          {/if}
           <div class="context-type-choice-grid">
             {#each contextTypeKinds[entityKind] as kind (kind)}
               <button
@@ -3019,6 +3154,16 @@
             {/if}
           {/if}
           {#if entityKind === 'event'}
+            <div class="context-event-form-guidance">
+              <span><Icon icon={iconForFamily(activeFamily)} size="20" /></span>
+              <div>
+                <strong>{contextTypeLabel(formType)}</strong>
+                <p>{eventCreationGuidance}</p>
+                {#if eventSeedSourceIds.length > 0}
+                  <small>{eventSeedSourceIds.length} selected as the main memory</small>
+                {/if}
+              </div>
+            </div>
             <label class="context-field"
               ><span>Date certainty</span><select bind:value={formDatePrecision}
                 ><option value="exact">Exact dates</option><option value="approximate">Approximate</option><option
@@ -3028,9 +3173,15 @@
             >
             <div class="grid gap-4 sm:grid-cols-2">
               <label class="context-field"
-                ><span>Starts <small>Optional</small></span><input type="date" bind:value={formDateStart} /></label
+                ><span>{eventDateLabels.start} <small>Optional</small></span><input
+                  type="date"
+                  bind:value={formDateStart}
+                /></label
               ><label class="context-field"
-                ><span>Ends <small>Optional</small></span><input type="date" bind:value={formDateEnd} /></label
+                ><span>{eventDateLabels.end} <small>Optional</small></span><input
+                  type="date"
+                  bind:value={formDateEnd}
+                /></label
               >
             </div>
           {/if}
@@ -3369,7 +3520,13 @@
               >Cancel</button
             ><button class="context-primary-button" type="submit" disabled={isSaving || !entityDraftCanSave}
               ><Icon icon={mdiCheck} size="19" />
-              {isSaving ? 'Saving…' : editorMode === 'create' ? `Add ${entityNoun}` : 'Save changes'}</button
+              {isSaving
+                ? 'Saving…'
+                : editorMode === 'create'
+                  ? entityKind === 'event'
+                    ? 'Create memory'
+                    : `Add ${entityNoun}`
+                  : 'Save changes'}</button
             >
           </div>
         </form>
@@ -3474,16 +3631,25 @@
     >
       <div class="flex flex-wrap items-center gap-4 border-b border-gray-200 p-5 sm:p-6 dark:border-gray-800">
         <div class="min-w-0 flex-1">
-          <h2 class="text-xl font-semibold" id="context-asset-title">Add media</h2>
-          <p class="mt-1 text-sm text-gray-500">{selectedSourceIds.length}/100 selected</p>
+          <h2 class="text-xl font-semibold" id="context-asset-title">
+            {assetPickerPurpose === 'seed-event' ? 'Choose photos for this memory' : 'Add media'}
+          </h2>
+          <p class="mt-1 text-sm text-gray-500">
+            {selectedSourceIds.length}/100 selected{assetPickerPurpose === 'seed-event'
+              ? ' · Choose the photos that tell it best.'
+              : ''}
+          </p>
         </div>
-        <label class="context-field min-w-40"
-          ><span>How it relates</span><select bind:value={associationKind}
-            >{#each contextAssociationKinds[entityKind] as kind (kind)}<option value={kind}
-                >{contextAssociationLabel(entityKind, kind)}</option
-              >{/each}</select
-          ></label
-        ><button
+        {#if assetPickerPurpose === 'attach'}
+          <label class="context-field min-w-40"
+            ><span>How it relates</span><select bind:value={associationKind}
+              >{#each contextAssociationKinds[entityKind] as kind (kind)}<option value={kind}
+                  >{contextAssociationLabel(entityKind, kind)}</option
+                >{/each}</select
+            ></label
+          >
+        {/if}
+        <button
           class="context-icon-button"
           type="button"
           aria-label="Close"
@@ -3649,9 +3815,13 @@
           class="context-primary-button"
           type="button"
           disabled={isSaving || selectedSourceIds.length === 0}
-          onclick={() => void attachAssets()}
-          ><Icon icon={mdiLinkPlus} size="19" />
-          {isSaving ? 'Adding…' : `Add ${selectedSourceIds.length || ''} media`}</button
+          onclick={() => (assetPickerPurpose === 'seed-event' ? continueEventSeed() : void attachAssets())}
+          ><Icon icon={assetPickerPurpose === 'seed-event' ? mdiArrowRight : mdiLinkPlus} size="19" />
+          {isSaving
+            ? 'Adding…'
+            : assetPickerPurpose === 'seed-event'
+              ? `Continue with ${selectedSourceIds.length} ${selectedSourceIds.length === 1 ? 'photo' : 'photos'}`
+              : `Add ${selectedSourceIds.length || ''} media`}</button
         >
       </div>
     </div>
@@ -3952,6 +4122,58 @@
     margin-top: 16px;
   }
 
+  .context-event-seed-summary,
+  .context-event-form-guidance {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    border: 1px solid rgb(var(--immich-primary) / 0.22);
+    border-radius: 18px;
+    background: rgb(var(--immich-primary) / 0.06);
+    padding: 14px 16px;
+    color: rgb(var(--immich-primary));
+  }
+
+  .context-event-seed-summary {
+    align-items: center;
+    margin-top: 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  .context-event-form-guidance > span {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    place-items: center;
+    border-radius: 13px;
+    background: rgb(var(--immich-primary) / 0.12);
+  }
+
+  .context-event-form-guidance strong,
+  .context-event-form-guidance p,
+  .context-event-form-guidance small {
+    display: block;
+  }
+
+  .context-event-form-guidance p {
+    margin-top: 3px;
+    color: rgb(75 85 99);
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+
+  .context-event-form-guidance small {
+    margin-top: 7px;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  :global(.dark) .context-event-form-guidance p {
+    color: rgb(209 213 219);
+  }
+
   .context-type-choice {
     display: grid;
     min-height: 116px;
@@ -4242,6 +4464,18 @@
     color: rgb(75 85 99);
     font-size: 0.78rem;
     font-weight: 700;
+  }
+
+  .context-detail-lane span {
+    margin-left: 6px;
+    color: rgb(107 114 128);
+    font-size: 0.7rem;
+  }
+
+  .context-detail-lane-note {
+    margin-top: 7px;
+    color: rgb(107 114 128);
+    font-size: 0.75rem;
   }
 
   :global(.dark) .context-detail-lane {
