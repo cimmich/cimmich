@@ -12,6 +12,7 @@
   import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from './media-card-selection';
   import { cimmichPlaceChildCoverAssetId } from './place-child-cover';
+  import { cimmichPlaceAssetSectionNames } from './place-media-section';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
@@ -2632,6 +2633,14 @@
           <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {#each visibleDetailAssets as asset (asset.associationId)}
               {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
+              {@const placeSectionNames =
+                entityKind === 'place' && 'branchEntityIds' in asset
+                  ? cimmichPlaceAssetSectionNames(asset, selectedPlaceChildren)
+                  : []}
+              {@const mediaContextLabel =
+                entityKind === 'place'
+                  ? placeSectionNames.join(' · ')
+                  : contextAssociationLabel(entityKind, asset.associationKind)}
               <article
                 class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800"
                 class:context-place-photo--selected={placeAssetSelected(asset.assetId)}
@@ -2651,10 +2660,10 @@
                     alt=""
                     loading="lazy"
                   />
-                  <span
-                    class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-3 pt-10 text-xs font-semibold text-white"
-                    >{contextAssociationLabel(entityKind, asset.associationKind)}</span
-                  >
+                  {#if mediaContextLabel}<span
+                      class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-3 pt-10 text-xs font-semibold text-white"
+                      >{mediaContextLabel}</span
+                    >{/if}
                 </a>
                 {#if mediaSelectionMode}
                   <button
@@ -2675,26 +2684,37 @@
                     >Cover</span
                   >
                 {/if}
-                {#if directlyAssignedHere}<button
-                    class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                    type="button"
-                    aria-label={`Options for ${asset.filename}`}
-                    aria-expanded={mediaMenuAssetId === asset.associationId}
-                    aria-haspopup="menu"
-                    title={`Options for ${asset.filename}`}
-                    disabled={isSaving}
-                    onclick={() =>
-                      (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
-                  >
-                    <Icon icon={mdiDotsVertical} size="20" />
-                  </button>{/if}
-                {#if directlyAssignedHere && mediaMenuAssetId === asset.associationId}
+                <button
+                  class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  type="button"
+                  aria-label={`Options for ${asset.filename}`}
+                  aria-expanded={mediaMenuAssetId === asset.associationId}
+                  aria-haspopup="menu"
+                  title={`Options for ${asset.filename}`}
+                  disabled={isSaving}
+                  onclick={() =>
+                    (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
+                >
+                  <Icon icon={mdiDotsVertical} size="20" />
+                </button>
+                {#if mediaMenuAssetId === asset.associationId}
                   <div
                     class="absolute top-13 right-2 z-3 grid min-w-44 gap-1 rounded-2xl border border-white/15 bg-black/88 p-1.5 text-left text-xs font-semibold text-white shadow-2xl backdrop-blur-lg"
                     role="menu"
                     aria-label={`Options for ${asset.filename}`}
                   >
-                    {#if entityKind === 'place' || entityKind === 'object' || entityKind === 'event'}
+                    <button
+                      class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                      type="button"
+                      role="menuitem"
+                      disabled={isSaving}
+                      onclick={() => {
+                        mediaSelectionMode = true;
+                        selectedPlaceAssetIds = [asset.assetId];
+                        mediaMenuAssetId = null;
+                      }}>Select for actions</button
+                    >
+                    {#if directlyAssignedHere && (entityKind === 'place' || entityKind === 'object' || entityKind === 'event')}
                       {#if selected.entity.coverMode === 'explicit' && selected.entity.coverAssetId === asset.sourceAssetId}
                         <button
                           class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
@@ -2725,16 +2745,16 @@
                         >
                       {/each}
                     {/if}
-                    <button
-                      class="flex min-h-10 items-center gap-2 rounded-xl px-3 text-left text-red-200 hover:bg-red-500/18 focus-visible:bg-red-500/18 focus-visible:outline-none"
-                      type="button"
-                      role="menuitem"
-                      disabled={isSaving}
-                      onclick={() => {
-                        mediaMenuAssetId = null;
-                        void detachAsset(asset.assetId);
-                      }}><Icon icon={mdiTrashCanOutline} size="17" /> Remove from {entityNoun}</button
-                    >
+                    {#if directlyAssignedHere}<button
+                        class="flex min-h-10 items-center gap-2 rounded-xl px-3 text-left text-red-200 hover:bg-red-500/18 focus-visible:bg-red-500/18 focus-visible:outline-none"
+                        type="button"
+                        role="menuitem"
+                        disabled={isSaving}
+                        onclick={() => {
+                          mediaMenuAssetId = null;
+                          void detachAsset(asset.assetId);
+                        }}><Icon icon={mdiTrashCanOutline} size="17" /> Remove from {entityNoun}</button
+                      >{/if}
                   </div>
                 {/if}
               </article>

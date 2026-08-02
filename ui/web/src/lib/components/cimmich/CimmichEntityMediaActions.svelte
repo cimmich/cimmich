@@ -120,10 +120,7 @@
   const allDirectlyAssigned = $derived(items.length > 0 && items.every((item) => item.directlyAssigned !== false));
   const availableActions = $derived.by(() => {
     const result: MediaUiAction[] = [
-      ...(currentScope?.family === 'places' &&
-      allDirectlyAssigned &&
-      moveWithinPlaceTargets.length > 0 &&
-      onMoveWithinPlace
+      ...(currentScope?.family === 'places' && moveWithinPlaceTargets.length > 0 && onMoveWithinPlace
         ? (['place-move-within'] as const)
         : []),
       'event-attach',

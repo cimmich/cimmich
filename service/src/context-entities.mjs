@@ -2892,59 +2892,47 @@ export const createContextEntityStore = (
           { missingAssetIds: ids.filter((id) => !foundIds.has(id)) },
         );
       }
-      const parentRows = await tx`
-        SELECT link_id, asset_id, association_kind, state
-        FROM context_asset_link
-        WHERE entity_id = ${parent.entity_id} AND asset_id = ANY(${ids})
-          AND state IN ('accepted','rejected')
-        ORDER BY asset_id FOR UPDATE
-      `;
-      const parentByAssetId = new Map(
-        parentRows.map((row) => [row.asset_id, row]),
-      );
-      const notDirect = ids.filter(
-        (assetId) => parentByAssetId.get(assetId)?.state !== "accepted",
-      );
-      const descendantRows = await tx`
-        WITH RECURSIVE descendants(entity_id) AS (
-          SELECT entity_id FROM context_entity
-          WHERE parent_entity_id = ${parent.entity_id}
-            AND entity_kind = 'place' AND status = 'active'
+      const scopeRows = await tx`
+        WITH RECURSIVE place_scope(entity_id, depth) AS (
+          SELECT ${parent.entity_id}::text, 0
           UNION ALL
-          SELECT child_place.entity_id
+          SELECT child_place.entity_id, parent_place.depth + 1
           FROM context_entity child_place
-          JOIN descendants parent_place
+          JOIN place_scope parent_place
             ON child_place.parent_entity_id = parent_place.entity_id
-          WHERE child_place.entity_kind = 'place' AND child_place.status = 'active'
+          WHERE child_place.entity_kind = 'place'
+            AND child_place.status IN ('active','hidden')
+            AND parent_place.depth < 8
         )
-        SELECT DISTINCT link.asset_id
-        FROM descendants place
-        JOIN current_context_asset link ON link.entity_id = place.entity_id
+        SELECT link.link_id, link.entity_id, link.asset_id,
+          link.association_kind, link.state
+        FROM place_scope place
+        JOIN context_asset_link link ON link.entity_id = place.entity_id
         WHERE link.asset_id = ANY(${ids})
-        ORDER BY link.asset_id
+          AND link.state IN ('accepted','rejected')
+        ORDER BY link.asset_id, link.entity_id
+        FOR UPDATE OF link
       `;
-      const alreadyAssigned = descendantRows.map((row) => row.asset_id);
-      if (notDirect.length || alreadyAssigned.length) {
+      const scopeRowsByAssetId = new Map();
+      for (const row of scopeRows) {
+        const rows = scopeRowsByAssetId.get(row.asset_id) || [];
+        rows.push(row);
+        scopeRowsByAssetId.set(row.asset_id, rows);
+      }
+      const outsidePlace = ids.filter(
+        (assetId) =>
+          !(scopeRowsByAssetId.get(assetId) || []).some(
+            (row) => row.state === "accepted",
+          ),
+      );
+      if (outsidePlace.length) {
         throw typedError(
-          "Only photos currently unassigned within this Place may move to a subsection",
+          "Every photo must already belong to this Place or one of its subsections",
           409,
-          "CONTEXT_PLACE_ASSIGNMENT_NOT_UNASSIGNED",
-          {
-            alreadyAssignedAssetIds: alreadyAssigned,
-            notDirectAssetIds: notDirect,
-          },
+          "CONTEXT_PLACE_ASSIGNMENT_OUTSIDE_SCOPE",
+          { assetIds: outsidePlace },
         );
       }
-      const childRows = await tx`
-        SELECT link_id, asset_id, association_kind, state
-        FROM context_asset_link
-        WHERE entity_id = ${child.entity_id} AND asset_id = ANY(${ids})
-          AND state IN ('accepted','rejected')
-        ORDER BY asset_id FOR UPDATE
-      `;
-      const childByAssetId = new Map(
-        childRows.map((row) => [row.asset_id, row]),
-      );
       const decisionId = await createDecision(tx, {
         action: "update",
         actorId: actor,
@@ -2954,66 +2942,95 @@ export const createContextEntityStore = (
         subjectType: "context_asset",
       });
       const snapshot = [];
+      const unchangedAssetIds = [];
+      const touchedEntityIds = new Set([parent.entity_id, child.entity_id]);
       for (const assetId of ids) {
-        const parentLink = parentByAssetId.get(assetId);
-        const childLink = childByAssetId.get(assetId);
-        await tx`
-          UPDATE context_asset_link SET state = 'superseded'
-          WHERE link_id = ${parentLink.link_id}
-        `;
-        const parentCreatedLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-          INSERT INTO context_asset_link (
-            link_id, entity_id, asset_id, association_kind, state, decision_id,
-            supersedes_link_id
-          ) VALUES (
-            ${parentCreatedLinkId}, ${parent.entity_id}, ${assetId},
-            ${parentLink.association_kind}, 'rejected', ${decisionId},
-            ${parentLink.link_id}
-          )
-        `;
-        if (childLink) {
+        const rows = scopeRowsByAssetId.get(assetId) || [];
+        const acceptedRows = rows.filter((row) => row.state === "accepted");
+        if (
+          acceptedRows.length === 1 &&
+          acceptedRows[0].entity_id === child.entity_id
+        ) {
+          unchangedAssetIds.push(assetId);
+          continue;
+        }
+        const targetRow = rows.find((row) => row.entity_id === child.entity_id);
+        const transitionRows = [
+          ...acceptedRows,
+          ...(targetRow && !acceptedRows.includes(targetRow)
+            ? [targetRow]
+            : []),
+        ];
+        const transitions = [];
+        for (const previous of transitionRows) {
           await tx`
             UPDATE context_asset_link SET state = 'superseded'
-            WHERE link_id = ${childLink.link_id}
+            WHERE link_id = ${previous.link_id}
           `;
+          const createdLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
+          const nextState =
+            previous.entity_id === child.entity_id ? "accepted" : "rejected";
+          await tx`
+            INSERT INTO context_asset_link (
+              link_id, entity_id, asset_id, association_kind, state,
+              decision_id, supersedes_link_id
+            ) VALUES (
+              ${createdLinkId}, ${previous.entity_id}, ${assetId},
+              ${previous.association_kind}, ${nextState}, ${decisionId},
+              ${previous.link_id}
+            )
+          `;
+          transitions.push({
+            createdLinkId,
+            entityId: previous.entity_id,
+            previousAssociationKind: previous.association_kind,
+            previousState: previous.state,
+          });
+          touchedEntityIds.add(previous.entity_id);
         }
-        const childCreatedLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-          INSERT INTO context_asset_link (
-            link_id, entity_id, asset_id, association_kind, state, decision_id,
-            supersedes_link_id
-          ) VALUES (
-            ${childCreatedLinkId}, ${child.entity_id}, ${assetId}, 'manual',
-            'accepted', ${decisionId}, ${childLink?.link_id || null}
-          )
-        `;
+        if (!targetRow) {
+          const createdLinkId = `contextasset_${randomUUID().replaceAll("-", "")}`;
+          await tx`
+            INSERT INTO context_asset_link (
+              link_id, entity_id, asset_id, association_kind, state,
+              decision_id, supersedes_link_id
+            ) VALUES (
+              ${createdLinkId}, ${child.entity_id}, ${assetId}, 'manual',
+              'accepted', ${decisionId}, NULL
+            )
+          `;
+          transitions.push({
+            createdLinkId,
+            entityId: child.entity_id,
+            previousAssociationKind: null,
+            previousState: null,
+          });
+        }
         snapshot.push({
           assetId,
-          childCreatedLinkId,
           childEntityId: child.entity_id,
-          childPreviousAssociationKind: childLink?.association_kind || null,
-          childPreviousLinkId: childLink?.link_id || null,
-          childPreviousState: childLink?.state || null,
-          parentCreatedLinkId,
-          parentPreviousAssociationKind: parentLink.association_kind,
           parentPreviousCoverAssetId:
-            parent.cover_asset_id === assetId ? assetId : null,
-          parentPreviousLinkId: parentLink.link_id,
-          parentPreviousState: parentLink.state,
+            parent.cover_asset_id === assetId &&
+            acceptedRows.some((row) => row.entity_id === parent.entity_id)
+              ? assetId
+              : null,
+          transitions,
         });
       }
-      await tx`
-        UPDATE context_entity SET
-          cover_asset_id = CASE WHEN cover_asset_id = ANY(${ids}) THEN NULL ELSE cover_asset_id END,
-          revision = revision + 1, updated_at = now()
-        WHERE entity_id = ${parent.entity_id}
-      `;
-      await tx`
-        UPDATE context_entity SET revision = revision + 1, updated_at = now()
-        WHERE entity_id = ${child.entity_id}
-      `;
-      const operationId = `contextop_${randomUUID().replaceAll("-", "")}`;
+      if (snapshot.length) {
+        await tx`
+          UPDATE context_entity SET
+            cover_asset_id = CASE
+              WHEN entity_id = ${parent.entity_id}
+                AND cover_asset_id = ANY(${snapshot.map((item) => item.parentPreviousCoverAssetId).filter(Boolean)})
+              THEN NULL ELSE cover_asset_id END,
+            revision = revision + 1, updated_at = now()
+          WHERE entity_id = ANY(${[...touchedEntityIds]})
+        `;
+      }
+      const operationId = snapshot.length
+        ? `contextop_${randomUUID().replaceAll("-", "")}`
+        : null;
       const detail = await loadDetail(tx, {
         bridgeFields,
         entityId: parent.entity_id,
@@ -3021,15 +3038,19 @@ export const createContextEntityStore = (
         presentationRank,
       });
       const response = {
-        changedAssetIds: ids,
+        changedAssetIds: snapshot.map((item) => item.assetId),
         childEntityId: child.entity_id,
         commandId: command.commandId,
         decisionId,
         detail,
         replayed: false,
         schemaVersion,
-        status: "applied",
-        undo: { eligible: true, token: decisionId },
+        status: snapshot.length ? "applied" : "no_change",
+        unchangedAssetIds,
+        undo: {
+          eligible: Boolean(operationId),
+          token: operationId ? decisionId : null,
+        },
       };
       await completeCommand(tx, {
         actorId: actor,
@@ -3038,7 +3059,8 @@ export const createContextEntityStore = (
         decisionId,
         response,
       });
-      await tx`
+      if (operationId)
+        await tx`
         INSERT INTO context_operation (
           operation_id, command_id, entity_id, operation_scope, action,
           decision_id, state, snapshot
@@ -3427,6 +3449,7 @@ export const createContextEntityStore = (
       });
       const snapshot = operation.snapshot || [];
       let assignmentChild = null;
+      const assignmentTouchedEntityIds = new Set();
       if (operation.operation_scope === "entity") {
         const [item] = snapshot;
         if (
@@ -3579,10 +3602,17 @@ export const createContextEntityStore = (
         }
       } else if (operation.operation_scope === "place_assignment") {
         const childIds = new Set(snapshot.map((item) => item.childEntityId));
+        const usesTransitions = snapshot.every(
+          (item) => Array.isArray(item.transitions) && item.transitions.length,
+        );
+        const usesLegacyLinks = snapshot.every(
+          (item) => item.parentCreatedLinkId && item.childCreatedLinkId,
+        );
         if (
           operation.action !== "assign" ||
           snapshot.length < 1 ||
-          childIds.size !== 1
+          childIds.size !== 1 ||
+          (!usesTransitions && !usesLegacyLinks)
         ) {
           throw typedError(
             "Place assignment undo snapshot is invalid",
@@ -3605,21 +3635,41 @@ export const createContextEntityStore = (
           );
         }
         for (const item of snapshot) {
-          const rows = await tx`
-            SELECT link_id FROM context_asset_link
-            WHERE ((link_id = ${item.parentCreatedLinkId}
-                  AND entity_id = ${entity.entity_id})
-                OR (link_id = ${item.childCreatedLinkId}
-                  AND entity_id = ${assignmentChild.entity_id}))
-              AND state IN ('accepted','rejected')
-            ORDER BY link_id FOR UPDATE
-          `;
-          if (rows.length !== 2) {
-            throw typedError(
-              "Place assignment changed after this decision",
-              409,
-              "CONTEXT_UNDO_SUPERSEDED",
-            );
+          if (usesTransitions) {
+            for (const transition of item.transitions) {
+              const [row] = await tx`
+                SELECT link_id FROM context_asset_link
+                WHERE link_id = ${transition.createdLinkId}
+                  AND entity_id = ${transition.entityId}
+                  AND state IN ('accepted','rejected')
+                FOR UPDATE
+              `;
+              if (!row) {
+                throw typedError(
+                  "Place assignment changed after this decision",
+                  409,
+                  "CONTEXT_UNDO_SUPERSEDED",
+                );
+              }
+              assignmentTouchedEntityIds.add(transition.entityId);
+            }
+          } else {
+            const rows = await tx`
+              SELECT link_id FROM context_asset_link
+              WHERE ((link_id = ${item.parentCreatedLinkId}
+                    AND entity_id = ${entity.entity_id})
+                  OR (link_id = ${item.childCreatedLinkId}
+                    AND entity_id = ${assignmentChild.entity_id}))
+                AND state IN ('accepted','rejected')
+              ORDER BY link_id FOR UPDATE
+            `;
+            if (rows.length !== 2) {
+              throw typedError(
+                "Place assignment changed after this decision",
+                409,
+                "CONTEXT_UNDO_SUPERSEDED",
+              );
+            }
           }
           if (
             item.parentPreviousCoverAssetId &&
@@ -3720,28 +3770,49 @@ export const createContextEntityStore = (
             `;
           }
         } else if (operation.operation_scope === "place_assignment") {
-          await tx`
-            UPDATE context_asset_link SET state = 'superseded'
-            WHERE link_id IN (${item.parentCreatedLinkId}, ${item.childCreatedLinkId})
-          `;
-          await tx`
-            INSERT INTO context_asset_link (
-              link_id, entity_id, asset_id, association_kind, state, decision_id,
-              supersedes_link_id
-            ) VALUES (
-              ${`contextasset_${randomUUID().replaceAll("-", "")}`},
-              ${entity.entity_id}, ${item.assetId},
-              ${item.parentPreviousAssociationKind || "manual"},
-              ${item.parentPreviousState === "accepted" ? "accepted" : "rejected"},
-              ${undoDecisionId}, ${item.parentCreatedLinkId}
-            ), (
-              ${`contextasset_${randomUUID().replaceAll("-", "")}`},
-              ${assignmentChild.entity_id}, ${item.assetId},
-              ${item.childPreviousAssociationKind || "manual"},
-              ${item.childPreviousState === "accepted" ? "accepted" : "rejected"},
-              ${undoDecisionId}, ${item.childCreatedLinkId}
-            )
-          `;
+          if (Array.isArray(item.transitions)) {
+            for (const transition of item.transitions) {
+              await tx`
+                UPDATE context_asset_link SET state = 'superseded'
+                WHERE link_id = ${transition.createdLinkId}
+              `;
+              await tx`
+                INSERT INTO context_asset_link (
+                  link_id, entity_id, asset_id, association_kind, state,
+                  decision_id, supersedes_link_id
+                ) VALUES (
+                  ${`contextasset_${randomUUID().replaceAll("-", "")}`},
+                  ${transition.entityId}, ${item.assetId},
+                  ${transition.previousAssociationKind || "manual"},
+                  ${transition.previousState === "accepted" ? "accepted" : "rejected"},
+                  ${undoDecisionId}, ${transition.createdLinkId}
+                )
+              `;
+            }
+          } else {
+            await tx`
+              UPDATE context_asset_link SET state = 'superseded'
+              WHERE link_id IN (${item.parentCreatedLinkId}, ${item.childCreatedLinkId})
+            `;
+            await tx`
+              INSERT INTO context_asset_link (
+                link_id, entity_id, asset_id, association_kind, state, decision_id,
+                supersedes_link_id
+              ) VALUES (
+                ${`contextasset_${randomUUID().replaceAll("-", "")}`},
+                ${entity.entity_id}, ${item.assetId},
+                ${item.parentPreviousAssociationKind || "manual"},
+                ${item.parentPreviousState === "accepted" ? "accepted" : "rejected"},
+                ${undoDecisionId}, ${item.parentCreatedLinkId}
+              ), (
+                ${`contextasset_${randomUUID().replaceAll("-", "")}`},
+                ${assignmentChild.entity_id}, ${item.assetId},
+                ${item.childPreviousAssociationKind || "manual"},
+                ${item.childPreviousState === "accepted" ? "accepted" : "rejected"},
+                ${undoDecisionId}, ${item.childCreatedLinkId}
+              )
+            `;
+          }
           if (item.parentPreviousCoverAssetId) {
             await tx`
               UPDATE context_entity
@@ -3822,7 +3893,15 @@ export const createContextEntityStore = (
           undo_decision_id = ${undoDecisionId}, reverted_at = now()
         WHERE operation_id = ${operation.operation_id}
       `;
-      if (assignmentChild) {
+      const assignmentRevisionEntityIds = [
+        ...assignmentTouchedEntityIds,
+      ].filter((entityId) => entityId !== entity.entity_id);
+      if (assignmentRevisionEntityIds.length) {
+        await tx`
+          UPDATE context_entity SET revision = revision + 1, updated_at = now()
+          WHERE entity_id = ANY(${assignmentRevisionEntityIds})
+        `;
+      } else if (assignmentChild) {
         await tx`
           UPDATE context_entity SET revision = revision + 1, updated_at = now()
           WHERE entity_id = ${assignmentChild.entity_id}

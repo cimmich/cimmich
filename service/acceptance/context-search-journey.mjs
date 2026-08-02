@@ -409,6 +409,38 @@ if (phase === "write" || phase === "all") {
     },
   );
   assert.equal(reassigned.detail.entity.subtreeAssetCount, 2);
+  const movedBetweenSubsections = await request(
+    `/v1/places/${beach.entityId}/assets:assign-child`,
+    {
+      body: {
+        assetIds: ["asset_service_fixture"],
+        childEntityId: office.entityId,
+        commandId: "context.place.move-yard-office01",
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(movedBetweenSubsections.changedAssetIds, [
+    "asset_service_fixture",
+  ]);
+  assert.equal((await request(`/v1/places/${yard.entityId}`)).assets.length, 0);
+  assert.equal(
+    (await request(`/v1/places/${office.entityId}`)).assets.length,
+    1,
+  );
+  const subsectionMoveUndone = await request(
+    `/v1/context/decisions/${movedBetweenSubsections.decisionId}/undo`,
+    {
+      body: { commandId: "context.place.move-yard-office-undo01" },
+      method: "POST",
+    },
+  );
+  assert.equal(subsectionMoveUndone.status, "reverted");
+  assert.equal((await request(`/v1/places/${yard.entityId}`)).assets.length, 1);
+  assert.equal(
+    (await request(`/v1/places/${office.entityId}`)).assets.length,
+    0,
+  );
 
   await request(`/v1/objects/${car.entityId}/assets:attach`, {
     body: {
