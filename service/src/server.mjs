@@ -2450,6 +2450,7 @@ export const createCimmichServer = ({
             keys.some(
               (key) =>
                 ![
+                  "backgroundKind",
                   "backgroundSourceAssetId",
                   "commandId",
                   "displayName",
@@ -2471,6 +2472,7 @@ export const createCimmichServer = ({
             200,
             await repository.savePlacePlan({
               actorId: request.headers["x-cimmich-actor"],
+              backgroundKind: body.backgroundKind,
               backgroundSourceAssetId: body.backgroundSourceAssetId,
               commandId: body.commandId,
               displayName: body.displayName,

@@ -28,6 +28,7 @@
     formatContextDatePrecision,
     formatImmichPlaceLocation,
   } from './context-entity-presentation';
+  import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
 
   interface Props {
     detail: CimmichContextDetail;
@@ -243,6 +244,9 @@
         >
           <div class="context-detail-plan-sheet">
             {#if defaultPlan}
+              {#if defaultPlan.backgroundKind === 'satellite'}
+                <CimmichPlanSatellite location={detail.entity} />
+              {/if}
               {#if defaultPlan.backgroundSourceAssetId}
                 <img
                   class="context-detail-plan-background"

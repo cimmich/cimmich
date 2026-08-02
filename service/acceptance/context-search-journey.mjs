@@ -59,6 +59,7 @@ const assertPersisted = async () => {
   assert.equal(plans.schemaVersion, "cimmich.location-plan.v1");
   assert.equal(plans.items.length, 1);
   assert.equal(plans.items[0].displayName, "Property");
+  assert.equal(plans.items[0].backgroundKind, "satellite");
   assert.equal(plans.items[0].revision, 1);
   assert.equal(plans.items[0].items.length, 1);
   assert.equal(plans.items[0].items[0].childEntityId, yard.entityId);
@@ -932,6 +933,7 @@ if (phase === "write" || phase === "all") {
   assert.equal(objectPurged.retainedTagCount, 0);
 
   const planBody = {
+    backgroundKind: "satellite",
     backgroundSourceAssetId: null,
     commandId: "context.location-plan.create01",
     displayName: "Property",
@@ -953,6 +955,7 @@ if (phase === "write" || phase === "all") {
   assert.equal(createdPlan.status, "applied");
   assert.equal(createdPlan.plan.revision, 1);
   assert.equal(createdPlan.plan.isDefault, true);
+  assert.equal(createdPlan.plan.backgroundKind, "satellite");
   assert.equal(
     (
       await request(`/v1/places/${beach.entityId}/plans`, {

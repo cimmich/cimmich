@@ -42,6 +42,7 @@ const directoryVisibilities = new Set(["listed", "nested_only"]);
 const placeRoles = new Set(["geography", "location", "unclassified"]);
 const defaultPlaceRole = "location";
 const placePlanKinds = new Set(["property", "floor", "outdoor", "other"]);
+const placePlanBackgroundKinds = new Set(["blank", "asset", "satellite"]);
 const associationKinds = {
   event: new Set(["direct", "route_stop", "context", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
@@ -1459,9 +1460,26 @@ const cleanPlacePlanInput = (value) => {
   const backgroundSourceAssetId = value?.backgroundSourceAssetId
     ? String(value.backgroundSourceAssetId).trim()
     : null;
+  const backgroundKind = String(
+    value?.backgroundKind || (backgroundSourceAssetId ? "asset" : "blank"),
+  ).trim();
+  if (!placePlanBackgroundKinds.has(backgroundKind)) {
+    throw typedError(
+      "backgroundKind must be blank, asset, or satellite",
+      400,
+      "PLACE_PLAN_BACKGROUND_INVALID",
+    );
+  }
   if (backgroundSourceAssetId && backgroundSourceAssetId.length > 200) {
     throw typedError(
       "backgroundSourceAssetId is invalid",
+      400,
+      "PLACE_PLAN_BACKGROUND_INVALID",
+    );
+  }
+  if ((backgroundKind === "asset") !== Boolean(backgroundSourceAssetId)) {
+    throw typedError(
+      "An asset Plan background needs exactly one background photo",
       400,
       "PLACE_PLAN_BACKGROUND_INVALID",
     );
@@ -1491,6 +1509,7 @@ const cleanPlacePlanInput = (value) => {
     );
   }
   return {
+    backgroundKind,
     backgroundSourceAssetId,
     displayName,
     isDefault: value?.isDefault === true,
@@ -1624,6 +1643,7 @@ export const createContextEntityStore = (
         }
       }
       projected.push({
+        backgroundKind: snapshot.backgroundKind,
         backgroundSourceAssetId,
         displayName: snapshot.displayName,
         isDefault: snapshot.isDefault,
@@ -1826,7 +1846,7 @@ export const createContextEntityStore = (
             background_kind, background_asset_id, is_default, revision
           ) VALUES (
             ${actualPlanId}, ${locationEntityId}, ${requested.displayName}, ${requested.planKind},
-            ${backgroundAssetId ? "asset" : "blank"}, ${backgroundAssetId}, ${isDefault}, 1
+            ${requested.backgroundKind}, ${backgroundAssetId}, ${isDefault}, 1
           ) ON CONFLICT (plan_id) DO UPDATE SET
             display_name = excluded.display_name,
             plan_kind = excluded.plan_kind,
@@ -3770,6 +3790,7 @@ export const contextEntityContract = Object.freeze({
   placeCoverSchemaVersion,
   defaultPlaceRole,
   placePlanKinds: [...placePlanKinds],
+  placePlanBackgroundKinds: [...placePlanBackgroundKinds],
   placeRoles: [...placeRoles],
   relationKinds: [...relationKinds],
   schemaVersion,

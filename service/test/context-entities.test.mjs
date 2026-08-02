@@ -172,6 +172,11 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     "outdoor",
     "other",
   ]);
+  assert.deepEqual(contextEntityContract.placePlanBackgroundKinds, [
+    "blank",
+    "asset",
+    "satellite",
+  ]);
   const reachedPersistence = new Error("reached plan persistence");
   const sql = Object.assign(async () => [], {
     begin: async () => {
@@ -194,6 +199,16 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     planKind: "floor",
   };
   await assert.rejects(store.savePlacePlan(input), (error) => error === reachedPersistence);
+  await assert.rejects(
+    store.savePlacePlan({ ...input, backgroundKind: "asset" }),
+    (error) =>
+      error.code === "PLACE_PLAN_BACKGROUND_INVALID" &&
+      /needs exactly one background photo/.test(error.message),
+  );
+  await assert.rejects(
+    store.savePlacePlan({ ...input, backgroundKind: "satellite" }),
+    (error) => error === reachedPersistence,
+  );
   await assert.rejects(
     store.savePlacePlan({
       ...input,

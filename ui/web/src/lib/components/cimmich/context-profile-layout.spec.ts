@@ -64,7 +64,10 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('saveCimmichPlacePlan');
     expect(plan).toContain('Blank property');
     expect(plan).toContain('Blank floor');
+    expect(plan).toContain('Use satellite');
     expect(plan).toContain('Use cover photo');
+    expect(plan).toContain('<CimmichPlanSatellite');
+    expect(plan).toContain("'satellite'");
     expect(plan).toContain("geometry: { h: 0.2, kind: 'rect'");
     expect(plan).toContain('Remove from this plan');
     expect(plan).toContain('Save plan');
