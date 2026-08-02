@@ -13,6 +13,14 @@
   import { handleCimmichMediaCardClick } from './media-card-selection';
   import { cimmichPlaceChildCoverAssetId } from './place-child-cover';
   import { cimmichPlaceAssetSectionNames } from './place-media-section';
+  import {
+    groupPlacePhotos,
+    placePhotoGridClass,
+    preparePlacePhotos,
+    type PlacePhotoGroup,
+    type PlacePhotoSize,
+    type PlacePhotoSort,
+  } from './place-photo-gallery';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
@@ -80,6 +88,7 @@
     mdiFloorPlan,
     mdiFolderMultipleOutline,
     mdiFilterVariant,
+    mdiGroup,
     mdiImageMultipleOutline,
     mdiLinkPlus,
     mdiMagnify,
@@ -88,8 +97,10 @@
     mdiPackageVariantClosed,
     mdiPlus,
     mdiSelectAll,
+    mdiSortVariant,
     mdiTrashCanOutline,
     mdiUndoVariant,
+    mdiViewGridOutline,
   } from '@mdi/js';
   import {
     contextAssociationKinds,
@@ -225,6 +236,9 @@
   let connectionPresentationKey = '';
   let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
   let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
+  let placePhotoGroup = $state<PlacePhotoGroup>('none');
+  let placePhotoSize = $state<PlacePhotoSize>('medium');
+  let placePhotoSort = $state<PlacePhotoSort>('newest');
   let selectedPlaceAssetIds = $state<string[]>([]);
   let mediaSelectionMode = $state(false);
   let showDeleteContext = $state(false);
@@ -456,6 +470,19 @@
           ? asset.associationKind === 'route_stop'
           : asset.associationKind === 'context',
     );
+  });
+  const presentedDetailAssets = $derived(
+    entityKind === 'place' ? preparePlacePhotos(visibleDetailAssets, placePhotoSort) : visibleDetailAssets,
+  );
+  const groupedDetailAssets = $derived(
+    entityKind === 'place'
+      ? groupPlacePhotos(presentedDetailAssets, placePhotoGroup, selectedPlaceChildren)
+      : [{ id: 'all', items: presentedDetailAssets, label: null }],
+  );
+  $effect(() => {
+    if (placePhotoGroup === 'subsection' && selectedPlaceChildren.length === 0) {
+      placePhotoGroup = 'none';
+    }
   });
   const eventMediaLaneCounts = $derived.by(() => {
     const assets = selected?.assets ?? [];
@@ -3045,6 +3072,34 @@
         >
           <Icon icon={mdiSelectAll} size="19" /> <span>{mediaSelectionMode ? 'Done' : 'Select'}</span>
         </button>
+        {#if activeFamily === 'places'}
+          <div class="context-place-photo-options context-profile-action" aria-label="Photo view options">
+            <label title="Sort photos">
+              <Icon icon={mdiSortVariant} size="19" />
+              <select bind:value={placePhotoSort} aria-label="Sort photos">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="filename">Filename</option>
+              </select>
+            </label>
+            <label title="Group photos">
+              <Icon icon={mdiGroup} size="19" />
+              <select bind:value={placePhotoGroup} aria-label="Group photos">
+                <option value="none">No grouping</option>
+                <option value="year">Year</option>
+                {#if selectedPlaceChildren.length > 0}<option value="subsection">Subsection</option>{/if}
+              </select>
+            </label>
+            <label title="Thumbnail size">
+              <Icon icon={mdiViewGridOutline} size="19" />
+              <select bind:value={placePhotoSize} aria-label="Thumbnail size">
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+          </div>
+        {/if}
         {#if !selectedIsGeographyGroup}
           {#if activeFamily === 'events'}
             {#if (selected.entity.sourceFolders?.length ?? 0) > 0}
@@ -3204,136 +3259,153 @@
             <p class="mt-1 text-sm text-gray-500">Choose All or add media with this relationship.</p>
           </div>
         {:else}
-          <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {#each visibleDetailAssets as asset (asset.associationId)}
-              {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
-              {@const placeSectionNames =
-                entityKind === 'place' && 'branchEntityIds' in asset
-                  ? cimmichPlaceAssetSectionNames(asset, selectedPlaceChildren)
-                  : []}
-              {@const mediaContextLabel =
-                entityKind === 'place'
-                  ? placeSectionNames.join(' · ')
-                  : contextAssociationLabel(entityKind, asset.associationKind)}
-              <article
-                class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800"
-                class:context-place-photo--selected={placeAssetSelected(asset.assetId)}
+          {#each groupedDetailAssets as photoGroup (photoGroup.id)}
+            <section class="mt-5 grid gap-3">
+              {#if photoGroup.label}
+                <div class="flex items-center gap-3">
+                  <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">{photoGroup.label}</h2>
+                  <span class="text-sm text-gray-500 dark:text-gray-400"
+                    >{photoGroup.items.length.toLocaleString()}</span
+                  >
+                  <div class="h-px flex-1 bg-gray-200 dark:bg-gray-700"></div>
+                </div>
+              {/if}
+              <div
+                class={entityKind === 'place'
+                  ? placePhotoGridClass(placePhotoSize)
+                  : 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4'}
               >
-                <a
-                  class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
-                  href={contextAssetViewerHref(asset.sourceAssetId)}
-                  aria-label={`Open ${asset.filename}`}
-                  onclick={(event) =>
-                    handleCimmichMediaCardClick(event, mediaSelectionMode, () =>
-                      togglePlaceAssetSelection(asset.assetId),
-                    )}
-                >
-                  <img
-                    class="size-full object-cover transition duration-200 group-hover:scale-[1.025]"
-                    src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Preview })}
-                    alt=""
-                    loading="lazy"
-                  />
-                  {#if mediaContextLabel}<span
-                      class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-3 pt-10 text-xs font-semibold text-white"
-                      >{mediaContextLabel}</span
-                    >{/if}
-                </a>
-                {#if mediaSelectionMode}
-                  <button
-                    class="context-place-photo-select"
-                    class:context-place-photo-select--active={placeAssetSelected(asset.assetId)}
-                    type="button"
-                    aria-label={`${placeAssetSelected(asset.assetId) ? 'Deselect' : 'Select'} ${asset.filename}`}
-                    aria-pressed={placeAssetSelected(asset.assetId)}
-                    disabled={isSaving}
-                    onclick={() => togglePlaceAssetSelection(asset.assetId)}
+                {#each photoGroup.items as asset (asset.associationId)}
+                  {@const directlyAssignedHere = !('directlyAssigned' in asset) || asset.directlyAssigned}
+                  {@const placeSectionNames =
+                    entityKind === 'place' && 'branchEntityIds' in asset
+                      ? cimmichPlaceAssetSectionNames(asset, selectedPlaceChildren)
+                      : []}
+                  {@const mediaContextLabel =
+                    entityKind === 'place'
+                      ? placeSectionNames.join(' · ')
+                      : contextAssociationLabel(entityKind, asset.associationKind)}
+                  <article
+                    class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800"
+                    class:context-place-photo--selected={placeAssetSelected(asset.assetId)}
                   >
-                    {#if placeAssetSelected(asset.assetId)}<Icon icon={mdiCheck} size="18" />{/if}
-                  </button>
-                {/if}
-                {#if selected.entity.coverAssetId === asset.sourceAssetId}
-                  <span
-                    class="absolute top-2 left-2 z-1 rounded-full bg-black/62 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm"
-                    >Cover</span
-                  >
-                {/if}
-                <button
-                  class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                  type="button"
-                  aria-label={`Options for ${asset.filename}`}
-                  aria-expanded={mediaMenuAssetId === asset.associationId}
-                  aria-haspopup="menu"
-                  title={`Options for ${asset.filename}`}
-                  disabled={isSaving}
-                  onclick={() =>
-                    (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
-                >
-                  <Icon icon={mdiDotsVertical} size="20" />
-                </button>
-                {#if mediaMenuAssetId === asset.associationId}
-                  <div
-                    class="absolute top-13 right-2 z-3 grid min-w-44 gap-1 rounded-2xl border border-white/15 bg-black/88 p-1.5 text-left text-xs font-semibold text-white shadow-2xl backdrop-blur-lg"
-                    role="menu"
-                    aria-label={`Options for ${asset.filename}`}
-                  >
-                    <button
-                      class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
-                      type="button"
-                      role="menuitem"
-                      disabled={isSaving}
-                      onclick={() => {
-                        mediaSelectionMode = true;
-                        selectedPlaceAssetIds = [asset.assetId];
-                        mediaMenuAssetId = null;
-                      }}>Select for actions</button
+                    <a
+                      class="block size-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white"
+                      href={contextAssetViewerHref(asset.sourceAssetId)}
+                      aria-label={`Open ${asset.filename}`}
+                      onclick={(event) =>
+                        handleCimmichMediaCardClick(event, mediaSelectionMode, () =>
+                          togglePlaceAssetSelection(asset.assetId),
+                        )}
                     >
-                    {#if entityKind === 'place' || entityKind === 'object' || entityKind === 'event'}
-                      {#if selected.entity.coverMode === 'explicit' && selected.entity.coverAssetId === asset.sourceAssetId}
-                        <button
-                          class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
-                          type="button"
-                          role="menuitem"
-                          disabled={isSaving}
-                          onclick={() => void changeContextCover(null)}>Use automatic cover</button
-                        >
-                      {:else}
-                        <button
-                          class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
-                          type="button"
-                          role="menuitem"
-                          disabled={isSaving}
-                          onclick={() => void changeContextCover(asset.sourceAssetId)}>Use as cover</button
-                        >
-                      {/if}
-                    {/if}
-                    {#if entityKind === 'place' && selectedPlaceChildren.length > 0}
-                      {#each selectedPlaceChildren as child (child.entityId)}
-                        <button
-                          class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
-                          type="button"
-                          role="menuitem"
-                          disabled={isSaving}
-                          onclick={() => void assignAssetToPlaceChild(asset.assetId, child)}
-                          >Move to {child.displayName}</button
-                        >
-                      {/each}
-                    {/if}
-                    {#if directlyAssignedHere}<button
-                        class="flex min-h-10 items-center gap-2 rounded-xl px-3 text-left text-red-200 hover:bg-red-500/18 focus-visible:bg-red-500/18 focus-visible:outline-none"
+                      <img
+                        class="size-full object-cover transition duration-200 group-hover:scale-[1.025]"
+                        src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Preview })}
+                        alt=""
+                        loading="lazy"
+                      />
+                      {#if mediaContextLabel}<span
+                          class="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent p-3 pt-10 text-xs font-semibold text-white"
+                          >{mediaContextLabel}</span
+                        >{/if}
+                    </a>
+                    {#if mediaSelectionMode}
+                      <button
+                        class="context-place-photo-select"
+                        class:context-place-photo-select--active={placeAssetSelected(asset.assetId)}
                         type="button"
-                        role="menuitem"
+                        aria-label={`${placeAssetSelected(asset.assetId) ? 'Deselect' : 'Select'} ${asset.filename}`}
+                        aria-pressed={placeAssetSelected(asset.assetId)}
                         disabled={isSaving}
-                        onclick={() => {
-                          mediaMenuAssetId = null;
-                          void detachAsset(asset.assetId);
-                        }}><Icon icon={mdiTrashCanOutline} size="17" /> Remove from {entityNoun}</button
-                      >{/if}
-                  </div>
-                {/if}
-              </article>
-            {/each}
-          </div>
+                        onclick={() => togglePlaceAssetSelection(asset.assetId)}
+                      >
+                        {#if placeAssetSelected(asset.assetId)}<Icon icon={mdiCheck} size="18" />{/if}
+                      </button>
+                    {/if}
+                    {#if selected.entity.coverAssetId === asset.sourceAssetId}
+                      <span
+                        class="absolute top-2 left-2 z-1 rounded-full bg-black/62 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm"
+                        >Cover</span
+                      >
+                    {/if}
+                    <button
+                      class="absolute top-2 right-2 z-2 flex size-10 items-center justify-center rounded-full bg-black/55 text-white opacity-100 shadow-sm backdrop-blur-sm transition focus-visible:outline-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                      type="button"
+                      aria-label={`Options for ${asset.filename}`}
+                      aria-expanded={mediaMenuAssetId === asset.associationId}
+                      aria-haspopup="menu"
+                      title={`Options for ${asset.filename}`}
+                      disabled={isSaving}
+                      onclick={() =>
+                        (mediaMenuAssetId = mediaMenuAssetId === asset.associationId ? null : asset.associationId)}
+                    >
+                      <Icon icon={mdiDotsVertical} size="20" />
+                    </button>
+                    {#if mediaMenuAssetId === asset.associationId}
+                      <div
+                        class="absolute top-13 right-2 z-3 grid min-w-44 gap-1 rounded-2xl border border-white/15 bg-black/88 p-1.5 text-left text-xs font-semibold text-white shadow-2xl backdrop-blur-lg"
+                        role="menu"
+                        aria-label={`Options for ${asset.filename}`}
+                      >
+                        <button
+                          class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                          type="button"
+                          role="menuitem"
+                          disabled={isSaving}
+                          onclick={() => {
+                            mediaSelectionMode = true;
+                            selectedPlaceAssetIds = [asset.assetId];
+                            mediaMenuAssetId = null;
+                          }}>Select for actions</button
+                        >
+                        {#if entityKind === 'place' || entityKind === 'object' || entityKind === 'event'}
+                          {#if selected.entity.coverMode === 'explicit' && selected.entity.coverAssetId === asset.sourceAssetId}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void changeContextCover(null)}>Use automatic cover</button
+                            >
+                          {:else}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void changeContextCover(asset.sourceAssetId)}>Use as cover</button
+                            >
+                          {/if}
+                        {/if}
+                        {#if entityKind === 'place' && selectedPlaceChildren.length > 0}
+                          {#each selectedPlaceChildren as child (child.entityId)}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void assignAssetToPlaceChild(asset.assetId, child)}
+                              >Move to {child.displayName}</button
+                            >
+                          {/each}
+                        {/if}
+                        {#if directlyAssignedHere}<button
+                            class="flex min-h-10 items-center gap-2 rounded-xl px-3 text-left text-red-200 hover:bg-red-500/18 focus-visible:bg-red-500/18 focus-visible:outline-none"
+                            type="button"
+                            role="menuitem"
+                            disabled={isSaving}
+                            onclick={() => {
+                              mediaMenuAssetId = null;
+                              void detachAsset(asset.assetId);
+                            }}><Icon icon={mdiTrashCanOutline} size="17" /> Remove from {entityNoun}</button
+                          >{/if}
+                      </div>
+                    {/if}
+                  </article>
+                {/each}
+              </div>
+            </section>
+          {/each}
         {/if}
       </div>
     {:else if activeDetailTab === 'journey' && selected.entity.typeKind === 'trip'}
@@ -5833,6 +5905,62 @@
     align-self: center;
     flex: 0 0 auto;
     margin-left: 0.75rem;
+  }
+
+  .context-place-photo-options {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid rgb(229 231 235);
+    border-radius: 0.75rem;
+    background: white;
+    color: rgb(107 114 128);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  }
+
+  :global(.dark) .context-place-photo-options {
+    border-color: rgb(55 65 81);
+    background: rgb(17 24 39);
+    color: rgb(156 163 175);
+  }
+
+  .context-place-photo-options label {
+    position: relative;
+    display: inline-grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    cursor: pointer;
+    place-items: center;
+    transition:
+      background 160ms ease,
+      color 160ms ease;
+  }
+
+  .context-place-photo-options label + label {
+    border-left: 1px solid rgb(229 231 235);
+  }
+
+  :global(.dark) .context-place-photo-options label + label {
+    border-color: rgb(55 65 81);
+  }
+
+  .context-place-photo-options label:hover,
+  .context-place-photo-options label:focus-within {
+    background: rgb(243 244 246);
+    color: rgb(var(--immich-primary));
+  }
+
+  :global(.dark) .context-place-photo-options label:hover,
+  :global(.dark) .context-place-photo-options label:focus-within {
+    background: rgb(31 41 55);
+  }
+
+  .context-place-photo-options select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    opacity: 0;
   }
 
   .context-editor-record {
