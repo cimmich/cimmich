@@ -208,6 +208,7 @@
   let folderQuery = $state('');
   let folderSearchAssets = $state<AssetResponseDto[]>([]);
   let folderSearchLoading = $state(false);
+  let folderSearchStarted = $state(false);
   let folderError = $state('');
   let selectedFolderPaths = $state<string[]>([]);
   let folderAssetIds = $state<Record<string, string[]>>({});
@@ -324,7 +325,9 @@
   const filteredLibraryAssets = $derived(
     libraryAssets.filter((asset) => asset.originalFileName.toLowerCase().includes(libraryQuery.trim().toLowerCase())),
   );
-  const folderCandidates = $derived(eventFolderCandidates(folderSearchAssets));
+  const folderCandidates = $derived(
+    eventFolderCandidates(folderSearchStarted ? folderSearchAssets : libraryAssets).slice(0, 16),
+  );
   const selectedAssetIds = $derived(
     new Set(
       (activeFamily === 'places' ? selected?.subtreeAssets : selected?.assets)?.map((asset) => asset.sourceAssetId),
@@ -1623,10 +1626,13 @@
   const searchEventFolders = async () => {
     const needle = folderQuery.trim();
     if (needle.length < 2) {
-      folderError = 'Type at least two characters from the folder name or path.';
+      folderSearchStarted = false;
+      folderSearchAssets = [];
+      folderError = needle.length === 1 ? 'Keep typing to search every folder, or choose a recent folder below.' : '';
       return;
     }
     folderSearchLoading = true;
+    folderSearchStarted = true;
     folderError = '';
     try {
       const result = await searchAssets({ metadataSearchDto: { originalPath: needle, size: 100, withExif: true } });
@@ -1872,7 +1878,7 @@
     assetError = '';
     if (mode === 'nearby') {
       void loadNearbyAssets();
-    } else if (mode === 'library' && !libraryLoaded) {
+    } else if ((mode === 'library' || mode === 'folders') && !libraryLoaded) {
       void loadLibrary();
     }
   };
@@ -1893,6 +1899,7 @@
     folderError = '';
     folderQuery = '';
     folderSearchAssets = [];
+    folderSearchStarted = false;
     selectedFolderPaths = [];
     folderAssetIds = {};
     showAssetPicker = true;
@@ -1917,6 +1924,7 @@
     folderAssetIds = {};
     folderQuery = '';
     folderSearchAssets = [];
+    folderSearchStarted = false;
     folderError = '';
     libraryQuery = '';
     associationKind = 'direct';
@@ -4438,8 +4446,16 @@
             </div>
           </div>
         {:else if assetPickerMode === 'folders'}
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-sm font-semibold">Browse folders</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Recent visible folders are ready below. Search only when you need something else.
+              </p>
+            </div>
+          </div>
           <form
-            class="flex gap-2"
+            class="mt-3 flex gap-2"
             onsubmit={(event) => {
               event.preventDefault();
               void searchEventFolders();
@@ -4553,18 +4569,36 @@
             </div>
           {/if}
         {:else if assetPickerMode === 'folders'}
-          {#if folderSearchLoading}
+          {#if folderSearchLoading || (!folderSearchStarted && libraryLoading)}
             <p class="py-16 text-center text-sm text-gray-500" role="status">Searching visible folder paths…</p>
           {:else if folderCandidates.length === 0}
             <div class="py-16 text-center">
               <Icon class="mx-auto text-gray-400" icon={mdiFolderMultipleOutline} size="34" />
-              <p class="mt-3 font-semibold">Use the organisation you already have</p>
+              <p class="mt-3 font-semibold">
+                {folderSearchStarted ? 'No visible folders matched' : 'Search or browse the folders you already have'}
+              </p>
               <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
-                Find one or several folders. Their visible photos are selected together, and the Event remembers the
-                folder sources for later refresh. Subfolders are included.
+                {folderSearchStarted
+                  ? 'Try another part of the folder name or path. Nothing has changed.'
+                  : 'Recent visible folders appear here automatically. You can choose several, and subfolders are included.'}
               </p>
             </div>
           {:else}
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <p class="text-xs font-semibold tracking-[0.12em] text-gray-500 uppercase dark:text-gray-400">
+                {folderSearchStarted ? 'Search results' : 'Recent folders'}
+              </p>
+              {#if folderSearchStarted}<button
+                  class="rounded-full px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10"
+                  type="button"
+                  onclick={() => {
+                    folderQuery = '';
+                    folderSearchAssets = [];
+                    folderSearchStarted = false;
+                    folderError = '';
+                  }}>Show recent</button
+                >{/if}
+            </div>
             <div class="grid gap-2 sm:grid-cols-2">
               {#each folderCandidates as folder (folder.path)}
                 <button
@@ -4581,7 +4615,9 @@
                     ><strong class="block truncate">{folder.label}</strong><small
                       class="mt-1 block truncate text-gray-500">{folder.path}</small
                     ></span
-                  ><span class="shrink-0 text-xs font-semibold text-gray-500">{folder.assetCount}+</span>
+                  ><span class="shrink-0 text-xs font-semibold text-gray-500"
+                    >{folder.assetCount}{folderSearchStarted ? '+' : ' recent'}</span
+                  >
                 </button>
               {/each}
             </div>

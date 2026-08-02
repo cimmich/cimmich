@@ -749,15 +749,15 @@
     <div class="mb-5 flex size-14 items-center justify-center rounded-3xl bg-primary/10 text-primary">
       <Icon icon={mdiFolderMultipleOutline} size="29" />
     </div>
-    <p class="text-sm font-semibold tracking-[0.18em] text-primary uppercase">Bulk photo sorter</p>
+    <p class="text-sm font-semibold tracking-[0.18em] text-primary uppercase">Advanced tool</p>
     <h1
       class="mt-2 text-3xl font-semibold tracking-tight text-immich-primary sm:text-4xl dark:text-immich-dark-primary"
     >
-      Organise photos without moving the originals
+      Make one careful change across many photos
     </h1>
     <p class="mt-4 max-w-2xl text-base/7 text-immich-fg/70 dark:text-immich-dark-fg/70">
-      Choose a precise set, inspect the result, then apply one reversible action. Large sets run in safe batches; there
-      is no 100-photo selection ceiling.
+      Choose a precise set, inspect the result, then apply one reversible action. Original files stay where they are,
+      and large sets run in safe batches with a saved Undo receipt.
     </p>
   </section>
 
