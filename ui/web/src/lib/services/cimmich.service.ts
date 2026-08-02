@@ -251,6 +251,7 @@ export type CimmichPlacePlanItem = {
 };
 
 export type CimmichPlacePlan = {
+  backgroundKind: 'asset' | 'blank' | 'satellite';
   backgroundSourceAssetId: string | null;
   displayName: string;
   isDefault: boolean;
@@ -268,6 +269,7 @@ export type CimmichPlacePlansResult = {
 };
 
 export type CimmichPlacePlanSaveInput = {
+  backgroundKind?: CimmichPlacePlan['backgroundKind'];
   backgroundSourceAssetId?: string | null;
   commandId: string;
   displayName: string;

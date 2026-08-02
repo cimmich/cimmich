@@ -7,7 +7,18 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiArrowRight, mdiCheck, mdiClose, mdiFloorPlan, mdiImageOutline, mdiPencilOutline, mdiPlus } from '@mdi/js';
+  import {
+    mdiArrowRight,
+    mdiCheck,
+    mdiClose,
+    mdiFloorPlan,
+    mdiImageOutline,
+    mdiPencilOutline,
+    mdiPlus,
+    mdiSatelliteVariant,
+  } from '@mdi/js';
+  import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
+  import { contextPlaceMapProjection } from './context-entity-presentation';
 
   type DraftItem = {
     childEntityId: string;
@@ -21,6 +32,7 @@
     coverSourceAssetId?: string | null;
     onOpenPlace: (child: CimmichContextEntity) => void;
     onSave: (input: {
+      backgroundKind: CimmichPlacePlan['backgroundKind'];
       backgroundSourceAssetId: string | null;
       displayName: string;
       expectedRevision: number;
@@ -38,6 +50,7 @@
   let editing = $state(false);
   let draftName = $state('');
   let draftKind = $state<CimmichPlacePlan['planKind']>('property');
+  let draftBackgroundKind = $state<CimmichPlacePlan['backgroundKind']>('blank');
   let draftBackgroundSourceAssetId = $state<string | null>(null);
   let draftItems = $state<DraftItem[]>([]);
   let draftPlanId = $state<string | null>(null);
@@ -60,6 +73,11 @@
   const visibleBackground = $derived(
     editing ? draftBackgroundSourceAssetId : (activePlan?.backgroundSourceAssetId ?? null),
   );
+  const visibleBackgroundKind = $derived(editing ? draftBackgroundKind : (activePlan?.backgroundKind ?? 'blank'));
+  const satelliteAvailable = $derived.by(() => {
+    const projection = contextPlaceMapProjection([parent]);
+    return projection.markers.length + projection.areas.length > 0;
+  });
   const placedIds = $derived(new Set(visibleItems.map((item) => item.childEntityId)));
   const unplacedChildren = $derived(children.filter((child) => !placedIds.has(child.entityId)));
 
@@ -69,12 +87,16 @@
     }
   });
 
-  const startNew = (kind: CimmichPlacePlan['planKind'], useCover = false) => {
+  const startNew = (
+    kind: CimmichPlacePlan['planKind'],
+    backgroundKind: CimmichPlacePlan['backgroundKind'] = 'blank',
+  ) => {
     draftPlanId = null;
     draftRevision = 0;
     draftName = kind === 'floor' ? 'Ground floor' : kind === 'outdoor' ? 'Yard' : 'Property';
     draftKind = kind;
-    draftBackgroundSourceAssetId = useCover ? coverSourceAssetId : null;
+    draftBackgroundKind = backgroundKind;
+    draftBackgroundSourceAssetId = backgroundKind === 'asset' ? coverSourceAssetId : null;
     draftItems = [];
     draftDefault = plans.length === 0;
     selectedChildId = '';
@@ -90,6 +112,7 @@
     draftRevision = activePlan.revision;
     draftName = activePlan.displayName;
     draftKind = activePlan.planKind;
+    draftBackgroundKind = activePlan.backgroundKind;
     draftBackgroundSourceAssetId = activePlan.backgroundSourceAssetId;
     draftItems = activePlan.items.map((item) => ({
       childEntityId: item.childEntityId,
@@ -212,6 +235,7 @@
     saveError = '';
     try {
       await onSave({
+        backgroundKind: draftBackgroundKind,
         backgroundSourceAssetId: draftBackgroundSourceAssetId,
         displayName: draftName.trim(),
         expectedRevision: draftRevision,
@@ -243,7 +267,12 @@
       <div class="place-plan__header-actions">
         {#if activePlan}<button type="button" onclick={editPlan}><Icon icon={mdiPencilOutline} size="17" /> Edit</button
           >{/if}
-        <button class="place-plan__primary" type="button" onclick={() => startNew('floor')}>
+        <button
+          class="place-plan__primary"
+          type="button"
+          onclick={() =>
+            startNew(satelliteAvailable ? 'property' : 'floor', satelliteAvailable ? 'satellite' : 'blank')}
+        >
           <Icon icon={mdiPlus} size="18" /> New plan
         </button>
       </div>
@@ -269,13 +298,20 @@
       <span><Icon icon={mdiFloorPlan} size="34" /></span>
       <h3>Make the first plan</h3>
       <div class="place-plan__starts">
+        {#if satelliteAvailable}
+          <button class="place-plan__start--primary" type="button" onclick={() => startNew('property', 'satellite')}>
+            <Icon icon={mdiSatelliteVariant} size="21" /><strong>Use satellite</strong><small
+              >Start from this Location</small
+            >
+          </button>
+        {/if}
         <button type="button" onclick={() => startNew('property')}>
           <Icon icon={mdiPlus} size="20" /><strong>Blank property</strong><small>House and yard</small>
         </button>
         <button type="button" onclick={() => startNew('floor')}>
           <Icon icon={mdiFloorPlan} size="20" /><strong>Blank floor</strong><small>Rooms and spaces</small>
         </button>
-        {#if coverSourceAssetId}<button type="button" onclick={() => startNew('property', true)}>
+        {#if coverSourceAssetId}<button type="button" onclick={() => startNew('property', 'asset')}>
             <Icon icon={mdiImageOutline} size="20" /><strong>Use cover photo</strong><small
               >Arrange over the image</small
             >
@@ -298,17 +334,37 @@
             <option value="other">Other</option>
           </select>
         </label>
-        {#if coverSourceAssetId}
+        {#if satelliteAvailable}
           <button
-            class:place-plan__background-toggle--active={draftBackgroundSourceAssetId === coverSourceAssetId}
+            class:place-plan__background-toggle--active={draftBackgroundKind === 'satellite'}
             type="button"
-            aria-pressed={draftBackgroundSourceAssetId === coverSourceAssetId}
-            onclick={() =>
-              (draftBackgroundSourceAssetId =
-                draftBackgroundSourceAssetId === coverSourceAssetId ? null : coverSourceAssetId)}
-            ><Icon icon={mdiImageOutline} size="17" /> Cover photo</button
+            aria-pressed={draftBackgroundKind === 'satellite'}
+            onclick={() => {
+              draftBackgroundKind = 'satellite';
+              draftBackgroundSourceAssetId = null;
+            }}><Icon icon={mdiSatelliteVariant} size="17" /> Satellite</button
           >
         {/if}
+        {#if coverSourceAssetId}
+          <button
+            class:place-plan__background-toggle--active={draftBackgroundKind === 'asset'}
+            type="button"
+            aria-pressed={draftBackgroundKind === 'asset'}
+            onclick={() => {
+              draftBackgroundKind = 'asset';
+              draftBackgroundSourceAssetId = coverSourceAssetId;
+            }}><Icon icon={mdiImageOutline} size="17" /> Cover photo</button
+          >
+        {/if}
+        <button
+          class:place-plan__background-toggle--active={draftBackgroundKind === 'blank'}
+          type="button"
+          aria-pressed={draftBackgroundKind === 'blank'}
+          onclick={() => {
+            draftBackgroundKind = 'blank';
+            draftBackgroundSourceAssetId = null;
+          }}><Icon icon={mdiPlus} size="17" /> Blank</button
+        >
         <div class="place-plan__save-actions">
           <button type="button" disabled={saving} onclick={cancelEdit}><Icon icon={mdiClose} size="17" /> Cancel</button
           >
@@ -332,6 +388,9 @@
         bind:this={canvas}
         aria-label={`${editing ? 'Editing' : 'Viewing'} ${editing ? draftName : activePlan?.displayName}`}
       >
+        {#if visibleBackgroundKind === 'satellite'}
+          <CimmichPlanSatellite location={parent} />
+        {/if}
         {#if visibleBackground}
           <img src={getAssetMediaUrl({ id: visibleBackground, size: AssetMediaSize.Preview })} alt="" />
         {/if}
@@ -547,6 +606,11 @@
   .place-plan__starts button:hover {
     border-color: rgb(var(--immich-primary-color));
   }
+  .place-plan__starts .place-plan__start--primary {
+    border-color: rgb(var(--immich-primary-color) / 0.45);
+    color: rgb(var(--immich-primary-color));
+    background: rgb(var(--immich-primary-color) / 0.08);
+  }
   .place-plan__starts small {
     color: rgb(107 114 128);
     font-weight: 500;
@@ -628,6 +692,7 @@
     opacity: 0.62;
   }
   .place-plan__grid {
+    z-index: 0;
     background-image:
       linear-gradient(rgb(100 116 139/0.12) 1px, transparent 1px),
       linear-gradient(90deg, rgb(100 116 139/0.12) 1px, transparent 1px);
