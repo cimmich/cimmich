@@ -2973,7 +2973,7 @@
                         mediaMenuAssetId = null;
                       }}>Select for actions</button
                     >
-                    {#if directlyAssignedHere && (entityKind === 'place' || entityKind === 'object' || entityKind === 'event')}
+                    {#if entityKind === 'place' || entityKind === 'object' || entityKind === 'event'}
                       {#if selected.entity.coverMode === 'explicit' && selected.entity.coverAssetId === asset.sourceAssetId}
                         <button
                           class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"

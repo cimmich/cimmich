@@ -144,6 +144,7 @@ describe('Place, Thing and Event profile information architecture', () => {
 
   it('keeps hierarchy maintenance in settings and selected-photo actions on the photo rail', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const hero = await read('src/lib/components/cimmich/CimmichContextDetailHero.svelte');
 
     expect(browser).toContain('Settings for ${selected?.entity.displayName}');
     expect(browser).not.toContain('Move this {selected.entity.placeRole');
@@ -158,6 +159,10 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('src={getAssetMediaUrl({ id: childCoverAssetId, size: AssetMediaSize.Preview })}');
     expect(browser).toContain('cimmichPlaceAssetSectionNames(asset, selectedPlaceChildren)');
     expect(browser).toContain('>Select for actions</button');
+    expect(browser).toContain('onclick={() => void changeContextCover(asset.sourceAssetId)}>Use as cover</button');
+    expect(browser).not.toContain(
+      "directlyAssignedHere && (entityKind === 'place' || entityKind === 'object' || entityKind === 'event')",
+    );
     expect(browser).not.toContain('>{contextAssociationLabel(entityKind, asset.associationKind)}</span');
     expect(browser).toContain(".join(' · ')");
     expect(browser).toContain('class="mt-1 truncate text-xs text-gray-500"');
@@ -165,6 +170,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain("aria-label={mediaSelectionMode ? 'Exit photo selection' : 'Select photos'}");
     expect(browser).toContain('class:context-place-photo--selected={placeAssetSelected(asset.assetId)}');
     expect(browser).toContain('handleCimmichMediaCardClick(event, mediaSelectionMode');
+    expect(hero).toContain("family === 'places' ? (detail.subtreeAssets ?? detail.assets) : detail.assets");
+    expect(hero).toContain('heroAssets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId)');
   });
 
   it('renders country groups as real aggregate Geography pages without inventing a second taxonomy', async () => {

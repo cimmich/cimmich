@@ -920,12 +920,23 @@ const loadEntities = async (
       coalesce(preview.asset_ids, ARRAY[]::text[]) AS preview_asset_ids
     FROM context_entity entity
     LEFT JOIN LATERAL (
+      WITH RECURSIVE cover_scope(entity_id, depth) AS (
+        SELECT entity.entity_id, 0
+        UNION ALL
+        SELECT child.entity_id, parent.depth + 1
+        FROM context_entity child
+        JOIN cover_scope parent ON child.parent_entity_id = parent.entity_id
+        WHERE entity.entity_kind = 'place'
+          AND child.entity_kind = 'place' AND child.status IN ('active','hidden')
+          AND parent.depth < 8
+      )
       SELECT link.asset_id
-      FROM current_context_asset link
+      FROM cover_scope scope
+      JOIN current_context_asset link ON link.entity_id = scope.entity_id
       JOIN asset ON asset.asset_id = link.asset_id AND asset.state = 'active'
-      WHERE link.entity_id = entity.entity_id
-        AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
+      WHERE cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
       ORDER BY CASE WHEN link.asset_id = entity.cover_asset_id THEN 0 ELSE 1 END,
+        CASE WHEN scope.entity_id = entity.entity_id THEN 0 ELSE 1 END,
         asset.capture_time DESC NULLS LAST, link.asset_id
       LIMIT 1
     ) cover ON true
@@ -1083,7 +1094,9 @@ const loadDetail = async (
       width: row.width,
     })),
     entity: (() => {
-      const selected = assets.find(
+      const coverAssets =
+        entity.entity_kind === "place" ? subtreeAssets : assets;
+      const selected = coverAssets.find(
         (asset) => asset.asset_id === entity.cover_asset_id,
       );
       return projectEntityRow(
@@ -1097,7 +1110,10 @@ const loadDetail = async (
               ? projectedSubtreeAssets.length
               : assets.length,
           effective_cover_asset_id:
-            selected?.asset_id || assets[0]?.asset_id || null,
+            selected?.asset_id ||
+            assets[0]?.asset_id ||
+            coverAssets[0]?.asset_id ||
+            null,
           selected_cover_asset_id: selected?.asset_id || null,
         },
         { bridgeFields },
@@ -2645,20 +2661,20 @@ export const createContextEntityStore = (
       if (normalizedSourceAssetId) {
         const [available] = nextCoverAssetId
           ? await tx`
-              SELECT link.link_id
-              FROM context_asset_link link
-              JOIN asset ON asset.asset_id = link.asset_id
+              SELECT asset.asset_id
+              FROM asset
+              WHERE asset.asset_id = ${nextCoverAssetId}
                 AND asset.state = 'active'
-              WHERE link.entity_id = ${entity.entity_id}
-                AND link.asset_id = ${nextCoverAssetId}
-                AND link.state = 'accepted'
-                AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
-              FOR UPDATE OF link, asset
+                AND cimmich_context_cover_available(
+                  ${entity.entity_id}, ${entity.entity_kind}, asset.asset_id
+                )
+                AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
+              FOR UPDATE OF asset
             `
           : [];
         if (!available) {
           throw typedError(
-            "Cover asset is not an active visible context link",
+            "Cover asset is not active and visible in this context",
             404,
             "CONTEXT_COVER_ASSET_UNAVAILABLE",
           );
@@ -3125,22 +3141,12 @@ export const createContextEntityStore = (
         snapshot.push({
           assetId,
           childEntityId: child.entity_id,
-          parentPreviousCoverAssetId:
-            parent.cover_asset_id === assetId &&
-            acceptedRows.some((row) => row.entity_id === parent.entity_id)
-              ? assetId
-              : null,
           transitions,
         });
       }
       if (snapshot.length) {
         await tx`
-          UPDATE context_entity SET
-            cover_asset_id = CASE
-              WHEN entity_id = ${parent.entity_id}
-                AND cover_asset_id = ANY(${snapshot.map((item) => item.parentPreviousCoverAssetId).filter(Boolean)})
-              THEN NULL ELSE cover_asset_id END,
-            revision = revision + 1, updated_at = now()
+          UPDATE context_entity SET revision = revision + 1, updated_at = now()
           WHERE entity_id = ANY(${[...touchedEntityIds]})
         `;
       }
@@ -3736,13 +3742,14 @@ export const createContextEntityStore = (
         }
         if (item.previousCoverAssetId) {
           const [available] = await tx`
-            SELECT link.link_id FROM context_asset_link link
-            JOIN asset ON asset.asset_id = link.asset_id AND asset.state = 'active'
-            WHERE link.entity_id = ${entity.entity_id}
-              AND link.asset_id = ${item.previousCoverAssetId}
-              AND link.state = 'accepted'
-              AND cimmich_visibility_asset_rank(link.asset_id) <= ${presentationRank()}
-            FOR UPDATE OF link, asset
+            SELECT asset.asset_id FROM asset
+            WHERE asset.asset_id = ${item.previousCoverAssetId}
+              AND asset.state = 'active'
+              AND cimmich_context_cover_available(
+                ${entity.entity_id}, ${entity.entity_kind}, asset.asset_id
+              )
+              AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
+            FOR UPDATE OF asset
           `;
           if (!available) {
             throw typedError(

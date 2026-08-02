@@ -441,6 +441,40 @@ if (phase === "write" || phase === "all") {
     (await request(`/v1/places/${office.entityId}`)).assets.length,
     0,
   );
+  const descendantCover = await request(`/v1/places/${beach.entityId}/cover`, {
+    body: {
+      commandId: "context.cover.beach-descendant01",
+      expectedRevision: subsectionMoveUndone.detail.entity.revision,
+      sourceAssetId: "source-service-fixture",
+    },
+    method: "POST",
+  });
+  assert.equal(
+    descendantCover.detail.entity.coverAssetId,
+    "source-service-fixture",
+  );
+  assert.equal(descendantCover.detail.entity.coverMode, "explicit");
+  assert.equal(
+    descendantCover.detail.subtreeAssets.find(
+      (asset) => asset.sourceAssetId === "source-service-fixture",
+    ).directlyAssigned,
+    false,
+  );
+  const directCoverRestored = await request(
+    `/v1/places/${beach.entityId}/cover`,
+    {
+      body: {
+        commandId: "context.cover.beach-restore-direct01",
+        expectedRevision: descendantCover.detail.entity.revision,
+        sourceAssetId: "source-identity-fixture",
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(
+    directCoverRestored.detail.entity.coverAssetId,
+    "source-identity-fixture",
+  );
 
   await request(`/v1/objects/${car.entityId}/assets:attach`, {
     body: {
