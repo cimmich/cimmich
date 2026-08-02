@@ -33,6 +33,7 @@
     type LngLatLike,
     type Map,
     type MapMouseEvent,
+    type StyleSpecification,
   } from 'maplibre-gl';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -80,6 +81,7 @@
     autoFitBounds?: boolean;
     showSatelliteControl?: boolean;
     satelliteInitiallyEnabled?: boolean;
+    satelliteOnly?: boolean;
     placeMarkersDraggable?: boolean;
     showPlaceMarkerLabels?: boolean;
     visibilityFiltered?: boolean;
@@ -139,6 +141,7 @@
     autoFitBounds = true,
     showSatelliteControl = false,
     satelliteInitiallyEnabled = false,
+    satelliteOnly = false,
     placeMarkersDraggable = false,
     showPlaceMarkerLabels = true,
     visibilityFiltered = false,
@@ -176,6 +179,18 @@
   const satelliteLayerId = 'cimmich-satellite-imagery-layer';
   const satelliteTileUrl =
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const satelliteStyle = {
+    version: 8,
+    sources: {
+      [satelliteSourceId]: {
+        type: 'raster',
+        tiles: [satelliteTileUrl],
+        tileSize: 256,
+        attribution: 'Tiles © Esri',
+      },
+    },
+    layers: [{ id: satelliteLayerId, type: 'raster', source: satelliteSourceId }],
+  } satisfies StyleSpecification;
   const placeAreaSourceId = 'cimmich-place-areas';
   const placeAreaFillLayerId = 'cimmich-place-areas-fill';
   const placeAreaLineLayerId = 'cimmich-place-areas-line';
@@ -186,7 +201,11 @@
 
   const mapTheme = $derived($mapSettings.allowDarkMode ? themeManager.value : Theme.Light);
   const styleUrl = $derived(
-    mapTheme === Theme.Dark ? serverConfigManager.value.mapDarkStyleUrl : serverConfigManager.value.mapLightStyleUrl,
+    satelliteOnly
+      ? satelliteStyle
+      : mapTheme === Theme.Dark
+        ? serverConfigManager.value.mapDarkStyleUrl
+        : serverConfigManager.value.mapLightStyleUrl,
   );
 
   export function addClipMapMarker(lng: number, lat: number) {
@@ -337,6 +356,9 @@
   };
 
   const syncSatelliteLayer = () => {
+    if (satelliteOnly) {
+      return;
+    }
     if (satelliteOverlayEnabled) {
       addSatelliteLayer();
     } else {
@@ -798,7 +820,7 @@
         </Control>
       {/if}
 
-      {#if showSatelliteControl}
+      {#if showSatelliteControl && !satelliteOnly}
         <Control>
           <ControlGroup>
             <ControlButton
