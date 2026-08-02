@@ -203,6 +203,30 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     (error) => error === reachedPersistence,
   );
   await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      items: [
+        {
+          ...input.items[0],
+          geometry: {
+            kind: "paint",
+            strokes: [
+              {
+                points: [
+                  { x: 0.12, y: 0.2 },
+                  { x: 0.3, y: 0.28 },
+                ],
+                radius: 0.035,
+              },
+              { points: [{ x: 0.74, y: 0.68 }], radius: 0.035 },
+            ],
+          },
+        },
+      ],
+    }),
+    (error) => error === reachedPersistence,
+  );
+  await assert.rejects(
     store.savePlacePlan({ ...input, backgroundKind: "asset" }),
     (error) =>
       error.code === "PLACE_PLAN_BACKGROUND_INVALID" &&
@@ -259,6 +283,23 @@ test("Location Plans use a closed kind contract and normalized bounded geometry"
     (error) =>
       error.code === "PLACE_PLAN_GEOMETRY_INVALID" &&
       /remain inside the canvas/.test(error.message),
+  );
+  await assert.rejects(
+    store.savePlacePlan({
+      ...input,
+      items: [
+        {
+          ...input.items[0],
+          geometry: {
+            kind: "paint",
+            strokes: [{ points: [{ x: 0.4, y: 0.4 }], radius: 0.3 }],
+          },
+        },
+      ],
+    }),
+    (error) =>
+      error.code === "PLACE_PLAN_GEOMETRY_INVALID" &&
+      /bounded radius/.test(error.message),
   );
 });
 

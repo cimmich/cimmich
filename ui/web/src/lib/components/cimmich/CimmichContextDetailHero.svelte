@@ -59,6 +59,9 @@
     if (geometry.kind === 'point') {
       return `left:${geometry.x * 100}%;top:${geometry.y * 100}%;width:2rem;height:2rem;transform:translate(-50%,-50%)`;
     }
+    if (geometry.kind === 'paint') {
+      return '';
+    }
     const xs = geometry.points.map((point) => point.x);
     const ys = geometry.points.map((point) => point.y);
     const left = Math.min(...xs);
@@ -69,6 +72,18 @@
       .map((point) => `${((point.x - left) / width) * 100}% ${((point.y - top) / height) * 100}%`)
       .join(',');
     return `left:${left * 100}%;top:${top * 100}%;width:${width * 100}%;height:${height * 100}%;clip-path:polygon(${polygon})`;
+  };
+  const paintPath = (points: Array<{ x: number; y: number }>) => {
+    const [first, ...rest] = points;
+    if (!first) {
+      return '';
+    }
+    const tail = rest.length > 0 ? rest.map((point) => `L ${point.x} ${point.y}`).join(' ') : 'l 0.0001 0';
+    return `M ${first.x} ${first.y} ${tail}`;
+  };
+  const paintLabelStyle = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'paint' }>) => {
+    const point = geometry.strokes[0]?.points[0] ?? { x: 0.5, y: 0.5 };
+    return `left:${point.x * 100}%;top:${point.y * 100}%`;
   };
   const placeGeography = $derived.by(() => {
     if (!isPlace || detail.entity.placeRole === 'geography') {
@@ -256,7 +271,30 @@
               {/if}
               <div class="context-detail-plan-grid"></div>
               {#each defaultPlan.items as item (item.planItemId)}
-                <span class="context-detail-plan-zone" style={planItemStyle(item.geometry)}>{item.childName}</span>
+                {#if item.geometry.kind === 'paint'}
+                  <svg
+                    class="context-detail-plan-paint"
+                    viewBox="0 0 1 1"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {#each item.geometry.strokes as stroke, strokeIndex (strokeIndex)}
+                      <path
+                        d={paintPath(stroke.points)}
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width={stroke.radius * 2}
+                      />
+                    {/each}
+                  </svg>
+                  <span class="context-detail-plan-paint-label" style={paintLabelStyle(item.geometry)}
+                    >{item.childName}</span
+                  >
+                {:else}
+                  <span class="context-detail-plan-zone" style={planItemStyle(item.geometry)}>{item.childName}</span>
+                {/if}
               {/each}
               <button class="context-detail-plan-open" type="button" onclick={() => onOpenPlan?.()}>
                 {defaultPlan.displayName}
@@ -561,6 +599,31 @@
     font-weight: 750;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .context-detail-plan-paint {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    color: rgb(var(--immich-primary-color) / 0.52);
+    filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.16));
+    pointer-events: none;
+  }
+  .context-detail-plan-paint-label {
+    position: absolute;
+    z-index: 2;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgb(var(--immich-primary-color) / 0.75);
+    border-radius: 999px;
+    padding: 0.2rem 0.5rem;
+    color: rgb(30 41 59);
+    background: rgb(255 255 255 / 0.84);
+    box-shadow: 0 4px 12px rgb(15 23 42 / 0.12);
+    font-size: 0.68rem;
+    font-weight: 750;
+    pointer-events: none;
   }
 
   .context-detail-plan-open,

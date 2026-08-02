@@ -272,6 +272,23 @@ test("schema 113 adds satellite as a Location Plan background without storing ma
   assert.doesNotMatch(migration, /context_entity\.geometry/i);
 });
 
+test("schema 116 adds bounded multi-stroke paint without changing Outline polygons", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0116_location_plan_paint_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /shape_kind IN \('point','rect','polygon','paint'\)/);
+  assert.match(
+    migration,
+    /several\s+--?\s*\n?--?\s*disconnected|disconnected parts/i,
+  );
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

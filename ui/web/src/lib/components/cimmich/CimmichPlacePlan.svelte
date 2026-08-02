@@ -20,6 +20,7 @@
     mdiPlus,
     mdiRestore,
     mdiSatelliteVariant,
+    mdiVectorPolygon,
   } from '@mdi/js';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
   import { contextPlaceMapProjection } from './context-entity-presentation';
@@ -65,6 +66,7 @@
   let draftDefault = $state(false);
   let selectedChildId = $state('');
   let paintingChildId = $state('');
+  let paintingMode = $state<'outline' | 'paint'>('outline');
   let paint = $state<{
     pointerId: number;
     points: Array<{ x: number; y: number }>;
@@ -96,11 +98,20 @@
   const placedIds = $derived(new Set(visibleItems.map((item) => item.childEntityId)));
   const unplacedChildren = $derived(children.filter((child) => !placedIds.has(child.entityId)));
   const paintingChild = $derived(children.find((child) => child.entityId === paintingChildId) ?? null);
-  const paintPreview = $derived.by(() => {
-    if (!paint) {
+  const outlinePreview = $derived.by(() => {
+    if (paintingMode !== 'outline' || !paint) {
       return null;
     }
     return paint.points.length >= 3 ? { kind: 'polygon' as const, points: paint.points } : null;
+  });
+  const brushPreview = $derived.by(() => {
+    if (paintingMode !== 'paint' || !paint) {
+      return null;
+    }
+    return {
+      kind: 'paint' as const,
+      strokes: [{ points: paint.points, radius: 0.035 }],
+    };
   });
 
   $effect(() => {
@@ -197,13 +208,10 @@
     saveError = '';
   };
 
-  const startPainting = (child: CimmichContextEntity) => {
-    if (placedIds.has(child.entityId)) {
-      selectedChildId = child.entityId;
-      return;
-    }
+  const startPainting = (child: CimmichContextEntity, mode: 'outline' | 'paint') => {
     selectedChildId = '';
     paintingChildId = child.entityId;
+    paintingMode = mode;
     paint = null;
   };
 
@@ -224,13 +232,14 @@
       return;
     }
     event.preventDefault();
+    saveError = '';
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     paint = { pointerId: event.pointerId, points: [point] };
   };
 
   const continuePaint = (event: PointerEvent) => {
     const point = canvasPoint(event);
-    if (!paint || paint.pointerId !== event.pointerId || !point) {
+    if (!paint || paint.pointerId !== event.pointerId || !point || paint.points.length >= 256) {
       return;
     }
     const previous = paint.points.at(-1);
@@ -251,22 +260,59 @@
         ? [...paint.points, finalPoint]
         : paint.points;
     paint = null;
-    if (points.length < 3) {
+    if (paintingMode === 'outline') {
+      if (points.length < 3) {
+        return;
+      }
+      const geometry = { kind: 'polygon' as const, points };
+      const existing = draftItems.find((item) => item.childEntityId === paintingChild.entityId);
+      draftItems = existing
+        ? draftItems.map((item) => (item.childEntityId === paintingChild.entityId ? { ...item, geometry } : item))
+        : [
+            ...draftItems,
+            {
+              childEntityId: paintingChild.entityId,
+              childName: paintingChild.displayName,
+              geometry,
+              zIndex: draftItems.length,
+            },
+          ];
+      selectedChildId = paintingChild.entityId;
+      paintingChildId = '';
       return;
     }
-    const geometry = { kind: 'polygon' as const, points };
-    const index = draftItems.length;
-    draftItems = [
-      ...draftItems,
-      {
-        childEntityId: paintingChild.entityId,
-        childName: paintingChild.displayName,
-        geometry,
-        zIndex: index,
-      },
-    ];
-    selectedChildId = paintingChild.entityId;
-    paintingChildId = '';
+    if (points.length === 0) {
+      return;
+    }
+    const stroke = { points, radius: 0.035 };
+    const existing = draftItems.find((item) => item.childEntityId === paintingChild.entityId);
+    const existingStrokes = existing?.geometry.kind === 'paint' ? existing.geometry.strokes : [];
+    if (existingStrokes.length >= 64) {
+      saveError = `${paintingChild.displayName} already has the maximum 64 painted areas.`;
+      return;
+    }
+    const existingPointCount = existingStrokes.reduce((sum, existingStroke) => sum + existingStroke.points.length, 0);
+    if (existingPointCount + points.length > 2048) {
+      saveError = `${paintingChild.displayName} has reached the maximum painted detail.`;
+      return;
+    }
+    draftItems = existing
+      ? draftItems.map((item) => {
+          if (item.childEntityId !== paintingChild.entityId) {
+            return item;
+          }
+          const strokes = item.geometry.kind === 'paint' ? [...item.geometry.strokes, stroke] : [stroke];
+          return { ...item, geometry: { kind: 'paint' as const, strokes } };
+        })
+      : [
+          ...draftItems,
+          {
+            childEntityId: paintingChild.entityId,
+            childName: paintingChild.displayName,
+            geometry: { kind: 'paint' as const, strokes: [stroke] },
+            zIndex: draftItems.length,
+          },
+        ];
   };
 
   const removeSelected = () => {
@@ -333,6 +379,9 @@
     if (geometry.kind === 'point') {
       return `left:${geometry.x * 100}%;top:${geometry.y * 100}%;width:2.75rem;height:2.75rem;transform:translate(-50%,-50%)`;
     }
+    if (geometry.kind === 'paint') {
+      return '';
+    }
     const xs = geometry.points.map((point) => point.x);
     const ys = geometry.points.map((point) => point.y);
     const left = Math.min(...xs);
@@ -343,6 +392,20 @@
       .map((point) => `${((point.x - left) / width) * 100}% ${((point.y - top) / height) * 100}%`)
       .join(',');
     return `left:${left * 100}%;top:${top * 100}%;width:${width * 100}%;height:${height * 100}%;clip-path:polygon(${polygon})`;
+  };
+
+  const paintPath = (points: Array<{ x: number; y: number }>) => {
+    const [first, ...rest] = points;
+    if (!first) {
+      return '';
+    }
+    const tail = rest.length > 0 ? rest.map((point) => `L ${point.x} ${point.y}`).join(' ') : 'l 0.0001 0';
+    return `M ${first.x} ${first.y} ${tail}`;
+  };
+
+  const paintLabelStyle = (geometry: Extract<CimmichPlacePlanGeometry, { kind: 'paint' }>) => {
+    const point = geometry.strokes[0]?.points[0] ?? { x: 0.5, y: 0.5 };
+    return `left:${point.x * 100}%;top:${point.y * 100}%`;
   };
 
   const save = async () => {
@@ -538,56 +601,111 @@
           <div
             class="place-plan__paint-layer"
             role="application"
-            aria-label={`Paint ${paintingChild.displayName} on this plan`}
+            aria-label={`${paintingMode === 'outline' ? 'Outline' : 'Paint'} ${paintingChild.displayName} on this plan`}
             onpointerdown={beginPaint}
             onpointermove={continuePaint}
             onpointerup={finishPaint}
             onpointercancel={() => (paint = null)}
           >
             <span class="place-plan__paint-hint"
-              ><Icon icon={mdiBrushVariant} size="17" /> Drag to paint {paintingChild.displayName}</span
+              ><Icon icon={paintingMode === 'outline' ? mdiVectorPolygon : mdiBrushVariant} size="17" />
+              {paintingMode === 'outline'
+                ? `Drag around ${paintingChild.displayName}`
+                : `Hold to paint ${paintingChild.displayName} · repeat anywhere`}</span
             >
-            {#if paintPreview}
-              <div class="place-plan__paint-preview" style={itemStyle(paintPreview)}>
+            {#if outlinePreview}
+              <div class="place-plan__paint-preview" style={itemStyle(outlinePreview)}>
                 <span>{paintingChild.displayName}</span>
               </div>
+            {/if}
+            {#if brushPreview}
+              <svg class="place-plan__brush-preview" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+                {#each brushPreview.strokes as stroke, strokeIndex (strokeIndex)}
+                  <path
+                    d={paintPath(stroke.points)}
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width={stroke.radius * 2}
+                  />
+                {/each}
+              </svg>
             {/if}
           </div>
         {/if}
         {#each visibleItems as item (item.childEntityId)}
           {@const child = children.find((candidate) => candidate.entityId === item.childEntityId)}
-          <button
-            class="place-plan__zone"
-            class:place-plan__zone--selected={editing && selectedChildId === item.childEntityId}
-            type="button"
-            style={itemStyle(item.geometry)}
-            aria-label={`${item.childName}${editing ? ', drag to move' : ', open Location'}`}
-            onpointerdown={(event) => beginDrag(event, item, 'move')}
-            onpointermove={continueDrag}
-            onpointerup={finishDrag}
-            onpointercancel={finishDrag}
-            onclick={() => {
-              if (editing) {
-                selectedChildId = item.childEntityId;
-              } else if (child) {
-                onOpenPlace(child);
-              }
-            }}
-          >
-            <span>{item.childName}</span>
-            {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
-            {#if editing && item.geometry.kind === 'rect'}
-              <i
-                role="button"
-                tabindex="-1"
-                aria-label={`Resize ${item.childName}`}
-                onpointerdown={(event) => beginDrag(event, item, 'resize')}
-                onpointermove={continueDrag}
-                onpointerup={finishDrag}
-                onpointercancel={finishDrag}
-              ></i>
-            {/if}
-          </button>
+          {#if item.geometry.kind === 'paint'}
+            <svg
+              class="place-plan__paint-zone"
+              class:place-plan__paint-zone--selected={editing && selectedChildId === item.childEntityId}
+              viewBox="0 0 1 1"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              {#each item.geometry.strokes as stroke, strokeIndex (strokeIndex)}
+                <path
+                  d={paintPath(stroke.points)}
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width={stroke.radius * 2}
+                />
+              {/each}
+            </svg>
+            <button
+              class="place-plan__paint-label"
+              class:place-plan__zone--selected={editing && selectedChildId === item.childEntityId}
+              type="button"
+              style={paintLabelStyle(item.geometry)}
+              aria-label={`${item.childName}${editing ? ', select painted Location' : ', open Location'}`}
+              onclick={() => {
+                if (editing) {
+                  selectedChildId = item.childEntityId;
+                } else if (child) {
+                  onOpenPlace(child);
+                }
+              }}
+            >
+              <span>{item.childName}</span>
+              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
+            </button>
+          {:else}
+            <button
+              class="place-plan__zone"
+              class:place-plan__zone--selected={editing && selectedChildId === item.childEntityId}
+              type="button"
+              style={itemStyle(item.geometry)}
+              aria-label={`${item.childName}${editing ? ', drag to move' : ', open Location'}`}
+              onpointerdown={(event) => beginDrag(event, item, 'move')}
+              onpointermove={continueDrag}
+              onpointerup={finishDrag}
+              onpointercancel={finishDrag}
+              onclick={() => {
+                if (editing) {
+                  selectedChildId = item.childEntityId;
+                } else if (child) {
+                  onOpenPlace(child);
+                }
+              }}
+            >
+              <span>{item.childName}</span>
+              {#if !editing}<Icon icon={mdiArrowRight} size="15" />{/if}
+              {#if editing && item.geometry.kind === 'rect'}
+                <i
+                  role="button"
+                  tabindex="-1"
+                  aria-label={`Resize ${item.childName}`}
+                  onpointerdown={(event) => beginDrag(event, item, 'resize')}
+                  onpointermove={continueDrag}
+                  onpointerup={finishDrag}
+                  onpointercancel={finishDrag}
+                ></i>
+              {/if}
+            </button>
+          {/if}
         {/each}
         {#if visibleItems.length === 0 && !paintingChild}
           <div class="place-plan__canvas-empty">Choose a Location to place</div>
@@ -605,29 +723,36 @@
           </button>
           <ul>
             {#each children as child (child.entityId)}
-              <li>
-                <button
-                  type="button"
-                  class:place-plan__tray-item--selected={selectedChildId === child.entityId ||
-                    paintingChildId === child.entityId}
-                  aria-label={placedIds.has(child.entityId)
-                    ? `Select ${child.displayName}`
-                    : `Paint ${child.displayName} on this plan`}
-                  onclick={() =>
-                    placedIds.has(child.entityId) ? (selectedChildId = child.entityId) : startPainting(child)}
-                >
+              <li
+                class:place-plan__tray-item--selected={selectedChildId === child.entityId ||
+                  paintingChildId === child.entityId}
+              >
+                <div class="place-plan__tray-name">
                   <span>{child.displayName}</span>
-                  <span class="place-plan__tray-action">
-                    <Icon icon={placedIds.has(child.entityId) ? mdiCheck : mdiBrushVariant} size="16" />
-                    <small
-                      >{placedIds.has(child.entityId)
-                        ? 'Placed'
-                        : paintingChildId === child.entityId
-                          ? 'Painting'
-                          : 'Paint'}</small
-                    >
-                  </span>
-                </button>
+                  {#if placedIds.has(child.entityId)}<Icon icon={mdiCheck} size="15" />{/if}
+                </div>
+                <div class="place-plan__tray-actions" role="group" aria-label={`Place ${child.displayName}`}>
+                  <button
+                    type="button"
+                    class:place-plan__tray-action--active={paintingChildId === child.entityId &&
+                      paintingMode === 'outline'}
+                    aria-label={`Outline ${child.displayName}`}
+                    title={`Outline ${child.displayName}`}
+                    onclick={() => startPainting(child, 'outline')}
+                  >
+                    <Icon icon={mdiVectorPolygon} size="15" /> Outline
+                  </button>
+                  <button
+                    type="button"
+                    class:place-plan__tray-action--active={paintingChildId === child.entityId &&
+                      paintingMode === 'paint'}
+                    aria-label={`Paint ${child.displayName}`}
+                    title={`Paint ${child.displayName}`}
+                    onclick={() => startPainting(child, 'paint')}
+                  >
+                    <Icon icon={mdiBrushVariant} size="15" /> Paint
+                  </button>
+                </div>
               </li>
             {/each}
           </ul>
@@ -638,7 +763,7 @@
               onclick={() => {
                 paintingChildId = '';
                 paint = null;
-              }}>Cancel painting</button
+              }}>{paintingMode === 'paint' ? 'Done painting' : 'Cancel outline'}</button
             >
           {:else if selectedChildId}
             <button class="place-plan__remove" type="button" onclick={removeSelected}>Remove from this plan</button>
@@ -922,6 +1047,47 @@
     font-weight: 750;
     pointer-events: none;
   }
+  .place-plan__brush-preview,
+  .place-plan__paint-zone {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .place-plan__brush-preview {
+    color: rgb(var(--immich-primary-color) / 0.62);
+  }
+  .place-plan__paint-zone {
+    z-index: 1;
+    color: rgb(var(--immich-primary-color) / 0.45);
+    filter: drop-shadow(0 4px 8px rgb(15 23 42 / 0.12));
+  }
+  .place-plan__paint-zone--selected {
+    color: rgb(var(--immich-primary-color) / 0.7);
+    filter: drop-shadow(0 0 5px rgb(var(--immich-primary-color) / 0.7));
+  }
+  .place-plan__paint-label {
+    position: absolute;
+    z-index: 3;
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.3rem;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgb(var(--immich-primary-color) / 0.8);
+    border-radius: 999px;
+    padding: 0 0.65rem;
+    color: rgb(30 41 59);
+    background: rgb(255 255 255 / 0.88);
+    box-shadow: 0 5px 16px rgb(15 23 42 / 0.14);
+    backdrop-filter: blur(6px);
+  }
+  :global(.dark) .place-plan__paint-label {
+    color: white;
+    background: rgb(15 23 42 / 0.86);
+  }
   .place-plan__zone {
     position: absolute;
     z-index: 2;
@@ -1021,27 +1187,71 @@
     padding: 0;
     list-style: none;
   }
-  .place-plan__tray li button {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
+  .place-plan__tray li {
+    display: grid;
+    gap: 0.45rem;
     border: 1px solid rgb(229 231 235);
-    text-align: left;
+    border-radius: 0.85rem;
+    padding: 0.55rem;
   }
-  :global(.dark) .place-plan__tray li button {
+  :global(.dark) .place-plan__tray li {
     border-color: rgb(55 65 81);
   }
-  .place-plan__tray li button:hover,
   .place-plan__tray-item--selected {
     border-color: rgb(var(--immich-primary-color)) !important;
+    background: rgb(var(--immich-primary-color) / 0.045);
   }
-  .place-plan__tray li small {
+  .place-plan__tray-name,
+  .place-plan__tray-actions,
+  .place-plan__tray-actions button {
+    display: flex;
+    align-items: center;
+  }
+  .place-plan__tray-name {
+    min-width: 0;
+    justify-content: space-between;
+    gap: 0.45rem;
+    padding: 0 0.15rem;
+    font-size: 0.8rem;
+    font-weight: 750;
+  }
+  .place-plan__tray-name span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .place-plan__tray-name :global(svg) {
+    flex: none;
     color: rgb(var(--immich-primary-color));
   }
-  .place-plan__new-location,
-  .place-plan__tray-action {
+  .place-plan__tray-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+  }
+  .place-plan__tray-actions button {
+    min-height: 2rem;
+    justify-content: center;
+    gap: 0.3rem;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.6rem;
+    padding: 0 0.35rem;
+    color: rgb(71 85 105);
+    background: rgb(248 250 252);
+    font-size: 0.69rem;
+  }
+  :global(.dark) .place-plan__tray-actions button {
+    border-color: rgb(51 65 85);
+    color: rgb(203 213 225);
+    background: rgb(30 41 59);
+  }
+  .place-plan__tray-actions button:hover,
+  .place-plan__tray-actions .place-plan__tray-action--active {
+    border-color: rgb(var(--immich-primary-color));
+    color: rgb(var(--immich-primary-color));
+    background: rgb(var(--immich-primary-color) / 0.1);
+  }
+  .place-plan__new-location {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -1052,9 +1262,6 @@
     border: 1px dashed rgb(var(--immich-primary-color) / 0.55);
     color: rgb(var(--immich-primary-color));
     background: rgb(var(--immich-primary-color) / 0.06);
-  }
-  .place-plan__tray-action {
-    flex: none;
   }
   .place-plan__cancel-paint {
     color: rgb(71 85 105);

@@ -1440,8 +1440,64 @@ const cleanPlanShape = (value) => {
     }
     return { kind, points };
   }
+  if (kind === "paint") {
+    if (
+      !Array.isArray(value.strokes) ||
+      value.strokes.length < 1 ||
+      value.strokes.length > 64
+    ) {
+      throw typedError(
+        "Plan paint must contain 1 to 64 brush strokes",
+        400,
+        "PLACE_PLAN_GEOMETRY_INVALID",
+      );
+    }
+    let totalPoints = 0;
+    const strokes = value.strokes.map((stroke, strokeIndex) => {
+      if (
+        !stroke ||
+        typeof stroke !== "object" ||
+        Array.isArray(stroke) ||
+        !Array.isArray(stroke.points) ||
+        stroke.points.length < 1 ||
+        stroke.points.length > 256 ||
+        typeof stroke.radius !== "number" ||
+        !Number.isFinite(stroke.radius) ||
+        stroke.radius < 0.005 ||
+        stroke.radius > 0.15
+      ) {
+        throw typedError(
+          "Each Plan brush stroke needs 1 to 256 points and a bounded radius",
+          400,
+          "PLACE_PLAN_GEOMETRY_INVALID",
+        );
+      }
+      totalPoints += stroke.points.length;
+      return {
+        points: stroke.points.map((point, pointIndex) => ({
+          x: cleanPlanNumber(
+            point?.x,
+            `geometry.strokes[${strokeIndex}].points[${pointIndex}].x`,
+          ),
+          y: cleanPlanNumber(
+            point?.y,
+            `geometry.strokes[${strokeIndex}].points[${pointIndex}].y`,
+          ),
+        })),
+        radius: stroke.radius,
+      };
+    });
+    if (totalPoints > 2048) {
+      throw typedError(
+        "Plan paint must contain at most 2048 points",
+        400,
+        "PLACE_PLAN_GEOMETRY_INVALID",
+      );
+    }
+    return { kind, strokes };
+  }
   throw typedError(
-    "Plan item geometry kind must be point, rect, or polygon",
+    "Plan item geometry kind must be point, rect, polygon, or paint",
     400,
     "PLACE_PLAN_GEOMETRY_INVALID",
   );
