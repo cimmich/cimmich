@@ -13,7 +13,7 @@ The deployed schema-107/patch-1 feature source is
 `d05f60464218790f38ce602384c93c420e757bc5`. It reconciles the migration-ledger
 source with the private archive and adds recoverable bulk Organise operations.
 The final source gate passes 816
-service tests with two skipped, 934 web tests with two skipped, zero Svelte
+service tests with two skipped, 938 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
 acceptance through schema 117, and the complete disposable synthetic lifecycle.
 
