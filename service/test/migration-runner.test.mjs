@@ -705,6 +705,26 @@ test("schema 64 admits explicit Event covers without weakening link truth", asyn
   assert.match(source, /link\.state = 'accepted'/);
 });
 
+test("schema 118 lets Place covers follow accepted subsection media without weakening other contexts", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0118_place_subtree_cover_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /cimmich_context_cover_available/);
+  assert.match(source, /p_entity_kind = 'place'/);
+  assert.match(source, /child\.parent_entity_id = parent\.entity_id/);
+  assert.match(source, /child\.status IN \('active','hidden'\)/);
+  assert.match(source, /parent\.depth < 8/);
+  assert.match(source, /link\.state = 'accepted'/);
+  assert.match(source, /asset\.state = 'active'/);
+  assert.match(source, /entity\.cover_asset_id = v_asset_id/);
+});
+
 test("schema 65 registers map assets as an enforced asset-derived visibility surface", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

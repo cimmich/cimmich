@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 117. Schema 76 adds
+patch level 1. Current post-submission source is schema 118. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -143,6 +143,10 @@ gives Trip location relations bounded stop positions. Recurrence remains inside
 the Event's honest exact, approximate or open-ended date window; Trip stops
 remain ordinary Place connections with the existing correction and Undo
 lifecycle instead of forming a second route-membership truth.
+Schema 118 lets a Place select any active accepted photo in its bounded
+subsection tree as an explicit cover. Objects and Events retain exact direct-link
+cover membership; moving a selected Place cover between subsections preserves
+the cover because the photo remains inside the same parent roll-up.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

@@ -39,8 +39,9 @@
   }
 
   let { detail, entities, family, onOpenPlan, plans = [] }: Props = $props();
+  const heroAssets = $derived(family === 'places' ? (detail.subtreeAssets ?? detail.assets) : detail.assets);
   const heroAsset = $derived(
-    detail.assets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId) ?? detail.assets[0] ?? null,
+    heroAssets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId) ?? heroAssets[0] ?? null,
   );
   const placeHierarchy = $derived(contextPlaceHierarchy(detail.entity, entities));
   const placeProjection = $derived(contextPlaceMapProjection([detail.entity]));
