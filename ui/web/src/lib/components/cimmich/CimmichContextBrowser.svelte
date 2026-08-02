@@ -146,7 +146,6 @@
   let selectedGeographyGroupEntityIds = $state<string[]>([]);
   let selectedLoading = $state(false);
   let showEditor = $state(false);
-  let planCreateParentId = $state('');
   let showAssetPicker = $state(false);
   let showRelationPicker = $state(false);
   let editorMode = $state<'create' | 'edit'>('create');
@@ -851,7 +850,6 @@
     parentEntityId = '',
     geographyGroupName = '',
   ) => {
-    planCreateParentId = '';
     editorMode = 'create';
     editorTarget = null;
     resetForm();
@@ -867,19 +865,44 @@
     showEditor = true;
   };
 
-  const openPlanChildCreate = () => {
+  const createPlanSublocation = async (displayName: string) => {
     if (!selected || activeFamily !== 'places' || selected.entity.placeRole !== 'location') {
-      return;
+      throw new Error('Open a Location before adding a sublocation.');
     }
     const parentId = selected.entity.entityId;
-    openCreate('location', parentId);
-    planCreateParentId = parentId;
-    formDirectoryVisibility = 'nested_only';
+    isSaving = true;
+    error = null;
+    try {
+      const result = await createCimmichContextEntity('places', {
+        aliases: [],
+        commandId: createCimmichContextCommandId('plan-sublocation-create'),
+        description: null,
+        directoryVisibility: 'nested_only',
+        displayName,
+        parentEntityId: parentId,
+        placeRole: 'location',
+        typeKind: 'unlocated',
+      });
+      if (!result.detail) {
+        throw new Error('The sublocation was not returned after it was added.');
+      }
+      const child = result.detail.entity;
+      entities = [...entities.filter((entity) => entity.entityId !== child.entityId), child];
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('plan-sublocation-create-undo') : '';
+      undoLabel = `Undo adding ${child.displayName}`;
+      return child;
+    } catch (error_) {
+      const nextError = asError(error_);
+      error = nextError;
+      throw nextError;
+    } finally {
+      isSaving = false;
+    }
   };
 
   const closeEditor = () => {
     showEditor = false;
-    planCreateParentId = '';
   };
 
   const openEdit = () => {
@@ -1282,7 +1305,6 @@
         typeKind: formType,
       };
       const mutation = resolveContextEditorMutation(editorMode, editorTarget);
-      const returnToPlanParentId = mutation.kind === 'create' ? planCreateParentId : '';
       const result =
         mutation.kind === 'update'
           ? await updateCimmichContextEntity(activeFamily, mutation.entityId, {
@@ -1300,12 +1322,7 @@
       editorCommandId = '';
       editorTarget = null;
       await loadEntities();
-      if (returnToPlanParentId) {
-        selected = await getCimmichContextEntity('places', returnToPlanParentId);
-        planCreateParentId = '';
-      } else {
-        selected = result.detail;
-      }
+      selected = result.detail;
       if (createdFromGeographyGroup && result.detail) {
         selectedGeographyGroup = '';
         selectedGeographyGroupEntityIds = [];
@@ -2719,7 +2736,7 @@
         <CimmichPlacePlan
           children={selectedPlaceChildren}
           coverSourceAssetId={selected.entity.coverAssetId}
-          onCreateLocation={openPlanChildCreate}
+          onCreateSublocation={createPlanSublocation}
           onOpenPlace={openEntity}
           onSave={saveLocationPlan}
           parent={selected.entity}
