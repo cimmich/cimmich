@@ -12,6 +12,7 @@
 
 <script lang="ts">
   import { afterNavigate } from '$app/navigation';
+  import { env } from '$env/dynamic/public';
   import OnEvents from '$lib/components/OnEvents.svelte';
   import { serverConfigManager } from '$lib/managers/server-config-manager.svelte';
   import MapSettingsModal from '$lib/modals/MapSettingsModal.svelte';
@@ -177,8 +178,8 @@
 
   const satelliteSourceId = 'cimmich-satellite-imagery';
   const satelliteLayerId = 'cimmich-satellite-imagery-layer';
-  const satelliteTileUrl =
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const cimmichApiRoot = (env.PUBLIC_CIMMICH_API_URL || 'http://127.0.0.1:3101').replace(/\/$/, '');
+  const satelliteTileUrl = `${cimmichApiRoot}/v1/map/satellite/{z}/{y}/{x}`;
   const satelliteStyle = {
     version: 8,
     sources: {
