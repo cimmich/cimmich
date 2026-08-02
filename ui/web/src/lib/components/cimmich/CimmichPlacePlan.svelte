@@ -10,13 +10,13 @@
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
-    mdiBrushVariant,
+    mdiBrush,
     mdiCheck,
     mdiClose,
-    mdiFountainPenTip,
     mdiFloorPlan,
     mdiImageOutline,
     mdiMapMarkerPlusOutline,
+    mdiPencil,
     mdiPencilOutline,
     mdiPlus,
     mdiRestore,
@@ -24,6 +24,12 @@
   } from '@mdi/js';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
   import { contextPlaceMapProjection } from './context-entity-presentation';
+  import {
+    PLAN_BRUSH_RADIUS_DEFAULT,
+    PLAN_BRUSH_RADIUS_MAX,
+    PLAN_BRUSH_RADIUS_MIN,
+    preparePlacePlanGeometryForSave,
+  } from './place-plan-geometry';
 
   type DraftItem = {
     childEntityId: string;
@@ -67,6 +73,7 @@
   let selectedChildId = $state('');
   let paintingChildId = $state('');
   let paintingMode = $state<'outline' | 'paint'>('outline');
+  let brushRadius = $state(PLAN_BRUSH_RADIUS_DEFAULT);
   let paint = $state<{
     pointerId: number;
     points: Array<{ x: number; y: number }>;
@@ -101,6 +108,7 @@
   const placedIds = $derived(new Set(visibleItems.map((item) => item.childEntityId)));
   const unplacedChildren = $derived(children.filter((child) => !placedIds.has(child.entityId)));
   const paintingChild = $derived(children.find((child) => child.entityId === paintingChildId) ?? null);
+  const brushSizeLabel = $derived(Math.round(brushRadius * 2000));
   const outlinePreview = $derived.by(() => {
     if (paintingMode !== 'outline' || !paint) {
       return null;
@@ -113,7 +121,7 @@
     }
     return {
       kind: 'paint' as const,
-      strokes: [{ points: paint.points, radius: 0.035 }],
+      strokes: [{ points: paint.points, radius: brushRadius }],
     };
   });
 
@@ -215,6 +223,9 @@
     selectedChildId = '';
     paintingChildId = child.entityId;
     paintingMode = mode;
+    if (mode === 'paint') {
+      brushRadius = PLAN_BRUSH_RADIUS_DEFAULT;
+    }
     paint = null;
   };
 
@@ -287,7 +298,7 @@
     if (points.length === 0) {
       return;
     }
-    const stroke = { points, radius: 0.035 };
+    const stroke = { points, radius: brushRadius };
     const existing = draftItems.find((item) => item.childEntityId === paintingChild.entityId);
     const existingStrokes = existing?.geometry.kind === 'paint' ? existing.geometry.strokes : [];
     if (existingStrokes.length >= 64) {
@@ -482,7 +493,11 @@
         displayName: draftName.trim(),
         expectedRevision: draftRevision,
         isDefault: draftDefault,
-        items: draftItems.map(({ childEntityId, geometry, zIndex }) => ({ childEntityId, geometry, zIndex })),
+        items: draftItems.map(({ childEntityId, geometry, zIndex }) => ({
+          childEntityId,
+          geometry: preparePlacePlanGeometryForSave(geometry),
+          zIndex,
+        })),
         planId: draftPlanId,
         planKind: draftKind,
       });
@@ -660,6 +675,8 @@
         {#if editing && paintingChild}
           <div
             class="place-plan__paint-layer"
+            class:place-plan__paint-layer--outline={paintingMode === 'outline'}
+            class:place-plan__paint-layer--brush={paintingMode === 'paint'}
             role="application"
             aria-label={`${paintingMode === 'outline' ? 'Outline' : 'Paint'} ${paintingChild.displayName} on this plan`}
             onpointerdown={beginPaint}
@@ -668,14 +685,23 @@
             onpointercancel={() => (paint = null)}
           >
             <span class="place-plan__paint-hint"
-              ><Icon icon={paintingMode === 'outline' ? mdiFountainPenTip : mdiBrushVariant} size="17" />
+              ><Icon icon={paintingMode === 'outline' ? mdiPencil : mdiBrush} size="19" />
               {paintingMode === 'outline'
                 ? `Drag around ${paintingChild.displayName}`
-                : `Hold to paint ${paintingChild.displayName} · repeat anywhere`}</span
+                : `Brush ${paintingChild.displayName} · size ${brushSizeLabel}`}</span
             >
             {#if outlinePreview}
               <svg class="place-plan__outline-preview" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
-                <polygon points={polygonPoints(outlinePreview)} vector-effect="non-scaling-stroke" />
+                <polygon
+                  class="place-plan__outline-halo"
+                  points={polygonPoints(outlinePreview)}
+                  vector-effect="non-scaling-stroke"
+                />
+                <polygon
+                  class="place-plan__outline-line"
+                  points={polygonPoints(outlinePreview)}
+                  vector-effect="non-scaling-stroke"
+                />
               </svg>
             {/if}
             {#if brushPreview}
@@ -740,7 +766,16 @@
               preserveAspectRatio="none"
               aria-hidden="true"
             >
-              <polygon points={polygonPoints(item.geometry)} vector-effect="non-scaling-stroke" />
+              <polygon
+                class="place-plan__outline-halo"
+                points={polygonPoints(item.geometry)}
+                vector-effect="non-scaling-stroke"
+              />
+              <polygon
+                class="place-plan__outline-line"
+                points={polygonPoints(item.geometry)}
+                vector-effect="non-scaling-stroke"
+              />
             </svg>
             <button
               class="place-plan__paint-label"
@@ -827,22 +862,36 @@
                     title={`Outline ${child.displayName}`}
                     onclick={() => startPainting(child, 'outline')}
                   >
-                    <Icon icon={mdiFountainPenTip} size="15" /> Outline
+                    <Icon icon={mdiPencil} size="19" /> Outline
                   </button>
                   <button
                     type="button"
                     class:place-plan__tray-action--active={paintingChildId === child.entityId &&
                       paintingMode === 'paint'}
                     aria-label={`Paint ${child.displayName}`}
-                    title={`Paint ${child.displayName}`}
+                    title={`Paint brush for ${child.displayName}`}
                     onclick={() => startPainting(child, 'paint')}
                   >
-                    <Icon icon={mdiBrushVariant} size="15" /> Paint
+                    <Icon icon={mdiBrush} size="19" /> Paint
                   </button>
                 </div>
               </li>
             {/each}
           </ul>
+          {#if paintingChildId && paintingMode === 'paint'}
+            <label class="place-plan__brush-size">
+              <span><Icon icon={mdiBrush} size="18" /> Brush size</span>
+              <input
+                aria-label="Brush size"
+                type="range"
+                min={PLAN_BRUSH_RADIUS_MIN}
+                max={PLAN_BRUSH_RADIUS_MAX}
+                step="0.001"
+                bind:value={brushRadius}
+              />
+              <output>{brushSizeLabel}</output>
+            </label>
+          {/if}
           {#if paintingChildId}
             <button
               class="place-plan__cancel-paint"
@@ -1102,8 +1151,17 @@
     position: absolute;
     z-index: 4;
     inset: 0;
-    cursor: crosshair;
     touch-action: none;
+  }
+  .place-plan__paint-layer--outline {
+    cursor:
+      url('/cimmich/cursors/plan-pencil.svg') 4 29,
+      default;
+  }
+  .place-plan__paint-layer--brush {
+    cursor:
+      url('/cimmich/cursors/plan-brush.svg') 4 28,
+      default;
   }
   .place-plan__paint-hint {
     position: absolute;
@@ -1133,22 +1191,29 @@
   }
   .place-plan__outline-preview polygon,
   .place-plan__outline-zone polygon {
-    fill: rgb(var(--immich-primary-color) / 0.13);
-    stroke: rgb(var(--immich-primary-color) / 0.92);
-    stroke-width: 2px;
     stroke-linejoin: round;
   }
-  .place-plan__outline-preview polygon {
-    fill: rgb(var(--immich-primary-color) / 0.18);
+  .place-plan__outline-halo {
+    fill: none;
+    stroke: rgb(255 255 255 / 0.96);
+    stroke-width: 6px;
+  }
+  .place-plan__outline-line {
+    fill: rgb(var(--immich-primary-color) / 0.1);
+    stroke: rgb(var(--immich-primary-color));
+    stroke-width: 3px;
+  }
+  .place-plan__outline-preview .place-plan__outline-halo,
+  .place-plan__outline-preview .place-plan__outline-line {
     stroke-dasharray: 7 5;
   }
   .place-plan__outline-zone {
     z-index: 1;
     filter: drop-shadow(0 3px 7px rgb(15 23 42 / 0.13));
   }
-  .place-plan__outline-zone--selected polygon {
+  .place-plan__outline-zone--selected .place-plan__outline-line {
     fill: rgb(var(--immich-primary-color) / 0.22);
-    stroke-width: 3px;
+    stroke-width: 4px;
   }
   .place-plan__brush-preview,
   .place-plan__paint-zone {
@@ -1333,7 +1398,7 @@
     gap: 0.3rem;
   }
   .place-plan__tray-actions button {
-    min-height: 2rem;
+    min-height: 2.55rem;
     justify-content: center;
     gap: 0.3rem;
     border: 1px solid rgb(226 232 240);
@@ -1341,7 +1406,8 @@
     padding: 0 0.35rem;
     color: rgb(71 85 105);
     background: rgb(248 250 252);
-    font-size: 0.69rem;
+    font-size: 0.72rem;
+    font-weight: 700;
   }
   :global(.dark) .place-plan__tray-actions button {
     border-color: rgb(51 65 85);
@@ -1353,6 +1419,37 @@
     border-color: rgb(var(--immich-primary-color));
     color: rgb(var(--immich-primary-color));
     background: rgb(var(--immich-primary-color) / 0.1);
+  }
+  .place-plan__brush-size {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 2rem;
+    align-items: center;
+    gap: 0.55rem;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.7rem;
+    padding: 0.6rem;
+    color: rgb(71 85 105);
+    background: rgb(248 250 252);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .place-plan__brush-size span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .place-plan__brush-size input {
+    width: 100%;
+    accent-color: rgb(var(--immich-primary-color));
+  }
+  .place-plan__brush-size output {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  :global(.dark) .place-plan__brush-size {
+    border-color: rgb(51 65 85);
+    color: rgb(203 213 225);
+    background: rgb(30 41 59);
   }
   .place-plan__new-location {
     display: inline-flex;

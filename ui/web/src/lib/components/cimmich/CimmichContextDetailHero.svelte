@@ -337,7 +337,16 @@
                     preserveAspectRatio="none"
                     aria-hidden="true"
                   >
-                    <polygon points={polygonPoints(item.geometry)} vector-effect="non-scaling-stroke" />
+                    <polygon
+                      class="context-detail-plan-outline-halo"
+                      points={polygonPoints(item.geometry)}
+                      vector-effect="non-scaling-stroke"
+                    />
+                    <polygon
+                      class="context-detail-plan-outline-line"
+                      points={polygonPoints(item.geometry)}
+                      vector-effect="non-scaling-stroke"
+                    />
                   </svg>
                   <span class="context-detail-plan-paint-label" style={polygonLabelStyle(item.geometry)}
                     >{item.childName}</span
@@ -672,10 +681,17 @@
     pointer-events: none;
   }
   .context-detail-plan-outline polygon {
-    fill: rgb(var(--immich-primary-color) / 0.15);
-    stroke: rgb(125 211 252 / 0.92);
-    stroke-width: 1.5px;
     stroke-linejoin: round;
+  }
+  .context-detail-plan-outline-halo {
+    fill: none;
+    stroke: rgb(255 255 255 / 0.94);
+    stroke-width: 4px;
+  }
+  .context-detail-plan-outline-line {
+    fill: rgb(var(--immich-primary-color) / 0.12);
+    stroke: rgb(125 211 252);
+    stroke-width: 2px;
   }
   .context-detail-plan-paint-label {
     position: absolute;
