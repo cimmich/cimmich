@@ -2408,6 +2408,8 @@ export const createCimmichRepository = (
     undoPetDocumentDecision: petDocuments.undo,
     contextEntities: contextEntities.list,
     contextEntity: contextEntities.get,
+    placePlans: contextEntities.listPlacePlans,
+    savePlacePlan: contextEntities.savePlacePlan,
     createContextEntity: contextEntities.create,
     updateContextEntity: contextEntities.update,
     setEventCover: contextEntities.setEventCover,

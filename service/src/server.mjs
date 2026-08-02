@@ -2428,6 +2428,64 @@ export const createCimmichServer = ({
       const contextCoverMatch = url.pathname.match(
         /^\/v1\/(places|objects|events)\/([^/]+)\/cover$/,
       );
+      const placePlansMatch = url.pathname.match(
+        /^\/v1\/places\/([^/]+)\/plans$/,
+      );
+      if (placePlansMatch) {
+        requireProjection("places");
+        const entityId = decodeURIComponent(placePlansMatch[1]);
+        if (request.method === "GET") {
+          sendJson(
+            response,
+            200,
+            await repository.placePlans({ entityId }),
+            allowedOrigin,
+          );
+          return;
+        }
+        if (request.method === "POST") {
+          const body = await readJsonBody(request);
+          const keys = Object.keys(body);
+          if (
+            keys.some(
+              (key) =>
+                ![
+                  "backgroundSourceAssetId",
+                  "commandId",
+                  "displayName",
+                  "expectedRevision",
+                  "isDefault",
+                  "items",
+                  "planId",
+                  "planKind",
+                ].includes(key),
+            )
+          ) {
+            throw Object.assign(new Error("Location Plan body is invalid"), {
+              code: "PLACE_PLAN_INPUT_INVALID",
+              statusCode: 400,
+            });
+          }
+          sendJson(
+            response,
+            200,
+            await repository.savePlacePlan({
+              actorId: request.headers["x-cimmich-actor"],
+              backgroundSourceAssetId: body.backgroundSourceAssetId,
+              commandId: body.commandId,
+              displayName: body.displayName,
+              entityId,
+              expectedRevision: body.expectedRevision,
+              isDefault: body.isDefault,
+              items: body.items,
+              planId: body.planId,
+              planKind: body.planKind,
+            }),
+            allowedOrigin,
+          );
+          return;
+        }
+      }
       if (request.method === "POST" && contextCoverMatch) {
         const family = contextFamilies[contextCoverMatch[1]];
         requireProjection(family.surfaceKey);

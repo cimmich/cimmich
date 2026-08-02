@@ -55,6 +55,20 @@ const assertPersisted = async () => {
   assert.equal(yard.parentEntityId, beach.entityId);
   assert.equal(yard.directoryVisibility, "nested_only");
   assert.equal(yard.assetCount, 1);
+  const plans = await request(`/v1/places/${beach.entityId}/plans`);
+  assert.equal(plans.schemaVersion, "cimmich.location-plan.v1");
+  assert.equal(plans.items.length, 1);
+  assert.equal(plans.items[0].displayName, "Property");
+  assert.equal(plans.items[0].revision, 1);
+  assert.equal(plans.items[0].items.length, 1);
+  assert.equal(plans.items[0].items[0].childEntityId, yard.entityId);
+  assert.deepEqual(plans.items[0].items[0].geometry, {
+    h: 0.3,
+    kind: "rect",
+    w: 0.4,
+    x: 0.1,
+    y: 0.1,
+  });
   assert.equal(car.assetCount, 2);
   assert.equal(car.coverAssetId, "source-identity-fixture");
   assert.equal(car.coverMode, "explicit");
@@ -916,6 +930,96 @@ if (phase === "write" || phase === "all") {
   );
   assert.equal(objectPurged.deletedTagCount, 1);
   assert.equal(objectPurged.retainedTagCount, 0);
+
+  const planBody = {
+    backgroundSourceAssetId: null,
+    commandId: "context.location-plan.create01",
+    displayName: "Property",
+    expectedRevision: 0,
+    isDefault: true,
+    items: [
+      {
+        childEntityId: yard.entityId,
+        geometry: { h: 0.3, kind: "rect", w: 0.4, x: 0.1, y: 0.1 },
+        zIndex: 0,
+      },
+    ],
+    planKind: "property",
+  };
+  const createdPlan = await request(`/v1/places/${beach.entityId}/plans`, {
+    body: planBody,
+    method: "POST",
+  });
+  assert.equal(createdPlan.status, "applied");
+  assert.equal(createdPlan.plan.revision, 1);
+  assert.equal(createdPlan.plan.isDefault, true);
+  assert.equal(
+    (
+      await request(`/v1/places/${beach.entityId}/plans`, {
+        body: planBody,
+        method: "POST",
+      })
+    ).replayed,
+    true,
+  );
+  assert.equal(
+    (
+      await request(`/v1/places/${beach.entityId}/plans`, {
+        body: { ...planBody, displayName: "Conflicting replay" },
+        method: "POST",
+        status: 409,
+      })
+    ).code,
+    "CONTEXT_COMMAND_CONFLICT",
+  );
+
+  const updatedPlan = await request(`/v1/places/${beach.entityId}/plans`, {
+    body: {
+      ...planBody,
+      commandId: "context.location-plan.update01",
+      expectedRevision: 1,
+      items: [
+        {
+          childEntityId: yard.entityId,
+          geometry: { h: 0.35, kind: "rect", w: 0.5, x: 0.2, y: 0.2 },
+          zIndex: 0,
+        },
+      ],
+      planId: createdPlan.plan.planId,
+    },
+    method: "POST",
+  });
+  assert.equal(updatedPlan.plan.revision, 2);
+  const undonePlan = await request(
+    `/v1/context/decisions/${updatedPlan.decisionId}/undo`,
+    {
+      body: { commandId: "context.location-plan.update-undo01" },
+      method: "POST",
+    },
+  );
+  assert.equal(undonePlan.status, "reverted");
+  assert.equal(undonePlan.plans[0].revision, 1);
+
+  const temporaryPlan = await request(`/v1/places/${beach.entityId}/plans`, {
+    body: {
+      ...planBody,
+      commandId: "context.location-plan.temporary01",
+      displayName: "Temporary floor",
+      isDefault: false,
+      items: [],
+      planKind: "floor",
+    },
+    method: "POST",
+  });
+  assert.equal(temporaryPlan.plans.length, 2);
+  const removedTemporaryPlan = await request(
+    `/v1/context/decisions/${temporaryPlan.decisionId}/undo`,
+    {
+      body: { commandId: "context.location-plan.temporary-undo01" },
+      method: "POST",
+    },
+  );
+  assert.equal(removedTemporaryPlan.plans.length, 1);
 
   await assertPersisted();
 }

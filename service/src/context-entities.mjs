@@ -41,6 +41,7 @@ const statuses = new Set(["active", "hidden", "archived"]);
 const directoryVisibilities = new Set(["listed", "nested_only"]);
 const placeRoles = new Set(["geography", "location", "unclassified"]);
 const defaultPlaceRole = "location";
+const placePlanKinds = new Set(["property", "floor", "outdoor", "other"]);
 const associationKinds = {
   event: new Set(["direct", "route_stop", "context", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
@@ -1345,6 +1346,221 @@ const cleanRelationIds = (value) => {
   return ids;
 };
 
+const cleanPlanId = (value, { nullable = false } = {}) => {
+  const planId = String(value || "").trim();
+  if (!planId && nullable) return null;
+  if (!/^placeplan_[0-9a-f]{32}$/.test(planId)) {
+    throw typedError(
+      "planId is not a stable Cimmich Location Plan ID",
+      400,
+      "PLACE_PLAN_ID_INVALID",
+    );
+  }
+  return planId;
+};
+
+const cleanPlanNumber = (value, field) => {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 1
+  ) {
+    throw typedError(
+      `${field} must be a number from 0 to 1`,
+      400,
+      "PLACE_PLAN_GEOMETRY_INVALID",
+      { field },
+    );
+  }
+  return Number(value.toFixed(6));
+};
+
+const cleanPlanShape = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw typedError(
+      "Plan item geometry must be an object",
+      400,
+      "PLACE_PLAN_GEOMETRY_INVALID",
+    );
+  }
+  const kind = String(value.kind || "").trim();
+  if (kind === "point") {
+    return {
+      kind,
+      x: cleanPlanNumber(value.x, "geometry.x"),
+      y: cleanPlanNumber(value.y, "geometry.y"),
+    };
+  }
+  if (kind === "rect") {
+    const rect = {
+      h: cleanPlanNumber(value.h, "geometry.h"),
+      kind,
+      w: cleanPlanNumber(value.w, "geometry.w"),
+      x: cleanPlanNumber(value.x, "geometry.x"),
+      y: cleanPlanNumber(value.y, "geometry.y"),
+    };
+    if (
+      rect.w <= 0 ||
+      rect.h <= 0 ||
+      rect.x + rect.w > 1.000001 ||
+      rect.y + rect.h > 1.000001
+    ) {
+      throw typedError(
+        "Plan rectangle must have size and remain inside the canvas",
+        400,
+        "PLACE_PLAN_GEOMETRY_INVALID",
+      );
+    }
+    return rect;
+  }
+  if (kind === "polygon") {
+    if (
+      !Array.isArray(value.points) ||
+      value.points.length < 3 ||
+      value.points.length > 256
+    ) {
+      throw typedError(
+        "Plan polygon must contain 3 to 256 points",
+        400,
+        "PLACE_PLAN_GEOMETRY_INVALID",
+      );
+    }
+    const points = value.points.map((point, index) => ({
+      x: cleanPlanNumber(point?.x, `geometry.points[${index}].x`),
+      y: cleanPlanNumber(point?.y, `geometry.points[${index}].y`),
+    }));
+    if (new Set(points.map((point) => `${point.x}:${point.y}`)).size < 3) {
+      throw typedError(
+        "Plan polygon needs at least three distinct points",
+        400,
+        "PLACE_PLAN_GEOMETRY_INVALID",
+      );
+    }
+    return { kind, points };
+  }
+  throw typedError(
+    "Plan item geometry kind must be point, rect, or polygon",
+    400,
+    "PLACE_PLAN_GEOMETRY_INVALID",
+  );
+};
+
+const cleanPlacePlanInput = (value) => {
+  const displayName = cleanText(value?.displayName, 120, "displayName");
+  const planKind = String(value?.planKind || "").trim();
+  if (!placePlanKinds.has(planKind)) {
+    throw typedError(
+      "planKind must be property, floor, outdoor, or other",
+      400,
+      "PLACE_PLAN_KIND_INVALID",
+    );
+  }
+  const backgroundSourceAssetId = value?.backgroundSourceAssetId
+    ? String(value.backgroundSourceAssetId).trim()
+    : null;
+  if (backgroundSourceAssetId && backgroundSourceAssetId.length > 200) {
+    throw typedError(
+      "backgroundSourceAssetId is invalid",
+      400,
+      "PLACE_PLAN_BACKGROUND_INVALID",
+    );
+  }
+  if (!Array.isArray(value?.items) || value.items.length > 200) {
+    throw typedError(
+      "Plan items must be an array with at most 200 entries",
+      400,
+      "PLACE_PLAN_ITEMS_INVALID",
+    );
+  }
+  const items = value.items.map((item, index) => ({
+    childEntityId: cleanEntityId(
+      item?.childEntityId,
+      `items[${index}].childEntityId`,
+    ),
+    geometry: cleanPlanShape(item?.geometry),
+    zIndex: Number.isInteger(item?.zIndex)
+      ? Math.min(10000, Math.max(0, item.zIndex))
+      : index,
+  }));
+  if (new Set(items.map((item) => item.childEntityId)).size !== items.length) {
+    throw typedError(
+      "Each child Location can appear only once on a Plan",
+      400,
+      "PLACE_PLAN_ITEMS_INVALID",
+    );
+  }
+  return {
+    backgroundSourceAssetId,
+    displayName,
+    isDefault: value?.isDefault === true,
+    items,
+    planKind,
+  };
+};
+
+const loadPlacePlanSnapshot = async (executor, planId) => {
+  const [plan] = await executor`
+    SELECT plan_id, location_entity_id, display_name, plan_kind,
+      background_kind, background_asset_id, is_default, revision
+    FROM place_plan WHERE plan_id = ${planId}
+  `;
+  if (!plan) return null;
+  const items = await executor`
+    SELECT plan_item_id, child_entity_id, shape_kind, geometry, z_index
+    FROM place_plan_item WHERE plan_id = ${planId}
+    ORDER BY z_index, plan_item_id
+  `;
+  return {
+    backgroundAssetId: plan.background_asset_id || null,
+    backgroundKind: plan.background_kind,
+    displayName: plan.display_name,
+    isDefault: plan.is_default,
+    items: items.map((item) => ({
+      childEntityId: item.child_entity_id,
+      geometry: item.geometry,
+      planItemId: item.plan_item_id,
+      shapeKind: item.shape_kind,
+      zIndex: item.z_index,
+    })),
+    locationEntityId: plan.location_entity_id,
+    planId: plan.plan_id,
+    planKind: plan.plan_kind,
+    revision: plan.revision,
+  };
+};
+
+const restorePlacePlanSnapshot = async (tx, snapshot) => {
+  await tx`
+    INSERT INTO place_plan (
+      plan_id, location_entity_id, display_name, plan_kind, background_kind,
+      background_asset_id, is_default, revision, updated_at
+    ) VALUES (
+      ${snapshot.planId}, ${snapshot.locationEntityId}, ${snapshot.displayName},
+      ${snapshot.planKind}, ${snapshot.backgroundKind}, ${snapshot.backgroundAssetId},
+      ${snapshot.isDefault}, ${snapshot.revision}, now()
+    ) ON CONFLICT (plan_id) DO UPDATE SET
+      display_name = excluded.display_name,
+      plan_kind = excluded.plan_kind,
+      background_kind = excluded.background_kind,
+      background_asset_id = excluded.background_asset_id,
+      is_default = excluded.is_default,
+      revision = excluded.revision,
+      updated_at = now()
+  `;
+  await tx`DELETE FROM place_plan_item WHERE plan_id = ${snapshot.planId}`;
+  for (const item of snapshot.items) {
+    await tx`
+      INSERT INTO place_plan_item (
+        plan_item_id, plan_id, child_entity_id, shape_kind, geometry, z_index
+      ) VALUES (
+        ${item.planItemId}, ${snapshot.planId}, ${item.childEntityId},
+        ${item.shapeKind}, ${tx.json(item.geometry)}, ${item.zIndex}
+      )
+    `;
+  }
+};
+
 export const createContextEntityStore = (
   sql,
   {
@@ -1353,6 +1569,78 @@ export const createContextEntityStore = (
     presentationRank = () => 0,
   } = {},
 ) => {
+  const projectPlacePlans = async (executor, locationEntityId) => {
+    const owner = await requireEntity(executor, locationEntityId, {
+      entityKind: "place",
+      presentationRank,
+      requireVisible: true,
+    });
+    if (owner.place_role !== "location") {
+      throw typedError(
+        "Plans belong to Locations",
+        409,
+        "PLACE_PLAN_OWNER_INVALID",
+      );
+    }
+    const plans = await executor`
+      SELECT plan_id FROM place_plan
+      WHERE location_entity_id = ${locationEntityId}
+      ORDER BY is_default DESC, created_at, plan_id
+    `;
+    const projected = [];
+    for (const row of plans) {
+      const snapshot = await loadPlacePlanSnapshot(executor, row.plan_id);
+      if (!snapshot) continue;
+      let backgroundSourceAssetId = null;
+      if (snapshot.backgroundAssetId) {
+        const [visibleBackground] = await executor`
+          SELECT asset_id FROM asset
+          WHERE asset_id = ${snapshot.backgroundAssetId} AND state = 'active'
+            AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
+        `;
+        backgroundSourceAssetId = visibleBackground
+          ? bridgeFields(snapshot.backgroundAssetId).sourceAssetId || null
+          : null;
+      }
+      const visibleItems = [];
+      for (const item of snapshot.items) {
+        const [child] = await executor`
+          SELECT entity_id, display_name, status
+          FROM context_entity
+          WHERE entity_id = ${item.childEntityId}
+            AND parent_entity_id = ${locationEntityId}
+            AND entity_kind = 'place' AND place_role = 'location'
+            AND status IN ('active','hidden')
+            AND cimmich_visibility_context_entity_rank(entity_id) <= ${presentationRank()}
+        `;
+        if (child) {
+          visibleItems.push({
+            childEntityId: child.entity_id,
+            childName: child.display_name,
+            geometry: item.geometry,
+            planItemId: item.planItemId,
+            zIndex: item.zIndex,
+          });
+        }
+      }
+      projected.push({
+        backgroundSourceAssetId,
+        displayName: snapshot.displayName,
+        isDefault: snapshot.isDefault,
+        items: visibleItems,
+        locationEntityId: snapshot.locationEntityId,
+        planId: snapshot.planId,
+        planKind: snapshot.planKind,
+        revision: snapshot.revision,
+      });
+    }
+    return {
+      items: projected,
+      locationEntityId,
+      schemaVersion: "cimmich.location-plan.v1",
+    };
+  };
+
   const api = {
     list: ({
       entityKind,
@@ -1399,6 +1687,220 @@ export const createContextEntityStore = (
         includeArchived,
         presentationRank,
       }),
+
+    listPlacePlans: ({ entityId }) =>
+      projectPlacePlans(sql, cleanEntityId(entityId)),
+
+    savePlacePlan: async ({
+      actorId,
+      commandId,
+      entityId,
+      expectedRevision,
+      planId,
+      ...input
+    }) => {
+      const actor = cleanActor(actorId);
+      const locationEntityId = cleanEntityId(entityId);
+      const requestedPlanId = cleanPlanId(planId, { nullable: true });
+      const requested = cleanPlacePlanInput(input);
+      const revision = Number(expectedRevision ?? (requestedPlanId ? NaN : 0));
+      if (!Number.isInteger(revision) || revision < 0) {
+        throw typedError(
+          "expectedRevision must be zero for a new Plan or the current positive revision",
+          400,
+          "PLACE_PLAN_REVISION_INVALID",
+        );
+      }
+      return sql.begin(async (tx) => {
+        const command = await beginCommand(tx, {
+          actorId: actor,
+          commandId,
+          commandKind: "plan_save",
+          payload: {
+            entityId: locationEntityId,
+            expectedRevision: revision,
+            planId: requestedPlanId,
+            ...requested,
+          },
+        });
+        if (command.replay) return command.replay;
+        const owner = await requireEntity(tx, locationEntityId, {
+          entityKind: "place",
+          lock: true,
+          presentationRank,
+          requireVisible: true,
+        });
+        if (
+          owner.place_role !== "location" ||
+          !["active", "hidden"].includes(owner.status)
+        ) {
+          throw typedError(
+            "Plans belong to current Locations",
+            409,
+            "PLACE_PLAN_OWNER_INVALID",
+          );
+        }
+        const actualPlanId =
+          requestedPlanId || `placeplan_${randomUUID().replaceAll("-", "")}`;
+        const previous = await loadPlacePlanSnapshot(tx, actualPlanId);
+        if (previous && previous.locationEntityId !== locationEntityId) {
+          throw typedError(
+            "Plan belongs to another Location",
+            409,
+            "PLACE_PLAN_SCOPE_INVALID",
+          );
+        }
+        if (
+          (!previous && revision !== 0) ||
+          (previous && revision !== previous.revision)
+        ) {
+          throw typedError(
+            "Location Plan changed after it was loaded",
+            409,
+            "PLACE_PLAN_REVISION_CONFLICT",
+            {
+              actualRevision: previous?.revision ?? 0,
+              expectedRevision: revision,
+            },
+          );
+        }
+        const childRows = requested.items.length
+          ? await tx`
+              SELECT entity_id FROM context_entity
+              WHERE entity_id = ANY(${requested.items.map((item) => item.childEntityId)})
+                AND parent_entity_id = ${locationEntityId}
+                AND entity_kind = 'place' AND place_role = 'location'
+                AND status IN ('active','hidden')
+                AND cimmich_visibility_context_entity_rank(entity_id) <= ${presentationRank()}
+              ORDER BY entity_id FOR UPDATE
+            `
+          : [];
+        if (childRows.length !== requested.items.length) {
+          throw typedError(
+            "Every Plan item must be a visible immediate child Location",
+            409,
+            "PLACE_PLAN_CHILD_INVALID",
+          );
+        }
+        let backgroundAssetId = null;
+        if (requested.backgroundSourceAssetId) {
+          backgroundAssetId = assetIdBySourceId(
+            requested.backgroundSourceAssetId,
+          );
+          const [background] = backgroundAssetId
+            ? await tx`
+                SELECT asset_id FROM asset
+                WHERE asset_id = ${backgroundAssetId} AND state = 'active'
+                  AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
+              `
+            : [];
+          if (!background) {
+            throw typedError(
+              "Plan background photo is not available in this viewing mode",
+              409,
+              "PLACE_PLAN_BACKGROUND_INVALID",
+            );
+          }
+        }
+        const [planCount] = await tx`
+          SELECT count(*)::int AS count FROM place_plan
+          WHERE location_entity_id = ${locationEntityId}
+        `;
+        const [previousDefault] = await tx`
+          SELECT plan_id FROM place_plan
+          WHERE location_entity_id = ${locationEntityId} AND is_default
+          FOR UPDATE
+        `;
+        const previousDefaultPlanId = previousDefault?.plan_id || null;
+        const isDefault =
+          requested.isDefault || Number(planCount?.count || 0) === 0;
+        if (isDefault) {
+          await tx`
+            UPDATE place_plan SET is_default = false, updated_at = now()
+            WHERE location_entity_id = ${locationEntityId} AND is_default
+          `;
+        }
+        await tx`
+          INSERT INTO place_plan (
+            plan_id, location_entity_id, display_name, plan_kind,
+            background_kind, background_asset_id, is_default, revision
+          ) VALUES (
+            ${actualPlanId}, ${locationEntityId}, ${requested.displayName}, ${requested.planKind},
+            ${backgroundAssetId ? "asset" : "blank"}, ${backgroundAssetId}, ${isDefault}, 1
+          ) ON CONFLICT (plan_id) DO UPDATE SET
+            display_name = excluded.display_name,
+            plan_kind = excluded.plan_kind,
+            background_kind = excluded.background_kind,
+            background_asset_id = excluded.background_asset_id,
+            is_default = excluded.is_default,
+            revision = place_plan.revision + 1,
+            updated_at = now()
+        `;
+        await tx`DELETE FROM place_plan_item WHERE plan_id = ${actualPlanId}`;
+        for (const item of requested.items) {
+          await tx`
+            INSERT INTO place_plan_item (
+              plan_item_id, plan_id, child_entity_id, shape_kind, geometry, z_index
+            ) VALUES (
+              ${`planitem_${randomUUID().replaceAll("-", "")}`}, ${actualPlanId},
+              ${item.childEntityId}, ${item.geometry.kind}, ${tx.json(item.geometry)}, ${item.zIndex}
+            )
+          `;
+        }
+        const next = await loadPlacePlanSnapshot(tx, actualPlanId);
+        const decisionId = await createDecision(tx, {
+          action: previous ? "update" : "create",
+          actorId: actor,
+          entityId: actualPlanId,
+          note: `${previous ? "Update" : "Create"} Location Plan`,
+          reasonCode: previous
+            ? "location_plan_update"
+            : "location_plan_create",
+          subjectType: "place_plan",
+        });
+        await tx`
+          UPDATE context_entity SET revision = revision + 1, updated_at = now()
+          WHERE entity_id = ${locationEntityId}
+        `;
+        const detail = await loadDetail(tx, {
+          bridgeFields,
+          entityId: locationEntityId,
+          entityKind: "place",
+          presentationRank,
+        });
+        const plans = await projectPlacePlans(tx, locationEntityId);
+        const response = {
+          changed: true,
+          commandId: command.commandId,
+          decisionId,
+          detail,
+          plan: plans.items.find((item) => item.planId === actualPlanId),
+          plans: plans.items,
+          replayed: false,
+          schemaVersion: "cimmich.location-plan.v1",
+          status: "applied",
+          undo: { eligible: true, token: decisionId },
+        };
+        await completeCommand(tx, {
+          actorId: actor,
+          command,
+          commandKind: "plan_save",
+          decisionId,
+          response,
+        });
+        await tx`
+          INSERT INTO context_operation (
+            operation_id, command_id, entity_id, operation_scope, action,
+            decision_id, state, snapshot
+          ) VALUES (
+            ${`contextop_${randomUUID().replaceAll("-", "")}`},
+            ${command.commandId}, ${locationEntityId}, 'plan', 'save',
+            ${decisionId}, 'active', ${tx.json([{ next, previous, previousDefaultPlanId }])}
+          )
+        `;
+        return response;
+      });
+    },
 
     async create({ actorId, commandId, ...input }) {
       const actor = cleanActor(actorId);
@@ -2875,6 +3377,8 @@ export const createContextEntityStore = (
               (SELECT count(*)::int FROM cimmich_visibility_object visibility
                 WHERE visibility.object_scope = 'context_entity'
                   AND visibility.object_id = ${entity.entity_id}) AS visibility_count,
+              (SELECT count(*)::int FROM place_plan plan
+                WHERE plan.location_entity_id = ${entity.entity_id}) AS plan_count,
               (SELECT count(*)::int FROM context_operation later
                 WHERE later.entity_id = ${entity.entity_id}
                   AND later.state = 'active'
@@ -2885,6 +3389,42 @@ export const createContextEntityStore = (
               "Created context entity has dependent current state",
               409,
               "CONTEXT_UNDO_DEPENDENCY",
+            );
+          }
+        }
+      } else if (operation.operation_scope === "plan") {
+        const [item] = snapshot;
+        if (
+          snapshot.length !== 1 ||
+          operation.action !== "save" ||
+          !item?.next?.planId ||
+          item.next.locationEntityId !== entity.entity_id
+        ) {
+          throw typedError(
+            "Location Plan undo snapshot is invalid",
+            409,
+            "CONTEXT_UNDO_NOT_AVAILABLE",
+          );
+        }
+        const current = await loadPlacePlanSnapshot(tx, item.next.planId);
+        if (!current || digest(current) !== digest(item.next)) {
+          throw typedError(
+            "Location Plan changed after this decision",
+            409,
+            "CONTEXT_UNDO_SUPERSEDED",
+          );
+        }
+        if (item.next.isDefault) {
+          const [currentDefault] = await tx`
+            SELECT plan_id FROM place_plan
+            WHERE location_entity_id = ${entity.entity_id} AND is_default
+            FOR UPDATE
+          `;
+          if (currentDefault?.plan_id !== item.next.planId) {
+            throw typedError(
+              "Location Plan default changed after this decision",
+              409,
+              "CONTEXT_UNDO_SUPERSEDED",
             );
           }
         }
@@ -3008,32 +3548,59 @@ export const createContextEntityStore = (
             ? operation.action === "create"
               ? `Undo ${entityLabels[entity.entity_kind]} creation`
               : `Undo ${entityLabels[entity.entity_kind]} update`
-            : operation.operation_scope === "cover"
-              ? `Undo ${entityLabels[entity.entity_kind]} cover`
-              : operation.operation_scope === "place_assignment"
-                ? "Undo Place subsection assignment"
-                : "Undo context association",
+            : operation.operation_scope === "plan"
+              ? "Undo Location Plan change"
+              : operation.operation_scope === "cover"
+                ? `Undo ${entityLabels[entity.entity_kind]} cover`
+                : operation.operation_scope === "place_assignment"
+                  ? "Undo Place subsection assignment"
+                  : "Undo context association",
         reasonCode:
           operation.operation_scope === "entity"
             ? operation.action === "create"
               ? "context_manual_create_undo"
               : "context_manual_update_undo"
-            : operation.operation_scope === "cover"
-              ? `context_${entity.entity_kind}_cover_undo`
-              : operation.operation_scope === "place_assignment"
-                ? "context_place_subsection_assignment_undo"
-                : "context_manual_undo",
-        subjectType: ["asset", "place_assignment"].includes(
-          operation.operation_scope,
-        )
-          ? "context_asset"
-          : operation.operation_scope === "relation"
-            ? "context_relation"
-            : "context_entity",
+            : operation.operation_scope === "plan"
+              ? "location_plan_undo"
+              : operation.operation_scope === "cover"
+                ? `context_${entity.entity_kind}_cover_undo`
+                : operation.operation_scope === "place_assignment"
+                  ? "context_place_subsection_assignment_undo"
+                  : "context_manual_undo",
+        subjectType:
+          operation.operation_scope === "plan"
+            ? "place_plan"
+            : ["asset", "place_assignment"].includes(operation.operation_scope)
+              ? "context_asset"
+              : operation.operation_scope === "relation"
+                ? "context_relation"
+                : "context_entity",
         supersedes: operation.decision_id,
       });
       for (const item of snapshot) {
-        if (operation.operation_scope === "place_assignment") {
+        if (operation.operation_scope === "plan") {
+          if (item.next.isDefault) {
+            await tx`
+              UPDATE place_plan SET is_default = false, updated_at = now()
+              WHERE location_entity_id = ${entity.entity_id} AND is_default
+            `;
+          }
+          if (item.previous) {
+            await restorePlacePlanSnapshot(tx, item.previous);
+          } else {
+            await tx`DELETE FROM place_plan WHERE plan_id = ${item.next.planId}`;
+          }
+          if (
+            item.previousDefaultPlanId &&
+            item.previousDefaultPlanId !== item.previous?.planId
+          ) {
+            await tx`
+              UPDATE place_plan SET is_default = true, updated_at = now()
+              WHERE plan_id = ${item.previousDefaultPlanId}
+                AND location_entity_id = ${entity.entity_id}
+            `;
+          }
+        } else if (operation.operation_scope === "place_assignment") {
           await tx`
             UPDATE context_asset_link SET state = 'superseded'
             WHERE link_id IN (${item.parentCreatedLinkId}, ${item.childCreatedLinkId})
@@ -3168,6 +3735,9 @@ export const createContextEntityStore = (
         commandId: command.commandId,
         decisionId: undoDecisionId,
         detail,
+        ...(operation.operation_scope === "plan"
+          ? { plans: (await projectPlacePlans(tx, entity.entity_id)).items }
+          : {}),
         ...(creationReverted ? { projectionUnavailable: true } : {}),
         replayed: false,
         schemaVersion,
@@ -3199,6 +3769,7 @@ export const contextEntityContract = Object.freeze({
   objectDeleteSchemaVersion,
   placeCoverSchemaVersion,
   defaultPlaceRole,
+  placePlanKinds: [...placePlanKinds],
   placeRoles: [...placeRoles],
   relationKinds: [...relationKinds],
   schemaVersion,

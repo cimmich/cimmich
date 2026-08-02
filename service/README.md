@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 111. Schema 76 adds
+patch level 1. Current post-submission source is schema 112. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -118,6 +118,10 @@ remain explicitly unclassified until reviewed rather than being guessed.
 Schema 111 uses exact `context.gps-create.*` entity-operation provenance to
 classify untouched GPS-created Places as Geography. It never infers from a
 display name and never overrides a role already reviewed by the owner.
+Schema 112 adds private, revisioned Location Plans in normalized canvas
+coordinates, separate from geographic Place geometry. A Plan atomically binds
+immediate child Locations to visual areas, inherits the Location visibility
+boundary, and records one exact Undo for each saved arrangement.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

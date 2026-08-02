@@ -7,6 +7,7 @@
   import CimmichPlaceCollectionControls from './CimmichPlaceCollectionControls.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
   import CimmichPlaceCanvas from './CimmichPlaceCanvas.svelte';
+  import CimmichPlacePlan from './CimmichPlacePlan.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
   import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
   import CimmichSectionHeader from './CimmichSectionHeader.svelte';
@@ -29,10 +30,12 @@
     getCimmichAssetEvidence,
     getCimmichContextEntities,
     getCimmichContextEntity,
+    getCimmichPlacePlans,
     getCimmichPeople,
     getCimmichPetMedia,
     getCimmichPets,
     searchCimmichAddresses,
+    saveCimmichPlacePlan,
     setCimmichEventCover,
     setCimmichObjectCover,
     setCimmichPlaceCover,
@@ -49,6 +52,8 @@
     type CimmichAddressGeocodingResult,
     type CimmichContextRelation,
     type CimmichPlaceRollupAsset,
+    type CimmichPlacePlan as CimmichPlacePlanRecord,
+    type CimmichPlacePlanSaveInput,
   } from '$lib/services/cimmich.service';
   import { ENTITY_MEDIA_SELECTION_LIMIT, type CimmichEntityMediaItem } from './entity-media-actions';
   import { getAssetMediaUrl } from '$lib/utils';
@@ -65,6 +70,7 @@
     mdiCogOutline,
     mdiDotsVertical,
     mdiFileDocumentOutline,
+    mdiFloorPlan,
     mdiFilterVariant,
     mdiImageMultipleOutline,
     mdiLinkPlus,
@@ -135,6 +141,7 @@
   let loaded = $state(false);
   let query = $state('');
   let selected = $state<CimmichContextDetail | null>(null);
+  let selectedPlacePlans = $state<CimmichPlacePlanRecord[]>([]);
   let selectedGeographyGroup = $state('');
   let selectedGeographyGroupEntityIds = $state<string[]>([]);
   let selectedLoading = $state(false);
@@ -432,10 +439,13 @@
       })),
   );
   const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
-  type ContextDetailTab = 'connections' | 'documents' | 'map' | 'photos';
+  type ContextDetailTab = 'connections' | 'documents' | 'map' | 'plan' | 'photos';
   const detailTabs = $derived<Array<{ icon: string; label: string; value: ContextDetailTab }>>([
     { icon: mdiImageMultipleOutline, label: 'Photos', value: 'photos' },
     ...(activeFamily === 'places' ? [{ icon: mdiMapOutline, label: 'Map', value: 'map' } as const] : []),
+    ...(activeFamily === 'places' && selected?.entity.placeRole === 'location'
+      ? [{ icon: mdiFloorPlan, label: 'Plan', value: 'plan' } as const]
+      : []),
     ...(selectedIsGeographyGroup
       ? []
       : [
@@ -685,6 +695,7 @@
 
   const closeDetail = () => {
     selected = null;
+    selectedPlacePlans = [];
     const collectionHref = getContextCollectionHref(page.url, activeFamily);
     if (`${page.url.pathname}${page.url.search}` === collectionHref) {
       return;
@@ -703,11 +714,17 @@
     mediaSelectionMode = false;
     error = null;
     try {
-      const next = await getCimmichContextEntity(activeFamily, entity.entityId, {
-        includeArchived: entity.status === 'archived',
-      });
+      const [next, plans] = await Promise.all([
+        getCimmichContextEntity(activeFamily, entity.entityId, {
+          includeArchived: entity.status === 'archived',
+        }),
+        activeFamily === 'places' && entity.placeRole === 'location'
+          ? getCimmichPlacePlans(entity.entityId).then((result) => result.items)
+          : Promise.resolve([]),
+      ]);
       if (generation === detailRequestGeneration) {
         selected = next;
+        selectedPlacePlans = plans;
       }
     } catch (error_) {
       if (generation === detailRequestGeneration) {
@@ -1601,7 +1618,14 @@
     const entityId = selected.entity.entityId;
     const includeArchived = selected.entity.status === 'archived';
     await loadEntities({ preserveCollection: true });
-    selected = await getCimmichContextEntity(activeFamily, entityId, { includeArchived });
+    const [detail, plans] = await Promise.all([
+      getCimmichContextEntity(activeFamily, entityId, { includeArchived }),
+      activeFamily === 'places' && selected.entity.placeRole === 'location'
+        ? getCimmichPlacePlans(entityId).then((result) => result.items)
+        : Promise.resolve([]),
+    ]);
+    selected = detail;
+    selectedPlacePlans = plans;
   };
 
   const assignAssetsToPlaceChild = async (assetIds: string[], child: CimmichContextEntity) => {
@@ -1674,6 +1698,31 @@
     }
   };
 
+  const saveLocationPlan = async (input: Omit<CimmichPlacePlanSaveInput, 'commandId'>) => {
+    if (!selected || activeFamily !== 'places' || selected.entity.placeRole !== 'location') {
+      return;
+    }
+    isSaving = true;
+    error = null;
+    try {
+      const result = await saveCimmichPlacePlan(selected.entity.entityId, {
+        ...input,
+        commandId: createCimmichContextCommandId('location-plan-save'),
+      });
+      selected = result.detail;
+      selectedPlacePlans = result.plans;
+      undoDecisionId = result.undo.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('location-plan-undo') : '';
+      undoLabel = 'Undo Plan change';
+    } catch (error_) {
+      const nextError = asError(error_);
+      error = nextError;
+      throw nextError;
+    } finally {
+      isSaving = false;
+    }
+  };
+
   const changeContextCover = async (sourceAssetId: string | null) => {
     if (!selected || !['event', 'object', 'place'].includes(selected.entity.entityKind)) {
       return;
@@ -1731,6 +1780,10 @@
         result.detail.entity.entityId === selectedEntityId
           ? result.detail
           : await getCimmichContextEntity(activeFamily, selectedEntityId);
+      if (activeFamily === 'places' && selected.entity.placeRole === 'location') {
+        const plans = await getCimmichPlacePlans(selectedEntityId);
+        selectedPlacePlans = plans.items;
+      }
     } catch (error_) {
       error = asError(error_);
     } finally {
@@ -2239,7 +2292,13 @@
         </button>
       {/if}
 
-      <CimmichContextDetailHero detail={selected} {entities} family={activeFamily} />
+      <CimmichContextDetailHero
+        detail={selected}
+        {entities}
+        family={activeFamily}
+        onOpenPlan={() => selectDetailTab('plan')}
+        plans={selectedPlacePlans}
+      />
     </div>
 
     {#if activeFamily === 'places'}
@@ -2631,6 +2690,17 @@
           />
         {/if}
         <CimmichContextPlaceMap detail={selected} />
+      </div>
+    {:else if activeDetailTab === 'plan' && activeFamily === 'places' && selected.entity.placeRole === 'location'}
+      <div class="mt-7" role="tabpanel" aria-label="Plan">
+        <CimmichPlacePlan
+          children={selectedPlaceChildren}
+          coverSourceAssetId={selected.entity.coverAssetId}
+          onOpenPlace={openEntity}
+          onSave={saveLocationPlan}
+          parent={selected.entity}
+          plans={selectedPlacePlans}
+        />
       </div>
     {:else if activeDetailTab === 'connections'}
       <div role="tabpanel" aria-label="Connections">

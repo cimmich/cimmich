@@ -7,13 +7,14 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('keeps each profile destination compact, reloadable and keyboard navigable', async () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(source).toContain("type ContextDetailTab = 'connections' | 'documents' | 'map' | 'photos';");
+    expect(source).toContain("type ContextDetailTab = 'connections' | 'documents' | 'map' | 'plan' | 'photos';");
     expect(source).toContain("page.url.searchParams.get('tab')");
     expect(source).toContain("url.searchParams.delete('tab')");
     expect(source).toContain("url.searchParams.set('tab', tab)");
     expect(source).toContain('role="tablist"');
     expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End']");
     expect(source).toContain("label: 'Map', value: 'map'");
+    expect(source).toContain("label: 'Plan', value: 'plan'");
     expect(source).toContain("label: 'Connections', value: 'connections'");
     expect(source).toContain("label: 'Documents', value: 'documents'");
   });
@@ -53,6 +54,22 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(map).toContain('The place itself and visible photos that carry location data.');
     expect(map).toContain('Open full map');
     expect(map).toContain('zoom={locatorCenter ? 15 : undefined}');
+  });
+
+  it('gives Locations a real normalized Plan workspace instead of reusing map geometry', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const plan = await read('src/lib/components/cimmich/CimmichPlacePlan.svelte');
+
+    expect(browser).toContain('<CimmichPlacePlan');
+    expect(browser).toContain('saveCimmichPlacePlan');
+    expect(plan).toContain('Blank property');
+    expect(plan).toContain('Blank floor');
+    expect(plan).toContain('Use cover photo');
+    expect(plan).toContain("geometry: { h: 0.2, kind: 'rect'");
+    expect(plan).toContain('Remove from this plan');
+    expect(plan).toContain('Save plan');
+    expect(plan).not.toContain('latitude');
+    expect(plan).not.toContain('longitude');
   });
 
   it('supports subsection painting and bounded bulk photo assignment without hidden limits', async () => {

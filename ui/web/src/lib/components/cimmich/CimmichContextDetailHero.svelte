@@ -1,8 +1,15 @@
 <script lang="ts">
-  import type { CimmichContextDetail, CimmichContextEntity, CimmichContextFamily } from '$lib/services/cimmich.service';
+  import type {
+    CimmichContextDetail,
+    CimmichContextEntity,
+    CimmichContextFamily,
+    CimmichPlacePlan,
+    CimmichPlacePlanGeometry,
+  } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
+  import { SvelteSet } from 'svelte/reactivity';
   import {
     mdiCalendarBlankOutline,
     mdiFloorPlan,
@@ -26,9 +33,11 @@
     detail: CimmichContextDetail;
     entities: CimmichContextEntity[];
     family: CimmichContextFamily;
+    onOpenPlan?: () => void;
+    plans?: CimmichPlacePlan[];
   }
 
-  let { detail, entities, family }: Props = $props();
+  let { detail, entities, family, onOpenPlan, plans = [] }: Props = $props();
   const heroAsset = $derived(
     detail.assets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId) ?? detail.assets[0] ?? null,
   );
@@ -41,12 +50,31 @@
       .filter((entity) => entity.status === 'active' && entity.parentEntityId === detail.entity.entityId)
       .sort((left, right) => left.displayName.localeCompare(right.displayName)),
   );
+  const defaultPlan = $derived(plans.find((plan) => plan.isDefault) ?? plans[0] ?? null);
+  const planItemStyle = (geometry: CimmichPlacePlanGeometry) => {
+    if (geometry.kind === 'rect') {
+      return `left:${geometry.x * 100}%;top:${geometry.y * 100}%;width:${geometry.w * 100}%;height:${geometry.h * 100}%`;
+    }
+    if (geometry.kind === 'point') {
+      return `left:${geometry.x * 100}%;top:${geometry.y * 100}%;width:2rem;height:2rem;transform:translate(-50%,-50%)`;
+    }
+    const xs = geometry.points.map((point) => point.x);
+    const ys = geometry.points.map((point) => point.y);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    const width = Math.max(...xs) - left || 0.01;
+    const height = Math.max(...ys) - top || 0.01;
+    const polygon = geometry.points
+      .map((point) => `${((point.x - left) / width) * 100}% ${((point.y - top) / height) * 100}%`)
+      .join(',');
+    return `left:${left * 100}%;top:${top * 100}%;width:${width * 100}%;height:${height * 100}%;clip-path:polygon(${polygon})`;
+  };
   const placeGeography = $derived.by(() => {
     if (!isPlace || detail.entity.placeRole === 'geography') {
       return null;
     }
     let current: CimmichContextEntity | undefined = detail.entity;
-    const visited = new Set<string>();
+    const visited = new SvelteSet<string>();
     while (current && !visited.has(current.entityId)) {
       visited.add(current.entityId);
       if (current.geographyEntityId) {
@@ -122,13 +150,13 @@
       .filter(Boolean)
       .join('  ·  '),
   );
-  const showMap = $derived(isPlace && hasMappedPlace);
+  const showMap = $derived(isPlace && (hasMappedPlace || detail.entity.placeRole === 'location'));
   let placeVisualView = $state<'map' | 'plan'>('map');
   let shownPlaceId = $state('');
   $effect(() => {
     if (detail.entity.entityId !== shownPlaceId) {
       shownPlaceId = detail.entity.entityId;
-      placeVisualView = 'map';
+      placeVisualView = hasMappedPlace ? 'map' : 'plan';
     }
   });
 </script>
@@ -193,6 +221,7 @@
         <div class="context-detail-visual-switch" role="group" aria-label="Location view">
           <button
             type="button"
+            disabled={!hasMappedPlace}
             aria-pressed={placeVisualView === 'map'}
             class:context-detail-visual-switch--active={placeVisualView === 'map'}
             onclick={() => (placeVisualView = 'map')}>Map</button
@@ -213,12 +242,30 @@
           aria-label={`Plan for ${detail.entity.displayName}`}
         >
           <div class="context-detail-plan-sheet">
-            <span class="context-detail-plan-icon"><Icon icon={mdiFloorPlan} size="30" /></span>
-            <strong>No plan yet</strong>
-            {#if placeChildren.length > 0}
-              <div class="context-detail-plan-places" aria-label="Internal locations ready to place">
-                {#each placeChildren as child (child.entityId)}<span>{child.displayName}</span>{/each}
-              </div>
+            {#if defaultPlan}
+              {#if defaultPlan.backgroundSourceAssetId}
+                <img
+                  class="context-detail-plan-background"
+                  src={getAssetMediaUrl({ id: defaultPlan.backgroundSourceAssetId, size: AssetMediaSize.Preview })}
+                  alt=""
+                />
+              {/if}
+              <div class="context-detail-plan-grid"></div>
+              {#each defaultPlan.items as item (item.planItemId)}
+                <span class="context-detail-plan-zone" style={planItemStyle(item.geometry)}>{item.childName}</span>
+              {/each}
+              <button class="context-detail-plan-open" type="button" onclick={() => onOpenPlan?.()}>
+                {defaultPlan.displayName}
+              </button>
+            {:else}
+              <span class="context-detail-plan-icon"><Icon icon={mdiFloorPlan} size="30" /></span>
+              <strong>No plan yet</strong>
+              {#if placeChildren.length > 0}
+                <div class="context-detail-plan-places" aria-label="Internal locations ready to place">
+                  {#each placeChildren as child (child.entityId)}<span>{child.displayName}</span>{/each}
+                </div>
+              {/if}
+              <button class="context-detail-plan-create" type="button" onclick={() => onOpenPlan?.()}>Make plan</button>
             {/if}
           </div>
         </div>
@@ -457,12 +504,83 @@
   }
 
   .context-detail-plan-sheet {
+    position: relative;
     display: grid;
-    max-width: 22rem;
+    width: 100%;
+    height: 100%;
+    max-width: 32rem;
+    min-height: 172px;
+    place-content: center;
     justify-items: center;
     gap: 10px;
     color: rgb(226 232 240);
     text-align: center;
+  }
+
+  .context-detail-plan-background,
+  .context-detail-plan-grid {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 16px;
+  }
+
+  .context-detail-plan-background {
+    object-fit: cover;
+    opacity: 0.52;
+  }
+
+  .context-detail-plan-grid {
+    border: 1px solid rgb(148 163 184 / 0.2);
+    background-image:
+      linear-gradient(rgb(148 163 184 / 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(148 163 184 / 0.09) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .context-detail-plan-zone {
+    position: absolute;
+    z-index: 1;
+    display: grid;
+    min-width: 2rem;
+    min-height: 2rem;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgb(125 211 252 / 0.85);
+    border-radius: 9px;
+    padding: 4px;
+    color: white;
+    background: rgb(2 132 199 / 0.52);
+    box-shadow: 0 5px 16px rgb(0 0 0 / 0.16);
+    font-size: 0.64rem;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .context-detail-plan-open,
+  .context-detail-plan-create {
+    z-index: 2;
+    min-height: 32px;
+    border-radius: 999px;
+    padding: 0 13px;
+    color: white;
+    background: rgb(2 6 23 / 0.76);
+    box-shadow: 0 5px 18px rgb(0 0 0 / 0.2);
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .context-detail-plan-open {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+  }
+
+  .context-detail-plan-create {
+    margin-top: 2px;
+    border: 1px solid rgb(148 163 184 / 0.28);
   }
 
   .context-detail-plan-icon {
