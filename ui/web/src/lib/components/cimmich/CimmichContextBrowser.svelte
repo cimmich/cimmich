@@ -37,6 +37,7 @@
     getCimmichPeople,
     getCimmichPetMedia,
     getCimmichPets,
+    getCimmichVisibleMapAssetBindings,
     searchCimmichAddresses,
     saveCimmichPlacePlan,
     setCimmichEventCover,
@@ -1507,8 +1508,7 @@
       }
       let finalResult = result;
       if (mutation.kind === 'create' && activeFamily === 'events' && result.detail && eventSeedSourceIds.length > 0) {
-        const evidence = await Promise.allSettled(eventSeedSourceIds.map((id) => getCimmichAssetEvidence(id)));
-        const assetIds = evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
+        const assetIds = await getVisibleCimmichAssetIds(eventSeedSourceIds);
         if (assetIds.length !== eventSeedSourceIds.length) {
           throw new Error(
             'The memory was created, but one or more selected photos are no longer available. Try again to reuse this memory and finish linking its photos.',
@@ -1585,6 +1585,14 @@
     }
   };
 
+  const getVisibleCimmichAssetIds = async (sourceAssetIds: string[]) => {
+    const bindings = await getCimmichVisibleMapAssetBindings(sourceAssetIds);
+    return sourceAssetIds.flatMap((sourceAssetId) => {
+      const assetId = bindings.get(sourceAssetId);
+      return assetId ? [assetId] : [];
+    });
+  };
+
   const searchEventFolders = async () => {
     const needle = folderQuery.trim();
     if (needle.length < 2) {
@@ -1596,7 +1604,9 @@
     try {
       const result = await searchAssets({ metadataSearchDto: { originalPath: needle, size: 100, withExif: true } });
       const candidates = result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline);
-      folderSearchAssets = await filterVisibleCimmichAssets(candidates, getCimmichAssetEvidence);
+      const visibleBindings = await getCimmichVisibleMapAssetBindings(candidates.map((asset) => asset.id));
+      const visibleIds = new Set(visibleBindings.keys());
+      folderSearchAssets = candidates.filter((asset) => visibleIds.has(asset.id));
       if (folderSearchAssets.length === 0) {
         folderError = 'No visible folders matched that name or path.';
       }
@@ -1632,7 +1642,9 @@
     const uniqueMatches = matches
       .filter((asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index)
       .slice(0, limit);
-    return filterVisibleCimmichAssets(uniqueMatches, getCimmichAssetEvidence);
+    const visibleBindings = await getCimmichVisibleMapAssetBindings(uniqueMatches.map((asset) => asset.id));
+    const visibleIds = new Set(visibleBindings.keys());
+    return uniqueMatches.filter((asset) => visibleIds.has(asset.id));
   };
 
   const addEventFolder = async (folderPath: string) => {
@@ -1918,8 +1930,14 @@
     isSaving = true;
     assetError = '';
     try {
-      const evidence = await Promise.allSettled(selectedSourceIds.map((id) => getCimmichAssetEvidence(id)));
-      const assetIds = evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
+      const evidence =
+        activeFamily === 'events'
+          ? []
+          : await Promise.allSettled(selectedSourceIds.map((id) => getCimmichAssetEvidence(id)));
+      const assetIds =
+        activeFamily === 'events'
+          ? await getVisibleCimmichAssetIds(selectedSourceIds)
+          : evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
       if (assetIds.length !== selectedSourceIds.length) {
         assetError =
           'One or more selected photos are no longer available in this viewing mode. Refresh the picker and try again.';
@@ -1971,8 +1989,7 @@
         toastManager.info('Source folders are already up to date.');
         return;
       }
-      const evidence = await Promise.allSettled(additions.map((asset) => getCimmichAssetEvidence(asset.id)));
-      const assetIds = evidence.flatMap((item) => (item.status === 'fulfilled' ? [item.value.asset_id] : []));
+      const assetIds = await getVisibleCimmichAssetIds(additions.map((asset) => asset.id));
       if (assetIds.length !== additions.length) {
         throw new Error('One or more new folder photos are unavailable in this viewing mode. Nothing was added.');
       }
