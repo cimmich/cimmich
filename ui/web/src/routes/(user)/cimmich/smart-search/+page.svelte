@@ -36,6 +36,8 @@
   let documentLensQuery = $state('');
   let photoTab = $state<HTMLButtonElement>();
   let documentTab = $state<HTMLButtonElement>();
+  let searchInput = $state<HTMLInputElement>();
+  let failedQuery = $state('');
   let searchGeneration = 0;
 
   const selectLens = (nextLens: 'documents' | 'photos') => {
@@ -78,6 +80,7 @@
     const generation = ++searchGeneration;
     isSearching = true;
     error = null;
+    failedQuery = '';
     result = null;
     try {
       const next = await searchCimmichSmart(nextQuery, 120);
@@ -91,6 +94,7 @@
         return;
       }
       error = asError(error_);
+      failedQuery = nextQuery;
       result = null;
     } finally {
       if (generation === searchGeneration) {
@@ -162,6 +166,7 @@
               size="22"
             />
             <input
+              bind:this={searchInput}
               class="min-h-12 w-full rounded-full border border-gray-300 bg-white pr-28 pl-13 text-base shadow-sm transition outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 dark:border-gray-700 dark:bg-gray-900"
               bind:value={query}
               aria-describedby={validationError ? 'smart-search-error' : undefined}
@@ -204,8 +209,27 @@
           class="mx-auto mt-8 max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
           role="alert"
         >
-          <p class="font-semibold">{error.message}</p>
-          <p class="mt-1 text-xs opacity-75">{error.code}</p>
+          <p class="font-semibold">We couldn't finish that search.</p>
+          <p class="mt-1">{error.message}</p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button
+              class="min-h-11 rounded-full bg-red-800 px-4 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:bg-red-200 dark:text-red-950"
+              type="button"
+              onclick={() => void search(undefined, failedQuery || query.trim())}>Try again</button
+            >
+            <button
+              class="min-h-11 rounded-full border border-red-300 px-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:border-red-800"
+              type="button"
+              onclick={() => {
+                query = failedQuery || query;
+                void searchInput?.focus();
+              }}>Edit search</button
+            >
+          </div>
+          <details class="mt-3 text-xs opacity-75">
+            <summary class="min-h-11 cursor-pointer py-3">Technical details</summary>
+            <p>{error.code}</p>
+          </details>
         </div>
       {/if}
 
