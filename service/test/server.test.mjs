@@ -1000,6 +1000,47 @@ test("Person projection pages are additive to legacy limit responses", async () 
   ]);
 });
 
+test("Cimmich tag asset search routes multi-family intersections to the repository", async () => {
+  const calls = [];
+  const result = {
+    items: [{ captureTime: null, sourceAssetId: "asset-one" }],
+    schemaVersion: "cimmich.tag-assets.v1",
+    total: 1,
+  };
+  await withServer(
+    {
+      tagAssets: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(`${root}/v1/tag-assets/search`, {
+        body: JSON.stringify({
+          limit: 5000,
+          tags: [
+            { entityId: "person-one", family: "people" },
+            { entityId: "event-one", family: "events" },
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [
+    {
+      limit: 5000,
+      tags: [
+        { entityId: "person-one", family: "people" },
+        { entityId: "event-one", family: "events" },
+      ],
+    },
+  ]);
+});
+
 test("Asset display exposes Cimmich recovery mapping for stale photo links", async () => {
   const calls = [];
   await withServer(

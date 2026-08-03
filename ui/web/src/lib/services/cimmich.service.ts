@@ -1151,6 +1151,14 @@ export type CimmichPersonAssetPage = CimmichPersonProjectionPage<CimmichPersonAs
   };
 };
 
+export type CimmichTagAssetFamily = 'people' | 'pets' | 'places' | 'things' | 'events';
+
+export type CimmichTagAssetResult = {
+  items: Array<{ captureTime: string | null; sourceAssetId: string }>;
+  schemaVersion: 'cimmich.tag-assets.v1';
+  total: number;
+};
+
 export type CimmichIdentityFaceSummary = {
   all: number;
   head: number;
@@ -3707,6 +3715,12 @@ export const getCimmichPersonAssetsPage = (
   request<CimmichPersonAssetPage>(
     `/v1/people/${encodeURIComponent(personId)}/assets?pageSize=${Math.max(1, Math.min(250, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${associationType ? `&associationType=${encodeURIComponent(associationType)}` : ''}`,
   );
+
+export const getCimmichTagAssets = (tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>, limit = 5000) =>
+  request<CimmichTagAssetResult>('/v1/tag-assets/search', {
+    body: JSON.stringify({ limit, tags }),
+    method: 'POST',
+  });
 
 export const getCimmichPersonCandidates = async (personId: string, limit = 5000) => {
   const result = await request<{ items: CimmichIdentityCandidate[] }>(

@@ -12,12 +12,10 @@
   import type { Viewport } from '$lib/managers/timeline-manager/types';
   import {
     getCimmichContextEntities,
-    getCimmichContextEntity,
     getCimmichPeople,
     getCimmichPersonAssetsPage,
-    getCimmichPetMedia,
     getCimmichPets,
-    type CimmichContextFamily,
+    getCimmichTagAssets,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -29,15 +27,12 @@
   import {
     familyLabel,
     filterTagOptions,
-    intersectAssetIds,
     normalTagOptions,
     type CimmichTagFamily,
     type TagBrowserOption,
   } from './tag-browser';
 
   type TagSource = 'cimmich' | 'normal';
-  type CimmichAssetReference = { captureTime: string | null; sourceAssetId: string };
-
   interface Props {
     initialPath?: string;
     tags: TagResponseDto[];
@@ -174,35 +169,6 @@
     }
   };
 
-  const loadCimmichReferences = async (option: TagBrowserOption): Promise<CimmichAssetReference[]> => {
-    if (option.family === 'people') {
-      const references: CimmichAssetReference[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await getCimmichPersonAssetsPage(option.entityId, 250, cursor);
-        references.push(
-          ...page.items.map((asset) => ({
-            captureTime: asset.capture_time,
-            sourceAssetId: asset.sourceAssetId,
-          })),
-        );
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor);
-      return references;
-    }
-    if (option.family === 'pets') {
-      const assets = await getCimmichPetMedia(option.entityId);
-      return assets.map((asset) => ({
-        captureTime: asset.capture_time,
-        sourceAssetId: asset.sourceAssetId,
-      }));
-    }
-    const family = (option.family === 'things' ? 'objects' : option.family) as CimmichContextFamily;
-    const detail = await getCimmichContextEntity(family, option.entityId);
-    const assets = family === 'places' && detail.subtreeAssets?.length ? detail.subtreeAssets : detail.assets;
-    return assets.map((asset) => ({ captureTime: asset.captureTime, sourceAssetId: asset.sourceAssetId }));
-  };
-
   const fetchAssets = async (ids: string[], generation: number) => {
     const loaded: AssetResponseDto[] = [];
     for (let offset = 0; offset < ids.length; offset += 12) {
@@ -253,25 +219,14 @@
       resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
       return;
     }
-    const groups = await Promise.all(selectedOptions.map((option) => loadCimmichReferences(option)));
+    const intersection = await getCimmichTagAssets(
+      selectedOptions.map((option) => ({ entityId: option.entityId, family: option.family as CimmichTagFamily })),
+    );
     if (generation !== resultGeneration) {
       return;
     }
-    const captureTimes = new SvelteMap<string, string>();
-    for (const group of groups) {
-      for (const asset of group) {
-        if (
-          asset.captureTime &&
-          (!captureTimes.has(asset.sourceAssetId) || asset.captureTime > captureTimes.get(asset.sourceAssetId)!)
-        ) {
-          captureTimes.set(asset.sourceAssetId, asset.captureTime);
-        }
-      }
-    }
-    matchedCimmichIds = intersectAssetIds(groups.map((group) => group.map((asset) => asset.sourceAssetId))).sort(
-      (left, right) => (captureTimes.get(right) ?? '').localeCompare(captureTimes.get(left) ?? ''),
-    );
-    totalMatches = matchedCimmichIds.length;
+    matchedCimmichIds = intersection.items.map((asset) => asset.sourceAssetId);
+    totalMatches = intersection.total;
     loadedCimmichSourceCount = Math.min(120, matchedCimmichIds.length);
     resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
   };

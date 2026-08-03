@@ -198,6 +198,41 @@ const decodePersonPageCursor = (value, { kind, personId, visibleRank }) => {
     );
   }
 };
+const tagAssetFamilies = new Set([
+  "people",
+  "pets",
+  "places",
+  "things",
+  "events",
+]);
+const cleanTagAssetSelection = (value) => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 12) {
+    throw typedError(
+      "Choose between 1 and 12 Cimmich tags",
+      400,
+      "TAG_ASSET_SELECTION_INVALID",
+    );
+  }
+  const selected = value.map((item) => ({
+    entityId: String(item?.entityId || "").trim(),
+    family: String(item?.family || "").trim(),
+  }));
+  if (
+    selected.some(
+      (item) => !item.entityId || !tagAssetFamilies.has(item.family),
+    )
+  ) {
+    throw typedError(
+      "Every Cimmich tag needs a supported family and entityId",
+      400,
+      "TAG_ASSET_SELECTION_INVALID",
+    );
+  }
+  const deduplicated = new Map(
+    selected.map((item) => [`${item.family}:${item.entityId}`, item]),
+  );
+  return [...deduplicated.values()];
+};
 const cleanCommandId = (value) => {
   const commandId = String(value || "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,119}$/.test(commandId)) {
@@ -6090,6 +6125,114 @@ export const createCimmichRepository = (
         slotKind,
       });
       return { ...presentation, body: null };
+    },
+
+    async tagAssets({ limit = 5000, tags }) {
+      const selected = cleanTagAssetSelection(tags);
+      const families = selected.map((item) => item.family);
+      const entityIds = selected.map((item) => item.entityId);
+      const tagKeys = selected.map((item) => `${item.family}:${item.entityId}`);
+      const visibleRank = presentationRank();
+      const rows = await sql`
+      WITH RECURSIVE selected_tags(tag_key, family, entity_id) AS (
+        SELECT * FROM unnest(
+          ${tagKeys}::text[], ${families}::text[], ${entityIds}::text[]
+        )
+      ), hidden_assets AS MATERIALIZED (
+        SELECT object_id
+        FROM cimmich_visibility_object
+        WHERE object_scope = 'asset'
+          AND CASE visibility_tier
+            WHEN 'personal' THEN 1
+            WHEN 'private' THEN 2
+            ELSE 0
+          END > ${visibleRank}
+      ), person_memberships AS MATERIALIZED (
+        SELECT selected.tag_key, association.asset_id
+        FROM selected_tags selected
+        JOIN person_assets association
+          ON association.person_id = selected.entity_id
+          AND association.authority_state = 'accepted'
+        WHERE selected.family IN ('people', 'pets')
+        UNION
+        SELECT selected.tag_key, face.asset_id
+        FROM selected_tags selected
+        JOIN current_face_identity identity
+          ON identity.person_id = selected.entity_id
+          AND identity.state = 'accepted'
+        JOIN face_observation face
+          ON face.face_id = identity.face_id AND face.state = 'valid'
+        WHERE selected.family IN ('people', 'pets')
+        UNION
+        SELECT selected.tag_key, body.asset_id
+        FROM selected_tags selected
+        JOIN current_body_tag tag
+          ON tag.person_id = selected.entity_id AND tag.state = 'accepted'
+        JOIN body_observation body
+          ON body.body_id = tag.body_id AND body.state = 'valid'
+        WHERE selected.family IN ('people', 'pets')
+        UNION
+        SELECT selected.tag_key, presence.asset_id
+        FROM selected_tags selected
+        JOIN current_presence_tag presence
+          ON presence.person_id = selected.entity_id
+          AND presence.state = 'accepted'
+        WHERE selected.family IN ('people', 'pets')
+        UNION
+        SELECT selected.tag_key, head.asset_id
+        FROM selected_tags selected
+        JOIN current_manual_head_tag tag
+          ON tag.subject_id = selected.entity_id
+        JOIN manual_head_observation head ON head.head_id = tag.head_id
+        WHERE selected.family IN ('people', 'pets')
+      ), context_scope(tag_key, family, entity_id) AS (
+        SELECT tag_key, family, entity_id
+        FROM selected_tags
+        WHERE family IN ('places', 'things', 'events')
+        UNION ALL
+        SELECT scope.tag_key, scope.family, child.entity_id
+        FROM context_scope scope
+        JOIN context_entity child ON child.parent_entity_id = scope.entity_id
+        WHERE scope.family = 'places' AND child.status = 'active'
+      ), context_memberships AS MATERIALIZED (
+        SELECT scope.tag_key, association.asset_id
+        FROM context_scope scope
+        JOIN current_context_asset association
+          ON association.entity_id = scope.entity_id
+      ), memberships AS MATERIALIZED (
+        SELECT * FROM person_memberships
+        UNION
+        SELECT * FROM context_memberships
+      ), matching_assets AS MATERIALIZED (
+        SELECT membership.asset_id
+        FROM memberships membership
+        WHERE NOT EXISTS (
+          SELECT 1 FROM hidden_assets hidden
+          WHERE hidden.object_id = membership.asset_id
+        )
+        GROUP BY membership.asset_id
+        HAVING count(DISTINCT membership.tag_key) = ${selected.length}
+      )
+      SELECT asset.asset_id, asset.capture_time,
+        (count(*) OVER ())::int AS total_count
+      FROM matching_assets match
+      JOIN asset ON asset.asset_id = match.asset_id AND asset.state = 'active'
+      ORDER BY asset.capture_time DESC NULLS LAST, asset.asset_id
+      LIMIT ${cleanLimit(limit, 5000, 5000)}
+    `;
+      return {
+        items: rows
+          .map((row) => ({
+            captureTime: row.capture_time
+              ? new Date(row.capture_time).toISOString()
+              : null,
+            sourceAssetId:
+              bridgeFields(bridge, row.asset_id).sourceAssetId || null,
+          }))
+          .filter((item) => item.sourceAssetId),
+        schemaVersion: "cimmich.tag-assets.v1",
+        total: Number(rows[0]?.total_count || 0),
+      };
     },
 
     async personAssets({

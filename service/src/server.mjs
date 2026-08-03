@@ -2979,6 +2979,20 @@ export const createCimmichServer = ({
       const personAssetsMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/assets$/,
       );
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/tag-assets/search"
+      ) {
+        requireProjection("person_assets");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.tagAssets({ limit: body.limit, tags: body.tags }),
+          allowedOrigin,
+        );
+        return;
+      }
       const personPresentationMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/presentation$/,
       );
