@@ -1,6 +1,8 @@
 <script lang="ts">
   import { afterNavigate, goto, invalidateAll } from '$app/navigation';
+  import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import UserPageLayout, { headerId } from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import GalleryViewer from '$lib/components/shared-components/gallery-viewer/GalleryViewer.svelte';
@@ -40,10 +42,11 @@
   let { data }: Props = $props();
 
   const viewport: Viewport = $state({ width: 0, height: 0 });
+  const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
 
   const handleNavigateToFolder = (folderName: string) => navigateToView(joinPaths(data.tree.path, folderName));
 
-  const getLinkForPath = (path: string) => Route.folders({ path });
+  const getLinkForPath = (path: string) => Route.folders({ path, organise: isOrganiseContext ? 1 : undefined });
 
   afterNavigate(() => {
     assetMultiSelectManager.clear();
@@ -92,25 +95,30 @@
     </Sidebar>
   {/snippet}
 
-  <Breadcrumbs node={data.tree} icon={mdiFolderHome} title={$t('folders')} getLink={getLinkForPath} />
-
-  <section class="mt-2 h-[calc(100%-(--spacing(25)))] immich-scrollbar overflow-auto">
-    <TreeItemThumbnails items={data.tree.children} icon={mdiFolder} onClick={handleNavigateToFolder} />
-
-    <!-- Assets -->
-    {#if data.pathAssets && data.pathAssets.length > 0}
-      <div bind:clientHeight={viewport.height} bind:clientWidth={viewport.width} class="mt-2">
-        <GalleryViewer
-          assets={data.pathAssets}
-          assetInteraction={assetMultiSelectManager}
-          {viewport}
-          showAssetName={true}
-          pageHeaderOffset={54}
-          onReload={triggerAssetUpdate}
-        />
-      </div>
+  <div class="flex h-full min-h-0 flex-col">
+    {#if isOrganiseContext}
+      <CimmichOrganiseModeSwitch />
     {/if}
-  </section>
+    <Breadcrumbs node={data.tree} icon={mdiFolderHome} title={$t('folders')} getLink={getLinkForPath} />
+
+    <section class="mt-2 min-h-0 flex-1 immich-scrollbar overflow-auto">
+      <TreeItemThumbnails items={data.tree.children} icon={mdiFolder} onClick={handleNavigateToFolder} />
+
+      <!-- Assets -->
+      {#if data.pathAssets && data.pathAssets.length > 0}
+        <div bind:clientHeight={viewport.height} bind:clientWidth={viewport.width} class="mt-2">
+          <GalleryViewer
+            assets={data.pathAssets}
+            assetInteraction={assetMultiSelectManager}
+            {viewport}
+            showAssetName={true}
+            pageHeaderOffset={54}
+            onReload={triggerAssetUpdate}
+          />
+        </div>
+      {/if}
+    </section>
+  </div>
 </UserPageLayout>
 
 {#if assetMultiSelectManager.selectionActive}

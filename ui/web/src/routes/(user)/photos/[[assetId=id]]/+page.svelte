@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -49,6 +50,7 @@
   let cimmichSubjectAssetLoad = 0;
   const cimmichPersonId = $derived(page.url.searchParams.get('cimmichPersonId') || '');
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
+  const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
   const cimmichSubjectId = $derived(cimmichPersonId || cimmichPetId);
   const options = $derived({
     visibility: AssetVisibility.Timeline,
@@ -132,24 +134,35 @@
 </script>
 
 <UserPageLayout hideNavbar={assetMultiSelectManager.selectionActive} scrollbar={false}>
-  {#if cimmichSubjectAssetsReady}
-    <Timeline
-      enableRouting={true}
-      bind:timelineManager
-      {options}
-      assetInteraction={assetMultiSelectManager}
-      removeAction={AssetAction.ARCHIVE}
-      onEscape={handleEscape}
-      withStacked
-    >
-      {#if authManager.preferences.memories.enabled}
-        <ImageCarousel {items} />
+  <div class="flex h-full min-h-0 flex-col">
+    {#if isOrganiseContext}
+      <CimmichOrganiseModeSwitch />
+    {/if}
+    <div class="min-h-0 flex-1">
+      {#if cimmichSubjectAssetsReady}
+        <Timeline
+          enableRouting={true}
+          bind:timelineManager
+          {options}
+          assetInteraction={assetMultiSelectManager}
+          removeAction={AssetAction.ARCHIVE}
+          onEscape={handleEscape}
+          withStacked
+        >
+          {#if authManager.preferences.memories.enabled}
+            <ImageCarousel {items} />
+          {/if}
+          {#snippet empty()}
+            <EmptyPlaceholder
+              text={$t('no_assets_message')}
+              onClick={() => openFileUploadDialog()}
+              class="mx-auto mt-10"
+            />
+          {/snippet}
+        </Timeline>
       {/if}
-      {#snippet empty()}
-        <EmptyPlaceholder text={$t('no_assets_message')} onClick={() => openFileUploadDialog()} class="mx-auto mt-10" />
-      {/snippet}
-    </Timeline>
-  {/if}
+    </div>
+  </div>
 </UserPageLayout>
 
 {#if assetMultiSelectManager.selectionActive}

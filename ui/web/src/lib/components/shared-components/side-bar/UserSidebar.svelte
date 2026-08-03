@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import BottomInfo from '$lib/components/shared-components/side-bar/BottomInfo.svelte';
   import RecentAlbums from '$lib/components/shared-components/side-bar/RecentAlbums.svelte';
   import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
@@ -40,10 +41,18 @@
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { fly } from 'svelte/transition';
+
+  const isOrganiseContext = () => page.url.searchParams.has('organise');
 </script>
 
 <Sidebar ariaLabel={$t('primary')}>
-  <NavbarItem title={$t('photos')} href={Route.photos()} icon={mdiImageMultipleOutline} activeIcon={mdiImageMultiple} />
+  <NavbarItem
+    title={$t('photos')}
+    href={Route.photos()}
+    icon={mdiImageMultipleOutline}
+    activeIcon={mdiImageMultiple}
+    isActive={() => !isOrganiseContext() && page.url.pathname.startsWith(Route.photos())}
+  />
 
   {#if featureFlagsManager.value.search}
     <NavbarItem title={$t('explore')} href={Route.explore()} icon={mdiMagnify} />
@@ -62,6 +71,7 @@
     href={Route.cimmichHome()}
     icon={mdiAccountMultipleOutline}
     activeIcon={mdiAccountMultiple}
+    isActive={() => isOrganiseContext() || page.url.pathname.startsWith(Route.cimmich())}
     bind:expanded={$cimmichDropdown}
     items={[
       { title: 'People', href: Route.cimmichPeople(), icon: mdiAccountOutline, activeIcon: mdiAccount },
@@ -70,7 +80,12 @@
       { title: 'Things', href: Route.cimmichThings(), icon: mdiPackageVariantClosed },
       { title: 'Events', href: Route.cimmichEvents(), icon: mdiImageMultipleOutline, activeIcon: mdiImageMultiple },
       { title: 'Documents', href: Route.cimmichDocuments(), icon: mdiFileDocumentOutline },
-      { title: 'Organise', href: Route.cimmichOrganise(), icon: mdiTuneVariant },
+      {
+        title: 'Organise',
+        href: Route.cimmichOrganise(),
+        icon: mdiTuneVariant,
+        isActive: () => isOrganiseContext() || page.url.pathname.startsWith(Route.cimmichOrganise()),
+      },
       { title: 'Smart Search', href: Route.cimmichSmartSearch(), icon: mdiTextSearch },
     ]}
   />
@@ -94,6 +109,7 @@
     title={$t('albums')}
     href={Route.albums()}
     icon={{ icon: mdiImageAlbum, flipped: true }}
+    isActive={() => !isOrganiseContext() && page.url.pathname.startsWith(Route.albums())}
     bind:expanded={$recentAlbumsDropdown}
   >
     {#snippet items()}
@@ -104,7 +120,12 @@
   </NavbarItem>
 
   {#if authManager.preferences.tags.enabled && authManager.preferences.tags.sidebarWeb}
-    <NavbarItem title={$t('tags')} href={Route.tags()} icon={{ icon: mdiTagMultipleOutline, flipped: true }} />
+    <NavbarItem
+      title={$t('tags')}
+      href={Route.tags()}
+      icon={{ icon: mdiTagMultipleOutline, flipped: true }}
+      isActive={() => !isOrganiseContext() && page.url.pathname.startsWith(Route.tags())}
+    />
   {/if}
 
   {#if authManager.preferences.recentlyAdded.sidebarWeb}
@@ -116,7 +137,12 @@
   {/if}
 
   {#if authManager.preferences.folders.enabled && authManager.preferences.folders.sidebarWeb}
-    <NavbarItem title={$t('folders')} href={Route.folders()} icon={{ icon: mdiFolderOutline, flipped: true }} />
+    <NavbarItem
+      title={$t('folders')}
+      href={Route.folders()}
+      icon={{ icon: mdiFolderOutline, flipped: true }}
+      isActive={() => !isOrganiseContext() && page.url.pathname.startsWith(Route.folders())}
+    />
   {/if}
 
   <NavbarItem title={$t('utilities')} href={Route.utilities()} icon={mdiToolboxOutline} activeIcon={mdiToolbox} />
