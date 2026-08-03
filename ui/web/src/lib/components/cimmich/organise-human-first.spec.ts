@@ -25,7 +25,7 @@ describe('human-first Organise information architecture', () => {
     expect(source).not.toContain('Things');
   });
 
-  it('keeps the switch persistent in every native mode and preserves nested folder and tag browsing', async () => {
+  it('keeps the switch persistent in every native mode and preserves folder paths and tag hierarchy', async () => {
     const [photos, folders, tags, albums, sidebar] = await Promise.all([
       read('src/routes/(user)/photos/[[assetId=id]]/+page.svelte'),
       read('src/routes/(user)/folders/[[photos=photos]]/[[assetId=id]]/+page.svelte'),
@@ -39,7 +39,8 @@ describe('human-first Organise information architecture', () => {
       expect(mode).toContain('<CimmichOrganiseModeSwitch />');
     }
     expect(folders).toContain('Route.folders({ path, organise: isOrganiseContext ? 1 : undefined })');
-    expect(tags).toContain('Route.tags({ path, organise: isOrganiseContext ? 1 : undefined })');
+    expect(tags).toContain('<CimmichTagBrowser {tags} initialPath={data.path} />');
+    expect(await read('src/lib/components/cimmich/tag-browser.ts')).toContain('label: tag.value');
     expect(sidebar).toContain('isActive: () => isOrganiseContext()');
   });
 
