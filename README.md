@@ -27,7 +27,7 @@ GPT-5.6 Sol**.
 
 [Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich-with-fictional-data) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
-[Check release proof](docs/RELEASE_READINESS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
+[Check release proof](docs/RELEASE_READINESS.md) · [Review the Community Preview journeys](docs/COMMUNITY_PREVIEW_JOURNEYS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
 [Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Community conduct](CODE_OF_CONDUCT.md)
 
