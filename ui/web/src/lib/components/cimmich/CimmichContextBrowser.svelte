@@ -25,7 +25,6 @@
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
   import { focusTrap } from '$lib/actions/focus-trap';
-  import { filterVisibleCimmichAssets } from './asset-picker-visibility';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
     CimmichServiceError,
@@ -1606,7 +1605,9 @@
     try {
       const result = await searchAssets({ metadataSearchDto: { size: 80, withExif: true } });
       const recent = result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline);
-      libraryAssets = await filterVisibleCimmichAssets(recent, getCimmichAssetEvidence);
+      const visibleBindings = await getCimmichVisibleMapAssetBindings(recent.map((asset) => asset.id));
+      const visibleIds = new Set(visibleBindings.keys());
+      libraryAssets = recent.filter((asset) => visibleIds.has(asset.id));
       libraryLoaded = true;
     } catch {
       assetError = 'Your library could not be loaded. Nothing has changed.';
