@@ -27,6 +27,49 @@ Release evidence must be produced from one clean immutable commit and include:
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
 
+## Community Preview Candidate 0 gate closure — 2026-08-03
+
+The public candidate now carries one [user-journey acceptance map](COMMUNITY_PREVIEW_JOURNEYS.md)
+and one release contract. The immutable commit, tree and bundle checksums are
+recorded in the external release receipt after both beginner bundles are built
+from the clean tree; keeping that receipt outside the bundle avoids a circular
+artifact hash.
+
+The final source gates are:
+
+- publication scan: pass across 1,698 tracked files;
+- service: 823 passed, 2 skipped, 0 failed;
+- web: 957 passed, 2 skipped, 0 failed;
+- service syntax, format and lint: pass;
+- web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
+  production build: pass;
+- migration runner: schema 119/patch 1, including explicit Public Beta Patch 6
+  schema-75 forward-upgrade with representative assets, People and Faces
+  retained;
+- complete synthetic lifecycle: pass;
+- actual stock Immich 3.1.0 media/provider lifecycle: pass;
+- companion install, preview/import, restart, backup, portable restore,
+  disable and removal with Immich remaining ready: pass;
+- public-demo fresh start, interrupted-state recovery, adversarial restore
+  rejection, stop/restart/down preservation, portable schema-119 restore and
+  residue-free destroy: pass; and
+- deterministic Cedar House bootstrap replay: 51 assets, 9 People, 12
+  contexts, 5 Documents, 4 manual tags and 16 non-standard asset overrides.
+
+Signed-in walkthrough proof covers every Cimmich navigation section, all five
+Organise modes, Cimmich/Normal Tags, multi-tag photo intersection, Event copy,
+save-another, hierarchy, connections and multi-folder admission, the newcomer
+setup state and Smart Search failure/retry recovery. Desktop and 390 px phone
+reflow have no page-level horizontal overflow; keyboard tab switching and the
+tested skip-link/dialog focus contracts pass. Required understanding does not
+depend on motion and Cimmich's animated People/Pet treatments include
+reduced-motion alternatives.
+
+The embedded acceptance browser cannot assert a native browser zoom percentage.
+Its equivalent 640 px reflow stress and phone-width proof pass; one native 200%
+zoom smoke remains an operator pre-publication check rather than a claimed
+automated result.
+
 ## Current source audit addendum — 2026-08-01
 
 The current schema-119/patch-1 candidate begins from
