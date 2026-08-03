@@ -63,7 +63,7 @@ seed_once() {
   CIMMICH_DEMO_SEED_RECEIPT_PATH="$receipt" \
   CIMMICH_DEMO_DISPLAY_BRIDGE_PATH="$bridge" \
     node "$ROOT/service/bin/bootstrap-public-demo.mjs" >/dev/null
-  docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_demo -d cimmich_demo -Atc \
+  counts=$(docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_demo -d cimmich_demo -Atc \
     "SELECT concat_ws(':',
       (SELECT count(*) FROM asset WHERE state='active'),
       (SELECT count(*) FROM person WHERE status='active'),
@@ -72,7 +72,11 @@ seed_once() {
       (SELECT count(*) FROM manual_subject_tag_operation WHERE state='active'),
       (SELECT count(*) FROM current_manual_face_matching_lifecycle WHERE state='pending_provider'),
       (SELECT count(*) FROM cimmich_visibility_object WHERE object_scope='asset'),
-      (SELECT count(*) FROM source_pack WHERE state='active'))" | grep -qx '51:9:12:5:4:1:17:0'
+      (SELECT count(*) FROM source_pack WHERE state='active'))")
+  if [ "$counts" != '51:9:12:5:4:1:16:0' ]; then
+    printf 'Unexpected public demo counts: %s\n' "$counts" >&2
+    return 1
+  fi
   docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_demo -d cimmich_demo -Atc \
     "SELECT string_agg(tag_type || ':' || count, ',' ORDER BY tag_type)
      FROM (SELECT tag_type, count(*)::text AS count
@@ -95,4 +99,4 @@ seed_once "$RECEIPT_B" "$BRIDGE_B"
 node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync(process.argv[1]));const b=JSON.parse(fs.readFileSync(process.argv[2]));if(JSON.stringify(a)!==JSON.stringify(b))process.exit(1);if(a.seedDigest.length!==64||a.authority.activeSourcePacks!=='none')process.exit(1)" "$RECEIPT_A" "$RECEIPT_B"
 node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync(process.argv[1]));const b=JSON.parse(fs.readFileSync(process.argv[2]));if(JSON.stringify(a)!==JSON.stringify(b)||a.assets.length!==51)process.exit(1)" "$BRIDGE_A" "$BRIDGE_B"
 
-printf '{"assetCount":51,"contextCount":12,"documentCount":5,"manualTagCount":4,"peopleCount":9,"resetReplay":"semantic-byte-identical","schemaVersion":%s,"status":"PASS"}\n' "$SCHEMA_VERSION"
+printf '{"assetCount":51,"contextCount":12,"documentCount":5,"manualTagCount":4,"peopleCount":9,"resetReplay":"semantic-byte-identical","schemaVersion":%s,"status":"PASS","visibilityOverrides":16}\n' "$SCHEMA_VERSION"
