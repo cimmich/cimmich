@@ -221,14 +221,15 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(collection).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(collection).toContain('grid-template-rows: minmax(0, 1fr);');
     expect(collection).toContain('.context-atlas-map {\n      height: 100%;\n      min-height: 0;');
-    expect(collection).toContain('showPlaceMarkerLabels={false}');
+    expect(collection).toContain('placeMarkerLabelMinZoom={12}');
     expect(collection).not.toContain('aria-label="Place hierarchy"');
     expect(collection).not.toContain('class="context-place-row"');
     expect(map).toContain('cluster={{ radius: 42, maxZoom: 15 }}');
     expect(map).toContain('handlePlaceClusterClick(event.feature, map)');
     expect(map).toContain('mapSource.getClusterExpansionZoom(clusterId)');
+    expect(map).toContain('showPlaceMarkerLabels && currentMapZoom >= placeMarkerLabelMinZoom');
     expect(map).toContain('<span class="sr-only">{feature.properties?.name}</span>');
-    expect(nativeMap).toContain('showPlaceMarkerLabels={false}');
+    expect(nativeMap).toContain('placeMarkerLabelMinZoom={12}');
   });
 
   it('treats Place geometry as optional map detail and puts routes in Events', async () => {

@@ -124,7 +124,7 @@
               placeAreas={cimmichPlaceProjection.areas}
               placeMarkers={cimmichPlaceProjection.markers}
               showSatelliteControl
-              showPlaceMarkerLabels={false}
+              placeMarkerLabelMinZoom={12}
               visibilityFiltered
               zoom={requestedCimmichPlaceCenter ? 15 : undefined}
             />
