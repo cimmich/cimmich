@@ -50,7 +50,7 @@ describe('Place, Thing and Event profile information architecture', () => {
 
     expect(source).toContain('class="context-place-child-card group relative');
     expect(source).toContain('class="absolute inset-0 size-full object-cover');
-    expect(source).toContain("'bg-gradient-to-t from-black/85 via-black/10 to-black/15'");
+    expect(source).toContain("'bg-linear-to-t from-black/85 via-black/10 to-black/15'");
     expect(source).toContain('class="absolute inset-x-0 bottom-0 p-4 text-white drop-shadow-sm"');
     expect(source).not.toContain('class="relative h-28 overflow-hidden bg-gray-100 dark:bg-gray-800"');
   });
@@ -210,6 +210,16 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('selectedGeographyGroupEntityIds');
     expect(browser).toContain('Add subdivision');
     expect(browser).toContain('currentScope={selectedIsGeographyGroup');
+  });
+
+  it('bounds the desktop Places atlas independently of its scrollable hierarchy rail', async () => {
+    const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+
+    expect(collection).toContain('height: clamp(520px, calc(100dvh - 190px), 760px);');
+    expect(collection).toContain('grid-template-rows: minmax(0, 1fr);');
+    expect(collection).toContain('.context-atlas-map {\n      height: 100%;\n      min-height: 0;');
+    expect(collection).toContain('.context-place-rail {\n      height: 100%;\n      overflow: hidden;');
+    expect(collection).toContain('class="min-h-0 overflow-y-auto p-2"');
   });
 
   it('treats Place geometry as optional map detail and puts routes in Events', async () => {
