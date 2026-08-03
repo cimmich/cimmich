@@ -16,6 +16,10 @@ const legacyProductName = new RegExp(
 // Hyphen/underscore separators count: a kebab-case id once slipped through a
 // space-only pattern into the shipped bundle.
 const internalProductLabel = /\brui\b|booze[_ -]cruise/i;
+// The publication policy must name the private/internal strings it rejects.
+// Exempt only that scanner from this overlapping name guard; the scanner runs
+// independently and excludes itself from its own repository scan.
+const internalLabelPolicyFiles = new Set(["tools/run_publication_scan.sh"]);
 
 // Only authored text sources are scanned: generated directories (local
 // __pycache__, node_modules) and binary media would produce untracked-file
@@ -84,10 +88,12 @@ test("public product and machine surfaces use Cimmich as the canonical name", as
       legacyProductName,
       `legacy product name in source: ${relative}`,
     );
-    assert.doesNotMatch(
-      source,
-      internalProductLabel,
-      `internal product label in source: ${relative}`,
-    );
+    if (!internalLabelPolicyFiles.has(relative)) {
+      assert.doesNotMatch(
+        source,
+        internalProductLabel,
+        `internal product label in source: ${relative}`,
+      );
+    }
   }
 });
