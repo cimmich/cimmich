@@ -26,11 +26,23 @@ export const eventAssetBelongsToFolder = (asset: Pick<AssetResponseDto, 'origina
 
 export type EventFolderCandidate = { assetCount: number; label: string; path: string };
 
+// Immich-managed uploads use content-addressed storage paths such as
+// /data/upload/<library UUID>/<hash>/<hash>. They are implementation details,
+// not folders a person organised, so presenting them as Event sources creates
+// a wall of meaningless hexadecimal names. External-library paths remain
+// available unchanged.
+export const isMeaningfulEventFolder = (path: string) => {
+  const normalized = normalizeSlashes(path).toLowerCase();
+  return !/\/upload\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{2}\/[0-9a-f]{2}(?:\/|$)/.test(
+    normalized,
+  );
+};
+
 export const eventFolderCandidates = (assets: Array<Pick<AssetResponseDto, 'originalPath'>>) => {
   const counts = new Map<string, number>();
   for (const asset of assets) {
     const path = eventAssetFolder(asset);
-    if (path) {
+    if (path && isMeaningfulEventFolder(path)) {
       counts.set(path, (counts.get(path) ?? 0) + 1);
     }
   }
