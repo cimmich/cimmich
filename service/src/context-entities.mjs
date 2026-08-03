@@ -1112,26 +1112,23 @@ const loadDetail = async (
     ORDER BY link.relation_kind, lower(coalesce(subject.display_name, target.display_name, '')),
       link.target_id
   `;
-  // Event connections are conceptually symmetric even though the append-only
-  // relation ledger has one owning side. Project the inverse so either memory
-  // can explain the overlap without writing a duplicate edge.
-  const incomingEventRelations =
-    entity.entity_kind === "event"
-      ? await executor`
-          SELECT link.link_id, 'event'::text AS target_kind,
+  // Related context connections are conceptually symmetric even though the
+  // append-only relation ledger has one owning side. Project the inverse so a
+  // Thing→Event or Thing→Place connection is visible from both memories
+  // without manufacturing a second persisted edge.
+  const incomingContextRelations = await executor`
+          SELECT link.link_id, source.entity_kind AS target_kind,
             source.entity_id AS target_id, link.relation_kind,
             link.created_at, link.sort_order, source.display_name AS target_name
           FROM current_context_relation link
           JOIN context_entity source ON source.entity_id = link.entity_id
-            AND source.entity_kind = 'event'
             AND source.status IN ('active','hidden')
-          WHERE link.target_kind = 'event'
+          WHERE link.target_kind = ${entity.entity_kind}
             AND link.target_id = ${entity.entity_id}
             AND link.relation_kind = 'related'
             AND cimmich_visibility_context_entity_rank(source.entity_id) <= ${presentationRank()}
-          ORDER BY lower(source.display_name), source.entity_id
-        `
-      : [];
+          ORDER BY source.entity_kind, lower(source.display_name), source.entity_id
+        `;
   const projectedSubtreeAssets = subtreeAssets.map((row) => ({
     assetId: row.asset_id,
     assignedEntityIds: row.assigned_entity_ids || [],
@@ -1188,7 +1185,7 @@ const loadDetail = async (
     })(),
     relations: [
       ...relations.map((row) => ({ ...row, direction: "outgoing" })),
-      ...incomingEventRelations.map((row) => ({
+      ...incomingContextRelations.map((row) => ({
         ...row,
         direction: "incoming",
       })),

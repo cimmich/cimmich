@@ -20,6 +20,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("label: 'Journey', value: 'journey'");
     expect(source).toContain("label: 'Connections', value: 'connections'");
     expect(source).toContain("label: 'Documents', value: 'documents'");
+    expect(source).toContain(
+      "mutation.kind === 'create' && finalResult.detail && activeFamily !== 'events' && !createdFromGeographyGroup",
+    );
+    expect(source).toContain(
+      'getContextDetailHref(\n            page.url,\n            activeFamily,\n            finalResult.detail.entity.entityId',
+    );
+    expect(source).toContain('result.detail.entity.parentEntityId !== (base.parentEntityId ?? null)');
   });
 
   it('puts tab-specific work beside the tab rail and record maintenance in the editor', async () => {

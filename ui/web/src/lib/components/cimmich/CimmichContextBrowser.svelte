@@ -1535,6 +1535,15 @@
       if (mutation.kind === 'update' && result.detail?.entity.entityId !== mutation.entityId) {
         throw new Error('The update returned a different Thing or Place. Nothing else will be created from this edit.');
       }
+      if (
+        result.detail &&
+        (entityKind === 'event' || entityKind === 'place') &&
+        result.detail.entity.parentEntityId !== (base.parentEntityId ?? null)
+      ) {
+        throw new Error(
+          `The ${entityNoun} hierarchy did not save exactly. Nothing else will be changed from this edit.`,
+        );
+      }
       let finalResult = result;
       if (mutation.kind === 'create' && activeFamily === 'events' && result.detail && eventSeedSourceIds.length > 0) {
         const assetIds = await getVisibleCimmichAssetIds(eventSeedSourceIds);
@@ -1559,6 +1568,16 @@
       editorTarget = null;
       await loadEntities();
       selected = finalResult.detail;
+      if (mutation.kind === 'create' && finalResult.detail && activeFamily !== 'events' && !createdFromGeographyGroup) {
+        void goto(
+          getContextDetailHref(
+            page.url,
+            activeFamily,
+            finalResult.detail.entity.entityId,
+            finalResult.detail.entity.displayName,
+          ),
+        );
+      }
       if (mutation.kind === 'create' && activeFamily === 'events' && finalResult.detail) {
         if (continueWithAnotherEvent) {
           continueWithAnotherEvent = false;

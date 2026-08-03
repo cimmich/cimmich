@@ -386,11 +386,86 @@ try {
     "reverted",
   );
 
+  const eventParent = await request("/v1/events", {
+    body: {
+      commandId: "context119.event-parent.create",
+      displayName: "Pink Palace life period",
+      typeKind: "life_period",
+    },
+    method: "POST",
+    status: 201,
+  });
+  const eventChild = await request("/v1/events", {
+    body: {
+      commandId: "context119.event-child.create",
+      displayName: "Pink Palace June 2015",
+      parentEntityId: eventParent.detail.entity.entityId,
+      typeKind: "event",
+    },
+    method: "POST",
+    status: 201,
+  });
+  const persistedEventChild = await request(
+    `/v1/events/${eventChild.detail.entity.entityId}`,
+  );
+  assert.equal(
+    persistedEventChild.entity.parentEntityId,
+    eventParent.detail.entity.entityId,
+  );
+
+  const relatedThing = await request("/v1/objects", {
+    body: {
+      commandId: "context119.reciprocal-thing.create",
+      displayName: "Audit Compass",
+      typeKind: "other",
+    },
+    method: "POST",
+    status: 201,
+  });
+  await request(
+    `/v1/objects/${relatedThing.detail.entity.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context119.reciprocal-thing.attach",
+        relations: [
+          {
+            direction: "outgoing",
+            relationKind: "related",
+            targetId: eventChild.detail.entity.entityId,
+            targetKind: "event",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  const reciprocalEvent = await request(
+    `/v1/events/${eventChild.detail.entity.entityId}`,
+  );
+  assert.deepEqual(
+    reciprocalEvent.relations.map((relation) => ({
+      direction: relation.direction,
+      relationKind: relation.relationKind,
+      targetId: relation.targetId,
+      targetKind: relation.targetKind,
+    })),
+    [
+      {
+        direction: "incoming",
+        relationKind: "related",
+        targetId: relatedThing.detail.entity.entityId,
+        targetKind: "object",
+      },
+    ],
+  );
+
   process.stdout.write(
     `${JSON.stringify({
       createUndoFamilies: 3,
       dependencyCleanupFamilies: dependencyCases.length,
+      eventParentPersistence: true,
       noChangeFamilies: 3,
+      reciprocalContextRelations: true,
       schemaVersion: "cimmich.context-entity.v1",
       updateUndoFamilies: 3,
       visibilityBeforeProjection: true,

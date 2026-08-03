@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -33,6 +34,22 @@ const eventRow = {
   selected_cover_asset_id: "asset-cover",
   status: "active",
 };
+
+test("Related context edges project reciprocally without a duplicate write", async () => {
+  const source = await readFile(
+    new URL("../src/context-entities.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /SELECT link\.link_id, source\.entity_kind AS target_kind/,
+  );
+  assert.match(source, /WHERE link\.target_kind = \$\{entity\.entity_kind\}/);
+  assert.match(source, /AND link\.target_id = \$\{entity\.entity_id\}/);
+  assert.match(source, /AND link\.relation_kind = 'related'/);
+  assert.match(source, /\.\.\.incomingContextRelations\.map/);
+  assert.match(source, /direction: "incoming"/);
+});
 
 test("Event collection projection bounds visible Main previews in the list query", async () => {
   let query = "";
