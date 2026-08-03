@@ -44,6 +44,7 @@
       <a class="ml-1 font-semibold text-primary underline underline-offset-4" href={Route.cimmichMaintenance()}
         >Open Models & Guided</a
       >.
+      <span class="ml-1">This Community Preview is currently English-only.</span>
     </aside>
   </div>
 </UserPageLayout>

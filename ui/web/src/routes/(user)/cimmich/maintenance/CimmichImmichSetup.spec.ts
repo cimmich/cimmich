@@ -252,7 +252,9 @@ describe('Cimmich first-run Immich setup', () => {
     await waitFor(() => expect(getByRole('heading', { name: 'Core library ready' })).toBeInTheDocument());
     expect(getByText('56 media ready')).toBeInTheDocument();
     expect(getByText('6 People')).toBeInTheDocument();
-    expect(getByText('8 recorded exceptions')).toBeInTheDocument();
+    expect(getByText('8 items')).toBeInTheDocument();
+    expect(getByText(/deliberately did not guess/)).toBeInTheDocument();
+    expect(getByRole('link', { name: 'People' })).toHaveAttribute('href', '/cimmich/people');
     expect(getByRole('link', { name: 'Open Cimmich' })).toHaveAttribute('href', '/cimmich/home');
     expect(getByRole('link', { name: 'Optional matching' })).toHaveAttribute('href', '#cimmich-face-matching-title');
     expect(queryByRole('button', { name: 'Preview this scope' })).not.toBeInTheDocument();

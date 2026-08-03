@@ -302,13 +302,22 @@
             </dd>
           </div>
           <div class="rounded-2xl bg-white/75 p-4 dark:bg-emerald-950/45">
-            <dt class="text-xs text-emerald-800 dark:text-emerald-300">Import receipt</dt>
+            <dt class="text-xs text-emerald-800 dark:text-emerald-300">Held for review</dt>
             <dd class="mt-1 text-lg font-semibold">
-              {(result.import.reviewItems ?? 0).toLocaleString()} recorded
-              {(result.import.reviewItems ?? 0) === 1 ? 'exception' : 'exceptions'}
+              {(result.import.reviewItems ?? 0).toLocaleString()}
+              {(result.import.reviewItems ?? 0) === 1 ? 'item' : 'items'}
             </dd>
           </div>
         </dl>
+
+        {#if (result.import.reviewItems ?? 0) > 0}
+          <p class="text-sm/6 text-emerald-950 dark:text-emerald-100">
+            These are names or Face links Cimmich deliberately did not guess. Your media imported normally; you can
+            resolve them later in <a class="font-semibold underline underline-offset-4" href={Route.cimmichPeople()}
+              >People</a
+            >.
+          </p>
+        {/if}
 
         <div class="flex flex-wrap gap-3">
           <a
