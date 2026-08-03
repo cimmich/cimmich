@@ -34,6 +34,7 @@ describe('event folder and graph helpers', () => {
   });
 
   it('hides Immich content-addressed storage while keeping human folders', () => {
+    expect(isMeaningfulEventFolder('/data/upload/cbf95a38-35cf-4186-8631-4e7055e15e59')).toBe(false);
     expect(isMeaningfulEventFolder('/data/upload/cbf95a38-35cf-4186-8631-4e7055e15e59/66/05')).toBe(false);
     expect(isMeaningfulEventFolder('/archive/Harbour Trip/Consulting Workshop')).toBe(true);
     expect(
