@@ -252,6 +252,13 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(source, /compose down --remove-orphans/);
   assert.match(source, /"dataPreserved":true/);
   assert.match(source, /restart\)/);
+  assert.match(source, /upgrade\(\)/);
+  assert.match(source, /upgrade_counts_after.*upgrade_counts_before/);
+  assert.match(source, /backup_schema_version.*runtime_schema_version/);
+  assert.match(
+    source,
+    /compose run --rm --no-deps cimmich-bootstrap node bin\/migrate\.mjs apply/,
+  );
   assert.match(source, /destroy\)/);
   assert.match(source, /compose down --volumes --remove-orphans/);
   assert.match(source, /preflight_backup_databases/);

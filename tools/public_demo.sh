@@ -252,7 +252,13 @@ validate_semantic_counts() {
   ' >/dev/null 2>&1 || fail "demo semantic counts are unavailable or malformed"
 }
 
-validate_current_runtime() {
+runtime_schema_version() {
+  compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+    'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;'
+}
+
+validate_runtime_schema() {
+  expected_schema=$1
   immich_version=$(curl -fsS "http://127.0.0.1:$IMMICH_PORT/api/server/version" 2>/dev/null) ||
     fail "Immich is not healthy"
   case "$immich_version" in
@@ -271,10 +277,14 @@ validate_current_runtime() {
     *) fail "Cimmich database is not ready" ;;
   esac
   case "$cimmich_health" in
-    *'"schemaVersion":'"$CURRENT_SCHEMA_VERSION"*) ;;
-    *) fail "Cimmich is not at schema $CURRENT_SCHEMA_VERSION" ;;
+    *'"schemaVersion":'"$expected_schema"*) ;;
+    *) fail "Cimmich is not at schema $expected_schema" ;;
   esac
   curl -fsS "http://127.0.0.1:$UI_PORT/" >/dev/null 2>&1 || fail "Cimmich UI is not healthy"
+}
+
+validate_current_runtime() {
+  validate_runtime_schema "$CURRENT_SCHEMA_VERSION"
 }
 
 validate_backup_path() {
@@ -397,7 +407,9 @@ backup() {
   test -n "$backup_path" || fail "backup requires an absolute $PROJECT-backup directory"
   validate_backup_path "$backup_path"
   test ! -e "$backup_path" || fail "backup target already exists"
-  validate_current_runtime
+  backup_schema_version=$(runtime_schema_version 2>/dev/null) || fail "unable to read demo schema"
+  test "$backup_schema_version" -le "$CURRENT_SCHEMA_VERSION" || fail "demo schema is newer than this Cimmich build"
+  validate_runtime_schema "$backup_schema_version"
   backup_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read demo semantic counts"
   validate_semantic_counts "$backup_counts_before"
   backup_staging="$backup_path.incomplete.$$"
@@ -444,19 +456,60 @@ backup() {
   wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
   wait_http UI "http://127.0.0.1:$UI_PORT/" 120
-  validate_current_runtime
+  validate_runtime_schema "$backup_schema_version"
   backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read demo semantic counts"
   validate_semantic_counts "$backup_counts_after"
   test "$backup_counts_after" = "$backup_counts_before" || fail "demo semantic counts changed during backup"
   printf 'project=%s\nschema_version=%s\nsemantic_counts_before=%s\nsemantic_counts_after=%s\n' \
-    "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$backup_counts_before" "$backup_counts_after" > "$backup_staging/manifest.txt"
+    "$PROJECT" "$backup_schema_version" "$backup_counts_before" "$backup_counts_after" > "$backup_staging/manifest.txt"
   (cd "$backup_staging" && sha256_generate cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
   chmod 600 "$backup_staging"/*
   mv "$backup_staging" "$backup_path"
   backup_complete=1
   trap - EXIT INT TERM
   printf '{"backup":"%s","backupSchemaVersion":%s,"currentSchemaVersion":%s,"project":"%s","semanticCounts":"%s","status":"READY"}\n' \
-    "$backup_path" "$CURRENT_SCHEMA_VERSION" "$CURRENT_SCHEMA_VERSION" "$PROJECT" "$backup_counts_after"
+    "$backup_path" "$backup_schema_version" "$CURRENT_SCHEMA_VERSION" "$PROJECT" "$backup_counts_after"
+}
+
+upgrade() {
+  validate_prerequisites
+  verify_sentinel
+  load_environment
+  wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
+  wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
+  wait_http UI "http://127.0.0.1:$UI_PORT/" 120
+  upgrade_schema_before=$(runtime_schema_version 2>/dev/null) || fail "unable to read pre-upgrade schema"
+  test "$upgrade_schema_before" -le "$CURRENT_SCHEMA_VERSION" || fail "demo schema is newer than this Cimmich build"
+  if test "$upgrade_schema_before" = "$CURRENT_SCHEMA_VERSION"; then
+    validate_current_runtime
+    printf '{"fromSchema":%s,"project":"%s","state":"already-current","toSchema":%s}\n' \
+      "$upgrade_schema_before" "$PROJECT" "$CURRENT_SCHEMA_VERSION"
+    return 0
+  fi
+  validate_runtime_schema "$upgrade_schema_before"
+  upgrade_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read pre-upgrade semantic counts"
+  validate_semantic_counts "$upgrade_counts_before"
+  upgrade_backup="$(dirname "$STATE_ROOT")/$PROJECT-backup"
+  test ! -e "$upgrade_backup" || fail "move or remove the existing upgrade backup before retrying: $upgrade_backup"
+  ARGUMENT=$upgrade_backup
+  backup >/dev/null
+  load_environment
+  compose build cimmich-api public-demo-ui
+  upgrade_start_cleanup() {
+    compose up -d --no-build cimmich-api public-demo-ui >/dev/null 2>&1 || true
+  }
+  trap upgrade_start_cleanup EXIT INT TERM
+  compose run --rm --no-deps cimmich-bootstrap node bin/migrate.mjs apply >/dev/null
+  compose up -d --no-build cimmich-api public-demo-ui
+  wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
+  wait_http UI "http://127.0.0.1:$UI_PORT/" 120
+  validate_current_runtime
+  upgrade_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to read post-upgrade semantic counts"
+  validate_semantic_counts "$upgrade_counts_after"
+  test "$upgrade_counts_after" = "$upgrade_counts_before" || fail "demo semantic counts changed during upgrade"
+  trap - EXIT INT TERM
+  printf '{"backup":"%s","fromSchema":%s,"project":"%s","semanticCounts":"%s","state":"upgraded","toSchema":%s}\n' \
+    "$upgrade_backup" "$upgrade_schema_before" "$PROJECT" "$upgrade_counts_after" "$CURRENT_SCHEMA_VERSION"
 }
 
 validate_backup() {
@@ -878,5 +931,9 @@ case "$COMMAND" in
     destroy
     printf '{"project":"%s","state":"absent"}\n' "$PROJECT"
     ;;
-  *) fail "usage: tools/public_demo.sh up|stop|restart|down|status|private-password-file|guided-token-file|refresh-immich-companion|install-face-provider|rotate-private-password|configure-map|backup ABS_PATH|restore ABS_PATH --confirm=$PROJECT|reset --confirm=$PROJECT|destroy --confirm=$PROJECT" ;;
+  upgrade)
+    test -z "$ARGUMENT" || fail "upgrade does not accept an argument"
+    upgrade
+    ;;
+  *) fail "usage: tools/public_demo.sh up|upgrade|stop|restart|down|status|private-password-file|guided-token-file|refresh-immich-companion|install-face-provider|rotate-private-password|configure-map|backup ABS_PATH|restore ABS_PATH --confirm=$PROJECT|reset --confirm=$PROJECT|destroy --confirm=$PROJECT" ;;
 esac
