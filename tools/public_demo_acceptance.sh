@@ -2,6 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 RUN_ID=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_RUN_ID:-$$}
 PROJECT="cimmich-public-demo-acceptance-$RUN_ID"
 if test -d /private/tmp; then
@@ -16,8 +17,8 @@ IMMICH_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_IMMICH_PORT:-22959}
 API_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_API_PORT:-3401}
 UI_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_UI_PORT:-3403}
 BACKUP_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-backup"
-OLDER_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-older"
-OLDER_BACKUP_ROOT="$OLDER_BACKUP_PARENT/$PROJECT-backup"
+PORTABLE_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-portable"
+PORTABLE_BACKUP_ROOT="$PORTABLE_BACKUP_PARENT/$PROJECT-backup"
 UNHEALTHY_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-unhealthy"
 UNHEALTHY_BACKUP_ROOT="$UNHEALTHY_BACKUP_PARENT/$PROJECT-backup"
 PRIVACY_PROOF_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-privacy-proof"
@@ -38,7 +39,7 @@ cleanup() {
     run_demo destroy "--confirm=$PROJECT" >/dev/null 2>&1 || true
   fi
   rm -rf "$BACKUP_ROOT"
-  rm -rf "$OLDER_BACKUP_PARENT"
+  rm -rf "$PORTABLE_BACKUP_PARENT"
   rm -rf "$UNHEALTHY_BACKUP_PARENT"
   rm -rf "$PRIVACY_PROOF_ROOT"
   return "$status"
@@ -77,32 +78,9 @@ rewrite_checksums() {
   (cd "$backup_root" && sha256sum cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
 }
 
-build_schema74_backup() {
-  mkdir -p "$OLDER_BACKUP_PARENT"
-  cp -R "$BACKUP_ROOT" "$OLDER_BACKUP_ROOT"
-  fixture_container="$PROJECT-schema74-backup-$$"
-  fixture_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
-  fixture_cleanup() {
-    docker rm -f "$fixture_container" >/dev/null 2>&1 || true
-  }
-  trap 'fixture_cleanup; cleanup' EXIT INT TERM
-  docker run -d --name "$fixture_container" \
-    -e POSTGRES_DB=cimmich -e POSTGRES_USER=cimmich -e POSTGRES_PASSWORD="$fixture_password" \
-    pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75 >/dev/null
-  i=0
-  until docker exec "$fixture_container" pg_isready -U cimmich -d cimmich >/dev/null 2>&1; do
-    i=$((i + 1))
-    test "$i" -lt 60 || { printf 'schema 74 backup fixture readiness timeout\n' >&2; exit 1; }
-    sleep 1
-  done
-  docker exec -i "$fixture_container" pg_restore -U cimmich -d cimmich --no-owner --no-privileges < "$BACKUP_ROOT/cimmich.dump"
-  docker exec "$fixture_container" psql -U cimmich -d cimmich -v ON_ERROR_STOP=1 -c \
-    'ALTER TABLE immich_face_projection DROP CONSTRAINT immich_face_projection_resolution_decision_check; ALTER TABLE immich_face_projection DROP COLUMN resolution_decision_id; DELETE FROM cimmich_schema_migration WHERE version = 75;' >/dev/null
-  docker exec "$fixture_container" pg_dump -U cimmich -d cimmich -Fc > "$OLDER_BACKUP_ROOT/cimmich.dump"
-  sed 's/^schema_version=.*/schema_version=74/' "$BACKUP_ROOT/manifest.txt" > "$OLDER_BACKUP_ROOT/manifest.txt"
-  rewrite_checksums "$OLDER_BACKUP_ROOT"
-  trap cleanup EXIT INT TERM
-  fixture_cleanup
+build_portable_backup_copy() {
+  mkdir -p "$PORTABLE_BACKUP_PARENT"
+  cp -R "$BACKUP_ROOT" "$PORTABLE_BACKUP_ROOT"
 }
 trap cleanup EXIT INT TERM
 
@@ -423,8 +401,8 @@ printf '%s\n' "$backup" | grep -q '"semanticCounts":"51:9:12:5:4:0"'
 test -s "$BACKUP_ROOT/SHA256SUMS"
 grep -qx 'semantic_counts_before=51:9:12:5:4:0' "$BACKUP_ROOT/manifest.txt"
 grep -qx 'semantic_counts_after=51:9:12:5:4:0' "$BACKUP_ROOT/manifest.txt"
-build_schema74_backup
-grep -qx 'schema_version=74' "$OLDER_BACKUP_ROOT/manifest.txt"
+build_portable_backup_copy
+grep -qx "schema_version=$SCHEMA_VERSION" "$PORTABLE_BACKUP_ROOT/manifest.txt"
 
 # A manifest whose before/after counts disagree must fail before restore destroys state.
 cp "$BACKUP_ROOT/manifest.txt" "$PRIVACY_PROOF_ROOT/valid-manifest.txt"
@@ -491,9 +469,9 @@ cp "$PRIVACY_PROOF_ROOT/valid-sha256sums.txt" "$BACKUP_ROOT/SHA256SUMS"
 # A checksum mismatch is rejected before archive or database parsing.
 printf 'x' >> "$BACKUP_ROOT/cimmich-face-models.tgz"
 assert_restore_rejected_preserves_state checksum-mismatch
-# Restore the complete valid backup by copying from the already derived older
-# backup, whose non-Cimmich payloads are byte-identical to the current capture.
-cp "$OLDER_BACKUP_ROOT/cimmich-face-models.tgz" "$BACKUP_ROOT/cimmich-face-models.tgz"
+# Restore the complete valid backup by copying from the portable backup copy,
+# whose payloads are byte-identical to the current capture.
+cp "$PORTABLE_BACKUP_ROOT/cimmich-face-models.tgz" "$BACKUP_ROOT/cimmich-face-models.tgz"
 cp "$PRIVACY_PROOF_ROOT/valid-sha256sums.txt" "$BACKUP_ROOT/SHA256SUMS"
 
 # Command grammar is exact. Extra arguments and the former destructive-looking
@@ -545,10 +523,10 @@ if docker run --rm -v "${PROJECT}_cimmich-documents:/documents:ro" \
   exit 1
 fi
 
-restore=$(run_demo restore "$OLDER_BACKUP_ROOT" "--confirm=$PROJECT" | tail -n 1)
+restore=$(run_demo restore "$PORTABLE_BACKUP_ROOT" "--confirm=$PROJECT" | tail -n 1)
 printf '%s\n' "$restore" | grep -q '"status":"RESTORED"'
-printf '%s\n' "$restore" | grep -q '"backupSchemaVersion":74'
-printf '%s\n' "$restore" | grep -q '"restoredSchemaVersion":75'
+printf '%s\n' "$restore" | grep -q "\"backupSchemaVersion\":$SCHEMA_VERSION"
+printf '%s\n' "$restore" | grep -q "\"restoredSchemaVersion\":$SCHEMA_VERSION"
 assert_lifecycle_marker owner-state-preserved
 restored_receipt=$(sha256sum "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
 test "$restored_receipt" = "$first_receipt"
@@ -582,4 +560,4 @@ test "$absent_status" = 3
 printf '%s\n' "$absent" | grep -q '"state":"absent"'
 test ! -e "$STATE_ROOT"
 
-printf '{"backupPreflight":"malformed-newer-wrong-project-corrupt-count-drift-rejected","downPreservesState":true,"fresh":"PASS","olderSchemaRestore":"74-to-75","partialStateRecovery":true,"privatePassword":"password-gated","privateTokenFailures":"typed","resetCounts":"51:9:12:5:4:0","resetRuntimeIds":"changed","restartPreservesState":true,"stopStartPreservesState":true,"volumeContinuity":true,"secretBoundary":"argv-env-logs-output-clean","status":"PASS","teardown":"no-residue"}\n'
+printf '{"backupPreflight":"malformed-newer-wrong-project-corrupt-count-drift-rejected","downPreservesState":true,"fresh":"PASS","partialStateRecovery":true,"portableRestore":"%s-to-%s","privatePassword":"password-gated","privateTokenFailures":"typed","resetCounts":"51:9:12:5:4:0","resetRuntimeIds":"changed","restartPreservesState":true,"stopStartPreservesState":true,"volumeContinuity":true,"secretBoundary":"argv-env-logs-output-clean","status":"PASS","teardown":"no-residue"}\n' "$SCHEMA_VERSION" "$SCHEMA_VERSION"
