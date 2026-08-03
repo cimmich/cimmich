@@ -4581,7 +4581,7 @@
               <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
                 {folderSearchStarted
                   ? 'Try another part of the folder name or path. Nothing has changed.'
-                  : 'Recent visible folders appear here automatically. You can choose several, and subfolders are included.'}
+                  : 'External-library folders appear here automatically. Immich-managed storage paths stay hidden. You can choose several, and subfolders are included.'}
               </p>
             </div>
           {:else}

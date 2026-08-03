@@ -5,6 +5,7 @@ import {
   eventAssetFolder,
   eventCopyName,
   eventFolderCandidates,
+  isMeaningfulEventFolder,
   eventLineage,
 } from './event-folder-graph';
 
@@ -30,6 +31,19 @@ describe('event folder and graph helpers', () => {
   it('includes descendants when a person chooses a parent folder', () => {
     expect(eventAssetBelongsToFolder(asset('/archive/Cedar House/2025/June/a.jpg'), '/archive/Cedar House')).toBe(true);
     expect(eventAssetBelongsToFolder(asset('/archive/Cedar House Annex/a.jpg'), '/archive/Cedar House')).toBe(false);
+  });
+
+  it('hides Immich content-addressed storage while keeping human folders', () => {
+    expect(
+      isMeaningfulEventFolder('/data/upload/cbf95a38-35cf-4186-8631-4e7055e15e59/66/05'),
+    ).toBe(false);
+    expect(isMeaningfulEventFolder('/archive/Manila Trip/TTR Consulting')).toBe(true);
+    expect(
+      eventFolderCandidates([
+        asset('/data/upload/cbf95a38-35cf-4186-8631-4e7055e15e59/66/05/internal.jpg'),
+        asset('/archive/Pink Palace/2015/June/quad-safari.jpg'),
+      ]),
+    ).toEqual([{ assetCount: 1, label: 'June', path: '/archive/Pink Palace/2015/June' }]);
   });
 
   it('projects bounded Event containment without looping on corrupt input', () => {
