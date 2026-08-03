@@ -13,14 +13,14 @@ body:
     attributes:
       label: Cimmich revision
       description: Release tag or commit SHA.
-      placeholder: v1.0.0-build-week or commit SHA
+      placeholder: v1.1.0-community-preview.0 or commit SHA
     validations:
       required: true
   - type: input
     id: immich
     attributes:
       label: Immich version
-      placeholder: 3.0.3
+      placeholder: 3.1.0
     validations:
       required: true
   - type: dropdown

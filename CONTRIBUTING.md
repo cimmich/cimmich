@@ -1,15 +1,16 @@
 # Contributing to Cimmich
 
-Cimmich is being prepared for public contribution. The source licence must be
-present at the repository root before outside contributions are accepted.
+Cimmich welcomes small, reviewable public contributions under the repository's
+AGPL-3.0-only licence. Start with an issue for broad product or schema changes;
+focused documentation, test and defect fixes may go directly to a pull request.
+Participation is also governed by the [community code of conduct](CODE_OF_CONDUCT.md).
 
 ## Branch and release posture
 
-The exact OpenAI Build Week revision is preserved as
-`v1.0.0-build-week`. During its judging freeze, stable `main` remains on that
-revision and continued development targets `post-build-week`. After judging,
-accepted continuation returns to `main` and normal short-lived feature/fix
-branches resume. See the [release strategy](docs/RELEASE_STRATEGY.md).
+The exact OpenAI Build Week revision remains preserved as
+`v1.0.0-build-week`. Living development uses short-lived feature/fix branches
+against `main`; Community Preview candidates are frozen on dedicated release
+branches. See the [release strategy](docs/RELEASE_STRATEGY.md).
 
 ## Before opening a change
 

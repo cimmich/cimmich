@@ -1,8 +1,10 @@
 # Cimmich
 
 > [!NOTE]
-> **Cimmich is now in public-beta development.** The current release is
-> [v1.0.1 Public Beta Patch 6](https://github.com/cimmich/cimmich/releases/tag/v1.0.1-beta.6).
+> **Cimmich is preparing a bounded Community Preview.** The frozen candidate
+> target is `v1.1.0-community-preview.0`, migration-ledger schema 119/patch 1,
+> for exact Immich 3.1.0. Public Beta Patch 6 remains the latest published beta
+> until this candidate completes its release gates.
 > The exact OpenAI Build Week submission remains preserved in the
 > [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
 > That tag, release and its assets remain unchanged as the living project moves
@@ -27,6 +29,8 @@ GPT-5.6 Sol**.
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
 [Check release proof](docs/RELEASE_READINESS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
+[Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Community conduct](CODE_OF_CONDUCT.md)
+
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
 > endorsed by Immich or OpenAI. Immich remains the base photo-management
@@ -35,12 +39,12 @@ GPT-5.6 Sol**.
 
 ## Start here
 
-| What you want to do | Where to begin |
-| :------------------ | :------------- |
-| **Ask an AI assistant to install and set up Cimmich** | Give it this folder and [the agent installation contract](AGENT_INSTALL.md). This is the simplest supported path. |
-| **Add Cimmich beside my existing Immich library** | Follow the [guided install](INSTALL.md#guided-install-recommended). This is the recommended real-library path. |
-| **Explore Cimmich without using my photographs** | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data). |
-| **Choose Docker paths, ports and lifecycle commands myself** | Use the [advanced install](INSTALL.md#advanced-install). |
+| What you want to do                                          | Where to begin                                                                                                    |
+| :----------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| **Ask an AI assistant to install and set up Cimmich**        | Give it this folder and [the agent installation contract](AGENT_INSTALL.md). This is the simplest supported path. |
+| **Add Cimmich beside my existing Immich library**            | Follow the [guided install](INSTALL.md#guided-install-recommended). This is the recommended real-library path.    |
+| **Explore Cimmich without using my photographs**             | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data).                                         |
+| **Choose Docker paths, ports and lifecycle commands myself** | Use the [advanced install](INSTALL.md#advanced-install).                                                          |
 
 The guided installer currently supports macOS and Linux. It does not require a
 model, does not ask for an API key in Terminal and does not import anything
@@ -136,8 +140,9 @@ demographic fairness or suitability for another person's archive.
 3. Move through the related Pet, Place, Event and linked Document pages.
 4. Search the shared memory graph and switch between Standard, Personal and
    Private presentation.
-5. Open **Models & Guided** to inspect the exact local evidence and matching
-   state. Optional machinery remains visibly separate from owner truth.
+5. Use **Library setup** for Connect → Preview → Import. Open **Models &
+   Guided** only when you deliberately want optional local evidence or client
+   access.
 
 ## Try Cimmich with fictional data
 

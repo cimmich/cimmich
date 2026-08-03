@@ -7,13 +7,13 @@ memory and evidence layer for People, Pets, Places, Things, Events, Documents,
 search, viewing modes and owner-controlled matching. Immich remains the photo
 management system.
 
-## What does Public Beta mean?
+## What does Community Preview mean?
 
-The maintained product is installable and its owner-controlled workflows are
-actively being tested on real libraries, but compatibility, model/provider
-setup and matching quality still need broader evidence. Public Beta releases
-may change workflows and schemas between patches. Back up Cimmich before
-upgrading and read the [Public Beta changelog](PUBLIC_BETA_CHANGELOG.md).
+The preview is for technically comfortable Immich users who are willing to
+start with the synthetic demo, keep a Cimmich backup and report reproducible
+problems. Workflows and schemas may still change. The candidate supports exact
+Immich 3.1.0 on guided macOS/Linux installs; native Windows and other Immich
+versions are not claimed.
 
 The immutable `v1.0.0-build-week` release remains the exact competition
 submission; later beta patches do not rewrite it.

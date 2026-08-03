@@ -1,11 +1,31 @@
 # Cimmich release-readiness checklist
 
 Updated: 2026-08-03
-Preserved public-demo runtime: schema 75/patch 1
-Current source/disposable candidate: migration-ledger schema 119/patch 1
+Preserved Build Week public-demo runtime: schema 75/patch 1
+Current Community Preview candidate: migration-ledger schema 119/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current public-beta target: `v1.0.1-beta.6`
+Current candidate target: `v1.1.0-community-preview.0` for exact Immich 3.1.0
+
+## Community Preview candidate contract
+
+The candidate is English-first and supports guided macOS/Linux installation
+beside exact Immich 3.1.0. Native Windows, other Immich versions,
+Internet-facing or multi-user deployment, automatic identity acceptance and
+representative matching-accuracy claims are explicitly outside this preview.
+
+Release evidence must be produced from one clean immutable commit and include:
+
+- privacy/publication scan and reconciled public documentation;
+- named tar/ZIP bundles plus `SHA256SUMS`, with installer preflight from both;
+- service, web, Svelte, TypeScript, formatting, lint and production build;
+- migration, synthetic, stock-Immich and public-demo lifecycle acceptance;
+- schema-75 Patch-6 forward-upgrade and portable restore proof;
+- signed-in desktop/mobile walkthroughs of every top-level Cimmich section;
+- keyboard, 200% zoom, reduced-motion, failure-state and destructive-action
+  recovery checks; and
+- one final receipt naming the commit, tree, artifacts, checksums, support
+  boundary, known limitations and rollback path.
 
 ## Current source audit addendum — 2026-08-01
 
@@ -167,7 +187,7 @@ subtree cover.
 Schema 119 lets Events remember bounded source folders for refresh while one
 asset identity can participate in several nested or connected memories.
 
-## Public Beta Patch 6 candidate
+## Historical Public Beta Patch 6 certification
 
 The patch-6 candidate adds the owner-facing product surface for the
 post-submission identity machinery rather than publishing database work without
