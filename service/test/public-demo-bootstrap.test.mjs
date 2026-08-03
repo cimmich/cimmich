@@ -280,8 +280,10 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(acceptance, /run_demo restart/);
   assert.match(acceptance, /run_demo down/);
   assert.match(acceptance, /operator_lifecycle_marker/);
-  assert.match(acceptance, /schema_version=74/);
-  assert.match(acceptance, /backupSchemaVersion.*74/);
+  assert.match(acceptance, /build_portable_backup_copy/);
+  assert.match(acceptance, /schema_version=\$SCHEMA_VERSION/);
+  assert.match(acceptance, /backupSchemaVersion.*SCHEMA_VERSION/);
+  assert.doesNotMatch(acceptance, /schema_version=74/);
   assert.match(acceptance, /corrupt-database/);
   assert.match(acceptance, /semantic-count-drift/);
   assert.match(acceptance, /stopStartPreservesState/);
