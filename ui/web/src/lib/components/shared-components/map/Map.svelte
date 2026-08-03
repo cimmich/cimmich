@@ -264,6 +264,17 @@
     onSelect(ids);
   }
 
+  async function handlePlaceClusterClick(feature: Feature<Geometry, GeoJsonProperties>, map: Map | null) {
+    const clusterId = feature.properties?.cluster_id;
+    if (!map || typeof clusterId !== 'number' || feature.geometry.type !== 'Point') {
+      return;
+    }
+
+    const mapSource = map.getSource('place-tags-geojson') as GeoJSONSource;
+    const zoom = await mapSource.getClusterExpansionZoom(clusterId);
+    map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom: Math.min(zoom, 16) });
+  }
+
   function handleMapClick(event: MapMouseEvent) {
     if (!brushable && map?.getLayer(placeAreaFillLayerId)) {
       const area = map.queryRenderedFeatures(event.point, { layers: [placeAreaFillLayerId] })[0];
@@ -924,7 +935,23 @@
             features: placeMarkers.map((placeMarker) => asPlaceFeature(placeMarker)),
           }}
           id="place-tags-geojson"
+          cluster={{ radius: 42, maxZoom: 15 }}
         >
+          <MarkerLayer
+            applyToClusters
+            asButton
+            onclick={(event) => handlePromiseError(handlePlaceClusterClick(event.feature, map))}
+          >
+            {#snippet children({ feature })}
+              <div
+                class="flex size-10 items-center justify-center rounded-full border-2 border-white/90 bg-immich-primary font-mono text-sm font-bold text-white shadow-lg transition-transform hover:scale-110 dark:border-immich-dark-bg"
+                title={`${feature.properties?.point_count?.toLocaleString()} places`}
+              >
+                {feature.properties?.point_count?.toLocaleString()}
+                <span class="sr-only">places in this area</span>
+              </div>
+            {/snippet}
+          </MarkerLayer>
           <MarkerLayer
             applyToClusters={false}
             asButton
@@ -954,6 +981,7 @@
                   title={feature.properties?.name}
                 >
                   <Icon icon={mdiMapMarker} size="20" />
+                  <span class="sr-only">{feature.properties?.name}</span>
                 </div>
               {/if}
             {/snippet}

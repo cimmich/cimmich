@@ -327,6 +327,7 @@
               rounded
               showSatelliteControl
               showSettings={false}
+              showPlaceMarkerLabels={false}
             />
           {/await}
         {:else}
@@ -339,30 +340,6 @@
           </div>
         {/if}
       </div>
-
-      <aside class="context-place-rail" aria-label="Place hierarchy">
-        <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-          <p class="font-semibold">Places</p>
-          <span class="text-xs text-gray-500">{mappedPlaceCount} mapped</span>
-        </div>
-        <div class="min-h-0 overflow-y-auto p-2">
-          {#each sortContextEntities(entities, 'places') as entity (entity.entityId)}
-            {@const hierarchy = contextPlaceHierarchy(entity, entities)}
-            <a class="context-place-row" href={entityHref(entity)}>
-              <span class="context-place-row-icon"
-                ><Icon icon={entity.placeRole === 'geography' ? mdiMapOutline : mdiMapMarkerOutline} size="18" /></span
-              >
-              <span class="min-w-0 flex-1">
-                <span class="block truncate font-semibold">{entity.displayName}</span>
-                <span class="mt-0.5 block truncate text-xs text-gray-500">
-                  {hierarchy.length > 1 ? hierarchy.slice(0, -1).join(' / ') : contextPlaceRoleLabel(entity.placeRole)}
-                </span>
-              </span>
-              <span class="text-xs text-gray-500">{entity.subtreeAssetCount ?? entity.assetCount}</span>
-            </a>
-          {/each}
-        </div>
-      </aside>
     </div>
   {:else if family === 'places' && (placeView === 'locations' || placeView === 'geography')}
     {#if filteredEntities.length === 0}
@@ -734,40 +711,6 @@
     height: 64px;
     place-items: center;
     border-radius: 22px;
-    background: rgb(var(--immich-primary) / 0.1);
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-place-rail {
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-  }
-
-  .context-place-row {
-    display: flex;
-    width: 100%;
-    min-height: 58px;
-    align-items: center;
-    gap: 12px;
-    border-radius: 14px;
-    padding: 8px 10px;
-    text-align: left;
-  }
-
-  .context-place-row:hover,
-  .context-place-row:focus-visible {
-    background: rgb(var(--immich-primary) / 0.08);
-    outline: none;
-  }
-
-  .context-place-row-icon {
-    display: grid;
-    width: 36px;
-    height: 36px;
-    flex: none;
-    place-items: center;
-    border-radius: 12px;
     background: rgb(var(--immich-primary) / 0.1);
     color: rgb(var(--immich-primary));
   }
@@ -1257,18 +1200,13 @@
     .context-atlas-grid {
       height: clamp(520px, calc(100dvh - 190px), 760px);
       min-height: 0;
-      grid-template-columns: minmax(0, 1.55fr) minmax(270px, 0.58fr);
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: minmax(0, 1fr);
     }
 
     .context-atlas-map {
       height: 100%;
       min-height: 0;
-    }
-
-    .context-place-rail {
-      height: 100%;
-      overflow: hidden;
     }
 
     .context-place-card-grid {
@@ -1319,10 +1257,6 @@
     .context-atlas-map,
     .context-map-placeholder {
       min-height: 360px;
-    }
-
-    .context-place-rail {
-      max-height: 320px;
     }
 
     .context-event-cover {
