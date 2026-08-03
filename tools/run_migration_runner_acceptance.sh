@@ -74,6 +74,76 @@ if [ "$migration_count" != "$CURRENT_SCHEMA_VERSION" ] || \
   exit 1
 fi
 
+# Prove the published Public Beta Patch 6 boundary explicitly. Build the exact
+# schema-75 ledger, preserve representative imported archive rows, then run the
+# current candidate migrations over it. This must remain separate from the
+# fresh-install and legacy semantic-restore lanes above and below.
+docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema75_upgrade_test
+copy_migrations_through "$TMP_ROOT/through-75-migrations" 75
+mkdir -p "$TMP_ROOT/through-75-migrations/patches"
+cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
+  "$TMP_ROOT/through-75-migrations/patches/"
+SCHEMA75_DATABASE_URL="postgres://cimmich_migration_test:synthetic-migration-password@127.0.0.1:${PORT}/cimmich_schema75_upgrade_test"
+DATABASE_URL="$SCHEMA75_DATABASE_URL" CIMMICH_MIGRATIONS_DIRECTORY="$TMP_ROOT/through-75-migrations" \
+  npm --prefix "$ROOT/service" run migrate -- apply >"$TMP_ROOT/schema75-install.log"
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_schema75_upgrade_test <<'SQL'
+INSERT INTO producer_receipt (
+  producer_receipt_id, producer_kind, producer_name, producer_version,
+  started_at, completed_at, privacy_class
+) VALUES (
+  'receipt_schema75_upgrade_fixture', 'import', 'schema75-upgrade-fixture',
+  'v1', now(), now(), 'private'
+);
+INSERT INTO source_snapshot (
+  snapshot_id, input_schema_version, source_digest, locator_root_token,
+  started_at, completed_at, declared_asset_count, observed_asset_count, state
+) VALUES (
+  'snapshot_schema75_upgrade_fixture', 'schema75-fixture-v1', repeat('7', 64),
+  'schema75-fixture-token', now(), now(), 1, 1, 'complete'
+);
+INSERT INTO asset (
+  asset_id, locator_token, media_kind, mime_type, source_snapshot_id, state
+) VALUES (
+  'asset_schema75_upgrade_fixture', 'schema75-fixture-asset', 'image',
+  'image/jpeg', 'snapshot_schema75_upgrade_fixture', 'active'
+);
+INSERT INTO person (
+  person_id, display_name, status, created_by_receipt_id
+) VALUES (
+  'person_schema75_upgrade_fixture', 'Schema 75 Fixture', 'active',
+  'receipt_schema75_upgrade_fixture'
+);
+INSERT INTO face_observation (
+  face_id, asset_id, box_x, box_y, box_w, box_h, detection_confidence,
+  quality_measurements, state, producer_receipt_id
+) VALUES (
+  'face_schema75_upgrade_fixture', 'asset_schema75_upgrade_fixture',
+  0.1, 0.1, 0.2, 0.2, 0.9, '{}'::jsonb, 'valid',
+  'receipt_schema75_upgrade_fixture'
+);
+SQL
+schema75_before=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_schema75_upgrade_test -Atc \
+  "SELECT max(version) || ':' || count(*) FROM cimmich_schema_migration")
+test "$schema75_before" = "75:75" || {
+  echo "schema-75 fixture did not reach the published Patch 6 boundary" >&2
+  exit 1
+}
+DATABASE_URL="$SCHEMA75_DATABASE_URL" npm --prefix "$ROOT/service" run migrate -- apply \
+  >"$TMP_ROOT/schema75-upgrade.log"
+schema75_after=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_schema75_upgrade_test -Atc \
+  "SELECT max(version) || ':' || count(*) || ':' ||
+    (SELECT count(*) FROM asset WHERE asset_id='asset_schema75_upgrade_fixture') || ':' ||
+    (SELECT count(*) FROM person WHERE person_id='person_schema75_upgrade_fixture') || ':' ||
+    (SELECT count(*) FROM face_observation WHERE face_id='face_schema75_upgrade_fixture')
+   FROM cimmich_schema_migration")
+test "$schema75_after" = "$CURRENT_SCHEMA_VERSION:$CURRENT_SCHEMA_VERSION:1:1:1" || {
+  echo "schema-75 to current upgrade did not preserve the fixture" >&2
+  exit 1
+}
+
 # Schema 117 keeps recurring time on Activity Events and stop order on the
 # existing Trip -> Place location relation. Exercise the real constraints and
 # current projection on the fully migrated disposable database.
@@ -423,4 +493,4 @@ if [ "$resume_count" != "2" ] || [ "$resume_timing_count" != "2" ]; then
   exit 1
 fi
 
-echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/concurrent/checksum/resume/legacy-restore/locator-preservation/new-write-enforcement)"
+echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/schema75-upgrade/concurrent/checksum/resume/legacy-restore/locator-preservation/new-write-enforcement)"
