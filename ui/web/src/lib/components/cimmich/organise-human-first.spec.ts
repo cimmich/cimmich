@@ -44,6 +44,7 @@ describe('human-first Organise information architecture', () => {
     expect(source).toContain('Recent folders');
     expect(source).toContain('Recent visible folders are ready below. Search only when you need something else.');
     expect(source).toContain('folderSearchStarted ? folderSearchAssets : libraryAssets');
+    expect(source).toContain('getCimmichVisibleMapAssetBindings(recent.map((asset) => asset.id))');
     expect(source).not.toContain('Type at least two characters from the folder name or path.');
   });
 });
