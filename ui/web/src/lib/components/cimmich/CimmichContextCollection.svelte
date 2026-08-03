@@ -1255,7 +1255,20 @@
 
   @media (min-width: 700px) {
     .context-atlas-grid {
+      height: clamp(520px, calc(100dvh - 190px), 760px);
+      min-height: 0;
       grid-template-columns: minmax(0, 1.55fr) minmax(270px, 0.58fr);
+      grid-template-rows: minmax(0, 1fr);
+    }
+
+    .context-atlas-map {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .context-place-rail {
+      height: 100%;
+      overflow: hidden;
     }
 
     .context-place-card-grid {
