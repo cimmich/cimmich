@@ -1,5 +1,6 @@
 <script lang="ts">
   import { clickOutside } from '$lib/actions/click-outside';
+  import { focusTrap } from '$lib/actions/focus-trap';
   import Portal from '$lib/elements/Portal.svelte';
   import { Icon } from '@immich/ui';
   import { mdiArrowTopRight, mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
@@ -38,6 +39,7 @@
   let password = $state('');
   let showUnlock = $state(false);
   let overlayPanelStyle = $state('');
+  let passwordElement = $state<HTMLInputElement>();
   let triggerElement = $state<HTMLButtonElement>();
 
   const modeLabel = $derived(mode === 'standard' ? 'Standard' : mode === 'personal' ? 'Personal' : 'Private');
@@ -77,6 +79,7 @@
     }
     if (nextMode === 'private' && !privateUnlocked) {
       showUnlock = true;
+      globalThis.setTimeout(() => passwordElement?.focus(), 0);
       return;
     }
 
@@ -149,9 +152,11 @@
     ]}
     style={portaled ? overlayPanelStyle : undefined}
     aria-label="Cimmich viewing mode"
+    aria-modal="true"
     data-testid="cimmich-viewing-mode-panel"
     role="dialog"
     tabindex="-1"
+    use:focusTrap
     onmousedown={(event) => event.stopPropagation()}
     onpointerdown={(event) => event.stopPropagation()}
     onclick={(event) => event.stopPropagation()}
@@ -203,6 +208,7 @@
         <div class="flex gap-2">
           <input
             id="cimmich-private-password"
+            bind:this={passwordElement}
             class="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-gray-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
             type="password"
             autocomplete="current-password"

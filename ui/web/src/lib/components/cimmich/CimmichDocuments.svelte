@@ -775,12 +775,16 @@
               src={previewUrl}
               alt={`Preview of ${selected.displayTitle}`}
             />
-          {:else}<iframe
+          {:else}<object
               class="h-[65vh] w-full"
-              src={previewUrl}
-              sandbox=""
-              title={`Preview of ${selected.displayTitle}`}
-            ></iframe>{/if}
+              data={previewUrl}
+              type={previewMime}
+              aria-label={`Preview of ${selected.displayTitle}`}
+            >
+              <p class="p-6 text-sm">
+                This browser cannot show the preview. Use <strong>Open in new tab</strong> or <strong>Download</strong>.
+              </p>
+            </object>{/if}
         </div>
       {/if}
       <div class="mt-6">

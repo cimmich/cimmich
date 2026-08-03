@@ -2008,6 +2008,7 @@ test("face matching operator routes preserve canonical heads and provider-derive
 
 test("named People routes take precedence over the generic Person read route", async () => {
   const calls = [];
+  const projections = [];
   await withServer(
     {
       person: async ({ personId }) => {
@@ -2034,7 +2035,14 @@ test("named People routes take precedence over the generic Person read route", a
       assert.equal((await person.json()).person_id, "person-1");
       assert.deepEqual(calls[1], ["person", "person-1"]);
     },
+    {
+      visibility: {
+        requireProjection: (surface) => projections.push(surface),
+        runRequest: (_request, _response, run) => run(),
+      },
+    },
   );
+  assert.deepEqual(projections, ["people"]);
 });
 
 test("People collection preserves the bounded Body presentation projection after visibility", async () => {

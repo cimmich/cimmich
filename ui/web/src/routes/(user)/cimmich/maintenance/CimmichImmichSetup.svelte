@@ -32,6 +32,7 @@
   let error = $state('');
   let notice = $state('');
   let showImportControls = $state(false);
+  let showReconnect = $state(false);
   let existingCimmichPeopleCount = $state(0);
   let apiBaseUrl = $state('');
   let credential = $state('');
@@ -94,6 +95,7 @@
         credential,
       });
       credential = '';
+      showReconnect = false;
       notice = 'Immich is connected. The credential was stored privately and is not returned to this page.';
       await loadStatus();
       await onChanged();
@@ -268,7 +270,7 @@
     </div>
   {/if}
 
-  {#if !loading && completed && result && !showImportControls}
+  {#if !loading && completed && result && !showImportControls && !showReconnect}
     <div
       class="mt-6 overflow-hidden rounded-3xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20"
     >
@@ -341,6 +343,15 @@
           >
             Update import
           </button>
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold underline underline-offset-4"
+            onclick={() => {
+              showReconnect = true;
+            }}
+          >
+            Replace connection
+          </button>
         </div>
         <p class="text-xs/5 text-emerald-800 dark:text-emerald-300">
           Cimmich remains read-only toward Immich. No reference library was activated and automatic identity remains
@@ -348,7 +359,7 @@
         </p>
       </div>
     </div>
-  {:else if !loading && !connectionReady}
+  {:else if !loading && (!connectionReady || showReconnect)}
     <form
       class="mt-6 grid gap-4 md:grid-cols-2"
       onsubmit={(event) => {
@@ -383,14 +394,28 @@
         never returned, and must not grant asset upload or mutation.
       </p>
       <div class="md:col-span-2">
-        <button
-          type="submit"
-          class="inline-flex min-h-11 items-center gap-2 rounded-full bg-immich-primary px-5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-immich-dark-primary dark:text-black"
-          disabled={busy === 'connect'}
-        >
-          <Icon icon={mdiRefresh} size="18" class={busy === 'connect' ? 'animate-spin' : ''} />
-          {busy === 'connect' ? 'Verifying…' : 'Verify and connect'}
-        </button>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            class="inline-flex min-h-11 items-center gap-2 rounded-full bg-immich-primary px-5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-immich-dark-primary dark:text-black"
+            disabled={busy === 'connect'}
+          >
+            <Icon icon={mdiRefresh} size="18" class={busy === 'connect' ? 'animate-spin' : ''} />
+            {busy === 'connect' ? 'Verifying…' : showReconnect ? 'Verify and replace' : 'Verify and connect'}
+          </button>
+          {#if showReconnect}
+            <button
+              type="button"
+              class="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold"
+              disabled={busy === 'connect'}
+              onclick={() => {
+                showReconnect = false;
+                credential = '';
+                error = '';
+              }}>Keep current connection</button
+            >
+          {/if}
+        </div>
       </div>
     </form>
   {:else if connectionReady && status}
@@ -400,8 +425,8 @@
         <dd class="mt-1 font-semibold">{status.connection.immichVersion}</dd>
       </div>
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-immich-dark-gray/40">
-        <dt class="text-xs text-gray-500 dark:text-gray-400">Principal</dt>
-        <dd class="mt-1 truncate font-mono text-xs">{status.connection.principal?.userId}</dd>
+        <dt class="text-xs text-gray-500 dark:text-gray-400">Account</dt>
+        <dd class="mt-1 font-semibold">{status.connection.principal?.isAdmin ? 'Immich owner' : 'Immich user'}</dd>
       </div>
       <div class="rounded-2xl bg-gray-50 p-4 dark:bg-immich-dark-gray/40">
         <dt class="text-xs text-gray-500 dark:text-gray-400">Permissions</dt>
@@ -413,6 +438,16 @@
         <dd class="mt-1 text-xs text-gray-500 dark:text-gray-400">Requires an interactive elevated Immich session.</dd>
       </div>
     </dl>
+
+    <button
+      type="button"
+      class="mt-4 inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold underline underline-offset-4"
+      onclick={() => {
+        showReconnect = true;
+      }}
+    >
+      Replace connection
+    </button>
 
     <div
       class="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm/6 text-sky-950 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100"

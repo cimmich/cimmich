@@ -181,6 +181,22 @@ describe('Cimmich first-run Immich setup', () => {
     expect(onChanged).toHaveBeenCalledOnce();
   });
 
+  it('describes the connected account without exposing its internal identifier and makes replacement reversible', async () => {
+    mocks.getStatus.mockResolvedValue(readyStatus);
+    const { getByRole, getByText, queryByText } = render(CimmichImmichSetup);
+
+    await waitFor(() => expect(getByText('Immich owner')).toBeInTheDocument());
+    expect(queryByText('owner-fixture')).not.toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Replace connection' }));
+    expect(getByRole('button', { name: 'Verify and replace' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Keep current connection' })).toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Keep current connection' }));
+    expect(getByText('Immich owner')).toBeInTheDocument();
+    expect(queryByText('owner-fixture')).not.toBeInTheDocument();
+  });
+
   it('holds unnamed upstream face groups for review without blocking the safe first import', async () => {
     mocks.getPeople.mockResolvedValue([
       { person_id: 'person-1', subject_kind: 'person' },
