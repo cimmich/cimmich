@@ -39,6 +39,9 @@ describe('human-first Organise information architecture', () => {
       expect(mode).toContain('<CimmichOrganiseModeSwitch />');
     }
     expect(folders).toContain('Route.folders({ path, organise: isOrganiseContext ? 1 : undefined })');
+    expect(folders).toContain('isMeaningfulEventFolder(child.path)');
+    expect(folders).toContain('No original folders here');
+    expect(folders).toContain('href={Route.libraries()}');
     expect(tags).toContain('<CimmichTagBrowser {tags} initialPath={data.path} />');
     expect(await read('src/lib/components/cimmich/tag-browser.ts')).toContain('label: tag.value');
     expect(sidebar).toContain('isActive: () => isOrganiseContext()');

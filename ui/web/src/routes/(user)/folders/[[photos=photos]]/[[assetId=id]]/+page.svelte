@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
+  import { isMeaningfulEventFolder } from '$lib/components/cimmich/event-folder-graph';
   import UserPageLayout, { headerId } from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import GalleryViewer from '$lib/components/shared-components/gallery-viewer/GalleryViewer.svelte';
@@ -43,6 +44,13 @@
 
   const viewport: Viewport = $state({ width: 0, height: 0 });
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
+  const currentFolderIsMeaningful = $derived(
+    !isOrganiseContext || !data.tree.path || isMeaningfulEventFolder(data.tree.path),
+  );
+  const visibleFolderChildren = $derived(
+    isOrganiseContext ? data.tree.children.filter((child) => isMeaningfulEventFolder(child.path)) : data.tree.children,
+  );
+  const visiblePathAssets = $derived(currentFolderIsMeaningful ? data.pathAssets : null);
 
   const handleNavigateToFolder = (folderName: string) => navigateToView(joinPaths(data.tree.path, folderName));
 
@@ -69,11 +77,11 @@
   };
 
   const handleSelectAllAssets = () => {
-    if (!data.pathAssets) {
+    if (!visiblePathAssets) {
       return;
     }
 
-    assetMultiSelectManager.selectAssets(data.pathAssets.map((asset) => toTimelineAsset(asset)));
+    assetMultiSelectManager.selectAssets(visiblePathAssets.map((asset) => toTimelineAsset(asset)));
   };
 </script>
 
@@ -84,12 +92,14 @@
       <section>
         <Text class="mb-4 ps-4" size="small">{$t('explorer')}</Text>
         <div class="h-full">
-          <TreeItems
-            icons={{ default: mdiFolderOutline, active: mdiFolder }}
-            tree={foldersStore.folders!}
-            active={data.tree.path}
-            getLink={getLinkForPath}
-          />
+          {#if !isOrganiseContext}
+            <TreeItems
+              icons={{ default: mdiFolderOutline, active: mdiFolder }}
+              tree={foldersStore.folders!}
+              active={data.tree.path}
+              getLink={getLinkForPath}
+            />
+          {/if}
         </div>
       </section>
     </Sidebar>
@@ -102,19 +112,38 @@
     <Breadcrumbs node={data.tree} icon={mdiFolderHome} title={$t('folders')} getLink={getLinkForPath} />
 
     <section class="mt-2 min-h-0 flex-1 immich-scrollbar overflow-auto">
-      <TreeItemThumbnails items={data.tree.children} icon={mdiFolder} onClick={handleNavigateToFolder} />
+      <TreeItemThumbnails items={visibleFolderChildren} icon={mdiFolder} onClick={handleNavigateToFolder} />
 
       <!-- Assets -->
-      {#if data.pathAssets && data.pathAssets.length > 0}
+      {#if visiblePathAssets && visiblePathAssets.length > 0}
         <div bind:clientHeight={viewport.height} bind:clientWidth={viewport.width} class="mt-2">
           <GalleryViewer
-            assets={data.pathAssets}
+            assets={visiblePathAssets}
             assetInteraction={assetMultiSelectManager}
             {viewport}
             showAssetName={true}
             pageHeaderOffset={54}
             onReload={triggerAssetUpdate}
           />
+        </div>
+      {:else if isOrganiseContext && visibleFolderChildren.length === 0}
+        <div
+          class="mx-auto mt-16 max-w-xl rounded-3xl border border-gray-200 bg-white p-7 text-center dark:border-gray-800 dark:bg-gray-900"
+        >
+          <Icon icon={mdiFolderOutline} class="mx-auto text-primary" size="42" />
+          <h2 class="mt-4 text-lg font-semibold">No original folders here</h2>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Photos uploaded into Immich do not keep a human folder structure. External Library folders appear here
+            automatically, while Immich's generated storage paths stay hidden.
+          </p>
+          {#if authManager.user.isAdmin}
+            <a
+              class="mt-5 inline-flex min-h-11 items-center rounded-full bg-primary px-5 font-semibold text-white"
+              href={Route.libraries()}
+            >
+              Set up an External Library
+            </a>
+          {/if}
         </div>
       {/if}
     </section>
@@ -139,9 +168,9 @@
       <FavoriteAction
         removeFavorite={assetMultiSelectManager.isAllFavorite}
         onFavorite={function handleFavoriteUpdate(ids, isFavorite) {
-          if (data.pathAssets && data.pathAssets.length > 0) {
+          if (visiblePathAssets && visiblePathAssets.length > 0) {
             for (const id of ids) {
-              const asset = data.pathAssets.find((asset) => asset.id === id);
+              const asset = visiblePathAssets.find((asset) => asset.id === id);
               if (asset) {
                 asset.isFavorite = isFavorite;
               }

@@ -33,7 +33,7 @@ export type EventFolderCandidate = { assetCount: number; label: string; path: st
 // available unchanged.
 export const isMeaningfulEventFolder = (path: string) => {
   const normalized = normalizeSlashes(path).toLowerCase();
-  return !/\/upload\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{2}\/[0-9a-f]{2}(?:\/|$)/.test(
+  return !/(?:^|\/)upload\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/|$)/.test(
     normalized,
   );
 };

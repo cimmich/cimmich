@@ -822,6 +822,10 @@
         });
         if (requestedEntity) {
           void openDetail(requestedEntity);
+        } else if (requestedEntityId) {
+          // Durable detail URLs also reopen archived records even though the
+          // default collection intentionally omits archived rows.
+          void openDetailById(requestedEntityId, true);
         } else if (selectedEntityId || requestedEntityName) {
           selected = null;
         }
@@ -847,7 +851,7 @@
     void goto(collectionHref, { replaceState: true });
   };
 
-  const openDetail = async (entity: CimmichContextEntity) => {
+  const openDetailById = async (entityId: string, includeArchived: boolean) => {
     const generation = ++detailRequestGeneration;
     selectedGeographyGroup = '';
     selectedGeographyGroupEntityIds = [];
@@ -858,14 +862,11 @@
     mediaSelectionMode = false;
     error = null;
     try {
-      const [next, plans] = await Promise.all([
-        getCimmichContextEntity(activeFamily, entity.entityId, {
-          includeArchived: entity.status === 'archived',
-        }),
-        activeFamily === 'places' && entity.placeRole === 'location'
-          ? getCimmichPlacePlans(entity.entityId).then((result) => result.items)
-          : Promise.resolve([]),
-      ]);
+      const next = await getCimmichContextEntity(activeFamily, entityId, { includeArchived });
+      const plans =
+        activeFamily === 'places' && next.entity.placeRole === 'location'
+          ? await getCimmichPlacePlans(entityId).then((result) => result.items)
+          : [];
       if (generation === detailRequestGeneration) {
         selected = next;
         selectedPlacePlans = plans;
@@ -880,6 +881,8 @@
       }
     }
   };
+
+  const openDetail = (entity: CimmichContextEntity) => openDetailById(entity.entityId, entity.status === 'archived');
 
   const openEntity = (entity: CimmichContextEntity) => {
     void goto(getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName));
@@ -1489,6 +1492,17 @@
     isSaving = true;
     const reusableEventSeedIds = [...eventSeedSourceIds];
     const reusableEventSourceFolders = [...formSourceFolders];
+    const reusableEventDefaults = {
+      dateEnd: formDateEnd,
+      datePrecision: formDatePrecision,
+      dateStart: formDateStart,
+      parentId: formParentId,
+      recurrenceEnabled: formRecurrenceEnabled,
+      recurrenceFrequency: formRecurrenceFrequency,
+      recurrenceInterval: formRecurrenceInterval,
+      recurrenceWeekdays: [...formRecurrenceWeekdays],
+      type: formType,
+    };
     const createdFromGeographyGroup = editorMode === 'create' ? formGeographyGroupName || selectedGeographyGroup : '';
     try {
       const base = {
@@ -1584,6 +1598,16 @@
           eventSeedSourceIds = reusableEventSeedIds;
           eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
           openCreate('location', '', '', true);
+          editorTypeChosen = true;
+          formType = reusableEventDefaults.type;
+          formDateStart = reusableEventDefaults.dateStart;
+          formDateEnd = reusableEventDefaults.dateEnd;
+          formDatePrecision = reusableEventDefaults.datePrecision;
+          formParentId = reusableEventDefaults.parentId;
+          formRecurrenceEnabled = reusableEventDefaults.recurrenceEnabled;
+          formRecurrenceFrequency = reusableEventDefaults.recurrenceFrequency;
+          formRecurrenceInterval = reusableEventDefaults.recurrenceInterval;
+          formRecurrenceWeekdays = reusableEventDefaults.recurrenceWeekdays;
           formSourceFolders = reusableEventSourceFolders;
         } else {
           eventSeedSourceIds = [];
@@ -2334,9 +2358,20 @@
       if (!result.detail) {
         throw new Error('The archive change did not return its current detail projection.');
       }
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId(restoring ? 'restore-undo' : 'archive-undo') : '';
+      undoLabel = restoring
+        ? `Undo restoring ${selected.entity.displayName}`
+        : `Undo archiving ${selected.entity.displayName}`;
       statusCommandId = '';
+      showEditor = false;
       await loadEntities();
-      selected = restoring ? result.detail : null;
+      selected = result.detail;
+      toastManager.success(
+        restoring
+          ? `${result.detail.entity.displayName} is back in ${contextFamilyLabels[activeFamily]}.`
+          : `${result.detail.entity.displayName} is archived. Its photos are untouched.`,
+      );
     } catch (error_) {
       error = asError(error_);
     } finally {
@@ -3813,6 +3848,29 @@
                 ></label
               >
             {/if}
+          {/if}
+          {#if entityKind === 'object'}
+            <div class="context-event-form-guidance">
+              <span><Icon icon={iconForFamily(activeFamily)} size="20" /></span>
+              <div>
+                <strong>When this thing belonged in your life</strong>
+                <p>Dates are optional. Use a year or approximation when the exact day is not known.</p>
+              </div>
+            </div>
+            <label class="context-field"
+              ><span>Date certainty</span><select bind:value={formDatePrecision}
+                ><option value="exact">Exact dates</option><option value="approximate">Approximate</option><option
+                  value="month">Known month</option
+                ><option value="year">Known year</option><option value="unknown">Not known yet</option></select
+              ></label
+            >
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="context-field"
+                ><span>From <small>Optional</small></span><input type="date" bind:value={formDateStart} /></label
+              ><label class="context-field"
+                ><span>Until <small>Optional</small></span><input type="date" bind:value={formDateEnd} /></label
+              >
+            </div>
           {/if}
           {#if entityKind === 'event'}
             <div class="context-event-form-guidance">

@@ -27,6 +27,14 @@ describe('Place, Thing and Event profile information architecture', () => {
       'getContextDetailHref(\n            page.url,\n            activeFamily,\n            finalResult.detail.entity.entityId',
     );
     expect(source).toContain('result.detail.entity.parentEntityId !== (base.parentEntityId ?? null)');
+    expect(source).toContain('openDetailById(requestedEntityId, true)');
+    expect(source).toContain('Its photos are untouched.');
+    expect(source).toContain('editorTypeChosen = true;');
+    expect(source).toContain('formType = reusableEventDefaults.type;');
+    expect(source).toContain('formParentId = reusableEventDefaults.parentId;');
+    expect(source).toContain('formRecurrenceEnabled = reusableEventDefaults.recurrenceEnabled;');
+    expect(source).toContain('When this thing belonged in your life');
+    expect(source).toContain('<span>From <small>Optional</small></span>');
   });
 
   it('puts tab-specific work beside the tab rail and record maintenance in the editor', async () => {

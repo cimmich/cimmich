@@ -219,7 +219,11 @@
   const subline = $derived(
     [
       detail.entity.description || (isPlace ? '' : contextTypeDescription(detail.entity.typeKind)),
-      family === 'events' ? formatContextDatePrecision(detail.entity) || 'Not dated yet' : '',
+      family === 'events'
+        ? formatContextDatePrecision(detail.entity) || 'Not dated yet'
+        : family === 'objects'
+          ? formatContextDatePrecision(detail.entity)
+          : '',
       family === 'events' ? recurrenceLabel : '',
       !isPlace && detail.entity.aliases.length > 0 ? `Also ${detail.entity.aliases.join(', ')}` : '',
     ]
