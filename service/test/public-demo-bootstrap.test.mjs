@@ -259,6 +259,9 @@ test("public demo stop and restart preserve state while destruction is explicit"
     source,
     /compose run --rm --no-deps cimmich-bootstrap node bin\/migrate\.mjs apply/,
   );
+  assert.match(source, /refresh\(\)/);
+  assert.match(source, /refresh_counts_after.*refresh_counts_before/);
+  assert.match(source, /compose build cimmich-api public-demo-ui/);
   assert.match(source, /destroy\)/);
   assert.match(source, /compose down --volumes --remove-orphans/);
   assert.match(source, /preflight_backup_databases/);

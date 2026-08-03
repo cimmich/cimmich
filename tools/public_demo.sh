@@ -512,6 +512,33 @@ upgrade() {
     "$upgrade_backup" "$upgrade_schema_before" "$PROJECT" "$upgrade_counts_after" "$CURRENT_SCHEMA_VERSION"
 }
 
+refresh() {
+  validate_prerequisites
+  verify_sentinel
+  load_environment
+  wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
+  wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
+  wait_http UI "http://127.0.0.1:$UI_PORT/" 120
+  validate_current_runtime
+  refresh_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read pre-refresh semantic counts"
+  validate_semantic_counts "$refresh_counts_before"
+  compose build cimmich-api public-demo-ui
+  refresh_start_cleanup() {
+    compose up -d --no-build cimmich-api public-demo-ui >/dev/null 2>&1 || true
+  }
+  trap refresh_start_cleanup EXIT INT TERM
+  compose up -d --no-build cimmich-api public-demo-ui
+  wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
+  wait_http UI "http://127.0.0.1:$UI_PORT/" 120
+  validate_current_runtime
+  refresh_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to read post-refresh semantic counts"
+  validate_semantic_counts "$refresh_counts_after"
+  test "$refresh_counts_after" = "$refresh_counts_before" || fail "demo semantic counts changed during refresh"
+  trap - EXIT INT TERM
+  printf '{"project":"%s","semanticCounts":"%s","state":"refreshed","schemaVersion":%s}\n' \
+    "$PROJECT" "$refresh_counts_after" "$CURRENT_SCHEMA_VERSION"
+}
+
 validate_backup() {
   backup_path=$1
   validate_backup_path "$backup_path"
@@ -935,5 +962,9 @@ case "$COMMAND" in
     test -z "$ARGUMENT" || fail "upgrade does not accept an argument"
     upgrade
     ;;
-  *) fail "usage: tools/public_demo.sh up|upgrade|stop|restart|down|status|private-password-file|guided-token-file|refresh-immich-companion|install-face-provider|rotate-private-password|configure-map|backup ABS_PATH|restore ABS_PATH --confirm=$PROJECT|reset --confirm=$PROJECT|destroy --confirm=$PROJECT" ;;
+  refresh)
+    test -z "$ARGUMENT" || fail "refresh does not accept an argument"
+    refresh
+    ;;
+  *) fail "usage: tools/public_demo.sh up|upgrade|refresh|stop|restart|down|status|private-password-file|guided-token-file|refresh-immich-companion|install-face-provider|rotate-private-password|configure-map|backup ABS_PATH|restore ABS_PATH --confirm=$PROJECT|reset --confirm=$PROJECT|destroy --confirm=$PROJECT" ;;
 esac
