@@ -14,7 +14,7 @@
     getCimmichContextEntities,
     getCimmichContextEntity,
     getCimmichPeople,
-    getCimmichPersonAssets,
+    getCimmichPersonAssetsPage,
     getCimmichPetMedia,
     getCimmichPets,
     type CimmichContextFamily,
@@ -61,6 +61,9 @@
   let totalMatches = $state(0);
   let normalNextPage = $state(0);
   let matchedCimmichIds = $state<string[]>([]);
+  let loadedCimmichSourceCount = $state(0);
+  let singlePersonCursor = $state<string | null>(null);
+  let singlePersonId = $state('');
   let resultGeneration = 0;
 
   const normalOptions = $derived(normalTagOptions(tags));
@@ -77,7 +80,9 @@
         : `Photos with all ${selectedOptions.length} selected tags`,
   );
   const canLoadMore = $derived(
-    source === 'normal' ? normalNextPage > 0 : resultAssets.length < matchedCimmichIds.length,
+    source === 'normal'
+      ? normalNextPage > 0
+      : loadedCimmichSourceCount < matchedCimmichIds.length || Boolean(singlePersonCursor),
   );
 
   const toCount = (count: number | null) =>
@@ -171,11 +176,19 @@
 
   const loadCimmichReferences = async (option: TagBrowserOption): Promise<CimmichAssetReference[]> => {
     if (option.family === 'people') {
-      const assets = await getCimmichPersonAssets(option.entityId);
-      return assets.map((asset) => ({
-        captureTime: asset.capture_time,
-        sourceAssetId: asset.sourceAssetId,
-      }));
+      const references: CimmichAssetReference[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await getCimmichPersonAssetsPage(option.entityId, 250, cursor);
+        references.push(
+          ...page.items.map((asset) => ({
+            captureTime: asset.capture_time,
+            sourceAssetId: asset.sourceAssetId,
+          })),
+        );
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return references;
     }
     if (option.family === 'pets') {
       const assets = await getCimmichPetMedia(option.entityId);
@@ -226,6 +239,20 @@
   };
 
   const loadCimmichResults = async (generation: number) => {
+    if (selectedOptions.length === 1 && selectedOptions[0]!.family === 'people') {
+      const option = selectedOptions[0]!;
+      const page = await getCimmichPersonAssetsPage(option.entityId, 250);
+      if (generation !== resultGeneration) {
+        return;
+      }
+      singlePersonId = option.entityId;
+      singlePersonCursor = page.nextCursor;
+      matchedCimmichIds = page.items.map((asset) => asset.sourceAssetId);
+      totalMatches = page.summary.total;
+      loadedCimmichSourceCount = Math.min(120, matchedCimmichIds.length);
+      resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
+      return;
+    }
     const groups = await Promise.all(selectedOptions.map((option) => loadCimmichReferences(option)));
     if (generation !== resultGeneration) {
       return;
@@ -245,7 +272,8 @@
       (left, right) => (captureTimes.get(right) ?? '').localeCompare(captureTimes.get(left) ?? ''),
     );
     totalMatches = matchedCimmichIds.length;
-    resultAssets = await fetchAssets(matchedCimmichIds.slice(0, 120), generation);
+    loadedCimmichSourceCount = Math.min(120, matchedCimmichIds.length);
+    resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
   };
 
   const refreshResults = async () => {
@@ -253,6 +281,9 @@
     assetMultiSelectManager.clear();
     resultAssets = [];
     matchedCimmichIds = [];
+    loadedCimmichSourceCount = 0;
+    singlePersonCursor = null;
+    singlePersonId = '';
     totalMatches = 0;
     normalNextPage = 0;
     error = '';
@@ -316,8 +347,20 @@
       if (source === 'normal') {
         await loadNormalResults(generation, normalNextPage);
       } else {
-        const nextIds = matchedCimmichIds.slice(resultAssets.length, resultAssets.length + 120);
+        const targetCount = loadedCimmichSourceCount + 120;
+        while (singlePersonId && singlePersonCursor && matchedCimmichIds.length < targetCount) {
+          const page = await getCimmichPersonAssetsPage(singlePersonId, 250, singlePersonCursor);
+          if (generation !== resultGeneration) {
+            return;
+          }
+          matchedCimmichIds = [...matchedCimmichIds, ...page.items.map((asset) => asset.sourceAssetId)];
+          singlePersonCursor = page.nextCursor;
+          totalMatches = page.summary.total;
+        }
+        const nextSourceCount = Math.min(targetCount, matchedCimmichIds.length);
+        const nextIds = matchedCimmichIds.slice(loadedCimmichSourceCount, nextSourceCount);
         resultAssets = [...resultAssets, ...(await fetchAssets(nextIds, generation))];
+        loadedCimmichSourceCount = nextSourceCount;
       }
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Could not load more photos.';
@@ -450,12 +493,7 @@
                   onchange={() => toggleOption(option)}
                 />
                 {#if coverUrl(option)}
-                  <img
-                    class="size-12 shrink-0 rounded-lg object-cover"
-                    src={coverUrl(option)}
-                    alt=""
-                    loading="lazy"
-                  />
+                  <img class="size-12 shrink-0 rounded-lg object-cover" src={coverUrl(option)} alt="" loading="lazy" />
                 {:else}
                   <span
                     class="flex size-12 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-400 dark:bg-gray-700"
@@ -550,6 +588,17 @@
           </div>
         {:else if resultsLoading && resultAssets.length === 0}
           <div class="flex min-h-96 items-center justify-center"><LoadingSpinner size="giant" /></div>
+        {:else if error}
+          <div
+            class="flex min-h-96 flex-col items-center justify-center px-6 text-center text-gray-500 dark:text-gray-400"
+          >
+            <h3 class="font-semibold text-gray-800 dark:text-gray-100">Could not load these photos</h3>
+            <button
+              type="button"
+              class="mt-3 min-h-11 rounded-full border border-gray-300 px-5 text-sm font-semibold dark:border-gray-600"
+              onclick={refreshResults}>Try again</button
+            >
+          </div>
         {:else if resultAssets.length === 0}
           <div
             class="flex min-h-96 flex-col items-center justify-center px-6 text-center text-gray-500 dark:text-gray-400"
