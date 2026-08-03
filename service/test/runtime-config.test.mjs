@@ -12,6 +12,7 @@ test("runtime configuration accepts exact local origins and an absolute document
     PORT: "3101",
   });
   assert.equal(config.port, 3101);
+  assert.equal(config.guidedPort, 3102);
   assert.deepEqual(
     [...config.allowedOrigins],
     ["http://127.0.0.1:3000", "https://photos.example.test"],
@@ -72,6 +73,9 @@ test("runtime configuration fails closed on ambiguous network and storage values
   for (const environment of [
     { PORT: "3101oops" },
     { PORT: "0" },
+    { CIMMICH_GUIDED_PORT: "3102oops" },
+    { CIMMICH_GUIDED_PORT: "0" },
+    { CIMMICH_GUIDED_PORT: "3101", PORT: "3101" },
     { CIMMICH_ALLOWED_ORIGINS: "https://photos.example.test/path" },
     { CIMMICH_ALLOWED_ORIGINS: "https://user:secret@photos.example.test" },
     { CIMMICH_ALLOWED_ORIGINS: "http://127.0.0.1:3000,http://127.0.0.1:3000" },

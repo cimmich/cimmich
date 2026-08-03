@@ -221,12 +221,14 @@ export CIMMICH_COMPANION_PROJECT=cimmich-companion
 ```
 
 `configure` writes generated database credentials into a mode-`0600`
-`runtime.env` under the state root. Ports default to loopback-only API `3411`
-and UI `3413`; set `CIMMICH_COMPANION_API_PORT` and
+`runtime.env` under the state root. Ports default to loopback-only Guided/health
+listener `3411` and UI `3413`; set `CIMMICH_COMPANION_API_PORT` and
 `CIMMICH_COMPANION_UI_PORT` before `configure` to change them. The browser UI
-uses the gateway's same-origin `/cimmich-api` route; the API port remains an
-operator-only loopback listener. A private installation may bind only the UI
-gateway to a trusted interface with `CIMMICH_COMPANION_UI_BIND_ADDRESS`.
+uses the gateway's authenticated, same-origin `/cimmich-api` route. The owner
+API is container-internal and is not published on the host; `3411` cannot be
+used to bypass Guided authority by dropping a request header. A private
+installation may bind only the UI gateway to a trusted interface with
+`CIMMICH_COMPANION_UI_BIND_ADDRESS`.
 Do not bind it to `0.0.0.0` unless the host's network access is independently
 restricted.
 

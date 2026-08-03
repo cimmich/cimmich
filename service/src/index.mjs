@@ -36,7 +36,8 @@ import {
 } from "./owner-face-recognition.mjs";
 
 const runtimeConfig = loadRuntimeConfig(process.env);
-const { allowedHosts, allowedOrigins, databaseUrl, host, port } = runtimeConfig;
+const { allowedHosts, allowedOrigins, databaseUrl, guidedPort, host, port } =
+  runtimeConfig;
 const serviceDirectory = path.dirname(
   path.dirname(fileURLToPath(import.meta.url)),
 );
@@ -255,7 +256,7 @@ const faceMatchingOperator = createFaceMatchingOperator({
 const memorySteward = createMemorySteward({
   repository,
 });
-const server = createCimmichServer({
+const serverDependencies = {
   addressGeocoder,
   allowedHosts,
   allowedOrigins,
@@ -269,6 +270,14 @@ const server = createCimmichServer({
   memorySteward,
   repository,
   visibility,
+};
+const server = createCimmichServer({
+  ...serverDependencies,
+  surfacePolicy: "canonical",
+});
+const guidedServer = createCimmichServer({
+  ...serverDependencies,
+  surfacePolicy: "guided",
 });
 
 let shuttingDown = false;
@@ -276,7 +285,12 @@ const shutdown = async (exitCode = 0) => {
   if (shuttingDown) return;
   shuttingDown = true;
   process.exitCode = exitCode;
-  await new Promise((resolve) => server.close(() => resolve()));
+  await Promise.all(
+    [server, guidedServer].map(
+      (activeServer) =>
+        new Promise((resolve) => activeServer.close(() => resolve())),
+    ),
+  );
   await localMediaProvider.recognizer?.close?.().catch(() => {});
   await sql.end({ timeout: 5 }).catch(() => {});
 };
@@ -303,7 +317,7 @@ process.on("uncaughtException", () => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Cimmich local service listening on ${host}:${port}`);
+  console.log(`Cimmich owner service listening on ${host}:${port}`);
   // Prewarm the People-grid snapshot variant the live page requests, so the
   // first signed-in visit after a restart is served hot. Best-effort: a cold
   // database at boot only costs the prewarm, never the boot.
@@ -314,4 +328,7 @@ server.listen(port, host, () => {
         message: error instanceof Error ? error.message : String(error),
       });
     });
+});
+guidedServer.listen(guidedPort, host, () => {
+  console.log(`Cimmich Guided service listening on ${host}:${guidedPort}`);
 });

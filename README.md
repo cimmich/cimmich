@@ -193,7 +193,12 @@ Default loopback URLs:
 
 - Cimmich product: `http://127.0.0.1:3303`
 - stock Immich: `http://127.0.0.1:22859`
-- Cimmich API/health: `http://127.0.0.1:3301`
+- Cimmich Guided API/health: `http://127.0.0.1:3301`
+
+The owner API is available only through the product gateway's authenticated
+same-origin `/cimmich-api` route. The loopback Guided listener exposes only its
+bounded route catalogue; omitting the Guided header does not reveal owner
+routes.
 
 Generated credentials live only in mode-`0600` operator state. The detailed
 [demo guide](demo/cedar-house-v1/README.md) covers first Immich sign-in, Private

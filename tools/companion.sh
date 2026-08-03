@@ -98,6 +98,29 @@ compose() {
   docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" --file "$COMPOSE_FILE" "$@"
 }
 
+canonical_request() {
+  canonical_method=$1
+  canonical_path=$2
+  canonical_body=${3:-}
+  compose exec -T cimmich-api node -e '
+    const [method, path, body] = process.argv.slice(1);
+    fetch(`http://127.0.0.1:3101${path}`, {
+      body: body ? body : undefined,
+      headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
+        "x-cimmich-actor": "owner-operator",
+        "x-cimmich-device-id": "owner-operator",
+        "x-cimmich-surface": "interactive",
+      },
+      method,
+    }).then(async (response) => {
+      const responseBody = await response.text();
+      process.stdout.write(responseBody);
+      if (!response.ok) process.exitCode = 1;
+    }).catch(() => process.exit(1));
+  ' "$canonical_method" "$canonical_path" "$canonical_body"
+}
+
 configure() {
   validate_state_root
   test "$#" -ge 1 && test "$#" -le 2 || fail "usage: companion.sh configure IMMICH_ORIGIN [API_KEY_FILE]"
@@ -206,7 +229,7 @@ status() {
   validate_port "$api_port" "Configured Cimmich API port"
   validate_port "$ui_port" "Configured Cimmich UI port"
   health=$(curl --fail --silent --show-error "http://127.0.0.1:${api_port}/health")
-  companion=$(curl --fail --silent --show-error "http://127.0.0.1:${api_port}/v1/companion/status")
+  companion=$(canonical_request GET /v1/companion/status)
   printf '{"companion":%s,"health":%s,"project":"%s","ui":"http://%s:%s"}\n' \
     "$companion" "$health" "$PROJECT" "$ui_bind_address" "$ui_port"
 }
@@ -254,8 +277,7 @@ face_provider() {
         test "$i" -lt 60 || fail "recommended Face provider did not become ready"
         sleep 2
       done
-      curl --fail --silent --show-error \
-        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      canonical_request GET /v1/operator/face-matching
       printf '\n'
       ;;
     configure)
@@ -299,15 +321,12 @@ face_provider() {
         test "$i" -lt 60 || fail "configured Face provider did not become ready"
         sleep 2
       done
-      curl --fail --silent --show-error \
-        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      canonical_request GET /v1/operator/face-matching
       printf '\n'
       ;;
     status)
       test "$#" -eq 1 || fail "usage: companion.sh face-provider status"
-      api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
-      curl --fail --silent --show-error \
-        "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+      canonical_request GET /v1/operator/face-matching
       printf '\n'
       ;;
     *) fail "usage: companion.sh face-provider install-recommended|configure|status" ;;
@@ -323,20 +342,15 @@ process_faces() {
   esac
   test "$batches" -le 100 || fail "process-faces batches must not exceed 100"
   test "$work_limit" -le 25 || fail "process-faces work limit must not exceed 25"
-  api_port=$(configured_value CIMMICH_COMPANION_API_PORT)
   batch=1
   while test "$batch" -le "$batches"; do
     command_id="owner-recognition-$(date +%s)-$$-$batch"
-    result=$(curl --fail --silent --show-error \
-      -H 'content-type: application/json' \
-      -H 'x-cimmich-actor: owner-operator' \
-      --data "{\"commandId\":\"$command_id\",\"workLimit\":$work_limit}" \
-      "http://127.0.0.1:${api_port}/v1/operator/face-matching/recognition")
+    result=$(canonical_request POST /v1/operator/face-matching/recognition \
+      "{\"commandId\":\"$command_id\",\"workLimit\":$work_limit}")
     printf '%s\n' "$result"
     batch=$((batch + 1))
   done
-  curl --fail --silent --show-error \
-    "http://127.0.0.1:${api_port}/v1/operator/face-matching"
+  canonical_request GET /v1/operator/face-matching
   printf '\n'
 }
 
@@ -695,7 +709,16 @@ backup() {
     -v "$FACE_PROVIDER_VOLUME:/source:ro" -v "$backup_staging:/backup" \
     "$ALPINE_IMAGE" sh -c \
     'tar -czf /backup/face-provider.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /backup/face-provider.tgz'
-  health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
+  if test "${backup_health_mode:-api}" = database; then
+    backup_schema=$(compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+      'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;') ||
+      fail "unable to read companion schema during rollback capture"
+    test "$backup_schema" = "$CURRENT_SCHEMA_VERSION" ||
+      fail "companion schema is not current during rollback capture"
+    health="{\"database\":\"ready\",\"schemaVersion\":$backup_schema,\"status\":\"ok\"}"
+  else
+    health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
+  fi
   backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read companion semantic counts"
   test "$backup_counts_after" = "$backup_counts_before" ||
     fail "companion semantic counts changed during backup"
@@ -759,6 +782,74 @@ portable_export() {
     "$portable_id" "$PROJECT" "$CURRENT_SCHEMA_VERSION"
 }
 
+replace_from_full_backup() {
+  replacement_path=$1
+  compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
+  compose up --detach --wait cimmich-database || return 1
+  compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich || return 1
+  compose exec -T cimmich-database createdb -U cimmich cimmich || return 1
+  compose exec -T cimmich-database pg_restore -U cimmich -d cimmich --no-owner --no-privileges \
+    < "$replacement_path/cimmich.dump" || return 1
+  docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$replacement_path:/backup:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/documents.tgz -C /target' || return 1
+  docker run --rm -v "$CONFIG_VOLUME:/target" -v "$replacement_path:/backup:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/config.tgz -C /target' || return 1
+  docker run --rm -v "$FACE_PROVIDER_VOLUME:/target" -v "$replacement_path:/backup:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/face-provider.tgz -C /target' || return 1
+  compose up --detach --wait || return 1
+}
+
+replace_from_portable_export() {
+  replacement_path=$1
+  compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
+  compose up --detach --wait cimmich-database || return 1
+  compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich || return 1
+  compose exec -T cimmich-database createdb -U cimmich cimmich || return 1
+  compose exec -T cimmich-database pg_restore -U cimmich -d cimmich \
+    --no-owner --no-privileges < "$replacement_path/cimmich.dump" || return 1
+  docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$replacement_path:/portable:ro" \
+    "$ALPINE_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /portable/documents.tgz -C /target' || return 1
+  # Target credentials and provider artifacts are deliberately preserved.
+  compose up --detach --wait || return 1
+}
+
+create_restore_rollback() {
+  restore_rollback_root=$(mktemp -d "${TMPDIR:-/tmp}/cimmich-restore-rollback.XXXXXX") ||
+    fail "unable to create restore rollback staging"
+  chmod 700 "$restore_rollback_root"
+  restore_rollback_path="$restore_rollback_root/owner-state"
+  backup_health_mode=database
+  if ! backup "$restore_rollback_path" >/dev/null; then
+    unset backup_health_mode
+    rm -rf "$restore_rollback_root"
+    fail "unable to capture owner state before restore"
+  fi
+  unset backup_health_mode
+  restore_cleanup_rollback=1
+  restore_cleanup() {
+    if test "$restore_cleanup_rollback" -eq 1; then
+      rm -rf "$restore_rollback_root"
+    fi
+  }
+  trap restore_cleanup EXIT INT TERM
+}
+
+recover_failed_restore() {
+  expected_counts=$1
+  if replace_from_full_backup "$restore_rollback_path"; then
+    rollback_counts=$(semantic_counts 2>/dev/null || true)
+    if test "$rollback_counts" = "$expected_counts"; then
+      fail "restore failed; the previous owner state was recovered automatically"
+    fi
+  fi
+  restore_cleanup_rollback=0
+  fail "restore failed and automatic recovery did not complete; rollback backup preserved at $restore_rollback_path"
+}
+
 restore() {
   require_configured
   test "$#" -eq 2 || fail "usage: companion.sh restore ABSOLUTE_BACKUP --confirm=PROJECT"
@@ -766,27 +857,24 @@ restore() {
   confirmation=$2
   test "$confirmation" = "--confirm=$PROJECT" || fail "restore confirmation must exactly name $PROJECT"
   validate_backup "$backup_path"
-  compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
-  compose up --detach --wait cimmich-database
-  compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich
-  compose exec -T cimmich-database createdb -U cimmich cimmich
-  compose exec -T cimmich-database pg_restore -U cimmich -d cimmich --no-owner --no-privileges < "$backup_path/cimmich.dump"
-  docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$backup_path:/backup:ro" \
-    "$ALPINE_IMAGE" \
-    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/documents.tgz -C /target'
-  docker run --rm -v "$CONFIG_VOLUME:/target" -v "$backup_path:/backup:ro" \
-    "$ALPINE_IMAGE" \
-    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/config.tgz -C /target'
-  docker run --rm -v "$FACE_PROVIDER_VOLUME:/target" -v "$backup_path:/backup:ro" \
-    "$ALPINE_IMAGE" \
-    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /backup/face-provider.tgz -C /target'
-  compose up --detach --wait
-  restored_counts=$(semantic_counts 2>/dev/null) || fail "unable to read restored semantic counts"
-  test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
-    fail "restored semantic counts do not match the backup"
-  backup_id=${backup_path##*/}
+  restore_source=$backup_path
+  restore_schema_version=$BACKUP_SCHEMA_VERSION
+  restore_expected_counts=$BACKUP_SEMANTIC_COUNTS
+  restore_previous_counts=$(semantic_counts 2>/dev/null) ||
+    fail "unable to read owner state before restore"
+  validate_semantic_counts "$restore_previous_counts"
+  create_restore_rollback
+  if ! replace_from_full_backup "$restore_source"; then
+    recover_failed_restore "$restore_previous_counts"
+  fi
+  restored_counts=$(semantic_counts 2>/dev/null || true)
+  if test "$restored_counts" != "$restore_expected_counts"; then
+    recover_failed_restore "$restore_previous_counts"
+  fi
+  restore_cleanup_rollback=1
+  backup_id=${restore_source##*/}
   printf '{"backupId":"%s","backupSchemaVersion":%s,"project":"%s","restoredSchemaVersion":%s,"semanticCounts":"%s","status":"RESTORED"}\n' \
-    "$backup_id" "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
+    "$backup_id" "$restore_schema_version" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
 }
 
 portable_restore() {
@@ -798,24 +886,24 @@ portable_restore() {
   test "$confirmation" = "--confirm=$PROJECT" ||
     fail "portable restore confirmation must exactly name $PROJECT"
   validate_portable_export "$backup_path"
-  compose stop cimmich-gateway cimmich-ui cimmich-api >/dev/null 2>&1 || true
-  compose up --detach --wait cimmich-database
-  compose exec -T cimmich-database dropdb --if-exists --force -U cimmich cimmich
-  compose exec -T cimmich-database createdb -U cimmich cimmich
-  compose exec -T cimmich-database pg_restore -U cimmich -d cimmich \
-    --no-owner --no-privileges < "$backup_path/cimmich.dump"
-  docker run --rm -v "$DOCUMENT_VOLUME:/target" -v "$backup_path:/portable:ro" \
-    "$ALPINE_IMAGE" \
-    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar -xzf /portable/documents.tgz -C /target'
-  # Target credentials and provider artifacts are deliberately preserved.
-  compose up --detach --wait
-  restored_counts=$(semantic_counts 2>/dev/null) ||
-    fail "unable to read portable-restored semantic counts"
-  test "$restored_counts" = "$BACKUP_SEMANTIC_COUNTS" ||
-    fail "portable-restored semantic counts do not match the export"
-  portable_id=${backup_path##*/}
+  restore_source=$backup_path
+  restore_schema_version=$BACKUP_SCHEMA_VERSION
+  restore_expected_counts=$BACKUP_SEMANTIC_COUNTS
+  restore_previous_counts=$(semantic_counts 2>/dev/null) ||
+    fail "unable to read owner state before portable restore"
+  validate_semantic_counts "$restore_previous_counts"
+  create_restore_rollback
+  if ! replace_from_portable_export "$restore_source"; then
+    recover_failed_restore "$restore_previous_counts"
+  fi
+  restored_counts=$(semantic_counts 2>/dev/null || true)
+  if test "$restored_counts" != "$restore_expected_counts"; then
+    recover_failed_restore "$restore_previous_counts"
+  fi
+  restore_cleanup_rollback=1
+  portable_id=${restore_source##*/}
   printf '{"exportId":"%s","exportSchemaVersion":%s,"format":"cimmich.portable-export.v1","project":"%s","restoredSchemaVersion":%s,"semanticCounts":"%s","status":"RESTORED"}\n' \
-    "$portable_id" "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
+    "$portable_id" "$restore_schema_version" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
 }
 
 disable() {
@@ -828,11 +916,11 @@ remove_companion() {
   require_configured
   test "$#" -eq 1 || fail "usage: companion.sh remove --confirm=PROJECT"
   test "$1" = "--confirm=$PROJECT" || fail "remove confirmation must exactly name $PROJECT"
+  known=$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -print)
+  test "$known" = "$ENV_FILE" || fail "state root contains unrecognized entries; refusing removal"
   compose down --volumes --remove-orphans
   docker image rm "$PROJECT-api:current-source" "$PROJECT-ui:current-source" \
     >/dev/null 2>&1 || true
-  known=$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -type f -print)
-  test "$known" = "$ENV_FILE" || fail "state root contains unrecognized files; refusing removal"
   rm -f "$ENV_FILE"
   rmdir "$STATE_ROOT"
   printf '{"project":"%s","state":"removed","status":"REMOVED"}\n' "$PROJECT"

@@ -202,8 +202,12 @@ export const createCimmichServer = ({
   memorySteward,
   repository,
   satelliteTileFetch = globalThis.fetch,
+  surfacePolicy = "combined",
   visibility,
 }) => {
+  if (!["canonical", "combined", "guided"].includes(surfacePolicy)) {
+    throw new Error("Cimmich server surface policy is invalid");
+  }
   const requireProjection = (surfaceKey) =>
     visibility?.requireProjection?.(surfaceKey);
 
@@ -252,7 +256,31 @@ export const createCimmichServer = ({
         String(request.headers["x-cimmich-surface"] || "")
           .trim()
           .toLowerCase() === "guided";
+      const guidedNamespace = url.pathname.startsWith("/v1/guided/");
       const guidedBootstrap = url.pathname === "/v1/guided/v2/bootstrap";
+      if (surfacePolicy === "canonical" && (guidedSurface || guidedNamespace)) {
+        throw Object.assign(
+          new Error("Guided access requires the dedicated Guided listener"),
+          {
+            code: "GUIDED_LISTENER_REQUIRED",
+            statusCode: 404,
+          },
+        );
+      }
+      if (
+        surfacePolicy === "guided" &&
+        url.pathname !== "/health" &&
+        !guidedNamespace &&
+        !guidedSurface
+      ) {
+        throw Object.assign(
+          new Error("Owner API routes are unavailable on the Guided listener"),
+          {
+            code: "GUIDED_SURFACE_REQUIRED",
+            statusCode: 403,
+          },
+        );
+      }
       if (
         (guidedSurface || guidedBootstrap) &&
         (url.searchParams.has("token") ||

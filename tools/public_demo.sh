@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 COMPOSE_FILE="$ROOT/tools/public_demo.compose.yml"
+COMPOSE_OVERRIDE=${CIMMICH_PUBLIC_DEMO_COMPOSE_OVERRIDE:-}
 PROJECT=${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}
 STATE_ROOT=${CIMMICH_PUBLIC_DEMO_STATE_ROOT:-"${XDG_STATE_HOME:-$HOME/.local/state}/$PROJECT"}
 ARCHIVE_ROOT=${CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT:-}
@@ -119,13 +120,42 @@ load_removal_environment() {
 }
 
 compose() {
-  CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" \
-    CIMMICH_PUBLIC_DEMO_STATE_ROOT="$STATE_ROOT" \
-    CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="${ARCHIVE_ROOT:-$ROOT/demo/cedar-house-v1}" \
-    CIMMICH_PUBLIC_DEMO_IMMICH_PORT="$IMMICH_PORT" \
-    CIMMICH_PUBLIC_DEMO_API_PORT="$API_PORT" \
-    CIMMICH_PUBLIC_DEMO_UI_PORT="$UI_PORT" \
-    docker compose --project-name "$PROJECT" --file "$COMPOSE_FILE" "$@"
+  if test -n "$COMPOSE_OVERRIDE"; then
+    test -f "$COMPOSE_OVERRIDE" || fail "Compose override does not exist"
+    CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" \
+      CIMMICH_PUBLIC_DEMO_STATE_ROOT="$STATE_ROOT" \
+      CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="${ARCHIVE_ROOT:-$ROOT/demo/cedar-house-v1}" \
+      CIMMICH_PUBLIC_DEMO_IMMICH_PORT="$IMMICH_PORT" \
+      CIMMICH_PUBLIC_DEMO_API_PORT="$API_PORT" \
+      CIMMICH_PUBLIC_DEMO_UI_PORT="$UI_PORT" \
+      docker compose --project-name "$PROJECT" --file "$COMPOSE_FILE" \
+        --file "$COMPOSE_OVERRIDE" "$@"
+  else
+    CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" \
+      CIMMICH_PUBLIC_DEMO_STATE_ROOT="$STATE_ROOT" \
+      CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="${ARCHIVE_ROOT:-$ROOT/demo/cedar-house-v1}" \
+      CIMMICH_PUBLIC_DEMO_IMMICH_PORT="$IMMICH_PORT" \
+      CIMMICH_PUBLIC_DEMO_API_PORT="$API_PORT" \
+      CIMMICH_PUBLIC_DEMO_UI_PORT="$UI_PORT" \
+      docker compose --project-name "$PROJECT" --file "$COMPOSE_FILE" "$@"
+  fi
+}
+
+canonical_get() {
+  canonical_path=$1
+  compose exec -T cimmich-api node -e '
+    const path = process.argv[1];
+    fetch(`http://127.0.0.1:3101${path}`, {
+      headers: {
+        "x-cimmich-device-id": "public-demo-operator",
+        "x-cimmich-surface": "interactive",
+      },
+    }).then(async (response) => {
+      const body = await response.text();
+      process.stdout.write(body);
+      if (!response.ok) process.exitCode = 1;
+    }).catch(() => process.exit(1));
+  ' "$canonical_path"
 }
 
 exact_container_ids() {
@@ -723,10 +753,7 @@ refresh_immich_companion() {
   chmod 600 "$STATE_ROOT/immich-credential.json"
   compose up -d --no-deps --force-recreate cimmich-api
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
-  curl -fsS \
-    -H 'x-cimmich-device-id: public-demo-operator' \
-    -H 'x-cimmich-surface: interactive' \
-    "http://127.0.0.1:$API_PORT/v1/onboarding/immich"
+  canonical_get /v1/onboarding/immich
   printf '\n'
 }
 
@@ -744,7 +771,7 @@ install_face_provider() {
   export CIMMICH_PUBLIC_DEMO_FACE_PROVIDER
   compose up -d --no-deps --force-recreate cimmich-api
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
-  curl -fsS "http://127.0.0.1:$API_PORT/v1/integrations/status"
+  canonical_get /v1/integrations/status
   printf '\n'
 }
 

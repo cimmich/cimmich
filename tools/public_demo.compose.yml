@@ -140,6 +140,7 @@ services:
       CIMMICH_GUIDED_ENABLED: "true"
       CIMMICH_GUIDED_AUTHORITY: operate
       CIMMICH_GUIDED_IMMICH_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_IMMICH_PORT:-22859}/api
+      CIMMICH_GUIDED_PORT: "3102"
       CIMMICH_GUIDED_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}
       CIMMICH_GUIDED_UI_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}
       CIMMICH_GUIDED_VISIBILITY_CEILING: private
@@ -166,7 +167,8 @@ services:
       timeout: 3s
       retries: 60
     ports:
-      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}:3101
+      # Host clients receive only the dedicated, route-limited Guided API.
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}:3102
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]

@@ -57,6 +57,7 @@ services:
       CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}
       CIMMICH_DOCUMENT_STORE_ROOT: /documents
       CIMMICH_GUIDED_ENABLED: "false"
+      CIMMICH_GUIDED_PORT: "3102"
       CIMMICH_IMMICH_SOURCE_ID: ${CIMMICH_IMMICH_SOURCE_ID:-immich-primary}
       CIMMICH_IMMICH_CREDENTIAL_FILE: /config/immich-credential.json
       CIMMICH_MEDIA_JOB_CONFIG_DIGEST: "0000000000000000000000000000000000000000000000000000000000000000"
@@ -83,7 +84,9 @@ services:
       cimmich-storage-init:
         condition: service_completed_successfully
     ports:
-      - 127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}:3101
+      # Only the route-limited Guided listener is host-visible. The owner API
+      # remains container-internal behind the Immich-session gateway.
+      - 127.0.0.1:${CIMMICH_COMPANION_API_PORT:-3411}:3102
     volumes:
       - cimmich-config:/config
       - cimmich-documents:/documents
