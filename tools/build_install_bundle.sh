@@ -46,6 +46,8 @@ git -C "$ROOT" ls-files --error-unmatch tools/build_install_bundle.sh >/dev/null
 test -z "$(git -C "$ROOT" status --porcelain)" ||
   fail "the release working tree is not clean; commit the exact release contents before building artifacts"
 
+"$ROOT/tools/run_publication_scan.sh"
+
 bundle_name="cimmich-$version"
 temporary_root=$(mktemp -d "${TMPDIR:-/tmp}/cimmich-install-bundle.XXXXXX")
 cleanup() {

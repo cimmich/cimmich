@@ -5,9 +5,14 @@ therefore contain unusually sensitive facts even when they contain no media.
 
 ## Supported versions
 
-Until the first tagged public release, only the current main branch is under
-active security review. A supported-version table will be added with the first
-release.
+| Version                        | Supported                                          |
+| :----------------------------- | :------------------------------------------------- |
+| `v1.1.0-community-preview.x`   | Yes, while the preview is current                  |
+| `v1.0.1-beta.6`                | Critical fixes only until the preview is published |
+| Older beta and Build Week tags | No                                                 |
+
+`main` is reviewed for the next candidate but is not a substitute for a named
+release when reporting an installed-version problem.
 
 ## Reporting a vulnerability
 

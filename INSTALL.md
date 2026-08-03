@@ -54,7 +54,8 @@ helping you.
 ### 1. Download Cimmich
 
 1. Open the [Cimmich releases page](https://github.com/cimmich/cimmich/releases).
-2. Choose the newest release labelled **Public Beta**.
+2. Choose the newest release labelled **Community Preview** (or **Public
+   Beta** when no preview is published yet).
 3. Expand **Assets**.
 4. Download the named `cimmich-<version>.tar.gz` install bundle. Use the ZIP
    bundle if your computer handles ZIP files more comfortably.
@@ -103,7 +104,7 @@ The check does not create containers, configuration or database state. A success
 result explains each prerequisite and ends with:
 
 ```json
-{"docker":"ready","installer":"ready","state":"unchanged"}
+{ "docker": "ready", "installer": "ready", "state": "unchanged" }
 ```
 
 If Docker is installed but not running, start Docker and repeat the check. The
@@ -172,7 +173,7 @@ When installation completes:
 1. Open [http://127.0.0.1:3413](http://127.0.0.1:3413).
 2. Sign in using your normal Immich account. Cimmich does not create a second
    user account.
-3. Open **Settings** and choose **Connect your existing Immich library**.
+3. Open **Cimmich → Library setup** and choose **Connect your Immich library**.
 4. Return to the dedicated, read-only API key you created in step 6.
 5. Paste the key only into Cimmich's write-only API-key field.
 6. Verify the reported Immich version, principal and permissions.
@@ -230,7 +231,7 @@ gateway to a trusted interface with `CIMMICH_COMPANION_UI_BIND_ADDRESS`.
 Do not bind it to `0.0.0.0` unless the host's network access is independently
 restricted.
 
-The recommended first-run path is still the signed-in Settings journey: enter
+The recommended first-run path is still the signed-in **Library setup** journey: enter
 the Immich API key there, verify permissions, preview the scope and then import.
 For headless operator workflows only, `configure` also accepts a second argument
 pointing to a mode-`0600` API-key file. Never pass the key value itself on the
