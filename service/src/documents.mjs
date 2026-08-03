@@ -762,7 +762,7 @@ export const createDocumentStore = (
     });
   };
 
-  const writeBlob = async (bytes, sha256) => {
+  const requireWritableRoot = async () => {
     if (!root) {
       throw typedError(
         "Cimmich local Document storage is not configured",
@@ -770,6 +770,22 @@ export const createDocumentStore = (
         "DOCUMENT_STORE_NOT_CONFIGURED",
       );
     }
+    try {
+      const details = await stat(root);
+      if (!details.isDirectory())
+        throw new Error("Document root is not a directory");
+      await access(root, fsConstants.R_OK | fsConstants.W_OK);
+    } catch {
+      throw typedError(
+        "Cimmich local Document storage is unavailable",
+        503,
+        "DOCUMENT_STORE_UNAVAILABLE",
+      );
+    }
+  };
+
+  const writeBlob = async (bytes, sha256) => {
+    await requireWritableRoot();
     const storageKey = `${sha256.slice(0, 2)}/${sha256}`;
     const absolute = resolve(root, storageKey);
     if (!absolute.startsWith(`${root}${sep}`)) {
@@ -1412,7 +1428,6 @@ export const createDocumentStore = (
       };
     }
     try {
-      await mkdir(root, { recursive: true });
       const details = await stat(root);
       await access(root, fsConstants.R_OK | fsConstants.W_OK);
       return {

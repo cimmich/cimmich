@@ -14,6 +14,9 @@ describe('public Cimmich product boundary', () => {
     expect(home).toMatch(/>\s*Models & Guided\s*</);
     expect(home).toContain("name: 'Documents'");
     expect(home).toContain('Counts and previews follow the Viewing mode below.');
+    expect(home).toContain('Cimmich is a local companion for Immich 3.1.0, not a replacement gallery.');
+    expect(home).toContain('Your originals and Immich database stay untouched,');
+    expect(home).toContain('every core organising tool works without optional models.');
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {
@@ -94,6 +97,15 @@ describe('public Cimmich product boundary', () => {
     expect(overlay).toContain("selectedFace.name ? 'Change person' : 'Name this face'");
     expect(overlay).not.toContain('data-testid="cimmich-enhanced-view"');
     expect(detailPanel).toContain('<CimmichAppearancesPanel {asset} compact />');
+  });
+
+  it('keeps photo controls touch-sized and respects reduced-motion preferences', async () => {
+    const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
+    const appCss = await read('../../../app.css');
+
+    expect(overlay).not.toMatch(/\b(?:min-h|size)-(?:[1-9]|10)\b/);
+    expect(appCss).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(appCss).toContain('scroll-behavior: auto !important;');
   });
 
   it('returns the manual-tag toolbar to neutral after decision Undo restores the prior evidence kind', async () => {

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { createDocumentStore, projectDocumentRow } from "../src/documents.mjs";
@@ -75,4 +78,20 @@ test("Document collection counts admit Person, Pet and context links through the
     statements[0],
     /link\.subject_kind NOT IN \('place','object','event'\)[\s\S]*cimmich_visibility_context_entity_rank\(link\.subject_id\)/,
   );
+});
+
+test("Document status never manufactures a missing storage mount", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "cimmich-document-status-"));
+  const missingRoot = join(parent, "documents");
+  const sql = async () => [{ bytes: 0 }];
+  try {
+    const status = await createDocumentStore(sql, {
+      storeRoot: missingRoot,
+    }).status();
+    assert.equal(status.configured, true);
+    assert.equal(status.writable, false);
+    await assert.rejects(stat(missingRoot), (error) => error.code === "ENOENT");
+  } finally {
+    await rm(parent, { force: true, recursive: true });
+  }
 });

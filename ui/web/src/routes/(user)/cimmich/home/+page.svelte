@@ -212,6 +212,10 @@
     class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 text-immich-fg sm:px-6 lg:py-8 dark:text-immich-dark-fg"
   >
     <h1 class="sr-only">Cimmich home</h1>
+    <p class="rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+      <strong>Cimmich is a local companion for Immich 3.1.0, not a replacement gallery.</strong>
+      Your originals and Immich database stay untouched, and every core organising tool works without optional models.
+    </p>
     {#if loadError}
       <div
         class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
@@ -408,7 +412,7 @@
           />
         </label>
         <button
-          class="absolute top-1 right-1 min-h-9 rounded-xl bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="absolute top-0 right-0 min-h-11 rounded-2xl bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           type="submit"
         >
           Search

@@ -51,10 +51,11 @@ describe('human-first Organise information architecture', () => {
   });
 
   it('keeps the existing safeguarded engine behind a secondary route', async () => {
-    const [switcher, bulk, route] = await Promise.all([
+    const [switcher, bulk, route, sorter] = await Promise.all([
       read('src/lib/components/cimmich/CimmichOrganiseModeSwitch.svelte'),
       read('src/routes/(user)/cimmich/organise/bulk/+page.svelte'),
       read('src/lib/route.ts'),
+      read('src/lib/components/cimmich/CimmichBulkPhotoSorter.svelte'),
     ]);
 
     expect(switcher).toContain('Open Bulk organise');
@@ -62,6 +63,9 @@ describe('human-first Organise information architecture', () => {
     expect(bulk).toContain('<CimmichBulkPhotoSorter />');
     expect(bulk).toContain('Back to Organise');
     expect(route).toContain("cimmichOrganiseBulk: () => '/cimmich/organise/bulk'");
+    expect(sorter).toContain('const bindings = await getCimmichVisibleMapAssetBindings');
+    expect(sorter).toContain('if (!bindings.has(asset.id)');
+    expect(sorter).not.toContain('title={asset.originalPath}');
   });
 
   it('makes Event folders browsable before requiring a search', async () => {

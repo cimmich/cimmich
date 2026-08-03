@@ -6,7 +6,7 @@
     type CimmichVisibilityObject,
     type CimmichVisibilityTier,
   } from '$lib/services/cimmich.service';
-  import { Icon } from '@immich/ui';
+  import { Icon, toastManager } from '@immich/ui';
   import { mdiUndoVariant } from '@mdi/js';
   import CimmichVisibilityTierControl from './CimmichVisibilityTierControl.svelte';
 
@@ -54,6 +54,8 @@
       }
       cimmichVisibilityManager.clearUndo(nextObject.objectScope, nextObject.objectId);
       publish(nextObject, result);
+    } catch (error_) {
+      toastManager.danger(error_ instanceof Error ? error_.message : `${objectLabel} visibility could not be undone`);
     } finally {
       busy = false;
     }

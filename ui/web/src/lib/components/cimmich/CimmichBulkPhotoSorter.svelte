@@ -209,37 +209,23 @@
     progress = 'Finding matching photos…';
     try {
       const fingerprint = filterFingerprint;
-      if (filters.personId) {
-        const personSourceIds = await loadCimmichPersonSourceIds(filters.personId);
-        const samples: AssetResponseDto[] = [];
-        const matches = await collectAssets(
-          buildBulkPhotoSorterSearch(filters),
-          undefined,
-          'Finding exact Cimmich person matches',
-          personSourceIds,
-          samples,
-        );
-        if (fingerprint !== filterFingerprint) {
-          return;
-        }
-        previewAssets = samples;
-        previewTotal = matches.length;
-        previewHasMore = false;
-        previewFingerprint = fingerprint;
-        progress = `${matches.length.toLocaleString()} ${matches.length === 1 ? 'photo matches' : 'photos match'}. Nothing has changed.`;
-        return;
-      }
-      const result = await searchAssets({
-        metadataSearchDto: buildBulkPhotoSorterSearch(filters, 1, BULK_PHOTO_SORTER_PREVIEW_SIZE),
-      });
+      const acceptedSourceIds = filters.personId ? await loadCimmichPersonSourceIds(filters.personId) : undefined;
+      const samples: AssetResponseDto[] = [];
+      const matches = await collectAssets(
+        buildBulkPhotoSorterSearch(filters),
+        undefined,
+        filters.personId ? 'Finding exact Cimmich person matches' : 'Finding visible matches',
+        acceptedSourceIds,
+        samples,
+      );
       if (fingerprint !== filterFingerprint) {
         return;
       }
-      previewAssets = result.assets.items;
-      previewTotal = result.assets.items.length;
-      previewHasMore = Boolean(result.assets.nextPage);
+      previewAssets = samples;
+      previewTotal = matches.length;
+      previewHasMore = false;
       previewFingerprint = fingerprint;
-      progress = `${result.assets.items.length.toLocaleString()}${result.assets.nextPage ? '+' : ''} ${result.assets.items.length === 1 && !result.assets.nextPage ? 'photo matches' : 'photos match'}. Nothing has changed.`;
+      progress = `${matches.length.toLocaleString()} ${matches.length === 1 ? 'photo matches' : 'photos match'}. Nothing has changed.`;
     } catch (error_) {
       previewAssets = [];
       previewTotal = null;
@@ -269,9 +255,11 @@
       const result = await searchAssets({
         metadataSearchDto: { ...query, page, size: BULK_PHOTO_SORTER_PAGE_SIZE },
       });
-      const matchingItems = (
-        acceptedSourceIds ? result.assets.items.filter((asset) => acceptedSourceIds.has(asset.id)) : result.assets.items
-      ).filter((asset) => {
+      const bindings = await getCimmichVisibleMapAssetBindings(result.assets.items.map(({ id }) => id));
+      const matchingItems = result.assets.items.filter((asset) => {
+        if (!bindings.has(asset.id) || (acceptedSourceIds && !acceptedSourceIds.has(asset.id))) {
+          return false;
+        }
         if (seen.has(asset.id)) {
           return false;
         }
@@ -952,7 +940,7 @@
               />
               <div class="p-2">
                 <p class="truncate text-xs font-semibold" title={asset.originalFileName}>{asset.originalFileName}</p>
-                <p class="mt-1 truncate text-[11px] opacity-60" title={asset.originalPath}>
+                <p class="mt-1 truncate text-[11px] opacity-60">
                   {asset.fileCreatedAt.slice(0, 10)}
                 </p>
               </div>

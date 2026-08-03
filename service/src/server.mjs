@@ -3826,6 +3826,7 @@ export const createCimmichServer = ({
       // /merge-preview so a command cannot be mistaken for a Person ID.
       const personReadMatch = url.pathname.match(/^\/v1\/people\/([^/]+)$/);
       if (request.method === "GET" && personReadMatch) {
+        requireProjection("people");
         const person = await repository.person({
           personId: decodeURIComponent(personReadMatch[1]),
         });

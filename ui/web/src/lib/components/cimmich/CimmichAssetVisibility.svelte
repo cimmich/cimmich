@@ -9,7 +9,7 @@
     type CimmichVisibilityTier,
   } from '$lib/services/cimmich.service';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
-  import { Icon } from '@immich/ui';
+  import { Icon, toastManager } from '@immich/ui';
   import { mdiUndoVariant } from '@mdi/js';
   import CimmichVisibilityTierControl from './CimmichVisibilityTierControl.svelte';
 
@@ -78,6 +78,8 @@
       cimmichVisibilityManager.clearUndo(object.objectScope, object.objectId);
       cimmichVisibilityManager.notify();
       globalThis.dispatchEvent(new CustomEvent('cimmich:visibility-changed', { detail: result }));
+    } catch (error_) {
+      toastManager.danger(error_ instanceof Error ? error_.message : 'Photo visibility could not be undone');
     } finally {
       isLoading = false;
     }

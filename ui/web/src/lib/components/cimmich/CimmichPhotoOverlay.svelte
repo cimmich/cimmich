@@ -3613,7 +3613,7 @@
         <span>{manualTagSaveError && !manualTagDraft ? manualTagSaveError : manualTagActionMessage}</span>
         {#if manualTagUndoDecisionId && !manualTagSaveError}
           <button
-            class="min-h-9 rounded-full bg-white/12 px-3 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+            class="min-h-11 rounded-full bg-white/12 px-3 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
             type="button"
             disabled={isManualTagSaving}
             onclick={() => void undoLastManualTag()}
@@ -3636,7 +3636,7 @@
         <span>{presenceError || presenceMessage}</span>
         {#if presenceUndoDecisionId && !presenceError}
           <button
-            class="min-h-9 rounded-full bg-white/12 px-3 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+            class="min-h-11 rounded-full bg-white/12 px-3 hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
             type="button"
             disabled={isPresenceSaving}
             onclick={() => void undoRegionlessPresence()}
@@ -3819,7 +3819,7 @@
           <p class="mt-1 text-xs text-white/65">Presence records the person or pet without drawing a region.</p>
         </div>
         <button
-          class="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-white/12 focus-visible:outline-2 focus-visible:outline-white"
+          class="flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-white/12 focus-visible:outline-2 focus-visible:outline-white"
           type="button"
           aria-label="Close Presence picker"
           onclick={closePresencePicker}
@@ -3852,7 +3852,7 @@
           {#each presenceSubjectMatches as subject (subject.id)}
             <button
               class={[
-                'flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition focus-visible:outline-2 focus-visible:outline-white',
+                'flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition focus-visible:outline-2 focus-visible:outline-white',
                 presenceSelectedSubjectId === subject.id ? 'bg-white text-black' : 'hover:bg-white/12',
               ]}
               type="button"
@@ -3876,12 +3876,12 @@
       {/if}
       <div class="mt-4 flex justify-end gap-2 border-t border-white/12 pt-3">
         <button
-          class="min-h-10 rounded-full px-4 text-sm font-semibold text-white/75 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-white/75 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
           type="button"
           onclick={closePresencePicker}>Cancel</button
         >
         <button
-          class="min-h-10 rounded-full bg-white px-4 text-sm font-semibold text-black hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-45"
+          class="min-h-11 rounded-full bg-white px-4 text-sm font-semibold text-black hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-45"
           type="button"
           disabled={!presenceSelectedSubject || isPresenceSaving}
           onclick={() => void saveRegionlessPresence()}
@@ -3952,7 +3952,7 @@
           <p class="mt-1 text-sm text-white/75">Choose the Thing inside the region.</p>
         </div>
         <input
-          class="min-h-10 rounded-lg border border-white/20 bg-white/8 px-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/65"
+          class="min-h-11 rounded-lg border border-white/20 bg-white/8 px-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/65"
           placeholder="Find a Thing"
           autocomplete="off"
           bind:value={objectRegionQuery}
@@ -3962,7 +3962,7 @@
           {#each availableObjectOptions as option (option.entityId)}
             <button
               class={[
-                'min-h-10 rounded-lg px-3 text-left text-sm font-semibold transition',
+                'min-h-11 rounded-lg px-3 text-left text-sm font-semibold transition',
                 objectSelectedEntityId === option.entityId
                   ? 'bg-white text-black'
                   : 'bg-white/8 text-white hover:bg-white/15',
@@ -3982,12 +3982,12 @@
         </div>
         <div class="flex justify-end gap-2">
           <button
-            class="min-h-10 rounded-full px-4 text-sm font-semibold text-white/70 hover:bg-white/10"
+            class="min-h-11 rounded-full px-4 text-sm font-semibold text-white/70 hover:bg-white/10"
             type="button"
             onclick={closeObjectTagging}>Cancel</button
           >
           <button
-            class="min-h-10 rounded-full bg-white px-4 text-sm font-bold text-black disabled:opacity-45"
+            class="min-h-11 rounded-full bg-white px-4 text-sm font-bold text-black disabled:opacity-45"
             type="button"
             disabled={!selectedObjectOption || isObjectSaving}
             onclick={() => void saveObjectRegion()}>{isObjectSaving ? 'Saving…' : 'Save object tag'}</button
@@ -4496,7 +4496,7 @@
     >
       {#each namedPhotoPresence as presence (`${presence.kind}:${presence.name}`)}
         <div
-          class="flex min-h-9 items-center gap-2 rounded-full border border-white/25 bg-black/78 px-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
+          class="flex min-h-11 items-center gap-2 rounded-full border border-white/25 bg-black/78 px-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
           title={presence.kind === 'pet'
             ? 'Named Pet associated with this photo'
             : 'Named person associated with this photo'}
@@ -4507,7 +4507,7 @@
       {/each}
       {#each primaryLocalizedManualPresenceTags as tag (tag.tagId)}
         <button
-          class="pointer-events-auto flex min-h-9 items-center gap-2 rounded-full border border-emerald-200/35 bg-black/78 px-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-white"
+          class="pointer-events-auto flex min-h-11 items-center gap-2 rounded-full border border-emerald-200/35 bg-black/78 px-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-white"
           title="Presence · manually tagged on this photo"
           aria-label={`Presence · ${tag.subject.displayName}`}
           type="button"
@@ -4526,7 +4526,7 @@
       {/each}
       {#each primaryRegionlessPresenceItems as presence (presence.associationId)}
         <div
-          class="pointer-events-auto flex min-h-9 items-center gap-2 rounded-full border border-white/25 bg-black/78 pr-1 pl-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
+          class="pointer-events-auto flex min-h-11 items-center gap-2 rounded-full border border-white/25 bg-black/78 pr-1 pl-3 text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
           title="Presence · associated with this whole photo"
           data-testid="cimmich-regionless-presence-summary"
         >
@@ -4536,7 +4536,7 @@
           />
           <span>{presence.displayName}</span>
           <button
-            class="flex size-8 items-center justify-center rounded-full text-white/60 hover:bg-white/12 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+            class="flex size-11 items-center justify-center rounded-full text-white/60 hover:bg-white/12 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
             type="button"
             aria-label={`Remove ${presence.displayName}'s Presence`}
             title="Remove Presence"
@@ -4728,7 +4728,7 @@
             </p>
           </div>
           <button
-            class="flex min-h-9 items-center rounded-lg px-2 text-white/65 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+            class="flex min-h-11 items-center rounded-lg px-2 text-white/65 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
             type="button"
             onclick={stopTagging}
           >
@@ -4743,7 +4743,7 @@
               {@const typedTagType = tagType as CimmichManualSubjectTagType}
               <button
                 class={[
-                  'min-h-10 rounded-md px-2 font-semibold focus-visible:outline-2 focus-visible:outline-white',
+                  'min-h-11 rounded-md px-2 font-semibold focus-visible:outline-2 focus-visible:outline-white',
                   manualTagType === typedTagType
                     ? 'bg-cyan-300 text-black'
                     : 'text-white/70 hover:bg-white/10 hover:text-white',
@@ -4887,7 +4887,7 @@
             <p class="truncate text-white/55">{selectedManualTag.subject.displayName}</p>
           </div>
           <button
-            class="flex min-h-9 items-center rounded-lg px-2 text-white/65 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+            class="flex min-h-11 items-center rounded-lg px-2 text-white/65 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
             type="button"
             onclick={closeManualTagEditor}
           >
@@ -4902,7 +4902,7 @@
               {@const typedTagType = tagType as CimmichManualSubjectTagType}
               <button
                 class={[
-                  'min-h-10 rounded-md px-2 font-semibold focus-visible:outline-2 focus-visible:outline-white',
+                  'min-h-11 rounded-md px-2 font-semibold focus-visible:outline-2 focus-visible:outline-white',
                   manualTagType === typedTagType
                     ? 'bg-cyan-300 text-black'
                     : 'text-white/70 hover:bg-white/10 hover:text-white',
@@ -5118,7 +5118,7 @@
             ]}
           >
             <button
-              class="grid size-6 place-items-center rounded-full bg-white/12 text-[11px] font-bold text-white"
+              class="grid size-11 place-items-center rounded-full bg-white/12 text-[11px] font-bold text-white"
               type="button"
               onclick={() => setSelectedFace(face)}
             >
@@ -5289,7 +5289,7 @@
                 <button
                   {...props}
                   class={[
-                    'flex size-9 shrink-0 items-center justify-center rounded-sm transition disabled:opacity-50',
+                    'flex size-11 shrink-0 items-center justify-center rounded-sm transition disabled:opacity-50',
                     clearIdentityConfirmId === selectedFace.id
                       ? 'bg-red-500 text-white hover:bg-red-400'
                       : 'text-white/55 hover:bg-white/10 hover:text-red-200',
@@ -5312,7 +5312,7 @@
           {/if}
           {#if isEditingFaceName}
             <button
-              class="flex size-9 items-center justify-center rounded-sm text-white/65 transition hover:bg-white/10 hover:text-white"
+              class="flex size-11 items-center justify-center rounded-sm text-white/65 transition hover:bg-white/10 hover:text-white"
               type="button"
               aria-label="Close Face editor"
               onclick={() => {
@@ -5334,7 +5334,7 @@
             {@const typedEvidenceKind = evidenceKind as FaceEvidenceKindDraft}
             <button
               class={[
-                'min-h-7 rounded-full border px-2.5 text-[11px] font-semibold transition',
+                'min-h-11 rounded-full border px-2.5 text-[11px] font-semibold transition',
                 faceEvidenceKindDraft === typedEvidenceKind
                   ? 'border-white/65 bg-white text-black'
                   : 'border-white/20 text-white/65 hover:bg-white/10 hover:text-white',
@@ -5352,7 +5352,7 @@
             {#snippet child({ props })}
               <button
                 {...props}
-                class="flex size-7 items-center justify-center rounded-full text-white/55 transition hover:bg-white/10 hover:text-white"
+                class="flex size-11 items-center justify-center rounded-full text-white/55 transition hover:bg-white/10 hover:text-white"
                 type="button"
                 aria-label="Face correction help"
               >
@@ -5483,7 +5483,7 @@
                   <span class="font-semibold text-white/65">Machinery role</span>
                   <select
                     bind:value={faceBucketDraft}
-                    class="min-h-10 rounded-sm border border-white/20 bg-black/80 px-2 text-white outline-none focus:border-white/60"
+                    class="min-h-11 rounded-sm border border-white/20 bg-black/80 px-2 text-white outline-none focus:border-white/60"
                   >
                     <option value="face_only">Supporting evidence only</option>
                     <option value="prime">Core matching evidence</option>
@@ -5533,7 +5533,7 @@
             </button>
             {#if faceEvidenceKindDraft === 'face'}
               <button
-                class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                class="min-h-11 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
                 disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'later'}
                 type="button"
                 onclick={() => void applyFaceReviewDisposition(selectedFace, 'later')}>Review later</button
@@ -5541,7 +5541,7 @@
               {#if holdingPeople.length > 0}
                 <div class="relative">
                   <button
-                    class="min-h-10 w-full rounded-sm border border-violet-300/50 bg-violet-400/15 px-3 font-semibold text-violet-100 hover:bg-violet-400/25"
+                    class="min-h-11 w-full rounded-sm border border-violet-300/50 bg-violet-400/15 px-3 font-semibold text-violet-100 hover:bg-violet-400/25"
                     type="button"
                     aria-expanded={isLaterPickerOpen}
                     onclick={() => (isLaterPickerOpen = !isLaterPickerOpen)}
@@ -5555,7 +5555,7 @@
                     >
                       {#each holdingPeople as name (name)}
                         <button
-                          class="min-h-10 rounded-md px-3 text-left text-white/80 hover:bg-white/10 hover:text-white"
+                          class="min-h-11 rounded-md px-3 text-left text-white/80 hover:bg-white/10 hover:text-white"
                           type="button"
                           onclick={() => {
                             faceNameDraft = name;
@@ -5572,14 +5572,14 @@
                 </div>
               {/if}
               <button
-                class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                class="min-h-11 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
                 disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'unknown'}
                 type="button"
                 onclick={() => void applyFaceReviewDisposition(selectedFace, 'unknown')}>Unknown person</button
               >
               {#if selectedFace.reviewDisposition && selectedFace.reviewDisposition !== 'active'}
                 <button
-                  class="min-h-10 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                  class="min-h-11 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
                   disabled={isFaceActionSaving}
                   type="button"
                   onclick={() => void applyFaceReviewDisposition(selectedFace, 'active')}>Resume review</button
@@ -5730,7 +5730,7 @@
               >
                 {#each bodyPersonOptions as subject (subject.id)}
                   <button
-                    class="flex min-h-9 w-full items-center rounded-sm px-2 text-left font-medium hover:bg-white/12 focus-visible:bg-white/12"
+                    class="flex min-h-11 w-full items-center rounded-sm px-2 text-left font-medium hover:bg-white/12 focus-visible:bg-white/12"
                     type="button"
                     role="option"
                     aria-selected="false"
@@ -5804,7 +5804,7 @@
       </span>
       {#if observationUndoDecisionId && !observationActionError}
         <button
-          class="min-h-8 rounded-full bg-white px-3 font-semibold text-black disabled:opacity-50"
+          class="min-h-11 rounded-full bg-white px-3 font-semibold text-black disabled:opacity-50"
           disabled={isObservationActionSaving}
           type="button"
           onclick={() => void undoDetailedObservationCorrection()}
@@ -5902,15 +5902,12 @@
         <div class="flex flex-wrap gap-1.5" aria-label="Context on this photo">
           {#each displayedPhotoContexts as context (`${context.family}:${context.entityId}`)}
             <div
-              class={[
-                'flex items-center overflow-hidden rounded-full border border-white/18 bg-white/10',
-                isContextEditing ? 'min-h-10' : 'min-h-8',
-              ]}
+              class={['flex items-center overflow-hidden rounded-full border border-white/18 bg-white/10', 'min-h-11']}
             >
               <a
                 class={[
                   'flex items-center gap-1.5 px-3 font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white',
-                  isContextEditing ? 'min-h-10' : 'min-h-8',
+                  'min-h-11',
                 ]}
                 href={contextHref(context)}
               >
@@ -5921,7 +5918,7 @@
               </a>
               {#if isContextEditing}
                 <button
-                  class="min-h-10 border-l border-white/15 px-3 text-xs font-semibold text-red-100 hover:bg-red-400/15 disabled:opacity-50"
+                  class="min-h-11 border-l border-white/15 px-3 text-xs font-semibold text-red-100 hover:bg-red-400/15 disabled:opacity-50"
                   type="button"
                   disabled={isContextSaving}
                   aria-label={`Remove ${context.displayName} from this photo`}
@@ -5935,15 +5932,12 @@
           {/if}
           {#each thingRegions as tag (tag.tagId)}
             <div
-              class={[
-                'flex items-center overflow-hidden rounded-full border border-white/18 bg-white/10',
-                isContextEditing ? 'min-h-10' : 'min-h-8',
-              ]}
+              class={['flex items-center overflow-hidden rounded-full border border-white/18 bg-white/10', 'min-h-11']}
             >
               <a
                 class={[
                   'flex items-center gap-1.5 px-3 font-semibold hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white',
-                  isContextEditing ? 'min-h-10' : 'min-h-8',
+                  'min-h-11',
                 ]}
                 href={`/cimmich/things?entityId=${encodeURIComponent(tag.entityId)}`}
               >
@@ -5952,7 +5946,7 @@
               </a>
               {#if isContextEditing}
                 <button
-                  class="min-h-10 border-l border-white/15 px-3 text-xs font-semibold text-red-100 hover:bg-red-400/15 disabled:opacity-50"
+                  class="min-h-11 border-l border-white/15 px-3 text-xs font-semibold text-red-100 hover:bg-red-400/15 disabled:opacity-50"
                   type="button"
                   disabled={isObjectSaving}
                   aria-label={`Remove ${tag.displayName} object tag`}
@@ -5979,7 +5973,7 @@
             <div class="flex items-center justify-between gap-3">
               <span class="text-[11px] text-white/45">Owner-written · {ownerSummaryDraft.length}/2000</span>
               <button
-                class="min-h-9 rounded-full bg-white px-4 text-xs font-bold text-black disabled:opacity-45"
+                class="min-h-11 rounded-full bg-white px-4 text-xs font-bold text-black disabled:opacity-45"
                 type="button"
                 disabled={isOwnerSummarySaving || ownerSummaryDraft.trim() === (ownerSummary?.summaryText || '')}
                 onclick={() => void saveOwnerSummary()}>{isOwnerSummarySaving ? 'Saving…' : 'Save summary'}</button
@@ -5991,7 +5985,7 @@
                 {#each contextAddActions as action (action.kind)}
                   <button
                     class={[
-                      'min-h-9 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-white',
+                      'min-h-11 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-white',
                       contextAddKind === action.kind
                         ? 'border-white bg-white text-black'
                         : 'border-white/20 bg-white/8 text-white hover:border-white/45 hover:bg-white/15',
@@ -6013,7 +6007,7 @@
                 Find a {contextAddKind === 'place' ? 'Place' : 'Event'}
                 <input
                   id="cimmich-photo-context-search"
-                  class="min-h-10 rounded-lg border border-white/20 bg-black/35 px-3 font-normal text-white outline-none placeholder:text-white/40 focus:border-white/60"
+                  class="min-h-11 rounded-lg border border-white/20 bg-black/35 px-3 font-normal text-white outline-none placeholder:text-white/40 focus:border-white/60"
                   placeholder={`Search ${contextAddKind === 'place' ? 'Places' : 'Events'}`}
                   autocomplete="off"
                   value={contextQuery}
@@ -6027,7 +6021,7 @@
                 <div class="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto" aria-label="Add context to this photo">
                   {#each availableContextOptions as option (option.entityId)}
                     <button
-                      class="min-h-9 rounded-full border border-white/20 bg-white/8 px-3 text-left text-xs font-semibold text-white transition hover:border-white/45 hover:bg-white/15 disabled:opacity-45"
+                      class="min-h-11 rounded-full border border-white/20 bg-white/8 px-3 text-left text-xs font-semibold text-white transition hover:border-white/45 hover:bg-white/15 disabled:opacity-45"
                       type="button"
                       disabled={isContextSaving}
                       aria-label={`Add ${option.displayName} to this photo`}
@@ -6056,7 +6050,7 @@
                 <span>{ownerSummaryActionError || ownerSummaryActionMessage}</span>
                 {#if ownerSummaryUndoDecisionId && !ownerSummaryActionError}
                   <button
-                    class="min-h-8 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20"
+                    class="min-h-11 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20"
                     type="button"
                     onclick={() => void undoManualPhotoContextAction(ownerSummaryUndoDecisionId)}>Undo</button
                   >
@@ -6077,7 +6071,7 @@
             <span>{contextActionError || contextActionMessage}</span>
             {#if contextUndoDecisionId && !contextActionError}
               <button
-                class="min-h-8 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20 disabled:opacity-50"
+                class="min-h-11 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20 disabled:opacity-50"
                 type="button"
                 disabled={isContextSaving}
                 onclick={() => void undoContextAction()}>Undo</button
@@ -6093,7 +6087,7 @@
             <span>{objectActionMessage}</span>
             {#if objectUndoDecisionId}
               <button
-                class="min-h-8 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20"
+                class="min-h-11 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20"
                 type="button"
                 onclick={() => void undoManualPhotoContextAction(objectUndoDecisionId)}>Undo</button
               >

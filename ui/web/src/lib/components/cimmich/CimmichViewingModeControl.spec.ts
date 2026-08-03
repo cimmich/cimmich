@@ -81,10 +81,25 @@ describe('CimmichViewingModeControl', () => {
 
     expect(onSelectMode).not.toHaveBeenCalledWith('private');
     const password = getByLabelText('Private password');
+    await waitFor(() => expect(password).toHaveFocus());
     await fireEvent.input(password, { target: { value: '1' } });
     await fireEvent.click(getByRole('button', { name: 'Unlock' }));
 
     await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('1'));
+  });
+
+  it('traps initial focus in the dialog and restores it to the trigger on Escape', async () => {
+    const { getByRole } = renderControl();
+    const trigger = getByRole('button', { name: 'Viewing mode: Personal' });
+
+    trigger.focus();
+    await fireEvent.click(trigger);
+    const dialog = getByRole('dialog', { name: 'Cimmich viewing mode' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await waitFor(() => expect(getByRole('button', { name: 'Standard' })).toHaveFocus());
+
+    await fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('offers an explicit lock when a Private session exists', async () => {

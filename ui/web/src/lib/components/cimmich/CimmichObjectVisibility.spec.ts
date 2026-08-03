@@ -1,3 +1,4 @@
+import { toastManager } from '@immich/ui';
 import '@testing-library/jest-dom';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import type { CimmichVisibilityObject } from '$lib/services/cimmich.service';
@@ -74,5 +75,19 @@ describe('Cimmich context entity visibility', () => {
     await waitFor(() => expect(mocks.setObject).toHaveBeenCalledWith('context_entity', 'place_1', 'personal'));
     expect(mocks.rememberUndo).toHaveBeenCalledWith('context_entity', 'place_1', 'decision_1');
     expect(onChange).toHaveBeenCalledWith(personal);
+  });
+
+  it('keeps failed Undo available and announces the failure', async () => {
+    mocks.undoDecisions['context_entity:place_1'] = 'decision_failed';
+    mocks.undo.mockRejectedValue(new Error('Undo is temporarily unavailable'));
+    const danger = vi.spyOn(toastManager, 'danger').mockImplementation(() => {});
+    const { getByRole } = render(CimmichObjectVisibility, { object, objectLabel: 'Place' });
+
+    await fireEvent.click(getByRole('button', { name: 'Undo place visibility change' }));
+
+    await waitFor(() => expect(danger).toHaveBeenCalledWith('Undo is temporarily unavailable'));
+    expect(mocks.clearUndo).not.toHaveBeenCalled();
+    expect(getByRole('button', { name: 'Undo place visibility change' })).toBeEnabled();
+    danger.mockRestore();
   });
 });
