@@ -293,6 +293,6 @@ describe('Immich unnamed Person resolution', () => {
     await fireEvent.click(getByRole('button', { name: 'Use selected Person' }));
 
     await waitFor(() => expect(getByText(/Decision saved. Update the import/)).toBeInTheDocument());
-    expect(getByRole('link', { name: 'Update import' })).toHaveAttribute('href', '/cimmich/maintenance');
+    expect(getByRole('link', { name: 'Update import' })).toHaveAttribute('href', '/cimmich/setup');
   });
 });

@@ -7,6 +7,7 @@ export type CimmichSummary = {
   body_observations: number;
   face_observations: number;
   candidate_signals: number;
+  future_assets: number;
   people: number;
   suggestions_ready: number;
   user_decisions: number;

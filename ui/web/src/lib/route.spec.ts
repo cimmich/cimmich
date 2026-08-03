@@ -59,6 +59,13 @@ describe('Route', () => {
     });
   });
 
+  describe(Route.cimmichSetup.name, () => {
+    it('keeps newcomer library setup separate from advanced maintenance', () => {
+      expect(Route.cimmichSetup()).toBe('/cimmich/setup');
+      expect(Route.cimmichMaintenance()).toBe('/cimmich/maintenance');
+    });
+  });
+
   describe(Route.tags.name, () => {
     it('should work', () => {
       expect(Route.tags()).toBe('/tags');

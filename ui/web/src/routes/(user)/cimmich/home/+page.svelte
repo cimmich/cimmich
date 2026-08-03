@@ -250,7 +250,7 @@
           <div class="flex shrink-0 flex-col items-start gap-2 lg:items-end">
             <a
               class="inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-600 px-5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-indigo-400 dark:text-indigo-950 dark:hover:bg-indigo-300"
-              href={`${Route.cimmichMaintenance()}#cimmich-first-run-title`}
+              href={Route.cimmichSetup()}
             >
               {onboardingStatus?.connection.state === 'ready' ? 'Preview your library' : 'Connect your library'}
               <Icon icon={mdiArrowRight} size="18" />
@@ -327,7 +327,10 @@
     </div>
 
     <section id="your-world" aria-labelledby="your-world-heading" class="scroll-mt-24">
-      <h2 id="your-world-heading" class="mb-3 text-2xl font-semibold tracking-tight">Your world</h2>
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="your-world-heading" class="text-2xl font-semibold tracking-tight">Your world</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400">Counts and previews follow the Viewing mode below.</p>
+      </div>
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each portalCards as portal (portal.id)}

@@ -30,4 +30,5 @@ test("Summary People count is structurally scoped to Person rows and never Pets"
     summaryQuery,
     /FROM current_person\s+WHERE status = 'active' AND subject_kind = 'person'/,
   );
+  assert.match(summaryQuery, /capture_time > now\(\) \+ interval '24 hours'/);
 });
