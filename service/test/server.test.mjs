@@ -3889,6 +3889,64 @@ test("Guided V2 bootstraps and delegates canonical operations without forced Sta
   assert.equal(calls[0].displayName, "Space Trip");
 });
 
+test("the Guided listener cannot shed authority by omitting its surface header", async () => {
+  const accessToken = "guided-listener-token-0123456789abcdef";
+  const repository = {
+    summary: async () => ({ assets: 6, people: 1 }),
+  };
+  const guidedAccess = createGuidedAccess({
+    accessToken,
+    authority: "read",
+    enabled: true,
+    repository,
+    visibilityCeiling: "standard",
+  });
+  const visibility = {
+    requireProjection: () => {},
+    runRequest: (_request, _response, run) => run(),
+    status: () => ({ viewingMode: "standard" }),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const escaped = await fetch(`${root}/v1/summary`);
+      assert.equal(escaped.status, 403);
+      assert.equal((await escaped.json()).code, "GUIDED_SURFACE_REQUIRED");
+
+      const bounded = await fetch(`${root}/v1/summary`, {
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "x-cimmich-surface": "guided",
+        },
+      });
+      assert.equal(bounded.status, 200);
+    },
+    { guidedAccess, surfacePolicy: "guided", visibility },
+  );
+});
+
+test("the owner listener does not expose Guided routes", async () => {
+  const accessToken = "guided-owner-separation-0123456789abcdef";
+  const guidedAccess = createGuidedAccess({
+    accessToken,
+    authority: "read",
+    enabled: true,
+    repository: {},
+    visibilityCeiling: "standard",
+  });
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/guided/v1/capabilities`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      assert.equal(response.status, 404);
+      assert.equal((await response.json()).code, "GUIDED_LISTENER_REQUIRED");
+    },
+    { guidedAccess, surfacePolicy: "canonical" },
+  );
+});
+
 test("machine review decisions bind a face to a stable Person ID or matcher-contract dismissal", async () => {
   const calls = [];
   await withServer(

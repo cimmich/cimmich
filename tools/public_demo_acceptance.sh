@@ -15,7 +15,9 @@ STATE_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT"
 ARCHIVE_ROOT=${CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT:?Set CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT to the complete Cedar House V1 bundle}
 IMMICH_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_IMMICH_PORT:-22959}
 API_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_API_PORT:-3401}
+OWNER_API_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_OWNER_API_PORT:-3402}
 UI_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_UI_PORT:-3403}
+COMPOSE_OVERRIDE="$ROOT/tools/public_demo.acceptance.override.yml"
 BACKUP_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-backup"
 PORTABLE_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-portable"
 PORTABLE_BACKUP_ROOT="$PORTABLE_BACKUP_PARENT/$PROJECT-backup"
@@ -29,6 +31,8 @@ run_demo() {
     CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$ARCHIVE_ROOT" \
     CIMMICH_PUBLIC_DEMO_IMMICH_PORT="$IMMICH_PORT" \
     CIMMICH_PUBLIC_DEMO_API_PORT="$API_PORT" \
+    CIMMICH_PUBLIC_DEMO_ACCEPTANCE_OWNER_API_PORT="$OWNER_API_PORT" \
+    CIMMICH_PUBLIC_DEMO_COMPOSE_OVERRIDE="$COMPOSE_OVERRIDE" \
     CIMMICH_PUBLIC_DEMO_UI_PORT="$UI_PORT" \
     "$ROOT/tools/public_demo.sh" "$@"
 }
@@ -107,7 +111,7 @@ post_visibility() {
   response_file=$5
   if test -n "$token_header_file"; then
     curl -sS -o "$response_file" -w '%{http_code}' \
-      -X POST "http://127.0.0.1:$API_PORT$path" \
+      -X POST "http://127.0.0.1:$OWNER_API_PORT$path" \
       -H 'content-type: application/json' \
       -H 'x-cimmich-principal-id: local-primary' \
       -H "x-cimmich-device-id: $device" \
@@ -115,7 +119,7 @@ post_visibility() {
       --data-binary "@$body_file"
   else
     curl -sS -o "$response_file" -w '%{http_code}' \
-      -X POST "http://127.0.0.1:$API_PORT$path" \
+      -X POST "http://127.0.0.1:$OWNER_API_PORT$path" \
       -H 'content-type: application/json' \
       -H 'x-cimmich-principal-id: local-primary' \
       -H "x-cimmich-device-id: $device" \
@@ -132,7 +136,7 @@ unlock_with_password_file() {
     tr -d '\r\n' < "$password_file"
     printf '"}\n'
   } | curl -sS -o "$response_file" -w '%{http_code}' \
-    -X POST "http://127.0.0.1:$API_PORT/v1/visibility/unlock" \
+    -X POST "http://127.0.0.1:$OWNER_API_PORT/v1/visibility/unlock" \
     -H 'content-type: application/json' \
     -H 'x-cimmich-principal-id: local-primary' \
     -H "x-cimmich-device-id: $device" \
@@ -264,7 +268,11 @@ guided_summary_code=$(curl -sS -o "$PRIVACY_PROOF_ROOT/guided-summary-v2.json" -
   "http://127.0.0.1:$API_PORT/v1/summary")
 assert_code "$guided_summary_code" 200
 assert_secret_absent "$guided_token_file" "$PRIVACY_PROOF_ROOT/guided-summary-v2.json"
-curl -sS "http://127.0.0.1:$API_PORT/v1/visibility/status" \
+guided_escape_code=$(curl -sS -o "$PRIVACY_PROOF_ROOT/guided-header-omission.json" -w '%{http_code}' \
+  "http://127.0.0.1:$API_PORT/v1/summary")
+assert_code "$guided_escape_code" 403
+assert_typed_error "$PRIVACY_PROOF_ROOT/guided-header-omission.json" GUIDED_SURFACE_REQUIRED
+curl -sS "http://127.0.0.1:$OWNER_API_PORT/v1/visibility/status" \
   -H 'x-cimmich-principal-id: local-primary' \
   -H 'x-cimmich-device-id: privacy-tab-one' \
   > "$PRIVACY_PROOF_ROOT/initial-status.json"
@@ -295,12 +303,12 @@ printf 'x-cimmich-private-session: %s\n' "$private_token" > "$PRIVACY_PROOF_ROOT
 printf 'x-cimmich-private-session: invalid-session-token\n' > "$PRIVACY_PROOF_ROOT/invalid-token.header"
 
 # Reload-equivalent and a second tab carry no module-memory token and remain Standard.
-curl -sS "http://127.0.0.1:$API_PORT/v1/visibility/status" \
+curl -sS "http://127.0.0.1:$OWNER_API_PORT/v1/visibility/status" \
   -H 'x-cimmich-principal-id: local-primary' \
   -H 'x-cimmich-device-id: privacy-tab-one' \
   > "$PRIVACY_PROOF_ROOT/reload-status.json"
 grep -q '"viewingMode":"standard"' "$PRIVACY_PROOF_ROOT/reload-status.json"
-curl -sS "http://127.0.0.1:$API_PORT/v1/visibility/status" \
+curl -sS "http://127.0.0.1:$OWNER_API_PORT/v1/visibility/status" \
   -H 'x-cimmich-principal-id: local-primary' \
   -H 'x-cimmich-device-id: privacy-tab-two' \
   > "$PRIVACY_PROOF_ROOT/second-tab-status.json"

@@ -117,13 +117,21 @@ test("backup restore validates hostile input before replacing owner state", asyn
     source("tools/public_demo.sh"),
   ]);
 
-  const restore = companion.match(/restore\(\) \{(?<body>[\s\S]*?)\n\}/)?.groups
-    ?.body;
+  const restore = companion.match(
+    /^restore\(\) \{(?<body>[\s\S]*?)\n\}/m,
+  )?.groups?.body;
   assert.ok(restore);
   assert.ok(restore.indexOf('validate_backup "$backup_path"') >= 0);
   assert.ok(
     restore.indexOf('validate_backup "$backup_path"') <
-      restore.indexOf("compose stop"),
+      restore.indexOf("create_restore_rollback"),
+  );
+  assert.match(restore, /replace_from_full_backup "\$restore_source"/);
+  assert.match(restore, /recover_failed_restore "\$restore_previous_counts"/);
+  assert.match(companion, /backup "\$restore_rollback_path" >\/dev\/null/);
+  assert.match(
+    companion,
+    /restore failed; the previous owner state was recovered automatically/,
   );
   assert.match(companion, /preflight_backup_database/);
   assert.match(
@@ -157,6 +165,20 @@ test("backup restore validates hostile input before replacing owner state", asyn
     assert.match(companionAcceptance, new RegExp(adversarialCase));
   }
   assert.match(publicDemo, /backup archive contains links or special files/);
+});
+
+test("companion removal refuses unknown state before destructive teardown", async () => {
+  const companion = await source("tools/companion.sh");
+  const remove = companion.match(
+    /remove_companion\(\) \{(?<body>[\s\S]*?)\n\}/,
+  )?.groups?.body;
+  assert.ok(remove);
+  assert.match(remove, /find "\$STATE_ROOT" -mindepth 1 -maxdepth 1 -print/);
+  assert.ok(
+    remove.indexOf("state root contains unrecognized entries") <
+      remove.indexOf("compose down --volumes --remove-orphans"),
+  );
+  assert.doesNotMatch(remove, /-type f/);
 });
 
 test("Document lifecycle rejects database credentials in process arguments", () => {

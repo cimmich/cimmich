@@ -126,6 +126,21 @@ export const loadRuntimeConfig = (environment = {}) => {
   ) {
     throw configError("Cimmich port must be an integer between 1 and 65535");
   }
+  const rawGuidedPort = String(environment.CIMMICH_GUIDED_PORT || "3102");
+  const guidedPort = Number(rawGuidedPort);
+  if (
+    !/^\d+$/.test(rawGuidedPort) ||
+    !Number.isInteger(guidedPort) ||
+    guidedPort < 1 ||
+    guidedPort > 65_535
+  ) {
+    throw configError(
+      "Cimmich Guided port must be an integer between 1 and 65535",
+    );
+  }
+  if (guidedPort === port) {
+    throw configError("Cimmich owner and Guided ports must be different");
+  }
 
   const databaseUrl = String(
     environment.DATABASE_URL || "postgres://cimmich@postgres:5432/cimmich",
@@ -283,6 +298,7 @@ export const loadRuntimeConfig = (environment = {}) => {
     guidedAuthority,
     guidedEnabled,
     guidedImmichPublicUrl,
+    guidedPort,
     guidedPublicUrl,
     guidedUiPublicUrl,
     guidedVisibilityCeiling,

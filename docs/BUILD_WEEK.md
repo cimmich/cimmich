@@ -235,8 +235,10 @@ library-derived state.
 That is the retained V1 compatibility contract. The current product contract is
 Guided V2: `GET /v1/guided/v2/bootstrap` returns a provider-neutral connection
 and route catalogue for an external client. Its dedicated token has an explicit
-`read|operate` authority and `Standard|Personal|Private` ceiling. V2 calls the
-existing canonical APIs with `x-cimmich-surface: guided`; the server derives the
+`read|operate` authority and `Standard|Personal|Private` ceiling. V2 calls a
+dedicated Guided listener with `x-cimmich-surface: guided`; the owner listener
+is container-internal behind the authenticated product gateway. The Guided
+listener rejects canonical requests that omit its surface header, derives the
 actor, applies the current principal/device/private session and refuses routes
 outside the exact catalogue. Each operation publishes JSON Schemas,
 replay/conflict/no-change semantics, typed error families, Undo law and a UI

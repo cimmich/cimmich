@@ -1,0 +1,5 @@
+services:
+  cimmich-api:
+    ports:
+      # Acceptance-only owner listener. The shipped runtime exposes only 3102.
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_OWNER_API_PORT:?set the acceptance owner API port}:3101

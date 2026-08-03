@@ -98,46 +98,49 @@ export CIMMICH_COMPANION_PROJECT="$COMPANION_PROJECT"
 export CIMMICH_COMPANION_API_PORT="$API_PORT"
 export CIMMICH_COMPANION_UI_PORT="$UI_PORT"
 
+owner_request() {
+  owner_method=$1
+  owner_path=$2
+  owner_body=${3:-}
+  companion_compose exec -T cimmich-api node -e '
+    const [method, path, body] = process.argv.slice(1);
+    fetch(`http://127.0.0.1:3101${path}`, {
+      body: body ? body : undefined,
+      headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
+        "x-cimmich-actor": "companion-acceptance-owner",
+        "x-cimmich-device-id": "companion-acceptance",
+        "x-cimmich-surface": "interactive",
+      },
+      method,
+    }).then(async (response) => {
+      const responseBody = await response.text();
+      process.stdout.write(responseBody);
+      if (!response.ok) process.exitCode = 1;
+    }).catch(() => process.exit(1));
+  ' "$owner_method" "$owner_path" "$owner_body"
+}
+
 "$ROOT/tools/companion.sh" configure \
   "http://host.docker.internal:${IMMICH_PORT}" "$API_KEY_FILE" >/dev/null
 "$ROOT/tools/companion.sh" up >/dev/null
-onboarding_status=$(curl --fail --silent --show-error \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich")
+onboarding_status=$(owner_request GET /v1/onboarding/immich)
 printf '%s' "$onboarding_status" | grep -q '"permissionVerification":"verified"'
 printf '%s' "$onboarding_status" | grep -q '"next":"preview"'
-curl --fail --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}' \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/preview" > "$ONBOARDING_PREVIEW"
+owner_request POST /v1/onboarding/immich/preview \
+  '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}' \
+  > "$ONBOARDING_PREVIEW"
 PREVIEW_DIGEST=$(node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.counts.assets!==1||v.counts.people!==2||v.counts.labelledPeople!==1||v.counts.unlabelledPeople!==1||v.counts.assignedFaces!==2||v.connection.permissionVerification!=='verified'){process.stderr.write(JSON.stringify({counts:v.counts,permissionVerification:v.connection?.permissionVerification}));process.exit(2)}process.stdout.write(v.previewDigest)" \
   "$ONBOARDING_PREVIEW")
-unresolved_status=$(curl --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-actor: companion-acceptance-owner' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d "{\"commandId\":\"companion-onboarding-import-unresolved\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
-  -o "$UNRESOLVED_IMPORT" \
-  -w '%{http_code}' \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/import")
-test "$unresolved_status" = 200
+owner_request POST /v1/onboarding/immich/import \
+  "{\"commandId\":\"companion-onboarding-import-unresolved\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
+  > "$UNRESOLVED_IMPORT"
 node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed_with_review'||v.import?.projectedPeople!==1||v.import?.reviewItems<1||v.next?.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import,next:v.next}));process.exit(2)}" \
   "$UNRESOLVED_IMPORT"
-cluster_preview=$(curl --fail --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}' \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/person-clusters:preview")
+cluster_preview=$(owner_request POST /v1/onboarding/immich/person-clusters:preview \
+  '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}')
 cluster_fields=$(printf '%s' "$cluster_preview" | node -e '
   let input="";process.stdin.on("data",c=>input+=c);process.stdin.on("end",()=>{
     const value=JSON.parse(input);if(value.clusters?.length!==1)process.exit(2);
@@ -149,39 +152,26 @@ cluster_id=${cluster_fields%%|*}
 cluster_rest=${cluster_fields#*|}
 cluster_revision=${cluster_rest%%|*}
 cluster_digest=${cluster_rest#*|}
-cluster_resolution=$(curl --fail --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-actor: companion-acceptance-owner' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d "{\"action\":\"unknown\",\"commandId\":\"companion-onboarding-cluster-unknown\",\"expectedSourceRevision\":\"$cluster_revision\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]},\"snapshotDigest\":\"$cluster_digest\"}" \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/person-clusters/${cluster_id}/resolve")
+cluster_resolution=$(owner_request POST "/v1/onboarding/immich/person-clusters/${cluster_id}/resolve" \
+  "{\"action\":\"unknown\",\"commandId\":\"companion-onboarding-cluster-unknown\",\"expectedSourceRevision\":\"$cluster_revision\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]},\"snapshotDigest\":\"$cluster_digest\"}")
 printf '%s' "$cluster_resolution" | grep -q '"action":"unknown"'
-curl --fail --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-actor: companion-acceptance-owner' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/import" > "$ONBOARDING_IMPORT"
+owner_request POST /v1/onboarding/immich/import \
+  "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
+  > "$ONBOARDING_IMPORT"
 node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed'||v.replayed!==false||v.import?.assignedFaces!==1||v.import?.projectedPeople!==0||v.import?.importedSourceFaces!==1||v.import?.reviewItems!==0||v.next.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import}));process.exit(2)}" \
   "$ONBOARDING_IMPORT"
-onboarding_replay=$(curl --fail --silent --show-error \
-  -H 'content-type: application/json' \
-  -H 'x-cimmich-actor: companion-acceptance-owner' \
-  -H 'x-cimmich-device-id: companion-acceptance' \
-  -H 'x-cimmich-surface: interactive' \
-  -X POST \
-  -d "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
-  "http://127.0.0.1:${API_PORT}/v1/onboarding/immich/import")
+onboarding_replay=$(owner_request POST /v1/onboarding/immich/import \
+  "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}")
 printf '%s' "$onboarding_replay" | grep -q '"replayed":true'
 "$ROOT/tools/companion.sh" sync 1 >/dev/null
 
 health=$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/health")
 printf '%s' "$health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
+escaped_status=$(curl --silent --show-error -o "$SECURITY_PROOF/guided-listener-owner-route.json" \
+  -w '%{http_code}' "http://127.0.0.1:${API_PORT}/v1/summary")
+test "$escaped_status" = 403
+grep -q '"code":"GUIDED_SURFACE_REQUIRED"' "$SECURITY_PROOF/guided-listener-owner-route.json"
 gateway_health=$(curl --fail --silent --show-error \
   "http://127.0.0.1:${UI_PORT}/cimmich-api/health")
 printf '%s' "$gateway_health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
