@@ -27,6 +27,15 @@ describe('public Cimmich product boundary', () => {
     expect(search).toContain('initialQuery={documentLensQuery}');
   });
 
+  it('keeps Smart Search failures recoverable without losing the attempted query', async () => {
+    const search = await read('../../../routes/(user)/cimmich/smart-search/+page.svelte');
+    expect(search).toContain("let failedQuery = $state('');");
+    expect(search).toContain('failedQuery = nextQuery;');
+    expect(search).toContain('>Try again</button');
+    expect(search).toContain('>Edit search</button');
+    expect(search).toContain('Technical details');
+  });
+
   it('keeps both supported new-Person paths explicit in the photo workflow', async () => {
     const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
     expect(overlay).toContain('{ newPersonName: normalizedName }');

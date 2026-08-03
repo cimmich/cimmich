@@ -139,9 +139,16 @@ const parseDateRange = (query) => {
   return null;
 };
 
+const searchableLabelVariants = (value) => {
+  const label = String(value || "").trim();
+  if (!label) return [];
+  const shortLabel = label.split(",", 1)[0].trim();
+  return shortLabel && shortLabel !== label ? [label, shortLabel] : [label];
+};
+
 const labelsFor = (candidate) => [
-  candidate.display_name,
-  ...(candidate.aliases || []),
+  ...searchableLabelVariants(candidate.display_name),
+  ...(candidate.aliases || []).flatMap(searchableLabelVariants),
 ];
 
 const matchCandidate = (candidate, normalizedQuery, queryTerms) => {

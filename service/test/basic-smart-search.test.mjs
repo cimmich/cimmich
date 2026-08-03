@@ -152,6 +152,46 @@ test("Basic Smart Search lets exact labels and aliases dominate same-term descri
   }
 });
 
+test("Basic Smart Search recognizes the human part of a comma-qualified Place name", async () => {
+  const { sql } = fakeSql({
+    assets: [
+      {
+        asset_id: "asset-budapest",
+        capture_time: new Date("2026-07-01T00:00:00Z"),
+        height: 800,
+        media_kind: "image",
+        mime_type: "image/jpeg",
+        width: 1200,
+      },
+    ],
+    candidates: [
+      {
+        aliases: [],
+        description: "",
+        display_name: "Budapest, Hungary",
+        entity_id: "place-budapest",
+        entity_kind: "place",
+      },
+    ],
+  });
+
+  const result = await createBasicSmartSearch(sql).search({
+    query: "Budapest",
+  });
+
+  assert.deepEqual(result.interpretation.selectors, [
+    {
+      entityKind: "place",
+      ids: ["place-budapest"],
+      label: "Budapest",
+      matchKind: "label",
+      selectorKind: "context",
+    },
+  ]);
+  assert.deepEqual(result.interpretation.unresolvedTerms, []);
+  assert.equal(result.items[0].assetId, "asset-budapest");
+});
+
 test("Basic Smart Search keeps AND semantics across distinct matched terms", async () => {
   const { calls, sql } = fakeSql({
     assets: [
