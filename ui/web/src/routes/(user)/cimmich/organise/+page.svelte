@@ -57,20 +57,20 @@
 
 <UserPageLayout title={data.meta.title}>
   <main class="organise-hub mx-auto w-full max-w-[1440px] px-4 pb-24 sm:px-6 lg:px-10">
-    <section class="max-w-4xl pt-8 sm:pt-12">
+    <section class="max-w-5xl pt-6 sm:pt-8">
       <div class="organise-mark"><Icon icon={mdiTuneVariant} size="29" /></div>
-      <p class="mt-5 text-sm font-semibold tracking-[0.18em] text-primary uppercase">Organise</p>
+      <p class="mt-3 text-sm font-semibold tracking-[0.18em] text-primary uppercase">Organise</p>
       <h1
-        class="mt-2 text-3xl font-semibold tracking-tight text-immich-primary sm:text-5xl dark:text-immich-dark-primary"
+        class="mt-1 text-3xl font-semibold tracking-tight text-immich-primary sm:text-4xl dark:text-immich-dark-primary"
       >
         Choose how you want to see your library
       </h1>
-      <p class="mt-4 max-w-2xl text-base/7 text-immich-fg/70 sm:text-lg/8 dark:text-immich-dark-fg/70">
+      <p class="mt-3 max-w-2xl text-base/7 text-immich-fg/70 dark:text-immich-dark-fg/70">
         Start with the structure that already makes sense to you. Nothing changes until you choose an action.
       </p>
     </section>
 
-    <section class="mt-9" aria-labelledby="organise-browse-heading">
+    <section class="mt-7" aria-labelledby="organise-browse-heading">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p class="text-xs font-semibold tracking-[0.15em] text-immich-fg/50 uppercase dark:text-immich-dark-fg/50">
@@ -122,8 +122,8 @@
 <style>
   .organise-mark {
     display: grid;
-    width: 3.5rem;
-    height: 3.5rem;
+    width: 3.25rem;
+    height: 3.25rem;
     place-items: center;
     border-radius: 1.25rem;
     color: rgb(var(--immich-primary));
@@ -133,7 +133,7 @@
   .organise-card {
     position: relative;
     display: grid;
-    min-height: 15rem;
+    min-height: 14rem;
     grid-template-rows: auto 1fr auto;
     gap: 1.25rem;
     overflow: hidden;
