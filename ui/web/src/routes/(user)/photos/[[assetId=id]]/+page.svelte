@@ -28,7 +28,7 @@
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
   import { Route } from '$lib/route';
   import { getAssetBulkActions } from '$lib/services/asset.service';
-  import { getCimmichPersonAssets, getCimmichPetMedia } from '$lib/services/cimmich.service';
+  import { getCimmichPersonAssets, getCimmichPetMedia, getCimmichSummary } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl, memoryLaneTitle } from '$lib/utils';
   import {
     updateStackedAssetInTimeline,
@@ -40,14 +40,15 @@
   import { getAltText } from '$lib/utils/thumbnail-util';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { AssetVisibility } from '@immich/sdk';
-  import { ActionButton, CommandPaletteDefaultProvider, ImageCarousel } from '@immich/ui';
-  import { mdiDotsVertical } from '@mdi/js';
+  import { ActionButton, CommandPaletteDefaultProvider, Icon, ImageCarousel } from '@immich/ui';
+  import { mdiAlertOutline, mdiDotsVertical } from '@mdi/js';
   import { t } from 'svelte-i18n';
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
   let cimmichSubjectAssetIds = $state<Set<string>>(new Set());
   let cimmichSubjectAssetsReady = $state(false);
   let cimmichSubjectAssetLoad = 0;
+  let futureAssetCount = $state(0);
   const cimmichPersonId = $derived(page.url.searchParams.get('cimmichPersonId') || '');
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
@@ -82,6 +83,20 @@
         if (run === cimmichSubjectAssetLoad) {
           cimmichSubjectAssetsReady = true;
         }
+      });
+  });
+
+  $effect(() => {
+    if (!isOrganiseContext) {
+      futureAssetCount = 0;
+      return;
+    }
+    void getCimmichSummary()
+      .then((summary) => {
+        futureAssetCount = Number(summary.future_assets || 0);
+      })
+      .catch(() => {
+        futureAssetCount = 0;
       });
   });
 
@@ -137,6 +152,20 @@
   <div class="flex h-full min-h-0 flex-col">
     {#if isOrganiseContext}
       <CimmichOrganiseModeSwitch />
+      {#if futureAssetCount > 0}
+        <aside
+          class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:px-6 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+          aria-label="Future photo dates need review"
+        >
+          <Icon icon={mdiAlertOutline} size="20" aria-hidden="true" />
+          <strong>{futureAssetCount.toLocaleString()} future-dated {futureAssetCount === 1 ? 'photo' : 'photos'}</strong
+          >
+          <span>
+            {futureAssetCount === 1 ? 'It appears' : 'They appear'} first below. Select the affected
+            {futureAssetCount === 1 ? 'photo' : 'photos'}, open the More menu, then choose Change date.
+          </span>
+        </aside>
+      {/if}
     {/if}
     <div class="min-h-0 flex-1">
       {#if cimmichSubjectAssetsReady}

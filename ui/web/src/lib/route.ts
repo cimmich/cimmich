@@ -106,6 +106,7 @@ export const Route = {
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
   cimmichMaintenance: () => '/cimmich/maintenance',
+  cimmichSetup: () => '/cimmich/setup',
   cimmichOrganise: () => '/cimmich/organise',
   cimmichOrganiseBulk: () => '/cimmich/organise/bulk',
   cimmichPets: () => '/cimmich/pets',

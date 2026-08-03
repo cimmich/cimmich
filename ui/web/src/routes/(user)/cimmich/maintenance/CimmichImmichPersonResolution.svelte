@@ -237,7 +237,7 @@
       <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
         <p>{notice}</p>
         {#if applyImportNeeded}
-          <a class="mt-2 inline-flex font-semibold underline underline-offset-4" href={Route.cimmichMaintenance()}>
+          <a class="mt-2 inline-flex font-semibold underline underline-offset-4" href={Route.cimmichSetup()}>
             Update import
           </a>
         {/if}

@@ -2072,6 +2072,12 @@ export const createCimmichRepository = (
             SELECT 1 FROM hidden_assets hidden
             WHERE hidden.object_id = asset.asset_id
           )) AS assets,
+        (SELECT count(*)::int FROM asset WHERE state = 'active'
+          AND capture_time > now() + interval '24 hours'
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = asset.asset_id
+          )) AS future_assets,
         (SELECT count(*)::int FROM current_person
           WHERE status = 'active' AND subject_kind = 'person'
             AND cimmich_visibility_person_rank(person_id) <= ${visibleRank}) AS people,

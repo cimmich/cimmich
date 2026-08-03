@@ -42,6 +42,9 @@ describe('human-first Organise information architecture', () => {
     expect(tags).toContain('<CimmichTagBrowser {tags} initialPath={data.path} />');
     expect(await read('src/lib/components/cimmich/tag-browser.ts')).toContain('label: tag.value');
     expect(sidebar).toContain('isActive: () => isOrganiseContext()');
+    expect(photos).toContain('Future photo dates need review');
+    expect(photos).toContain('getCimmichSummary');
+    expect(photos).toContain('choose Change date');
   });
 
   it('keeps the existing safeguarded engine behind a secondary route', async () => {

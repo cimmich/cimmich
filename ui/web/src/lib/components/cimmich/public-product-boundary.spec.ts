@@ -9,9 +9,11 @@ describe('public Cimmich product boundary', () => {
     expect(home).not.toMatch(/Trips lab|Activities lab|Quality control|Legacy overview/);
     expect(home).not.toContain('>Maintenance<');
     expect(home).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
+    expect(home).toContain('href={Route.cimmichSetup()}');
     expect(home).toContain('href={Route.cimmichMaintenance()}');
     expect(home).toMatch(/>\s*Models & Guided\s*</);
     expect(home).toContain("name: 'Documents'");
+    expect(home).toContain('Counts and previews follow the Viewing mode below.');
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {

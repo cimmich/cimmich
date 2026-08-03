@@ -20,6 +20,7 @@
   } from '$lib/services/cimmich.service';
   import { Icon } from '@immich/ui';
   import {
+    mdiArrowRight,
     mdiCodeJson,
     mdiCheck,
     mdiFaceRecognition,
@@ -33,7 +34,6 @@
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import CimmichFaceProcessing from './CimmichFaceProcessing.svelte';
-  import CimmichImmichSetup from './CimmichImmichSetup.svelte';
   import CimmichLocalBodyProvider from './CimmichLocalBodyProvider.svelte';
   import CimmichLocalFaceProvider from './CimmichLocalFaceProvider.svelte';
   import {
@@ -59,7 +59,6 @@
   let faceOperatorAvailable = $state(false);
   let loading = $state(true);
   let machineSuggestionCount = $state(0);
-  let setupRefreshRevision = $state(0);
   let settings = $state<CimmichIntegrationSettingsPack>();
   let status = $state<CimmichIntegrationStatus>();
   const faceMatching = $derived(faceMatchingPresentation(faceOperator ?? status?.faceMatching));
@@ -108,7 +107,6 @@
   };
 
   const refreshAll = () => {
-    setupRefreshRevision += 1;
     void load();
   };
 
@@ -277,7 +275,7 @@
           <p class="text-xs font-semibold tracking-[0.18em] text-sky-300 uppercase">Setup & local intelligence</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Models & Guided</h1>
           <p class="mt-3 max-w-2xl text-sm/6 text-slate-300 sm:text-base/7">
-            Connect your library, manage optional local analysis, and control how external clients can use Cimmich.
+            Manage optional local analysis and control how external clients can use Cimmich.
           </p>
         </div>
         <button
@@ -300,9 +298,9 @@
       >
       <a
         class="rounded-full px-3 py-2 font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
-        href="#library-connection"
+        href={Route.cimmichSetup()}
       >
-        Library
+        Library setup
       </a>
       <a
         class="rounded-full px-3 py-2 font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
@@ -332,7 +330,25 @@
       </div>
     {/if}
 
-    <CimmichImmichSetup onChanged={load} refreshRevision={setupRefreshRevision} />
+    <section
+      class="flex flex-col gap-4 rounded-3xl border border-sky-200 bg-sky-50 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-sky-900 dark:bg-sky-950/30"
+      aria-labelledby="library-setup-title"
+    >
+      <div>
+        <p class="text-xs font-semibold tracking-[0.14em] text-sky-700 uppercase dark:text-sky-300">Library</p>
+        <h2 id="library-setup-title" class="mt-1 text-xl font-semibold">Connection and import</h2>
+        <p class="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
+          Connect Immich, preview what Cimmich will read, run the first import, or update an existing import in the
+          dedicated setup flow.
+        </p>
+      </div>
+      <a
+        class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-sky-700 px-5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 dark:bg-sky-300 dark:text-sky-950"
+        href={Route.cimmichSetup()}
+      >
+        Open library setup <Icon icon={mdiArrowRight} size="18" />
+      </a>
+    </section>
 
     <section id="matching-workflow" aria-labelledby="matching-workflow-title" class="scroll-mt-24 space-y-5">
       <div class="px-1">
