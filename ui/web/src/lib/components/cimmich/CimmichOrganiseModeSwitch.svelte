@@ -98,7 +98,7 @@
   .organise-switch__mode,
   .organise-switch__bulk {
     display: inline-flex;
-    min-height: 2.6rem;
+    min-height: 2.75rem;
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
@@ -161,7 +161,7 @@
 
     .organise-switch__mode,
     .organise-switch__bulk {
-      min-width: 2.65rem;
+      min-width: 2.75rem;
       padding-inline: 0.65rem;
     }
 
