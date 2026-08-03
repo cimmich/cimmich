@@ -87,6 +87,7 @@
     satelliteOnly?: boolean;
     placeMarkersDraggable?: boolean;
     showPlaceMarkerLabels?: boolean;
+    placeMarkerLabelMinZoom?: number;
     visibilityFiltered?: boolean;
   }
 
@@ -149,6 +150,7 @@
     satelliteOnly = false,
     placeMarkersDraggable = false,
     showPlaceMarkerLabels = true,
+    placeMarkerLabelMinZoom = 0,
     visibilityFiltered = false,
   }: Props = $props();
 
@@ -179,6 +181,7 @@
   let isBrushDragging = false;
   let satelliteOverlayEnabled = $state(untrack(() => satelliteInitiallyEnabled));
   let mapBackgroundState = $state<'loading' | 'ready' | 'unavailable'>('loading');
+  let currentMapZoom = $state(untrack(() => zoom ?? 0));
 
   const satelliteSourceId = 'cimmich-satellite-imagery';
   const satelliteLayerId = 'cimmich-satellite-imagery-layer';
@@ -799,6 +802,7 @@
     diffStyleUpdates={true}
     onload={(event: Map) => {
       event.setMaxZoom(maxZoom);
+      currentMapZoom = event.getZoom();
       event.on('click', handleMapClick);
       event.on('mousedown', handleBrushMouseDown);
       event.on('mousemove', handleBrushMouseMove);
@@ -811,7 +815,9 @@
       event.on('style.load', syncPlaceBrushLayers);
       event.on('styleimagemissing', addMissingMapStyleImage);
       event.on('error', handleMapBackgroundError);
+      event.on('zoomend', () => (currentMapZoom = event.getZoom()));
       event.on('moveend', () => {
+        currentMapZoom = event.getZoom();
         if (!onViewportChange) {
           return;
         }
@@ -960,7 +966,7 @@
             }}
           >
             {#snippet children({ feature }: { feature: Feature })}
-              {#if showPlaceMarkerLabels}
+              {#if showPlaceMarkerLabels && currentMapZoom >= placeMarkerLabelMinZoom}
                 <div
                   class="flex translate-y-[-18px] items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 text-xs font-semibold text-gray-800 shadow-lg ring-2 ring-primary/60 backdrop-blur-sm transition-transform hover:scale-105 dark:bg-immich-dark-bg/95 dark:text-gray-100"
                 >

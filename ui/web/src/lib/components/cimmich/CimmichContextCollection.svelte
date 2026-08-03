@@ -327,7 +327,7 @@
               rounded
               showSatelliteControl
               showSettings={false}
-              showPlaceMarkerLabels={false}
+              placeMarkerLabelMinZoom={12}
             />
           {/await}
         {:else}
