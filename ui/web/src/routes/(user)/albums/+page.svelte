@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { scrollMemory } from '$lib/actions/scroll-memory';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import AlbumsControls from './AlbumsControls.svelte';
   import Albums from '$lib/components/album-page/AlbumsList.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
@@ -20,6 +22,7 @@
 
   let searchQuery = $state('');
   let albumGroups: string[] = $state([]);
+  const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
 </script>
 
 <UserPageLayout title={data.meta.title} use={[[scrollMemory, { routeStartsWith: Route.albums() }]]}>
@@ -28,6 +31,10 @@
       <AlbumsControls {albumGroups} bind:searchQuery />
     </div>
   {/snippet}
+
+  {#if isOrganiseContext}
+    <CimmichOrganiseModeSwitch />
+  {/if}
 
   <div class="xl:hidden">
     <div class="h-14 w-fit py-2 dark:text-immich-dark-fg">

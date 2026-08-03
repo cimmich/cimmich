@@ -58,7 +58,7 @@ export const Route = {
   pinPrompt: (params?: { continue?: string }) => '/auth/pin-prompt' + asQueryString({ continue: params?.continue }),
 
   // albums
-  albums: () => '/albums',
+  albums: (params?: { organise?: 1 }) => '/albums' + asQueryString(params),
   viewAlbum: ({ id }: { id: string }) => `/albums/${id}`,
   viewAlbumAsset: ({ albumId, assetId }: { albumId: string; assetId: string }) =>
     `/albums/${albumId}/photos/${assetId}`,
@@ -71,7 +71,7 @@ export const Route = {
   places: () => '/places',
 
   // folders
-  folders: (params?: { path?: string }) => '/folders' + asQueryString(params),
+  folders: (params?: { path?: string; organise?: 1 }) => '/folders' + asQueryString(params),
 
   // libraries
   libraries: () => '/admin/library-management',
@@ -119,7 +119,7 @@ export const Route = {
   cimmichSmartSearch: () => '/cimmich/smart-search',
 
   // photos
-  photos: (params?: { at?: string }) => '/photos' + asQueryString(params),
+  photos: (params?: { at?: string; organise?: 1 }) => '/photos' + asQueryString(params),
   viewAsset: ({ id }: { id: string }) => `/photos/${id}`,
   viewCimmichPersonAsset: ({
     faceId,
@@ -176,7 +176,7 @@ export const Route = {
     `/admin/maintenance/integrity-report/${reportType}`,
 
   // tags
-  tags: (params?: { path?: string }) => '/tags' + asQueryString(params),
+  tags: (params?: { path?: string; organise?: 1 }) => '/tags' + asQueryString(params),
 
   // users
   users: () => '/admin/users',

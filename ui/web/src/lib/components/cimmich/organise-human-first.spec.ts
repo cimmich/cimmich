@@ -4,34 +4,54 @@ import { readFile } from 'node:fs/promises';
 const read = (path: string) => readFile(path, 'utf8');
 
 describe('human-first Organise information architecture', () => {
-  it('opens with the four accepted library structures and keeps domain directories out', async () => {
-    const source = await read('src/routes/(user)/cimmich/organise/+page.svelte');
+  it('opens directly in Timeline and keeps all four structural modes one switch away', async () => {
+    const [load, source] = await Promise.all([
+      read('src/routes/(user)/cimmich/organise/+page.ts'),
+      read('src/lib/components/cimmich/CimmichOrganiseModeSwitch.svelte'),
+    ]);
 
-    expect(source).toContain("title: 'By Timeline'");
-    expect(source).toContain("title: 'By Folder'");
-    expect(source).toContain("title: 'By Tag'");
-    expect(source).toContain("title: 'By Album'");
-    expect(source).toContain('href: Route.photos()');
-    expect(source).toContain('href: Route.folders()');
-    expect(source).toContain('href: Route.tags()');
-    expect(source).toContain('href: Route.albums()');
-    expect(source).not.toContain('By context');
-    expect(source).not.toContain("title: 'By People'");
-    expect(source).not.toContain("title: 'By Places'");
-    expect(source).not.toContain("title: 'By Events'");
-    expect(source).not.toContain("title: 'By Things'");
+    expect(load).toContain('redirect(307, Route.photos({ organise: 1 }))');
+    expect(source).toContain("label: 'Timeline'");
+    expect(source).toContain("label: 'Folders'");
+    expect(source).toContain("label: 'Tags'");
+    expect(source).toContain("label: 'Albums'");
+    expect(source).toContain('Route.photos({ organise: 1 })');
+    expect(source).toContain('Route.folders({ organise: 1 })');
+    expect(source).toContain('Route.tags({ organise: 1 })');
+    expect(source).toContain('Route.albums({ organise: 1 })');
+    expect(source).not.toContain('People');
+    expect(source).not.toContain('Places');
+    expect(source).not.toContain('Events');
+    expect(source).not.toContain('Things');
   });
 
-  it('moves the existing safeguarded engine behind a secondary route', async () => {
-    const [hub, bulk, route] = await Promise.all([
-      read('src/routes/(user)/cimmich/organise/+page.svelte'),
+  it('keeps the switch persistent in every native mode and preserves nested folder and tag browsing', async () => {
+    const [photos, folders, tags, albums, sidebar] = await Promise.all([
+      read('src/routes/(user)/photos/[[assetId=id]]/+page.svelte'),
+      read('src/routes/(user)/folders/[[photos=photos]]/[[assetId=id]]/+page.svelte'),
+      read('src/routes/(user)/tags/[[photos=photos]]/[[assetId=id]]/+page.svelte'),
+      read('src/routes/(user)/albums/+page.svelte'),
+      read('src/lib/components/shared-components/side-bar/UserSidebar.svelte'),
+    ]);
+
+    for (const mode of [photos, folders, tags, albums]) {
+      expect(mode).toContain("page.url.searchParams.has('organise')");
+      expect(mode).toContain('<CimmichOrganiseModeSwitch />');
+    }
+    expect(folders).toContain('Route.folders({ path, organise: isOrganiseContext ? 1 : undefined })');
+    expect(tags).toContain('Route.tags({ path, organise: isOrganiseContext ? 1 : undefined })');
+    expect(sidebar).toContain('isActive: () => isOrganiseContext()');
+  });
+
+  it('keeps the existing safeguarded engine behind a secondary route', async () => {
+    const [switcher, bulk, route] = await Promise.all([
+      read('src/lib/components/cimmich/CimmichOrganiseModeSwitch.svelte'),
       read('src/routes/(user)/cimmich/organise/bulk/+page.svelte'),
       read('src/lib/route.ts'),
     ]);
 
-    expect(hub).toContain('Power tool');
-    expect(hub).toContain('Open bulk organise');
-    expect(hub).not.toContain('<CimmichBulkPhotoSorter');
+    expect(switcher).toContain('Open Bulk organise');
+    expect(switcher).not.toContain('<CimmichBulkPhotoSorter');
     expect(bulk).toContain('<CimmichBulkPhotoSorter />');
     expect(bulk).toContain('Back to Organise');
     expect(route).toContain("cimmichOrganiseBulk: () => '/cimmich/organise/bulk'");

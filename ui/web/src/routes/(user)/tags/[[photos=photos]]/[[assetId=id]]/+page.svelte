@@ -1,5 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
   import UserPageLayout, { headerId } from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
@@ -41,6 +43,7 @@
 
   let { data }: Props = $props();
 
+  const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
   let tags = $derived<TagResponseDto[]>(data.tags);
   const tree = $derived(TreeNode.fromTags(tags));
   const tag = $derived(tree.traverse(data.path));
@@ -50,7 +53,7 @@
 
   const handleNavigation = (tag: string) => navigateToView(joinPaths(data.path, tag));
 
-  const getLink = (path: string) => Route.tags({ path });
+  const getLink = (path: string) => Route.tags({ path, organise: isOrganiseContext ? 1 : undefined });
 
   const navigateToView = (path: string) => goto(getLink(path));
 
@@ -89,25 +92,30 @@
     </Sidebar>
   {/snippet}
 
-  <Breadcrumbs node={tag} icon={mdiTagMultiple} title={$t('tags')} {getLink} />
-
-  <section class="mt-2 h-[calc(100%-(--spacing(20)))] immich-scrollbar overflow-auto">
-    {#if tag.hasAssets}
-      <Timeline
-        enableRouting={true}
-        bind:timelineManager
-        {options}
-        assetInteraction={assetMultiSelectManager}
-        removeAction={AssetAction.UNARCHIVE}
-      >
-        {#snippet empty()}
-          <TreeItemThumbnails items={tag.children} icon={mdiTag} onClick={handleNavigation} />
-        {/snippet}
-      </Timeline>
-    {:else}
-      <TreeItemThumbnails items={tag.children} icon={mdiTag} onClick={handleNavigation} />
+  <div class="flex h-full min-h-0 flex-col">
+    {#if isOrganiseContext}
+      <CimmichOrganiseModeSwitch />
     {/if}
-  </section>
+    <Breadcrumbs node={tag} icon={mdiTagMultiple} title={$t('tags')} {getLink} />
+
+    <section class="mt-2 min-h-0 flex-1 immich-scrollbar overflow-auto">
+      {#if tag.hasAssets}
+        <Timeline
+          enableRouting={true}
+          bind:timelineManager
+          {options}
+          assetInteraction={assetMultiSelectManager}
+          removeAction={AssetAction.UNARCHIVE}
+        >
+          {#snippet empty()}
+            <TreeItemThumbnails items={tag.children} icon={mdiTag} onClick={handleNavigation} />
+          {/snippet}
+        </Timeline>
+      {:else}
+        <TreeItemThumbnails items={tag.children} icon={mdiTag} onClick={handleNavigation} />
+      {/if}
+    </section>
+  </div>
 </UserPageLayout>
 
 <section>
