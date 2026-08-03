@@ -59,7 +59,7 @@ const collectFiles = async (root) => {
 test("public product and machine surfaces use Cimmich as the canonical name", async () => {
   // service/test is deliberately not walked: it holds negative-assertion
   // guards (including this file) whose patterns would self-match. docs/ waits
-  // on the parked X1-DOCS disposition.
+  // on the parked historical-document disposition.
   const roots = [
     path.join(serviceRoot, "src"),
     path.join(serviceRoot, "bin"),

@@ -180,7 +180,7 @@ describe('Cimmich GPS Place discovery', () => {
   });
 
   it('keeps a large location together and advances it through bounded review packs', async () => {
-    const created = place({ displayName: 'Pink Palace', entityId: 'place_pink_palace' });
+    const created = place({ displayName: 'Cedar House', entityId: 'place_cedar_house' });
     mocks.getMapMarkers.mockResolvedValue(
       Array.from({ length: 501 }, (_, index) => ({
         city: 'Káto Garoúna',
@@ -208,16 +208,16 @@ describe('Cimmich GPS Place discovery', () => {
     );
     expect(getByText('Review pack 1 of 2 · 500 photos')).toBeInTheDocument();
     expect(getByText('500 / 501')).toBeInTheDocument();
-    await fireEvent.input(getByLabelText('New Geography name'), { target: { value: 'Pink Palace' } });
+    await fireEvent.input(getByLabelText('New Geography name'), { target: { value: 'Cedar House' } });
     await fireEvent.click(getByRole('button', { name: /Create Geography/ }));
 
     await waitFor(() => expect(mocks.attachAssets).toHaveBeenCalledTimes(5));
     expect(mocks.attachAssets.mock.calls.every((call) => call[3].length <= 100)).toBe(true);
     expect(mocks.attachAssets.mock.calls.flatMap((call) => call[3])).toHaveLength(500);
     expect(getByText('Review pack 2 of 2 · 1 photo')).toBeInTheDocument();
-    expect(getByText('Continuing in')).toHaveTextContent('Pink Palace');
+    expect(getByText('Continuing in')).toHaveTextContent('Cedar House');
     expect(queryByRole('button', { name: /Create Geography/ })).not.toBeInTheDocument();
-    expect(getByRole('button', { name: 'Add photos to Pink Palace' })).toBeEnabled();
+    expect(getByRole('button', { name: 'Add photos to Cedar House' })).toBeEnabled();
   });
 
   it('does not create a Place when every photo cannot be preflighted', async () => {

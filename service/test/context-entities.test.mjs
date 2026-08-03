@@ -456,9 +456,9 @@ test("Event source folders are normalized, bounded and Event-only", async () => 
   const input = {
     actorId: "local-operator",
     commandId: "event-folder-source-test-0001",
-    displayName: "Manila Trip",
+    displayName: "Space Trip",
     entityKind: "event",
-    sourceFolders: [" D:\\Photos\\Manila Trip\\ ", "/archive/TTR Consulting"],
+    sourceFolders: [" D:\\Photos\\Space Trip\\ ", "/archive/Research Week"],
     typeKind: "trip",
   };
 
@@ -470,7 +470,7 @@ test("Event source folders are normalized, bounded and Event-only", async () => 
     store.create({
       ...input,
       commandId: "event-folder-source-test-0002",
-      sourceFolders: ["/archive/Manila", "/archive/Manila"],
+      sourceFolders: ["/archive/Space Trip", "/archive/Space Trip"],
     }),
     (error) => error.code === "CONTEXT_SOURCE_FOLDERS_INVALID",
   );

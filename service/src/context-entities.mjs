@@ -4276,12 +4276,9 @@ export const createContextEntityStore = (
           WHERE entity_id = ${assignmentChild.entity_id}
         `;
       }
-      if (
-        !(
-          operation.operation_scope === "entity" &&
-          operation.action === "create"
-        )
-      ) {
+      if (!(
+        operation.operation_scope === "entity" && operation.action === "create"
+      )) {
         await tx`
           UPDATE context_entity SET revision = revision + 1, updated_at = now()
           WHERE entity_id = ${entity.entity_id}
