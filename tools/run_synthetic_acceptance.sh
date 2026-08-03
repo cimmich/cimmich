@@ -712,6 +712,7 @@ fi
 
 if rg -n -P --hidden \
   --glob '!tools/run_synthetic_acceptance.sh' \
+  --glob '!tools/run_publication_scan.sh' \
   --glob '!docs/PRIVACY_BOUNDARY.md' \
   --glob '!tests/sql/001_intelligence_acceptance.sql' \
   --glob '!**/.git' \
