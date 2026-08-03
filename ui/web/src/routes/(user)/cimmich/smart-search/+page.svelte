@@ -33,18 +33,31 @@
   let isSearching = $state(false);
   let validationError = $state('');
   let lens = $state<'documents' | 'photos'>(data.initialLens);
-  let documentLensQuery = $state('');
+  let documentLensQuery = $state(data.initialLens === 'documents' ? data.initialQuery : '');
   let photoTab = $state<HTMLButtonElement>();
   let documentTab = $state<HTMLButtonElement>();
   let searchInput = $state<HTMLInputElement>();
   let failedQuery = $state('');
   let searchGeneration = 0;
+  let observedVisibilityVersion = -1;
+
+  const syncRoute = (nextLens: 'documents' | 'photos', nextQuery: string) => {
+    const url = new URL(globalThis.location.href);
+    url.searchParams.set('lens', nextLens);
+    if (nextQuery) {
+      url.searchParams.set('q', nextQuery);
+    } else {
+      url.searchParams.delete('q');
+    }
+    globalThis.history.replaceState(globalThis.history.state, '', url);
+  };
 
   const selectLens = (nextLens: 'documents' | 'photos') => {
     if (nextLens === 'documents') {
       documentLensQuery = '';
     }
     lens = nextLens;
+    syncRoute(nextLens, nextLens === 'documents' ? documentLensQuery : submittedQuery || query.trim());
   };
 
   const handleLensKeydown = (event: KeyboardEvent) => {
@@ -77,6 +90,9 @@
       validationError = 'Keep the search under 500 characters.';
       return;
     }
+    query = nextQuery;
+    submittedQuery = nextQuery;
+    syncRoute('photos', nextQuery);
     const generation = ++searchGeneration;
     isSearching = true;
     error = null;
@@ -88,7 +104,6 @@
         return;
       }
       result = next;
-      submittedQuery = nextQuery;
     } catch (error_) {
       if (generation !== searchGeneration) {
         return;
@@ -104,10 +119,11 @@
   };
 
   $effect(() => {
-    void cimmichVisibilityManager.version;
-    if (submittedQuery) {
-      result = null;
-      error = null;
+    const visibilityVersion = cimmichVisibilityManager.version;
+    const shouldSearch =
+      submittedQuery && (observedVisibilityVersion < 0 || visibilityVersion !== observedVisibilityVersion);
+    observedVisibilityVersion = visibilityVersion;
+    if (shouldSearch) {
       void search(undefined, submittedQuery);
     }
   });
@@ -336,6 +352,7 @@
                       onclick={() => {
                         documentLensQuery = document.displayTitle;
                         lens = 'documents';
+                        syncRoute('documents', document.displayTitle);
                       }}
                     >
                       <span

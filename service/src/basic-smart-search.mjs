@@ -168,6 +168,7 @@ const matchCandidate = (candidate, normalizedQuery, queryTerms) => {
         best = {
           coveredTerms: labelTerms,
           label,
+          labelPrecision: "exact",
           matchKind: "label",
           position: normalizedQuery.indexOf(normalizedLabel),
           score,
@@ -181,9 +182,32 @@ const matchCandidate = (candidate, normalizedQuery, queryTerms) => {
         best = {
           coveredTerms: labelTerms,
           label,
+          labelPrecision: "exact",
           matchKind: "label",
           position: Math.min(
             ...labelTerms.map((term) => normalizedQuery.indexOf(` ${term} `)),
+          ),
+          score,
+        };
+      }
+      continue;
+    }
+    const coveredLabelTerms = queryTerms.has(labelTerms[0])
+      ? [labelTerms[0]]
+      : [];
+    if (coveredLabelTerms.length) {
+      const score =
+        300 + coveredLabelTerms.length * 100 + normalizedLabel.length;
+      if (!best || score > best.score) {
+        best = {
+          coveredTerms: [...new Set(coveredLabelTerms)],
+          label,
+          labelPrecision: "prefix",
+          matchKind: "label",
+          position: Math.min(
+            ...coveredLabelTerms.map((term) =>
+              normalizedQuery.indexOf(` ${term} `),
+            ),
           ),
           score,
         };
@@ -197,6 +221,7 @@ const matchCandidate = (candidate, normalizedQuery, queryTerms) => {
     best = {
       coveredTerms: [...new Set(descriptionTerms)],
       label: candidate.display_name,
+      labelPrecision: null,
       matchKind: "description",
       position: Math.min(
         ...descriptionTerms.map((term) => normalizedQuery.indexOf(` ${term} `)),
@@ -280,8 +305,48 @@ const selectNonConjunctiveDescriptions = (matches) => {
 };
 
 const selectMatches = (matches) => {
-  const labelMatches = eliminateNestedLabels(
+  const nonNestedLabels = eliminateNestedLabels(
     matches.filter((candidate) => candidate.match.matchKind === "label"),
+  );
+  const labelMatches = [];
+  const remainingLabels = [...nonNestedLabels];
+  while (remainingLabels.length) {
+    const component = [remainingLabels.shift()];
+    const terms = new Set(component[0].match.coveredTerms);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let index = remainingLabels.length - 1; index >= 0; index -= 1) {
+        const candidate = remainingLabels[index];
+        if (!candidate.match.coveredTerms.some((term) => terms.has(term))) {
+          continue;
+        }
+        component.push(candidate);
+        for (const term of candidate.match.coveredTerms) terms.add(term);
+        remainingLabels.splice(index, 1);
+        changed = true;
+      }
+    }
+    component.sort(
+      (left, right) =>
+        right.match.coveredTerms.length - left.match.coveredTerms.length ||
+        Number(right.match.labelPrecision === "exact") -
+          Number(left.match.labelPrecision === "exact") ||
+        (DESCRIPTION_KIND_PRIORITY.get(left.entity_kind) ??
+          Number.MAX_SAFE_INTEGER) -
+          (DESCRIPTION_KIND_PRIORITY.get(right.entity_kind) ??
+            Number.MAX_SAFE_INTEGER) ||
+        right.match.score - left.match.score ||
+        left.display_name.localeCompare(right.display_name) ||
+        left.entity_id.localeCompare(right.entity_id),
+    );
+    labelMatches.push(component[0]);
+  }
+  labelMatches.sort(
+    (left, right) =>
+      left.match.position - right.match.position ||
+      right.match.score - left.match.score ||
+      left.display_name.localeCompare(right.display_name),
   );
   const labelTerms = new Set(
     labelMatches.flatMap((candidate) => candidate.match.coveredTerms),

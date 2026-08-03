@@ -415,6 +415,66 @@ test("Basic Smart Search keeps the longest exact label for one nested span", asy
   assert.equal(result.items.length, 1);
 });
 
+test("Basic Smart Search intersects a subject with the best partial Place label", async () => {
+  const { sql } = fakeSql({
+    assets: [
+      {
+        asset_id: "asset-maya-bluewater",
+        capture_time: new Date("2022-07-16T00:00:00Z"),
+        height: 800,
+        media_kind: "image",
+        mime_type: "image/jpeg",
+        width: 1200,
+      },
+    ],
+    candidates: [
+      {
+        aliases: ["Maya"],
+        description: "",
+        display_name: "Maya Chen",
+        entity_id: "person-maya",
+        entity_kind: "person",
+      },
+      {
+        aliases: [],
+        description: "",
+        display_name: "Bluewater Beach",
+        entity_id: "place-bluewater",
+        entity_kind: "place",
+      },
+      {
+        aliases: [],
+        description: "",
+        display_name: "Bluewater Weekend",
+        entity_id: "event-bluewater",
+        entity_kind: "event",
+      },
+    ],
+  });
+
+  const result = await createBasicSmartSearch(sql).search({
+    query: "Maya in Bluewater",
+  });
+  assert.deepEqual(result.interpretation.selectors, [
+    {
+      entityKind: "person",
+      ids: ["person-maya"],
+      label: "Maya",
+      matchKind: "label",
+      selectorKind: "subject",
+    },
+    {
+      entityKind: "place",
+      ids: ["place-bluewater"],
+      label: "Bluewater Beach",
+      matchKind: "label",
+      selectorKind: "context",
+    },
+  ]);
+  assert.deepEqual(result.interpretation.unresolvedTerms, []);
+  assert.equal(result.items.length, 1);
+});
+
 test("Basic Smart Search returns only visible active Documents without manufacturing photo results", async () => {
   const { calls, sql } = fakeSql({
     candidates: [
