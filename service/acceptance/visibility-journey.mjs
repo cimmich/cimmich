@@ -657,6 +657,14 @@ if (phase === "write") {
     false,
   );
   assert.equal(
+    (await request("/v1/people?limit=500")).items.some(
+      (item) => item.person_id === miso.petId,
+    ),
+    false,
+  );
+  await request(`/v1/people/${miso.petId}`, { status: 404 });
+  await request(`/v1/people/${miso.petId}/presentation`, { status: 404 });
+  assert.equal(
     (await request(`/v1/pets/${miso.petId}`, { status: 404 })).code,
     "PET_NOT_FOUND",
   );

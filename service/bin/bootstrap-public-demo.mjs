@@ -2,6 +2,10 @@ import { chmod, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
+import {
+  contentIdForFingerprint,
+  sourceBindingId,
+} from "../src/archive-mobility.mjs";
 import { createManualSubjectTagStore } from "../src/manual-subject-tag.mjs";
 import {
   buildPublicDemoPlan,
@@ -137,6 +141,16 @@ await sql.begin(async (tx) => {
   }
 
   for (const asset of plan.assets) {
+    const fingerprint = {
+      contentDigest: asset.sha256,
+      hashAlgorithm: "sha256",
+    };
+    const contentId = contentIdForFingerprint(fingerprint);
+    const bindingId = sourceBindingId({
+      externalAssetId: asset.immichAssetId,
+      sourceId,
+      sourceKind: "immich",
+    });
     await tx`
       INSERT INTO asset (
         asset_id, content_hash, locator_token, media_kind, mime_type, width,
@@ -145,6 +159,40 @@ await sql.begin(async (tx) => {
         ${asset.assetId}, ${asset.sha256}, ${`cedar-house:${asset.publicAssetId}`},
         'image', 'image/png', ${asset.width}, ${asset.height},
         ${asset.captureTime}, ${snapshotId}, 'active', 'release-safe'
+      )
+    `;
+    await tx`
+      INSERT INTO media_content (
+        content_id, producer_receipt_id, privacy_class
+      ) VALUES (
+        ${contentId}, ${receiptId}, 'release-safe'
+      )
+    `;
+    await tx`
+      INSERT INTO media_content_fingerprint (
+        content_id, hash_algorithm, content_digest, verification,
+        producer_receipt_id, privacy_class
+      ) VALUES (
+        ${contentId}, 'sha256', ${asset.sha256}, 'byte_verified',
+        ${receiptId}, 'release-safe'
+      )
+    `;
+    await tx`
+      INSERT INTO asset_content_link (
+        asset_id, content_id, producer_receipt_id, privacy_class
+      ) VALUES (
+        ${asset.assetId}, ${contentId}, ${receiptId}, 'release-safe'
+      )
+    `;
+    await tx`
+      INSERT INTO asset_source_binding (
+        binding_id, asset_id, content_id, source_kind, source_id,
+        external_asset_id, locator_token, input_revision, state, privacy_class
+      ) VALUES (
+        ${bindingId}, ${asset.assetId}, ${contentId}, 'immich', ${sourceId},
+        ${asset.immichAssetId},
+        ${`immich:${sourceId}:${asset.immichAssetId}`},
+        ${asset.inputRevision}, 'active', 'release-safe'
       )
     `;
     await tx`

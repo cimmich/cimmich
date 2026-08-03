@@ -38,6 +38,24 @@ const parseOrigin = (value) => {
   return url.origin;
 };
 
+const parseHostname = (value) => {
+  const hostname = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (
+    !hostname ||
+    hostname.length > 253 ||
+    !/^(?:[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?|\d{1,3}(?:\.\d{1,3}){3})$/.test(
+      hostname,
+    )
+  ) {
+    throw configError(
+      "Cimmich allowed host must be a bare hostname or IPv4 address",
+    );
+  }
+  return hostname;
+};
+
 const optionalHttpBaseUrl = (value, name) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -134,6 +152,19 @@ export const loadRuntimeConfig = (environment = {}) => {
   const allowedOrigins = new Set(origins.map(parseOrigin));
   if (allowedOrigins.size !== origins.length) {
     throw configError("Cimmich allowed origins must be unique");
+  }
+  const hostnames = String(
+    environment.CIMMICH_ALLOWED_HOSTS || "127.0.0.1,localhost,cimmich-api",
+  )
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!hostnames.length) {
+    throw configError("At least one Cimmich host is required");
+  }
+  const allowedHosts = new Set(hostnames.map(parseHostname));
+  if (allowedHosts.size !== hostnames.length) {
+    throw configError("Cimmich allowed hosts must be unique");
   }
 
   const documentStoreRoot = String(
@@ -242,6 +273,7 @@ export const loadRuntimeConfig = (environment = {}) => {
     allTrustedShortlistEnabled,
     allTrustedShortlistEvaluationReceiptDigest,
     allTrustedShortlistPackId,
+    allowedHosts,
     allowedOrigins,
     databaseUrl,
     documentMaxFileBytes,

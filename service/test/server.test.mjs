@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { createGuidedAccess } from "../src/guided-access.mjs";
 import { createCimmichServer } from "../src/server.mjs";
@@ -20,6 +21,42 @@ const withServer = async (repository, run, dependencies = {}) => {
     await new Promise((resolve) => server.close(resolve));
   }
 };
+
+test("raw API rejects an untrusted Host even when Origin is absent", async () => {
+  await withServer({ health: async () => ({ status: "ok" }) }, async (root) => {
+    const target = new URL(`${root}/health`);
+    const rejected = await new Promise((resolve, reject) => {
+      const request = httpRequest(
+        {
+          headers: { host: "evil.example.test" },
+          hostname: target.hostname,
+          method: "GET",
+          path: target.pathname,
+          port: target.port,
+        },
+        (response) => {
+          const chunks = [];
+          response.on("data", (chunk) => chunks.push(chunk));
+          response.on("end", () =>
+            resolve({
+              body: Buffer.concat(chunks).toString("utf8"),
+              status: response.statusCode,
+            }),
+          );
+        },
+      );
+      request.on("error", reject);
+      request.end();
+    });
+    assert.equal(rejected.status, 421);
+    assert.deepEqual(JSON.parse(rejected.body), {
+      error: "Host is not allowed",
+    });
+
+    const accepted = await fetch(`${root}/health`);
+    assert.equal(accepted.status, 200);
+  });
+});
 
 test("decision history is visibility-registered and bounded before projection", async () => {
   const calls = [];

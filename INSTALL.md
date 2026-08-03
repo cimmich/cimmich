@@ -214,7 +214,6 @@ home directory.
 ```sh
 export CIMMICH_COMPANION_STATE_ROOT=/srv/cimmich/operator
 export CIMMICH_COMPANION_PROJECT=cimmich-companion
-export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none
 
 ./tools/companion.sh configure http://host.docker.internal:2283
 ./tools/companion.sh up
@@ -230,6 +229,12 @@ operator-only loopback listener. A private installation may bind only the UI
 gateway to a trusted interface with `CIMMICH_COMPANION_UI_BIND_ADDRESS`.
 Do not bind it to `0.0.0.0` unless the host's network access is independently
 restricted.
+
+Private viewing is closed by default. After first start, set its password through
+**Settings → Private view password** before using the Private tier. An operator
+who deliberately does not want a Private password may set
+`CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none` before `configure`; this makes Private
+content available to every signed-in owner session and is not recommended.
 
 The recommended first-run path is still the signed-in **Library setup** journey: enter
 the Immich API key there, verify permissions, preview the scope and then import.

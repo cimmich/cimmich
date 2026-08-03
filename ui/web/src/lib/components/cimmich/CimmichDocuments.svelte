@@ -136,6 +136,7 @@
   let listRequestGeneration = 0;
   let detailRequestGeneration = 0;
   let appliedInitialDocumentId = '';
+  let observedVisibilityVersion = -1;
 
   const load = async () => {
     const generation = ++listRequestGeneration;
@@ -154,9 +155,6 @@
       });
       if (generation === listRequestGeneration) {
         documents = result.items;
-        if (initialDocumentId && selected?.documentId !== initialDocumentId) {
-          void openDetail({ documentId: initialDocumentId }, false);
-        }
       }
     } catch (error_) {
       if (generation === listRequestGeneration) {
@@ -567,12 +565,20 @@
   };
 
   $effect(() => {
-    if (cimmichVisibilityManager.version >= 0) {
+    const visibilityVersion = cimmichVisibilityManager.version;
+    if (visibilityVersion >= 0) {
+      const visibilityChanged = observedVisibilityVersion >= 0 && visibilityVersion !== observedVisibilityVersion;
+      observedVisibilityVersion = visibilityVersion;
       untrack(() => {
         detailRequestGeneration += 1;
         documents = [];
-        if (!initialDocumentId) {
+        // A lower viewing mode must remove already-rendered higher-tier detail
+        // before the replacement request begins. Keeping URL-selected detail
+        // mounted until a 404 returned leaked its title, filename, links and
+        // actions during the transition.
+        if (visibilityChanged) {
           selected = null;
+          clearPreview();
         }
         selectedAsset = null;
         libraryAssets = [];
@@ -581,6 +587,9 @@
           void loadLibrary();
         }
         void load();
+        if (visibilityChanged && initialDocumentId) {
+          void openDetail({ documentId: initialDocumentId }, false);
+        }
       });
     }
   });
