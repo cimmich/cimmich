@@ -212,14 +212,23 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('currentScope={selectedIsGeographyGroup');
   });
 
-  it('bounds the desktop Places atlas independently of its scrollable hierarchy rail', async () => {
+  it('uses a full-width clustered Immich map without a permanent hierarchy rail', async () => {
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
+    const map = await read('src/lib/components/shared-components/map/Map.svelte');
+    const nativeMap = await read('src/routes/(user)/map/[[photos=photos]]/[[assetId=id]]/+page.svelte');
 
     expect(collection).toContain('height: clamp(520px, calc(100dvh - 190px), 760px);');
+    expect(collection).toContain('grid-template-columns: minmax(0, 1fr);');
     expect(collection).toContain('grid-template-rows: minmax(0, 1fr);');
     expect(collection).toContain('.context-atlas-map {\n      height: 100%;\n      min-height: 0;');
-    expect(collection).toContain('.context-place-rail {\n      height: 100%;\n      overflow: hidden;');
-    expect(collection).toContain('class="min-h-0 overflow-y-auto p-2"');
+    expect(collection).toContain('showPlaceMarkerLabels={false}');
+    expect(collection).not.toContain('aria-label="Place hierarchy"');
+    expect(collection).not.toContain('class="context-place-row"');
+    expect(map).toContain('cluster={{ radius: 42, maxZoom: 15 }}');
+    expect(map).toContain('handlePlaceClusterClick(event.feature, map)');
+    expect(map).toContain('mapSource.getClusterExpansionZoom(clusterId)');
+    expect(map).toContain('<span class="sr-only">{feature.properties?.name}</span>');
+    expect(nativeMap).toContain('showPlaceMarkerLabels={false}');
   });
 
   it('treats Place geometry as optional map detail and puts routes in Events', async () => {
