@@ -9,7 +9,8 @@ const fakeSql = ({ assets = [], candidates = [], documents = [] } = {}) => {
     calls.push({ statement, values });
     if (statement.includes("SELECT * FROM (")) return candidates;
     if (statement.includes("FROM cimmich_document document")) return documents;
-    if (statement.includes("FROM asset")) return assets;
+    if (statement.includes("FROM asset") || statement.includes("JOIN asset"))
+      return assets;
     throw new Error(`Unexpected SQL: ${statement}`);
   };
   sql.json = (value) => value;
@@ -79,11 +80,13 @@ test("Basic Smart Search recognizes named subjects, context and year without pri
     /cimmich_visibility_context_entity_rank\(entity\.entity_id\) <=/,
   );
   assert.match(calls[1].statement, /cimmich_visibility_asset_rank/);
-  assert.match(calls[1].statement, /WITH RECURSIVE place_descendants/);
+  assert.match(calls[1].statement, /WITH RECURSIVE selected_selector/);
+  assert.match(calls[1].statement, /selector_asset_match/);
   assert.match(
     calls[1].statement,
     /child\.parent_entity_id = parent\.entity_id/,
   );
+  assert.doesNotMatch(calls[1].statement, /FROM asset[\s\S]+NOT EXISTS/);
   assert.doesNotMatch(calls[0].statement, /person_profile|private_notes/i);
 });
 

@@ -468,62 +468,89 @@ export const createBasicSmartSearch = (
       .filter((selector) => selector.selectorKind === "document")
       .flatMap((selector) => selector.ids);
     const selectorJson = sql.json(assetSelectors);
-    const rows =
-      assetSelectors.length || dateRange
-        ? await sql`
-      SELECT asset.asset_id, asset.capture_time, asset.height, asset.media_kind,
-        asset.mime_type, asset.width
-      FROM asset
-      WHERE asset.state = 'active'
-        AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
-        AND (${dateRange === null} OR (
-          asset.capture_time >= ${dateRange?.startInclusive || null}
-          AND asset.capture_time < ${dateRange?.endExclusive || null}
-        ))
-        AND NOT EXISTS (
-          SELECT 1 FROM jsonb_array_elements(${selectorJson}) selector
-          WHERE NOT (
-            (selector->>'selectorKind' = 'subject' AND EXISTS (
-              SELECT 1 FROM person_assets association
-              WHERE association.asset_id = asset.asset_id
-                AND association.authority_state = 'accepted'
-                AND association.person_id IN (
-                  SELECT jsonb_array_elements_text(selector->'ids')
-                )
-            )) OR
-            (selector->>'selectorKind' = 'context' AND EXISTS (
-              SELECT 1 FROM current_context_asset association
-              WHERE association.asset_id = asset.asset_id
-                AND (association.entity_id IN (
-                    SELECT jsonb_array_elements_text(selector->'ids')
-                  ) OR association.entity_id IN (
-                    WITH RECURSIVE place_descendants(entity_id) AS (
-                      SELECT entity.entity_id
-                      FROM context_entity entity
-                      WHERE entity.entity_kind = 'place'
-                        AND entity.status = 'active'
-                        AND entity.entity_id IN (
-                          SELECT jsonb_array_elements_text(selector->'ids')
-                        )
-                        AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
-                      UNION ALL
-                      SELECT child.entity_id
-                      FROM context_entity child
-                      JOIN place_descendants parent
-                        ON child.parent_entity_id = parent.entity_id
-                      WHERE child.entity_kind = 'place'
-                        AND child.status = 'active'
-                        AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${visibleRank}
-                    )
-                    SELECT entity_id FROM place_descendants
-                  ))
-            ))
-          )
+    let rows = [];
+    if (assetSelectors.length) {
+      rows = await sql`
+        WITH RECURSIVE selected_selector(selector_index, selector_kind, ids) AS (
+          SELECT selected.ordinality::int,
+            selected.selector->>'selectorKind', selected.selector->'ids'
+          FROM jsonb_array_elements(${selectorJson}) WITH ORDINALITY
+            AS selected(selector, ordinality)
+        ),
+        place_descendants(selector_index, entity_id) AS (
+          SELECT selector.selector_index, entity.entity_id
+          FROM selected_selector selector
+          CROSS JOIN LATERAL jsonb_array_elements_text(selector.ids)
+            AS selected_id(entity_id)
+          JOIN context_entity entity ON entity.entity_id = selected_id.entity_id
+          WHERE selector.selector_kind = 'context'
+            AND entity.entity_kind = 'place'
+            AND entity.status = 'active'
+            AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
+          UNION ALL
+          SELECT parent.selector_index, child.entity_id
+          FROM place_descendants parent
+          JOIN context_entity child ON child.parent_entity_id = parent.entity_id
+          WHERE child.entity_kind = 'place'
+            AND child.status = 'active'
+            AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${visibleRank}
+        ),
+        context_target(selector_index, entity_id) AS (
+          SELECT selector.selector_index, selected_id.entity_id
+          FROM selected_selector selector
+          CROSS JOIN LATERAL jsonb_array_elements_text(selector.ids)
+            AS selected_id(entity_id)
+          WHERE selector.selector_kind = 'context'
+          UNION
+          SELECT selector_index, entity_id FROM place_descendants
+        ),
+        selector_asset_match(selector_index, asset_id) AS (
+          SELECT selector.selector_index, association.asset_id
+          FROM selected_selector selector
+          JOIN person_assets association
+            ON association.person_id IN (
+              SELECT jsonb_array_elements_text(selector.ids)
+            )
+            AND association.authority_state = 'accepted'
+          WHERE selector.selector_kind = 'subject'
+          UNION
+          SELECT target.selector_index, association.asset_id
+          FROM context_target target
+          JOIN current_context_asset association
+            ON association.entity_id = target.entity_id
+        ),
+        matched_asset(asset_id) AS (
+          SELECT match.asset_id
+          FROM selector_asset_match match
+          GROUP BY match.asset_id
+          HAVING count(DISTINCT match.selector_index) = ${assetSelectors.length}
         )
-      ORDER BY asset.capture_time DESC NULLS LAST, asset.asset_id
-      LIMIT ${limit + 1}
-    `
-        : [];
+        SELECT asset.asset_id, asset.capture_time, asset.height,
+          asset.media_kind, asset.mime_type, asset.width
+        FROM matched_asset match
+        JOIN asset ON asset.asset_id = match.asset_id
+        WHERE asset.state = 'active'
+          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+          AND (${dateRange === null} OR (
+            asset.capture_time >= ${dateRange?.startInclusive || null}
+            AND asset.capture_time < ${dateRange?.endExclusive || null}
+          ))
+        ORDER BY asset.capture_time DESC NULLS LAST, asset.asset_id
+        LIMIT ${limit + 1}
+      `;
+    } else if (dateRange) {
+      rows = await sql`
+        SELECT asset.asset_id, asset.capture_time, asset.height,
+          asset.media_kind, asset.mime_type, asset.width
+        FROM asset
+        WHERE asset.state = 'active'
+          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+          AND asset.capture_time >= ${dateRange.startInclusive}
+          AND asset.capture_time < ${dateRange.endExclusive}
+        ORDER BY asset.capture_time DESC NULLS LAST, asset.asset_id
+        LIMIT ${limit + 1}
+      `;
+    }
     const documentRows = documentIds.length
       ? await sql`
         SELECT document.document_id, document.display_title,

@@ -185,7 +185,7 @@ describe('Cimmich context entity presentation', () => {
       entity({ displayName: 'Greece', entityId: 'place_country' }),
       entity({ displayName: 'Corfu', entityId: 'place_island', parentEntityId: 'place_country' }),
       entity({
-        displayName: 'The Pink Palace',
+        displayName: 'Cedar House',
         entityId: 'place_point',
         geometry: { latitude: 39.55, longitude: 19.83 },
         parentEntityId: 'place_island',
@@ -228,7 +228,7 @@ describe('Cimmich context entity presentation', () => {
         parentEntityId: 'place_office',
       }),
     ];
-    expect(contextPlaceHierarchy(places[3], places)).toEqual(['Greece', 'Corfu', 'The Pink Palace', 'Beach']);
+    expect(contextPlaceHierarchy(places[3], places)).toEqual(['Greece', 'Corfu', 'Cedar House', 'Beach']);
     expect(
       contextPlaceDescendants(places[2], places).map(({ depth, entity, path }) => ({
         depth,

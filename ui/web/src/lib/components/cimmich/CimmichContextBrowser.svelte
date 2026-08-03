@@ -3840,8 +3840,8 @@
               </select>
             </label>
             <p class="-mt-3 text-xs text-gray-500 dark:text-gray-400">
-              Use containment for chapters such as Pink Palace › 2015 › June. Use Connections after saving for
-              overlapping stories such as Manila Trip and TTR Consulting.
+              Use containment for chapters such as Cedar House › 2025 › June. Use Connections after saving for
+              overlapping stories such as Space Trip and Research Week.
             </p>
             {#if formSourceFolders.length > 0}
               <section class="rounded-2xl border border-primary/20 bg-primary/5 p-4" aria-label="Source folders">
@@ -4470,7 +4470,7 @@
               /><input
                 class="min-h-11 w-full rounded-full border border-gray-300 pr-4 pl-11 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800"
                 bind:value={folderQuery}
-                placeholder="Folder name or path — e.g. Manila Trip"
+                placeholder="Folder name or path — e.g. Space Trip"
               /></label
             ><button class="context-secondary-button shrink-0" type="submit" disabled={folderSearchLoading}
               >{folderSearchLoading ? 'Searching…' : 'Find folders'}</button

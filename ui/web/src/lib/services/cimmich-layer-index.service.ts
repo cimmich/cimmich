@@ -111,12 +111,12 @@ export const cimmichActivityDefinitions: CimmichNamedEntityDefinition[] = [
     routeHints: ['Boat route variants', 'Cliff Jump stop'],
   },
   {
-    aliases: ['Quad Safari', 'ATV Safari', 'quad tour'],
+    aliases: ['ATV trail ride', 'ATV tour', 'quad tour'],
     description:
       'Repeatable ATV/quad activity that should connect road photos, route paths, vehicles, helmets, stops, and known safari variants.',
-    id: 'quad-safari',
+    id: 'atv-trail-ride',
     locationHints: ['ATV routes', 'roads', 'rocky hillside stops'],
-    name: 'Quad Safari',
+    name: 'ATV Trail Ride',
     patterns: [
       /\bquad\b/i,
       /\batv\b/i,
@@ -128,7 +128,7 @@ export const cimmichActivityDefinitions: CimmichNamedEntityDefinition[] = [
       /\brocky hillside\b/i,
     ],
     relatedConcepts: ['ATVs', 'helmets', 'route stops', 'road photos'],
-    routeHints: ['Quad Safari route variants'],
+    routeHints: ['ATV trail route variants'],
   },
   {
     aliases: ['Toga Party', 'toga night'],
@@ -175,14 +175,14 @@ export const cimmichActivityDefinitions: CimmichNamedEntityDefinition[] = [
 export const cimmichPetsObjectDefinitions: Array<CimmichNamedEntityDefinition & { kind: 'object' | 'pet' }> = [
   {
     aliases: ['ATV', 'quad bike', 'quad'],
-    description: 'The ATV/quad vehicles that recur in Quad Safari evidence and route photos.',
+    description: 'ATV/quad vehicles that recur in trail-ride evidence and route photos.',
     id: 'atv-quad',
     kind: 'object',
-    locationHints: ['Quad Safari routes'],
+    locationHints: ['ATV trail routes'],
     name: 'ATV / Quad',
     patterns: [/\batv\b/i, /\bquad\b/i, /\ball-terrain\b/i, /\bvehicle\b/i, /\bhelmet\b/i],
-    relatedConcepts: ['Quad Safari', 'route evidence', 'helmets'],
-    routeHints: ['Quad Safari route variants'],
+    relatedConcepts: ['ATV Trail Ride', 'route evidence', 'helmets'],
+    routeHints: ['ATV trail route variants'],
   },
   {
     aliases: ['Motorbike', 'motorcycle', 'scooter'],

@@ -3,13 +3,13 @@ import { filterTagOptions, intersectAssetIds, normalTagOptions, type TagBrowserO
 
 const options: TagBrowserOption[] = [
   {
-    aliases: ['Manila holiday'],
+    aliases: ['Space holiday'],
     assetCount: 120,
     coverAssetId: 'asset-1',
     entityId: 'event-1',
     family: 'events',
     id: 'events:event-1',
-    label: 'Manila Trip',
+    label: 'Space Trip',
   },
   {
     aliases: [],
@@ -18,7 +18,7 @@ const options: TagBrowserOption[] = [
     entityId: 'place-1',
     family: 'places',
     id: 'places:place-1',
-    label: 'Pink Palace',
+    label: 'Cedar House',
   },
 ];
 

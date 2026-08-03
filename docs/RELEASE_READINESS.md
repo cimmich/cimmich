@@ -9,9 +9,9 @@ Current public-beta target: `v1.0.1-beta.6`
 
 ## Current source audit addendum — 2026-08-01
 
-The deployed schema-107/patch-1 feature source is
-`d05f60464218790f38ce602384c93c420e757bc5`. It reconciles the migration-ledger
-source with the private archive and adds recoverable bulk Organise operations.
+The current schema-119/patch-1 candidate begins from
+`00a0c98ef2cef35ba67c8d3c7184139936c574e8`. It reconciles the migration-ledger
+source with the accepted product work and adds recoverable bulk Organise operations.
 The final source gate passes 816
 service tests with two skipped, 938 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
@@ -62,8 +62,8 @@ interrupted batches resume from path-free item receipts. Exact existing People
 may receive trusted-import identity claims; missing or ambiguous names remain
 anonymous review evidence. Appended and unambiguous replacement-style sidecars
 are both supported, with packet locators kept distinct from media identity.
-The live X1 proof is recorded in
-`docs/X1_XMP_SIDECAR_RECOVERY_2026-07-27.md`.
+Private real-library rehearsal evidence remains outside the publication tree;
+public claims rely on the synthetic lifecycle and release-candidate gates.
 
 Schema 96 turns the remaining exact imported-name groups into a bounded owner
 triage surface, ordered by unresolved Face count so the People already present
@@ -71,8 +71,8 @@ throughout the archive lead the work. A replay-safe command resolves the full
 group to an existing or new Person, records user-origin claims and preserves
 the immutable original import classification. Alias collisions, pre-existing
 identity conflicts and fuzzy matches fail closed.
-The live X1 proof is recorded in
-`docs/X1_XMP_NAME_RESOLUTION_2026-07-27.md`.
+Private real-library rehearsal evidence remains outside the publication tree;
+public claims rely on the synthetic lifecycle and release-candidate gates.
 
 Schema 97 restores expired-lease recovery to exact existing-Face claims, so an
 interrupted parallel worker can reclaim only its own job while preserving the
