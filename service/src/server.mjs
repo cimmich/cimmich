@@ -4,6 +4,19 @@ import { integrationSettingsPack } from "./integration-settings.mjs";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
+const requestHostname = (authority) => {
+  const raw = String(authority || "").trim();
+  if (!raw || /[\\/@]/.test(raw)) return "";
+  try {
+    const parsed = new URL(`http://${raw}`);
+    if (parsed.username || parsed.password || parsed.pathname !== "/")
+      return "";
+    return parsed.hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
 const safeRouteFamily = (requestUrl) => {
   try {
     const parts = new URL(requestUrl || "/", "http://cimmich.local").pathname
@@ -177,6 +190,7 @@ const readDocumentMetadataHeader = (request) => {
 
 export const createCimmichServer = ({
   addressGeocoder,
+  allowedHosts = new Set(["127.0.0.1", "localhost"]),
   allowedOrigins,
   enhancedComponent,
   faceMatchingOperator,
@@ -197,6 +211,11 @@ export const createCimmichServer = ({
     const requestId = randomUUID();
     const startedAt = performance.now();
     response.setHeader("x-cimmich-request-id", requestId);
+    const hostname = requestHostname(request.headers.host);
+    if (!hostname || !allowedHosts.has(hostname)) {
+      sendJson(response, 421, { error: "Host is not allowed" });
+      return;
+    }
     const origin = String(request.headers.origin || "");
     const allowedOrigin = origin && allowedOrigins.has(origin) ? origin : "";
     if (origin && !allowedOrigin) {

@@ -335,6 +335,30 @@ describe('CimmichDocuments', () => {
     expect(mocks.importDocument).not.toHaveBeenCalled();
   });
 
+  it('removes open Document metadata immediately when a lower viewing mode rejects it', async () => {
+    const privateDocument = {
+      ...listDocument,
+      effectiveVisibilityTier: 'private' as const,
+      visibilityTier: 'private' as const,
+    };
+    mocks.getDocuments.mockResolvedValueOnce({ items: [privateDocument], schemaVersion: 'cimmich.document.v1' });
+    mocks.getDocument.mockResolvedValueOnce(privateDocument);
+    const { findByRole, findByText, queryByRole } = render(CimmichDocuments, {
+      initialDocumentId: privateDocument.documentId,
+    });
+
+    expect(await findByRole('heading', { name: 'Synthetic certificate' })).toBeInTheDocument();
+    mocks.getDocuments.mockResolvedValueOnce({ items: [], schemaVersion: 'cimmich.document.v1' });
+    mocks.getDocument.mockRejectedValueOnce(
+      new CimmichServiceError('Document not found', { code: 'DOCUMENT_NOT_FOUND', status: 404 }),
+    );
+
+    cimmichVisibilityManager.notify();
+
+    await waitFor(() => expect(queryByRole('heading', { name: 'Synthetic certificate' })).not.toBeInTheDocument());
+    expect(await findByText('This Document is unavailable in the current viewing mode.')).toBeInTheDocument();
+  });
+
   it('presents the typed metadata error without attempting visibility', async () => {
     mocks.getDocuments.mockResolvedValue({ items: [listDocument], schemaVersion: 'cimmich.document.v1' });
     mocks.getDocument.mockResolvedValue(listDocument);

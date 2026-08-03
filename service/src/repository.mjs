@@ -4023,8 +4023,8 @@ export const createCimmichRepository = (
       LEFT JOIN asset body_asset ON body_asset.asset_id = body.asset_id
       ${presentationJoins}
       WHERE p.status = 'active'
-        AND (p.subject_kind <> 'person'
-          OR cimmich_visibility_person_rank(p.person_id) <= ${visibleRank})
+        AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
+          <= ${visibleRank}
         AND (
           (${exactPersonId}::text <> '' AND p.person_id = ${exactPersonId})
           OR (
@@ -4102,8 +4102,8 @@ export const createCimmichRepository = (
         SELECT person_id, display_name, status, aliases, subject_kind
         FROM current_person
         WHERE person_id = ${id} AND status = 'active'
-          AND (subject_kind <> 'person'
-            OR cimmich_visibility_person_rank(person_id) <= ${visibleRank})
+          AND cimmich_visibility_subject_rank(subject_kind, person_id)
+            <= ${visibleRank}
       ), accepted_faces AS MATERIALIZED (
         SELECT identity.face_id, identity.person_id, face.asset_id, face.state,
           face.box_x, face.box_y, face.box_w, face.box_h,
@@ -5760,8 +5760,8 @@ export const createCimmichRepository = (
           SELECT person_id
           FROM current_person
           WHERE person_id = ${id} AND status = 'active'
-            AND (subject_kind <> 'person'
-              OR cimmich_visibility_person_rank(person_id) <= ${visibleRank})
+            AND cimmich_visibility_subject_rank(subject_kind, person_id)
+              <= ${visibleRank}
         ), accepted_faces AS MATERIALIZED (
           SELECT identity.face_id, identity.person_id, face.asset_id,
             face.state, face.box_x, face.box_y, face.box_w, face.box_h,
@@ -8021,6 +8021,7 @@ export const createCimmichRepository = (
         LEFT JOIN winner ON winner.face_id = head.face_id
         LEFT JOIN current_person person ON person.person_id = winner.person_id
           AND person.status = 'active'
+          AND person.subject_kind = 'person'
           AND cimmich_visibility_person_rank(person.person_id)
             <= ${presentationRank()}
         ORDER BY head.face_id

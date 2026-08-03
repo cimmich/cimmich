@@ -108,7 +108,7 @@ configure() {
   ui_port=${CIMMICH_COMPANION_UI_PORT:-3413}
   ui_bind_address=${CIMMICH_COMPANION_UI_BIND_ADDRESS:-127.0.0.1}
   source_id=${CIMMICH_IMMICH_SOURCE_ID:-immich-primary}
-  private_lock_mode=${CIMMICH_COMPANION_PRIVATE_LOCK_MODE:-none}
+  private_lock_mode=${CIMMICH_COMPANION_PRIVATE_LOCK_MODE:-password}
   validate_port "$api_port" "Cimmich API port"
   validate_port "$ui_port" "Cimmich UI port"
   printf '%s\n' "$ui_bind_address" | awk -F. '

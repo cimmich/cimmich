@@ -36,7 +36,7 @@ import {
 } from "./owner-face-recognition.mjs";
 
 const runtimeConfig = loadRuntimeConfig(process.env);
-const { allowedOrigins, databaseUrl, host, port } = runtimeConfig;
+const { allowedHosts, allowedOrigins, databaseUrl, host, port } = runtimeConfig;
 const serviceDirectory = path.dirname(
   path.dirname(fileURLToPath(import.meta.url)),
 );
@@ -257,6 +257,7 @@ const memorySteward = createMemorySteward({
 });
 const server = createCimmichServer({
   addressGeocoder,
+  allowedHosts,
   allowedOrigins,
   faceMatchingOperator,
   enhancedComponent,

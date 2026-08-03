@@ -16,6 +16,10 @@ test("runtime configuration accepts exact local origins and an absolute document
     [...config.allowedOrigins],
     ["http://127.0.0.1:3000", "https://photos.example.test"],
   );
+  assert.deepEqual(
+    [...config.allowedHosts],
+    ["127.0.0.1", "localhost", "cimmich-api"],
+  );
   assert.equal(config.guidedEnabled, false);
   assert.equal(config.guidedAccessToken, "");
   assert.equal(config.guidedAuthority, "read");
@@ -71,6 +75,9 @@ test("runtime configuration fails closed on ambiguous network and storage values
     { CIMMICH_ALLOWED_ORIGINS: "https://photos.example.test/path" },
     { CIMMICH_ALLOWED_ORIGINS: "https://user:secret@photos.example.test" },
     { CIMMICH_ALLOWED_ORIGINS: "http://127.0.0.1:3000,http://127.0.0.1:3000" },
+    { CIMMICH_ALLOWED_HOSTS: "," },
+    { CIMMICH_ALLOWED_HOSTS: "localhost,localhost" },
+    { CIMMICH_ALLOWED_HOSTS: "https://localhost" },
     { CIMMICH_DOCUMENT_STORE_ROOT: "relative/documents" },
     { CIMMICH_DOCUMENT_MAX_FILE_BYTES: "0" },
     {

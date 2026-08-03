@@ -85,6 +85,12 @@ seed_once() {
   docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_demo -d cimmich_demo -Atc \
     "SELECT count(*) FROM immich_asset_projection
      WHERE source_id='cimmich-public-demo-cedar-house-v1' AND state='active'" | grep -qx 51
+  docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_demo -d cimmich_demo -Atc \
+    "SELECT (SELECT count(*) FROM media_content_fingerprint WHERE verification='byte_verified') || ':' ||
+            (SELECT count(*) FROM asset_content_link WHERE state='active') || ':' ||
+            (SELECT count(*) FROM asset_source_binding
+             WHERE source_kind='immich' AND source_id='cimmich-public-demo-cedar-house-v1'
+               AND state='active')" | grep -qx '51:51:51'
 }
 
 seed_once "$RECEIPT_A" "$BRIDGE_A"
