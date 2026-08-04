@@ -43,7 +43,7 @@ describe('Cimmich visibility projection boundary', () => {
 
   it('requests archived detail only for a row already disclosed by the archived collection', () => {
     expect(source('src/lib/components/cimmich/CimmichContextBrowser.svelte')).toContain(
-      "includeArchived: entity.status === 'archived'",
+      "const includeArchived = selected.entity.status === 'archived'",
     );
   });
 });
