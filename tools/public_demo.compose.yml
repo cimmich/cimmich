@@ -187,7 +187,7 @@ services:
       context: ..
       dockerfile: tools/public_demo_ui.Dockerfile
       args:
-        PUBLIC_CIMMICH_API_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}
+        PUBLIC_CIMMICH_API_URL: /cimmich-api
     image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-ui:current-source
     depends_on:
       cimmich-api:
