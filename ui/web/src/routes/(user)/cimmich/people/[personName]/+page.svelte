@@ -3557,8 +3557,8 @@
                           <button
                             class="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 dark:bg-immich-dark-gray/90 dark:text-gray-300 dark:hover:bg-red-950 dark:hover:text-red-200"
                             type="button"
-                            aria-label={`Remove all connections to ${connection.displayName}`}
-                            title={`Remove all connections to ${connection.displayName}`}
+                            aria-label={`Remove linked roles from ${connection.displayName}`}
+                            title={`Remove linked roles from ${connection.displayName}`}
                             disabled={cimmichConnectionSavingId === connection.entityId}
                             onclick={() => void removeCimmichPersonConnection(connection)}
                             ><Icon icon={mdiTrashCanOutline} size="18" /></button
