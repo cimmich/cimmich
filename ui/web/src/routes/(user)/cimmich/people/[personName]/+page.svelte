@@ -164,6 +164,13 @@
     | 'secondary';
   type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
+  type CimmichIdentityMoveUndo = {
+    bodyId?: string;
+    destinationPersonId: string;
+    faceId: string;
+    moveBody: boolean;
+    originalPersonId: string;
+  };
   type CimmichPersonConnection = {
     directRelations?: Array<{ relationId: string; relationType: string }>;
     displayName: string;
@@ -268,6 +275,7 @@
   let cimmichIdentityMovePersonId = $state('');
   let cimmichIdentityMoveQuery = $state('');
   let cimmichIdentityMoveSuggestion = $state<CimmichFaceMatch | CimmichFaceOwnerReviewMatch>();
+  let cimmichIdentityMoveUndo = $state<CimmichIdentityMoveUndo | null>(null);
   let cimmichIdentitySavingId = $state('');
   let cimmichHeadRescanSaving = $state(false);
   let cimmichIdentitySectionLimits = $state<Record<string, number>>({});
@@ -2816,6 +2824,16 @@
           ? { newPersonName: cimmichIdentityMoveNewName.trim() }
           : { targetPersonId: cimmichIdentityMovePersonId }),
       });
+      cimmichIdentityMoveUndo =
+        result.changed && result.previousPersonId
+          ? {
+              ...(result.movedBody && face.body_id ? { bodyId: face.body_id } : {}),
+              destinationPersonId: result.personId,
+              faceId: result.faceId,
+              moveBody: Boolean(result.movedBody),
+              originalPersonId: result.previousPersonId,
+            }
+          : null;
       cimmichIdentityMessage = `${result.createdPerson ? 'Created' : 'Moved to'} ${result.personName}${result.movedBody ? ' with its selected body' : ''}.`;
       cimmichIdentityMoveFaceId = '';
       cimmichIdentityMoveQuery = '';
@@ -2823,6 +2841,32 @@
       await refreshCimmichIdentity();
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to move identity';
+    } finally {
+      cimmichIdentitySavingId = '';
+    }
+  };
+
+  const undoCimmichIdentityMove = async () => {
+    const receipt = cimmichIdentityMoveUndo;
+    if (!receipt) {
+      return;
+    }
+    cimmichIdentitySavingId = 'undo:move';
+    cimmichIdentityError = '';
+    try {
+      const result = await moveCimmichIdentityFace(receipt.destinationPersonId, receipt.faceId, {
+        ...(receipt.moveBody && receipt.bodyId ? { bodyId: receipt.bodyId, moveBody: true } : {}),
+        targetPersonId: receipt.originalPersonId,
+      });
+      if (!result.changed) {
+        throw new Error('The face is already assigned to its earlier Person. Refresh to see the current evidence.');
+      }
+      cimmichIdentityMoveUndo = null;
+      cimmichIdentityMessage = `Moved back to ${result.personName}.`;
+      cimmichSetupPeople = await getCimmichPeople(500);
+      await refreshCimmichIdentity();
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to undo the identity move';
     } finally {
       cimmichIdentitySavingId = '';
     }
@@ -2986,6 +3030,7 @@
     cimmichHoldingMatches = {};
     cimmichHoldingMatchesLoading = {};
     cimmichIdentityUndoDecisionId = '';
+    cimmichIdentityMoveUndo = null;
     cimmichIdentityCorrections = [];
     cimmichProfile = undefined;
     cimmichProfileDefaults = undefined;
@@ -3731,12 +3776,21 @@
               {cimmichIdentityError}
             </p>
           {/if}
-          {#if cimmichIdentityMessage || cimmichIdentityUndoDecisionId}
+          {#if cimmichIdentityMessage || cimmichIdentityUndoDecisionId || cimmichIdentityMoveUndo}
             <div
               class="flex items-center justify-between gap-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200"
             >
               <p>{cimmichIdentityMessage || 'A recent identity correction can still be undone.'}</p>
-              {#if cimmichIdentityUndoDecisionId}
+              {#if cimmichIdentityMoveUndo}
+                <button
+                  class="shrink-0 rounded-md border border-green-300 px-3 py-1.5 font-semibold disabled:opacity-50 dark:border-green-800"
+                  disabled={Boolean(cimmichIdentitySavingId)}
+                  type="button"
+                  onclick={() => void undoCimmichIdentityMove()}
+                >
+                  {cimmichIdentitySavingId === 'undo:move' ? 'Undoing…' : 'Undo move'}
+                </button>
+              {:else if cimmichIdentityUndoDecisionId}
                 <button
                   class="shrink-0 rounded-md border border-green-300 px-3 py-1.5 font-semibold disabled:opacity-50 dark:border-green-800"
                   disabled={Boolean(cimmichIdentitySavingId)}
