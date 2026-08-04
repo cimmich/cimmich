@@ -124,6 +124,18 @@ export const createImmichCompanionManager = async ({
     ...(timeoutMs == null ? {} : { timeoutMs }),
   });
   let permissionReceipt = null;
+  if (stored) {
+    try {
+      const status = await companion.status();
+      if (status.state === "ready") {
+        permissionReceipt = await companion.verifyOnboardingPermissions();
+      }
+    } catch {
+      // A temporarily unavailable Immich instance must not prevent Cimmich
+      // from starting. status() remains truthful and a later verification can
+      // refresh the in-memory receipt.
+    }
+  }
 
   const manager = {
     async connect({ apiBaseUrl: nextUrl, apiKey: nextKey }) {

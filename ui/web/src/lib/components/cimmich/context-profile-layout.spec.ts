@@ -41,6 +41,17 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).not.toContain("{#if relation.direction !== 'incoming'}");
   });
 
+  it('keeps folder admission additive and removes the indistinguishable legacy Main choice', async () => {
+    const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+    const presentation = await read('src/lib/components/cimmich/context-entity-presentation.ts');
+
+    expect(browser).toContain('eventFolderAdmission(visible');
+    expect(browser).toContain('new Set((selected?.assets ?? []).map((asset) => asset.sourceAssetId).filter(Boolean))');
+    expect(browser).toContain('Existing roles stay unchanged.');
+    expect(presentation).toContain("manual: 'Legacy main'");
+    expect(presentation).toContain("event: ['direct', 'route_stop', 'context', 'needs_check']");
+  });
+
   it('puts tab-specific work beside the tab rail and record maintenance in the editor', async () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 

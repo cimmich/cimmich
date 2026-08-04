@@ -32,7 +32,7 @@ Development does not stop after submission:
 - publish the first maintained-product milestone as the GitHub pre-release
   **Cimmich v1.0.1 — Public Beta**, tagged `v1.0.1-beta.1`.
 
-The schema-119 Community Preview line uses
+The schema-120 Community Preview line uses
 `v1.1.0-community-preview.0`, `.1`, and later prerelease numbers. A stable
 release comes only after the installation, compatibility, usability and
 real-library boundaries are strong enough for wider promotion.
@@ -52,6 +52,9 @@ Build them from the exact release working tree with:
 
 The builder refuses a dirty tree and runs `tools/run_publication_scan.sh`
 before packaging tracked files.
+
+The exact merge, tag, attachment and logged-out verification sequence is in
+[the Community Preview publication runbook](COMMUNITY_PREVIEW_PUBLICATION.md).
 
 Extract both formats into clean directories and run
 `./tools/install.sh --check` from each before publication. The extracted folder

@@ -36,6 +36,8 @@ test("Cimmich tag assets intersect every selected family in one set-based query"
         sourceAssetId: "immich-one",
       },
     ],
+    nextCursor: null,
+    pageSize: 120,
     schemaVersion: "cimmich.tag-assets.v1",
     total: 1,
   });
@@ -43,8 +45,42 @@ test("Cimmich tag assets intersect every selected family in one set-based query"
   assert.match(statement, /JOIN person_assets association/);
   assert.match(statement, /JOIN current_face_identity identity/);
   assert.match(statement, /JOIN current_context_asset association/);
-  assert.match(statement, /scope\.family = 'places'/);
+  assert.match(statement, /scope\.family IN \('places', 'events'\)/);
   assert.match(statement, /HAVING count\(DISTINCT membership\.tag_key\)/);
+  assert.match(statement, /asset\.asset_id = ANY/);
+  assert.match(statement, /LIMIT/);
+});
+
+test("Cimmich tag assets page without silently truncating the true result set", async () => {
+  const sql = createFragmentAwareSql(() => {}, [
+    {
+      asset_id: "asset-one",
+      capture_time: "2026-08-03T00:00:00.000Z",
+      total_count: 3,
+    },
+    {
+      asset_id: "asset-two",
+      capture_time: "2026-08-02T00:00:00.000Z",
+      total_count: 3,
+    },
+  ]);
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      ["asset-one", { sourceAssetId: "immich-one" }],
+      ["asset-two", { sourceAssetId: "immich-two" }],
+    ]),
+  );
+
+  const result = await repository.tagAssets({
+    pageSize: 1,
+    tags: [{ entityId: "event-one", family: "events" }],
+  });
+
+  assert.equal(result.items.length, 1);
+  assert.equal(result.pageSize, 1);
+  assert.equal(result.total, 3);
+  assert.equal(typeof result.nextCursor, "string");
 });
 
 test("Cimmich tag assets reject invalid or excessive selections before SQL", async () => {

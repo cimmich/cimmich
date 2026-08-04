@@ -140,6 +140,7 @@
   import {
     eventAssetBelongsToFolder,
     eventCopyName,
+    eventFolderAdmission,
     eventFolderCandidates,
     eventFolderLabel,
     eventLineage,
@@ -1795,10 +1796,21 @@
     try {
       const visible = await loadVisibleEventFolderAssets(folderPath);
       const capacity = Math.max(0, 1000 - selectedSourceIds.length);
-      const added = visible.filter((asset) => !selectedSourceIds.includes(asset.id)).slice(0, capacity);
+      const admission = eventFolderAdmission(visible, {
+        alreadyLinkedIds:
+          assetPickerPurpose === 'attach'
+            ? new Set((selected?.assets ?? []).map((asset) => asset.sourceAssetId).filter(Boolean))
+            : new Set<string>(),
+        capacity,
+        selectedIds: new Set(selectedSourceIds),
+      });
+      const added = admission.additions;
       if (added.length === 0) {
-        folderError =
-          capacity === 0 ? 'The 1,000-item import limit is already reached.' : 'No new visible media was found.';
+        folderError = admission.alreadyLinkedCount
+          ? `${admission.alreadyLinkedCount.toLocaleString()} ${admission.alreadyLinkedCount === 1 ? 'photo is' : 'photos are'} already in this event. Nothing was reclassified.`
+          : capacity === 0
+            ? 'The 1,000-item import limit is already reached.'
+            : 'No new visible media was found.';
         return;
       }
       libraryAssets = [...libraryAssets, ...added].filter(
@@ -1807,7 +1819,9 @@
       selectedSourceIds = [...selectedSourceIds, ...added.map((asset) => asset.id)];
       selectedFolderPaths = [...selectedFolderPaths, folderPath];
       folderAssetIds = { ...folderAssetIds, [folderPath]: added.map((asset) => asset.id) };
-      if (visible.length > added.length) {
+      if (admission.alreadyLinkedCount > 0) {
+        folderError = `Selected ${added.length.toLocaleString()} new ${added.length === 1 ? 'photo' : 'photos'} and skipped ${admission.alreadyLinkedCount.toLocaleString()} already in this event. Existing roles stay unchanged.`;
+      } else if (admission.truncatedCount > 0) {
         folderError = `Added the first ${added.length.toLocaleString()} visible items. Refine the folder if you need a narrower memory.`;
       }
     } catch {

@@ -109,8 +109,8 @@ export const cimmichHomePreviewNames = (names: Array<string | null | undefined>,
   return visible.length > limit ? `${preview} +${visible.length - limit}` : preview;
 };
 
-export const cimmichHomeReviewLabel = (count: number | undefined) => {
-  if (count === undefined) {
+export const cimmichHomeReviewLabel = (count: number | null | undefined) => {
+  if (count == null) {
     return 'Checking review queue…';
   }
   if (count === 0) {

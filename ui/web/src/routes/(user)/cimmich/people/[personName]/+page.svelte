@@ -2,6 +2,7 @@
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
+  import { keyboardTabs } from '$lib/components/cimmich/keyboard-tabs';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
@@ -28,6 +29,7 @@
   } from '$lib/components/cimmich/person-photo-gallery';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
+  import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { Route } from '$lib/route';
   import {
     acceptCimmichMachineSuggestion,
@@ -170,6 +172,46 @@
     faceId: string;
     moveBody: boolean;
     originalPersonId: string;
+  };
+  const identityMoveUndoKey = (personId: string) => `cimmich.identity-move-undo.v1.${personId}`;
+  const storeIdentityMoveUndo = (personId: string, receipt: CimmichIdentityMoveUndo | null) => {
+    try {
+      const key = identityMoveUndoKey(personId);
+      if (!receipt) {
+        globalThis.localStorage.removeItem(key);
+        return;
+      }
+      globalThis.localStorage.setItem(key, JSON.stringify({ receipt, savedAt: Date.now() }));
+    } catch {
+      // The move remains durable even when this browser refuses local storage;
+      // only the convenience affordance is unavailable after a reload.
+    }
+  };
+  const restoreIdentityMoveUndo = (personId: string): CimmichIdentityMoveUndo | null => {
+    try {
+      const raw = globalThis.localStorage.getItem(identityMoveUndoKey(personId));
+      if (!raw) {
+        return null;
+      }
+      const value = JSON.parse(raw) as { receipt?: Partial<CimmichIdentityMoveUndo>; savedAt?: number };
+      const receipt = value.receipt;
+      if (
+        !Number.isFinite(value.savedAt) ||
+        Date.now() - Number(value.savedAt) > 24 * 60 * 60 * 1000 ||
+        !receipt ||
+        !receipt.destinationPersonId ||
+        !receipt.faceId ||
+        receipt.originalPersonId !== personId ||
+        typeof receipt.moveBody !== 'boolean'
+      ) {
+        storeIdentityMoveUndo(personId, null);
+        return null;
+      }
+      return receipt as CimmichIdentityMoveUndo;
+    } catch {
+      storeIdentityMoveUndo(personId, null);
+      return null;
+    }
   };
   type CimmichPersonConnection = {
     directRelations?: Array<{ relationId: string; relationType: string }>;
@@ -365,7 +407,7 @@
         : tabRight > visibleRight
           ? tabRight - cimmichTabsScroller.clientWidth
           : visibleLeft;
-    cimmichTabsScroller.scrollTo({ behavior: 'smooth', left });
+    cimmichTabsScroller.scrollTo({ behavior: mediaQueryManager.reducedMotion ? 'auto' : 'smooth', left });
   };
 
   const scrollCimmichTabs = () => {
@@ -2370,7 +2412,7 @@
     cimmichPresentationPickerSlot = '';
     requestAnimationFrame(() =>
       document.querySelector('#cimmich-identity-workspace')?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: mediaQueryManager.reducedMotion ? 'auto' : 'smooth',
         block: 'start',
       }),
     );
@@ -2834,6 +2876,7 @@
               originalPersonId: result.previousPersonId,
             }
           : null;
+      storeIdentityMoveUndo(cimmichPerson.person_id, cimmichIdentityMoveUndo);
       cimmichIdentityMessage = `${result.createdPerson ? 'Created' : 'Moved to'} ${result.personName}${result.movedBody ? ' with its selected body' : ''}.`;
       cimmichIdentityMoveFaceId = '';
       cimmichIdentityMoveQuery = '';
@@ -2862,6 +2905,7 @@
         throw new Error('The face is already assigned to its earlier Person. Refresh to see the current evidence.');
       }
       cimmichIdentityMoveUndo = null;
+      storeIdentityMoveUndo(receipt.originalPersonId, null);
       cimmichIdentityMessage = `Moved back to ${result.personName}.`;
       cimmichSetupPeople = await getCimmichPeople(500);
       await refreshCimmichIdentity();
@@ -2922,6 +2966,7 @@
         throw new Error(`No person named ${data.personName}`);
       }
       cimmichPerson = row;
+      cimmichIdentityMoveUndo = restoreIdentityMoveUndo(row.person_id);
       const assetsPromise = getCimmichPersonAssetsPage(row.person_id, 120);
       const directConnectionsPromise = getCimmichPersonConnections(row.person_id);
       const peoplePromise = getCimmichPeople(500);
@@ -3228,13 +3273,14 @@
           onscroll={updateCimmichTabsOverflow}
         >
           <div class="flex min-w-max items-stretch sm:min-w-full">
-            <div class="flex shrink-0" role="tablist" aria-label="Person content">
+            <div class="flex shrink-0" role="tablist" aria-label="Person content" use:keyboardTabs>
               <button
                 class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
                 data-person-tab="photos"
                 type="button"
                 role="tab"
                 aria-selected={cimmichMode === 'photos'}
+                tabindex={cimmichMode === 'photos' ? 0 : -1}
                 onclick={() => (cimmichMode = 'photos')}
               >
                 Photos
@@ -3249,6 +3295,7 @@
                   type="button"
                   role="tab"
                   aria-selected={cimmichMode === 'details'}
+                  tabindex={cimmichMode === 'details' ? 0 : -1}
                   onclick={openCimmichDetails}
                 >
                   Details
@@ -3259,6 +3306,7 @@
                   type="button"
                   role="tab"
                   aria-selected={cimmichMode === 'connections'}
+                  tabindex={cimmichMode === 'connections' ? 0 : -1}
                   onclick={() => (cimmichMode = 'connections')}
                 >
                   Connections
@@ -3275,6 +3323,7 @@
                 type="button"
                 role="tab"
                 aria-selected={cimmichMode === 'identity'}
+                tabindex={cimmichMode === 'identity' ? 0 : -1}
                 onclick={() => void openCimmichIdentity()}
               >
                 Identity
@@ -3299,6 +3348,7 @@
                 type="button"
                 role="tab"
                 aria-selected={cimmichMode === 'documents'}
+                tabindex={cimmichMode === 'documents' ? 0 : -1}
                 onclick={() => (cimmichMode = 'documents')}
               >
                 Documents

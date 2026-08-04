@@ -20,7 +20,7 @@ assert.equal(summaryBefore.candidate_signals, 5);
 // Legacy/imported candidate claims are evidence, not the machine-review queue.
 // This fixture has no corrected-machine projection, so the shared ready set is
 // honestly empty even though candidate signals remain present.
-assert.equal(summaryBefore.suggestions_ready, 0);
+assert.equal(summaryBefore.suggestions_ready, null);
 assert.equal(summaryBefore.user_decisions, 0);
 assert.equal(summaryBefore.people, peopleForSummary.items.length);
 assert.equal(personAssets.items.length, 1);
@@ -193,7 +193,7 @@ assert.equal(
   (await getJson("/v1/review/identity-claims?limit=5")).items.length,
   0,
 );
-assert.equal((await getJson("/v1/summary")).suggestions_ready, 0);
+assert.equal((await getJson("/v1/summary")).suggestions_ready, null);
 assert.equal(
   (await getJson("/v1/people?limit=500")).items.find(
     (person) => person.person_id === "person_service_fixture",
@@ -378,7 +378,7 @@ const after = await getJson("/v1/review/identity-claims?limit=5");
 const summaryAfter = await getJson("/v1/summary");
 assert.equal(after.items.length, 0);
 assert.equal(summaryAfter.candidate_signals, 0);
-assert.equal(summaryAfter.suggestions_ready, 0);
+assert.equal(summaryAfter.suggestions_ready, null);
 assert.equal(summaryAfter.user_decisions, 11);
 
 const identityBefore = await getJson(

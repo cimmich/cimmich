@@ -13,7 +13,7 @@ describe('AssetViewerManager return route', () => {
   });
 
   it('can clear a stale previous location before another viewer opens', () => {
-    assetViewerManager.setReturnRoute('/cimmich/people/Benji');
+    assetViewerManager.setReturnRoute('/cimmich/people/Avery%20Example');
     assetViewerManager.setReturnRoute(null);
 
     expect(assetViewerManager.takeReturnRoute()).toBeNull();

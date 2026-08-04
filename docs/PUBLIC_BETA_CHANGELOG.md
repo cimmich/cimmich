@@ -4,6 +4,23 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.1 — Complete memory companion preview
+
+This bounded Community Preview advances the maintained product from identity
+review into a complete local memory companion for exact Immich 3.1.0.
+
+- Organise opens on Timeline and keeps human Folders, searchable multi-select
+  Cimmich/Normal Tags, Albums and Bulk one switch away.
+- Events support folder admission, Needs check review, copying, rapid multiple
+  creation, recurrence, containment, connected stories and ordered trip stops.
+- People, Pets, Places, Things and Documents have distinct, photo-led homes,
+  typed relationships, durable decisions and visible Undo where applicable.
+- Smart Search preserves query state and offers bounded failure recovery.
+- Guided install, backup, update, restore, disable and removal remain scoped to
+  a separate Cimmich project and database; original media is not modified.
+- The release is intentionally bounded to macOS/Linux, single-owner local use,
+  English-first UI and exactly Immich 3.1.0.
+
 ## v1.0.1-beta.6 — People review, real matching operations and Pets
 
 This is a substantial public-beta update focused on making the product's

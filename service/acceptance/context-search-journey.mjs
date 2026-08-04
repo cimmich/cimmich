@@ -38,6 +38,14 @@ const assertPersisted = async () => {
   assert.deepEqual(trip.previewAssetIds, ["source-service-fixture"]);
   assert.equal(trip.coverAssetId, "source-service-fixture");
   assert.equal(trip.coverMode, "explicit");
+  assert.equal(trip.assetCount, 1);
+  assert.equal(trip.directAssetCount, 1);
+  assert.equal(trip.subtreeAssetCount, 2);
+  assert.equal(trip.childCount, 1);
+  const activity = await byName("events", "Synthetic beach tour");
+  assert.ok(activity);
+  assert.equal(activity.parentEntityId, trip.entityId);
+  assert.equal(activity.assetCount, 1);
   assert.equal(beach.typeKind, "point");
   assert.deepEqual(beach.aliases, ["Greek beach"]);
   assert.equal(beach.assetCount, 1);
@@ -78,10 +86,10 @@ const assertPersisted = async () => {
   assert.equal(carDetail.entity.coverMode, "explicit");
   const detail = await request(`/v1/events/${trip.entityId}`);
   assert.equal(detail.schemaVersion, "cimmich.context-entity.v1");
-  assert.equal(detail.assets.length, 2);
+  assert.equal(detail.assets.length, 1);
   assert.deepEqual(
     detail.relations.map((relation) => relation.relationKind).sort(),
-    ["companion", "location", "object", "participant", "related"],
+    ["companion", "location", "location", "object", "participant", "related"],
   );
   const search = await request(
     "/v1/search/smart?q=photo%20with%20Synthetic%20Person%20at%20Greek%20beach%20in%202020&limit=20",
@@ -155,12 +163,13 @@ if (phase === "write" || phase === "all") {
     typeKind: "unlocated",
   });
   const office = officeCreated.detail.entity;
-  await create("places", "context.create.area-00001", {
+  const islandCreated = await create("places", "context.create.area-00001", {
     displayName: "Synthetic island area",
     geometry: { east: 151.3, north: -33.7, south: -34, west: 151 },
     parentEntityId: country.entityId,
     typeKind: "area",
   });
+  const island = islandCreated.detail.entity;
   await create("places", "context.create.route-0001", {
     displayName: "Synthetic island route",
     geometry: {
@@ -202,7 +211,8 @@ if (phase === "write" || phase === "all") {
     parentEntityId: trip.entityId,
     typeKind: "activity",
   });
-  assert.equal(activityCreated.detail.entity.parentEntityId, trip.entityId);
+  const activity = activityCreated.detail.entity;
+  assert.equal(activity.parentEntityId, trip.entityId);
   const lifePeriodCreated = await create(
     "events",
     "context.create.lifeperiod1",
@@ -708,14 +718,53 @@ if (phase === "write" || phase === "all") {
   );
   await request(`/v1/events/${trip.entityId}/assets:attach`, {
     body: {
-      assets: [
-        { assetId: "asset_service_fixture", associationKind: "direct" },
-        { assetId: "asset_identity_fixture", associationKind: "context" },
-      ],
+      assets: [{ assetId: "asset_service_fixture", associationKind: "direct" }],
       commandId: "context.assets.trip-00001",
     },
     method: "POST",
   });
+  await request(`/v1/events/${activity.entityId}/assets:attach`, {
+    body: {
+      assets: [
+        { assetId: "asset_identity_fixture", associationKind: "direct" },
+      ],
+      commandId: "context.assets.activity-001",
+    },
+    method: "POST",
+  });
+  const countedTrip = await byName("events", "Synthetic Greek holiday 2020");
+  assert.equal(countedTrip.assetCount, 1);
+  assert.equal(countedTrip.directAssetCount, 1);
+  assert.equal(countedTrip.subtreeAssetCount, 2);
+  assert.equal(countedTrip.childCount, 1);
+  const firstTaggedEventPage = await request("/v1/tag-assets/search", {
+    body: {
+      pageSize: 1,
+      tags: [{ entityId: trip.entityId, family: "events" }],
+    },
+    method: "POST",
+  });
+  assert.equal(firstTaggedEventPage.total, 2);
+  assert.equal(firstTaggedEventPage.items.length, 1);
+  assert.equal(typeof firstTaggedEventPage.nextCursor, "string");
+  const secondTaggedEventPage = await request("/v1/tag-assets/search", {
+    body: {
+      cursor: firstTaggedEventPage.nextCursor,
+      pageSize: 1,
+      tags: [{ entityId: trip.entityId, family: "events" }],
+    },
+    method: "POST",
+  });
+  assert.equal(secondTaggedEventPage.total, 2);
+  assert.equal(secondTaggedEventPage.items.length, 1);
+  assert.equal(secondTaggedEventPage.nextCursor, null);
+  assert.deepEqual(
+    [firstTaggedEventPage, secondTaggedEventPage]
+      .flatMap((page) => page.items)
+      .map((item) => item.sourceAssetId)
+      .sort(),
+    ["source-identity-fixture", "source-service-fixture"],
+  );
   const tripAttachedDetail = await request(`/v1/events/${trip.entityId}`);
   const tripCoverBody = {
     commandId: "context.cover.trip-000001",
@@ -790,6 +839,70 @@ if (phase === "write" || phase === "all") {
     { body: relationBody, method: "POST" },
   );
   assert.equal(relations.changedRelationIds.length, 4);
+
+  const orderedStops = await request(
+    `/v1/events/${trip.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context.relations.trip-stops1",
+        relations: [
+          {
+            relationKind: "location",
+            sortOrder: 0,
+            targetId: beach.entityId,
+            targetKind: "place",
+          },
+          {
+            relationKind: "location",
+            sortOrder: 1,
+            targetId: island.entityId,
+            targetKind: "place",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(
+    orderedStops.detail.relations
+      .filter((relation) => relation.relationKind === "location")
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((relation) => [relation.targetId, relation.sortOrder]),
+    [
+      [beach.entityId, 0],
+      [island.entityId, 1],
+    ],
+  );
+  const reorderedStops = await request(
+    `/v1/events/${trip.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context.relations.trip-stops2",
+        relations: [
+          {
+            relationKind: "location",
+            sortOrder: 0,
+            targetId: island.entityId,
+            targetKind: "place",
+          },
+          {
+            relationKind: "location",
+            sortOrder: 1,
+            targetId: beach.entityId,
+            targetKind: "place",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(
+    reorderedStops.detail.relations
+      .filter((relation) => relation.relationKind === "location")
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((relation) => relation.targetId),
+    [island.entityId, beach.entityId],
+  );
 
   const invalidRole = await request(
     `/v1/events/${trip.entityId}/relations:attach`,

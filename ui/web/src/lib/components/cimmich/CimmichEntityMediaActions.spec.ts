@@ -98,7 +98,7 @@ describe('CimmichEntityMediaActions', () => {
   it('starts neutrally and presents page-aware actions through an icon-led category bar', async () => {
     const { getByRole, getByText, queryByLabelText, queryByText } = renderWithTooltips(CimmichEntityMediaActions, {
       currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
-      currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
+      currentSubject: { displayName: 'Avery Example', subjectId: 'person-1', subjectKind: 'person' },
       items,
       onClear: vi.fn(),
     });
@@ -116,7 +116,7 @@ describe('CimmichEntityMediaActions', () => {
     expect(getByRole('button', { name: 'Add to Event' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'Remove from Gulmarrad' })).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'People & pets' }));
-    expect(getByRole('button', { name: 'Mark Benji present' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Mark Avery Example present' })).toBeInTheDocument();
   });
 
   it('keeps parent-scope actions available for photos already inside a subsection', async () => {
@@ -234,13 +234,13 @@ describe('CimmichEntityMediaActions', () => {
       undo: { eligible: true },
     });
     const { getByRole } = renderWithTooltips(CimmichEntityMediaActions, {
-      currentSubject: { displayName: 'Benji', subjectId: 'person-1', subjectKind: 'person' },
+      currentSubject: { displayName: 'Avery Example', subjectId: 'person-1', subjectKind: 'person' },
       items: [items[0]],
       onClear: vi.fn(),
     });
 
     await fireEvent.click(getByRole('button', { name: 'People & pets' }));
-    await fireEvent.click(getByRole('button', { name: 'Mark Benji present' }));
+    await fireEvent.click(getByRole('button', { name: 'Mark Avery Example present' }));
     await fireEvent.click(getByRole('button', { name: 'Apply' }));
 
     await waitFor(() =>

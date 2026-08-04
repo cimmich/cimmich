@@ -23,6 +23,7 @@
   } from '@mdi/js';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
   import { contextPlaceMapProjection } from './context-entity-presentation';
+  import { keyboardTabs } from './keyboard-tabs';
   import {
     PLAN_BRUSH_RADIUS_DEFAULT,
     PLAN_BRUSH_RADIUS_MAX,
@@ -243,6 +244,21 @@
       brushRadius = PLAN_BRUSH_RADIUS_DEFAULT;
     }
     paint = null;
+  };
+
+  const placeCentered = (child: CimmichContextEntity) => {
+    const existing = draftItems.find((item) => item.childEntityId === child.entityId);
+    const geometry = { kind: 'rect' as const, x: 0.35, y: 0.35, w: 0.3, h: 0.3 };
+    draftItems = existing
+      ? draftItems.map((item) => (item.childEntityId === child.entityId ? { ...item, geometry } : item))
+      : [
+          ...draftItems,
+          { childEntityId: child.entityId, childName: child.displayName, geometry, zIndex: draftItems.length },
+        ];
+    selectedChildId = child.entityId;
+    paintingChildId = '';
+    paint = null;
+    saveError = '';
   };
 
   const createSublocation = async (event: SubmitEvent) => {
@@ -481,6 +497,39 @@
 
   const finishDrag = () => (drag = null);
 
+  const adjustRectWithKeyboard = (event: KeyboardEvent, item: DraftItem) => {
+    if (
+      !editing ||
+      item.geometry.kind !== 'rect' ||
+      !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    selectedChildId = item.childEntityId;
+    const amount = event.altKey ? 0.005 : 0.02;
+    const horizontal = event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0;
+    const vertical = event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0;
+    draftItems = draftItems.map((candidate) => {
+      if (candidate.childEntityId !== item.childEntityId || candidate.geometry.kind !== 'rect') {
+        return candidate;
+      }
+      const rect = candidate.geometry;
+      const geometry = event.shiftKey
+        ? {
+            ...rect,
+            w: clamp(rect.w + horizontal, 0.1, 1 - rect.x),
+            h: clamp(rect.h + vertical, 0.08, 1 - rect.y),
+          }
+        : {
+            ...rect,
+            x: clamp(rect.x + horizontal, 0, 1 - rect.w),
+            y: clamp(rect.y + vertical, 0, 1 - rect.h),
+          };
+      return { ...candidate, geometry };
+    });
+  };
+
   const itemStyle = (geometry: CimmichPlacePlanGeometry) => {
     if (geometry.kind === 'rect') {
       return `left:${geometry.x * 100}%;top:${geometry.y * 100}%;width:${geometry.w * 100}%;height:${geometry.h * 100}%`;
@@ -577,12 +626,13 @@
   </header>
 
   {#if !editing && plans.length > 0}
-    <div class="place-plan__tabs" role="tablist" aria-label="Plans for this Location">
+    <div class="place-plan__tabs" role="tablist" aria-label="Plans for this Location" use:keyboardTabs>
       {#each plans as plan (plan.planId)}
         <button
           type="button"
           role="tab"
           aria-selected={activePlan?.planId === plan.planId}
+          tabindex={activePlan?.planId === plan.planId ? 0 : -1}
           class:place-plan__tab--active={activePlan?.planId === plan.planId}
           onclick={() => (activePlanId = plan.planId)}>{plan.displayName}</button
         >
@@ -715,8 +765,7 @@
             class="place-plan__paint-layer"
             class:place-plan__paint-layer--outline={paintingMode === 'outline'}
             class:place-plan__paint-layer--brush={paintingMode === 'paint'}
-            role="application"
-            aria-label={`${paintingMode === 'outline' ? 'Outline' : 'Paint'} ${paintingChild.displayName} on this plan`}
+            aria-hidden="true"
             onpointerdown={beginPaint}
             onpointermove={continuePaint}
             onpointerup={finishPaint}
@@ -852,10 +901,12 @@
               type="button"
               style={itemStyle(item.geometry)}
               aria-label={`${item.childName}${editing ? ', drag to move' : ', open Location'}`}
+              aria-describedby={editing ? `place-plan-rect-help-${item.childEntityId}` : undefined}
               onpointerdown={(event) => beginDrag(event, item, 'move')}
               onpointermove={continueDrag}
               onpointerup={finishDrag}
               onpointercancel={finishDrag}
+              onkeydown={(event) => adjustRectWithKeyboard(event, item)}
               onclick={() => {
                 if (editing) {
                   selectedChildId = item.childEntityId;
@@ -865,17 +916,9 @@
               }}
             >
               <span>{item.childName}</span>
-              {#if editing && item.geometry.kind === 'rect'}
-                <i
-                  role="button"
-                  tabindex="-1"
-                  aria-label={`Resize ${item.childName}`}
-                  onpointerdown={(event) => beginDrag(event, item, 'resize')}
-                  onpointermove={continueDrag}
-                  onpointerup={finishDrag}
-                  onpointercancel={finishDrag}
-                ></i>
-              {/if}
+              {#if editing}<span id={`place-plan-rect-help-${item.childEntityId}`} class="sr-only"
+                  >Use arrow keys to move. Hold Shift and use arrow keys to resize. Hold Alt for fine adjustments.</span
+                >{/if}
             </button>
           {/if}
         {/each}
@@ -933,6 +976,14 @@
                 <div class="place-plan__tray-actions" role="group" aria-label={`Place ${child.displayName}`}>
                   <button
                     type="button"
+                    aria-label={`Place ${child.displayName} in the centre`}
+                    title={`Place ${child.displayName} in the centre`}
+                    onclick={() => placeCentered(child)}
+                  >
+                    <Icon icon={mdiPlus} size="19" /> Place
+                  </button>
+                  <button
+                    type="button"
                     class:place-plan__tray-action--active={paintingChildId === child.entityId &&
                       paintingMode === 'outline'}
                     aria-label={`Outline ${child.displayName}`}
@@ -970,6 +1021,9 @@
             </label>
           {/if}
           {#if paintingChildId}
+            <p id="place-plan-pointer-alternative" class="place-plan__keyboard-help">
+              Prefer keys? Choose Place beside the Location, then use arrows to move it and Shift + arrows to resize it.
+            </p>
             <button
               class="place-plan__cancel-paint"
               type="button"
@@ -1373,17 +1427,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     pointer-events: none;
-  }
-  .place-plan__zone i {
-    position: absolute;
-    right: -0.4rem;
-    bottom: -0.4rem;
-    width: 1rem;
-    height: 1rem;
-    border: 2px solid white;
-    border-radius: 999px;
-    background: rgb(var(--immich-primary-color));
-    cursor: nwse-resize;
   }
   .place-plan__canvas-empty {
     position: absolute;

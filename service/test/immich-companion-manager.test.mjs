@@ -52,7 +52,9 @@ test("setup-managed credentials survive a provider-style API restart without rot
     credentialFile: filename,
     fetchImpl: readyFetch,
   });
-  assert.equal((await restored.status()).state, "ready");
+  const restoredStatus = await restored.status();
+  assert.equal(restoredStatus.state, "ready");
+  assert.equal(restoredStatus.permissionVerification, "verified_empty_library");
   const verifiedAfterRestart = await restored.verifyOnboardingPermissions();
   assert.equal(
     verifiedAfterRestart.permissionVerification,

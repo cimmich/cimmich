@@ -198,6 +198,62 @@ const decodePersonPageCursor = (value, { kind, personId, visibleRank }) => {
     );
   }
 };
+const tagAssetPageSchemaVersion = "cimmich.tag-assets.v1";
+const cleanTagAssetPageSize = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return 120;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 250) {
+    throw typedError(
+      "pageSize must be an integer from 1 to 250",
+      400,
+      "TAG_ASSET_PAGE_SIZE_INVALID",
+    );
+  }
+  return parsed;
+};
+const tagAssetSelectionKey = (selected, visibleRank) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        tags: selected.map((item) => `${item.family}:${item.entityId}`).sort(),
+        visibleRank,
+      }),
+    )
+    .digest("hex");
+const encodeTagAssetCursor = (payload) =>
+  Buffer.from(JSON.stringify({ ...payload, v: 1 }), "utf8").toString(
+    "base64url",
+  );
+const decodeTagAssetCursor = (value, { selectionKey }) => {
+  if (!value) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(String(value), "base64url").toString("utf8"),
+    );
+    const captureTimeValid =
+      payload?.captureTime === null ||
+      (typeof payload?.captureTime === "string" &&
+        Number.isFinite(Date.parse(payload.captureTime)));
+    if (
+      payload?.v !== 1 ||
+      payload?.selectionKey !== selectionKey ||
+      typeof payload?.assetId !== "string" ||
+      !payload.assetId ||
+      !captureTimeValid
+    ) {
+      throw new Error("cursor scope mismatch");
+    }
+    return payload;
+  } catch {
+    throw typedError(
+      "Tag result cursor is invalid for this selection or viewing mode",
+      400,
+      "TAG_ASSET_CURSOR_INVALID",
+    );
+  }
+};
 const tagAssetFamilies = new Set([
   "people",
   "pets",
@@ -2116,7 +2172,7 @@ export const createCimmichRepository = (
       // already paid for it, but never cold-start or wait on the archive-wide
       // machine-suggestion query from Home.
       const cachedSuggestions = machineSuggestionCache;
-      let suggestionsReady = 0;
+      let suggestionsReady = null;
       if (
         cachedSuggestions?.visibleRank === visibleRank &&
         Number.isFinite(cachedSuggestions.expiresAt) &&
@@ -2125,7 +2181,8 @@ export const createCimmichRepository = (
         try {
           suggestionsReady = (await cachedSuggestions.promise).length;
         } catch {
-          // Summary remains available when an optional review snapshot fails.
+          // Summary remains available when an optional review snapshot fails;
+          // null is deliberately different from a verified empty queue.
         }
       }
       return { ...row, suggestions_ready: suggestionsReady };
@@ -6151,12 +6208,29 @@ export const createCimmichRepository = (
       return { ...presentation, body: null };
     },
 
-    async tagAssets({ limit = 5000, tags }) {
+    async tagAssets({ cursor = "", pageSize = 120, tags }) {
       const selected = cleanTagAssetSelection(tags);
       const families = selected.map((item) => item.family);
       const entityIds = selected.map((item) => item.entityId);
       const tagKeys = selected.map((item) => `${item.family}:${item.entityId}`);
       const visibleRank = presentationRank();
+      const boundedPageSize = cleanTagAssetPageSize(pageSize);
+      const selectionKey = tagAssetSelectionKey(selected, visibleRank);
+      const decodedCursor = decodeTagAssetCursor(cursor, { selectionKey });
+      const cursorCaptureTime = decodedCursor?.captureTime
+        ? new Date(decodedCursor.captureTime)
+        : null;
+      const cursorAssetId = String(decodedCursor?.assetId || "");
+      const bridgedAssetIds = [...bridge.keys()];
+      if (bridgedAssetIds.length === 0) {
+        return {
+          items: [],
+          nextCursor: null,
+          pageSize: boundedPageSize,
+          schemaVersion: tagAssetPageSchemaVersion,
+          total: 0,
+        };
+      }
       const rows = await sql`
       WITH RECURSIVE selected_tags(tag_key, family, entity_id) AS (
         SELECT * FROM unnest(
@@ -6217,7 +6291,7 @@ export const createCimmichRepository = (
         SELECT scope.tag_key, scope.family, child.entity_id
         FROM context_scope scope
         JOIN context_entity child ON child.parent_entity_id = scope.entity_id
-        WHERE scope.family = 'places' AND child.status = 'active'
+        WHERE scope.family IN ('places', 'events') AND child.status = 'active'
       ), context_memberships AS MATERIALIZED (
         SELECT scope.tag_key, association.asset_id
         FROM context_scope scope
@@ -6236,26 +6310,59 @@ export const createCimmichRepository = (
         )
         GROUP BY membership.asset_id
         HAVING count(DISTINCT membership.tag_key) = ${selected.length}
+      ), displayable_assets AS MATERIALIZED (
+        SELECT asset.asset_id, asset.capture_time
+        FROM matching_assets match
+        JOIN asset ON asset.asset_id = match.asset_id AND asset.state = 'active'
+        WHERE asset.asset_id = ANY(${bridgedAssetIds})
+      ), counted_assets AS (
+        SELECT displayable.*, (count(*) OVER ())::int AS total_count
+        FROM displayable_assets displayable
       )
-      SELECT asset.asset_id, asset.capture_time,
-        (count(*) OVER ())::int AS total_count
-      FROM matching_assets match
-      JOIN asset ON asset.asset_id = match.asset_id AND asset.state = 'active'
-      ORDER BY asset.capture_time DESC NULLS LAST, asset.asset_id
-      LIMIT ${cleanLimit(limit, 5000, 5000)}
+      SELECT asset_id, capture_time, total_count
+      FROM counted_assets
+      WHERE (
+        ${decodedCursor === null}
+        OR (
+          ${cursorCaptureTime !== null}
+          AND (
+            capture_time IS NULL
+            OR capture_time < ${cursorCaptureTime}
+            OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
+          )
+        )
+        OR (
+          ${cursorCaptureTime === null}
+          AND capture_time IS NULL
+          AND asset_id > ${cursorAssetId}
+        )
+      )
+      ORDER BY capture_time DESC NULLS LAST, asset_id
+      LIMIT ${boundedPageSize + 1}
     `;
+      const hasMore = rows.length > boundedPageSize;
+      const pageRows = hasMore ? rows.slice(0, boundedPageSize) : rows;
+      const last = pageRows.at(-1);
       return {
-        items: rows
-          .map((row) => ({
-            captureTime: row.capture_time
-              ? new Date(row.capture_time).toISOString()
-              : null,
-            sourceAssetId:
-              bridgeFields(bridge, row.asset_id).sourceAssetId || null,
-          }))
-          .filter((item) => item.sourceAssetId),
-        schemaVersion: "cimmich.tag-assets.v1",
-        total: Number(rows[0]?.total_count || 0),
+        items: pageRows.map((row) => ({
+          captureTime: row.capture_time
+            ? new Date(row.capture_time).toISOString()
+            : null,
+          sourceAssetId: bridgeFields(bridge, row.asset_id).sourceAssetId,
+        })),
+        nextCursor:
+          hasMore && last
+            ? encodeTagAssetCursor({
+                assetId: last.asset_id,
+                captureTime: last.capture_time
+                  ? new Date(last.capture_time).toISOString()
+                  : null,
+                selectionKey,
+              })
+            : null,
+        pageSize: boundedPageSize,
+        schemaVersion: tagAssetPageSchemaVersion,
+        total: Number(pageRows[0]?.total_count || 0),
       };
     },
 

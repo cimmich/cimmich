@@ -1094,6 +1094,8 @@ test("Cimmich tag asset search routes multi-family intersections to the reposito
   const calls = [];
   const result = {
     items: [{ captureTime: null, sourceAssetId: "asset-one" }],
+    nextCursor: null,
+    pageSize: 120,
     schemaVersion: "cimmich.tag-assets.v1",
     total: 1,
   };
@@ -1107,7 +1109,7 @@ test("Cimmich tag asset search routes multi-family intersections to the reposito
     async (root) => {
       const response = await fetch(`${root}/v1/tag-assets/search`, {
         body: JSON.stringify({
-          limit: 5000,
+          pageSize: 120,
           tags: [
             { entityId: "person-one", family: "people" },
             { entityId: "event-one", family: "events" },
@@ -1122,7 +1124,8 @@ test("Cimmich tag asset search routes multi-family intersections to the reposito
   );
   assert.deepEqual(calls, [
     {
-      limit: 5000,
+      cursor: undefined,
+      pageSize: 120,
       tags: [
         { entityId: "person-one", family: "people" },
         { entityId: "event-one", family: "events" },
