@@ -46,41 +46,50 @@ export const faceMatchingPresentation = (status: FaceMatchingStatus) => {
   const action = operatorStatus?.next?.action;
   const hasPreparedLibrary = Boolean(operatorStatus?.latestPack);
   const copy =
-    action === 'hold_source_pack'
+    action === 'configure_provider' && operatorStatus?.next.reason === 'PROVIDER_UNAVAILABLE'
       ? {
-          label: 'Current library protected',
-          nextAction:
-            'Keep using the proven reference library. This candidate needs better coverage before it can replace it.',
+          label: 'Provider unavailable',
+          nextAction: 'Restore or reinstall the configured local provider, then refresh this status.',
           summary:
-            'The candidate passed the minimum safety gate, but recognised materially fewer known people. Cimmich held it instead of weakening matching.',
+            'Core remains ready and accepted identity evidence is unchanged, but optional matching is unavailable.',
         }
-      : action === 'await_more_evidence' && hasPreparedLibrary
+      : action === 'hold_source_pack'
         ? {
-            label: 'Safely held',
+            label: 'Current library protected',
             nextAction:
-              'Keep this proposal held. Confirm more Faces across different dates and people, then build a new reference library.',
+              'Keep using the proven reference library. This candidate needs better coverage before it can replace it.',
             summary:
-              'Cimmich built a proposal, but this library is not yet varied enough for an honest safety check. It remains inactive.',
+              'The candidate passed the minimum safety gate, but recognised materially fewer known people. Cimmich held it instead of weakening matching.',
           }
-        : action === 'record_operator_review' && operatorStatus?.latestPack?.reviewGateReceipt
+        : action === 'await_more_evidence' && hasPreparedLibrary
           ? {
-              label: 'Decision needed',
-              nextAction: 'Review the frozen safety result, then explicitly approve this proposal or keep it held.',
+              label: 'Safely held',
+              nextAction:
+                'Keep this proposal held. Confirm more Faces across different dates and people, then build a new reference library.',
               summary:
-                'The safety check is complete. Nothing changes unless you approve this exact result, and approval still does not put it into use.',
+                'Cimmich built a proposal, but this library is not yet varied enough for an honest safety check. It remains inactive.',
             }
-          : action === 'activate_source_pack'
+          : action === 'record_operator_review' && operatorStatus?.latestPack?.reviewGateReceipt
             ? {
-                label: 'Ready to use',
-                nextAction: 'Put the reviewed reference library into use when you are ready.',
+                label: 'Decision needed',
+                nextAction: 'Review the frozen safety result, then explicitly approve this proposal or keep it held.',
                 summary:
-                  'You approved the frozen safety result. The reference library remains inactive until you explicitly choose Use.',
+                  'The safety check is complete. Nothing changes unless you approve this exact result, and approval still does not put it into use.',
               }
-            : stateCopy[state];
+            : action === 'activate_source_pack'
+              ? {
+                  label: 'Ready to use',
+                  nextAction: 'Put the reviewed reference library into use when you are ready.',
+                  summary:
+                    'You approved the frozen safety result. The reference library remains inactive until you explicitly choose Use.',
+                }
+              : stateCopy[state];
   const providerLabel =
-    status?.provider.configured === true
-      ? `${status.provider.providerId} · ${status.provider.modelVersion}`
-      : 'No local provider configured';
+    operatorStatus?.providerValidation?.state === 'unavailable'
+      ? 'Configured local provider unavailable'
+      : status?.provider.configured === true
+        ? `${status.provider.providerId} · ${status.provider.modelVersion}`
+        : 'No local provider configured';
 
   return {
     ...copy,

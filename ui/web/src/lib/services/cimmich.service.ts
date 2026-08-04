@@ -2248,6 +2248,11 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
   providerValidation:
     | { state: 'disabled' }
     | {
+        providerId: string | null;
+        reasonCode: string;
+        state: 'unavailable';
+      }
+    | {
         modelFamily: string;
         modelVersion: string;
         providerId: string;

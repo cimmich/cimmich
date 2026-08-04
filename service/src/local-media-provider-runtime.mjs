@@ -467,3 +467,36 @@ export const loadLocalMediaProviderRuntime = async ({
     recognizer,
   };
 };
+
+export const loadOptionalLocalMediaProviderRuntime = async (options = {}) => {
+  try {
+    return await loadLocalMediaProviderRuntime(options);
+  } catch (error) {
+    const env = options.env || process.env;
+    const configuredProviderId = String(
+      env.CIMMICH_LOCAL_MEDIA_PROVIDER || "",
+    ).trim();
+    const providerId = [
+      openCvReferenceProviderId,
+      insightFaceUserSuppliedProviderId,
+    ].includes(configuredProviderId)
+      ? configuredProviderId
+      : null;
+    const errorCode = String(error?.code || "");
+    return {
+      detectionEnabled: false,
+      enabled: false,
+      matchingProvider: null,
+      providerReceipt: {
+        activationAuthority: "none",
+        providerId,
+        reasonCode: /^LOCAL_MEDIA_PROVIDER_[A-Z0-9_]{2,55}$/.test(errorCode)
+          ? errorCode
+          : "LOCAL_MEDIA_PROVIDER_UNAVAILABLE",
+        schemaVersion: localMediaProviderRuntimeVersion,
+        state: "unavailable",
+      },
+      recognitionEnabled: false,
+    };
+  }
+};

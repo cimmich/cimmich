@@ -520,6 +520,7 @@ export const createFaceMatchingOperator = ({
   const status = async () => {
     const matching = await repository.faceMatchingStatus();
     if (!matchingProvider) {
+      const providerUnavailable = providerReceipt?.state === "unavailable";
       const [evidence] = await sql`
         SELECT count(*)::int AS accepted_faces
         FROM current_face_identity identity
@@ -538,10 +539,20 @@ export const createFaceMatchingOperator = ({
         latestPack: null,
         next: {
           action: "configure_provider",
-          reason: "PROVIDER_DISABLED",
+          reason: providerUnavailable
+            ? "PROVIDER_UNAVAILABLE"
+            : "PROVIDER_DISABLED",
           settings: "/v1/integrations/provider-settings-pack",
         },
-        providerValidation: { state: "disabled" },
+        providerValidation: providerUnavailable
+          ? {
+              providerId: providerReceipt.providerId || null,
+              reasonCode:
+                providerReceipt.reasonCode ||
+                "LOCAL_MEDIA_PROVIDER_UNAVAILABLE",
+              state: "unavailable",
+            }
+          : { state: "disabled" },
       };
     }
     const provider = requireProvider();

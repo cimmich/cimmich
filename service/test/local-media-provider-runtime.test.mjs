@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   insightFaceUserSuppliedProviderId,
   loadLocalMediaProviderRuntime,
+  loadOptionalLocalMediaProviderRuntime,
   openCvReferenceProviderId,
 } from "../src/local-media-provider-runtime.mjs";
 
@@ -192,4 +193,36 @@ test("OpenCV runtime fails closed on version, digest or provider drift", async (
     }),
     /runtime does not match/,
   );
+});
+
+test("optional provider outage abstains without refusing Basic service startup", async () => {
+  const runtime = await loadOptionalLocalMediaProviderRuntime({
+    env: baseEnv,
+    fileDigest: async () => {
+      throw Object.assign(new Error("synthetic model is unavailable"), {
+        code: "ENOENT",
+      });
+    },
+    readJson: async (path) =>
+      path.endsWith("detector-manifest.json")
+        ? detectorManifest
+        : recognitionManifest,
+    runtimeProbe: async () => ({
+      opencvVersion: "4.11.0",
+      pythonVersion: "3.12.9",
+    }),
+  });
+
+  assert.equal(runtime.enabled, false);
+  assert.equal(runtime.detectionEnabled, false);
+  assert.equal(runtime.recognitionEnabled, false);
+  assert.equal(runtime.matchingProvider, null);
+  assert.deepEqual(runtime.providerReceipt, {
+    activationAuthority: "none",
+    providerId: openCvReferenceProviderId,
+    reasonCode: "LOCAL_MEDIA_PROVIDER_UNAVAILABLE",
+    schemaVersion: "cimmich.local-media-provider-runtime.v1",
+    state: "unavailable",
+  });
+  assert.equal(JSON.stringify(runtime).includes("synthetic model"), false);
 });

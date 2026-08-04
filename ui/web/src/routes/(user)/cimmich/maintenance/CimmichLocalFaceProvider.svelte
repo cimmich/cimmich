@@ -26,6 +26,7 @@
   const installCommand = './tools/companion.sh face-provider install-recommended';
   const connectedProvider = $derived(provider?.state === 'ready' ? provider : undefined);
   const ready = $derived(Boolean(connectedProvider));
+  const unavailable = $derived(provider?.state === 'unavailable');
   const recommended = $derived(
     settings?.faceRecognition.examples.find((example) => example.adapter === 'opencv-yunet-sface-cpu'),
   );
@@ -55,7 +56,9 @@
   class={`rounded-[1.75rem] border p-6 ${
     ready
       ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20'
-      : 'border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20'
+      : unavailable
+        ? 'border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20'
+        : 'border-sky-200 bg-sky-50/60 dark:border-sky-900 dark:bg-sky-950/20'
   }`}
 >
   <div class="flex flex-wrap items-start justify-between gap-4">
@@ -74,12 +77,19 @@
           Optional face matching
         </p>
         <h2 id="cimmich-provider-title" class="mt-1 text-xl font-semibold">
-          {ready ? 'Local provider connected' : 'Set up local matching'}
+          {ready
+            ? 'Local provider connected'
+            : unavailable
+              ? 'Local provider needs attention'
+              : 'Set up local matching'}
         </h2>
         <p class="mt-2 max-w-3xl text-sm/6 text-gray-700 dark:text-gray-200">
           {#if ready}
             Cimmich can analyse accepted Faces locally through bounded, owner-started passes. Every suggested identity
             still requires your review.
+          {:else if unavailable}
+            Core remains ready, but Cimmich cannot use the configured provider. Reinstall or restore its local model
+            files, then refresh this status. No name, tag or accepted evidence was changed.
           {:else}
             Core is already ready. Add the recommended local provider only if you want Cimmich to rank possible Face
             matches for your review.
@@ -94,7 +104,7 @@
           : 'bg-white text-gray-700 dark:bg-immich-dark-bg dark:text-gray-200'
       }`}
     >
-      {loading ? 'Checking' : ready ? 'Connected' : 'Not configured'}
+      {loading ? 'Checking' : ready ? 'Connected' : unavailable ? 'Unavailable' : 'Not configured'}
     </span>
   </div>
 
@@ -119,7 +129,9 @@
   {:else}
     <div class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
       <div class="rounded-2xl bg-white/80 p-5 dark:bg-immich-dark-bg/70">
-        <p class="font-semibold">Recommended · OpenCV YuNet + SFace</p>
+        <p class="font-semibold">
+          {unavailable ? 'Restore the configured local provider' : 'Recommended · OpenCV YuNet + SFace'}
+        </p>
         <ul class="mt-3 space-y-2 text-sm/6 text-gray-700 dark:text-gray-200">
           <li class="flex gap-2"><Icon icon={mdiCheck} size="18" class="mt-0.5 shrink-0" /> Runs locally on CPU</li>
           <li class="flex gap-2">
