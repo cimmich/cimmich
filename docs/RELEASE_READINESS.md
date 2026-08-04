@@ -1,11 +1,11 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-03
+Updated: 2026-08-04
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 119/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.0` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.1` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 
@@ -27,7 +27,7 @@ Release evidence must be produced from one clean immutable commit and include:
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
 
-## Community Preview Candidate 0 gate closure — 2026-08-03
+## Community Preview Candidate 1 gate closure — 2026-08-04
 
 The public candidate now carries one [user-journey acceptance map](COMMUNITY_PREVIEW_JOURNEYS.md)
 and one release contract. The immutable commit, tree and bundle checksums are

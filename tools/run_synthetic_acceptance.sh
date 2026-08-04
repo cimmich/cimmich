@@ -131,6 +131,11 @@ docker run -d --name "$SERVICE_CONTAINER" \
   -e CIMMICH_DISPLAY_BRIDGE_PATH=/tmp/cimmich-synthetic-display-bridge.json \
   "$SERVICE_IMAGE" >/dev/null
 
+# Production document storage fails closed when its configured mount is absent.
+# The disposable acceptance container owns this synthetic store, so provision it
+# explicitly instead of depending on the service to manufacture the path.
+docker exec "$SERVICE_CONTAINER" mkdir -p /tmp/cimmich-documents
+
 i=0
 until docker exec "$SERVICE_CONTAINER" node -e "fetch('http://127.0.0.1:3101/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; do
   i=$((i + 1))
