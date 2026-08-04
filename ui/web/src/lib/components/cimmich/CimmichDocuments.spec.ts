@@ -186,6 +186,27 @@ describe('CimmichDocuments', () => {
     expect(await findByText('Imported · 4 B')).toBeInTheDocument();
   });
 
+  it('exposes visibility-safe version history and a deliberate replacement flow', async () => {
+    const versioned = {
+      ...listDocument,
+      supersededByDocumentId: 'document_00000000000000000000000000000003',
+      supersedesDocumentId: 'document_00000000000000000000000000000002',
+    };
+    mocks.getDocuments.mockResolvedValueOnce({ items: [versioned], schemaVersion: 'cimmich.document.v1' });
+    mocks.getDocument.mockResolvedValueOnce({ ...versioned, links: [] });
+    const { findByRole, getByRole, getByText } = render(CimmichDocuments);
+
+    await fireEvent.click(await findByRole('button', { name: /Synthetic certificate/ }));
+    expect(getByRole('region', { name: 'Version history' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Open earlier version' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Open newer version' })).toBeInTheDocument();
+
+    await fireEvent.click(getByRole('button', { name: 'Replace with new version' }));
+    expect(getByRole('dialog', { name: 'Replace Synthetic certificate' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Create replacement' })).toBeInTheDocument();
+    expect(getByText(/earlier file, metadata and links remain available/i)).toBeInTheDocument();
+  });
+
   it('restores a URL-selected Document and reports Back to its route owner', async () => {
     mocks.getDocuments.mockResolvedValue({ items: [listDocument], schemaVersion: 'cimmich.document.v1' });
     mocks.getDocument.mockResolvedValue(listDocument);

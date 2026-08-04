@@ -251,7 +251,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(nativeMap).toContain('placeMarkerLabelMinZoom={12}');
   });
 
-  it('treats Place geometry as optional map detail and puts routes in Events', async () => {
+  it('treats Place geometry as optional map detail and exposes reusable routes alongside Event trips', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
     const collection = await read('src/lib/components/cimmich/CimmichContextCollection.svelte');
     const hero = await read('src/lib/components/cimmich/CimmichContextDetailHero.svelte');
@@ -263,6 +263,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('>Add to map</strong>');
     expect(browser).toContain('>Pin</button');
     expect(browser).toContain('>Boundary</button');
+    expect(browser).toContain('>Route</button');
+    expect(browser).toContain("onclick={() => setPlaceMapMode('route')}");
+    expect(browser).toContain('aria-label="Location confidence"');
+    expect(browser).toContain('From photo GPS');
+    expect(browser).toContain('Estimated from context');
+    expect(browser).toContain('Confirmed by me');
+    expect(browser).toContain("It never rewrites the photo's original EXIF.");
     expect(browser).toContain('>Remove from map</button');
     expect(browser).not.toContain('How does this place exist on the map?');
     expect(collection).toContain('Trip or route');

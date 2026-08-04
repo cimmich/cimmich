@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Cimmich is preparing a bounded Community Preview.** The frozen candidate
-> target is `v1.1.0-community-preview.1`, migration-ledger schema 119/patch 1,
+> target is `v1.1.0-community-preview.1`, migration-ledger schema 120/patch 1,
 > for exact Immich 3.1.0. Public Beta Patch 6 remains the latest published beta
 > until this candidate completes its release gates.
 > The exact OpenAI Build Week submission remains preserved in the

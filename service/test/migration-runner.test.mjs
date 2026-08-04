@@ -323,6 +323,31 @@ test("schema 119 remembers bounded Event source folders without copying assets",
   assert.doesNotMatch(migration, /INSERT INTO (asset|context_asset_link)/i);
 });
 
+test("schema 120 adds an explicit Event needs-check admission lane", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0120_event_media_needs_check_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    migration,
+    /DROP CONSTRAINT context_asset_link_association_kind_check/,
+  );
+  assert.match(migration, /'needs_check'/);
+  assert.doesNotMatch(migration, /UPDATE context_asset_link/i);
+  assert.match(migration, /DROP CONSTRAINT context_entity_place_geometry/);
+  assert.match(
+    migration,
+    /'latitude','longitude','provenance','uncertaintyMeters'/,
+  );
+  assert.match(migration, /'confirmed','contextual','manual','photo_gps'/);
+  assert.match(migration, /BETWEEN 0 AND 1000000/);
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

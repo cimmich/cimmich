@@ -659,9 +659,10 @@ export const contextPlaceMapProjection = (entities: CimmichContextEntity[]) => {
 export const contextAssociationLabel = (entityKind: CimmichContextEntityKind, associationKind: string) => {
   const labels: Record<CimmichContextEntityKind, Record<string, string>> = {
     event: {
-      context: 'Nearby',
+      context: 'Adjacent context',
       direct: 'Main',
       manual: 'Main',
+      needs_check: 'Needs check',
       route_stop: 'Stops',
     },
     object: {
@@ -680,7 +681,7 @@ export const contextAssociationLabel = (entityKind: CimmichContextEntityKind, as
 };
 
 export const contextAssociationKinds: Record<CimmichContextEntityKind, string[]> = {
-  event: ['direct', 'route_stop', 'context', 'manual'],
+  event: ['direct', 'route_stop', 'context', 'needs_check', 'manual'],
   object: ['depicts', 'owned_at', 'manual'],
   place: ['captured_at', 'depicts', 'route_stop', 'manual'],
 };

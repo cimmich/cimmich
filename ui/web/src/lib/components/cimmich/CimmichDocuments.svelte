@@ -85,6 +85,7 @@
   let selectedFile = $state<File | null>(null);
   let selectedAsset = $state<AssetResponseDto | null>(null);
   let editTarget = $state<{ documentId: string; visibilityTier: CimmichVisibilityTier } | null>(null);
+  let replacementTarget = $state<CimmichDocument | null>(null);
   let libraryAssets = $state<AssetResponseDto[]>([]);
   let libraryLoaded = $state(false);
   let libraryQuery = $state('');
@@ -126,6 +127,8 @@
       DOCUMENT_KIND_INVALID: 'Choose a Document type and name Other types.',
       DOCUMENT_NOT_FOUND: 'This Document is unavailable in the current viewing mode.',
       DOCUMENT_SOURCE_ALREADY_REFERENCED: 'That library item already has a Document record.',
+      DOCUMENT_VERSION_CONFLICT: 'This Document already has a newer version. Open it before replacing again.',
+      DOCUMENT_VERSION_NOT_FOUND: 'The earlier Document version is unavailable in this viewing mode.',
       DOCUMENT_STORE_NOT_CONFIGURED: 'Local Document import is not configured. You can still reference library items.',
       DOCUMENT_STORE_QUOTA_EXCEEDED: 'The local Document store does not have enough available space.',
       DOCUMENT_TOO_LARGE: 'This file is larger than the configured Document limit.',
@@ -202,6 +205,7 @@
     selectedFile = null;
     selectedAsset = null;
     editTarget = null;
+    replacementTarget = null;
     libraryQuery = '';
     editorError = '';
   };
@@ -236,6 +240,26 @@
     void tick().then(() => titleInput?.focus());
   };
 
+  const openReplacement = () => {
+    if (!selected) {
+      return;
+    }
+    const target = selected;
+    editorMode = 'create';
+    sourceMode = 'import';
+    resetEditor();
+    replacementTarget = target;
+    title = target.displayTitle;
+    kind = target.documentKind;
+    customKind = target.documentLabel ?? '';
+    issuedOn = target.issuedOn ?? '';
+    expiresOn = target.expiresOn ?? '';
+    tier = target.visibilityTier;
+    commandId = createCimmichDocumentCommandId('replace');
+    showEditor = true;
+    void tick().then(() => titleInput?.focus());
+  };
+
   const loadLibrary = async () => {
     try {
       const result = await searchAssets({ metadataSearchDto: { size: 80, withExif: true } });
@@ -263,7 +287,11 @@
     issuedOn: issuedOn || null,
   });
 
-  const createMetadata = () => ({ ...metadata(), visibilityTier: tier });
+  const createMetadata = () => ({
+    ...metadata(),
+    ...(replacementTarget ? { supersedesDocumentId: replacementTarget.documentId } : {}),
+    visibilityTier: tier,
+  });
 
   const attachToSubject = async (documentId: string) => {
     if (!subject) {
@@ -340,18 +368,35 @@
                   ...createMetadata(),
                 });
               })();
-        const linkResult = await attachToSubject(result.documentId);
+        const inheritedLinks = replacementTarget?.links ?? [];
+        const linkResult =
+          inheritedLinks.length > 0
+            ? await attachCimmichDocumentLinks(
+                result.documentId,
+                createCimmichDocumentCommandId('replace-links'),
+                inheritedLinks.map(({ relationKind, subjectId, subjectKind }) => ({
+                  relationKind,
+                  subjectId,
+                  subjectKind,
+                })),
+              )
+            : await attachToSubject(result.documentId);
         const decisionId = linkResult?.decisionId ?? result.decisionId;
         if (decisionId) {
           undoReceipt = {
             decisionId,
             kind: 'document',
-            message: subject ? `Document linked to ${subject.name}.` : 'Document added.',
+            message: replacementTarget
+              ? 'Replacement created. The earlier version remains available in history.'
+              : subject
+                ? `Document linked to ${subject.name}.`
+                : 'Document added.',
           };
           undoCommandId = createCimmichDocumentCommandId('undo');
         }
         commandId = '';
         showEditor = false;
+        replacementTarget = null;
         await load();
         await openDetail({ documentId: result.documentId });
       }
@@ -754,6 +799,9 @@
         <button class="document-secondary-button" type="button" onclick={openEdit}
           ><Icon icon={mdiPencilOutline} size="18" /> Edit</button
         >
+        <button class="document-secondary-button" type="button" onclick={openReplacement}
+          >Replace with new version</button
+        >
         {#if subject}<button
             class="document-secondary-button danger"
             disabled={saving}
@@ -765,6 +813,29 @@
           {selected.status === 'archived' ? 'Restore' : 'Archive'}
         </button>
       </div>
+      {#if selected.supersedesDocumentId || selected.supersededByDocumentId}
+        <section class="mt-6 rounded-2xl border border-gray-200 p-4 dark:border-gray-700" aria-label="Version history">
+          <h4 class="text-sm font-semibold">Version history</h4>
+          <p class="mt-1 text-sm text-gray-500">
+            This file is one version of the same Document record. Opening another version respects the current viewing
+            mode.
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            {#if selected.supersedesDocumentId}<button
+                class="document-secondary-button"
+                type="button"
+                onclick={() => void openDetail({ documentId: selected!.supersedesDocumentId! })}
+                >Open earlier version</button
+              >{/if}
+            {#if selected.supersededByDocumentId}<button
+                class="document-secondary-button"
+                type="button"
+                onclick={() => void openDetail({ documentId: selected!.supersededByDocumentId! })}
+                >Open newer version</button
+              >{/if}
+          </div>
+        </section>
+      {/if}
       {#if contentError}<p class="mt-4 text-sm text-red-700 dark:text-red-300" role="alert">{contentError}</p>{/if}
       {#if previewUrl}
         <div
@@ -881,7 +952,11 @@
         <div>
           <p class="text-xs font-bold tracking-[0.14em] text-primary uppercase">Document</p>
           <h2 class="mt-1 text-2xl font-semibold" id="document-editor-heading">
-            {editorMode === 'create' ? 'Add a document' : `Edit ${selected?.displayTitle}`}
+            {editorMode === 'create'
+              ? replacementTarget
+                ? `Replace ${replacementTarget.displayTitle}`
+                : 'Add a document'
+              : `Edit ${selected?.displayTitle}`}
           </h2>
         </div>
         <button
@@ -893,6 +968,12 @@
         >
       </div>
       {#if editorMode === 'create'}
+        {#if replacementTarget}<div class="mt-5 rounded-2xl bg-primary/10 p-4 text-sm">
+            <strong>New version</strong>
+            <p class="mt-1 text-gray-600 dark:text-gray-300">
+              Choose the replacement source. The earlier file, metadata and links remain available in version history.
+            </p>
+          </div>{/if}
         <div class="mt-6 grid grid-cols-2 gap-2" role="group" aria-label="Document source">
           <button
             class:active={sourceMode === 'import'}
@@ -1002,7 +1083,13 @@
           <button class="document-secondary-button" disabled={saving} type="button" onclick={() => (showEditor = false)}
             >Cancel</button
           ><button class="document-primary-button" disabled={saving} type="submit"
-            >{saving ? 'Saving…' : editorMode === 'create' ? 'Add document' : 'Save'}</button
+            >{saving
+              ? 'Saving…'
+              : editorMode === 'create'
+                ? replacementTarget
+                  ? 'Create replacement'
+                  : 'Add document'
+                : 'Save'}</button
           >
         </div>
       </form>

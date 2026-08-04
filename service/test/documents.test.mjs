@@ -50,6 +50,23 @@ test("Immich-backed Document projection exposes the current Immich UUID and pres
   });
 });
 
+test("Document projection exposes direct version lineage without leaking another version's metadata", () => {
+  const document = projectDocumentRow({
+    ...row,
+    superseded_by_document_id: "document_33333333333333333333333333333333",
+    supersedes_document_id: "document_11111111111111111111111111111111",
+  });
+  assert.equal(
+    document.supersedesDocumentId,
+    "document_11111111111111111111111111111111",
+  );
+  assert.equal(
+    document.supersededByDocumentId,
+    "document_33333333333333333333333333333333",
+  );
+  assert.equal(Object.hasOwn(document, "supersedesDisplayTitle"), false);
+});
+
 test("local Document projection never invents an Immich UUID", () => {
   const document = projectDocumentRow({
     ...row,
