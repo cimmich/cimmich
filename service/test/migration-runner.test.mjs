@@ -338,6 +338,14 @@ test("schema 120 adds an explicit Event needs-check admission lane", async () =>
     /DROP CONSTRAINT context_asset_link_association_kind_check/,
   );
   assert.match(migration, /'needs_check'/);
+  assert.match(
+    migration,
+    /CREATE OR REPLACE FUNCTION enforce_context_asset_link_scope/,
+  );
+  assert.match(
+    migration,
+    /'direct','route_stop','context','needs_check','manual'/,
+  );
   assert.doesNotMatch(migration, /UPDATE context_asset_link/i);
   assert.match(migration, /DROP CONSTRAINT context_entity_place_geometry/);
   assert.match(

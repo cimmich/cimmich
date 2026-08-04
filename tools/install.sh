@@ -7,6 +7,7 @@ STATE_ROOT=${CIMMICH_COMPANION_STATE_ROOT:-"${XDG_STATE_HOME:-$HOME/.local/state
 PROJECT=${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 DEFAULT_IMMICH_ORIGIN=${CIMMICH_INSTALL_IMMICH_ORIGIN:-http://host.docker.internal:2283}
 GATEWAY_IMAGE=nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+SUPPORTED_IMMICH_VERSION=3.1.0
 finished=false
 show_recovery=false
 saved_stty=
@@ -179,14 +180,26 @@ validate_immich_origin() {
 verify_immich_reachable_from_docker() {
   origin=$1
   say ""
-  say "Checking that Docker can reach Immich..."
-  if ! docker run --rm \
+  say "Checking the Immich version from Docker..."
+  if ! version_response=$(docker run --rm \
     --add-host host.docker.internal:host-gateway \
     "$GATEWAY_IMAGE" \
-    wget -q -O /dev/null "$origin/api/server/version"; then
+    wget -q -O - "$origin/api/server/version"); then
     fail "Docker could not reach Immich at $origin. Check the address and port, then run the installer again. No Cimmich state was created."
   fi
-  ok "Immich is reachable from Docker at $origin"
+  version_major=$(printf '%s' "$version_response" | sed -n 's/.*"major"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_minor=$(printf '%s' "$version_response" | sed -n 's/.*"minor"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_patch=$(printf '%s' "$version_response" | sed -n 's/.*"patch"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_prerelease=$(printf '%s' "$version_response" | sed -n 's/.*"prerelease"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  test -n "$version_major" && test -n "$version_minor" && test -n "$version_patch" ||
+    fail "Immich returned an unreadable version. No Cimmich state was created."
+  detected_version="$version_major.$version_minor.$version_patch"
+  if test -n "$version_prerelease"; then
+    detected_version="$detected_version-rc.$version_prerelease"
+  fi
+  test "$detected_version" = "$SUPPORTED_IMMICH_VERSION" ||
+    fail "IMMICH_COMPANION_VERSION_UNSUPPORTED: found Immich $detected_version; this Cimmich release requires exact Immich $SUPPORTED_IMMICH_VERSION. No Cimmich migration or import was started."
+  ok "Immich $detected_version is reachable and supported"
 }
 
 guided_state() {

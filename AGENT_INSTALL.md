@@ -61,6 +61,11 @@ Keep the command attached to an interactive terminal. Let the owner answer its
 Immich-address, Private-view and final confirmation prompts. If a hidden Private
 password prompt appears, the owner types it directly.
 
+The installer must report that exact Immich 3.1.0 is reachable and supported
+before it creates Cimmich configuration or starts its database. If it reports
+`IMMICH_COMPANION_VERSION_UNSUPPORTED`, stop: no Cimmich migration or import
+should have begun, and the assistant must not bypass that preflight.
+
 The installation is complete only when the installer reports healthy API,
 database and web services and emits:
 

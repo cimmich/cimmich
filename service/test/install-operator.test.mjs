@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
@@ -31,6 +32,55 @@ test("guided installer has a non-mutating help surface and valid portable shell"
   });
   assert.notEqual(unsupported.status, 0);
   assert.doesNotMatch(unsupported.stderr, /secret=value/);
+});
+
+test("advanced startup rejects an unsupported Immich before any Compose or migration path", async () => {
+  const temporaryRoot = await mkdtemp(
+    join(tmpdir(), "cimmich-version-preflight-"),
+  );
+  try {
+    const stateRoot = join(temporaryRoot, "state");
+    const dockerLog = join(temporaryRoot, "docker.log");
+    const fakeDocker = join(temporaryRoot, "docker");
+    await writeFile(
+      fakeDocker,
+      `#!/bin/sh
+printf '%s\\n' "$*" >> "$CIMMICH_FAKE_DOCKER_LOG"
+if test "$1" = run; then
+  printf '{"major":3,"minor":2,"patch":0,"prerelease":null}\\n'
+  exit 0
+fi
+exit 97
+`,
+      { mode: 0o755 },
+    );
+    await mkdir(stateRoot);
+    const runtime =
+      "CIMMICH_IMMICH_API_URL=http://host.docker.internal:2283/api\n";
+    await writeFile(join(stateRoot, "runtime.env"), runtime, { mode: 0o600 });
+
+    const result = spawnSync(companion, ["up"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CIMMICH_COMPANION_PROJECT: "cimmich-version-preflight-test",
+        CIMMICH_COMPANION_STATE_ROOT: stateRoot,
+        CIMMICH_FAKE_DOCKER_LOG: dockerLog,
+        PATH: `${temporaryRoot}:${process.env.PATH}`,
+      },
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /IMMICH_COMPANION_VERSION_UNSUPPORTED/);
+    assert.match(result.stderr, /No Cimmich migration or import was started/);
+    assert.doesNotMatch(await readFile(dockerLog, "utf8"), /compose/);
+    assert.equal(
+      await readFile(join(stateRoot, "runtime.env"), "utf8"),
+      runtime,
+    );
+  } finally {
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
 });
 
 test("guided install stops at signed-in preview and documentation separates both audiences", async () => {
@@ -149,8 +199,21 @@ test("guided install stops at signed-in preview and documentation separates both
     readme,
     /export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none/,
   );
-  assert.match(script, /Checking that Docker can reach Immich/);
+  assert.match(script, /Checking the Immich version from Docker/);
   assert.match(script, /No Cimmich state was created/);
+  assert.match(script, /SUPPORTED_IMMICH_VERSION=3\.1\.0/);
+  assert.match(script, /IMMICH_COMPANION_VERSION_UNSUPPORTED/);
+  assert.match(script, /No Cimmich migration or import was started/);
+  assert.ok(
+    script.lastIndexOf('verify_immich_reachable_from_docker "$immich_origin"') <
+      script.indexOf('"$COMPANION" configure "$immich_origin"'),
+    "guided install must reject an unsupported Immich before configuration",
+  );
+  assert.match(companionScript, /SUPPORTED_IMMICH_VERSION=3\.1\.0/);
+  assert.match(
+    companionScript,
+    /up\(\) \{[\s\S]*require_configured[\s\S]*preflight_immich_version[\s\S]*compose build cimmich-api/,
+  );
   assert.match(script, /command -v lsof/);
   assert.match(script, /command -v ss/);
   assert.match(script, /"installer":"blocked"[\s\S]*"portIssues"/);
@@ -180,6 +243,10 @@ test("guided install stops at signed-in preview and documentation separates both
     /CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu/,
   );
   assert.match(install, /Optional local Face recognition/);
+  assert.match(
+    install,
+    /unsupported or unreadable version stops with no Cimmich migration or\s+import started/i,
+  );
   assert.match(install, /face-provider install-recommended/);
   assert.match(install, /checksum-pinned OpenCV YuNet and SFace/);
   assert.match(
@@ -202,4 +269,5 @@ test("guided install stops at signed-in preview and documentation separates both
     agentInstall,
     /no model, Enhanced component or SourcePack became active/,
   );
+  assert.match(agentInstall, /IMMICH_COMPANION_VERSION_UNSUPPORTED/);
 });
