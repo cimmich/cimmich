@@ -84,7 +84,7 @@ describe('Cimmich context entity presentation', () => {
       place: ['point', 'area', 'route', 'unlocated'],
     });
     expect(contextAssociationKinds).toEqual({
-      event: ['direct', 'route_stop', 'context', 'needs_check', 'manual'],
+      event: ['direct', 'route_stop', 'context', 'needs_check'],
       object: ['depicts', 'owned_at', 'manual'],
       place: ['captured_at', 'depicts', 'route_stop', 'manual'],
     });

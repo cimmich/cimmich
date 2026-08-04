@@ -46,9 +46,14 @@ ceiling but is refused with `VISIBILITY_CREDENTIAL_FORBIDDEN` on
 - PostgreSQL stores a random salt and scrypt verifier. Plaintext is not stored.
 - Configure, rotate and remove are audited. Rotation or removal invalidates an
   existing Private session on its next Cimmich request.
+- Standard/Personal is a per-device presentation choice held by the running
+  Cimmich service. A service restart deliberately returns every device to the
+  safer Standard view; it does not change any saved visibility labels.
 - Failed unlocks are bounded per principal, survive device-ID rotation and
-  receive a typed 429 response during exponential backoff. Concurrent scrypt
-  work is capped to keep failed local prompts from exhausting the service.
+  receive a typed 429 response during exponential backoff. The enforcement
+  counter is process-local and resets on a service restart; the failed-attempt
+  audit rows remain durable. Concurrent scrypt work is capped to keep failed
+  local prompts from exhausting the service.
 
 ## Operator commands (fallback)
 

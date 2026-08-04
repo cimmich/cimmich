@@ -5,6 +5,7 @@
   import CimmichEvidenceRows from '$lib/components/cimmich/CimmichEvidenceRows.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
+  import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import {
     getCimmichEvidenceForAsset,
     type CimmichEvidenceBundle,
@@ -62,7 +63,7 @@
     }
 
     void tick().then(() => {
-      sectionElement?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      sectionElement?.scrollIntoView({ block: 'start', behavior: mediaQueryManager.reducedMotion ? 'auto' : 'smooth' });
       assetViewerManager.clearDetailPanelTarget('cimmich');
     });
   });

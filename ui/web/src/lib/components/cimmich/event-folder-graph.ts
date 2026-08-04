@@ -51,6 +51,45 @@ export const eventFolderCandidates = (assets: Array<Pick<AssetResponseDto, 'orig
     .sort((left, right) => left.label.localeCompare(right.label) || left.path.localeCompare(right.path));
 };
 
+export const eventFolderAdmission = <Asset extends { id: string }>(
+  assets: Asset[],
+  {
+    alreadyLinkedIds,
+    capacity,
+    selectedIds,
+  }: { alreadyLinkedIds: ReadonlySet<string>; capacity: number; selectedIds: ReadonlySet<string> },
+) => {
+  const additions: Asset[] = [];
+  const seen = new Set<string>();
+  let alreadyLinkedCount = 0;
+  let alreadySelectedCount = 0;
+
+  for (const asset of assets) {
+    if (seen.has(asset.id)) {
+      continue;
+    }
+    seen.add(asset.id);
+    if (alreadyLinkedIds.has(asset.id)) {
+      alreadyLinkedCount += 1;
+      continue;
+    }
+    if (selectedIds.has(asset.id)) {
+      alreadySelectedCount += 1;
+      continue;
+    }
+    if (additions.length < capacity) {
+      additions.push(asset);
+    }
+  }
+
+  return {
+    additions,
+    alreadyLinkedCount,
+    alreadySelectedCount,
+    truncatedCount: Math.max(0, seen.size - alreadyLinkedCount - alreadySelectedCount - additions.length),
+  };
+};
+
 export const eventLineage = (entity: CimmichContextEntity, entities: CimmichContextEntity[]) => {
   const byId = new Map(entities.map((candidate) => [candidate.entityId, candidate]));
   const lineage = [entity];

@@ -4,6 +4,7 @@ import {
   eventAssetBelongsToFolder,
   eventAssetFolder,
   eventCopyName,
+  eventFolderAdmission,
   eventFolderCandidates,
   isMeaningfulEventFolder,
   eventLineage,
@@ -31,6 +32,39 @@ describe('event folder and graph helpers', () => {
   it('includes descendants when a person chooses a parent folder', () => {
     expect(eventAssetBelongsToFolder(asset('/archive/Cedar House/2025/June/a.jpg'), '/archive/Cedar House')).toBe(true);
     expect(eventAssetBelongsToFolder(asset('/archive/Cedar House Annex/a.jpg'), '/archive/Cedar House')).toBe(false);
+  });
+
+  it('admits only new Event media when a selected folder overlaps existing Main photos', () => {
+    const result = eventFolderAdmission(
+      [{ id: 'main-1' }, { id: 'main-2' }, { id: 'new-1' }, { id: 'new-2' }, { id: 'new-2' }],
+      {
+        alreadyLinkedIds: new Set(['main-1', 'main-2']),
+        capacity: 10,
+        selectedIds: new Set(),
+      },
+    );
+
+    expect(result).toEqual({
+      additions: [{ id: 'new-1' }, { id: 'new-2' }],
+      alreadyLinkedCount: 2,
+      alreadySelectedCount: 0,
+      truncatedCount: 0,
+    });
+  });
+
+  it('reports selection and capacity exclusions without re-admitting them', () => {
+    const result = eventFolderAdmission([{ id: 'selected' }, { id: 'new-1' }, { id: 'new-2' }], {
+      alreadyLinkedIds: new Set(),
+      capacity: 1,
+      selectedIds: new Set(['selected']),
+    });
+
+    expect(result).toEqual({
+      additions: [{ id: 'new-1' }],
+      alreadyLinkedCount: 0,
+      alreadySelectedCount: 1,
+      truncatedCount: 1,
+    });
   });
 
   it('hides Immich content-addressed storage while keeping human folders', () => {

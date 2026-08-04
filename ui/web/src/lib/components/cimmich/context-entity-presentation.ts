@@ -661,7 +661,7 @@ export const contextAssociationLabel = (entityKind: CimmichContextEntityKind, as
     event: {
       context: 'Adjacent context',
       direct: 'Main',
-      manual: 'Main',
+      manual: 'Legacy main',
       needs_check: 'Needs check',
       route_stop: 'Stops',
     },
@@ -681,7 +681,7 @@ export const contextAssociationLabel = (entityKind: CimmichContextEntityKind, as
 };
 
 export const contextAssociationKinds: Record<CimmichContextEntityKind, string[]> = {
-  event: ['direct', 'route_stop', 'context', 'needs_check', 'manual'],
+  event: ['direct', 'route_stop', 'context', 'needs_check'],
   object: ['depicts', 'owned_at', 'manual'],
   place: ['captured_at', 'depicts', 'route_stop', 'manual'],
 };

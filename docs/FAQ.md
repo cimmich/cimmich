@@ -50,7 +50,7 @@ reassign the face; the owner must select a Person and apply the change.
 
 ## Can Cimmich match Pets?
 
-The schema-83 Public Beta can ingest proposals from separately configured,
+The Community Preview can ingest proposals from separately configured,
 same-species Pet providers. PetFace-style face/head evidence and MiewID-style
 whole-animal evidence remain distinct vector spaces. Cimmich may abstain and
 place a detector observation in Unknown Pets. Only an owner assignment creates
@@ -128,8 +128,9 @@ supported.
 ## How do I install Cimmich beside my library?
 
 Use the [guided installation](../INSTALL.md#guided-install-recommended) on
-macOS or Linux. Download the named Cimmich install bundle from the newest
-Public Beta release, extract it, start Docker, then run:
+macOS or Linux. From the Community Preview release page you are reading,
+download its named Cimmich install bundle, verify it with that release's
+`SHA256SUMS`, extract it, start Docker, then run:
 
 ```sh
 ./tools/install.sh --check

@@ -43,6 +43,7 @@
   } from '@mdi/js';
   import { Icon } from '@immich/ui';
   import { tick } from 'svelte';
+  import { keyboardTabs } from './keyboard-tabs';
 
   type EditorView = 'defaults' | 'display' | 'profile';
   type GenderKind = CimmichPersonProfileProjection['profile']['genderIdentityKind'];
@@ -1294,6 +1295,7 @@
         class="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 sm:w-fit dark:bg-white/5"
         role="tablist"
         aria-label="Details visibility scope"
+        use:keyboardTabs
       >
         <button
           class="min-h-11 rounded-lg px-4 text-sm font-semibold {detailsSettingsView === 'person'
@@ -1302,6 +1304,7 @@
           type="button"
           role="tab"
           aria-selected={detailsSettingsView === 'person'}
+          tabindex={detailsSettingsView === 'person' ? 0 : -1}
           onclick={() => (detailsSettingsView = 'person')}>This person</button
         >
         <button
@@ -1311,6 +1314,7 @@
           type="button"
           role="tab"
           aria-selected={detailsSettingsView === 'defaults'}
+          tabindex={detailsSettingsView === 'defaults' ? 0 : -1}
           onclick={() => (detailsSettingsView = 'defaults')}>People defaults</button
         >
       </div>
@@ -1396,12 +1400,14 @@
         class="flex border-b border-gray-200 p-2 dark:border-immich-dark-gray"
         role="tablist"
         aria-label="Profile editor"
+        use:keyboardTabs
       >
         <button
           class={`min-h-11 rounded-lg px-4 text-sm font-semibold ${editorView === 'profile' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10'}`}
           type="button"
           role="tab"
           aria-selected={editorView === 'profile'}
+          tabindex={editorView === 'profile' ? 0 : -1}
           onclick={() => (editorView = 'profile')}>Profile</button
         >
         <button
@@ -1409,6 +1415,7 @@
           type="button"
           role="tab"
           aria-selected={editorView === 'display'}
+          tabindex={editorView === 'display' ? 0 : -1}
           onclick={() => (editorView = 'display')}>Shown in hero</button
         >
         <button
@@ -1416,6 +1423,7 @@
           type="button"
           role="tab"
           aria-selected={editorView === 'defaults'}
+          tabindex={editorView === 'defaults' ? 0 : -1}
           onclick={() => (editorView = 'defaults')}>People defaults</button
         >
       </div>

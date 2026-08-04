@@ -3048,7 +3048,11 @@ export const createCimmichServer = ({
         sendJson(
           response,
           200,
-          await repository.tagAssets({ limit: body.limit, tags: body.tags }),
+          await repository.tagAssets({
+            cursor: body.cursor,
+            pageSize: body.pageSize,
+            tags: body.tags,
+          }),
           allowedOrigin,
         );
         return;

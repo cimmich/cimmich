@@ -442,7 +442,7 @@ test("summary never cold-starts the archive machine-suggestion scorer", async ()
 
   const summary = await repository.summary();
 
-  assert.equal(summary.suggestions_ready, 0);
+  assert.equal(summary.suggestions_ready, null);
   assert.equal(scoringCalls, 0);
   assert.equal(summaryCalls, 1);
 });

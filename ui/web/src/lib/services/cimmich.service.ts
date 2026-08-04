@@ -9,7 +9,7 @@ export type CimmichSummary = {
   candidate_signals: number;
   future_assets: number;
   people: number;
-  suggestions_ready: number;
+  suggestions_ready: number | null;
   user_decisions: number;
 };
 
@@ -1164,6 +1164,8 @@ export type CimmichTagAssetFamily = 'people' | 'pets' | 'places' | 'things' | 'e
 
 export type CimmichTagAssetResult = {
   items: Array<{ captureTime: string | null; sourceAssetId: string }>;
+  nextCursor: string | null;
+  pageSize: number;
   schemaVersion: 'cimmich.tag-assets.v1';
   total: number;
 };
@@ -3738,9 +3740,13 @@ export const getCimmichPersonAssetsPage = (
     `/v1/people/${encodeURIComponent(personId)}/assets?pageSize=${Math.max(1, Math.min(250, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${associationType ? `&associationType=${encodeURIComponent(associationType)}` : ''}`,
   );
 
-export const getCimmichTagAssets = (tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>, limit = 5000) =>
+export const getCimmichTagAssets = (
+  tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>,
+  pageSize = 120,
+  cursor?: string,
+) =>
   request<CimmichTagAssetResult>('/v1/tag-assets/search', {
-    body: JSON.stringify({ limit, tags }),
+    body: JSON.stringify({ ...(cursor ? { cursor } : {}), pageSize, tags }),
     method: 'POST',
   });
 

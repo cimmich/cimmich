@@ -51,7 +51,10 @@
   let cimmichOptions = $state<TagBrowserOption[]>([]);
   let directoryLoading = $state(true);
   let resultsLoading = $state(false);
-  let error = $state('');
+  let directoryError = $state('');
+  let directoryBoundedFamilies = $state<CimmichTagFamily[]>([]);
+  let resultError = $state('');
+  let resultWarning = $state('');
   let resultAssets = $state<AssetResponseDto[]>([]);
   let totalMatches = $state(0);
   let normalNextPage = $state(0);
@@ -59,6 +62,9 @@
   let loadedCimmichSourceCount = $state(0);
   let singlePersonCursor = $state<string | null>(null);
   let singlePersonId = $state('');
+  let cimmichTagCursor = $state<string | null>(null);
+  let directoryGeneration = 0;
+  let directoryQueryTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   let resultGeneration = 0;
 
   const normalOptions = $derived(normalTagOptions(tags));
@@ -77,8 +83,10 @@
   const canLoadMore = $derived(
     source === 'normal'
       ? normalNextPage > 0
-      : loadedCimmichSourceCount < matchedCimmichIds.length || Boolean(singlePersonCursor),
+      : loadedCimmichSourceCount < matchedCimmichIds.length || Boolean(singlePersonCursor) || Boolean(cimmichTagCursor),
   );
+
+  type DirectoryBatch = { family: CimmichTagFamily; options: TagBrowserOption[]; possiblyMore: boolean };
 
   const toCount = (count: number | null) =>
     count === null ? 'Normal tag' : `${count.toLocaleString()} ${count === 1 ? 'photo' : 'photos'}`;
@@ -93,80 +101,121 @@
         left.label.localeCompare(right.label, undefined, { sensitivity: 'base' }),
     );
 
-  const loadDirectory = async () => {
+  const loadDirectory = async (searchQuery = '') => {
+    const generation = ++directoryGeneration;
     directoryLoading = true;
-    error = '';
+    directoryError = '';
     try {
-      const [people, pets, places, things, events] = await Promise.all([
-        getCimmichPeople(500, '', { presentation: false }),
-        getCimmichPets({ limit: 500 }),
-        getCimmichContextEntities('places', { limit: 500 }),
-        getCimmichContextEntities('objects', { limit: 500 }),
-        getCimmichContextEntities('events', { limit: 500 }),
+      const batches = await Promise.allSettled<DirectoryBatch>([
+        getCimmichPeople(500, searchQuery, { presentation: false }).then((people) => ({
+          family: 'people' as const,
+          options: people
+            .filter((person) => person.subject_kind === 'person' && person.status === 'active')
+            .map((person) => ({
+              aliases: person.aliases,
+              assetCount: person.asset_count,
+              coverAssetId: person.sourceAssetId || null,
+              entityId: person.person_id,
+              family: 'people' as const,
+              id: `people:${person.person_id}`,
+              label: person.display_name,
+            })),
+          possiblyMore: people.length === 500,
+        })),
+        getCimmichPets({ limit: 500, query: searchQuery }).then((pets) => ({
+          family: 'pets' as const,
+          options: pets
+            .filter((pet) => pet.status === 'active')
+            .map((pet) => ({
+              aliases: pet.aliases,
+              assetCount: pet.confirmedMediaCount,
+              coverAssetId: pet.cover?.sourceAssetId ?? null,
+              entityId: pet.petId,
+              family: 'pets' as const,
+              id: `pets:${pet.petId}`,
+              label: pet.displayName,
+            })),
+          possiblyMore: pets.length === 500,
+        })),
+        getCimmichContextEntities('places', { limit: 500, query: searchQuery }).then((places) => ({
+          family: 'places' as const,
+          options: places
+            .filter((entity) => entity.status === 'active')
+            .map((entity) => ({
+              aliases: entity.aliases,
+              assetCount: entity.subtreeAssetCount ?? entity.assetCount,
+              coverAssetId: entity.coverAssetId,
+              entityId: entity.entityId,
+              family: 'places' as const,
+              id: `places:${entity.entityId}`,
+              label: entity.displayName,
+            })),
+          possiblyMore: places.length === 500,
+        })),
+        getCimmichContextEntities('objects', { limit: 500, query: searchQuery }).then((things) => ({
+          family: 'things' as const,
+          options: things
+            .filter((entity) => entity.status === 'active')
+            .map((entity) => ({
+              aliases: entity.aliases,
+              assetCount: entity.assetCount,
+              coverAssetId: entity.coverAssetId,
+              entityId: entity.entityId,
+              family: 'things' as const,
+              id: `things:${entity.entityId}`,
+              label: entity.displayName,
+            })),
+          possiblyMore: things.length === 500,
+        })),
+        getCimmichContextEntities('events', { limit: 500, query: searchQuery }).then((events) => ({
+          family: 'events' as const,
+          options: events
+            .filter((entity) => entity.status === 'active')
+            .map((entity) => ({
+              aliases: entity.aliases,
+              assetCount: entity.assetCount,
+              coverAssetId: entity.coverAssetId,
+              entityId: entity.entityId,
+              family: 'events' as const,
+              id: `events:${entity.entityId}`,
+              label: entity.displayName,
+            })),
+          possiblyMore: events.length === 500,
+        })),
       ]);
-
-      cimmichOptions = sortOptions([
-        ...people
-          .filter((person) => person.subject_kind === 'person' && person.status === 'active')
-          .map((person) => ({
-            aliases: person.aliases,
-            assetCount: person.asset_count,
-            coverAssetId: person.sourceAssetId || null,
-            entityId: person.person_id,
-            family: 'people' as const,
-            id: `people:${person.person_id}`,
-            label: person.display_name,
-          })),
-        ...pets
-          .filter((pet) => pet.status === 'active')
-          .map((pet) => ({
-            aliases: pet.aliases,
-            assetCount: pet.confirmedMediaCount,
-            coverAssetId: pet.cover?.sourceAssetId ?? null,
-            entityId: pet.petId,
-            family: 'pets' as const,
-            id: `pets:${pet.petId}`,
-            label: pet.displayName,
-          })),
-        ...places
-          .filter((entity) => entity.status === 'active')
-          .map((entity) => ({
-            aliases: entity.aliases,
-            assetCount: entity.subtreeAssetCount ?? entity.assetCount,
-            coverAssetId: entity.coverAssetId,
-            entityId: entity.entityId,
-            family: 'places' as const,
-            id: `places:${entity.entityId}`,
-            label: entity.displayName,
-          })),
-        ...things
-          .filter((entity) => entity.status === 'active')
-          .map((entity) => ({
-            aliases: entity.aliases,
-            assetCount: entity.assetCount,
-            coverAssetId: entity.coverAssetId,
-            entityId: entity.entityId,
-            family: 'things' as const,
-            id: `things:${entity.entityId}`,
-            label: entity.displayName,
-          })),
-        ...events
-          .filter((entity) => entity.status === 'active')
-          .map((entity) => ({
-            aliases: entity.aliases,
-            assetCount: entity.assetCount,
-            coverAssetId: entity.coverAssetId,
-            entityId: entity.entityId,
-            family: 'events' as const,
-            id: `events:${entity.entityId}`,
-            label: entity.displayName,
-          })),
-      ]);
-    } catch (error_) {
-      error = error_ instanceof Error ? error_.message : 'Could not load Cimmich tags.';
+      if (generation !== directoryGeneration) {
+        return;
+      }
+      const loaded = batches.flatMap((batch) => (batch.status === 'fulfilled' ? [batch.value] : []));
+      const failedFamilies = batches.flatMap((batch, index) =>
+        batch.status === 'rejected'
+          ? [(['people', 'pets', 'places', 'things', 'events'] as CimmichTagFamily[])[index]!]
+          : [],
+      );
+      cimmichOptions = sortOptions(loaded.flatMap((batch) => batch.options));
+      directoryBoundedFamilies = loaded.filter((batch) => batch.possiblyMore).map((batch) => batch.family);
+      directoryError =
+        failedFamilies.length > 0
+          ? `${failedFamilies.map((family) => familyLabel(family)).join(', ')} could not be loaded. The other tag types are still available.`
+          : '';
     } finally {
-      directoryLoading = false;
+      if (generation === directoryGeneration) {
+        directoryLoading = false;
+      }
     }
+  };
+
+  const queueDirectorySearch = () => {
+    if (source !== 'cimmich') {
+      return;
+    }
+    if (directoryQueryTimeout) {
+      globalThis.clearTimeout(directoryQueryTimeout);
+    }
+    const searchQuery = query.trim();
+    directoryQueryTimeout = globalThis.setTimeout(() => {
+      void loadDirectory(searchQuery.length >= 2 ? searchQuery : '');
+    }, 250);
   };
 
   const fetchAssets = async (ids: string[], generation: number) => {
@@ -187,6 +236,9 @@
         return [];
       }
       loaded.push(...(results.filter(Boolean) as AssetResponseDto[]));
+      if (results.includes(null)) {
+        resultWarning = 'Some matching photos could not be loaded. Try the results again.';
+      }
     }
     return loaded;
   };
@@ -221,14 +273,16 @@
     }
     const intersection = await getCimmichTagAssets(
       selectedOptions.map((option) => ({ entityId: option.entityId, family: option.family as CimmichTagFamily })),
+      120,
     );
     if (generation !== resultGeneration) {
       return;
     }
     matchedCimmichIds = intersection.items.map((asset) => asset.sourceAssetId);
     totalMatches = intersection.total;
-    loadedCimmichSourceCount = Math.min(120, matchedCimmichIds.length);
-    resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
+    cimmichTagCursor = intersection.nextCursor;
+    loadedCimmichSourceCount = matchedCimmichIds.length;
+    resultAssets = await fetchAssets(matchedCimmichIds, generation);
   };
 
   const refreshResults = async () => {
@@ -239,9 +293,11 @@
     loadedCimmichSourceCount = 0;
     singlePersonCursor = null;
     singlePersonId = '';
+    cimmichTagCursor = null;
     totalMatches = 0;
     normalNextPage = 0;
-    error = '';
+    resultError = '';
+    resultWarning = '';
     if (selectedIds.size === 0) {
       resultsLoading = false;
       return;
@@ -251,7 +307,7 @@
       await (source === 'normal' ? loadNormalResults(generation) : loadCimmichResults(generation));
     } catch (error_) {
       if (generation === resultGeneration) {
-        error = error_ instanceof Error ? error_.message : 'Could not load matching photos.';
+        resultError = error_ instanceof Error ? error_.message : 'Could not load matching photos.';
       }
     } finally {
       if (generation === resultGeneration) {
@@ -282,6 +338,9 @@
     query = '';
     activeFamily = 'all';
     clearSelection();
+    if (next === 'cimmich' && directoryError) {
+      void loadDirectory();
+    }
     const url = new URL(page.url);
     url.searchParams.delete('path');
     if (next === 'normal') {
@@ -312,13 +371,29 @@
           singlePersonCursor = page.nextCursor;
           totalMatches = page.summary.total;
         }
+        if (!singlePersonId && cimmichTagCursor) {
+          const page = await getCimmichTagAssets(
+            selectedOptions.map((option) => ({
+              entityId: option.entityId,
+              family: option.family as CimmichTagFamily,
+            })),
+            120,
+            cimmichTagCursor,
+          );
+          if (generation !== resultGeneration) {
+            return;
+          }
+          matchedCimmichIds = [...matchedCimmichIds, ...page.items.map((asset) => asset.sourceAssetId)];
+          cimmichTagCursor = page.nextCursor;
+          totalMatches = page.total;
+        }
         const nextSourceCount = Math.min(targetCount, matchedCimmichIds.length);
         const nextIds = matchedCimmichIds.slice(loadedCimmichSourceCount, nextSourceCount);
         resultAssets = [...resultAssets, ...(await fetchAssets(nextIds, generation))];
         loadedCimmichSourceCount = nextSourceCount;
       }
     } catch (error_) {
-      error = error_ instanceof Error ? error_.message : 'Could not load more photos.';
+      resultError = error_ instanceof Error ? error_.message : 'Could not load more photos.';
     } finally {
       if (generation === resultGeneration) {
         resultsLoading = false;
@@ -384,6 +459,7 @@
           </span>
           <input
             bind:value={query}
+            oninput={queueDirectorySearch}
             type="search"
             class="min-h-11 w-full rounded-xl border border-gray-300 bg-white ps-10 pe-10 text-sm transition outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-600 dark:bg-gray-900"
             placeholder={`Search ${source === 'cimmich' ? 'Cimmich' : 'normal'} tags`}
@@ -415,7 +491,12 @@
       </div>
 
       <div class="flex items-center justify-between px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-        <span>{visibleOptions.length.toLocaleString()} {visibleOptions.length === 1 ? 'tag' : 'tags'}</span>
+        <span
+          >{visibleOptions.length.toLocaleString()}{directoryBoundedFamilies.length > 0 && source === 'cimmich'
+            ? '+'
+            : ''}
+          {visibleOptions.length === 1 ? 'tag' : 'tags'}</span
+        >
         {#if selectedIds.size > 0}
           <button
             type="button"
@@ -426,13 +507,45 @@
       </div>
 
       <div class="min-h-0 flex-1 immich-scrollbar overflow-y-auto px-2 pb-2">
+        {#if source === 'cimmich' && directoryError}
+          <div
+            class="m-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+            role="alert"
+          >
+            <p>{directoryError}</p>
+            <button
+              class="mt-2 min-h-10 rounded-full border border-current px-4 font-semibold"
+              type="button"
+              onclick={() => void loadDirectory(query.trim().length >= 2 ? query.trim() : '')}
+              >Try directory again</button
+            >
+          </div>
+        {/if}
+        {#if source === 'cimmich' && directoryBoundedFamilies.length > 0 && !directoryLoading}
+          <p
+            class="mx-2 mb-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+          >
+            Showing the first 500 {directoryBoundedFamilies.map((family) => familyLabel(family)).join(', ')} tags. Search
+            two or more characters to find the rest by name.
+          </p>
+        {/if}
         {#if source === 'cimmich' && directoryLoading}
           <div class="flex h-48 items-center justify-center"><LoadingSpinner /></div>
+        {:else if visibleOptions.length === 0 && source === 'normal' && normalOptions.length === 0 && !query.trim()}
+          <div class="flex h-48 flex-col items-center justify-center px-6 text-center text-sm text-gray-500">
+            <Icon icon={mdiImageMultipleOutline} size="28" />
+            <p class="mt-2 font-medium">No Normal tags yet</p>
+            <p class="mt-1 text-xs">Add a tag in Immich, then return here to browse it.</p>
+          </div>
         {:else if visibleOptions.length === 0}
           <div class="flex h-48 flex-col items-center justify-center px-6 text-center text-sm text-gray-500">
             <Icon icon={mdiMagnify} size="28" />
-            <p class="mt-2 font-medium">No matching tags</p>
-            <p class="mt-1 text-xs">Try another name or tag type.</p>
+            <p class="mt-2 font-medium">{query.trim() ? 'No tags match this search' : 'No Cimmich tags yet'}</p>
+            <p class="mt-1 text-xs">
+              {query.trim()
+                ? 'Try another name or tag type.'
+                : 'Create or import a memory, person, pet, place, thing or event first.'}
+            </p>
           </div>
         {:else}
           <div class="space-y-1">
@@ -520,11 +633,19 @@
       </div>
 
       <div class="h-[calc(100%-4.75rem)] min-h-96 immich-scrollbar overflow-y-auto p-2 sm:p-3">
-        {#if error}
+        {#if resultWarning}
+          <div
+            class="m-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+            role="status"
+          >
+            {resultWarning}
+          </div>
+        {/if}
+        {#if resultError}
           <div
             class="m-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
           >
-            {error}
+            {resultError}
           </div>
         {/if}
         {#if selectedIds.size === 0}
@@ -543,7 +664,7 @@
           </div>
         {:else if resultsLoading && resultAssets.length === 0}
           <div class="flex min-h-96 items-center justify-center"><LoadingSpinner size="giant" /></div>
-        {:else if error}
+        {:else if resultError}
           <div
             class="flex min-h-96 flex-col items-center justify-center px-6 text-center text-gray-500 dark:text-gray-400"
           >
@@ -559,8 +680,14 @@
             class="flex min-h-96 flex-col items-center justify-center px-6 text-center text-gray-500 dark:text-gray-400"
           >
             <Icon icon={mdiImageMultipleOutline} size="34" />
-            <h3 class="mt-3 font-semibold text-gray-800 dark:text-gray-100">No shared photos</h3>
-            <p class="mt-1 max-w-sm text-sm">These tags do not overlap. Remove one tag to broaden the result.</p>
+            <h3 class="mt-3 font-semibold text-gray-800 dark:text-gray-100">
+              {selectedOptions.length === 1 ? `No photos tagged ${selectedOptions[0]!.label}` : 'No shared photos'}
+            </h3>
+            <p class="mt-1 max-w-sm text-sm">
+              {selectedOptions.length === 1
+                ? 'This tag does not have any visible photos yet.'
+                : 'These tags do not overlap. Remove one tag to broaden the result.'}
+            </p>
           </div>
         {:else}
           <div bind:clientHeight={viewport.height} bind:clientWidth={viewport.width} class="min-h-96">

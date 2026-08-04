@@ -1,10 +1,11 @@
 # Cimmich
 
 > [!NOTE]
-> **Cimmich is preparing a bounded Community Preview.** The frozen candidate
-> target is `v1.1.0-community-preview.1`, migration-ledger schema 120/patch 1,
-> for exact Immich 3.1.0. Public Beta Patch 6 remains the latest published beta
-> until this candidate completes its release gates.
+> **Cimmich's current maintained release line is the bounded Community Preview.**
+> It targets `v1.1.0-community-preview.1`, migration-ledger schema 120/patch 1,
+> and exact Immich 3.1.0. When installing from GitHub, use the named bundles
+> attached to the Community Preview release you are reading; do not substitute
+> an older Public Beta bundle with the same project name.
 > The exact OpenAI Build Week submission remains preserved in the
 > [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
 > That tag, release and its assets remain unchanged as the living project moves
@@ -27,7 +28,7 @@ GPT-5.6 Sol**.
 
 [Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich-with-fictional-data) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
-[Check release proof](docs/RELEASE_READINESS.md) · [Review the Community Preview journeys](docs/COMMUNITY_PREVIEW_JOURNEYS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
+[Check release proof](docs/RELEASE_READINESS.md) · [Review the Community Preview journeys](docs/COMMUNITY_PREVIEW_JOURNEYS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Publication runbook](docs/COMMUNITY_PREVIEW_PUBLICATION.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
 [Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Community conduct](CODE_OF_CONDUCT.md)
 
@@ -497,7 +498,7 @@ separate, explicit and licence-gated.
   provider-specific.
 - Optional hosted Guided use inherits the privacy behavior of the client the
   operator chooses.
-- The supported companion baseline is Immich 3.1.0. Later Immich versions and
+- The supported companion version is exactly Immich 3.1.0. Later Immich versions and
   sustained large-archive behavior require their own proof.
 
 ## Contributing and security

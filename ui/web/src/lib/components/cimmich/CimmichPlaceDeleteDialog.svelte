@@ -188,6 +188,11 @@
     accent-color: rgb(185 28 28);
   }
 
+  .place-delete-choice input:focus-visible {
+    outline: 3px solid rgb(66 80 175);
+    outline-offset: 3px;
+  }
+
   .place-delete-choice span,
   .place-delete-choice small {
     display: block;

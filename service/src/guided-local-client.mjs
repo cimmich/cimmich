@@ -91,6 +91,9 @@ const requiredInteger = (value, label, maximum = 1_000_000_000) => {
   return value;
 };
 
+const nullableInteger = (value, label, maximum = 1_000_000_000) =>
+  value === null ? null : requiredInteger(value, label, maximum);
+
 const requiredOpaqueId = (value, label) => {
   if (
     typeof value !== "string" ||
@@ -340,7 +343,7 @@ export const runGuidedLocalClientConformance = async ({
       "overview.candidateSignals",
     ),
     people: requiredInteger(overview.people, "overview.people"),
-    suggestionsReady: requiredInteger(
+    suggestionsReady: nullableInteger(
       overview.suggestionsReady,
       "overview.suggestionsReady",
     ),

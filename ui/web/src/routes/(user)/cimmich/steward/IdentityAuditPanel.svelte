@@ -12,6 +12,7 @@
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
+  import { keyboardTabs } from '$lib/components/cimmich/keyboard-tabs';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
@@ -383,11 +384,12 @@
 
   {#if run?.state === 'completed'}
     <div class="border-b border-gray-100 px-4 pt-4 sm:px-7 dark:border-immich-dark-gray">
-      <div class="flex gap-2" role="tablist" aria-label="Identity audit queues">
+      <div class="flex gap-2" role="tablist" aria-label="Identity audit queues" use:keyboardTabs>
         <button
           type="button"
           role="tab"
           aria-selected={kind === 'untagged_match'}
+          tabindex={kind === 'untagged_match' ? 0 : -1}
           class:active-tab={kind === 'untagged_match'}
           class="audit-tab rounded-t-xl px-4 py-3 text-left text-sm font-semibold"
           onclick={() => void chooseKind('untagged_match')}
@@ -399,6 +401,7 @@
           type="button"
           role="tab"
           aria-selected={kind === 'accepted_contradiction'}
+          tabindex={kind === 'accepted_contradiction' ? 0 : -1}
           class:active-tab={kind === 'accepted_contradiction'}
           class="audit-tab rounded-t-xl px-4 py-3 text-left text-sm font-semibold"
           onclick={() => void chooseKind('accepted_contradiction')}

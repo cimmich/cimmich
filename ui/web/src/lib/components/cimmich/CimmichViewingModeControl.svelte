@@ -188,7 +188,9 @@
                 ? 'Private viewing mode: all photos visible'
                 : 'Unlock Private viewing mode'
               : 'Private viewing is not configured'
-            : `${option.label} viewing mode`}
+            : option.value === 'personal'
+              ? 'Personal viewing mode; returns to Standard when Cimmich restarts'
+              : `${option.label} viewing mode`}
         >
           <Icon icon={option.icon} size="22" />
           {option.label}
