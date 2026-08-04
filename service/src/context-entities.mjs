@@ -45,7 +45,7 @@ const defaultPlaceRole = "location";
 const placePlanKinds = new Set(["property", "floor", "outdoor", "other"]);
 const placePlanBackgroundKinds = new Set(["blank", "asset", "satellite"]);
 const associationKinds = {
-  event: new Set(["direct", "route_stop", "context", "manual"]),
+  event: new Set(["direct", "route_stop", "context", "needs_check", "manual"]),
   object: new Set(["depicts", "owned_at", "manual"]),
   place: new Set(["captured_at", "depicts", "route_stop", "manual"]),
 };
@@ -289,6 +289,46 @@ const cleanPoint = (value, field = "geometry") => {
   return { latitude, longitude };
 };
 
+const geometryProvenances = new Set([
+  "confirmed",
+  "contextual",
+  "manual",
+  "photo_gps",
+]);
+
+const cleanGeometryMetadata = (value) => {
+  const provenance =
+    value?.provenance === undefined
+      ? "manual"
+      : String(value.provenance).trim();
+  if (!geometryProvenances.has(provenance)) {
+    throw typedError(
+      "geometry provenance is unsupported",
+      400,
+      "CONTEXT_GEOMETRY_PROVENANCE_INVALID",
+    );
+  }
+  if (
+    value?.uncertaintyMeters === undefined ||
+    value.uncertaintyMeters === null
+  ) {
+    return { provenance };
+  }
+  const uncertaintyMeters = Number(value.uncertaintyMeters);
+  if (
+    !Number.isFinite(uncertaintyMeters) ||
+    uncertaintyMeters < 0 ||
+    uncertaintyMeters > 1_000_000
+  ) {
+    throw typedError(
+      "geometry uncertaintyMeters must be from 0 to 1000000",
+      400,
+      "CONTEXT_GEOMETRY_UNCERTAINTY_INVALID",
+    );
+  }
+  return { provenance, uncertaintyMeters };
+};
+
 const cleanGeometry = (entityKind, typeKind, value) => {
   if (entityKind !== "place") {
     if (value !== undefined && value !== null) {
@@ -310,7 +350,15 @@ const cleanGeometry = (entityKind, typeKind, value) => {
     }
     return null;
   }
-  if (typeKind === "point") return cleanPoint(value);
+  if (typeKind === "point") {
+    return {
+      ...cleanPoint({
+        latitude: value?.latitude,
+        longitude: value?.longitude,
+      }),
+      ...cleanGeometryMetadata(value),
+    };
+  }
   if (typeKind === "area") {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw typedError(
@@ -319,7 +367,10 @@ const cleanGeometry = (entityKind, typeKind, value) => {
         "CONTEXT_GEOMETRY_INVALID",
       );
     }
-    const keys = Object.keys(value).sort();
+    const metadata = cleanGeometryMetadata(value);
+    const keys = Object.keys(value)
+      .filter((key) => key !== "provenance" && key !== "uncertaintyMeters")
+      .sort();
     if (keys.join(",") === "points") {
       if (
         !Array.isArray(value.points) ||
@@ -345,7 +396,7 @@ const cleanGeometry = (entityKind, typeKind, value) => {
           "CONTEXT_GEOMETRY_INVALID",
         );
       }
-      return { points };
+      return { points, ...metadata };
     }
     if (keys.join(",") !== "east,north,south,west") {
       throw typedError(
@@ -373,14 +424,17 @@ const cleanGeometry = (entityKind, typeKind, value) => {
         "CONTEXT_GEOMETRY_INVALID",
       );
     }
-    return area;
+    return { ...area, ...metadata };
   }
   if (typeKind === "route") {
+    const metadata = cleanGeometryMetadata(value);
     if (
       !value ||
       typeof value !== "object" ||
       Array.isArray(value) ||
-      Object.keys(value).join(",") !== "points" ||
+      Object.keys(value)
+        .filter((key) => key !== "provenance" && key !== "uncertaintyMeters")
+        .join(",") !== "points" ||
       !Array.isArray(value.points) ||
       value.points.length < 2 ||
       value.points.length > 500
@@ -395,6 +449,7 @@ const cleanGeometry = (entityKind, typeKind, value) => {
       points: value.points.map((point, index) =>
         cleanPoint(point, `geometry.points[${index}]`),
       ),
+      ...metadata,
     };
   }
   throw typedError("Place kind is unsupported", 400, "CONTEXT_KIND_INVALID");
@@ -4329,6 +4384,7 @@ export const contextEntityContract = Object.freeze({
   directoryVisibilities: [...directoryVisibilities],
   entityKinds: [...entityKinds],
   eventCoverSchemaVersion,
+  geometryProvenances: [...geometryProvenances],
   objectCoverSchemaVersion,
   objectDeleteSchemaVersion,
   placeCoverSchemaVersion,

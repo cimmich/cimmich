@@ -2,7 +2,7 @@
 
 Updated: 2026-08-04
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview candidate: migration-ledger schema 119/patch 1
+Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current candidate target: `v1.1.0-community-preview.1` for exact Immich 3.1.0
@@ -43,7 +43,7 @@ The final source gates are:
 - service syntax, format and lint: pass;
 - web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
   production build: pass;
-- migration runner: schema 119/patch 1, including explicit Public Beta Patch 6
+- migration runner: schema 120/patch 1, including explicit Public Beta Patch 6
   schema-75 forward-upgrade with representative assets, People and Faces
   retained;
 - complete synthetic lifecycle: pass;
@@ -70,15 +70,15 @@ Its equivalent 640 px reflow stress and phone-width proof pass; one native 200%
 zoom smoke remains an operator pre-publication check rather than a claimed
 automated result.
 
-## Current source audit addendum — 2026-08-01
+## Current source audit addendum — 2026-08-04
 
-The current schema-119/patch-1 candidate begins from
+The current schema-120/patch-1 candidate begins from
 `00a0c98ef2cef35ba67c8d3c7184139936c574e8`. It reconciles the migration-ledger
 source with the accepted product work and adds recoverable bulk Organise operations.
-The final source gate passes 816
-service tests with two skipped, 938 web tests with two skipped, zero Svelte
+The final source gate passes 837
+service tests with two skipped, 964 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 119, and the complete disposable synthetic lifecycle.
+acceptance through schema 120, and the complete disposable synthetic lifecycle.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt
@@ -95,7 +95,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 119; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 120; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -229,6 +229,10 @@ rules remain valid; collection, detail and hero projections resolve the same
 subtree cover.
 Schema 119 lets Events remember bounded source folders for refresh while one
 asset identity can participate in several nested or connected memories.
+Schema 120 keeps folder/date candidates in an explicit Needs check media lane
+instead of silently treating them as Main, ordered Stops or adjacent context.
+It also persists bounded Place location provenance and uncertainty alongside
+point, area or route geometry without changing source-photo EXIF.
 
 ## Historical Public Beta Patch 6 certification
 

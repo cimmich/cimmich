@@ -182,6 +182,23 @@ test("Place role is closed and projections keep the geography cross-link", async
   );
 });
 
+test("Place geometry persists closed provenance and bounded uncertainty without touching source media", async () => {
+  assert.deepEqual(contextEntityContract.geometryProvenances, [
+    "confirmed",
+    "contextual",
+    "manual",
+    "photo_gps",
+  ]);
+  const source = await readFile(
+    new URL("../src/context-entities.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /CONTEXT_GEOMETRY_PROVENANCE_INVALID/);
+  assert.match(source, /CONTEXT_GEOMETRY_UNCERTAINTY_INVALID/);
+  assert.match(source, /uncertaintyMeters > 1_000_000/);
+  assert.doesNotMatch(source, /UPDATE\s+(asset|asset_exif|exif)/i);
+});
+
 test("Location Plans use a closed kind contract and normalized bounded geometry", async () => {
   assert.deepEqual(contextEntityContract.placePlanKinds, [
     "property",

@@ -136,10 +136,15 @@ export type CimmichContextTypeKind =
   | 'vehicle';
 export type CimmichContextDatePrecision = 'approximate' | 'exact' | 'month' | 'unknown' | 'year';
 export type CimmichPlaceRole = 'geography' | 'location' | 'unclassified';
+export type CimmichContextGeometryProvenance = 'confirmed' | 'contextual' | 'manual' | 'photo_gps';
+type CimmichContextGeometryMetadata = {
+  provenance?: CimmichContextGeometryProvenance;
+  uncertaintyMeters?: number;
+};
 export type CimmichContextGeometry =
-  | { east: number; north: number; south: number; west: number }
-  | { latitude: number; longitude: number }
-  | { points: Array<{ latitude: number; longitude: number }> }
+  | ({ east: number; north: number; south: number; west: number } & CimmichContextGeometryMetadata)
+  | ({ latitude: number; longitude: number } & CimmichContextGeometryMetadata)
+  | ({ points: Array<{ latitude: number; longitude: number }> } & CimmichContextGeometryMetadata)
   | null;
 
 export type CimmichEventRecurrence = {

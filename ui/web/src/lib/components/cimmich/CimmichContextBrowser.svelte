@@ -57,6 +57,7 @@
     type CimmichContextEntity,
     type CimmichContextFamily,
     type CimmichContextGeometry,
+    type CimmichContextGeometryProvenance,
     type CimmichContextTypeKind,
     type CimmichPlaceRole,
     type CimmichAddressGeocodingItem,
@@ -235,7 +236,7 @@
   let connectionPresentations = $state<Record<string, { objectPosition: string; sourceAssetId: string | null }>>({});
   let connectionPresentationGeneration = 0;
   let connectionPresentationKey = '';
-  let eventMediaLane = $state<'all' | 'main' | 'nearby' | 'stops'>('main');
+  let eventMediaLane = $state<'adjacent' | 'all' | 'main' | 'needs_check' | 'stops'>('main');
   let placeMediaLane = $state<'all' | 'unassigned' | string>('all');
   let placePhotoGroup = $state<PlacePhotoGroup>('none');
   let placePhotoSize = $state<PlacePhotoSize>('medium');
@@ -288,6 +289,8 @@
   let formEast = $state('');
   let formWest = $state('');
   let formRoute = $state('');
+  let formGeometryProvenance = $state<CimmichContextGeometryProvenance>('manual');
+  let formGeometryUncertainty = $state('');
   let formMapPoints = $state<Array<{ lat: number; lng: number }>>([]);
   let formAreaUsesPoints = $state(false);
   let showPreciseGeometry = $state(false);
@@ -471,7 +474,9 @@
         ? asset.associationKind === 'direct' || asset.associationKind === 'manual'
         : eventMediaLane === 'stops'
           ? asset.associationKind === 'route_stop'
-          : asset.associationKind === 'context',
+          : eventMediaLane === 'needs_check'
+            ? asset.associationKind === 'needs_check'
+            : asset.associationKind === 'context',
     );
   });
   const presentedDetailAssets = $derived(
@@ -492,7 +497,8 @@
     return {
       all: assets.length,
       main: assets.filter((asset) => asset.associationKind === 'direct' || asset.associationKind === 'manual').length,
-      nearby: assets.filter((asset) => asset.associationKind === 'context').length,
+      adjacent: assets.filter((asset) => asset.associationKind === 'context').length,
+      needs_check: assets.filter((asset) => asset.associationKind === 'needs_check').length,
       stops: assets.filter((asset) => asset.associationKind === 'route_stop').length,
     };
   });
@@ -501,9 +507,11 @@
       ? 'The defining photos and videos you explicitly placed in this memory.'
       : eventMediaLane === 'stops'
         ? 'Media attached to Places along this trip or route.'
-        : eventMediaLane === 'nearby'
-          ? 'Useful time or location context kept separate from the main memory.'
-          : 'Everything linked to this memory, with each relationship still visible.',
+        : eventMediaLane === 'adjacent'
+          ? 'Useful adjacent time or location context kept separate from the main memory.'
+          : eventMediaLane === 'needs_check'
+            ? 'Candidates waiting for your decision. They are not Main media until you promote them.'
+            : 'Everything linked to this memory, with each relationship still visible.',
   );
   const placeDetailAssetCount = $derived(
     activeFamily === 'places' ? (selected?.subtreeAssets?.length ?? selected?.assets.length ?? 0) : 0,
@@ -982,6 +990,8 @@
     formEast = '';
     formWest = '';
     formRoute = '';
+    formGeometryProvenance = 'manual';
+    formGeometryUncertainty = '';
     formMapPoints = [];
     formAreaUsesPoints = false;
     showPreciseGeometry = false;
@@ -1108,6 +1118,8 @@
       geometry && 'points' in geometry
         ? geometry.points.map((point) => `${point.latitude}, ${point.longitude}`).join('\n')
         : '';
+    formGeometryProvenance = geometry?.provenance ?? 'manual';
+    formGeometryUncertainty = geometry?.uncertaintyMeters === undefined ? '' : String(geometry.uncertaintyMeters);
     formMapPoints =
       geometry && 'points' in geometry
         ? geometry.points.map((point) => ({ lat: point.latitude, lng: point.longitude }))
@@ -1180,8 +1192,18 @@
     if (entityKind !== 'place' || formType === 'unlocated') {
       return null;
     }
+    const metadata = {
+      provenance: formGeometryProvenance,
+      ...(formGeometryUncertainty.trim()
+        ? { uncertaintyMeters: numberValue(formGeometryUncertainty, 'Uncertainty') }
+        : {}),
+    };
     if (formType === 'point') {
-      return { latitude: numberValue(formLatitude, 'Latitude'), longitude: numberValue(formLongitude, 'Longitude') };
+      return {
+        latitude: numberValue(formLatitude, 'Latitude'),
+        longitude: numberValue(formLongitude, 'Longitude'),
+        ...metadata,
+      };
     }
     if (formType === 'area') {
       if (formAreaUsesPoints) {
@@ -1190,6 +1212,7 @@
         }
         return {
           points: formMapPoints.map((point) => ({ latitude: point.lat, longitude: point.lng })),
+          ...metadata,
         };
       }
       return {
@@ -1197,6 +1220,7 @@
         north: numberValue(formNorth, 'North'),
         south: numberValue(formSouth, 'South'),
         west: numberValue(formWest, 'West'),
+        ...metadata,
       };
     }
     if (formType === 'route') {
@@ -1217,7 +1241,7 @@
       if (points.length < 2) {
         throw new Error('A route needs at least two points.');
       }
-      return { points };
+      return { points, ...metadata };
     }
     return null;
   };
@@ -1242,6 +1266,7 @@
   };
 
   const addPlaceMapPoint = ({ lat, lng }: { lat: number; lng: number }) => {
+    formGeometryProvenance = 'manual';
     if (formType === 'point') {
       placeLocationPhotoName = '';
       formLatitude = String(lat);
@@ -1273,6 +1298,8 @@
     placeSearchError = '';
     if (formType === 'point') {
       addPlaceMapPoint(point);
+      formGeometryProvenance = 'contextual';
+      formGeometryUncertainty = place.precision === 'address' ? '20' : place.precision === 'street' ? '75' : '500';
     }
   };
 
@@ -1353,9 +1380,11 @@
     formWest = '';
     formRoute = '';
     formAreaUsesPoints = false;
+    formGeometryProvenance = 'manual';
+    formGeometryUncertainty = '';
   };
 
-  const setPlaceMapMode = (mode: 'area' | 'point' | 'unlocated') => {
+  const setPlaceMapMode = (mode: 'area' | 'point' | 'route' | 'unlocated') => {
     if (formType !== mode) {
       clearPlaceMapPoints();
     }
@@ -1847,6 +1876,8 @@
   const usePhotoLocation = (asset: (typeof photoLocationAssets)[number]) => {
     const point = { lat: asset.latitude, lng: asset.longitude };
     addPlaceMapPoint(point);
+    formGeometryProvenance = 'photo_gps';
+    formGeometryUncertainty = '';
     placeLocationPhotoName = asset.filename;
     placeSearchCenter = point;
     placeSearchZoom = 17;
@@ -3277,7 +3308,7 @@
       <div role="tabpanel" aria-label="Photos">
         {#if entityKind === 'event' && selected.assets.length > 0}
           <div class="mt-5 flex max-w-full gap-2 overflow-x-auto pb-1" aria-label="Event media lane">
-            {#each [{ label: 'All', value: 'all' }, { label: 'Main', value: 'main' }, { label: 'Stops', value: 'stops' }, { label: 'Nearby', value: 'nearby' }] as lane (lane.value)}
+            {#each [{ label: 'All', value: 'all' }, { label: 'Main', value: 'main' }, { label: 'Stops', value: 'stops' }, { label: 'Adjacent', value: 'adjacent' }, { label: 'Needs check', value: 'needs_check' }] as lane (lane.value)}
               <button
                 class="context-detail-lane"
                 class:context-detail-lane--active={eventMediaLane === lane.value}
@@ -4010,7 +4041,7 @@
                 <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <p class="font-semibold">
-                      {formType === 'point' ? 'Map pin' : formType === 'area' ? 'Map boundary' : 'Saved map path'}
+                      {formType === 'point' ? 'Map pin' : formType === 'area' ? 'Map boundary' : 'Map route'}
                     </p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {formType === 'point'
@@ -4019,26 +4050,31 @@
                           : 'Click once on the map, or search above. You can drag the marker afterwards.'
                         : formType === 'area'
                           ? 'Drag around the boundary. Cimmich saves the exact outline you paint.'
-                          : 'This existing line remains editable; new journeys are created in Events.'}
+                          : 'Click points in travel order. This reusable Place route can also be connected to Events.'}
                     </p>
                   </div>
                   <div class="context-map-mode-actions" aria-label="Map shape">
-                    {#if formType !== 'route'}
-                      <button
-                        class:context-map-action--active={formType === 'point'}
-                        class="context-map-action"
-                        type="button"
-                        title="Use one map pin"
-                        onclick={() => setPlaceMapMode('point')}>Pin</button
-                      >
-                      <button
-                        class:context-map-action--active={formType === 'area'}
-                        class="context-map-action"
-                        type="button"
-                        title="Draw a boundary"
-                        onclick={() => setPlaceMapMode('area')}>Boundary</button
-                      >
-                    {/if}
+                    <button
+                      class:context-map-action--active={formType === 'point'}
+                      class="context-map-action"
+                      type="button"
+                      title="Use one map pin"
+                      onclick={() => setPlaceMapMode('point')}>Pin</button
+                    >
+                    <button
+                      class:context-map-action--active={formType === 'area'}
+                      class="context-map-action"
+                      type="button"
+                      title="Draw a boundary"
+                      onclick={() => setPlaceMapMode('area')}>Boundary</button
+                    >
+                    <button
+                      class:context-map-action--active={formType === 'route'}
+                      class="context-map-action"
+                      type="button"
+                      title="Draw an ordered route"
+                      onclick={() => setPlaceMapMode('route')}>Route</button
+                    >
                     {#if formType === 'point' || formMapPoints.length > 0}
                       {#if formType === 'point'}<button
                           class="context-map-action"
@@ -4153,6 +4189,29 @@
                   onclick={() => (showPreciseGeometry = !showPreciseGeometry)}
                   >{showPreciseGeometry ? 'Hide precise coordinates' : 'Enter precise coordinates instead'}</button
                 >
+              </section>
+            {/if}
+            {#if formType !== 'unlocated'}
+              <section
+                class="grid gap-4 rounded-2xl bg-gray-50 p-4 sm:grid-cols-2 dark:bg-gray-800/60"
+                aria-label="Location confidence"
+              >
+                <label class="context-field">
+                  <span>Location source</span>
+                  <select bind:value={formGeometryProvenance}>
+                    <option value="manual">Placed manually</option>
+                    <option value="photo_gps">From photo GPS</option>
+                    <option value="contextual">Estimated from context</option>
+                    <option value="confirmed">Confirmed by me</option>
+                  </select>
+                </label>
+                <label class="context-field">
+                  <span>Uncertainty <small>Metres, optional</small></span>
+                  <input min="0" max="1000000" step="1" type="number" bind:value={formGeometryUncertainty} />
+                </label>
+                <p class="text-xs text-gray-500 sm:col-span-2 dark:text-gray-400">
+                  This records how sure Cimmich is about the Place. It never rewrites the photo's original EXIF.
+                </p>
               </section>
             {/if}
             <label class="context-field"

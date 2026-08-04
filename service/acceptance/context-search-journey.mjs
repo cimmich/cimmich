@@ -267,6 +267,10 @@ if (phase === "write" || phase === "all") {
       body: {
         assets: [
           { assetId: "asset_service_fixture", associationKind: "direct" },
+          {
+            assetId: "asset_identity_fixture",
+            associationKind: "needs_check",
+          },
         ],
         commandId: "context.assets.folderundo1",
         sourceFolders: ["/archive/Folder refresh"],
@@ -277,6 +281,10 @@ if (phase === "write" || phase === "all") {
   assert.deepEqual(folderAttached.detail.entity.sourceFolders, [
     "/archive/Folder refresh",
   ]);
+  assert.deepEqual(
+    folderAttached.detail.assets.map((asset) => asset.associationKind).sort(),
+    ["direct", "needs_check"],
+  );
   const folderAttachUndone = await request(
     `/v1/context/decisions/${folderAttached.decisionId}/undo`,
     {

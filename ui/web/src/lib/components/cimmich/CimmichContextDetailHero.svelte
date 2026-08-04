@@ -216,9 +216,28 @@
     const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return `${cadence} · ${recurrence.weekdays.map((weekday) => names[weekday]).join(', ')}`;
   });
+  const placeProvenanceLabel = $derived.by(() => {
+    const geometry = detail.entity.geometry;
+    if (!isPlace || !geometry) {
+      return '';
+    }
+    const provenance = geometry.provenance ?? 'manual';
+    const source =
+      provenance === 'photo_gps'
+        ? 'From photo GPS'
+        : provenance === 'contextual'
+          ? 'Estimated from context'
+          : provenance === 'confirmed'
+            ? 'Confirmed location'
+            : 'Placed manually';
+    return geometry.uncertaintyMeters === undefined
+      ? source
+      : `${source} · ±${geometry.uncertaintyMeters.toLocaleString()} m`;
+  });
   const subline = $derived(
     [
       detail.entity.description || (isPlace ? '' : contextTypeDescription(detail.entity.typeKind)),
+      isPlace ? placeProvenanceLabel : '',
       family === 'events'
         ? formatContextDatePrecision(detail.entity) || 'Not dated yet'
         : family === 'objects'
