@@ -130,6 +130,12 @@ For Immich running on the same computer at its usual port, accept
 LAN address, for example `http://192.168.1.20:2283`. Do not add `/api`, a path,
 credentials or a query string.
 
+Before creating Cimmich configuration or starting its database, the installer
+reads Immich's public version endpoint from Docker and requires exact Immich
+3.1.0. An unsupported or unreadable version stops with no Cimmich migration or
+import started. `--resume` and the advanced `companion.sh up` route repeat this
+preflight before database startup.
+
 The Private password is a local view-mode preference, not Immich login security
 or encryption. No extra password is the simplest default. If you choose one,
 any non-empty value is accepted and the prompt is hidden.

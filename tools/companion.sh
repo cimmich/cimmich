@@ -15,6 +15,7 @@ CURRENT_SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migra
 ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+SUPPORTED_IMMICH_VERSION=3.1.0
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -96,6 +97,29 @@ require_configured() {
 
 compose() {
   docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" --file "$COMPOSE_FILE" "$@"
+}
+
+preflight_immich_version() {
+  api_url=$(configured_value CIMMICH_IMMICH_API_URL)
+  if ! version_response=$(docker run --rm \
+    --add-host host.docker.internal:host-gateway \
+    "$ALPINE_IMAGE" \
+    wget -q -O - "$api_url/server/version"); then
+    fail "Immich is unreachable at the configured address. No Cimmich migration or import was started."
+  fi
+  version_major=$(printf '%s' "$version_response" | sed -n 's/.*"major"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_minor=$(printf '%s' "$version_response" | sed -n 's/.*"minor"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_patch=$(printf '%s' "$version_response" | sed -n 's/.*"patch"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  version_prerelease=$(printf '%s' "$version_response" | sed -n 's/.*"prerelease"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+  test -n "$version_major" && test -n "$version_minor" && test -n "$version_patch" ||
+    fail "Immich returned an unreadable version. No Cimmich migration or import was started."
+  detected_version="$version_major.$version_minor.$version_patch"
+  if test -n "$version_prerelease"; then
+    detected_version="$detected_version-rc.$version_prerelease"
+  fi
+  test "$detected_version" = "$SUPPORTED_IMMICH_VERSION" ||
+    fail "IMMICH_COMPANION_VERSION_UNSUPPORTED: found Immich $detected_version; this Cimmich release requires exact Immich $SUPPORTED_IMMICH_VERSION. No Cimmich migration or import was started."
+  printf 'cimmich companion: Immich %s preflight passed before database startup\n' "$detected_version"
 }
 
 canonical_request() {
@@ -214,6 +238,7 @@ private_password() {
 
 up() {
   require_configured
+  preflight_immich_version
   # Build the two local product images serially. Concurrent Buildx work can
   # exhaust smaller container runtimes and makes it impossible to identify
   # which immutable product image failed.

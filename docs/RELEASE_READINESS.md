@@ -75,7 +75,7 @@ automated result.
 The current schema-120/patch-1 candidate begins from
 `00a0c98ef2cef35ba67c8d3c7184139936c574e8`. It reconciles the migration-ledger
 source with the accepted product work and adds recoverable bulk Organise operations.
-The final source gate passes 837
+The final source gate passes 838
 service tests with two skipped, 964 web tests with two skipped, zero Svelte
 errors or warnings, TypeScript, formatting, lint, production build, migration
 acceptance through schema 120, and the complete disposable synthetic lifecycle.
