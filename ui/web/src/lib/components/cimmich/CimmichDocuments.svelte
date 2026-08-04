@@ -174,6 +174,11 @@
     const generation = ++detailRequestGeneration;
     selectedLoading = true;
     error = null;
+    // A detail request replaces the currently rendered projection. Clear it
+    // before the request starts so a rejected reload (for example after this
+    // Document is moved above the active viewing tier) cannot leave stale
+    // metadata, links or actions mounted beneath the error state.
+    selected = null;
     clearPreview();
     try {
       const next = await getCimmichDocument(document.documentId);

@@ -334,6 +334,29 @@ describe('CimmichDocuments', () => {
     expect(getByRole('article')).toHaveTextContent('private');
   });
 
+  it('removes stale detail when editing a Document makes it unavailable in the current viewing mode', async () => {
+    mocks.getDocuments.mockResolvedValueOnce({ items: [listDocument], schemaVersion: 'cimmich.document.v1' });
+    mocks.getDocument
+      .mockResolvedValueOnce(listDocument)
+      .mockRejectedValueOnce(
+        new CimmichServiceError('Document not found', { code: 'DOCUMENT_NOT_FOUND', status: 404 }),
+      );
+    mocks.updateDocument.mockResolvedValue({ decisionId: 'document-decision-hidden' });
+    mocks.setVisibility.mockResolvedValue({ decisionId: 'visibility-decision-hidden' });
+    const { findByRole, findByText, getByLabelText, getByRole, queryByRole, queryByText } = render(CimmichDocuments);
+    const user = userEvent.setup();
+
+    await fireEvent.click(await findByRole('button', { name: /Synthetic certificate/ }));
+    await fireEvent.click(getByRole('button', { name: 'Edit' }));
+    await user.selectOptions(getByLabelText('Visibility'), 'private');
+    await fireEvent.click(getByRole('button', { name: 'Save' }));
+
+    expect(await findByText('This Document is unavailable in the current viewing mode.')).toBeInTheDocument();
+    expect(queryByRole('article')).not.toBeInTheDocument();
+    expect(queryByText('synthetic.pdf')).not.toBeInTheDocument();
+    expect(queryByRole('button', { name: 'Replace with new version' })).not.toBeInTheDocument();
+  });
+
   it('keeps an open edit bound to its document across a visibility refresh', async () => {
     mocks.getDocuments.mockResolvedValue({ items: [listDocument], schemaVersion: 'cimmich.document.v1' });
     mocks.getDocument.mockResolvedValue(listDocument);
