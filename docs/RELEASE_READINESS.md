@@ -37,9 +37,9 @@ artifact hash.
 
 The final source gates are:
 
-- publication scan: pass across 1,699 tracked files;
-- service: 838 passed, 2 skipped, 0 failed;
-- web: 964 passed, 2 skipped, 0 failed;
+- publication scan: pass across 1,702 tracked files;
+- service: 840 passed, 2 skipped, 0 failed;
+- web: 971 passed, 2 skipped, 0 failed;
 - service syntax, format and lint: pass;
 - web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
   production build: pass;
@@ -65,10 +65,12 @@ tested skip-link/dialog focus contracts pass. Required understanding does not
 depend on motion and Cimmich's animated People/Pet treatments include
 reduced-motion alternatives.
 
-The embedded acceptance browser cannot assert a native browser zoom percentage.
-Its equivalent 640 px reflow stress and phone-width proof pass; one native 200%
-zoom smoke remains an operator pre-publication check rather than a claimed
-automated result.
+Normal Chrome native-200% proof changed the CSS viewport from 1,200 to 600 px
+and device pixel ratio from 2 to 4. Home, Organise, Tags, Events, Documents,
+Search and Maya Identity/Display each retained page-width reflow without
+horizontal overflow; Chrome was returned to 100%. The global
+`prefers-reduced-motion: reduce` contract and its regression suppress
+nonessential animation, transitions and smooth scrolling.
 
 ## Current source audit addendum — 2026-08-04
 
