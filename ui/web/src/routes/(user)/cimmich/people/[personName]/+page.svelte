@@ -35,10 +35,12 @@
     bulkAcceptCimmichPersonCandidates,
     bulkRejectCimmichPersonCandidates,
     CimmichServiceError,
+    createCimmichContextCommandId,
     createCimmichIdentityCorrectionCommandId,
     createCimmichPersonMergeIntentTracker,
     decideCimmichFaceModifierProposal,
     decideCimmichIdentityCandidate,
+    detachCimmichContextRelations,
     dismissCimmichIdentityAuditItem,
     dismissCimmichIdentityAuditItemsBatch,
     getCimmichFaceMatches,
@@ -55,6 +57,7 @@
     getCimmichPersonDetailsDisplayDefaults,
     getCimmichPersonAssetsPage,
     getCimmichPersonByName,
+    getCimmichPersonConnections,
     getCimmichPersonCandidates,
     getCimmichPersonProfile,
     getCimmichPersonPresentation,
@@ -74,7 +77,9 @@
     setCimmichPersonPresentation,
     setCimmichPersonSubjectKind,
     unmergeCimmichPeople,
+    undoCimmichContextDecision,
     undoCimmichIdentityCorrection,
+    type CimmichContextFamily,
     type CimmichIdentityCandidate,
     type CimmichIdentityAuditItem,
     type CimmichIdentityCorrectionDiscovery,
@@ -86,6 +91,7 @@
     type CimmichMachineSuggestion,
     type CimmichPerson,
     type CimmichPersonAsset,
+    type CimmichPersonContextConnection,
     type CimmichPersonDetailsDisplay,
     type CimmichPersonDetailsDisplayDefaults,
     type CimmichPersonProfileDisplay,
@@ -132,6 +138,7 @@
     mdiSelectAll,
     mdiSortVariant,
     mdiTagMultipleOutline,
+    mdiTrashCanOutline,
     mdiViewGridOutline,
   } from '@mdi/js';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
@@ -158,12 +165,13 @@
   type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
+    directRelationId?: string;
     displayName: string;
     entityId: string;
     entityKind: 'event' | 'object' | 'person' | 'place';
     metaLabel: string;
     photoCount: number;
-    sourceAssetId: string;
+    sourceAssetId: string | null;
     typeKind: string;
   };
   type PhotoFilter = 'all' | 'body' | 'face' | 'needs';
@@ -290,6 +298,10 @@
   let cimmichDetailsDisplay = $state<CimmichPersonDetailsDisplay>();
   let cimmichPersonVisibility = $state<CimmichVisibilityObject>();
   let cimmichPeopleConnections = $state<CimmichPersonConnection[]>([]);
+  let cimmichDirectContextConnections = $state<CimmichPersonContextConnection[]>([]);
+  let cimmichConnectionError = $state('');
+  let cimmichConnectionSavingId = $state('');
+  let cimmichConnectionUndoDecisionId = $state('');
   let cimmichProfileError = $state('');
   let cimmichSetup = $state<CimmichPersonSetup>();
   let cimmichSetupAliasDraft = $state('');
@@ -417,12 +429,26 @@
   const visibleCimmichAssets = $derived(preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort));
   const cimmichPersonConnections = $derived.by(() => {
     const connections = new SvelteMap<string, CimmichPersonConnection & { assetIds: Set<string> }>();
+    for (const connection of cimmichDirectContextConnections) {
+      connections.set(connection.targetId, {
+        assetIds: new Set(),
+        directRelationId: connection.relationId,
+        displayName: connection.displayName,
+        entityId: connection.targetId,
+        entityKind: connection.targetKind,
+        metaLabel: connection.relationType.replaceAll('_', ' '),
+        photoCount: 0,
+        sourceAssetId: connection.coverAssetId,
+        typeKind: connection.typeKind ?? connection.targetKind,
+      });
+    }
     for (const asset of cimmichAssets) {
       for (const context of asset.contexts) {
         const existing = connections.get(context.entityId);
         if (existing) {
           existing.assetIds.add(asset.asset_id);
           existing.photoCount = existing.assetIds.size;
+          existing.sourceAssetId ||= asset.sourceAssetId;
           continue;
         }
         connections.set(context.entityId, {
@@ -470,6 +496,48 @@
       return `${Route.cimmichPlaces()}?${search.toString()}`;
     }
     return `${entityKind === 'event' ? Route.cimmichEvents() : Route.cimmichPlaces()}?${search.toString()}`;
+  };
+  const removeCimmichPersonConnection = async (connection: CimmichPersonConnection) => {
+    if (!cimmichPerson || !connection.directRelationId || connection.entityKind === 'person') {
+      return;
+    }
+    cimmichConnectionSavingId = connection.directRelationId;
+    cimmichConnectionError = '';
+    try {
+      const result = await detachCimmichContextRelations(
+        `${connection.entityKind}s` as CimmichContextFamily,
+        connection.entityId,
+        createCimmichContextCommandId('person-connection-detach'),
+        [connection.directRelationId],
+      );
+      cimmichDirectContextConnections = await getCimmichPersonConnections(cimmichPerson.person_id);
+      cimmichConnectionUndoDecisionId = result.undo?.eligible ? (result.decisionId ?? '') : '';
+      toastManager.success(`Removed connection to ${connection.displayName}`);
+    } catch (error) {
+      cimmichConnectionError = error instanceof Error ? error.message : 'Unable to remove this connection';
+    } finally {
+      cimmichConnectionSavingId = '';
+    }
+  };
+  const undoCimmichPersonConnection = async () => {
+    if (!cimmichPerson || !cimmichConnectionUndoDecisionId) {
+      return;
+    }
+    cimmichConnectionSavingId = 'undo';
+    cimmichConnectionError = '';
+    try {
+      await undoCimmichContextDecision(
+        cimmichConnectionUndoDecisionId,
+        createCimmichContextCommandId('person-connection-undo'),
+      );
+      cimmichDirectContextConnections = await getCimmichPersonConnections(cimmichPerson.person_id);
+      cimmichConnectionUndoDecisionId = '';
+      toastManager.success('Connection restored');
+    } catch (error) {
+      cimmichConnectionError = error instanceof Error ? error.message : 'Unable to restore this connection';
+    } finally {
+      cimmichConnectionSavingId = '';
+    }
   };
   const loadCimmichPeopleConnections = async (
     personId: string,
@@ -2798,6 +2866,7 @@
       }
       cimmichPerson = row;
       const assetsPromise = getCimmichPersonAssetsPage(row.person_id, 120);
+      const directConnectionsPromise = getCimmichPersonConnections(row.person_id);
       const peoplePromise = getCimmichPeople(500);
       const correctionsPromise = getCimmichIdentityCorrectionDiscovery({ personId: row.person_id }, { limit: 12 });
       const presentationPromise =
@@ -2830,17 +2899,20 @@
       cimmichAssets = assetsPage.items;
       cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichLoadError = '';
-      const [profileProjection, corrections, personVisibility, setupPeople, presentation] = await Promise.all([
-        profilePromise,
-        correctionsPromise,
-        visibilityPromise,
-        peoplePromise,
-        presentationPromise,
-      ]);
+      const [profileProjection, corrections, personVisibility, setupPeople, presentation, directConnections] =
+        await Promise.all([
+          profilePromise,
+          correctionsPromise,
+          visibilityPromise,
+          peoplePromise,
+          presentationPromise,
+          directConnectionsPromise,
+        ]);
       if (generation !== personProjectionGeneration) {
         return;
       }
       cimmichSetupPeople = setupPeople;
+      cimmichDirectContextConnections = directConnections;
       cimmichIdentityCorrections = corrections.items;
       cimmichIdentityUndoDecisionId = corrections.items.find((item) => item.undo.eligible)?.undo.decisionId ?? '';
       cimmichPersonVisibility = personVisibility;
@@ -2883,6 +2955,10 @@
     cimmichPerson = undefined;
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
+    cimmichDirectContextConnections = [];
+    cimmichConnectionError = '';
+    cimmichConnectionSavingId = '';
+    cimmichConnectionUndoDecisionId = '';
     cimmichAssets = [];
     cimmichAssetsNextCursor = null;
     cimmichIdentityLoaded = false;
@@ -3390,6 +3466,29 @@
         </section>
       {:else if cimmichMode === 'connections'}
         <section class="grid gap-4" aria-label="Connections">
+          {#if cimmichConnectionError}
+            <p
+              class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+              role="alert"
+            >
+              {cimmichConnectionError}
+            </p>
+          {/if}
+          {#if cimmichConnectionUndoDecisionId}
+            <div
+              class="flex min-h-11 items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm"
+              aria-live="polite"
+            >
+              <span>Connection removed.</span>
+              <button
+                class="min-h-11 rounded-md px-3 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                type="button"
+                disabled={cimmichConnectionSavingId === 'undo'}
+                onclick={() => void undoCimmichPersonConnection()}
+                >{cimmichConnectionSavingId === 'undo' ? 'Restoring…' : 'Undo'}</button
+              >
+            </div>
+          {/if}
           {#if cimmichPersonConnectionGroups.length > 0}
             <div class="grid gap-7">
               {#each cimmichPersonConnectionGroups as group (group.id)}
@@ -3402,33 +3501,57 @@
                   </div>
                   <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {#each group.items as connection (connection.entityId)}
-                      <a
-                        class="group grid min-h-28 grid-cols-[7rem_1fr] overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-600"
-                        href={cimmichPersonConnectionHref(connection)}
-                      >
-                        <img
-                          class="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
-                          src={getAssetMediaUrl({ id: connection.sourceAssetId, size: AssetMediaSize.Thumbnail })}
-                          alt=""
-                        />
-                        <span class="flex min-w-0 flex-col justify-center p-4">
-                          <span class="text-xs font-semibold tracking-wide text-gray-400 uppercase">
-                            {connection.entityKind === 'person'
-                              ? connection.metaLabel
-                              : connection.typeKind.replaceAll('_', ' ')}
+                      <div class="relative">
+                        <a
+                          class="group grid min-h-28 grid-cols-[7rem_1fr] overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-600"
+                          href={cimmichPersonConnectionHref(connection)}
+                        >
+                          {#if connection.sourceAssetId}
+                            <img
+                              class="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
+                              src={getAssetMediaUrl({ id: connection.sourceAssetId, size: AssetMediaSize.Thumbnail })}
+                              alt=""
+                            />
+                          {:else}
+                            <span
+                              class="flex size-full items-center justify-center bg-primary/10 text-primary"
+                              aria-hidden="true"
+                            >
+                              <Icon icon={mdiShapeOutline} size="30" />
+                            </span>
+                          {/if}
+                          <span class="flex min-w-0 flex-col justify-center p-4 pr-12">
+                            <span class="text-xs font-semibold tracking-wide text-gray-400 uppercase">
+                              {connection.entityKind === 'person'
+                                ? connection.metaLabel
+                                : connection.typeKind.replaceAll('_', ' ')}
+                            </span>
+                            <span class="mt-1 truncate font-semibold">{connection.displayName}</span>
+                            <span class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {#if connection.entityKind === 'person'}
+                                {connection.photoCount.toLocaleString()} shared
+                                {connection.photoCount === 1 ? 'context' : 'contexts'}
+                              {:else if connection.photoCount > 0}
+                                {connection.photoCount.toLocaleString()}
+                                {connection.photoCount === 1 ? 'photo' : 'photos'}
+                              {:else}
+                                {connection.metaLabel || 'Connected'}
+                              {/if}
+                            </span>
                           </span>
-                          <span class="mt-1 truncate font-semibold">{connection.displayName}</span>
-                          <span class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {#if connection.entityKind === 'person'}
-                              {connection.photoCount.toLocaleString()} shared
-                              {connection.photoCount === 1 ? 'context' : 'contexts'}
-                            {:else}
-                              {connection.photoCount.toLocaleString()}
-                              {connection.photoCount === 1 ? 'photo' : 'photos'}
-                            {/if}
-                          </span>
-                        </span>
-                      </a>
+                        </a>
+                        {#if connection.directRelationId}
+                          <button
+                            class="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 dark:bg-immich-dark-gray/90 dark:text-gray-300 dark:hover:bg-red-950 dark:hover:text-red-200"
+                            type="button"
+                            aria-label={`Remove connection to ${connection.displayName}`}
+                            title={`Remove connection to ${connection.displayName}`}
+                            disabled={cimmichConnectionSavingId === connection.directRelationId}
+                            onclick={() => void removeCimmichPersonConnection(connection)}
+                            ><Icon icon={mdiTrashCanOutline} size="18" /></button
+                          >
+                        {/if}
+                      </div>
                     {/each}
                   </div>
                 </section>

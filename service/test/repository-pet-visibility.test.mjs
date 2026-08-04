@@ -32,7 +32,8 @@ test("Pet rows project independent visibility and batch accepted visible context
         {
           cover_asset_id: "asset-cover",
           display_name: "Bluewater Weekend",
-          pet_id: "pet-juniper",
+          relation_id: "relation-bluewater-juniper",
+          subject_id: "pet-juniper",
           relation_kind: "participant",
           target_id: "event-bluewater",
           target_kind: "event",
@@ -41,7 +42,8 @@ test("Pet rows project independent visibility and batch accepted visible context
         {
           cover_asset_id: null,
           display_name: "Willow Community Garden",
-          pet_id: "pet-juniper",
+          relation_id: "relation-willow-juniper",
+          subject_id: "pet-juniper",
           relation_kind: "related",
           target_id: "place-willow",
           target_kind: "place",
@@ -87,6 +89,7 @@ test("Pet rows project independent visibility and batch accepted visible context
       coverAssetId: "source-asset-cover",
       direction: "incoming",
       displayName: "Bluewater Weekend",
+      relationId: "relation-bluewater-juniper",
       relationType: "participant",
       targetId: "event-bluewater",
       targetKind: "event",
@@ -96,6 +99,7 @@ test("Pet rows project independent visibility and batch accepted visible context
       coverAssetId: null,
       direction: "incoming",
       displayName: "Willow Community Garden",
+      relationId: "relation-willow-juniper",
       relationType: "related",
       targetId: "place-willow",
       targetKind: "place",
@@ -125,6 +129,60 @@ test("Pet rows project independent visibility and batch accepted visible context
   );
   assert.match(statements[1], /WHERE position <= 100/);
   assert.doesNotMatch(statements[1], /count\s*\(/i);
+});
+
+test("Person connections project incoming context relations without requiring shared media", async () => {
+  const statements = [];
+  const sql = async (strings, ...values) => {
+    const statement = strings.join("?");
+    statements.push({ statement, values });
+    if (
+      statement.includes("SELECT person_id, subject_kind FROM current_person")
+    ) {
+      return [{ person_id: "person-maya", subject_kind: "person" }];
+    }
+    if (statement.includes("WITH visible_connections")) {
+      return [
+        {
+          cover_asset_id: null,
+          display_name: "Garden notebook",
+          relation_id: "relation-maya-notebook",
+          relation_kind: "companion",
+          subject_id: "person-maya",
+          target_id: "object-garden-notebook",
+          target_kind: "object",
+          type_kind: "journal",
+        },
+      ];
+    }
+    throw new Error(`Unexpected SQL: ${statement}`);
+  };
+  const repository = createCimmichRepository(sql, new Map(), {
+    currentRank: () => 0,
+  });
+
+  const result = await repository.personConnections({
+    personId: "person-maya",
+  });
+
+  assert.deepEqual(result, [
+    {
+      coverAssetId: null,
+      direction: "incoming",
+      displayName: "Garden notebook",
+      relationId: "relation-maya-notebook",
+      relationType: "companion",
+      targetId: "object-garden-notebook",
+      targetKind: "object",
+      typeKind: "journal",
+    },
+  ]);
+  assert.equal(statements[1].values.includes("person"), true);
+  assert.match(statements[1].statement, /link\.target_id = ANY/);
+  assert.match(
+    statements[1].statement,
+    /cimmich_visibility_context_entity_rank\(source\.entity_id\)/,
+  );
 });
 
 test("Pet-bearing identity, search, document and context surfaces use the subject visibility seam", async () => {

@@ -2585,24 +2585,41 @@
       : [...formRecurrenceWeekdays, weekday].sort();
   };
 
-  const removeRelation = async (relationId: string) => {
+  const removeRelation = async (relation: CimmichContextRelation) => {
     if (!selected) {
+      return;
+    }
+    if (relation.direction === 'incoming' && !['event', 'object', 'place'].includes(relation.targetKind)) {
+      error = new CimmichServiceError('This connection cannot be changed from the current record.', {
+        code: 'CONTEXT_RELATION_OWNER_UNAVAILABLE',
+        status: 409,
+      });
       return;
     }
     isSaving = true;
     error = null;
     try {
+      const selectedEntityId = selected.entity.entityId;
+      const ownerFamily =
+        relation.direction === 'incoming' ? (`${relation.targetKind}s` as CimmichContextFamily) : activeFamily;
+      const ownerEntityId = relation.direction === 'incoming' ? relation.targetId : selectedEntityId;
       const result = await detachCimmichContextRelations(
-        activeFamily,
-        selected.entity.entityId,
+        ownerFamily,
+        ownerEntityId,
         createCimmichContextCommandId('relation-detach'),
-        [relationId],
+        [relation.relationId],
       );
+      if (!result.detail) {
+        throw new Error('Connection removal did not return its owning record.');
+      }
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId('relation-undo') : '';
       undoLabel = 'Undo connection change';
       await loadEntities();
-      selected = result.detail;
+      selected =
+        result.detail.entity.entityId === selectedEntityId
+          ? result.detail
+          : await getCimmichContextEntity(activeFamily, selectedEntityId);
     } catch (error_) {
       error = asError(error_);
     } finally {
@@ -3546,8 +3563,7 @@
                     type="button"
                     aria-label={`Remove ${stop.targetName} from trip`}
                     disabled={isSaving}
-                    onclick={() => void removeRelation(stop.relationId)}
-                    ><Icon icon={mdiTrashCanOutline} size="18" /></button
+                    onclick={() => void removeRelation(stop)}><Icon icon={mdiTrashCanOutline} size="18" /></button
                   >
                 </div>
               </li>
@@ -3628,17 +3644,15 @@
                       </div>
                       <div class="context-relation-actions">
                         <button type="button" onclick={() => void goto(contextRelationRoute(relation))}>Show</button>
-                        {#if relation.direction !== 'incoming'}
-                          <button
-                            class="context-relation-remove"
-                            type="button"
-                            aria-label={`Remove connection to ${relation.targetName}`}
-                            title={`Remove connection to ${relation.targetName}`}
-                            disabled={isSaving}
-                            onclick={() => void removeRelation(relation.relationId)}
-                            ><Icon icon={mdiTrashCanOutline} size="17" /></button
-                          >
-                        {/if}
+                        <button
+                          class="context-relation-remove"
+                          type="button"
+                          aria-label={`Remove connection to ${relation.targetName}`}
+                          title={`Remove connection to ${relation.targetName}`}
+                          disabled={isSaving}
+                          onclick={() => void removeRelation(relation)}
+                          ><Icon icon={mdiTrashCanOutline} size="17" /></button
+                        >
                       </div>
                     </li>
                   {/each}

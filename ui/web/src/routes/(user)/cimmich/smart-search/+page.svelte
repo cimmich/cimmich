@@ -97,7 +97,6 @@
     isSearching = true;
     error = null;
     failedQuery = '';
-    result = null;
     try {
       const next = await searchCimmichSmart(nextQuery, 120);
       if (generation !== searchGeneration) {
@@ -110,7 +109,6 @@
       }
       error = asError(error_);
       failedQuery = nextQuery;
-      result = null;
     } finally {
       if (generation === searchGeneration) {
         isSearching = false;

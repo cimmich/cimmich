@@ -54,6 +54,7 @@ services:
       target: production
     image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-api:current-source
     environment:
+      CIMMICH_ALLOWED_HOSTS: ${CIMMICH_ALLOWED_HOSTS:-127.0.0.1,localhost,cimmich-api}
       CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}
       CIMMICH_DOCUMENT_STORE_ROOT: /documents
       CIMMICH_GUIDED_ENABLED: "false"

@@ -191,7 +191,7 @@ describe('Person profile layout', () => {
     expect(projectionEnd).toBeGreaterThan(projectionStart);
     expect(projection).not.toContain('getCimmichMachineSuggestions');
     expect(projection.indexOf('cimmichAssets = assetsPage.items')).toBeLessThan(
-      projection.indexOf('] = await Promise.all(['),
+      projection.indexOf('await Promise.all(['),
     );
     expect(source).toMatch(
       /const openCimmichIdentity = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
@@ -211,6 +211,10 @@ describe('Person profile layout', () => {
     expect(source).toContain("{ id: 'event', label: 'Events' }");
     expect(source).toContain("{ id: 'place', label: 'Places' }");
     expect(source).toContain("{ id: 'object', label: 'Things' }");
+    expect(source).toContain('removeCimmichPersonConnection');
+    expect(source).toContain('undoCimmichPersonConnection');
+    expect(source).toContain('aria-label={`Remove connection to ${connection.displayName}`}');
+    expect(source).toContain('getCimmichPersonConnections(cimmichPerson.person_id)');
     expect(source.indexOf("{ id: 'person', label: 'People' }")).toBeLessThan(
       source.indexOf("{ id: 'event', label: 'Events' }"),
     );
