@@ -11,7 +11,7 @@ library.
 
 ## What the seed creates
 
-- 51 stable Cimmich assets bound to 51 explicit Immich API upload results;
+- 51 stable Cimmich assets bound to 51 files in one read-only Immich External Library;
 - six fictional People, two fictional Pets and one intentional duplicate
   Person for merge/unmerge demonstration;
 - four Places, four Things and four Events/Life shapes with covers,
@@ -28,9 +28,10 @@ library.
 
 Set `CIMMICH_DEMO_ARCHIVE_ROOT` to the complete Cedar House V1 bundle. It must
 contain `media/`, `provenance/manifest.csv`, `shot-ledger.csv`, `LICENSE.md`,
-`NOTICE.md` and `ATTRIBUTION.md`. The uploader verifies every admitted file's
-SHA-256 and synthetic/visual-acceptance declarations before sending it to the
-operator's dedicated demo Immich instance.
+`NOTICE.md` and `ATTRIBUTION.md`. The bootstrap verifies every admitted file's
+SHA-256 and synthetic/visual-acceptance declarations, copies it into a nested
+human-readable External Library and asks the dedicated demo Immich instance to
+scan that read-only library.
 
 The source-controlled copies in this directory let tests and reviewers inspect
 the state contract, prompts, hashes and redistribution notice without requiring

@@ -143,6 +143,17 @@ export const publicDemoGpsForAsset = (publicAssetId) => {
   };
 };
 
+export const publicDemoExternalFolderForAsset = (publicAssetId) => {
+  const sequence = assetSequence(publicAssetId);
+  if (sequence <= 8) return "Cedar House Years/2020/March";
+  if (sequence <= 20) return "Cedar House Years/2020/April";
+  if (sequence <= 30) return "Bluewater Weekend/2022/July";
+  if (sequence <= 38) return "Nora's 70th Birthday/2024/July";
+  if (sequence <= 45) return "Saturday Garden Crew/2025/October";
+  if (sequence <= 50) return "Household Documents/2025/October";
+  return "Bluewater Weekend/2025/October";
+};
+
 const contextCatalog = [
   ["Cedar House", "place", "point", null, "CHA-020"],
   ["Bluewater Beach", "place", "area", null, "CHA-023"],
@@ -219,8 +230,10 @@ export const buildPublicDemoPlan = ({
   if (immichMap.schemaVersion !== publicDemoImmichMapSchemaVersion) {
     throw typedError("Immich map schema is unsupported");
   }
-  if (immichMap.source !== "immich_api_upload") {
-    throw typedError("Public demo requires an explicit Immich API upload map");
+  if (immichMap.source !== "immich_external_library") {
+    throw typedError(
+      "Public demo requires an explicit Immich External Library map",
+    );
   }
   const principalDigest = requiredDigest(
     immichMap.principalDigest,

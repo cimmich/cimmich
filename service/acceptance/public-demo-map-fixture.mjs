@@ -50,7 +50,7 @@ await writeFile(
       immichVersion: "3.1.0",
       principalDigest: digest("cedar-house-disposable-fixture"),
       schemaVersion: publicDemoImmichMapSchemaVersion,
-      source: "immich_api_upload",
+      source: "immich_external_library",
     },
     null,
     2,
