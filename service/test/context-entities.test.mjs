@@ -33,6 +33,7 @@ const eventRow = {
   revision: 1,
   selected_cover_asset_id: "asset-cover",
   status: "active",
+  subtree_asset_count: 11,
 };
 
 test("Related context edges project reciprocally without a duplicate write", async () => {
@@ -72,6 +73,10 @@ test("Event collection projection bounds visible Main previews in the list query
   ]);
   assert.equal(items[0].coverAssetId, "source-asset-cover");
   assert.equal(items[0].coverMode, "explicit");
+  assert.equal(items[0].assetCount, 8);
+  assert.equal(items[0].subtreeAssetCount, 11);
+  assert.match(query, /entity\.entity_kind IN \('place','event'\)/);
+  assert.match(query, /child\.entity_kind = entity\.entity_kind/);
   assert.match(query, /entity\.entity_kind = 'event'/);
   assert.match(query, /link\.association_kind IN \('direct', 'manual'\)/);
   assert.match(query, /cimmich_visibility_asset_rank\(link\.asset_id\) <=/);
