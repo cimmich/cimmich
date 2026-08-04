@@ -63,4 +63,23 @@ describe('Cimmich local Face provider setup', () => {
     await fireEvent.click(getByText('Advanced provider options'));
     expect(getByText('OpenCV model source')).toBeInTheDocument();
   });
+
+  it('keeps Core ready and names a configured provider outage honestly', () => {
+    const { getByRole, getByText } = render(CimmichLocalFaceProvider, {
+      props: {
+        onRefresh: vi.fn(),
+        provider: {
+          providerId: 'opencv-yunet-sface-cpu',
+          reasonCode: 'LOCAL_MEDIA_PROVIDER_UNAVAILABLE',
+          state: 'unavailable',
+        },
+        settings,
+      },
+    });
+
+    expect(getByRole('heading', { name: 'Local provider needs attention' })).toBeInTheDocument();
+    expect(getByText('Unavailable')).toBeInTheDocument();
+    expect(getByText(/Core remains ready/)).toBeInTheDocument();
+    expect(getByText('Restore the configured local provider')).toBeInTheDocument();
+  });
 });

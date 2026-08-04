@@ -11,6 +11,7 @@ describe('Face matching owner presentation', () => {
   it('keeps a disabled provider distinct from missing identity truth', () => {
     expect(
       faceMatchingPresentation({
+        activePack: null,
         automaticIdentityAuthority: 'none',
         basicIdentityTruthRetainedWhenDisabled: true,
         provider: { configured: false },
@@ -24,10 +25,44 @@ describe('Face matching owner presentation', () => {
         schemaVersion: 'cimmich.face-matching-status.v1',
         sourcePack: { activePassed: 0, awaitingReview: 0 },
         state: 'provider_disabled',
-      }),
+      } as CimmichFaceMatchingOperatorStatus),
     ).toMatchObject({
       label: 'Provider off',
       providerLabel: 'No local provider configured',
+      ready: false,
+    });
+  });
+
+  it('keeps an unavailable optional provider distinct from an unconfigured one', () => {
+    expect(
+      faceMatchingPresentation({
+        activePack: null,
+        automaticIdentityAuthority: 'none',
+        basicIdentityTruthRetainedWhenDisabled: true,
+        evidence: { acceptedFaces: 8, analysedFaces: 0, eligibleFaces: 8, providerEmbeddings: 0 },
+        latestPack: null,
+        next: { action: 'configure_provider', reason: 'PROVIDER_UNAVAILABLE' },
+        provider: { configured: false },
+        providerValidation: {
+          providerId: 'opencv-yunet-sface-cpu',
+          reasonCode: 'LOCAL_MEDIA_PROVIDER_UNAVAILABLE',
+          state: 'unavailable',
+        },
+        rebuildQueue: { pending: 0 },
+        review: {
+          enabled: false,
+          humanAcceptanceRequired: true,
+          marginFloor: null,
+          policyVersion: 'cimmich-best-prime-v1',
+          scoreFloor: null,
+        },
+        schemaVersion: 'cimmich.face-matching-status.v1',
+        sourcePack: { activePassed: 0, awaitingReview: 0 },
+        state: 'provider_disabled',
+      } as CimmichFaceMatchingOperatorStatus),
+    ).toMatchObject({
+      label: 'Provider unavailable',
+      providerLabel: 'Configured local provider unavailable',
       ready: false,
     });
   });

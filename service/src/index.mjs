@@ -20,7 +20,7 @@ import { createLocalFaceDetectionWorker } from "./local-face-detection-worker.mj
 import { createLocalFaceRecognitionWorker } from "./local-face-recognition-worker.mjs";
 import { createLocalExistingFaceRecognitionWorker } from "./local-existing-face-recognition-worker.mjs";
 import { createLocalDHashSimilarityProvider } from "./local-dhash-similarity-provider.mjs";
-import { loadLocalMediaProviderRuntime } from "./local-media-provider-runtime.mjs";
+import { loadOptionalLocalMediaProviderRuntime } from "./local-media-provider-runtime.mjs";
 import { loadMatchingProviderRuntime } from "./matching-provider-runtime.mjs";
 import { createMemorySteward } from "./memory-steward.mjs";
 import { createMediaOperator } from "./media-operator.mjs";
@@ -89,7 +89,13 @@ const visibility = createVisibilityService({
     process.env.CIMMICH_VISIBILITY_PRIVATE_MAX_CONCURRENT_UNLOCKS,
 });
 await visibility.initialize();
-const localMediaProvider = await loadLocalMediaProviderRuntime();
+const localMediaProvider = await loadOptionalLocalMediaProviderRuntime();
+if (localMediaProvider.providerReceipt?.state === "unavailable") {
+  console.warn(
+    "Cimmich optional local media provider is unavailable; Basic remains ready",
+    { reasonCode: localMediaProvider.providerReceipt.reasonCode },
+  );
+}
 const matchingProviderRuntime = await loadMatchingProviderRuntime({
   fallbackProvider: localMediaProvider.matchingProvider,
   fallbackReceipt: localMediaProvider.providerReceipt,

@@ -224,6 +224,47 @@ test("provider-disabled status retains Basic truth in one total response shape",
   assert.equal(status.next.action, "configure_provider");
 });
 
+test("provider-unavailable status abstains while retaining Basic truth", async () => {
+  const operator = createFaceMatchingOperator({
+    providerReceipt: {
+      providerId: "opencv-yunet-sface-cpu",
+      reasonCode: "LOCAL_MEDIA_PROVIDER_UNAVAILABLE",
+      state: "unavailable",
+    },
+    repository: {
+      async faceMatchingStatus() {
+        return {
+          automaticIdentityAuthority: "none",
+          basicIdentityTruthRetainedWhenDisabled: true,
+          provider: { configured: false },
+          review: { enabled: false, humanAcceptanceRequired: true },
+          sourcePack: { activePassed: 0, awaitingReview: 0 },
+          state: "provider_disabled",
+        };
+      },
+    },
+    sql: async (strings) => {
+      assert.match(strings.join(""), /current_face_identity/);
+      return [{ accepted_faces: 7 }];
+    },
+  });
+
+  const status = await operator.status();
+  assert.deepEqual(status.evidence, {
+    acceptedFaces: 7,
+    analysedFaces: 0,
+    eligibleFaces: 7,
+    providerEmbeddings: 0,
+  });
+  assert.deepEqual(status.providerValidation, {
+    providerId: "opencv-yunet-sface-cpu",
+    reasonCode: "LOCAL_MEDIA_PROVIDER_UNAVAILABLE",
+    state: "unavailable",
+  });
+  assert.equal(status.next.action, "configure_provider");
+  assert.equal(status.next.reason, "PROVIDER_UNAVAILABLE");
+});
+
 test("provider status separates eligible analysis from usable embeddings", async () => {
   const makeOperator = (analysedFaces, eligibleFaces = 7) =>
     createFaceMatchingOperator({
