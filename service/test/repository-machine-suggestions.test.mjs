@@ -124,7 +124,7 @@ test("Head rescan retains evidence unless the governed winner is the current Per
   assert.match(rescanStatement, /category\.slug IN \('sort', 'holding'\)/);
   assert.match(
     rescanStatement,
-    /LEFT JOIN current_person person ON person\.person_id = winner\.person_id\s+AND person\.status = 'active'\s+AND cimmich_visibility_person_rank\(person\.person_id\)/,
+    /LEFT JOIN current_person person ON person\.person_id = winner\.person_id\s+AND person\.status = 'active'\s+AND person\.subject_kind = 'person'\s+AND cimmich_visibility_person_rank\(person\.person_id\)/,
   );
 });
 
