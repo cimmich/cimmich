@@ -266,7 +266,10 @@ if (phase === "write" || phase === "all") {
     {
       body: {
         assets: [
-          { assetId: "asset_service_fixture", associationKind: "direct" },
+          {
+            assetId: "asset_service_fixture",
+            associationKind: "needs_check",
+          },
           {
             assetId: "asset_identity_fixture",
             associationKind: "needs_check",
@@ -283,7 +286,7 @@ if (phase === "write" || phase === "all") {
   ]);
   assert.deepEqual(
     folderAttached.detail.assets.map((asset) => asset.associationKind).sort(),
-    ["direct", "needs_check"],
+    ["needs_check", "needs_check"],
   );
   const folderAttachUndone = await request(
     `/v1/context/decisions/${folderAttached.decisionId}/undo`,
@@ -294,6 +297,63 @@ if (phase === "write" || phase === "all") {
   );
   assert.deepEqual(folderAttachUndone.detail.entity.sourceFolders, []);
   assert.equal(folderAttachUndone.detail.assets.length, 0);
+  const folderCandidatesReattached = await request(
+    `/v1/events/${folderUndoEvent.detail.entity.entityId}/assets:attach`,
+    {
+      body: {
+        assets: [
+          {
+            assetId: "asset_service_fixture",
+            associationKind: "needs_check",
+          },
+          {
+            assetId: "asset_identity_fixture",
+            associationKind: "needs_check",
+          },
+        ],
+        commandId: "context.assets.folderreview1",
+        sourceFolders: ["/archive/Folder refresh"],
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(
+    folderCandidatesReattached.detail.assets
+      .map((asset) => asset.associationKind)
+      .sort(),
+    ["needs_check", "needs_check"],
+  );
+  const folderCandidatePromoted = await request(
+    `/v1/events/${folderUndoEvent.detail.entity.entityId}/assets:attach`,
+    {
+      body: {
+        assets: [
+          { assetId: "asset_service_fixture", associationKind: "direct" },
+        ],
+        commandId: "context.assets.folderpromote1",
+      },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(
+    folderCandidatePromoted.detail.assets
+      .map((asset) => asset.associationKind)
+      .sort(),
+    ["direct", "needs_check"],
+  );
+  const folderPromotionUndone = await request(
+    `/v1/context/decisions/${folderCandidatePromoted.decisionId}/undo`,
+    {
+      body: { commandId: "context.assets.folderpromoteu1" },
+      method: "POST",
+    },
+  );
+  assert.deepEqual(
+    folderPromotionUndone.detail.assets
+      .map((asset) => asset.associationKind)
+      .sort(),
+    ["needs_check", "needs_check"],
+  );
 
   const assetBody = {
     assets: [
