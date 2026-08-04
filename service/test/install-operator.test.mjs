@@ -191,6 +191,10 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(bundleScript, /cimmich-\$version\.tar\.gz/);
   assert.match(bundleScript, /cimmich-\$version\.zip/);
   assert.match(bundleScript, /SHA256SUMS/);
+  assert.match(bundleScript, /COPYFILE_DISABLE=1/);
+  assert.match(bundleScript, /zip -Xqr/);
+  assert.match(bundleScript, /forbidden AppleDouble metadata/);
+  assert.match(bundleScript, /unzip -Z1/);
   assert.doesNotMatch(bundleScript, /tar .*["']?\$ROOT["']? \./);
   assert.match(agentInstall, /approve that\s+exact scope/);
   assert.match(agentInstall, /Guided V2 starts after Cimmich is running/);
