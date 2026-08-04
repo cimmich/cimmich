@@ -259,11 +259,14 @@ Advanced operators can use the exact-project lifecycle directly:
 
 ```sh
 export CIMMICH_COMPANION_STATE_ROOT=/srv/cimmich/operator
-export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none
 ./tools/companion.sh configure http://host.docker.internal:2283
 ./tools/companion.sh up
 ./tools/companion.sh status
 ```
+
+This keeps the default password-locked Private tier. Turning that lock off is
+an explicit advanced override documented—with its visibility consequence—in
+the installation guide; it is not part of the copy-and-paste default.
 
 Open the loopback URL returned by `status` and sign in with the normal Immich
 account. Cimmich does not create a second user account. Create a dedicated

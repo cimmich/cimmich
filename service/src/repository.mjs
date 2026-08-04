@@ -1270,11 +1270,15 @@ export const createCimmichRepository = (
       visibilityTier: row.visibility_tier || "standard",
     },
   });
-  const loadPetConnections = async (executor, petIds) => {
-    if (!petIds.length) return new Map();
+  const loadSubjectConnections = async (
+    executor,
+    { subjectIds, subjectKind },
+  ) => {
+    if (!subjectIds.length) return new Map();
     const rows = await executor`
       WITH visible_connections AS (
-        SELECT link.target_id AS pet_id, source.entity_id AS target_id,
+        SELECT link.target_id AS subject_id, link.link_id AS relation_id,
+          source.entity_id AS target_id,
           source.entity_kind AS target_kind, source.display_name,
           CASE source.entity_kind
             WHEN 'place' THEN source.place_kind
@@ -1303,25 +1307,27 @@ export const createCimmichRepository = (
             asset.capture_time DESC NULLS LAST, association.asset_id
           LIMIT 1
         ) cover ON true
-        WHERE link.target_kind = 'pet' AND link.target_id = ANY(${petIds})
+        WHERE link.target_kind = ${subjectKind}
+          AND link.target_id = ANY(${subjectIds})
           AND cimmich_visibility_context_entity_rank(source.entity_id)
             <= ${presentationRank()}
       )
-      SELECT pet_id, target_id, target_kind, display_name, type_kind,
+      SELECT subject_id, relation_id, target_id, target_kind, display_name, type_kind,
         relation_kind, cover_asset_id
       FROM visible_connections
       WHERE position <= 100
-      ORDER BY pet_id, target_kind, lower(display_name), target_id, relation_kind
+      ORDER BY subject_id, target_kind, lower(display_name), target_id, relation_kind
     `;
-    const connections = new Map(petIds.map((petId) => [petId, []]));
+    const connections = new Map(subjectIds.map((subjectId) => [subjectId, []]));
     for (const row of rows) {
       const cover = row.cover_asset_id
         ? bridgeFields(bridge, row.cover_asset_id).sourceAssetId || null
         : null;
-      connections.get(row.pet_id)?.push({
+      connections.get(row.subject_id)?.push({
         coverAssetId: cover,
         direction: "incoming",
         displayName: row.display_name || "",
+        relationId: row.relation_id,
         relationType: row.relation_kind,
         targetId: row.target_id,
         targetKind: row.target_kind,
@@ -1374,10 +1380,10 @@ export const createCimmichRepository = (
       ORDER BY coalesce(pet.display_name, pet.person_id), pet.person_id
       LIMIT ${cleanLimit(limit, 100, 500)}
     `;
-    const connections = await loadPetConnections(
-      executor,
-      rows.map((row) => row.person_id),
-    );
+    const connections = await loadSubjectConnections(executor, {
+      subjectIds: rows.map((row) => row.person_id),
+      subjectKind: "pet",
+    });
     return rows.map((row) => ({
       ...projectPetRow(row),
       connections: connections.get(row.person_id) || [],
@@ -3764,6 +3770,18 @@ export const createCimmichRepository = (
 
     clearPeopleHotSnapshot() {
       peopleHotSnapshot.clear();
+    },
+
+    async personConnections({ personId }) {
+      const subject = await requireVisibleSubject(personId);
+      if (subject.subject_kind !== "person") {
+        throw typedError("Cimmich person not found", 404, "PERSON_NOT_FOUND");
+      }
+      const connections = await loadSubjectConnections(sql, {
+        subjectIds: [subject.person_id],
+        subjectKind: "person",
+      });
+      return connections.get(subject.person_id) || [];
     },
 
     async people({

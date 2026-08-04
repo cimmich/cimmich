@@ -423,6 +423,88 @@ try {
     status: 201,
   });
   await request(
+    `/v1/objects/${relatedThing.detail.entity.entityId}/assets:attach`,
+    {
+      body: {
+        assets: [{ assetId: "asset_split_fixture", associationKind: "manual" }],
+        commandId: "context119.person-thing.asset.attach",
+      },
+      method: "POST",
+    },
+  );
+  const personThingAttached = await request(
+    `/v1/objects/${relatedThing.detail.entity.entityId}/relations:attach`,
+    {
+      body: {
+        commandId: "context119.person-thing.attach",
+        relations: [
+          {
+            direction: "outgoing",
+            relationKind: "related",
+            targetId: "person_service_fixture",
+            targetKind: "person",
+          },
+        ],
+      },
+      method: "POST",
+    },
+  );
+  const personThingRelation = personThingAttached.detail.relations.find(
+    (relation) =>
+      relation.targetKind === "person" &&
+      relation.targetId === "person_service_fixture",
+  );
+  assert.ok(personThingRelation);
+  const personConnections = await request(
+    "/v1/people/person_service_fixture/connections",
+  );
+  assert.equal(
+    personConnections.items.some(
+      (connection) =>
+        connection.targetKind === "object" &&
+        connection.targetId === relatedThing.detail.entity.entityId,
+    ),
+    true,
+  );
+  const relationSearch = await request(
+    "/v1/search/smart?q=Synthetic%20Person%20Audit%20Compass&limit=20",
+  );
+  assert.equal(
+    relationSearch.items.some((item) => item.assetId === "asset_split_fixture"),
+    true,
+  );
+  const personThingDetached = await request(
+    `/v1/objects/${relatedThing.detail.entity.entityId}/relations:detach`,
+    {
+      body: {
+        commandId: "context119.person-thing.detach",
+        relationIds: [personThingRelation.relationId],
+      },
+      method: "POST",
+    },
+  );
+  assert.equal(
+    (await request("/v1/people/person_service_fixture/connections")).items.some(
+      (connection) =>
+        connection.targetId === relatedThing.detail.entity.entityId,
+    ),
+    false,
+  );
+  await request(
+    `/v1/context/decisions/${personThingDetached.decisionId}/undo`,
+    {
+      body: { commandId: "context119.person-thing.detach.undo" },
+      method: "POST",
+    },
+  );
+  assert.equal(
+    (await request("/v1/people/person_service_fixture/connections")).items.some(
+      (connection) =>
+        connection.targetId === relatedThing.detail.entity.entityId,
+    ),
+    true,
+  );
+  await request(
     `/v1/objects/${relatedThing.detail.entity.entityId}/relations:attach`,
     {
       body: {
@@ -466,6 +548,7 @@ try {
       eventParentPersistence: true,
       noChangeFamilies: 3,
       reciprocalContextRelations: true,
+      reciprocalPersonContextRelations: true,
       schemaVersion: "cimmich.context-entity.v1",
       updateUndoFamilies: 3,
       visibilityBeforeProjection: true,

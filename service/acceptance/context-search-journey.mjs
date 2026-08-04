@@ -100,6 +100,7 @@ const assertPersisted = async () => {
   );
   assert.deepEqual(search.items.map((item) => item.assetId).sort(), [
     "asset_identity_fixture",
+    "asset_service_fixture",
   ]);
 };
 

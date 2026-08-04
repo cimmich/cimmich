@@ -714,11 +714,14 @@ export type CimmichPetConnection = {
   coverAssetId: string | null;
   direction: 'incoming';
   displayName: string;
+  relationId?: string;
   relationType: string;
   targetId: string;
   targetKind: 'event' | 'object' | 'place';
   typeKind: CimmichContextTypeKind | null;
 };
+
+export type CimmichPersonContextConnection = CimmichPetConnection;
 
 export type CimmichPet = {
   aliases: string[];
@@ -3681,6 +3684,14 @@ export const getCimmichPersonByName = async (name: string, personId = '') => {
   }
   const people = await getCimmichPeople(500, name);
   return people.find((person) => person.display_name.localeCompare(name, undefined, { sensitivity: 'accent' }) === 0);
+};
+
+export const getCimmichPersonConnections = async (personId: string) => {
+  const result = await request<{
+    items: CimmichPersonContextConnection[];
+    schemaVersion: 'cimmich.person-connections.v1';
+  }>(`/v1/people/${encodeURIComponent(personId)}/connections`);
+  return result.items;
 };
 
 export const getCimmichXmpUnresolvedNames = (limit = 24) =>

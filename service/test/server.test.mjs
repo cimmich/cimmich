@@ -88,6 +88,36 @@ test("decision history is visibility-registered and bounded before projection", 
   ]);
 });
 
+test("Person connections are read before the generic Person route", async () => {
+  const calls = [];
+  const repository = {
+    personConnections: async (input) => {
+      calls.push(["connections", input]);
+      return [{ targetId: "object-journal" }];
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const response = await fetch(`${root}/v1/people/person-maya/connections`);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        items: [{ targetId: "object-journal" }],
+        schemaVersion: "cimmich.person-connections.v1",
+      });
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "people"],
+    ["connections", { personId: "person-maya" }],
+  ]);
+});
+
 test("companion routes expose status, explicit visibility pages and exact assets", async () => {
   const calls = [];
   const immichCompanion = {

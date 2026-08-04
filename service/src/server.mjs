@@ -3837,6 +3837,24 @@ export const createCimmichServer = ({
 
       // Keep this generic one-segment route after named People routes such as
       // /merge-preview so a command cannot be mistaken for a Person ID.
+      const personConnectionsMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/connections$/,
+      );
+      if (request.method === "GET" && personConnectionsMatch) {
+        requireProjection("people");
+        sendJson(
+          response,
+          200,
+          {
+            items: await repository.personConnections({
+              personId: decodeURIComponent(personConnectionsMatch[1]),
+            }),
+            schemaVersion: "cimmich.person-connections.v1",
+          },
+          allowedOrigin,
+        );
+        return;
+      }
       const personReadMatch = url.pathname.match(/^\/v1\/people\/([^/]+)$/);
       if (request.method === "GET" && personReadMatch) {
         requireProjection("people");

@@ -141,6 +141,14 @@ test("guided install stops at signed-in preview and documentation separates both
     companionScript,
     /CIMMICH_COMPANION_UI_BIND_ADDRESS[\s\S]*must name one trusted interface/,
   );
+  assert.match(
+    companionScript,
+    /allowed_hosts=127\.0\.0\.1,localhost,cimmich-api[\s\S]*CIMMICH_ALLOWED_HOSTS/,
+  );
+  assert.doesNotMatch(
+    readme,
+    /export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=none/,
+  );
   assert.match(script, /Checking that Docker can reach Immich/);
   assert.match(script, /No Cimmich state was created/);
   assert.match(script, /command -v lsof/);
@@ -149,6 +157,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(script, /Docker storage may be elsewhere/);
   assert.match(compose, /environment:\s+PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
   assert.match(compose, /CIMMICH_COMPANION_UI_BIND_ADDRESS:-127\.0\.0\.1/);
+  assert.match(compose, /CIMMICH_ALLOWED_HOSTS:/);
   assert.match(
     gateway,
     /location \/cimmich-api\/[\s\S]*auth_request \/_cimmich_immich_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,

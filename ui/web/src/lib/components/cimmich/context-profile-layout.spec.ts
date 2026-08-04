@@ -35,6 +35,10 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain('formRecurrenceEnabled = reusableEventDefaults.recurrenceEnabled;');
     expect(source).toContain('When this thing belonged in your life');
     expect(source).toContain('<span>From <small>Optional</small></span>');
+    expect(source).toContain("relation.direction === 'incoming'");
+    expect(source).toContain('await getCimmichContextEntity(activeFamily, selectedEntityId)');
+    expect(source).toContain('onclick={() => void removeRelation(relation)}');
+    expect(source).not.toContain("{#if relation.direction !== 'incoming'}");
   });
 
   it('puts tab-specific work beside the tab rail and record maintenance in the editor', async () => {

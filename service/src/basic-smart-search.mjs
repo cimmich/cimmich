@@ -543,9 +543,12 @@ export const createBasicSmartSearch = (
     let rows = [];
     if (assetSelectors.length) {
       rows = await sql`
-        WITH RECURSIVE selected_selector(selector_index, selector_kind, ids) AS (
+        WITH RECURSIVE selected_selector(
+          selector_index, selector_kind, entity_kind, ids
+        ) AS (
           SELECT selected.ordinality::int,
-            selected.selector->>'selectorKind', selected.selector->'ids'
+            selected.selector->>'selectorKind',
+            selected.selector->>'entityKind', selected.selector->'ids'
           FROM jsonb_array_elements(${selectorJson}) WITH ORDINALITY
             AS selected(selector, ordinality)
         ),
@@ -584,6 +587,21 @@ export const createBasicSmartSearch = (
               SELECT jsonb_array_elements_text(selector.ids)
             )
             AND association.authority_state = 'accepted'
+          WHERE selector.selector_kind = 'subject'
+          UNION
+          SELECT selector.selector_index, association.asset_id
+          FROM selected_selector selector
+          JOIN current_context_relation relation
+            ON relation.target_kind = selector.entity_kind
+            AND relation.target_id IN (
+              SELECT jsonb_array_elements_text(selector.ids)
+            )
+          JOIN context_entity source ON source.entity_id = relation.entity_id
+            AND source.status = 'active'
+            AND cimmich_visibility_context_entity_rank(source.entity_id)
+              <= ${visibleRank}
+          JOIN current_context_asset association
+            ON association.entity_id = source.entity_id
           WHERE selector.selector_kind = 'subject'
           UNION
           SELECT target.selector_index, association.asset_id

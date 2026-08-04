@@ -144,6 +144,10 @@ configure() {
   ' || fail "Cimmich UI bind address must be an IPv4 address"
   test "$ui_bind_address" != "0.0.0.0" ||
     fail "Cimmich UI bind address must name one trusted interface"
+  allowed_hosts=127.0.0.1,localhost,cimmich-api
+  if test "$ui_bind_address" != 127.0.0.1; then
+    allowed_hosts="$allowed_hosts,$ui_bind_address"
+  fi
   validate_source_id "$source_id"
   case "$private_lock_mode" in
     none|password) ;;
@@ -172,6 +176,7 @@ configure() {
     printf 'CIMMICH_COMPANION_API_PORT=%s\n' "$api_port"
     printf 'CIMMICH_COMPANION_UI_PORT=%s\n' "$ui_port"
     printf 'CIMMICH_COMPANION_UI_BIND_ADDRESS=%s\n' "$ui_bind_address"
+    printf 'CIMMICH_ALLOWED_HOSTS=%s\n' "$allowed_hosts"
     printf 'CIMMICH_IMMICH_SOURCE_ID=%s\n' "$source_id"
     printf 'CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=%s\n' "$private_lock_mode"
     printf 'CIMMICH_DB_PASSWORD=%s\n' "$database_password"
