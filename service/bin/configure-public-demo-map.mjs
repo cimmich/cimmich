@@ -43,7 +43,7 @@ const requestJson = async (
 
 const immichMap = JSON.parse(await readFile(mapPath, "utf8"));
 assert.equal(immichMap.schemaVersion, publicDemoImmichMapSchemaVersion);
-assert.equal(immichMap.source, "immich_api_upload");
+assert.equal(immichMap.source, "immich_external_library");
 assert.equal(immichMap.assets.length, 50);
 assert.equal(new Set(immichMap.assets.map((asset) => asset.assetId)).size, 50);
 

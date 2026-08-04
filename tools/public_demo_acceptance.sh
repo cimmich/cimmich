@@ -79,7 +79,7 @@ assert_restore_rejected_preserves_state() {
 
 rewrite_checksums() {
   backup_root=$1
-  (cd "$backup_root" && sha256sum cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
+  (cd "$backup_root" && sha256sum cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz external-library.tgz operator-state.tgz manifest.txt > SHA256SUMS)
 }
 
 build_portable_backup_copy() {

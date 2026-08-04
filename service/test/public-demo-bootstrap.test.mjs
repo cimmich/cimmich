@@ -7,6 +7,7 @@ import {
   buildPublicDemoPlan,
   digest,
   parseCsv,
+  publicDemoExternalFolderForAsset,
   publicDemoGpsForAsset,
   publicDemoImmichMapSchemaVersion,
   publicDemoSeedSchemaVersion,
@@ -53,7 +54,7 @@ const mapFixture = () => ({
   immichVersion: "3.1.0",
   principalDigest: digest("cedar-house-demo-principal"),
   schemaVersion: publicDemoImmichMapSchemaVersion,
-  source: "immich_api_upload",
+  source: "immich_external_library",
 });
 
 test("CSV parser preserves quoted Cedar House manifest fields", () => {
@@ -139,6 +140,25 @@ test("public demo GPS is deterministic, fictional and absent from Document artwo
   assert.equal(
     manifestRows.filter((row) => publicDemoGpsForAsset(row.asset_id)).length,
     46,
+  );
+});
+
+test("public demo External Library has stable, human-readable nested folders", () => {
+  assert.equal(
+    publicDemoExternalFolderForAsset("CHA-001"),
+    "Cedar House Years/2020/March",
+  );
+  assert.equal(
+    publicDemoExternalFolderForAsset("CHA-030"),
+    "Bluewater Weekend/2022/July",
+  );
+  assert.equal(
+    publicDemoExternalFolderForAsset("CHA-031"),
+    "Nora's 70th Birthday/2024/July",
+  );
+  assert.equal(
+    publicDemoExternalFolderForAsset("CHA-051"),
+    "Bluewater Weekend/2025/October",
   );
 });
 
@@ -230,11 +250,18 @@ test("demo tooling contains no workspace-specific default outside its test fixtu
     path.join(serviceRoot, "bin", "bootstrap-public-demo-immich.mjs"),
     "utf8",
   );
+  const externalLibrarySource = await readFile(
+    path.join(serviceRoot, "bin", "prepare-public-demo-external-library.mjs"),
+    "utf8",
+  );
   assert.doesNotMatch(source, /\/Users\/mb|Benji|RUI\/Core/);
   assert.doesNotMatch(immichSource, /\/Users\/mb|Benji|RUI\/Core/);
+  assert.doesNotMatch(externalLibrarySource, /\/Users\/mb|Benji|RUI\/Core/);
   assert.doesNotMatch(source, /requires schema \d+/);
   assert.match(source, /loadMigrations/);
   assert.match(source, /filenameAuthority: "canonical_source"/);
+  assert.match(immichSource, /source: "immich_external_library"/);
+  assert.match(externalLibrarySource, /manifestRows\.length, 51/);
 });
 
 test("public demo stop and restart preserve state while destruction is explicit", async () => {

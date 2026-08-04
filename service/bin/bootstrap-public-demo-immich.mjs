@@ -20,6 +20,7 @@ const requiredPath = (name) => {
   return path.resolve(value);
 };
 const archiveRoot = requiredPath("CIMMICH_DEMO_ARCHIVE_ROOT");
+const externalLibraryRoot = requiredPath("CIMMICH_DEMO_EXTERNAL_LIBRARY_ROOT");
 const mapPath = requiredPath("CIMMICH_DEMO_IMMICH_MAP_PATH");
 const credentialPath = requiredPath("CIMMICH_DEMO_IMMICH_CREDENTIAL_PATH");
 
@@ -142,6 +143,42 @@ const key = await requestJson("/api-keys", {
 });
 assert.equal(typeof key.secret, "string");
 
+const library = await requestJson("/libraries", {
+  body: {
+    importPaths: [externalLibraryRoot],
+    name: "Cedar House Stories",
+    ownerId: login.userId,
+  },
+  token: login.accessToken,
+});
+assert.equal(typeof library.id, "string");
+await requestJson(`/libraries/${library.id}/scan`, {
+  token: login.accessToken,
+});
+
+let scannedAssets = [];
+for (let attempt = 0; attempt < 180; attempt += 1) {
+  const search = await requestJson("/search/metadata", {
+    body: { libraryId: library.id, size: 100, withExif: true },
+    token: login.accessToken,
+  });
+  const items = Array.isArray(search?.assets?.items) ? search.assets.items : [];
+  if (search?.assets?.total === 51 && items.length === 51) {
+    scannedAssets = items;
+    break;
+  }
+  await wait(1000);
+}
+if (scannedAssets.length !== 51) {
+  throw new Error("Public demo External Library did not discover 51 assets");
+}
+const scannedByFilename = new Map(
+  scannedAssets.map((asset) => [asset.originalFileName, asset]),
+);
+if (scannedByFilename.size !== 51) {
+  throw new Error("Public demo External Library filenames are not unique");
+}
+
 const assets = [];
 for (const [index, row] of manifestRows.entries()) {
   const publicAssetId = row.asset_id;
@@ -164,41 +201,26 @@ for (const [index, row] of manifestRows.entries()) {
   );
 
   const capturedAt = captureTimeFor(index + 1);
-  const form = new FormData();
-  form.append(
-    "assetData",
-    new Blob([bytes], { type: "image/png" }),
-    row.filename,
-  );
-  form.append("deviceAssetId", `cimmich-demo-${publicAssetId}`);
-  form.append("deviceId", "cimmich-cedar-house-v1");
-  form.append("fileCreatedAt", capturedAt);
-  form.append("fileModifiedAt", capturedAt);
-  form.append("visibility", "timeline");
-  const uploadResponse = await fetch(`${apiRoot}/assets`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${login.accessToken}` },
-    body: form,
-  });
-  const upload = await uploadResponse.json().catch(() => null);
-  if (
-    ![200, 201].includes(uploadResponse.status) ||
-    typeof upload?.id !== "string"
-  ) {
-    throw new Error(`Public demo upload failed for ${publicAssetId}`);
+  const scanned = scannedByFilename.get(row.filename);
+  if (!scanned || typeof scanned.id !== "string") {
+    throw new Error(`Public demo External Library missed ${publicAssetId}`);
+  }
+  const expectedPathPrefix = `${externalLibraryRoot}${path.sep}`;
+  if (!String(scanned.originalPath || "").startsWith(expectedPathPrefix)) {
+    throw new Error(
+      `Public demo External Library path drift for ${publicAssetId}`,
+    );
   }
   const gps = publicDemoGpsForAsset(publicAssetId);
-  if (gps) {
-    await requestJson(`/assets/${upload.id}`, {
-      body: gps,
-      method: "PUT",
-      token: login.accessToken,
-    });
-  }
+  await requestJson(`/assets/${scanned.id}`, {
+    body: { dateTimeOriginal: capturedAt, ...(gps || {}) },
+    method: "PUT",
+    token: login.accessToken,
+  });
   const expectedHeight = Number.parseInt(row.height, 10);
   const expectedWidth = Number.parseInt(row.width, 10);
   const projected = await stableAssetProjection({
-    assetId: upload.id,
+    assetId: scanned.id,
     expectedHeight,
     expectedWidth,
     token: login.accessToken,
@@ -217,7 +239,7 @@ for (const [index, row] of manifestRows.entries()) {
     assetId: publicAssetId,
     checksum: row.sha256,
     height: expectedHeight,
-    immichAssetId: upload.id,
+    immichAssetId: scanned.id,
     inputRevision,
     sourceUpdatedAt: projected.updatedAt,
     width: expectedWidth,
@@ -236,7 +258,7 @@ await writeFile(
       immichVersion,
       principalDigest,
       schemaVersion: publicDemoImmichMapSchemaVersion,
-      source: "immich_api_upload",
+      source: "immich_external_library",
     },
     null,
     2,

@@ -21,6 +21,7 @@ OPERATOR_ENV="$STATE_ROOT/operator.env"
 BOOTSTRAP_ENV="$STATE_ROOT/bootstrap.env"
 PRIVATE_PASSWORD_FILE="$STATE_ROOT/private-password"
 GUIDED_TOKEN_FILE="$STATE_ROOT/guided-token"
+EXTERNAL_LIBRARY_ROOT="$STATE_ROOT/external-library"
 
 fail() {
   printf 'public-demo: %s\n' "$1" >&2
@@ -472,6 +473,8 @@ backup() {
     -v "${PROJECT}_cimmich-face-models:/source:ro" \
     -v "$backup_staging:/backup" \
     alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce tar -czf /backup/cimmich-face-models.tgz -C /source .
+  test -d "$EXTERNAL_LIBRARY_ROOT" || fail "public demo External Library is missing"
+  tar -czf "$backup_staging/external-library.tgz" -C "$EXTERNAL_LIBRARY_ROOT" .
   operator_state_members=".cimmich-public-demo operator.env private-password guided-token immich-map.json immich-credential.json seed-receipt.json display-bridge.json"
   if test -s "$STATE_ROOT/immich-guided-credential.json"; then
     operator_state_members="$operator_state_members immich-guided-credential.json"
@@ -480,6 +483,7 @@ backup() {
   tar -czf "$backup_staging/operator-state.tgz" -C "$STATE_ROOT" $operator_state_members
   validate_tar_members "$backup_staging/immich-library.tgz"
   validate_tar_members "$backup_staging/cimmich-documents.tgz"
+  validate_tar_members "$backup_staging/external-library.tgz"
   validate_tar_members "$backup_staging/operator-state.tgz"
 
   compose up -d
@@ -492,7 +496,7 @@ backup() {
   test "$backup_counts_after" = "$backup_counts_before" || fail "demo semantic counts changed during backup"
   printf 'project=%s\nschema_version=%s\nsemantic_counts_before=%s\nsemantic_counts_after=%s\n' \
     "$PROJECT" "$backup_schema_version" "$backup_counts_before" "$backup_counts_after" > "$backup_staging/manifest.txt"
-  (cd "$backup_staging" && sha256_generate cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt > SHA256SUMS)
+  (cd "$backup_staging" && sha256_generate cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz external-library.tgz operator-state.tgz manifest.txt > SHA256SUMS)
   chmod 600 "$backup_staging"/*
   mv "$backup_staging" "$backup_path"
   backup_complete=1
@@ -573,7 +577,7 @@ validate_backup() {
   backup_path=$1
   validate_backup_path "$backup_path"
   test -d "$backup_path" || fail "backup directory does not exist"
-  for filename in cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz operator-state.tgz manifest.txt SHA256SUMS; do
+  for filename in cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz external-library.tgz operator-state.tgz manifest.txt SHA256SUMS; do
     test -s "$backup_path/$filename" || fail "backup is incomplete: $filename"
   done
   test "$(wc -l < "$backup_path/manifest.txt" | tr -d ' ')" = 4 || fail "backup manifest is invalid"
@@ -593,13 +597,14 @@ validate_backup() {
   validate_semantic_counts "$backup_counts_after"
   test "$BACKUP_SEMANTIC_COUNTS" = "$backup_counts_after" || fail "backup semantic counts changed during capture"
   checksum_names=$(awk 'NF == 2 && $1 ~ /^[0-9a-f]{64}$/ && $2 !~ /\// { print $2 }' "$backup_path/SHA256SUMS" | sort | tr '\n' ':')
-  test "$checksum_names" = "cimmich-documents.tgz:cimmich-face-models.tgz:cimmich.dump:immich-library.tgz:immich.dump:manifest.txt:operator-state.tgz:" ||
+  test "$checksum_names" = "cimmich-documents.tgz:cimmich-face-models.tgz:cimmich.dump:external-library.tgz:immich-library.tgz:immich.dump:manifest.txt:operator-state.tgz:" ||
     fail "backup checksum manifest is invalid"
-  test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" = 7 || fail "backup checksum manifest is invalid"
+  test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" = 8 || fail "backup checksum manifest is invalid"
   (cd "$backup_path" && sha256_verify_manifest SHA256SUMS >/dev/null) || fail "backup checksum verification failed"
   validate_tar_members "$backup_path/immich-library.tgz"
   validate_tar_members "$backup_path/cimmich-documents.tgz"
   validate_tar_members "$backup_path/cimmich-face-models.tgz"
+  validate_tar_members "$backup_path/external-library.tgz"
   validate_tar_members "$backup_path/operator-state.tgz"
   backup_members=$(tar -tzf "$backup_path/operator-state.tgz" | sort | tr '\n' ':')
   case "$backup_members" in
@@ -630,6 +635,9 @@ restore() {
   umask 077
   mkdir -p "$STATE_ROOT"
   tar -xzf "$backup_path/operator-state.tgz" -C "$STATE_ROOT"
+  mkdir -p "$EXTERNAL_LIBRARY_ROOT"
+  tar -xzf "$backup_path/external-library.tgz" -C "$EXTERNAL_LIBRARY_ROOT"
+  chmod 755 "$EXTERNAL_LIBRARY_ROOT"
   ensure_guided_token
   verify_sentinel
   load_environment
@@ -817,7 +825,7 @@ up() {
     verify_sentinel
     load_environment
     ensure_guided_token
-    test -s "$STATE_ROOT/seed-receipt.json" && test -s "$STATE_ROOT/display-bridge.json" && test -s "$STATE_ROOT/immich-credential.json" && test -s "$PRIVATE_PASSWORD_FILE" && test -s "$GUIDED_TOKEN_FILE" ||
+    test -s "$STATE_ROOT/seed-receipt.json" && test -s "$STATE_ROOT/display-bridge.json" && test -s "$STATE_ROOT/immich-credential.json" && test -s "$PRIVATE_PASSWORD_FILE" && test -s "$GUIDED_TOKEN_FILE" && test "$(find "$EXTERNAL_LIBRARY_ROOT" -type f -name '*.png' | wc -l | tr -d ' ')" = 51 ||
       fail "partial demo state found; recover with: tools/public_demo.sh reset --confirm=$PROJECT"
     compose up -d
     wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
@@ -836,6 +844,12 @@ up() {
   # before the first one-shot bootstrap container so Compose never attempts to
   # pull the local current-source tag from a registry.
   compose build cimmich-api
+  compose --profile bootstrap run --rm --no-deps \
+    -e CIMMICH_DEMO_ARCHIVE_ROOT=/demo-archive \
+    -e CIMMICH_DEMO_EXTERNAL_LIBRARY_ROOT=/demo-state/external-library \
+    -v "$STATE_ROOT:/demo-state" \
+    -v "$ARCHIVE_ROOT:/demo-archive:ro" \
+    cimmich-bootstrap node bin/prepare-public-demo-external-library.mjs >/dev/null
   compose up -d --wait immich-database immich-redis immich-machine-learning immich-server cimmich-database
   wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
   version=$(curl -fsS "http://127.0.0.1:$IMMICH_PORT/api/server/version")
@@ -853,6 +867,7 @@ up() {
     --env-from-file "$BOOTSTRAP_ENV" \
     -e IMMICH_API_URL=http://immich-server:2283/api \
     -e CIMMICH_DEMO_ARCHIVE_ROOT=/demo-archive \
+    -e CIMMICH_DEMO_EXTERNAL_LIBRARY_ROOT=/external/cedar-house \
     -e CIMMICH_DEMO_IMMICH_MAP_PATH=/demo-state/immich-map.json \
     -e CIMMICH_DEMO_IMMICH_CREDENTIAL_PATH=/demo-state/immich-credential.json \
     -v "$STATE_ROOT:/demo-state" \
@@ -903,6 +918,9 @@ destroy_exact() {
       "$STATE_ROOT/immich-guided-credential.json" \
       "$STATE_ROOT/seed-receipt.json" "$STATE_ROOT/display-bridge.json" \
       "$BOOTSTRAP_ENV" "$OPERATOR_ENV" "$PRIVATE_PASSWORD_FILE" "$GUIDED_TOKEN_FILE" "$SENTINEL"
+    if test -d "$EXTERNAL_LIBRARY_ROOT"; then
+      rm -rf "$EXTERNAL_LIBRARY_ROOT"
+    fi
     if test -n "$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)"; then
       fail "state root contains unrecognized files; refusing to remove it"
     fi

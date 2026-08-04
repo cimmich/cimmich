@@ -5,6 +5,7 @@ services:
     image: ghcr.io/immich-app/immich-server:v3.1.0@sha256:b434cb9287eea1471c9974845914d4dd328c9c2d652e446ed4930f99944f0ceb
     volumes:
       - immich-library:/data
+      - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/external-library:/external/cedar-house:ro
       - /etc/localtime:/etc/localtime:ro
     environment:
       DB_HOSTNAME: immich-database
