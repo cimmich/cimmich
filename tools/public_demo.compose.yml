@@ -155,6 +155,7 @@ services:
       CIMMICH_LOCAL_PYTHON_PATH: /usr/bin/python3
       CIMMICH_OPENCV_DETECTOR_MODEL_PATH: /provider-models/face_detection_yunet_2023mar.onnx
       CIMMICH_OPENCV_RECOGNIZER_MODEL_PATH: /provider-models/face_recognition_sface_2021dec.onnx
+      CIMMICH_OPTIONAL_EGRESS_ENABLED: ${CIMMICH_OPTIONAL_EGRESS_ENABLED:-false}
       PORT: "3101"
     healthcheck:
       test:

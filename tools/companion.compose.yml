@@ -71,6 +71,7 @@ services:
       CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH: /face-provider/recognizer.onnx
       CIMMICH_OPENCV_DETECTOR_MODEL_PATH: /face-provider/face_detection_yunet_2023mar.onnx
       CIMMICH_OPENCV_RECOGNIZER_MODEL_PATH: /face-provider/face_recognition_sface_2021dec.onnx
+      CIMMICH_OPTIONAL_EGRESS_ENABLED: ${CIMMICH_OPTIONAL_EGRESS_ENABLED:-false}
       CIMMICH_RUNTIME_MODE: production
       CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: ${CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE:-password}
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich

@@ -200,6 +200,7 @@ export const createCimmichServer = ({
   immichOnboarding,
   mediaOperator,
   memorySteward,
+  optionalEgressEnabled = true,
   repository,
   satelliteTileFetch = globalThis.fetch,
   surfacePolicy = "combined",
@@ -358,6 +359,12 @@ export const createCimmichServer = ({
         request.method === "GET" &&
         url.pathname === "/v1/geocoding/addresses"
       ) {
+        if (!optionalEgressEnabled) {
+          throw Object.assign(new Error("Optional network lookups are off"), {
+            code: "OPTIONAL_EGRESS_DISABLED",
+            statusCode: 503,
+          });
+        }
         if (!addressGeocoder) {
           throw Object.assign(new Error("Address search is unavailable"), {
             code: "ADDRESS_GEOCODING_UNAVAILABLE",
@@ -1077,6 +1084,12 @@ export const createCimmichServer = ({
         /^\/v1\/map\/satellite\/(\d+)\/(\d+)\/(\d+)$/,
       );
       if (request.method === "GET" && satelliteTileMatch) {
+        if (!optionalEgressEnabled) {
+          throw Object.assign(new Error("Optional network lookups are off"), {
+            code: "OPTIONAL_EGRESS_DISABLED",
+            statusCode: 503,
+          });
+        }
         const zoom = Number(satelliteTileMatch[1]);
         const tileY = Number(satelliteTileMatch[2]);
         const tileX = Number(satelliteTileMatch[3]);

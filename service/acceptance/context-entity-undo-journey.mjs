@@ -389,7 +389,7 @@ try {
   const eventParent = await request("/v1/events", {
     body: {
       commandId: "context119.event-parent.create",
-      displayName: "Pink Palace life period",
+      displayName: "Cedar House life period",
       typeKind: "life_period",
     },
     method: "POST",
@@ -398,7 +398,7 @@ try {
   const eventChild = await request("/v1/events", {
     body: {
       commandId: "context119.event-child.create",
-      displayName: "Pink Palace June 2015",
+      displayName: "Cedar House June 2015",
       parentEntityId: eventParent.detail.entity.entityId,
       typeKind: "event",
     },
