@@ -998,14 +998,14 @@ const loadEntities = async (
         WHERE child.parent_entity_id = entity.entity_id
           AND child.status = 'active'
           AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}), 0)::int AS child_count,
-      CASE WHEN entity.entity_kind = 'place' THEN coalesce((
+      CASE WHEN entity.entity_kind IN ('place','event') THEN coalesce((
         WITH RECURSIVE descendants(entity_id) AS (
           SELECT entity.entity_id
           UNION ALL
           SELECT child.entity_id
           FROM context_entity child
           JOIN descendants parent ON child.parent_entity_id = parent.entity_id
-          WHERE child.entity_kind = 'place' AND child.status = 'active'
+          WHERE child.entity_kind = entity.entity_kind AND child.status = 'active'
             AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}
         )
         SELECT count(DISTINCT link.asset_id)::int

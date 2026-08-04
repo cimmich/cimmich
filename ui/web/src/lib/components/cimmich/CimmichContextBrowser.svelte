@@ -72,7 +72,7 @@
   import { AssetMediaSize, getMapMarkers, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { Icon, toastManager } from '@immich/ui';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import {
     mdiArrowLeft,
     mdiArrowRight,
@@ -167,6 +167,7 @@
   let error = $state<CimmichServiceError | null>(null);
   let loaded = $state(false);
   let query = $state('');
+  let collectionSearchTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   let selected = $state<CimmichContextDetail | null>(null);
   let selectedPlacePlans = $state<CimmichPlacePlanRecord[]>([]);
   let selectedGeographyGroup = $state('');
@@ -848,6 +849,28 @@
       }
     }
   };
+
+  const clearCollectionSearchTimeout = () => {
+    if (collectionSearchTimeout) {
+      globalThis.clearTimeout(collectionSearchTimeout);
+      collectionSearchTimeout = undefined;
+    }
+  };
+
+  const queueCollectionSearch = () => {
+    clearCollectionSearchTimeout();
+    collectionSearchTimeout = globalThis.setTimeout(() => {
+      collectionSearchTimeout = undefined;
+      void loadEntities({ preserveCollection: true });
+    }, 250);
+  };
+
+  const submitCollectionSearch = () => {
+    clearCollectionSearchTimeout();
+    void loadEntities({ preserveCollection: true });
+  };
+
+  onDestroy(clearCollectionSearchTimeout);
 
   const closeDetail = () => {
     selected = null;
@@ -2898,7 +2921,7 @@
               role="search"
               onsubmit={(event) => {
                 event.preventDefault();
-                void loadEntities();
+                submitCollectionSearch();
               }}
             >
               <label class="relative block">
@@ -2912,6 +2935,7 @@
                   class="h-11 w-full rounded-xl border border-gray-200 bg-white pr-3 pl-10 text-sm outline-none focus:border-primary dark:border-gray-700 dark:bg-gray-900"
                   bind:value={query}
                   maxlength="500"
+                  oninput={queueCollectionSearch}
                   placeholder={`Search ${contextFamilyLabels[activeFamily].toLowerCase()}`}
                 />
               </label>
@@ -3190,14 +3214,16 @@
           </div>
           <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {#each selectedEventChildren as child (child.entityId)}
+              {@const nestedItemCount = child.subtreeAssetCount ?? child.assetCount}
               <a
                 class="rounded-2xl bg-gray-50 p-4 transition hover:bg-primary/10 dark:bg-gray-800/70"
                 href={getContextDetailHref(page.url, 'events', child.entityId, child.displayName)}
               >
                 <strong class="block">{child.displayName}</strong>
                 <span class="mt-1 block text-xs text-gray-500"
-                  >{contextTypeLabel(child.typeKind)} · {child.assetCount}
-                  {child.assetCount === 1 ? 'item' : 'items'}</span
+                  >{contextTypeLabel(child.typeKind)} · {child.assetCount} direct
+                  {child.assetCount === 1 ? 'item' : 'items'}{#if nestedItemCount > child.assetCount}
+                    · {nestedItemCount} including nested moments{/if}</span
                 >
               </a>
             {/each}
