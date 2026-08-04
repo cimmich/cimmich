@@ -51,7 +51,9 @@ const [releaseMigrations, releasePatches] = await Promise.all([
 ]);
 const expectedSchemaVersion = releaseMigrations.at(-1)?.version || 0;
 
-const addressGeocoder = createAddressGeocoder();
+const optionalEgressEnabled =
+  process.env.CIMMICH_OPTIONAL_EGRESS_ENABLED === "true";
+const addressGeocoder = optionalEgressEnabled ? createAddressGeocoder() : null;
 const immichCompanion = await createImmichCompanionManager({
   apiBaseUrl: process.env.IMMICH_API_URL || "",
   apiKey: process.env.IMMICH_API_KEY || "",
@@ -269,6 +271,7 @@ const serverDependencies = {
   mediaOperator,
   memorySteward,
   repository,
+  optionalEgressEnabled,
   visibility,
 };
 const server = createCimmichServer({

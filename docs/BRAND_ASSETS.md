@@ -2,8 +2,8 @@
 
 The Cimmich astronaut mark and four-colour focus frame are original project
 assets created for the Cimmich OpenAI Build Week release. The astronaut artwork
-was generated under Benji Hart's direction using OpenAI image generation, then
-selected and refined for this project.
+was generated with OpenAI image generation, then selected and refined for this
+project.
 
 The mark is not an Immich, OpenAI, NASA or Build Week logo and does not imply
 affiliation or endorsement. The surrounding colours are an original

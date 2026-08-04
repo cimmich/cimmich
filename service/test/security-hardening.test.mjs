@@ -86,6 +86,12 @@ test("local runtime secrets, images and browser response headers are hardened", 
     );
   }
   assert.match(publicDemoCompose, /PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
+  for (const compose of [companionCompose, publicDemoCompose]) {
+    assert.match(
+      compose,
+      /CIMMICH_OPTIONAL_EGRESS_ENABLED: \$\{CIMMICH_OPTIONAL_EGRESS_ENABLED:-false\}/,
+    );
+  }
   for (const image of [
     "ghcr.io/immich-app/immich-server:v3.1.0",
     "ghcr.io/immich-app/immich-machine-learning:v3.1.0",

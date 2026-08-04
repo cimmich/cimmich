@@ -443,6 +443,29 @@ test("satellite map tiles are same-origin, bounded and cacheable", async () => {
   ]);
 });
 
+test("zero-egress mode refuses address and satellite provider requests", async () => {
+  const calls = [];
+  await withServer(
+    {},
+    async (root) => {
+      for (const path of [
+        "/v1/geocoding/addresses?q=River%20Street&limit=5",
+        "/v1/map/satellite/1/0/0",
+      ]) {
+        const response = await fetch(`${root}${path}`);
+        assert.equal(response.status, 503);
+        assert.equal((await response.json()).code, "OPTIONAL_EGRESS_DISABLED");
+      }
+    },
+    {
+      addressGeocoder: { search: async () => calls.push("address") },
+      optionalEgressEnabled: false,
+      satelliteTileFetch: async () => calls.push("satellite"),
+    },
+  );
+  assert.deepEqual(calls, []);
+});
+
 test("stale GPS clients cannot create a Place before the mapping preflight", async () => {
   const calls = [];
   const repository = {

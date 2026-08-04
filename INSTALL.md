@@ -232,6 +232,12 @@ installation may bind only the UI gateway to a trusted interface with
 Do not bind it to `0.0.0.0` unless the host's network access is independently
 restricted.
 
+Optional outbound provider lookups are disabled by default. Set
+`CIMMICH_OPTIONAL_EGRESS_ENABLED=true` before `up` only if you want Cimmich to
+send typed address searches to Photon and retrieve satellite tiles from
+ArcGIS. Leave it unset or `false` for a service-level zero-egress installation;
+all core organising and local intelligence remain available.
+
 Private viewing is closed by default. After first start, set its password through
 **Settings → Private view password** before using the Private tier. An operator
 who deliberately does not want a Private password may set

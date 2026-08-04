@@ -96,8 +96,9 @@ Local detection + corrected embeddings ----> Cimmich PostgreSQL / pgvector
 ```
 
 Cimmich holds no model-provider key and sends no biometric or model-processing
-request outward. The optional, owner-invoked Photon address search is the one
-disclosed network lookup made by the Cimmich service. The separate Guided token
+request outward. Optional Photon address search and ArcGIS satellite tiles are
+the service's two disclosed outbound lookups. Both are off by default and share
+the installation-level `CIMMICH_OPTIONAL_EGRESS_ENABLED=true` opt-in. The separate Guided token
 authorizes only the local capability surface. A hosted client is not local or
 private merely because Cimmich runs locally; the connected client and operator
 own any disclosure.
@@ -128,8 +129,9 @@ Standard/Personal/Private ceiling; it delegates only catalogued canonical API
 actions and grants no ambient filesystem, database or provider authority.
 
 The Cimmich server holds no OpenAI or other model-provider credential and makes
-no model-provider request. Apart from the disclosed optional Photon address
-search, Cimmich itself transmits nothing outward; a connected hosted client may
+no model-provider request. With optional egress left off, the Cimmich service
+makes no outbound provider request. Enabling it permits Photon address queries
+and ArcGIS satellite-tile retrieval; a connected hosted client may separately
 disclose what it retrieves, and its operator owns that decision. Media upload
 remains a direct client→Immich action using a separate
 user-issued Immich credential; Cimmich does not proxy those bytes or reveal the

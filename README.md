@@ -205,6 +205,12 @@ Generated credentials live only in mode-`0600` operator state. The detailed
 view-lock handling, Guided credentials, map behavior, backup/restore and
 offline-safe choices.
 
+Cimmich service egress is off by default. Address search and satellite imagery
+remain available only when the operator explicitly sets
+`CIMMICH_OPTIONAL_EGRESS_ENABLED=true`; enabling it permits requests to Photon
+and ArcGIS respectively. Core organising, search, profiles and local maps do
+not require that opt-in.
+
 ### Optional public CPU Face provider
 
 ```sh

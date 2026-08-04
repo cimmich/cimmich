@@ -80,3 +80,9 @@ that external-client/provider risk; Cimmich itself does not transmit to a model
 provider. Native Immich upload remains direct client→Immich with a separate
 user-issued Immich credential. Cimmich never returns that secret or proxies the
 uploaded bytes.
+
+The Cimmich service has one installation-level optional-egress switch. It is
+off by default. When `CIMMICH_OPTIONAL_EGRESS_ENABLED=true`, typed address
+queries may be sent to Photon and same-origin satellite requests may retrieve
+tiles from ArcGIS. Both routes fail closed with `OPTIONAL_EGRESS_DISABLED` when
+the switch is off; no other service feature silently enables those providers.
