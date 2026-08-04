@@ -165,7 +165,7 @@
   type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type CimmichPersonConnection = {
-    directRelationId?: string;
+    directRelations?: Array<{ relationId: string; relationType: string }>;
     displayName: string;
     entityId: string;
     entityKind: 'event' | 'object' | 'person' | 'place';
@@ -430,9 +430,22 @@
   const cimmichPersonConnections = $derived.by(() => {
     const connections = new SvelteMap<string, CimmichPersonConnection & { assetIds: Set<string> }>();
     for (const connection of cimmichDirectContextConnections) {
+      const relation = connection.relationId
+        ? [{ relationId: connection.relationId, relationType: connection.relationType }]
+        : [];
+      const existing = connections.get(connection.targetId);
+      if (existing) {
+        existing.directRelations = [...(existing.directRelations ?? []), ...relation];
+        existing.metaLabel = [...new Set(existing.directRelations.map((item) => item.relationType))]
+          .sort()
+          .join(' · ')
+          .replaceAll('_', ' ');
+        existing.sourceAssetId ||= connection.coverAssetId;
+        continue;
+      }
       connections.set(connection.targetId, {
         assetIds: new Set(),
-        directRelationId: connection.relationId,
+        directRelations: relation,
         displayName: connection.displayName,
         entityId: connection.targetId,
         entityKind: connection.targetKind,
@@ -498,17 +511,17 @@
     return `${entityKind === 'event' ? Route.cimmichEvents() : Route.cimmichPlaces()}?${search.toString()}`;
   };
   const removeCimmichPersonConnection = async (connection: CimmichPersonConnection) => {
-    if (!cimmichPerson || !connection.directRelationId || connection.entityKind === 'person') {
+    if (!cimmichPerson || !connection.directRelations?.length || connection.entityKind === 'person') {
       return;
     }
-    cimmichConnectionSavingId = connection.directRelationId;
+    cimmichConnectionSavingId = connection.entityId;
     cimmichConnectionError = '';
     try {
       const result = await detachCimmichContextRelations(
         `${connection.entityKind}s` as CimmichContextFamily,
         connection.entityId,
         createCimmichContextCommandId('person-connection-detach'),
-        [connection.directRelationId],
+        connection.directRelations.map((relation) => relation.relationId),
       );
       cimmichDirectContextConnections = await getCimmichPersonConnections(cimmichPerson.person_id);
       cimmichConnectionUndoDecisionId = result.undo?.eligible ? (result.decisionId ?? '') : '';
@@ -3540,13 +3553,13 @@
                             </span>
                           </span>
                         </a>
-                        {#if connection.directRelationId}
+                        {#if connection.directRelations?.length}
                           <button
                             class="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 dark:bg-immich-dark-gray/90 dark:text-gray-300 dark:hover:bg-red-950 dark:hover:text-red-200"
                             type="button"
-                            aria-label={`Remove connection to ${connection.displayName}`}
-                            title={`Remove connection to ${connection.displayName}`}
-                            disabled={cimmichConnectionSavingId === connection.directRelationId}
+                            aria-label={`Remove all connections to ${connection.displayName}`}
+                            title={`Remove all connections to ${connection.displayName}`}
+                            disabled={cimmichConnectionSavingId === connection.entityId}
                             onclick={() => void removeCimmichPersonConnection(connection)}
                             ><Icon icon={mdiTrashCanOutline} size="18" /></button
                           >

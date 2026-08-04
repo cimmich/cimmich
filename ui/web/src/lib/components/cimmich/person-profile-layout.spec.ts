@@ -213,7 +213,9 @@ describe('Person profile layout', () => {
     expect(source).toContain("{ id: 'object', label: 'Things' }");
     expect(source).toContain('removeCimmichPersonConnection');
     expect(source).toContain('undoCimmichPersonConnection');
-    expect(source).toContain('aria-label={`Remove connection to ${connection.displayName}`}');
+    expect(source).toContain('existing.directRelations = [...(existing.directRelations ?? []), ...relation]');
+    expect(source).toContain('connection.directRelations.map((relation) => relation.relationId)');
+    expect(source).toContain('aria-label={`Remove all connections to ${connection.displayName}`}');
     expect(source).toContain('getCimmichPersonConnections(cimmichPerson.person_id)');
     expect(source.indexOf("{ id: 'person', label: 'People' }")).toBeLessThan(
       source.indexOf("{ id: 'event', label: 'Events' }"),
