@@ -40,6 +40,13 @@ esac
 require_command git
 require_command tar
 require_command zip
+require_command unzip
+
+# BSD tar on macOS otherwise serializes extended attributes as AppleDouble
+# `._*` members. A release bundle must contain only the tracked payload and be
+# member-equivalent across tar and ZIP on every supported build host.
+COPYFILE_DISABLE=1
+export COPYFILE_DISABLE
 
 git -C "$ROOT" ls-files --error-unmatch tools/build_install_bundle.sh >/dev/null 2>&1 ||
   fail "the bundle builder must be tracked by Git before it can produce a release artifact"
@@ -79,7 +86,14 @@ zip_path="$output_root/cimmich-$version.zip"
 checksum_path="$output_root/SHA256SUMS"
 
 (cd "$staging_root" && tar -czf "$tar_path" "$bundle_name")
-(cd "$staging_root" && zip -qr "$zip_path" "$bundle_name")
+(cd "$staging_root" && zip -Xqr "$zip_path" "$bundle_name")
+
+if tar -tzf "$tar_path" | grep -Eq '(^|/)\._'; then
+  fail "tar bundle contains forbidden AppleDouble metadata"
+fi
+if unzip -Z1 "$zip_path" | grep -Eq '(^|/)\._'; then
+  fail "ZIP bundle contains forbidden AppleDouble metadata"
+fi
 
 {
   sha256_file "$tar_path" | awk '{ print $1 "  " "'"$(basename "$tar_path")"'" }'
