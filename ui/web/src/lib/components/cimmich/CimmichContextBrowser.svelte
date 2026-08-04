@@ -1180,9 +1180,10 @@
     showEditor = true;
   };
 
-  const numberValue = (value: string, label: string) => {
-    const number = Number(value);
-    if (!value.trim() || !Number.isFinite(number)) {
+  const numberValue = (value: string | number | undefined, label: string) => {
+    const normalizedValue = String(value ?? '').trim();
+    const number = Number(normalizedValue);
+    if (!normalizedValue || !Number.isFinite(number)) {
       throw new Error(`${label} must be a number.`);
     }
     return number;
@@ -1194,7 +1195,7 @@
     }
     const metadata = {
       provenance: formGeometryProvenance,
-      ...(formGeometryUncertainty.trim()
+      ...(String(formGeometryUncertainty ?? '').trim()
         ? { uncertaintyMeters: numberValue(formGeometryUncertainty, 'Uncertainty') }
         : {}),
     };

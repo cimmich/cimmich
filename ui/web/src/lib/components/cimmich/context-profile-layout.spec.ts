@@ -269,6 +269,8 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(browser).toContain('From photo GPS');
     expect(browser).toContain('Estimated from context');
     expect(browser).toContain('Confirmed by me');
+    expect(browser).toContain("String(formGeometryUncertainty ?? '').trim()");
+    expect(browser).toContain("String(value ?? '').trim()");
     expect(browser).toContain("It never rewrites the photo's original EXIF.");
     expect(browser).toContain('>Remove from map</button');
     expect(browser).not.toContain('How does this place exist on the map?');
