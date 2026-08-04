@@ -65,7 +65,7 @@ test("people() replaces per-row asset visibility calls with one hidden-asset set
     statement,
     /cimmich_visibility_asset_rank\(presence\.asset_id\)/,
   );
-  assert.match(statement, /cimmich_visibility_person_rank/);
+  assert.match(statement, /cimmich_visibility_subject_rank/);
   assert.match(statement, /\?::text <> ''/);
   assert.match(statement, /\?::text = ''/);
 });

@@ -1164,10 +1164,6 @@ test("personPresentation automatic slots use the narrow representative query, no
   const sql = async (strings) => {
     const text = strings.join("?");
     statements.push(text);
-    if (text.includes("cimmich_visibility_subject_rank")) {
-      return [{ person_id: "person-1", subject_kind: "person" }];
-    }
-    if (text.includes("FROM person_presentation_media")) return [];
     if (text.includes("representative AS MATERIALIZED")) {
       return [
         {
@@ -1191,6 +1187,10 @@ test("personPresentation automatic slots use the narrow representative query, no
         },
       ];
     }
+    if (text.includes("cimmich_visibility_subject_rank")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    if (text.includes("FROM person_presentation_media")) return [];
     throw new Error(`Unexpected statement: ${text.slice(0, 120)}`);
   };
   const bridge = new Map([
