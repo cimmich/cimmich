@@ -340,8 +340,14 @@ export const projectDocumentRow = (row, links = undefined) => ({
   },
   status: row.status,
   subjectCount: Number(row.subject_count || 0),
-  supersededByDocumentId: row.superseded_by_document_id || null,
-  supersedesDocumentId: row.supersedes_document_id || null,
+  supersededByDocumentId:
+    (Object.hasOwn(row, "visible_superseded_by_document_id")
+      ? row.visible_superseded_by_document_id
+      : row.superseded_by_document_id) || null,
+  supersedesDocumentId:
+    (Object.hasOwn(row, "visible_supersedes_document_id")
+      ? row.visible_supersedes_document_id
+      : row.supersedes_document_id) || null,
   updatedAt:
     row.updated_at instanceof Date
       ? row.updated_at.toISOString()
@@ -512,8 +518,15 @@ export const createDocumentStore = (
         projection.immich_asset_id,
         coalesce(visibility.visibility_tier, document.visibility_tier) AS visibility_tier,
         cimmich_visibility_document_rank(document.document_id) AS effective_visibility_rank,
+        CASE
+          WHEN document.supersedes_document_id IS NOT NULL
+            AND cimmich_visibility_document_rank(document.supersedes_document_id) <= ${presentationRank()}
+          THEN document.supersedes_document_id
+          ELSE NULL
+        END AS visible_supersedes_document_id,
         (SELECT successor.document_id FROM cimmich_document successor
           WHERE successor.supersedes_document_id = document.document_id
+            AND cimmich_visibility_document_rank(successor.document_id) <= ${presentationRank()}
           LIMIT 1) AS superseded_by_document_id,
         (SELECT count(*)::int FROM current_cimmich_document_link link
           WHERE link.document_id = document.document_id
@@ -975,8 +988,15 @@ export const createDocumentStore = (
         projection.immich_asset_id,
         coalesce(visibility.visibility_tier, document.visibility_tier) AS visibility_tier,
         cimmich_visibility_document_rank(document.document_id) AS effective_visibility_rank,
+        CASE
+          WHEN document.supersedes_document_id IS NOT NULL
+            AND cimmich_visibility_document_rank(document.supersedes_document_id) <= ${presentationRank()}
+          THEN document.supersedes_document_id
+          ELSE NULL
+        END AS visible_supersedes_document_id,
         (SELECT successor.document_id FROM cimmich_document successor
           WHERE successor.supersedes_document_id = document.document_id
+            AND cimmich_visibility_document_rank(successor.document_id) <= ${presentationRank()}
           LIMIT 1) AS superseded_by_document_id,
         (SELECT count(*)::int FROM current_cimmich_document_link link
           WHERE link.document_id = document.document_id

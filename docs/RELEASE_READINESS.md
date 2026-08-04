@@ -37,9 +37,9 @@ artifact hash.
 
 The final source gates are:
 
-- publication scan: pass across 1,698 tracked files;
-- service: 823 passed, 2 skipped, 0 failed;
-- web: 957 passed, 2 skipped, 0 failed;
+- publication scan: pass across 1,699 tracked files;
+- service: 838 passed, 2 skipped, 0 failed;
+- web: 964 passed, 2 skipped, 0 failed;
 - service syntax, format and lint: pass;
 - web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
   production build: pass;
@@ -51,7 +51,7 @@ The final source gates are:
 - companion install, preview/import, restart, backup, portable restore,
   disable and removal with Immich remaining ready: pass;
 - public-demo fresh start, interrupted-state recovery, adversarial restore
-  rejection, stop/restart/down preservation, portable schema-119 restore and
+  rejection, stop/restart/down preservation, portable schema-120 restore and
   residue-free destroy: pass; and
 - deterministic Cedar House bootstrap replay: 51 assets, 9 People, 12
   contexts, 5 Documents, 4 manual tags and 16 non-standard asset overrides.
@@ -72,13 +72,13 @@ automated result.
 
 ## Current source audit addendum — 2026-08-04
 
-The current schema-120/patch-1 candidate begins from
-`00a0c98ef2cef35ba67c8d3c7184139936c574e8`. It reconciles the migration-ledger
-source with the accepted product work and adds recoverable bulk Organise operations.
-The final source gate passes 838
-service tests with two skipped, 964 web tests with two skipped, zero Svelte
-errors or warnings, TypeScript, formatting, lint, production build, migration
-acceptance through schema 120, and the complete disposable synthetic lifecycle.
+The schema-120/patch-1 replacement reconciles the migration-ledger source with
+the accepted product work, closes the final human-workflow findings and adds
+recoverable bulk Organise operations. The immutable commit/tree and bundle
+hashes are deliberately recorded in the external release receipt after the
+clean tree is packaged, avoiding a circular self-reference inside the bundle.
+The one canonical gate block above records the current verified totals; this
+addendum does not maintain a second, drifting set of counts.
 
 Bulk Organise now confirms two identical complete asset enumerations before a
 write, records only API-confirmed changed asset IDs, checkpoints its receipt

@@ -1174,6 +1174,7 @@
       .filter((asset) => asset.associationKind === 'direct' || asset.associationKind === 'manual')
       .map((asset) => asset.sourceAssetId)
       .slice(0, 1000);
+    associationKind = 'direct';
     eventSeedAttachCommandId = createCimmichContextCommandId('event-copy-attach');
     editorCommandId = createCimmichContextCommandId('event-copy');
     editorError = '';
@@ -1522,6 +1523,7 @@
     isSaving = true;
     const reusableEventSeedIds = [...eventSeedSourceIds];
     const reusableEventSourceFolders = [...formSourceFolders];
+    const reusableEventSeedAssociationKind = associationKind;
     const reusableEventDefaults = {
       dateEnd: formDateEnd,
       datePrecision: formDatePrecision,
@@ -1600,7 +1602,7 @@
           'events',
           result.detail.entity.entityId,
           eventSeedAttachCommandId || createCimmichContextCommandId('event-seed-attach'),
-          assetIds.map((assetId) => ({ assetId, associationKind: 'direct' })),
+          assetIds.map((assetId) => ({ assetId, associationKind })),
         );
       }
       undoDecisionId = finalResult.undo?.eligible ? finalResult.decisionId : null;
@@ -1626,6 +1628,7 @@
         if (continueWithAnotherEvent) {
           continueWithAnotherEvent = false;
           eventSeedSourceIds = reusableEventSeedIds;
+          associationKind = reusableEventSeedAssociationKind;
           eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
           openCreate('location', '', '', true);
           editorTypeChosen = true;
@@ -1952,6 +1955,9 @@
   const selectAssetPickerMode = (mode: typeof assetPickerMode) => {
     assetPickerMode = mode;
     assetError = '';
+    if (assetPickerPurpose === 'seed-event' && selectedSourceIds.length === 0) {
+      associationKind = mode === 'folders' ? 'needs_check' : 'direct';
+    }
     if (mode === 'nearby') {
       void loadNearbyAssets();
     } else if ((mode === 'library' || mode === 'folders') && !libraryLoaded) {
@@ -2003,7 +2009,7 @@
     folderSearchStarted = false;
     folderError = '';
     libraryQuery = '';
-    associationKind = 'direct';
+    associationKind = 'needs_check';
     assetError = '';
     showAssetPicker = true;
     assetPickerMode = 'folders';
@@ -2108,14 +2114,53 @@
         'events',
         selected.entity.entityId,
         createCimmichContextCommandId('event-folder-refresh'),
-        assetIds.map((assetId) => ({ assetId, associationKind: 'direct' })),
+        assetIds.map((assetId) => ({ assetId, associationKind: 'needs_check' })),
       );
       undoDecisionId = result.undo?.eligible ? result.decisionId : null;
       undoCommandId = undoDecisionId ? createCimmichContextCommandId('event-folder-refresh-undo') : '';
       undoLabel = 'Undo folder refresh';
       selected = result.detail;
       await loadEntities({ preserveCollection: true });
-      toastManager.success(`Added ${assetIds.length} new ${assetIds.length === 1 ? 'item' : 'items'} from folders.`);
+      eventMediaLane = 'needs_check';
+      toastManager.success(`Added ${assetIds.length} new ${assetIds.length === 1 ? 'item' : 'items'} to Needs check.`);
+    } catch (error_) {
+      error = asError(error_);
+    } finally {
+      isSaving = false;
+    }
+  };
+
+  const reclassifyEventAsset = async (
+    assetId: string,
+    nextAssociationKind: 'context' | 'direct' | 'needs_check' | 'route_stop',
+  ) => {
+    if (!selected || activeFamily !== 'events') {
+      return;
+    }
+    isSaving = true;
+    error = null;
+    mediaMenuAssetId = null;
+    try {
+      const result = await attachCimmichContextAssets(
+        'events',
+        selected.entity.entityId,
+        createCimmichContextCommandId('event-media-reclassify'),
+        [{ assetId, associationKind: nextAssociationKind }],
+      );
+      undoDecisionId = result.undo?.eligible ? result.decisionId : null;
+      undoCommandId = undoDecisionId ? createCimmichContextCommandId('event-media-reclassify-undo') : '';
+      undoLabel = 'Undo media move';
+      selected = result.detail;
+      eventMediaLane =
+        nextAssociationKind === 'direct'
+          ? 'main'
+          : nextAssociationKind === 'route_stop'
+            ? 'stops'
+            : nextAssociationKind === 'context'
+              ? 'adjacent'
+              : 'needs_check';
+      await loadEntities({ preserveCollection: true });
+      toastManager.success(`Moved media to ${contextAssociationLabel('event', nextAssociationKind)}.`);
     } catch (error_) {
       error = asError(error_);
     } finally {
@@ -3517,6 +3562,47 @@
                             >
                           {/if}
                         {/if}
+                        {#if entityKind === 'event'}
+                          {#if asset.associationKind !== 'direct' && asset.associationKind !== 'manual'}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void reclassifyEventAsset(asset.assetId, 'direct')}>Promote to Main</button
+                            >
+                          {/if}
+                          {#if asset.associationKind !== 'route_stop'}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void reclassifyEventAsset(asset.assetId, 'route_stop')}
+                              >Move to Stops</button
+                            >
+                          {/if}
+                          {#if asset.associationKind !== 'context'}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void reclassifyEventAsset(asset.assetId, 'context')}
+                              >Move to Adjacent context</button
+                            >
+                          {/if}
+                          {#if asset.associationKind !== 'needs_check'}
+                            <button
+                              class="min-h-10 rounded-xl px-3 text-left hover:bg-white/12 focus-visible:bg-white/12 focus-visible:outline-none"
+                              type="button"
+                              role="menuitem"
+                              disabled={isSaving}
+                              onclick={() => void reclassifyEventAsset(asset.assetId, 'needs_check')}
+                              >Move to Needs check</button
+                            >
+                          {/if}
+                        {/if}
                         {#if entityKind === 'place' && selectedPlaceChildren.length > 0}
                           {#each selectedPlaceChildren as child (child.entityId)}
                             <button
@@ -3925,7 +4011,12 @@
                 <strong>{contextTypeLabel(formType)}</strong>
                 <p>{eventCreationGuidance}</p>
                 {#if eventSeedSourceIds.length > 0}
-                  <small>{eventSeedSourceIds.length} selected as the main memory</small>
+                  <small
+                    >{eventSeedSourceIds.length}
+                    {associationKind === 'needs_check'
+                      ? 'selected for review in Needs check'
+                      : 'selected as the main memory'}</small
+                  >
                 {/if}
               </div>
             </div>
@@ -3977,7 +4068,7 @@
                     >
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {formSourceFolders.map((folderPath) => eventFolderLabel(folderPath)).join(' · ')} — remembered for later
-                      refresh.
+                      refresh. New items arrive in Needs check.
                     </p>
                   </div>
                 </div>
@@ -4523,7 +4614,9 @@
           <p class="mt-1 text-sm text-gray-500">
             {selectedSourceIds.length}/{activeFamily === 'events' ? '1,000' : '100'} selected{assetPickerPurpose ===
             'seed-event'
-              ? ' · Choose the photos that tell it best.'
+              ? associationKind === 'needs_check'
+                ? ' · Folder candidates wait for your decision before joining Main.'
+                : ' · You are choosing these as the defining memory.'
               : ''}
           </p>
         </div>
@@ -4535,6 +4628,14 @@
                 >{/each}</select
             ></label
           >
+        {:else}
+          <label class="context-field min-w-44">
+            <span>Start selected media as</span>
+            <select bind:value={associationKind}>
+              <option value="needs_check">Needs check</option>
+              <option value="direct">Main</option>
+            </select>
+          </label>
         {/if}
         <button
           class="context-icon-button"

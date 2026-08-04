@@ -239,6 +239,72 @@ if (phase === "write") {
     personal.source.contentSha256,
   );
 
+  // Version existence follows the current viewing rank in both directions.
+  // A visible edition must not expose even the opaque ID of a hidden neighbour.
+  await unlockPrivate();
+  const hiddenSuccessor = await json(
+    `/v1/visibility/objects/document/${successor.documentId}`,
+    {
+      body: {
+        commandId: "document.acceptance.successor.private.001",
+        visibilityTier: "private",
+      },
+      method: "PATCH",
+    },
+  );
+  await setMode("personal");
+  assert.equal(
+    (await json(`/v1/documents/${imported.documentId}`)).supersededByDocumentId,
+    null,
+  );
+  assert.equal(
+    (await json("/v1/documents?q=Synthetic")).items.find(
+      (item) => item.documentId === imported.documentId,
+    ).supersededByDocumentId,
+    null,
+  );
+  await setMode("private");
+  await json(`/v1/visibility/decisions/${hiddenSuccessor.decisionId}/undo`, {
+    body: { commandId: "document.acceptance.successor.undo.001" },
+    method: "POST",
+  });
+  const hiddenPredecessor = await json(
+    `/v1/visibility/objects/document/${imported.documentId}`,
+    {
+      body: {
+        commandId: "document.acceptance.predecessor.private.001",
+        visibilityTier: "private",
+      },
+      method: "PATCH",
+    },
+  );
+  await setMode("personal");
+  assert.equal(
+    (await json(`/v1/documents/${successor.documentId}`)).supersedesDocumentId,
+    null,
+  );
+  assert.equal(
+    (await json("/v1/documents?q=Synthetic")).items.find(
+      (item) => item.documentId === successor.documentId,
+    ).supersedesDocumentId,
+    null,
+  );
+  await setMode("private");
+  assert.equal(
+    (await json(`/v1/documents/${imported.documentId}`)).supersededByDocumentId,
+    successor.documentId,
+  );
+  assert.equal(
+    (await json(`/v1/documents/${successor.documentId}`)).supersedesDocumentId,
+    imported.documentId,
+  );
+  await json(`/v1/visibility/decisions/${hiddenPredecessor.decisionId}/undo`, {
+    body: { commandId: "document.acceptance.predecessor.undo.001" },
+    method: "POST",
+  });
+  await setMode("personal");
+  privateToken = "";
+
   if (expectQuotaRejection) {
     const quotaMetadata = {
       commandId: "document.acceptance.import.quota.001",

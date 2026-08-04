@@ -289,7 +289,13 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(collection).toContain('groupContextEventsByYear(filteredEntities)');
     expect(browser).toContain("assetPickerPurpose = $state<'attach' | 'seed-event'>('attach')");
     expect(browser).toContain("createCimmichContextCommandId('event-seed-attach')");
-    expect(browser).toContain("associationKind: 'direct'");
+    expect(browser).toContain("associationKind = 'needs_check';");
+    expect(browser).toContain("assetIds.map((assetId) => ({ assetId, associationKind: 'needs_check' }))");
+    expect(browser).toContain('Start selected media as');
+    expect(browser).toContain('Folder candidates wait for your decision before joining Main.');
+    expect(browser).toContain('>Promote to Main</button');
+    expect(browser).toContain("createCimmichContextCommandId('event-media-reclassify')");
+    expect(browser).toContain("undoLabel = 'Undo media move';");
     expect(browser).toContain('Choose photos for this memory');
     expect(browser).toContain('Create memory');
     expect(browser).toContain('eventDateLabels.start');
