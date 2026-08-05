@@ -37,9 +37,9 @@ artifact hash.
 
 The final source gates are:
 
-- publication scan: pass across 1,702 tracked files;
-- service: 840 passed, 2 skipped, 0 failed;
-- web: 971 passed, 2 skipped, 0 failed;
+- publication scan: pass across 1,711 tracked files;
+- service: 843 passed, 2 skipped, 0 failed;
+- web: 981 passed, 2 skipped, 0 failed;
 - service syntax, format and lint: pass;
 - web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
   production build: pass;
