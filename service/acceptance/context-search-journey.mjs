@@ -88,6 +88,29 @@ const assertPersisted = async () => {
   assert.equal(detail.schemaVersion, "cimmich.context-entity.v1");
   assert.equal(detail.assets.length, 1);
   assert.deepEqual(
+    detail.eventLineage.map((entry) => entry.displayName),
+    ["Synthetic Greek holiday 2020"],
+  );
+  assert.deepEqual(
+    detail.eventChildren.map((entry) => ({
+      assetCount: entry.assetCount,
+      displayName: entry.displayName,
+      subtreeAssetCount: entry.subtreeAssetCount,
+    })),
+    [
+      {
+        assetCount: 1,
+        displayName: "Synthetic beach tour",
+        subtreeAssetCount: 1,
+      },
+    ],
+  );
+  const activityDetail = await request(`/v1/events/${activity.entityId}`);
+  assert.deepEqual(
+    activityDetail.eventLineage.map((entry) => entry.displayName),
+    ["Synthetic Greek holiday 2020", "Synthetic beach tour"],
+  );
+  assert.deepEqual(
     detail.relations.map((relation) => relation.relationKind).sort(),
     ["companion", "location", "location", "object", "participant", "related"],
   );

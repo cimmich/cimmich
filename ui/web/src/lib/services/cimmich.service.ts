@@ -219,6 +219,20 @@ export type CimmichContextRelation = {
 export type CimmichContextDetail = {
   assets: CimmichContextAsset[];
   entity: CimmichContextEntity;
+  eventChildren?: Array<{
+    assetCount: number;
+    dateStart: string | null;
+    displayName: string;
+    entityId: string;
+    parentEntityId: string | null;
+    subtreeAssetCount: number;
+    typeKind: CimmichContextTypeKind;
+  }>;
+  eventLineage?: Array<{
+    displayName: string;
+    entityId: string;
+    parentEntityId: string | null;
+  }>;
   relations: CimmichContextRelation[];
   schemaVersion: 'cimmich.context-entity.v1';
   subtreeAssets?: CimmichPlaceRollupAsset[];
