@@ -41,7 +41,9 @@ describe('CimmichVisibilityTierControl', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Photo visibility: Standard' }));
-    await fireEvent.click(getByRole('menuitemradio', { name: 'Private' }));
+    const privateOption = getByRole('menuitemradio', { name: 'Private' });
+    await fireEvent.mouseDown(privateOption);
+    await fireEvent.click(privateOption);
 
     await waitFor(() => expect(onSelectTier).toHaveBeenCalledWith('private'));
   });

@@ -64,7 +64,11 @@ export const collectCimmichHomeHeroAssets = (
     }
   };
 
-  for (const event of events) {
+  const featuredEvent = chooseCimmichHomeFeature(events);
+  const orderedEvents = featuredEvent
+    ? [featuredEvent, ...events.filter((event) => event.entityId !== featuredEvent.entityId)]
+    : events;
+  for (const event of orderedEvents) {
     add(cimmichHomeContextPreviewId(event));
     for (const id of event.previewAssetIds ?? []) {
       add(id);

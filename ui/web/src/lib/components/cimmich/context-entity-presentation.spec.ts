@@ -30,6 +30,7 @@ import {
   contextTypeDescription,
   contextTypeLabel,
   eventTypeFilters,
+  filterContextEntitiesByType,
   filterContextRelationTargets,
   defaultContextRelationDraft,
   formatContextPlaceSearchResult,
@@ -108,6 +109,17 @@ describe('Cimmich context entity presentation', () => {
     expect(contextTypeDescription('trip')).toMatch(/ordered route/);
     expect(contextPlaceRoleLabel('location')).toBe('Location');
     expect(contextPlaceRoleLabel('geography')).toBe('Geography');
+  });
+
+  it('counts only the event type that the active directory filter renders', () => {
+    const events = [
+      entity({ entityId: 'trip-1', entityKind: 'event', typeKind: 'trip' }),
+      entity({ entityId: 'trip-2', entityKind: 'event', typeKind: 'trip' }),
+      entity({ entityId: 'event-1', entityKind: 'event', typeKind: 'event' }),
+    ];
+
+    expect(filterContextEntitiesByType(events, 'trip').map(({ entityId }) => entityId)).toEqual(['trip-1', 'trip-2']);
+    expect(filterContextEntitiesByType(events, 'all')).toBe(events);
   });
 
   it('uses human labels without changing stable contract values', () => {

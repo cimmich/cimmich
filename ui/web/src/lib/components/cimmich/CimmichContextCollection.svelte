@@ -37,6 +37,7 @@
     contextPlaceMapProjection,
     contextPlaceRoleLabel,
     contextTypeLabel,
+    filterContextEntitiesByType,
     formatContextDatePrecision,
     formatImmichPlaceLocation,
     groupContextEventsByYear,
@@ -111,12 +112,7 @@
           ),
   );
   const filteredEntities = $derived(
-    sortContextEntities(
-      effectiveTypeFilter === 'all'
-        ? roleDirectoryEntities
-        : roleDirectoryEntities.filter((entity) => entity.typeKind === effectiveTypeFilter),
-      family,
-    ),
+    sortContextEntities(filterContextEntitiesByType(roleDirectoryEntities, effectiveTypeFilter), family),
   );
   const eventTimelineSections = $derived(family === 'events' ? groupContextEventsByYear(filteredEntities) : []);
   const placeProjection = $derived(contextPlaceMapProjection(entities));

@@ -106,6 +106,32 @@ describe('Cimmich Home presentation', () => {
     expect(cimmichHomeContextPreviewId(events[0])).toBe('event-cover');
   });
 
+  it('keeps the featured story and hero media from the same event after revision churn', () => {
+    const bluewater = entity({
+      coverAssetId: 'bluewater-cover',
+      description: 'Bluewater story.',
+      displayName: 'Bluewater Weekend',
+      entityId: 'event-bluewater',
+      previewAssetIds: ['bluewater-cover', 'bluewater-second'],
+      revision: 1,
+    });
+    const nora = entity({
+      coverAssetId: 'nora-cover',
+      description: 'Nora story.',
+      displayName: "Nora's 70th Birthday",
+      entityId: 'event-nora',
+      previewAssetIds: ['nora-cover', 'nora-second'],
+      revision: 7,
+    });
+
+    expect(chooseCimmichHomeFeature([bluewater, nora])).toBe(nora);
+    expect(collectCimmichHomeHeroAssets([bluewater, nora], [], [], [], 3)).toEqual([
+      'nora-cover',
+      'nora-second',
+      'bluewater-cover',
+    ]);
+  });
+
   it('keeps the ordinary photo crop focused on the representative Face without manufacturing missing truth', () => {
     expect(
       cimmichHomeFaceFocus(

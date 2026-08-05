@@ -19,6 +19,7 @@ describe('human-first Organise information architecture', () => {
     expect(source).toContain('Route.folders({ organise: 1 })');
     expect(source).toContain('Route.tags({ organise: 1 })');
     expect(source).toContain('Route.albums({ organise: 1 })');
+    expect(source).not.toContain('aria-label={`Organise by ${mode.label}`}');
     expect(source).not.toContain('People');
     expect(source).not.toContain('Places');
     expect(source).not.toContain('Events');

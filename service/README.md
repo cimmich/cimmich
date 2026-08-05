@@ -314,6 +314,12 @@ Person setup is exposed through Cimmich-owned contracts:
 - subject-type commands classify Person versus Pet and rebuild affected human galleries;
 - merge preview, merge and unmerge commands provide directional, reversible identity consolidation.
 
+`GET /v1/decisions` returns bounded newest-first owner decision history. The
+response is intentionally visibility-filtered and therefore always includes
+`projection.scope: "current_viewing_mode"` plus the exact `viewingMode` used for
+that read; audit and verification tooling must record those fields rather than
+presenting a mode-projected item count as whole-archive history.
+
 Basic Pet management is exposed through `cimmich.pet-manual.v2`:
 
 - `GET/POST /v1/pets` and `GET/PATCH /v1/pets/:petId` provide typed Pet

@@ -130,6 +130,7 @@
     contextTypeKinds,
     defaultContextRelationDraft,
     filterContextRelationTargets,
+    filterContextEntitiesByType,
     formatContextPlaceDistance,
     humanizeContextKind,
     parseContextPlaceCoordinates,
@@ -316,9 +317,14 @@
         : `Add ${entityNoun}`,
   );
   const collectionTitle = $derived(contextFamilyLabels[activeFamily]);
+  const collectionCount = $derived(
+    activeFamily === 'places'
+      ? displayedEntities.length
+      : filterContextEntitiesByType(displayedEntities, collectionTypeFilter).length,
+  );
   const collectionMeta = $derived(
-    `${entities.length.toLocaleString()} ${
-      entities.length === 1
+    `${collectionCount.toLocaleString()} ${
+      collectionCount === 1
         ? activeFamily === 'objects'
           ? 'thing'
           : contextFamilyLabels[activeFamily].slice(0, -1).toLocaleLowerCase()

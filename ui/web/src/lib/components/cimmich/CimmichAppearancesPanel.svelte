@@ -226,7 +226,7 @@
                 </label>
                 <label class="flex items-center gap-2">
                   <input type="checkbox" checked={hasBodyEvidence(person)} disabled />
-                  Body-linked
+                  Body
                 </label>
               </div>
             </div>

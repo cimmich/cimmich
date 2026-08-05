@@ -55,4 +55,29 @@ describe('CimmichAppearancesPanel visibility projection', () => {
     expect(queryByText('Private Person')).not.toBeInTheDocument();
     expect(queryByText('Stale Personal-mode evidence')).not.toBeInTheDocument();
   });
+
+  it('uses the same Body label as the tagging and Identity surfaces', async () => {
+    mocks.getEvidence.mockResolvedValue({
+      bundle: undefined,
+      evidence: {
+        packetItems: [],
+        stateRows: [],
+        summary: {
+          bodyContextPeople: ['Maya Chen'],
+          candidatePeople: [],
+          faceBucketCounts: {},
+          sourcePeople: [],
+          strongCandidatePeople: [],
+        },
+      },
+      matchedFilename: 'visible.jpg',
+    });
+
+    const { findByText, queryByText } = render(CimmichAppearancesPanel, {
+      asset: { id: 'asset-1', originalFileName: 'visible.jpg' } as never,
+    });
+
+    expect(await findByText('Body')).toBeInTheDocument();
+    expect(queryByText('Body-linked')).not.toBeInTheDocument();
+  });
 });

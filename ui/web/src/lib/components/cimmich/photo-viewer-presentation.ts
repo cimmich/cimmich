@@ -10,6 +10,9 @@ export type NamedPhotoPresence = {
 
 export type PhotoTagType = 'Body' | 'Face' | 'Head' | 'Presence';
 
+export const cimmichAssetDetailsUnavailableMessage =
+  'Cimmich details are unavailable. Import this photo into Cimmich, or switch to a viewing mode that can show it.';
+
 export const projectFaceReviewSimilarity = (score: number | null | undefined) =>
   typeof score === 'number' && Number.isFinite(score) ? score.toFixed(2) : 'No comparison';
 
@@ -308,7 +311,28 @@ const errorCode = (value: unknown) =>
 export const photoEvidenceLoadErrorMessage = (error: unknown) => {
   const cause = error instanceof Error ? error.cause : undefined;
   if (errorCode(error) === 'ASSET_DISPLAY_NOT_FOUND' || errorCode(cause) === 'ASSET_DISPLAY_NOT_FOUND') {
-    return 'Cimmich details are not available in this viewing mode.';
+    return cimmichAssetDetailsUnavailableMessage;
   }
   return error instanceof Error ? error.message : 'Cimmich details could not be loaded.';
 };
+
+export const photoTagWriteBlockReason = ({
+  isLoading,
+  loadError,
+  searchRowId,
+}: {
+  isLoading: boolean;
+  loadError: string;
+  searchRowId: string | null | undefined;
+}) => {
+  if (searchRowId) {
+    return '';
+  }
+  if (isLoading) {
+    return 'Wait for Cimmich details to finish loading before adding identity information.';
+  }
+  return loadError || cimmichAssetDetailsUnavailableMessage;
+};
+
+export const photoContextKindLabel = (entityKind: 'event' | 'object' | 'place') =>
+  entityKind === 'event' ? 'Event' : entityKind === 'object' ? 'Thing' : 'Place';

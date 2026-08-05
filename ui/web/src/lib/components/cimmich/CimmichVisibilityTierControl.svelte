@@ -31,6 +31,14 @@
   let overlayMenuStyle = $state('');
   let triggerElement = $state<HTMLButtonElement>();
 
+  const stopNativeMouseDownPropagation = (node: HTMLElement) => {
+    const stop = (event: MouseEvent) => event.stopPropagation();
+    node.addEventListener('mousedown', stop);
+    return {
+      destroy: () => node.removeEventListener('mousedown', stop),
+    };
+  };
+
   const tierLabel = $derived(tier === 'standard' ? 'Standard' : tier === 'personal' ? 'Personal' : 'Private');
   const tierIcon = $derived(
     tier === 'standard' ? mdiLockOpenVariantOutline : tier === 'personal' ? mdiShieldAccountOutline : mdiLockOutline,
@@ -119,6 +127,7 @@
     aria-label={`${objectLabel} visibility`}
     role="menu"
     tabindex="-1"
+    use:stopNativeMouseDownPropagation
     onpointerdown={(event) => event.stopPropagation()}
     onclick={(event) => event.stopPropagation()}
     onkeydown={handleMenuKeydown}

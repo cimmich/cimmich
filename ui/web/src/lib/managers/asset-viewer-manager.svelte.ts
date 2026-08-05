@@ -18,7 +18,7 @@ export interface Faces {
   boundingBoxY2: number;
 }
 
-const isShowDetailPanel = new PersistedLocalStorage<boolean>('asset-viewer-state', false);
+let isShowDetailPanel = $state(false);
 const isShowAssetPath = new PersistedLocalStorage<boolean>('asset-viewer-show-path', false);
 type DetailPanelTarget = 'cimmich' | null;
 
@@ -89,7 +89,7 @@ class AssetViewerManager extends BaseEventManager<Events> {
   }
 
   get isShowDetailPanel() {
-    return isShowDetailPanel.current;
+    return isShowDetailPanel;
   }
 
   get isShowAssetPath() {
@@ -139,7 +139,7 @@ class AssetViewerManager extends BaseEventManager<Events> {
   }
 
   private set isShowDetailPanel(value: boolean) {
-    isShowDetailPanel.current = value;
+    isShowDetailPanel = value;
   }
 
   private set isShowAssetPath(value: boolean) {
@@ -293,6 +293,9 @@ class AssetViewerManager extends BaseEventManager<Events> {
   }
 
   setAsset(asset: AssetResponseDto) {
+    if (this.#viewingAssetStoreState?.id && this.#viewingAssetStoreState.id !== asset.id) {
+      this.closeDetailPanel();
+    }
     this.#viewingAssetStoreState = asset;
     this.#viewState = true;
   }
@@ -305,6 +308,9 @@ class AssetViewerManager extends BaseEventManager<Events> {
 
   showAssetViewer(show: boolean) {
     this.#viewState = show;
+    if (!show) {
+      this.closeDetailPanel();
+    }
   }
 }
 

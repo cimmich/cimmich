@@ -458,6 +458,9 @@ export const eventTypeFilters: Array<{ label: string; value: ContextTypeFilter }
   { label: 'Life periods', value: 'life_period' },
 ];
 
+export const filterContextEntitiesByType = (entities: CimmichContextEntity[], typeFilter: ContextTypeFilter) =>
+  typeFilter === 'all' ? entities : entities.filter((entity) => entity.typeKind === typeFilter);
+
 export const humanizeContextKind = (value: string) =>
   value
     .split('_')

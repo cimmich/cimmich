@@ -49,7 +49,6 @@
         class="organise-switch__mode"
         href={mode.href}
         aria-current={isActive(mode.path) ? 'page' : undefined}
-        aria-label={`Organise by ${mode.label}`}
         title={`Organise by ${mode.label}`}
       >
         <Icon icon={mode.icon} size="18" />

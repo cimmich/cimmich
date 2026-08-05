@@ -1999,6 +1999,8 @@ export const createCimmichRepository = (
     async decisionHistory({ limit = 50 } = {}) {
       const boundedLimit = cleanLimit(limit, 50, 100);
       const visibleRank = presentationRank();
+      const viewingMode =
+        ["standard", "personal", "private"][visibleRank] || "standard";
       // Each arm keeps its own newest-first LIMIT: only the final page can
       // survive the outer sort, so scanning and sorting seven whole operation
       // tables to keep 50 rows was pure waste that grew with history.
@@ -2107,6 +2109,10 @@ export const createCimmichRepository = (
             link: row.undo_link,
           },
         })),
+        projection: {
+          scope: "current_viewing_mode",
+          viewingMode,
+        },
         schemaVersion: "cimmich.decision-history.v1",
       };
     },

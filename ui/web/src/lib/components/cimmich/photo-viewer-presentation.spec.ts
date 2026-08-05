@@ -11,7 +11,9 @@ import {
   placeManualTagPanel,
   projectFaceEditorPersonDraft,
   projectFaceReviewSimilarity,
+  photoContextKindLabel,
   photoEvidenceLoadErrorMessage,
+  photoTagWriteBlockReason,
   projectPhotoTagTypes,
   projectPhotoOverlayZoomStyle,
   projectNamedPhotoPresence,
@@ -236,18 +238,40 @@ describe('photo viewer presentation context', () => {
     expect(stopPropagation).toHaveBeenCalledOnce();
   });
 
-  it('explains visibility-filtered evidence without exposing projection plumbing', () => {
+  it('names both actionable causes when asset details cannot be resolved', () => {
     expect(photoEvidenceLoadErrorMessage({ code: 'ASSET_DISPLAY_NOT_FOUND' })).toBe(
-      'Cimmich details are not available in this viewing mode.',
+      'Cimmich details are unavailable. Import this photo into Cimmich, or switch to a viewing mode that can show it.',
     );
     expect(
       photoEvidenceLoadErrorMessage(
         new Error('Cimmich asset display mapping not found', { cause: { code: 'ASSET_DISPLAY_NOT_FOUND' } }),
       ),
-    ).toBe('Cimmich details are not available in this viewing mode.');
+    ).toBe(
+      'Cimmich details are unavailable. Import this photo into Cimmich, or switch to a viewing mode that can show it.',
+    );
     expect(photoEvidenceLoadErrorMessage(new Error('Cimmich service is unavailable'))).toBe(
       'Cimmich service is unavailable',
     );
+  });
+
+  it('blocks identity writes until the photo has a stable Cimmich asset mapping', () => {
+    expect(photoTagWriteBlockReason({ isLoading: true, loadError: '', searchRowId: undefined })).toMatch(
+      /finish loading/i,
+    );
+    expect(
+      photoTagWriteBlockReason({
+        isLoading: false,
+        loadError: 'Import this photo first.',
+        searchRowId: undefined,
+      }),
+    ).toBe('Import this photo first.');
+    expect(photoTagWriteBlockReason({ isLoading: false, loadError: '', searchRowId: 'asset-1' })).toBe('');
+  });
+
+  it('labels event, Thing and Place context chips from their actual entity kind', () => {
+    expect(photoContextKindLabel('event')).toBe('Event');
+    expect(photoContextKindLabel('object')).toBe('Thing');
+    expect(photoContextKindLabel('place')).toBe('Place');
   });
 
   it('keeps the typed manual tag panel and Save action reachable on mobile', () => {

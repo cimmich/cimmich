@@ -11,6 +11,8 @@ const response = await fetch(`${root}/v1/decisions?limit=100`, {
 assert.equal(response.status, 200);
 const history = await response.json();
 assert.equal(history.schemaVersion, "cimmich.decision-history.v1");
+assert.equal(history.projection.scope, "current_viewing_mode");
+assert.match(history.projection.viewingMode, /^(standard|personal|private)$/);
 assert.equal(Array.isArray(history.items), true);
 assert.equal(history.items.length <= 100, true);
 for (const item of history.items) {
@@ -29,7 +31,7 @@ for (const item of history.items) {
 process.stdout.write(
   `${JSON.stringify({
     itemCount: history.items.length,
+    projection: history.projection,
     schemaVersion: history.schemaVersion,
-    visibilityBeforeProjection: true,
   })}\n`,
 );

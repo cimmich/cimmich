@@ -63,7 +63,14 @@ test("decision history is visibility-registered and bounded before projection", 
   const repository = {
     decisionHistory: async (input) => {
       calls.push(["history", input]);
-      return { items: [], schemaVersion: "cimmich.decision-history.v1" };
+      return {
+        items: [],
+        projection: {
+          scope: "current_viewing_mode",
+          viewingMode: "standard",
+        },
+        schemaVersion: "cimmich.decision-history.v1",
+      };
     },
   };
   const visibility = {
@@ -75,10 +82,12 @@ test("decision history is visibility-registered and bounded before projection", 
     async (root) => {
       const response = await fetch(`${root}/v1/decisions?limit=25`);
       assert.equal(response.status, 200);
-      assert.equal(
-        (await response.json()).schemaVersion,
-        "cimmich.decision-history.v1",
-      );
+      const history = await response.json();
+      assert.equal(history.schemaVersion, "cimmich.decision-history.v1");
+      assert.deepEqual(history.projection, {
+        scope: "current_viewing_mode",
+        viewingMode: "standard",
+      });
     },
     { visibility },
   );

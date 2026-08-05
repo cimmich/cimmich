@@ -78,6 +78,7 @@
     matchesCimmichPersonPhotoContext,
     placeFaceDetailsPanel,
     placeManualTagPanel,
+    photoContextKindLabel,
     projectFaceEditorPersonDraft,
     photoEvidenceLoadErrorMessage,
     projectFaceReviewSimilarity,
@@ -85,6 +86,7 @@
     projectPhotoTagTypes,
     projectNamedPhotoPresence,
     projectTypedManualTagSummary,
+    photoTagWriteBlockReason,
     stopPhotoViewerShortcutPropagation,
   } from './photo-viewer-presentation';
   import {
@@ -701,6 +703,13 @@
             name: selectedManualTag.subject.displayName,
           }
         : undefined),
+  );
+  const manualTagWriteBlockReason = $derived(
+    photoTagWriteBlockReason({
+      isLoading,
+      loadError,
+      searchRowId: evidence?.summary?.searchRowId,
+    }),
   );
   const presenceSelectedSubject = $derived(
     manualTagSubjects.find((subject) => subject.id === presenceSelectedSubjectId),
@@ -3020,7 +3029,11 @@
   };
 
   const saveRegionlessPresence = async () => {
-    if (!presenceSelectedSubject || !evidence?.summary?.searchRowId || isPresenceSaving) {
+    if (!presenceSelectedSubject || isPresenceSaving) {
+      return;
+    }
+    if (!evidence?.summary?.searchRowId) {
+      presenceError = manualTagWriteBlockReason;
       return;
     }
     isPresenceSaving = true;
@@ -3096,7 +3109,11 @@
   };
 
   const saveManualTag = async () => {
-    if (!manualTagDraft || !manualTagSelectedSubject || !manualTagType || !evidence?.summary?.searchRowId) {
+    if (!manualTagDraft || !manualTagSelectedSubject || !manualTagType) {
+      return;
+    }
+    if (!evidence?.summary?.searchRowId) {
+      manualTagSaveError = manualTagWriteBlockReason;
       return;
     }
     isManualTagSaving = true;
@@ -3698,12 +3715,16 @@
         {#if isPeopleSurfaceActive}
           <span class="mx-1 h-6 w-px bg-white/20" aria-hidden="true"></span>
           {#if !selectedManualTag}
-            <Tooltip text={isTaggingMode ? 'Cancel adding a person or pet' : 'Add a person or pet'}>
+            <Tooltip
+              text={isTaggingMode
+                ? 'Cancel adding a person or pet'
+                : manualTagWriteBlockReason || 'Add a person or pet'}
+            >
               {#snippet child({ props })}
                 <button
                   {...props}
                   class={[
-                    'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                    'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-45',
                     isTaggingMode
                       ? 'border-white bg-white text-black shadow-sm'
                       : 'border-white/25 bg-black/25 text-white hover:border-white/45 hover:bg-white/10',
@@ -3711,6 +3732,7 @@
                   type="button"
                   aria-label={isTaggingMode ? 'Cancel adding a person or pet' : 'Add a person or pet'}
                   aria-pressed={isTaggingMode}
+                  disabled={!isTaggingMode && Boolean(manualTagWriteBlockReason)}
                   onclick={toggleTagging}
                   data-testid="cimmich-add-tag-action"
                 >
@@ -3722,12 +3744,12 @@
               {/snippet}
             </Tooltip>
           {/if}
-          <Tooltip text="Mark a person or pet present without drawing a region">
+          <Tooltip text={manualTagWriteBlockReason || 'Mark a person or pet present without drawing a region'}>
             {#snippet child({ props })}
               <button
                 {...props}
                 class={[
-                  'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                  'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-45',
                   isPresencePickerOpen
                     ? 'border-white bg-white text-black shadow-sm'
                     : 'border-white/25 bg-black/25 text-white hover:border-white/45 hover:bg-white/10',
@@ -3735,6 +3757,7 @@
                 type="button"
                 aria-label="Add Presence without a region"
                 aria-pressed={isPresencePickerOpen}
+                disabled={!isPresencePickerOpen && Boolean(manualTagWriteBlockReason)}
                 onclick={() => (isPresencePickerOpen ? closePresencePicker() : void openPresencePicker())}
                 data-testid="cimmich-add-presence-action"
               >
@@ -3883,7 +3906,7 @@
         <button
           class="min-h-11 rounded-full bg-white px-4 text-sm font-semibold text-black hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-45"
           type="button"
-          disabled={!presenceSelectedSubject || isPresenceSaving}
+          disabled={!presenceSelectedSubject || Boolean(manualTagWriteBlockReason) || isPresenceSaving}
           onclick={() => void saveRegionlessPresence()}
         >
           {isPresenceSaving ? 'Saving…' : 'Save Presence'}
@@ -4831,7 +4854,7 @@
             <button
               class="min-h-11 rounded-md bg-white px-3 text-left font-semibold text-black disabled:opacity-50"
               type="button"
-              disabled={isManualPersonCreating}
+              disabled={isManualPersonCreating || Boolean(manualTagWriteBlockReason)}
               onclick={() => void createManualTagPerson()}
             >
               {isManualPersonCreating ? 'Creating Person…' : `Create Person “${normalizedManualTagQuery}”`}
@@ -4846,7 +4869,10 @@
           <button
             class="min-h-11 rounded-lg bg-white px-4 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
             type="button"
-            disabled={!manualTagSelectedSubject || !manualTagType || isManualTagSaving}
+            disabled={!manualTagSelectedSubject ||
+              !manualTagType ||
+              Boolean(manualTagWriteBlockReason) ||
+              isManualTagSaving}
             onclick={() => void saveManualTag()}
           >
             {isManualTagSaving
@@ -4860,6 +4886,10 @@
         {#if manualTagSaveError}
           <p class="rounded-lg border border-red-300/25 bg-red-400/10 px-3 py-2 text-red-100" role="alert">
             {manualTagSaveError}
+          </p>
+        {:else if manualTagWriteBlockReason}
+          <p class="rounded-lg border border-amber-200/25 bg-amber-300/10 px-3 py-2 text-amber-50" role="status">
+            {manualTagWriteBlockReason}
           </p>
         {/if}
       </section>
@@ -5912,7 +5942,7 @@
                 href={contextHref(context)}
               >
                 <span class="text-[10px] tracking-wide text-white/55 uppercase">
-                  {context.entityKind === 'event' ? 'Event' : 'Place'}
+                  {photoContextKindLabel(context.entityKind)}
                 </span>
                 <span>{context.displayName}</span>
               </a>

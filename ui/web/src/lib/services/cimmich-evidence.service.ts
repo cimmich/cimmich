@@ -2457,7 +2457,10 @@ const getCurrentCimmichEvidenceForAsset = async (asset: AssetResponseDto): Promi
     };
   } catch (error) {
     if (error instanceof CimmichServiceError && error.code === 'ASSET_DISPLAY_NOT_FOUND') {
-      throw new Error('Cimmich details are not available in this viewing mode.', { cause: error });
+      throw new Error(
+        'Cimmich details are unavailable. Import this photo into Cimmich, or switch to a viewing mode that can show it.',
+        { cause: error },
+      );
     }
     const detail = error instanceof Error ? error.message : 'Unknown Cimmich evidence error';
     throw new Error(`Cimmich details could not be loaded: ${detail}`, { cause: error });
