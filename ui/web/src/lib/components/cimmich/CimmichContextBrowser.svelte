@@ -541,17 +541,18 @@
       ),
   );
   const selectedEventLineage = $derived(
-    activeFamily === 'events' && selected ? eventLineage(selected.entity, entities) : [],
+    activeFamily === 'events' && selected ? (selected.eventLineage ?? eventLineage(selected.entity, entities)) : [],
   );
   const selectedEventChildren = $derived(
     activeFamily === 'events' && selected
-      ? entities
-          .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
-          .sort(
-            (left, right) =>
-              (left.dateStart ?? '').localeCompare(right.dateStart ?? '') ||
-              left.displayName.localeCompare(right.displayName),
-          )
+      ? (selected.eventChildren ??
+          entities
+            .filter((entity) => entity.parentEntityId === selected?.entity.entityId && entity.status === 'active')
+            .sort(
+              (left, right) =>
+                (left.dateStart ?? '').localeCompare(right.dateStart ?? '') ||
+                left.displayName.localeCompare(right.displayName),
+            ))
       : [],
   );
   const eventParentChoices = $derived(

@@ -1095,6 +1095,63 @@ const loadDetail = async (
     requireVisible: true,
   });
   const aliases = await loadAliases(executor, entity.entity_id);
+  const eventLineage =
+    entity.entity_kind === "event"
+      ? await executor`
+          WITH RECURSIVE lineage AS (
+            SELECT current.entity_id, current.parent_entity_id,
+              current.display_name, 0 AS depth
+            FROM context_entity current
+            WHERE current.entity_id = ${entity.entity_id}
+            UNION ALL
+            SELECT parent.entity_id, parent.parent_entity_id,
+              parent.display_name, child.depth + 1
+            FROM context_entity parent
+            JOIN lineage child ON child.parent_entity_id = parent.entity_id
+            WHERE parent.entity_kind = 'event'
+              AND parent.status IN ('active','hidden')
+              AND child.depth < 11
+              AND cimmich_visibility_context_entity_rank(parent.entity_id) <= ${presentationRank()}
+          )
+          SELECT entity_id, parent_entity_id, display_name
+          FROM lineage
+          ORDER BY depth DESC
+        `
+      : [];
+  const eventChildren =
+    entity.entity_kind === "event"
+      ? await executor`
+          SELECT child.entity_id, child.parent_entity_id, child.display_name,
+            child.event_kind, child.date_start,
+            coalesce((
+              SELECT count(*)::int
+              FROM current_context_asset direct_link
+              WHERE direct_link.entity_id = child.entity_id
+                AND cimmich_visibility_asset_rank(direct_link.asset_id) <= ${presentationRank()}
+            ), 0)::int AS asset_count,
+            coalesce((
+              WITH RECURSIVE descendants(entity_id) AS (
+                SELECT child.entity_id
+                UNION ALL
+                SELECT nested.entity_id
+                FROM context_entity nested
+                JOIN descendants parent ON nested.parent_entity_id = parent.entity_id
+                WHERE nested.entity_kind = 'event' AND nested.status = 'active'
+                  AND cimmich_visibility_context_entity_rank(nested.entity_id) <= ${presentationRank()}
+              )
+              SELECT count(DISTINCT subtree_link.asset_id)::int
+              FROM descendants descendant
+              JOIN current_context_asset subtree_link
+                ON subtree_link.entity_id = descendant.entity_id
+              WHERE cimmich_visibility_asset_rank(subtree_link.asset_id) <= ${presentationRank()}
+            ), 0)::int AS subtree_asset_count
+          FROM context_entity child
+          WHERE child.parent_entity_id = ${entity.entity_id}
+            AND child.entity_kind = 'event' AND child.status = 'active'
+            AND cimmich_visibility_context_entity_rank(child.entity_id) <= ${presentationRank()}
+          ORDER BY child.date_start NULLS LAST, lower(child.display_name), child.entity_id
+        `
+      : [];
   const assets = await executor`
     SELECT link.link_id, link.asset_id, link.association_kind, link.created_at,
       asset.capture_time, asset.media_kind, asset.mime_type, asset.width, asset.height
@@ -1223,7 +1280,10 @@ const loadDetail = async (
           ...entity,
           aliases: aliases.map((row) => row.label),
           asset_count: assets.length,
-          child_count: Number(childSummary.count || 0),
+          child_count:
+            entity.entity_kind === "event"
+              ? eventChildren.length
+              : Number(childSummary.count || 0),
           subtree_asset_count:
             entity.entity_kind === "place"
               ? projectedSubtreeAssets.length
@@ -1265,6 +1325,24 @@ const loadDetail = async (
         targetName: row.target_name || "",
       })),
     schemaVersion,
+    ...(entity.entity_kind === "event"
+      ? {
+          eventChildren: eventChildren.map((row) => ({
+            assetCount: Number(row.asset_count || 0),
+            dateStart: projectDate(row.date_start),
+            displayName: row.display_name,
+            entityId: row.entity_id,
+            parentEntityId: row.parent_entity_id || null,
+            subtreeAssetCount: Number(row.subtree_asset_count || 0),
+            typeKind: row.event_kind,
+          })),
+          eventLineage: eventLineage.map((row) => ({
+            displayName: row.display_name,
+            entityId: row.entity_id,
+            parentEntityId: row.parent_entity_id || null,
+          })),
+        }
+      : {}),
     ...(entity.entity_kind === "place"
       ? { subtreeAssets: projectedSubtreeAssets }
       : {}),
