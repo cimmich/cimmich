@@ -13,7 +13,7 @@ body:
     attributes:
       label: Cimmich revision
       description: Release tag or commit SHA.
-      placeholder: v1.1.0-community-preview.1 or commit SHA
+      placeholder: v1.1.0-community-preview.2 or commit SHA
     validations:
       required: true
   - type: input

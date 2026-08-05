@@ -1,11 +1,11 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-05
+Updated: 2026-08-06
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.1` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.2` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 
@@ -27,7 +27,7 @@ Release evidence must be produced from one clean immutable commit and include:
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
 
-## Community Preview final gate closure — 2026-08-05
+## Community Preview final gate closure — 2026-08-06
 
 The public candidate now carries one [user-journey acceptance map](COMMUNITY_PREVIEW_JOURNEYS.md)
 and one release contract. The immutable commit, tree and bundle checksums are
@@ -39,7 +39,7 @@ The final source gates are:
 
 - publication scan: pass across 1,711 tracked files;
 - service: 843 passed, 2 skipped, 0 failed;
-- web: 981 passed, 2 skipped, 0 failed;
+- web: 989 passed, 2 skipped, 0 failed;
 - service syntax, format and lint: pass;
 - web format, lint, Svelte (468 files, 0 errors, 0 warnings), TypeScript and
   production build: pass;
@@ -55,6 +55,14 @@ The final source gates are:
   residue-free destroy: pass; and
 - deterministic Cedar House bootstrap replay: 51 assets, 9 People, 12
   contexts, 5 Documents, 4 manual tags and 16 non-standard asset overrides.
+
+The `.2` repair candidate also closes all ten findings exposed while filming:
+identity tagging fails visibly when a photo is not imported, unavailable-photo
+copy names import and viewing-mode recovery, featured Home media follows its
+Event, context chips and Body wording are accurate, collection counts follow
+filters, Info does not leak across photos, Organise names match visible labels,
+the portaled visibility menu works with a pointer, and decision-history counts
+declare their current-viewing-mode projection.
 
 Signed-in walkthrough proof covers every Cimmich navigation section, all five
 Organise modes, Cimmich/Normal Tags, multi-tag photo intersection, Event copy,

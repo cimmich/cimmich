@@ -4,6 +4,26 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.2 — Filming-findings repair
+
+This repair release closes ten product problems exposed while recording the
+Community Preview walkthrough without changing the schema or supported Immich
+version.
+
+- Identity tagging no longer appears to save when the photo has not been
+  imported into Cimmich; unavailable-photo states now explain whether to import
+  the photo or change viewing mode.
+- Home stories keep their title and imagery on the same Event, context chips
+  name the right kind, Body terminology is consistent and collection counts
+  follow the active filter.
+- Photo Info state no longer carries into a different photo, Organise links use
+  their visible labels as accessible names and the portaled visibility menu is
+  operable with a pointer as well as a keyboard.
+- Decision-history responses explicitly declare that their projection follows
+  the current viewing mode, preventing a filtered count from being mistaken for
+  a whole-archive audit total.
+- The immutable Build Week release and Community Preview `.1` remain unchanged.
+
 ## v1.1.0-community-preview.1 — Complete memory companion preview
 
 This bounded Community Preview advances the maintained product from identity
