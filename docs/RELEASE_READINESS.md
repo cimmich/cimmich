@@ -64,6 +64,10 @@ filters, Info does not leak across photos, Organise names match visible labels,
 the portaled visibility menu works with a pointer, and decision-history counts
 declare their current-viewing-mode projection.
 
+Candidate CI dependency audits report zero known web or service
+vulnerabilities. Provider contracts pass with an existing cross-platform
+outside-root confinement fixture rather than assuming macOS `/private/tmp`.
+
 Signed-in walkthrough proof covers every Cimmich navigation section, all five
 Organise modes, Cimmich/Normal Tags, multi-tag photo intersection, Event copy,
 save-another, hierarchy, connections and multi-folder admission, the newcomer

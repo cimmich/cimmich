@@ -22,6 +22,9 @@ version.
 - Decision-history responses explicitly declare that their projection follows
   the current viewing mode, preventing a filtered count from being mistaken for
   a whole-archive audit total.
+- Web and service transitive dependencies are pinned above the advisories
+  disclosed during candidate CI, and the provider confinement contract uses a
+  cross-platform outside-root fixture instead of a macOS-only path.
 - The immutable Build Week release and Community Preview `.1` remain unchanged.
 
 ## v1.1.0-community-preview.1 — Complete memory companion preview

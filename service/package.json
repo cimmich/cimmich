@@ -7,6 +7,9 @@
   "engines": {
     "node": ">=22 <23"
   },
+  "overrides": {
+    "brace-expansion": "^5.0.9"
+  },
   "scripts": {
     "archive-mobility-conformance": "node acceptance/archive-mobility-journey.mjs",
     "bind-verified-content": "node bin/bind-verified-content.mjs",

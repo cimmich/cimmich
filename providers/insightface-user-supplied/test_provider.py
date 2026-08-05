@@ -98,8 +98,9 @@ class ProviderContractTest(unittest.TestCase):
         self.assertIsNone(provider.select_target_face(boxes, (100, 100), (200, 200, 3)))
 
     def test_media_root_confinement_rejects_escape(self):
+        provider_root = Path(__file__).resolve().parent
         with self.assertRaises(ValueError):
-            provider.confined_path(Path(__file__).parent, "/private/tmp")
+            provider.confined_path(provider_root, str(provider_root.parent))
 
     def test_target_box_clamps_float_noise_at_image_boundary(self):
         clamped = provider.validate_box(
