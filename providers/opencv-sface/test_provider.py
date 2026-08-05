@@ -60,8 +60,9 @@ class ProviderContractTest(unittest.TestCase):
         )
 
     def test_media_root_confinement_rejects_escape(self):
+        provider_root = Path(__file__).resolve().parent
         with self.assertRaises(ValueError):
-            provider.confined_path(Path(__file__).parent, "/private/tmp")
+            provider.confined_path(provider_root, str(provider_root.parent))
 
     def test_operating_system_error_cannot_leak_a_private_path(self):
         secret_path = "/private/library/people/example-person.jpg"
