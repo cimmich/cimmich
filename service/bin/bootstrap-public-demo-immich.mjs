@@ -120,6 +120,15 @@ await requestJson("/auth/admin-sign-up", {
 });
 const login = await requestJson("/auth/login", { body: { email, password } });
 assert.equal(typeof login.accessToken, "string");
+await requestJson("/system-metadata/admin-onboarding", {
+  body: { isOnboarded: true },
+  token: login.accessToken,
+});
+await requestJson("/users/me/onboarding", {
+  body: { isOnboarded: true },
+  method: "PUT",
+  token: login.accessToken,
+});
 const systemConfig = await requestJson("/system-config", {
   method: "GET",
   token: login.accessToken,

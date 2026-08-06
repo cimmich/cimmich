@@ -214,6 +214,10 @@ printf '%s\n' "$first" | grep -q '"ui":"ready"'
 state=$(run_demo status)
 test "$state" = "$first"
 
+CIMMICH_E2E_BASE_URL="http://127.0.0.1:$UI_PORT" \
+  CIMMICH_E2E_STATE_ROOT="$STATE_ROOT" \
+  "$ROOT/tools/run_browser_acceptance.sh"
+
 owner_gateway_unauthenticated=$(curl -sS -o "$PRIVACY_PROOF_ROOT/owner-gateway-unauthenticated.txt" -w '%{http_code}' \
   "http://127.0.0.1:$UI_PORT/cimmich-api/v1/summary")
 assert_code "$owner_gateway_unauthenticated" 401

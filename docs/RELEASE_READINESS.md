@@ -5,7 +5,7 @@ Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.4` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.5` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 
@@ -26,6 +26,49 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 5 operability gate — 2026-08-06
+
+Preview 5 deliberately adds no major product area. It turns the supported
+release into a more conventional operator artifact: published product images,
+redacted diagnostics, real-browser journeys, shorter front-door documentation,
+precise identity claims and the first enforced reduction in the largest
+repository module.
+
+The candidate must not publish until all normal Preview 4 gates pass plus:
+
+- five browser journeys against an isolated fictional demo;
+- API and UI multi-platform image publication with SBOM, provenance,
+  attestation, public pull proof and recorded immutable digests;
+- healthy and degraded `cimmich doctor` fixtures with redaction assertions;
+- focused tag-intersection repository tests after extraction;
+- root Compose render for published-image and local-build routes; and
+- logged-out verification of the shorter README, install guide, Build Week
+  visibility and corrected identity wording.
+
+This section records the candidate contract. Exact commit, tree, image and
+bundle hashes belong in the final external release receipt after all gates pass.
+
+The clean-tree candidate gates closed locally with:
+
+- service: 847 passed, 2 skipped, 0 failed, with syntax, format and lint clean;
+- web: 989 passed, 2 skipped, 0 failed, with format, lint, Svelte (0 errors,
+  0 warnings), TypeScript and production build clean;
+- five Playwright journeys passed against a freshly reset Cedar House demo;
+- the full public-demo lifecycle passed with onboarding complete, browser
+  journeys, secret-boundary checks, restart/down preservation, adversarial
+  restore rejection, portable schema-120 restore and residue-free teardown;
+- the stock-Immich companion lifecycle passed fresh import/replay, seven
+  adversarial restore rejections, backup/portable restore, disable and removal;
+- migration, synthetic and 38 provider contract suites passed;
+- publication scan, Compose render, local API/UI image builds, doctor redaction
+  fixtures and source-shape enforcement passed; and
+- repository size moved from 10,669 to 10,427 lines without behavior or schema
+  change.
+
+Public multi-platform image digests, attestations, bundle hashes and logged-out
+pull/download proof remain publication-time gates and are not claimed by the
+local candidate proof.
 
 ## Community Preview 4 repository-trust gate — 2026-08-06
 

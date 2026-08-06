@@ -4,6 +4,31 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.5 — Operability and browser proof
+
+- Five real-browser journeys cover fictional-demo start, photo navigation,
+  pointer use of the Viewing mode menu, all four Organise modes and true
+  two-tag intersection against the isolated Cedar House product.
+- A freshly generated fictional demo now completes Immich's own admin and user
+  onboarding flags, so the first browser login lands in the populated product
+  instead of an unrelated setup wizard.
+- Versioned amd64/arm64 API and UI images publish to GHCR with an SBOM,
+  BuildKit provenance and GitHub build-provenance attestation from immutable
+  action revisions. Local source builds remain available for contributors.
+- `./tools/companion.sh doctor` emits a redacted configuration, container,
+  schema, compatibility and disk report without credentials, origins, paths,
+  filenames, media or private identity data.
+- Tag-intersection storage/query logic moved from `repository.mjs` into a
+  dedicated 253-line domain module; its focused tests remain green and the
+  grandfathered repository ceiling is 242 lines lower.
+- README and install entry points now lead with product truth, a pull-first
+  five-minute Compose route, privacy, limitations and deeper references.
+- Identity language now states explicitly that native Immich manual face
+  assignments do not train or damage Immich's recognition model. Cimmich's
+  separate evidence types govern Cimmich behavior rather than correcting a
+  claimed Immich model defect.
+- Database schema and exact Immich compatibility remain unchanged.
+
 ## v1.1.0-community-preview.4 — Repository trust and conventional installation
 
 - The production Docker Compose definition now lives at root `compose.yaml`;

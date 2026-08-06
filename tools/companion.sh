@@ -16,6 +16,8 @@ ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
+API_IMAGE=${CIMMICH_API_IMAGE:-ghcr.io/cimmich/cimmich-api:v1.1.0-community-preview.5}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-ghcr.io/cimmich/cimmich-ui:v1.1.0-community-preview.5}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -97,6 +99,14 @@ require_configured() {
 
 compose() {
   docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" --file "$COMPOSE_FILE" "$@"
+}
+
+prepare_api_image() {
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
+    compose build cimmich-api
+  else
+    compose pull cimmich-api
+  fi
 }
 
 preflight_immich_version() {
@@ -239,14 +249,14 @@ private_password() {
 up() {
   require_configured
   preflight_immich_version
-  # Build the two local product images serially. Concurrent Buildx work can
-  # exhaust smaller container runtimes and makes it impossible to identify
-  # which immutable product image failed.
-  compose build cimmich-api
-  # `docker compose build` builds only the named service unless
-  # `--with-dependencies` is requested. Do not pass the `compose up`-only
-  # `--no-deps` flag here: current stock Compose rejects it.
-  compose build cimmich-ui
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
+    # Keep source builds available for contributors without making every owner
+    # compile two product images during an ordinary install.
+    compose build cimmich-api
+    compose build cimmich-ui
+  else
+    compose pull cimmich-api cimmich-ui
+  fi
   compose up --detach --no-build --wait
   status
 }
@@ -262,6 +272,13 @@ status() {
   companion=$(canonical_request GET /v1/companion/status)
   printf '{"companion":%s,"health":%s,"project":"%s","ui":"http://%s:%s"}\n' \
     "$companion" "$health" "$PROJECT" "$ui_bind_address" "$ui_port"
+}
+
+doctor() {
+  test "$#" -eq 0 || fail "usage: companion.sh doctor"
+  CIMMICH_COMPANION_PROJECT="$PROJECT" \
+    CIMMICH_COMPANION_STATE_ROOT="$STATE_ROOT" \
+    node "$ROOT/tools/doctor.mjs"
 }
 
 sync_inventory() {
@@ -288,7 +305,7 @@ face_provider() {
   case "$action" in
     install-recommended)
       test "$#" -eq 1 || fail "usage: companion.sh face-provider install-recommended"
-      compose build cimmich-api
+      prepare_api_image
       compose --profile face-provider run --rm cimmich-face-provider-init
       if grep -q '^CIMMICH_LOCAL_MEDIA_PROVIDER=' "$ENV_FILE"; then
         sed -i.bak \
@@ -320,7 +337,7 @@ face_provider() {
         case "$provider_path" in /*) ;; *) fail "Face provider paths must be absolute" ;; esac
         test -f "$provider_path" || fail "Face provider file is missing: $provider_path"
       done
-      compose build cimmich-api
+      prepare_api_image
       compose stop cimmich-api >/dev/null 2>&1 || true
       docker volume create "$FACE_PROVIDER_VOLUME" >/dev/null
       docker run --rm --user 0:0 \
@@ -328,7 +345,7 @@ face_provider() {
         --mount "type=bind,src=$detector_path,dst=/input/detector.onnx,readonly" \
         --mount "type=bind,src=$recognizer_path,dst=/input/recognizer.onnx,readonly" \
         --mount "type=volume,src=$FACE_PROVIDER_VOLUME,dst=/face-provider" \
-        "$PROJECT-api:current-source" \
+        "$API_IMAGE" \
         node bin/configure-local-face-provider.mjs \
         --manifest=/input/provider-manifest.json \
         --detector=/input/detector.onnx \
@@ -522,7 +539,7 @@ validate_config_archive() {
     *:cimmich-matching-provider.json:*)
       docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
         tar -xOzf /backup/config.tgz ./cimmich-matching-provider.json |
-        docker run --rm -i "$PROJECT-api:current-source" \
+        docker run --rm -i "$API_IMAGE" \
         node --input-type=module -e '
           import { validateRecognitionProviderManifest } from "./src/recognition-provider-contract.mjs";
           let input = "";
@@ -552,7 +569,7 @@ preflight_backup_database() (
     docker network rm "$preflight_network" >/dev/null 2>&1 || true
   }
   trap preflight_cleanup EXIT INT TERM
-  docker image inspect "$PROJECT-api:current-source" >/dev/null 2>&1 ||
+  docker image inspect "$API_IMAGE" >/dev/null 2>&1 ||
     fail "current Cimmich API image is unavailable for restore preflight"
   docker network create "$preflight_network" >/dev/null
   docker run -d --name "$preflight_database" --network "$preflight_network" \
@@ -593,7 +610,7 @@ preflight_backup_database() (
   fi
   docker run --rm --network "$preflight_network" \
     -e DATABASE_URL="postgres://cimmich:$preflight_password@$preflight_database:5432/cimmich" \
-    "$PROJECT-api:current-source" node bin/migrate.mjs apply >/dev/null ||
+    "$API_IMAGE" node bin/migrate.mjs apply >/dev/null ||
     fail "backup cannot migrate to the current Cimmich schema"
   migrated_schema=$(docker exec "$preflight_database" psql -U cimmich -d cimmich -Atc \
     'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;') ||
@@ -949,8 +966,9 @@ remove_companion() {
   known=$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -print)
   test "$known" = "$ENV_FILE" || fail "state root contains unrecognized entries; refusing removal"
   compose down --volumes --remove-orphans
-  docker image rm "$PROJECT-api:current-source" "$PROJECT-ui:current-source" \
-    >/dev/null 2>&1 || true
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
+    docker image rm "$API_IMAGE" "$UI_IMAGE" >/dev/null 2>&1 || true
+  fi
   rm -f "$ENV_FILE"
   rmdir "$STATE_ROOT"
   printf '{"project":"%s","state":"removed","status":"REMOVED"}\n' "$PROJECT"
@@ -959,12 +977,13 @@ remove_companion() {
 validate_project
 
 command=${1:-}
-test -n "$command" || fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove"
+test -n "$command" || fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove"
 shift
 case "$command" in
   configure) configure "$@" ;;
   up) up "$@" ;;
   status) status "$@" ;;
+  doctor) doctor "$@" ;;
   sync) sync_inventory "$@" ;;
   face-provider) face_provider "$@" ;;
   process-faces) process_faces "$@" ;;
@@ -975,5 +994,5 @@ case "$command" in
   portable-restore) portable_restore "$@" ;;
   disable) disable "$@" ;;
   remove) remove_companion "$@" ;;
-  *) fail "usage: companion.sh configure|up|status|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove" ;;
+  *) fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove" ;;
 esac

@@ -1,16 +1,10 @@
 # Cimmich
 
 > [!NOTE]
-> **Cimmich's current maintained release line is the bounded Community Preview.**
-> It targets `v1.1.0-community-preview.4`, migration-ledger schema 120/patch 1,
-> and exact Immich 3.1.0. When installing from GitHub, use the named bundles
-> attached to the Community Preview release you are reading; do not substitute
-> an older Public Beta bundle with the same project name.
-> The exact OpenAI Build Week submission remains preserved in the
-> [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week).
-> That tag, release and its assets remain unchanged as the living project moves
-> forward. See the [Public Beta changelog](docs/PUBLIC_BETA_CHANGELOG.md) for
-> maintained-product updates made after submission.
+> **Current release: Community Preview 5** — exact Immich 3.1.0, Cimmich
+> schema 120/patch 1. The immutable
+> [OpenAI Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
+> demo and evidence remain preserved and visible as the living project improves.
 
 > **Complete the picture.**
 
@@ -18,170 +12,80 @@
   <img src="docs/assets/cimmich-logo.png" alt="Cimmich astronaut inside a four-colour focus frame" width="220">
 </p>
 
-**Cimmich is an open-source, local-first companion for Immich.** It adds the
-missing memory layer around a photo library: people can be recorded even when a
-face is obscured or absent, useful local matching can stay selective, and the
-archive owner remains the authority on identity.
+**Cimmich is an open-source, local-first memory companion for Immich.** It adds
+People, Pets, Places, Things, Events and Documents around an existing library,
+while keeping the archive owner—not a model—in charge of identity.
 
-Built for **OpenAI Build Week — Apps for Your Life** with **Codex powered by
-GPT-5.6 Sol**.
-
-[Watch the Build Week demo](https://youtu.be/CfR_r0n4deQ) · [Install Cimmich](INSTALL.md) · [Read the FAQ](docs/FAQ.md) · [Try the synthetic demo](#try-cimmich-with-fictional-data) · [Prior work and Build Week boundary](#prior-work-and-build-week-boundary) ·
-[Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
-[Check release proof](docs/RELEASE_READINESS.md) · [Review the Community Preview journeys](docs/COMMUNITY_PREVIEW_JOURNEYS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Publication runbook](docs/COMMUNITY_PREVIEW_PUBLICATION.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
-
-[Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Development setup](DEVELOPMENT.md) · [Community conduct](CODE_OF_CONDUCT.md)
+[Install in five minutes](INSTALL.md) · [Try fictional data](#try-the-fictional-demo) ·
+[See current limitations](#current-limitations) · [Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) ·
+[Privacy boundary](docs/PRIVACY_BOUNDARY.md) · [Contribute](CONTRIBUTING.md)
 
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
-> endorsed by Immich or OpenAI. Immich remains the base photo-management
-> product; Cimmich stores its own derived state separately and never directly
-> writes the Immich database or source media.
+> endorsed by Immich or OpenAI. It never directly writes the Immich database or
+> source media.
 
-## Start here
+## What it adds
 
-| What you want to do                                      | Where to begin                                                                                |
-| :------------------------------------------------------- | :-------------------------------------------------------------------------------------------- |
-| **Inspect and start Cimmich with Docker Compose**        | Use the conventional [Compose quick start](INSTALL.md#docker-compose-quick-start).            |
-| **Add Cimmich with guarded backup/restore operations**   | Follow the [guided installer](INSTALL.md#guided-installer).                                   |
-| **Explore Cimmich without using my photographs**         | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data).                     |
-| **Understand the npm/pnpm and Immich SDK source layout** | Read the [development guide](DEVELOPMENT.md).                                                 |
-| **Optionally use a local AI assistant**                  | Review the same commands first, then use the [agent installation contract](AGENT_INSTALL.md). |
+- **Complete people records.** Face, Head, Body and Presence are separate kinds
+  of evidence, so a known appearance does not have to pretend to be a face.
+- **A connected memory library.** People, Pets, Places, Things, Events and
+  Documents have photo-first directories, relationships and real counts.
+- **Overlapping context.** A photo can truthfully belong to a trip, recurring
+  activity, client engagement and life period at the same time.
+- **Intersection search.** Select several Cimmich tags and see only photos with
+  all of them, without a hidden 5,000-result ceiling.
+- **Owner-controlled review.** Matching can suggest; the owner accepts,
+  corrects, merges, rejects or undoes every consequential identity decision.
+- **Cumulative presentation modes.** Standard, Personal and optional
+  password-gated Private modes control what is comfortable to show on a shared
+  screen. They are presentation filters, not encryption or account security.
 
-Both real-library paths are source-visible and build the same containers. The
-guided installer adds guarded backup, restore, disable and removal operations.
-It currently supports macOS and Linux, does not require a model, does not ask
-for an API key in Terminal and does not import anything until the signed-in
-owner has previewed the proposed scope.
+### The identity boundary, precisely
 
-**Prior-work disclosure:** Cimmich began from a private Immich-derived research
-seed built before Build Week. Its archive-processing experiments,
-identity/matching work, semantic-search exploration and experimental UI are
-disclosed and are not claimed as competition work. The
-[exact boundary](#prior-work-and-build-week-boundary) is recorded below and in
-the [privacy-cleared evidence index](docs/BUILD_WEEK_EVIDENCE.md).
+**Cimmich stores Face, Head, Body and Presence evidence separately from
+Immich. Native Immich manual face assignments do not train or damage Immich’s
+recognition model.** Cimmich’s distinction is about recording different kinds
+of owner knowledge and governing which evidence its own optional matching uses.
 
-## No more choosing between matching accuracy and completeness
+No AI model is required. Optional local Face, Body, pose, OCR, object or vision
+providers can add observations, but providers never gain identity authority.
 
-Face recognition works best when its reference set contains actual, useful
-faces. A memory library has a broader job: it should still know who is in a
-photo when a face is turned away, hidden behind a visor, partly obscured or not
-visible at all.
+## Install beside Immich
 
-Instead of forcing every appearance into a face bucket, Cimmich gives one
-person four distinct kinds of owner truth:
-
-| Evidence     | What it means                                                         |           Used for face matching?            |
-| :----------- | :-------------------------------------------------------------------- | :------------------------------------------: |
-| **Face**     | A visible face associated with a person                               | Yes, only when governed as suitable evidence |
-| **Head**     | The person's head is visible, but no usable face is claimed           |                      No                      |
-| **Body**     | The person is located through body evidence                           |                      No                      |
-| **Presence** | The owner knows the person was there without claiming visual evidence |                      No                      |
-
-That distinction lets Cimmich keep matching evidence clean **without making the
-library incomplete**.
-
-## What Cimmich adds
-
-- **More complete people records:** Face, Head, Body and Presence evidence,
-  multiple appearances per person, groups, aliases, merge/unmerge and
-  correction.
-- **A richer memory graph:** People, Pets, Places, Things, Events, Trips,
-  Activities, Life periods and linked Documents.
-- **Better ways to revisit a library:** person, pet and context pages; maps;
-  covers; relationships; filters; and visibility-aware Smart Search.
-- **Three cumulative viewing modes:** Standard, Personal and an optional
-  password-gated Private presentation mode—a screen filter for shoulder-surfing
-  and TV slideshows, set from Settings; Immich still owns account access.
-- **Selective local matching:** confirmed owner evidence becomes governed
-  references; Cimmich ranks candidates, abstains when evidence is insufficient
-  and never accepts identity automatically.
-- **Optional model assistance:** separately chosen Face, Body, pose, OCR, object
-  or vision providers can add evidence. No model weight is bundled with
-  Cimmich.
-- **Optional Guided clients:** a local model, Codex or another compatible client
-  can discover and use only the catalogued operations, authority and viewing
-  ceiling the operator grants.
-
-Every consequential owner decision has provenance, replay behavior and
-decision-scoped Undo.
-
-## One product, four boundaries
-
-| Boundary               | Purpose                                                                        | Default                                           |
-| :--------------------- | :----------------------------------------------------------------------------- | :------------------------------------------------ |
-| **Core**               | People, Pets, contexts, Documents, search, visibility and human-owned evidence | Available without a model                         |
-| **Enhanced**           | Included Cimmich matching over confirmed, governed references                  | Owner-disabled until configured                   |
-| **Evidence providers** | Optional Face, Body, pose, OCR, object or vision observations                  | Separate install, manifest and licence            |
-| **Guided**             | Optional machine-readable access for a client the operator chooses             | Disabled; bounded by grant and visibility ceiling |
-
-Core remains useful by itself. Enhanced does not bundle a model. Providers do
-not gain identity authority. Guided is not required to install or use Cimmich.
-
-## See it working
-
-The public demonstration uses fictional, synthetic media so the full product
-can be shown without exposing a real person's archive.
-
-- **[Cedar House V1](demo/cedar-house-v1/README.md)** is the established household library: fictional people,
-  pets, places, events, documents, visibility states and deliberately difficult
-  evidence.
-- **[Space Trip V1](demo/space-trip-v1/README.md)** is a bundled six-image extension added to that existing
-  library through Guided V2. It proves a real album-organisation journey—not a
-  pre-seeded final state.
-
-Both packs carry their own rights, attribution, prompts, provenance and SHA-256
-manifests. They demonstrate product behavior, not biometric accuracy,
-demographic fairness or suitability for another person's archive.
-
-### Five-minute product journey
-
-1. Open **People** and follow the Cedar House cast across clear faces, partial
-   views, rear views and known Presence. The optional Space Trip Guided journey
-   adds all four evidence types to Maya without pre-seeding that final state.
-2. Open a photo from a person's page and see the person's name briefly orient
-   the viewer before the controls recede.
-3. Move through the related Pet, Place, Event and linked Document pages.
-4. Search the shared memory graph and switch between Standard, Personal and
-   Private presentation.
-5. Use **Library setup** for Connect → Preview → Import. Open **Models &
-   Guided** only when you deliberately want optional local evidence or client
-   access.
-
-## Try Cimmich with fictional data
-
-The supported public operator creates a fresh, loopback-only Immich 3.1.0
-instance, a separate Cimmich PostgreSQL/API stack and a production-built Cimmich
-UI. It owns one exact Compose project and does not discover or operate on other
-Immich/Cimmich installations.
-
-### Requirements
-
-- Docker with Compose v2;
-- `curl`, `nc` and either `sha256sum` or macOS `shasum`;
-- the complete [Cedar House V1 release archive](https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz);
-- three free local ports (defaults: `3303`, `3301` and `22859`).
-
-The source-controlled [Cedar House contract](demo/cedar-house-v1/README.md)
-contains the operator guide, ledger, notices and provenance rules. The full
-rights-bound media archive is distributed as a release asset because it is
-approximately 134 MiB.
-
-Download, verify and extract the exact Build Week archive:
+Requirements: Docker Compose v2, a working exact Immich 3.1.0 installation,
+`curl`, `openssl`, and several gigabytes of free Docker storage.
 
 ```sh
-curl -fLO https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz
-expected_sha256=937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f
-if command -v sha256sum >/dev/null 2>&1; then
-  actual_sha256=$(sha256sum cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
-else
-  actual_sha256=$(shasum -a 256 cimmich-cedar-house-v1.tar.gz | awk '{print $1}')
-fi
-test "$actual_sha256" = "$expected_sha256"
-tar -xzf cimmich-cedar-house-v1.tar.gz
+cp .env.example .env
+# Put a new `openssl rand -hex 32` value in CIMMICH_DB_PASSWORD.
+# Confirm the two credential-free Immich URLs; do not put an API key in .env.
+docker compose config --quiet
+docker compose pull cimmich-api cimmich-ui
+docker compose up --detach --no-build --wait
 ```
 
-### Start the isolated demo
+Open <http://127.0.0.1:3413>, sign in through Immich, add a dedicated read-only
+Immich API key in Cimmich’s write-only Settings field, then preview the exact
+scope before importing.
+
+The published API and UI images are multi-platform GHCR images with SBOM and
+GitHub build-provenance attestations. Every release records their immutable
+digests. Contributors can still build the exact checked-in Dockerfiles locally.
+
+Read [INSTALL.md](INSTALL.md) for download verification, the guarded installer,
+backups, updates, local builds and the redacted `cimmich doctor` report.
+
+## Try the fictional demo
+
+The isolated Cedar House demo creates its own loopback-only Immich and Cimmich
+stack. It does not discover or operate on another installation.
+
+1. Download the complete
+   [Cedar House V1 archive](https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz).
+2. Verify its documented SHA-256 in
+   [the demo guide](demo/cedar-house-v1/README.md), then extract it.
+3. Start the isolated project:
 
 ```sh
 export CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$PWD/cedar-house-v1"
@@ -189,355 +93,56 @@ export CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$PWD/cedar-house-v1"
 ./tools/public_demo.sh status
 ```
 
-A cold first run normally takes 4–10 minutes while pinned images and locked UI
-dependencies are prepared. `status` reports readiness and local URLs without
-printing passwords, API keys or Guided tokens.
+The fictional packs carry rights, attribution, prompts, provenance and checksum
+manifests. They demonstrate product behavior—not biometric accuracy, fairness
+or suitability for another person’s archive.
 
-Default loopback URLs:
+## Privacy and trust
 
-- Cimmich product: `http://127.0.0.1:3303`
-- stock Immich: `http://127.0.0.1:22859`
-- Cimmich Guided API/health: `http://127.0.0.1:3301`
+- Cimmich has its own PostgreSQL database, configuration, documents and backups.
+- Original media remains owned and served by Immich.
+- Product ports bind to loopback by default; the owner API stays behind the
+  authenticated same-origin gateway.
+- Optional outbound address search and map imagery are off by default.
+- Generated credentials are mode `0600`; diagnostics exclude credentials,
+  paths, filenames, media and private identities.
+- Third-party infrastructure images are digest-pinned. Cimmich product images
+  are versioned, attested and published from immutable GitHub workflow actions.
 
-The owner API is available only through the product gateway's authenticated
-same-origin `/cimmich-api` route. The loopback Guided listener exposes only its
-bounded route catalogue; omitting the Guided header does not reveal owner
-routes.
+See [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md) and the
+[release-readiness proof](docs/RELEASE_READINESS.md).
 
-Generated credentials live only in mode-`0600` operator state. The detailed
-[demo guide](demo/cedar-house-v1/README.md) covers first Immich sign-in, Private
-view-lock handling, Guided credentials, map behavior, backup/restore and
-offline-safe choices.
+## Build Week and prior work
 
-Cimmich service egress is off by default. Address search and satellite imagery
-remain available only when the operator explicitly sets
-`CIMMICH_OPTIONAL_EGRESS_ENABLED=true`; enabling it permits requests to Photon
-and ArcGIS respectively. Core organising, search, profiles and local maps do
-not require that opt-in.
+Cimmich was built for **OpenAI Build Week — Apps for Your Life** with Codex
+powered by GPT-5.6 Sol. The exact submission remains available as:
 
-### Optional public CPU Face provider
+- the immutable [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week);
+- the [demo video](https://youtu.be/CfR_r0n4deQ);
+- the [privacy-cleared evidence index](docs/BUILD_WEEK_EVIDENCE.md); and
+- the [competition boundary and prior-work disclosure](docs/BUILD_WEEK.md).
 
-```sh
-./tools/public_demo.sh install-face-provider
-```
-
-This explicitly downloads and verifies the checksum-pinned official OpenCV
-YuNet/SFace artifacts into the demo's dedicated model volume. Model weights are
-not committed to this repository or bundled into the application image.
-
-### Stop, restart or remove the isolated demo
-
-```sh
-./tools/public_demo.sh stop
-./tools/public_demo.sh restart
-./tools/public_demo.sh destroy --confirm=cimmich-public-demo
-```
-
-`stop` pauses containers, `restart` restarts them in place, and `down` removes
-only containers and the project network. All three preserve the complete demo
-library, databases, Documents, models and generated operator state. `up` resumes
-that exact state without rebuilding it. Permanent removal is separately named,
-confirmation-gated and scoped to the exact disposable demo project. It does
-not target an existing Immich installation.
-
-## Add Cimmich beside an existing Immich installation
-
-Start with the [installation guide](INSTALL.md). It explains which release
-bundle to download, the supported platforms and prerequisites, how to inspect
-the root [`compose.yaml`](compose.yaml), and how to create the dedicated
-read-only Immich API key. Every path creates a separate Cimmich database,
-document volume, API, signed-in UI and loopback gateway.
-
-Experienced Docker users can start from the root Compose file without running
-a project script:
-
-```sh
-cp .env.example .env
-# Fill CIMMICH_DB_PASSWORD and confirm the two Immich URLs in .env.
-docker compose config --quiet
-docker compose up --build --detach --wait
-```
-
-The Compose preflight refuses to start the Cimmich API unless it can reach
-exact Immich 3.1.0. The UI and API remain behind the loopback gateway; enter a
-dedicated read-only Immich API key later in the signed-in, write-only Settings
-field.
-
-For guarded lifecycle operations, use the installer after inspecting it:
-
-```sh
-./tools/install.sh --check
-./tools/install.sh
-```
-
-The guided installer does not ask for an API key or import anything before the
-signed-in preview. It brings up Cimmich, then the setup screen verifies the
-connection and lets the owner inspect the proposed scope before admission.
-
-Advanced operators can use the exact-project lifecycle directly:
-
-```sh
-export CIMMICH_COMPANION_STATE_ROOT=/srv/cimmich/operator
-./tools/companion.sh configure http://host.docker.internal:2283
-./tools/companion.sh up
-./tools/companion.sh status
-```
-
-This keeps the default password-locked Private tier. Turning that lock off is
-an explicit advanced override documented—with its visibility consequence—in
-the installation guide; it is not part of the copy-and-paste default.
-
-Open the loopback URL returned by `status` and sign in with the normal Immich
-account. Cimmich does not create a second user account. Create a dedicated
-least-privilege Immich API key and enter it only into the write-only Settings
-field. The key is used only by the server-side read companion.
-
-The same exact-project operator owns Cimmich-only backup, disable, restore and
-confirmed removal:
-
-```sh
-./tools/companion.sh backup /safe/new/cimmich-companion-backup
-./tools/companion.sh disable
-./tools/companion.sh restore /safe/cimmich-companion-backup --confirm=cimmich-companion
-./tools/companion.sh up
-./tools/companion.sh remove --confirm=cimmich-companion
-```
-
-For a move to another disk, machine or Immich installation, export only
-Cimmich-owned portable state:
-
-```sh
-./tools/companion.sh portable-export /safe/new/cimmich-portable
-./tools/companion.sh portable-restore /safe/cimmich-portable --confirm=cimmich-companion
-```
-
-Portable export excludes original media, Immich credentials and provider
-artifacts. After restore, inventory reconnects exact content hashes to the same
-Cimmich assets even when paths and Immich UUIDs changed. See
-[archive mobility](docs/ARCHIVE_MOBILITY.md).
-
-See [release readiness](docs/RELEASE_READINESS.md) for the exact supported
-baseline and current lifecycle proof.
-
-## How it is built
-
-```text
-Immich media + supported APIs (read-only)
-                    |
-                    v
-       Cimmich inventory and evidence
-       separate PostgreSQL + pgvector
-                    |
-      +-------------+--------------+
-      |                            |
-      v                            v
-owner decisions              local proposals
-Face / Head / Body /          matching + optional
-Presence + contexts           evidence providers
-      |                            |
-      +-------------+--------------+
-                    |
-                    v
-      provenance-bearing product state
-       with replay, conflict and Undo
-                    |
-                    v
-       optional authenticated Guided client
-```
-
-- Cimmich has separate credentials, migrations, backups and restore.
-- It shares no schema or foreign keys with Immich.
-- It does not directly write the Immich database or source media.
-- Local providers produce typed observations, not identity decisions.
-- Local comparison uses accepted, compatible reference photos. Any separately
-  evaluated bulk-matching policy must pass human review and is invalidated by
-  later identity corrections.
-- Private is a cumulative presentation mode—not encryption, an ACL, a vault or
-  protection from a host administrator. Immich provides the access security;
-  the Private password only decides what Cimmich draws on screen, so the owner
-  can reset it from Settings without the previous password.
-
-Detailed contracts live in the [service documentation](service/README.md),
-[privacy boundary](docs/PRIVACY_BOUNDARY.md) and provider directories.
-
-## Guided without hidden authority
-
-Guided V2 is a provider-neutral machine bootstrap. A separately authenticated
-client can discover versioned JSON schemas, typed errors, replay/conflict/Undo
-laws and UI verification links for an exact catalogue of existing Cimmich
-operations.
-
-The credential has an explicit `read|operate` grant and
-`Standard|Personal|Private` visibility ceiling. The server derives the actor,
-rechecks current visibility and rejects every route outside that catalogue.
-Guided does not grant ambient filesystem, database, model-provider,
-bulk-matching activation or automatic identity authority.
-
-Cimmich stores no OpenAI or other model-provider key and makes no provider
-request. A connected hosted client may disclose what it retrieves; that client
-and its operator own the disclosure choice. Running Cimmich locally does not
-make a hosted client local or private.
-
-## Prior work and Build Week boundary
-
-Cimmich began from a private Immich-derived archive-research seed that I had
-been exploring for several months before Build Week. That work approached the
-problem from the other direction: how could a combination of local and cloud
-models sort, tag and process a roughly 600 GB personal photo archive spanning
-15 years, including low-quality and crowded images, then make its actual
-contents semantically searchable? A representative goal was a query as specific as:
-“Show me the photos from Greece with two named friends, eating saganaki and
-drinking retsina, while I was wearing a 76ers shirt.”
-
-That prior project contributed the original problem, archive-processing and
-model experiments, identity/matching and QC work, semantic-search exploration,
-and experimental Immich-derived UI overlays.
-It did **not** contribute the complete Cimmich product described in this README,
-and none of the inherited Immich-derived work is claimed as newly authored
-competition work.
-
-During OpenAI Build Week's 13–21 July 2026 Submission Period, the project was
-reframed around completeness, trustworthy evidence and human authority. The
-dated, agent-kept [Build Week extension ledger](docs/BUILD_WEEK_CHANGELOG.md)
-records the work completed during that period. A
-[privacy-cleared claim-to-proof index](docs/BUILD_WEEK_EVIDENCE.md) links those
-claims to public source, tests, contracts and reproduction paths:
-
-- a separate Cimmich intelligence service and PostgreSQL/pgvector database
-  beside Immich;
-- Person identity management and distinct Face, Head, Body and Presence truth;
-- owner correction, merge/unmerge, Pets and review journeys;
-- a read-only Immich companion, restart-safe inventory and local media jobs;
-- Places, Things, Events/Trips/Activities/Life periods, linked Documents,
-  Smart Search and Standard/Personal/Private presentation;
-- optional evidence-provider and matching boundaries with no automatic identity
-  authority;
-- the provider-neutral Guided V2 machine interface and its executed Space Trip
-  journey;
-- the synthetic Cedar House and Space Trip public demonstration material;
-- migration, backup/restore, restart, disable/remove, accessibility, privacy,
-  security, browser-journey and release-proof programs.
-
-The retained Immich web foundation and all upstream licences remain disclosed in
-[NOTICE.md](NOTICE.md). This is an existing-project extension permitted by the
-[Build Week rules](https://openai.devpost.com/rules), not a claim that the
-repository began from an empty folder.
-
-## Built during OpenAI Build Week
-
-During the 13–21 July 2026 Build Week, **Codex powered by GPT-5.6 Sol** helped
-turn that direction into a separately stored intelligence service, a coherent
-product experience and, through the final hardening gates, an installable public
-release candidate. The workflow was specific:
-
-- product intent, user stories, North Stars and definitions of done were
-  challenged and refined before implementation;
-- coordinated Controller, Backend and UI/UX tasks used task-to-task messaging
-  to route product findings into code and return proof without losing the
-  active user journey;
-- Codex used the browser as a real user, tested end-to-end journeys and routed
-  defects discovered during live use;
-- long-running service, migration, UI, accessibility, privacy, security and
-  lifecycle checks ran alongside product work;
-- Codex and GPT-5.6 planned the synthetic public archive so a real private photo
-  library never had to become demo material;
-- GPT-5.6 Sol operated Guided V2 from its published contracts to add the six
-  Space Trip images to the existing library, organise their Event, Place and
-  Thing context, set visibility, and prove replay and Undo.
-
-The fuller [Build Week account](docs/BUILD_WEEK.md) explains the Codex workflow,
-GPT-5.6 use and runtime boundary.
-
-GPT-5.6 is part of how Cimmich was built and of the demonstrated optional Guided
-journey. It is not a required runtime dependency and is never the authority on
-who a person is.
-
-## Verification
-
-Current release-hardening evidence is recorded in
-[release readiness](docs/RELEASE_READINESS.md). The same checkout must pass the
-service, migration, disposable synthetic, web, Svelte, TypeScript,
-production-build and public-demo lifecycle gates.
-
-Current public-beta releases carry their own certification in
-[release readiness](docs/RELEASE_READINESS.md) and the
-[Public Beta changelog](docs/PUBLIC_BETA_CHANGELOG.md); the migration ledger
-advances with each beta patch. The following Build Week certification is the
-frozen historical bar for that tag, not the current release's schema state.
-
-The Build Week release tag is `v1.0.0-build-week`. It targets exact Immich 3.0.3
-and derives schema 75 from its contiguous migration ledger. Its certification
-requires service, migration, synthetic, clean public-demo and fresh stock-Immich
-lifecycle gates from the release checkout.
-The public-demo gate starts from no prepared Cimmich data at the pristine
-`51:9:12:5:4:0` semantic state, preserves owner/database/volume markers across
-stop, restart and down/up, restores a checksummed schema-74 backup forward to
-schema 75, and proves that only explicit reset/destroy removes state. Runtime
-deployment receipts remain separate from this source claim.
-
-Enhanced's setup and evaluation mechanics are proved. The release does not
-claim representative matching accuracy, an active evaluated SourcePack or
-automatic identity authority.
-
-Core source checks:
-
-```sh
-cd service && npm ci && npm run check:syntax && npm run format && npm run lint && npm test
-cd ../ui && corepack enable && pnpm install --frozen-lockfile
-pnpm --filter @immich/sdk build
-cd web && pnpm exec prettier --check .
-pnpm run lint
-pnpm run check:svelte
-pnpm run check:typescript
-pnpm run build
-cd ../..
-./tools/run_provider_contract_tests.sh
-./tools/run_migration_runner_acceptance.sh
-./tools/run_synthetic_acceptance.sh
-```
-
-The provider contract command expects Python with the pinned NumPy, OpenCV and
-Pillow versions installed; CI creates that bounded environment without
-installing operator-supplied model runtimes.
-
-The synthetic suite uses an isolated disposable database and grants no identity
-or bulk-matching activation authority to a model. Real-provider acceptance is
-separate, explicit and licence-gated.
+Cimmich began from an Immich-derived private research seed before the event.
+Those earlier archive-processing, matching, search and experimental UI efforts
+are disclosed and are not claimed as Build Week work.
 
 ## Current limitations
 
-- Cimmich is an early public release. Evaluate it with the synthetic demo before
-  connecting a private archive.
-- Automatic identity acceptance is off. Local comparisons can rank likely
-  People, but only an owner action can change identity.
-- The public demo proves product behavior, not representative biometric
-  accuracy or demographic fairness.
-- Provider weights, licences, calibration and resource requirements remain
-  provider-specific.
-- Optional hosted Guided use inherits the privacy behavior of the client the
-  operator chooses.
-- The supported companion version is exactly Immich 3.1.0. Later Immich versions and
-  sustained large-archive behavior require their own proof.
+- Community Preview, not a general-availability release.
+- Exact Immich 3.1.0 only; other versions are added one tested release at a time.
+- macOS and Linux are the supported guided-install hosts; native Windows is not.
+- No biometric-accuracy or demographic-fairness claim is made.
+- Private mode is a presentation filter, not encryption.
+- Some large inherited and preview-era files remain; CI freezes their ceilings
+  and each touched domain must shrink rather than grow.
 
-## Contributing and security
+## Develop and contribute
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep Immich as
-the base product, preserve the evidence/authority boundaries and use synthetic
-fixtures in public tests and documentation.
+The service uses npm and Node 22; the Immich-derived UI workspace uses pnpm.
+`ui/packages/sdk` is checked-in source, not `node_modules`. See
+[DEVELOPMENT.md](DEVELOPMENT.md) for exact commands and architecture, then read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-Do not open a public issue for a suspected vulnerability or include real media,
-embeddings, credentials or private library details. Follow
-[SECURITY.md](SECURITY.md).
-
-## Licence and attribution
-
-Cimmich source is licensed under
-[GNU AGPL v3.0 only](LICENSE). Preserved upstream and third-party terms remain
-in force; see [NOTICE.md](NOTICE.md) and the provider-specific notices.
-
-Cedar House V1 and Space Trip V1 are independently licensed demo packages and
-must retain their licence, notice, attribution, manifest and provenance files.
-
-“Immich” is used nominatively to describe compatibility and the ecosystem this
-unofficial companion serves. No trademark rights, affiliation or endorsement
-are claimed.
+Licensing and upstream attribution are recorded in [LICENSE](LICENSE),
+[NOTICE.md](NOTICE.md), [ATTRIBUTION.md](ATTRIBUTION.md) and
+[UPSTREAM_BASELINE](UPSTREAM_BASELINE).

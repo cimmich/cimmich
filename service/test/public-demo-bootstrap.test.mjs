@@ -261,6 +261,8 @@ test("demo tooling contains no workspace-specific default outside its test fixtu
   assert.match(source, /loadMigrations/);
   assert.match(source, /filenameAuthority: "canonical_source"/);
   assert.match(immichSource, /source: "immich_external_library"/);
+  assert.match(immichSource, /\/system-metadata\/admin-onboarding/);
+  assert.match(immichSource, /\/users\/me\/onboarding/);
   assert.match(externalLibrarySource, /manifestRows\.length, 51/);
 });
 

@@ -109,7 +109,7 @@ report_disk_space() {
   available_kb=$(df -Pk "$ROOT" 2>/dev/null | awk 'NR == 2 { print $4 }')
   case "$available_kb" in
     ''|*[!0-9]*)
-      note "Available disk space could not be measured; local Docker builds need several gigabytes"
+      note "Available disk space could not be measured; Docker images and Cimmich state need several gigabytes"
       ;;
     *)
       available_gb=$((available_kb / 1024 / 1024))
@@ -438,8 +438,8 @@ export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=$private_lock_mode
 show_recovery=true
 
 say ""
-say "Step 2 of 3 — Build and start Cimmich"
-say "The first local build commonly takes 4–10 minutes. Docker output will follow."
+say "Step 2 of 3 — Pull and start Cimmich"
+say "The first image pull can take several minutes. Docker output will follow."
 "$COMPANION" up
 
 if test "$private_lock_mode" = password; then

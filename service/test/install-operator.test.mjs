@@ -41,8 +41,8 @@ test("repository presents a conventional install and excludes dependency output"
   );
   assert.equal(JSON.parse(sdkManifest).name, "@immich/sdk");
   assert.ok(
-    readme.indexOf("Inspect and start Cimmich with Docker Compose") <
-      readme.indexOf("Optionally use a local AI assistant"),
+    readme.indexOf("## Install beside Immich") <
+      readme.indexOf("## Develop and contribute"),
   );
   assert.match(environment, /^CIMMICH_DB_PASSWORD=$/m);
   assert.doesNotMatch(environment, /^IMMICH_API_KEY=/m);
@@ -163,10 +163,8 @@ test("guided install stops at signed-in preview and documentation separates both
   );
   assert.match(companionScript, /compose build cimmich-api/);
   assert.match(companionScript, /compose build cimmich-ui/);
-  assert.match(
-    companionScript,
-    /docker image rm "\$PROJECT-api:current-source" "\$PROJECT-ui:current-source"/,
-  );
+  assert.match(companionScript, /compose pull cimmich-api cimmich-ui/);
+  assert.match(companionScript, /docker image rm "\$API_IMAGE" "\$UI_IMAGE"/);
   assert.doesNotMatch(companionScript, /compose build --no-deps/);
   const providerInstall = publicDemoScript.match(
     /install_face_provider\(\) \{(?<body>[\s\S]*?)\n\}/,
@@ -177,47 +175,32 @@ test("guided install stops at signed-in preview and documentation separates both
     /immich-credential|refresh_immich_companion/,
   );
 
-  assert.match(install, /Docker Compose quick start/);
-  assert.match(install, /Guided installer/);
-  assert.match(install, /agent installation contract/);
-  assert.match(install, /Advanced operator install/);
-  assert.match(install, /Download Cimmich/);
-  assert.match(install, /named `cimmich-<version>\.tar\.gz` install bundle/);
-  assert.match(install, /currently supports \*\*macOS and Linux\*\*/);
-  assert.match(install, /Create a dedicated Immich API key/);
+  assert.match(install, /Guarded installer/);
+  assert.match(install, /Five-minute Docker Compose install/);
   assert.match(
     install,
-    /Do not import if the account, server or preview is unexpected/,
+    /downloaded the named Cimmich tar or ZIP|Download the named Cimmich tar or ZIP/,
   );
-  assert.match(install, /Updating Cimmich/);
+  assert.match(install, /Native Windows PowerShell is not supported/);
+  assert.match(install, /dedicated read-only Immich API key/);
+  assert.match(install, /## Updating/);
   assert.match(
     install,
-    /companion\.sh backup \/safe\/new\/cimmich-backup[\s\S]*install\.sh --check/,
+    /companion\.sh backup \/absolute\/new\/backup-directory/,
   );
-  assert.match(
-    install,
-    /Docker Desktop or another remote Docker engine may store images elsewhere/,
-  );
+  assert.match(install, /Docker Desktop, OrbStack or Docker Engine/);
   assert.match(
     agentInstall,
     /never ask for an API key, password or token in chat/i,
   );
   assert.match(agentInstall, /never use `sudo`/);
-  assert.match(
-    install,
-    /does not create containers, configuration or database state/,
-  );
-  assert.match(install, /write-only API-key field/);
-  assert.match(readme, /\[Install Cimmich\]\(INSTALL\.md\)/);
-  assert.match(readme, /## Start here/);
-  assert.match(readme, /Inspect and start Cimmich with Docker Compose/);
-  assert.match(readme, /Optionally use a local AI assistant/);
-  assert.match(readme, /docker compose up --build --detach --wait/);
-  assert.match(readme, /development guide/);
-  assert.match(
-    readme,
-    /does not ask for an API key or import anything before the\s+signed-in preview/,
-  );
+  assert.match(install, /redacted JSON report/);
+  assert.match(install, /write-only field/);
+  assert.match(readme, /\[Install in five minutes\]\(INSTALL\.md\)/);
+  assert.match(readme, /## Install beside Immich/);
+  assert.match(readme, /docker compose pull cimmich-api cimmich-ui/);
+  assert.match(readme, /DEVELOPMENT\.md/);
+  assert.match(readme, /preview the exact\s+scope before importing/);
   assert.match(script, /Cimmich install check/);
   assert.match(script, /This computer is ready for the guided install/);
   assert.match(script, /Continue\? Enter y or n/);
@@ -253,7 +236,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(companionScript, /SUPPORTED_IMMICH_VERSION=3\.1\.0/);
   assert.match(
     companionScript,
-    /up\(\) \{[\s\S]*require_configured[\s\S]*preflight_immich_version[\s\S]*compose build cimmich-api/,
+    /up\(\) \{[\s\S]*require_configured[\s\S]*preflight_immich_version[\s\S]*compose pull cimmich-api cimmich-ui/,
   );
   assert.match(script, /command -v lsof/);
   assert.match(script, /command -v ss/);
@@ -296,7 +279,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(install, /Optional local Face recognition/);
   assert.match(
     install,
-    /unsupported or unreadable version stops with no Cimmich migration or\s+import started/i,
+    /preflight stops before Cimmich database startup unless Immich is reachable\s+and exactly 3\.1\.0/i,
   );
   assert.match(install, /face-provider install-recommended/);
   assert.match(install, /checksum-pinned OpenCV YuNet and SFace/);

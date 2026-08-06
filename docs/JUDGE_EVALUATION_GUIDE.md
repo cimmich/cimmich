@@ -91,7 +91,7 @@ those groups are an optional import exercise, not missing Cedar House identity.
 | :--------------------------- | :----------------------------------------------------------------------------------------------------------------- |
 | Technological Implementation | Migration-led data plane, typed evidence, replay/conflict/Undo, visibility-first queries, lifecycle operators      |
 | Design                       | Photo-led People/Pet/context journeys, progressive machinery, cumulative viewing modes and responsive UI           |
-| Potential Impact             | Complete memory records without polluting matching, local ownership, optional providers and a reusable demo pack   |
+| Potential Impact             | Complete memory records with separately governed Cimmich evidence, local ownership, optional providers and a reusable demo pack |
 | Quality of the Idea          | Face/Head/Body/Presence authority split, owner-only identity and one product that remains useful without AI models |
 
 ## Build Week and Codex

@@ -171,6 +171,10 @@ jobs:
         working-directory: ui/web
         run: pnpm run check:typescript
 
+      - name: Discover release browser journeys
+        working-directory: ui/web
+        run: pnpm exec playwright test --list
+
       - name: Run web tests
         working-directory: ui/web
         run: pnpm run test -- --run
