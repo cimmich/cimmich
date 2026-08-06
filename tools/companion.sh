@@ -16,8 +16,8 @@ ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
-API_IMAGE=${CIMMICH_API_IMAGE:-ghcr.io/cimmich/cimmich-api:v1.1.0-community-preview.5}
-UI_IMAGE=${CIMMICH_UI_IMAGE:-ghcr.io/cimmich/cimmich-ui:v1.1.0-community-preview.5}
+API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.6}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.6}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -102,7 +102,7 @@ compose() {
 }
 
 prepare_api_image() {
-  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-true}" = true; then
     compose build cimmich-api
   else
     compose pull cimmich-api
@@ -249,9 +249,9 @@ private_password() {
 up() {
   require_configured
   preflight_immich_version
-  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
-    # Keep source builds available for contributors without making every owner
-    # compile two product images during an ordinary install.
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-true}" = true; then
+    # The public install is self-contained: build the exact checked-in sources
+    # without depending on separate registry-package visibility.
     compose build cimmich-api
     compose build cimmich-ui
   else
@@ -966,7 +966,7 @@ remove_companion() {
   known=$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -print)
   test "$known" = "$ENV_FILE" || fail "state root contains unrecognized entries; refusing removal"
   compose down --volumes --remove-orphans
-  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-false}" = true; then
+  if test "${CIMMICH_COMPANION_BUILD_LOCAL:-true}" = true; then
     docker image rm "$API_IMAGE" "$UI_IMAGE" >/dev/null 2>&1 || true
   fi
   rm -f "$ENV_FILE"

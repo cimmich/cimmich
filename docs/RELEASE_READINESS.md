@@ -5,7 +5,7 @@ Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.5` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.6` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 
@@ -26,6 +26,31 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 6 self-contained-install gate — 2026-08-07
+
+Preview 6 changes no product behavior or schema. It removes the unpublished
+Preview 5 candidate's dependency on separately visible GHCR packages: the
+ordinary public Compose path and guarded installer build the exact checked-in
+API and UI Dockerfiles locally.
+
+The candidate must not publish until all Preview 5 source/product gates pass
+plus:
+
+- root Compose defaults contain no Cimmich registry reference and use local,
+  versioned API/UI image names;
+- README, `.env.example`, `INSTALL.md` and the guarded installer agree on the
+  build-first command and first-run expectations;
+- `companion.sh up` builds locally by default while explicit trusted-registry
+  overrides retain a pull path;
+- install contract tests prevent inaccessible GHCR defaults from returning;
+- both named release bundles reproduce the exact Git tree, render Compose and
+  build the API/UI Dockerfiles from their extracted contents; and
+- logged-out release downloads, checksums, README and Build Week visibility
+  pass after publication.
+
+Bundle hashes, exact commit/tree and logged-out proof remain publication-time
+gates and are not claimed by this source edit.
 
 ## Community Preview 5 operability gate — 2026-08-06
 
@@ -66,9 +91,10 @@ The clean-tree candidate gates closed locally with:
 - repository size moved from 10,669 to 10,427 lines without behavior or schema
   change.
 
-Public multi-platform image digests, attestations, bundle hashes and logged-out
-pull/download proof remain publication-time gates and are not claimed by the
-local candidate proof.
+The source and product gates passed, and GitHub produced the attested images,
+but anonymous GHCR pull remained blocked by package visibility. Preview 5 was
+therefore not published and is superseded by Preview 6 rather than weakening
+the public-install contract or moving its existing tag.
 
 ## Community Preview 4 repository-trust gate — 2026-08-06
 

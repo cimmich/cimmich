@@ -46,6 +46,8 @@ test("repository presents a conventional install and excludes dependency output"
   );
   assert.match(environment, /^CIMMICH_DB_PASSWORD=$/m);
   assert.doesNotMatch(environment, /^IMMICH_API_KEY=/m);
+  assert.match(environment, /docker compose up --detach --build --wait/);
+  assert.doesNotMatch(environment, /ghcr\.io\/cimmich/);
 });
 
 test("guided installer has a non-mutating help surface and valid portable shell", () => {
@@ -164,6 +166,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(companionScript, /compose build cimmich-api/);
   assert.match(companionScript, /compose build cimmich-ui/);
   assert.match(companionScript, /compose pull cimmich-api cimmich-ui/);
+  assert.match(companionScript, /CIMMICH_COMPANION_BUILD_LOCAL:-true/);
   assert.match(companionScript, /docker image rm "\$API_IMAGE" "\$UI_IMAGE"/);
   assert.doesNotMatch(companionScript, /compose build --no-deps/);
   const providerInstall = publicDemoScript.match(
@@ -198,7 +201,8 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(install, /write-only field/);
   assert.match(readme, /\[Install in five minutes\]\(INSTALL\.md\)/);
   assert.match(readme, /## Install beside Immich/);
-  assert.match(readme, /docker compose pull cimmich-api cimmich-ui/);
+  assert.match(readme, /docker compose up --detach --build --wait/);
+  assert.doesNotMatch(readme, /ghcr\.io\/cimmich/);
   assert.match(readme, /DEVELOPMENT\.md/);
   assert.match(readme, /preview the exact\s+scope before importing/);
   assert.match(script, /Cimmich install check/);
@@ -236,7 +240,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(companionScript, /SUPPORTED_IMMICH_VERSION=3\.1\.0/);
   assert.match(
     companionScript,
-    /up\(\) \{[\s\S]*require_configured[\s\S]*preflight_immich_version[\s\S]*compose pull cimmich-api cimmich-ui/,
+    /up\(\) \{[\s\S]*require_configured[\s\S]*preflight_immich_version[\s\S]*CIMMICH_COMPANION_BUILD_LOCAL:-true[\s\S]*compose build cimmich-api[\s\S]*compose build cimmich-ui/,
   );
   assert.match(script, /command -v lsof/);
   assert.match(script, /command -v ss/);
@@ -247,6 +251,9 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(compose, /actual="\$\$major\.\$\$minor\.\$\$patch"/);
   assert.match(compose, /test "\$\$actual" = 3\.1\.0/);
   assert.match(compose, /context: \./);
+  assert.doesNotMatch(compose, /ghcr\.io\/cimmich/);
+  assert.match(compose, /cimmich-api:v1\.1\.0-community-preview\.6/);
+  assert.match(compose, /cimmich-ui:v1\.1\.0-community-preview\.6/);
   assert.match(
     compose,
     /\.\/tools\/cimmich_gateway\.conf\.template:\/template\/default\.conf\.template:ro/,

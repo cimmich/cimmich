@@ -51,11 +51,10 @@ use its LAN address.
 docker compose config --quiet
 ```
 
-### 3. Pull and start
+### 3. Build and start
 
 ```sh
-docker compose pull cimmich-api cimmich-ui
-docker compose up --detach --no-build --wait
+docker compose up --detach --build --wait
 docker compose ps
 ```
 
@@ -147,11 +146,11 @@ usage and inspect the backup before proceeding:
 dedicated state directory after refusing unknown files. It never removes Immich
 or source media.
 
-## Build locally instead of pulling images
+## Image source and optional registry overrides
 
-Published API and UI images are the ordinary install path. They are built for
-amd64 and arm64 with SBOM and GitHub provenance attestations. A contributor can
-build the checked-in Dockerfiles instead:
+The ordinary public install builds the API and UI from the exact Dockerfiles in
+the verified release bundle. It does not require a Cimmich registry account or
+access to a separate GitHub package:
 
 ```sh
 docker compose build cimmich-api
@@ -159,17 +158,20 @@ docker compose build cimmich-ui
 docker compose up --detach --no-build --wait
 ```
 
-For the guarded operator, set `CIMMICH_COMPANION_BUILD_LOCAL=true` only for the
-command that prepares or updates images.
+Advanced operators may set both `CIMMICH_API_IMAGE` and `CIMMICH_UI_IMAGE` to
+images from a registry they trust, preferably by immutable digest, and set
+`CIMMICH_COMPANION_BUILD_LOCAL=false` for a guarded-operator command that should
+pull those overrides. Do not disable local builds without setting accessible
+image overrides.
 
 ## Updating
 
 1. Make and verify a current Cimmich backup.
 2. Download the next named release and its `SHA256SUMS`.
-3. Read its changelog, exact Immich compatibility and image digests.
+3. Read its changelog, exact Immich compatibility and bundle checksums.
 4. Preserve your dedicated state root and named volumes.
-5. Run the new release’s `./tools/install.sh --resume`, or pull the new image
-   tags and run `docker compose up --detach --no-build --wait`.
+5. Run the new release’s `./tools/install.sh --resume`, or run
+   `docker compose up --detach --build --wait`.
 6. Run `./tools/companion.sh doctor` and verify `ok: true`.
 
 Do not reuse a newer Compose file with older images or vice versa.

@@ -1,7 +1,7 @@
 # Cimmich
 
 > [!NOTE]
-> **Current release: Community Preview 5** — exact Immich 3.1.0, Cimmich
+> **Current release: Community Preview 6** — exact Immich 3.1.0, Cimmich
 > schema 120/patch 1. The immutable
 > [OpenAI Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
 > demo and evidence remain preserved and visible as the living project improves.
@@ -61,17 +61,16 @@ cp .env.example .env
 # Put a new `openssl rand -hex 32` value in CIMMICH_DB_PASSWORD.
 # Confirm the two credential-free Immich URLs; do not put an API key in .env.
 docker compose config --quiet
-docker compose pull cimmich-api cimmich-ui
-docker compose up --detach --no-build --wait
+docker compose up --detach --build --wait
 ```
 
 Open <http://127.0.0.1:3413>, sign in through Immich, add a dedicated read-only
 Immich API key in Cimmich’s write-only Settings field, then preview the exact
 scope before importing.
 
-The published API and UI images are multi-platform GHCR images with SBOM and
-GitHub build-provenance attestations. Every release records their immutable
-digests. Contributors can still build the exact checked-in Dockerfiles locally.
+Compose builds the API and UI from the exact checked-in Dockerfiles. No Cimmich
+registry account or private package access is required. Advanced operators may
+override both image names with immutable digests from a registry they trust.
 
 Read [INSTALL.md](INSTALL.md) for download verification, the guarded installer,
 backups, updates, local builds and the redacted `cimmich doctor` report.

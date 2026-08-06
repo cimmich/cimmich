@@ -438,8 +438,8 @@ export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=$private_lock_mode
 show_recovery=true
 
 say ""
-say "Step 2 of 3 — Pull and start Cimmich"
-say "The first image pull can take several minutes. Docker output will follow."
+say "Step 2 of 3 — Build and start Cimmich"
+say "The first local image build can take several minutes. Docker output will follow."
 "$COMPANION" up
 
 if test "$private_lock_mode" = password; then

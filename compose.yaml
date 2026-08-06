@@ -65,7 +65,7 @@ services:
 
   cimmich-face-provider-init:
     profiles: [face-provider]
-    image: ${CIMMICH_API_IMAGE:-ghcr.io/cimmich/cimmich-api:v1.1.0-community-preview.5}
+    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.6}
     command:
       [
         "/bin/sh",
@@ -83,7 +83,7 @@ services:
       context: .
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
-    image: ${CIMMICH_API_IMAGE:-ghcr.io/cimmich/cimmich-api:v1.1.0-community-preview.5}
+    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.6}
     environment:
       CIMMICH_ALLOWED_HOSTS: ${CIMMICH_ALLOWED_HOSTS:-127.0.0.1,localhost,cimmich-api}
       CIMMICH_ALLOWED_ORIGINS: http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}
@@ -151,7 +151,7 @@ services:
       dockerfile: tools/cimmich_ui.Dockerfile
       args:
         PUBLIC_CIMMICH_API_URL: /cimmich-api
-    image: ${CIMMICH_UI_IMAGE:-ghcr.io/cimmich/cimmich-ui:v1.1.0-community-preview.5}
+    image: ${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.6}
     environment:
       PUBLIC_CIMMICH_API_URL: /cimmich-api
     depends_on:

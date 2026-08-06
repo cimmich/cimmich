@@ -8,10 +8,9 @@ working tree.
 
 - the exact candidate commit and tree recorded in `docs/RELEASE_READINESS.md`;
 - one release directory whose name ends in that candidate's short commit;
-- `cimmich-v1.1.0-community-preview.5.tar.gz`,
-  `cimmich-v1.1.0-community-preview.5.zip` and `SHA256SUMS` from that directory;
+- `cimmich-v1.1.0-community-preview.6.tar.gz`,
+  `cimmich-v1.1.0-community-preview.6.zip` and `SHA256SUMS` from that directory;
 - a final independent PASS that names those exact hashes; and
-- public API/UI image digests with successful SBOM and provenance attestations;
 - owner approval to publish.
 
 Any other directory under the local release archive is historical evidence,
@@ -31,7 +30,8 @@ not a publication source. Never choose a bundle by filename alone.
 6. Confirm README, FAQ, changelog, `CIMMICH_VERSION`, release notes and the
    release title all name the same Community Preview and exact Immich 3.1.0.
 7. Confirm the public repository has no tag with the intended release name.
-8. Confirm the two GHCR tags pull publicly and match the recorded digests.
+8. From both extracted bundles, confirm Compose renders with local Cimmich image
+   names and build both checked-in API/UI Dockerfiles successfully.
 
 Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
@@ -39,18 +39,20 @@ Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
 The candidate is developed on a reviewed branch. Publication should advance
 `main` through the normal reviewed merge route, then create the annotated tag
-`v1.1.0-community-preview.5` at the exact merged candidate commit. If the merge
+`v1.1.0-community-preview.6` at the exact merged candidate commit. If the merge
 changes the commit or tree, certification does not carry forward: rebuild and
 reverify before tagging.
 
-Create a full GitHub release titled **Cimmich v1.1.0 — Community Preview 5** from
+Create a full GitHub release titled **Cimmich v1.1.0 — Community Preview 6** from
 that tag. Attach the two named bundles and `SHA256SUMS`; do not substitute
 GitHub's automatic source archives for the beginner install bundles.
 
-The tag-triggered **Container images** workflow must publish the exact tag for
-both product images. Record each manifest digest in release notes and show the
-equivalent `CIMMICH_API_IMAGE=name@sha256:...` and
-`CIMMICH_UI_IMAGE=name@sha256:...` overrides for digest-enforcing operators.
+Container images are optional distribution artifacts, not a public-install
+gate. Do not reference a registry package in the Compose defaults, README or
+release notes unless a fresh logged-out pull proves that exact package is
+public. Advanced operators may still use explicit
+`CIMMICH_API_IMAGE=name@sha256:...` and
+`CIMMICH_UI_IMAGE=name@sha256:...` overrides for an accessible trusted registry.
 
 ## Logged-out verification
 

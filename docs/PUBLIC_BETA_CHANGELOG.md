@@ -4,7 +4,21 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.5 — Operability and browser proof
+## v1.1.0-community-preview.6 — Self-contained public installation
+
+- The ordinary Compose and guarded-installer paths now build the API and UI
+  from the exact checked-in Dockerfiles. A newcomer no longer depends on
+  separate GHCR package visibility to install the public release.
+- Root Compose defaults use local versioned image names and contain no Cimmich
+  registry reference. Optional image overrides remain available for advanced
+  operators who deliberately provide an accessible trusted registry.
+- README, `.env.example`, `INSTALL.md` and installer progress copy all describe
+  the same build-first route. Contract tests reject a return to inaccessible
+  default package references.
+- Product behavior, database schema, exact Immich 3.1.0 compatibility and the
+  immutable Build Week evidence remain unchanged.
+
+## v1.1.0-community-preview.5 — Unpublished operability candidate
 
 - Five real-browser journeys cover fictional-demo start, photo navigation,
   pointer use of the Viewing mode menu, all four Organise modes and true
@@ -12,16 +26,18 @@ for OpenAI Build Week.
 - A freshly generated fictional demo now completes Immich's own admin and user
   onboarding flags, so the first browser login lands in the populated product
   instead of an unrelated setup wizard.
-- Versioned amd64/arm64 API and UI images publish to GHCR with an SBOM,
+- GitHub Actions built versioned amd64/arm64 API and UI images with an SBOM,
   BuildKit provenance and GitHub build-provenance attestation from immutable
-  action revisions. Local source builds remain available for contributors.
+  action revisions. GHCR kept the organization packages private, so this
+  candidate was not released and is superseded by Preview 6's self-contained
+  source-build path.
 - `./tools/companion.sh doctor` emits a redacted configuration, container,
   schema, compatibility and disk report without credentials, origins, paths,
   filenames, media or private identity data.
 - Tag-intersection storage/query logic moved from `repository.mjs` into a
   dedicated 253-line domain module; its focused tests remain green and the
   grandfathered repository ceiling is 242 lines lower.
-- README and install entry points now lead with product truth, a pull-first
+- README and install entry points now lead with product truth, a concise
   five-minute Compose route, privacy, limitations and deeper references.
 - Identity language now states explicitly that native Immich manual face
   assignments do not train or damage Immich's recognition model. Cimmich's
