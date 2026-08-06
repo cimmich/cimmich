@@ -73,6 +73,8 @@ packageExtensions:
 dedupePeerDependents: false
 preferWorkspacePackages: true
 injectWorkspacePackages: true
+syncInjectedDepsAfterScripts:
+  - build
 shamefullyHoist: false
 verifyDepsBeforeRun: install
 minimumReleaseAgeExclude:
