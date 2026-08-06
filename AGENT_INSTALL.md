@@ -1,9 +1,10 @@
 # Install and set up Cimmich with an AI assistant
 
-This is the simplest supported installation path for a capable local assistant
-such as Codex. The assistant may inspect commands, operate Docker and use a
-local signed-in browser when available. The owner remains responsible for
-authentication, secrets and the final import decision.
+This is an optional installation path for a capable local assistant such as
+Codex. The owner should first inspect `compose.yaml`, `.env.example`,
+`INSTALL.md` and the scripts this contract invokes. The assistant may operate
+Docker and use a local signed-in browser when available. The owner remains
+responsible for authentication, secrets and the final import decision.
 
 ## Give this folder to the assistant
 
@@ -70,7 +71,12 @@ The installation is complete only when the installer reports healthy API,
 database and web services and emits:
 
 ```json
-{"schemaVersion":"cimmich.agent-install-handoff.v1","state":"installed","webUrl":"http://127.0.0.1:3413","nextAction":"signed_in_setup"}
+{
+  "schemaVersion": "cimmich.agent-install-handoff.v1",
+  "state": "installed",
+  "webUrl": "http://127.0.0.1:3413",
+  "nextAction": "signed_in_setup"
+}
 ```
 
 If startup stops after configuration, inspect with

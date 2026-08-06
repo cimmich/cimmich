@@ -4,6 +4,25 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.4 — Repository trust and conventional installation
+
+- The production Docker Compose definition now lives at root `compose.yaml`;
+  experienced operators can inspect, render and start it without running a
+  project shell script.
+- Root `.env.example` documents only the required database password and
+  credential-free Immich URLs. Compose performs the exact-Immich-3.1.0
+  preflight before the Cimmich API starts.
+- Installation documentation presents manual Docker Compose first, the guarded
+  lifecycle installer second and local AI assistance only as an optional route.
+- `DEVELOPMENT.md` explains why the independent service uses npm while the
+  Immich-derived UI retains pnpm, and distinguishes the checked-in seven-file
+  `@immich/sdk` source workspace from ignored dependency output.
+- CI records the existing oversized production files as explicit debt, blocks
+  them from growing and rejects new production source files over 1,000 lines.
+  No claim is made that the accumulated source concentration is already fixed.
+- Database schema, stored data, source-media boundaries and exact Immich
+  compatibility are unchanged.
+
 ## v1.1.0-community-preview.3 — Projected-photo viewer repair
 
 This hotfix prevents the photo viewer from entering a Svelte reactive loop

@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-COMPOSE_FILE="$ROOT/tools/companion.compose.yml"
+COMPOSE_FILE="$ROOT/compose.yaml"
 PROJECT=${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 STATE_ROOT=${CIMMICH_COMPANION_STATE_ROOT:-}
 ENV_FILE="${STATE_ROOT:+$STATE_ROOT/runtime.env}"

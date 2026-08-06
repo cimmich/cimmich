@@ -127,10 +127,13 @@ supported.
 
 ## How do I install Cimmich beside my library?
 
-Use the [guided installation](../INSTALL.md#guided-install-recommended) on
-macOS or Linux. From the Community Preview release page you are reading,
-download its named Cimmich install bundle, verify it with that release's
-`SHA256SUMS`, extract it, start Docker, then run:
+Experienced Docker users can follow the conventional
+[Compose quick start](../INSTALL.md#docker-compose-quick-start). For guarded
+backup, restore and removal operations, use the
+[guided installer](../INSTALL.md#guided-installer) on macOS or Linux. From the
+Community Preview release page you are reading, download its named Cimmich
+install bundle, verify it with that release's `SHA256SUMS`, extract it, start
+Docker, then either inspect and run `compose.yaml` or use:
 
 ```sh
 ./tools/install.sh --check

@@ -5,6 +5,10 @@ AGPL-3.0-only licence. Start with an issue for broad product or schema changes;
 focused documentation, test and defect fixes may go directly to a pull request.
 Participation is also governed by the [community code of conduct](CODE_OF_CONDUCT.md).
 
+The [development guide](DEVELOPMENT.md) explains the deliberate npm/pnpm
+workspace split, the checked-in Immich SDK source package and the current
+source-shape reduction policy before you install dependencies.
+
 ## Branch and release posture
 
 The exact OpenAI Build Week revision remains preserved as

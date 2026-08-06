@@ -40,7 +40,7 @@ trap cleanup EXIT INT TERM
 companion_compose() {
   docker compose --project-name "$COMPANION_PROJECT" \
     --env-file "$STATE_ROOT/runtime.env" \
-    --file "$ROOT/tools/companion.compose.yml" "$@"
+    --file "$ROOT/compose.yaml" "$@"
 }
 
 companion_counts() {

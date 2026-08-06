@@ -5,7 +5,7 @@ Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.3` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.4` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 
@@ -27,7 +27,42 @@ Release evidence must be produced from one clean immutable commit and include:
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
 
-## Community Preview final gate closure — 2026-08-06
+## Community Preview 4 repository-trust gate — 2026-08-06
+
+Preview 4 makes the supported repository conventional to inspect before it
+changes a host: the production Compose definition is now `compose.yaml` at the
+root, `.env.example` names the three required values, Compose itself performs
+the exact-Immich preflight, and the manual path is documented before the
+guarded installer or optional agent route. The development guide explains the
+deliberate npm service / pnpm Immich-derived UI boundary and establishes that
+`ui/packages/sdk` is checked-in SDK source rather than `node_modules`.
+
+The maintainability gate records the existing oversized production files,
+fails if any grows and refuses new production files over 1,000 lines. Existing
+source concentration remains explicit debt rather than being represented as
+already refactored. Database schema, product behavior and X1 data are unchanged.
+
+The Preview 4 source candidate closes its local gates with:
+
+- publication/privacy scan: pass across 1,714 tracked files;
+- root Compose render and containerized exact-Immich-3.1.0 preflight: pass;
+- source-shape check: 928 production files, 32 non-growing legacy ceilings and
+  a 1,000-line limit for new files;
+- service: 845 passed, 2 skipped, 0 failed, with syntax, format and lint clean;
+- web: 989 passed, 2 skipped, 0 failed, with format, lint, Svelte (0 errors,
+  0 warnings), TypeScript and production build clean;
+- provider contracts: 38 passed, 0 failed;
+- migration runner: schema 120/patch 1 fresh, schema-75 upgrade, concurrent,
+  checksum, resume, legacy-restore and locator-preservation acceptance;
+- complete synthetic lifecycle: pass; and
+- full companion lifecycle against stock Immich 3.1.0: fresh import and replay,
+  seven adversarial restore rejections, backup/portable restore, disable and
+  residue-free companion removal while Immich remains healthy.
+
+The immutable commit, artifact hashes and GitHub CI result are recorded in the
+external Preview 4 release receipt after publication from the clean tree.
+
+## Community Preview 3 final gate closure — 2026-08-06
 
 The public candidate now carries one [user-journey acceptance map](COMMUNITY_PREVIEW_JOURNEYS.md)
 and one release contract. The immutable commit, tree and bundle checksums are

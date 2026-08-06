@@ -8,8 +8,8 @@ working tree.
 
 - the exact candidate commit and tree recorded in `docs/RELEASE_READINESS.md`;
 - one release directory whose name ends in that candidate's short commit;
-- `cimmich-v1.1.0-community-preview.3.tar.gz`,
-  `cimmich-v1.1.0-community-preview.3.zip` and `SHA256SUMS` from that directory;
+- `cimmich-v1.1.0-community-preview.4.tar.gz`,
+  `cimmich-v1.1.0-community-preview.4.zip` and `SHA256SUMS` from that directory;
 - a final independent PASS that names those exact hashes; and
 - owner approval to publish.
 
@@ -37,11 +37,11 @@ Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
 The candidate is developed on a reviewed branch. Publication should advance
 `main` through the normal reviewed merge route, then create the annotated tag
-`v1.1.0-community-preview.3` at the exact merged candidate commit. If the merge
+`v1.1.0-community-preview.4` at the exact merged candidate commit. If the merge
 changes the commit or tree, certification does not carry forward: rebuild and
 reverify before tagging.
 
-Create a GitHub pre-release titled **Cimmich v1.1.0 — Community Preview** from
+Create a full GitHub release titled **Cimmich v1.1.0 — Community Preview 4** from
 that tag. Attach the two named bundles and `SHA256SUMS`; do not substitute
 GitHub's automatic source archives for the beginner install bundles.
 

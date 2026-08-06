@@ -6,21 +6,19 @@ database or modify original media.
 
 ## Choose your path
 
-- **I want an AI assistant to install and set everything up:** give it this
-  folder and the [agent installation contract](AGENT_INSTALL.md). The assistant
-  handles the installer and verified setup while you retain secrets and approve
-  the exact import preview.
-- **I want to connect my existing Immich library:** use the
-  [guided install](#guided-install-recommended). This is the recommended path.
+- **I manage Docker and want an inspectable conventional start:** use the
+  [Docker Compose quick start](#docker-compose-quick-start).
+- **I want guarded backup, restore, disable and removal operations:** use the
+  [guided installer](#guided-installer).
 - **I want to explore fictional data first:** use the
   [synthetic demo](README.md#try-cimmich-with-fictional-data). It does not touch your Immich
   installation or photographs.
-- **I manage Docker and server paths myself:** use the
-  [advanced install](#advanced-install).
+- **I optionally want a local AI assistant to follow the same documented
+  commands:** inspect the path first, then use the
+  [agent installation contract](AGENT_INSTALL.md).
 
-The guided and advanced paths install the same product with the same safety
-boundaries. Cimmich currently builds its containers locally from the downloaded
-release; a published-image installation is not yet claimed.
+The Compose, guided and advanced paths build the same product locally from the
+downloaded release. A published-image installation is not yet claimed.
 
 > [!IMPORTANT]
 > The guided installer currently supports **macOS and Linux**. Native Windows
@@ -46,10 +44,76 @@ Do not paste an Immich API key, password or token into an AI conversation. The
 guided installer deliberately does not ask for an API key in Terminal. You add
 it later to a write-only field inside the signed-in Cimmich setup screen.
 
-## Guided install (recommended)
+## Docker Compose quick start
 
-This is the recommended path when Docker is unfamiliar or an AI assistant is
-helping you.
+This is the conventional, script-free route for an experienced Docker
+operator. Read the root [`compose.yaml`](compose.yaml) and
+[`env.example`](.env.example) before starting it. The Compose file uses pinned
+base images, builds Cimmich locally, binds the UI to loopback by default and
+keeps its database, documents and configuration in separate named volumes.
+
+### 1. Download and inspect the release
+
+Download the named Cimmich tar or ZIP plus `SHA256SUMS` from the newest release.
+Do not use the Cedar House demo archive as the application. Extract the bundle,
+open a terminal in it, then inspect:
+
+```sh
+ls compose.yaml .env.example INSTALL.md
+docker compose version
+```
+
+### 2. Create the local Compose configuration
+
+```sh
+cp .env.example .env
+openssl rand -hex 32
+```
+
+Open `.env`. Paste the generated value into `CIMMICH_DB_PASSWORD`. Confirm the
+credential-free Immich API and web URLs. For Immich on the same computer at its
+normal port, the supplied `host.docker.internal` URLs are normally correct. For
+Immich on another machine, use its LAN address. Do not put an Immich API key,
+password or token in `.env`.
+
+Ask Compose to render the complete configuration before it changes state:
+
+```sh
+docker compose config --quiet
+```
+
+### 3. Build and start
+
+```sh
+docker compose up --build --detach --wait
+docker compose ps
+```
+
+The one-shot preflight requires exact Immich 3.1.0 before the Cimmich API can
+start. The product is ready only when the database, API, UI and gateway report
+healthy. Open <http://127.0.0.1:3413>, sign in through Immich, then enter a
+dedicated read-only Immich API key only in Cimmich's write-only Settings field.
+Preview the exact library scope before importing anything.
+
+Normal Compose lifecycle commands preserve the named Cimmich volumes:
+
+```sh
+docker compose stop
+docker compose start
+docker compose down
+```
+
+Do not add `--volumes` unless you explicitly intend to destroy Cimmich's own
+database, documents and configuration. These commands do not target Immich.
+For checksummed Cimmich backup/restore and confirmation-gated removal, use the
+guided operator below from a fresh install or follow the advanced lifecycle
+documentation before admitting a real library.
+
+## Guided installer
+
+This path adds preflight, resumable setup and guarded Cimmich-only lifecycle
+operations around the same checked-in Compose definition. Read
+`tools/install.sh` and `tools/companion.sh` before running them.
 
 ### 1. Download Cimmich
 
@@ -193,9 +257,10 @@ library. Do not import if the account, server or preview is unexpected.
 Cimmich Core works without a model. Matching and evidence providers remain
 disabled until you deliberately configure them.
 
-### Install with an AI assistant
+### Optional AI-assisted install
 
-For the simplest path, give an assistant the extracted folder and
+If you choose to use a capable local assistant, first inspect the same Compose
+and installer path above, then give the assistant the extracted folder and
 [`AGENT_INSTALL.md`](AGENT_INSTALL.md). It joins this installer to the signed-in
 setup and optional Guided V2 handoff, while keeping authentication, secrets and
 the final import decision with you.
@@ -211,7 +276,7 @@ Use this prompt:
 The assistant may explain output, but you should personally enter any secret
 into Cimmich or the installer's hidden terminal prompt.
 
-## Advanced install
+## Advanced operator install
 
 The companion operator is the canonical lifecycle interface. Pick a dedicated
 absolute directory that is not your Immich directory, Cimmich source folder or

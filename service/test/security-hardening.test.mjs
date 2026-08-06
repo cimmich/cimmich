@@ -57,7 +57,7 @@ test("local runtime secrets, images and browser response headers are hardened", 
     source("tools/public_demo_nginx.conf"),
     source("ops/stock-immich-v3.1.0.compose.yml"),
     source("tools/cimmich_ui.Dockerfile"),
-    source("tools/companion.compose.yml"),
+    source("compose.yaml"),
     source("tools/public_demo.compose.yml"),
   ]);
 

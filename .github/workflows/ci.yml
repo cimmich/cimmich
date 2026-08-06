@@ -69,6 +69,9 @@ jobs:
         working-directory: service
         run: npm run check:syntax
 
+      - name: Prevent source-file concentration from growing
+        run: node tools/check_source_shape.mjs
+
       - name: Check service formatting
         working-directory: service
         run: npm run format

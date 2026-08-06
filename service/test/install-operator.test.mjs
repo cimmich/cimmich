@@ -9,6 +9,44 @@ const root = resolve(import.meta.dirname, "../..");
 const installer = join(root, "tools/install.sh");
 const companion = join(root, "tools/companion.sh");
 const bundleBuilder = join(root, "tools/build_install_bundle.sh");
+const sourceShape = join(root, "tools/check_source_shape.mjs");
+
+test("source-shape debt is explicit and cannot grow", () => {
+  const result = spawnSync(process.execPath, [sourceShape], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const receipt = JSON.parse(result.stdout);
+  assert.equal(receipt.state, "passed");
+  assert.equal(receipt.newFileLineLimit, 1000);
+  assert.ok(receipt.legacyCeilings > 0);
+});
+
+test("repository presents a conventional install and excludes dependency output", async () => {
+  const [readme, development, environment, sdkManifest] = await Promise.all([
+    readFile(join(root, "README.md"), "utf8"),
+    readFile(join(root, "DEVELOPMENT.md"), "utf8"),
+    readFile(join(root, ".env.example"), "utf8"),
+    readFile(join(root, "ui/packages/sdk/package.json"), "utf8"),
+  ]);
+  const tracked = spawnSync("git", ["-C", root, "ls-files"], {
+    encoding: "utf8",
+  });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.doesNotMatch(tracked.stdout, /(^|\/)node_modules\//m);
+  assert.match(development, /two deliberately separate JavaScript workspaces/);
+  assert.match(
+    development,
+    /`ui\/packages\/sdk` is \*\*not\*\* `node_modules`/,
+  );
+  assert.equal(JSON.parse(sdkManifest).name, "@immich/sdk");
+  assert.ok(
+    readme.indexOf("Inspect and start Cimmich with Docker Compose") <
+      readme.indexOf("Optionally use a local AI assistant"),
+  );
+  assert.match(environment, /^CIMMICH_DB_PASSWORD=$/m);
+  assert.doesNotMatch(environment, /^IMMICH_API_KEY=/m);
+});
 
 test("guided installer has a non-mutating help surface and valid portable shell", () => {
   for (const path of [installer, companion, bundleBuilder]) {
@@ -97,7 +135,7 @@ test("guided install stops at signed-in preview and documentation separates both
   ] = await Promise.all([
     readFile(installer, "utf8"),
     readFile(companion, "utf8"),
-    readFile(join(root, "tools/companion.compose.yml"), "utf8"),
+    readFile(join(root, "compose.yaml"), "utf8"),
     readFile(join(root, "INSTALL.md"), "utf8"),
     readFile(join(root, "README.md"), "utf8"),
     readFile(join(root, "tools/public_demo.sh"), "utf8"),
@@ -139,9 +177,10 @@ test("guided install stops at signed-in preview and documentation separates both
     /immich-credential|refresh_immich_companion/,
   );
 
-  assert.match(install, /Guided install \(recommended\)/);
+  assert.match(install, /Docker Compose quick start/);
+  assert.match(install, /Guided installer/);
   assert.match(install, /agent installation contract/);
-  assert.match(install, /Advanced install/);
+  assert.match(install, /Advanced operator install/);
   assert.match(install, /Download Cimmich/);
   assert.match(install, /named `cimmich-<version>\.tar\.gz` install bundle/);
   assert.match(install, /currently supports \*\*macOS and Linux\*\*/);
@@ -171,8 +210,10 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(install, /write-only API-key field/);
   assert.match(readme, /\[Install Cimmich\]\(INSTALL\.md\)/);
   assert.match(readme, /## Start here/);
-  assert.match(readme, /Ask an AI assistant to install and set up Cimmich/);
-  assert.match(readme, /Add Cimmich beside my existing Immich library/);
+  assert.match(readme, /Inspect and start Cimmich with Docker Compose/);
+  assert.match(readme, /Optionally use a local AI assistant/);
+  assert.match(readme, /docker compose up --build --detach --wait/);
+  assert.match(readme, /development guide/);
   assert.match(
     readme,
     /does not ask for an API key or import anything before the\s+signed-in preview/,
@@ -218,6 +259,16 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(script, /command -v ss/);
   assert.match(script, /"installer":"blocked"[\s\S]*"portIssues"/);
   assert.match(script, /Docker storage may be elsewhere/);
+  assert.match(compose, /cimmich-immich-preflight:/);
+  assert.match(compose, /wget -q -T 10/);
+  assert.match(compose, /actual="\$\$major\.\$\$minor\.\$\$patch"/);
+  assert.match(compose, /test "\$\$actual" = 3\.1\.0/);
+  assert.match(compose, /context: \./);
+  assert.match(
+    compose,
+    /\.\/tools\/cimmich_gateway\.conf\.template:\/template\/default\.conf\.template:ro/,
+  );
+  assert.doesNotMatch(compose, /context: \.\./);
   assert.match(compose, /environment:\s+PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
   assert.match(compose, /CIMMICH_COMPANION_UI_BIND_ADDRESS:-127\.0\.0\.1/);
   assert.match(compose, /CIMMICH_ALLOWED_HOSTS:/);

@@ -1,6 +1,32 @@
 name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 
 services:
+  cimmich-immich-preflight:
+    image: alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        response="$$(wget -q -T 10 -O - "$${CIMMICH_IMMICH_API_URL}/server/version")";
+        major="$$(printf '%s' "$$response" | sed -n 's/.*"major"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')";
+        minor="$$(printf '%s' "$$response" | sed -n 's/.*"minor"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')";
+        patch="$$(printf '%s' "$$response" | sed -n 's/.*"patch"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p')";
+        actual="$$major.$$minor.$$patch";
+        test "$$actual" = 3.1.0 || {
+          echo "Cimmich requires exact Immich 3.1.0; found $$actual" >&2;
+          exit 1;
+        };
+        echo "Immich $$actual preflight passed"
+    environment:
+      CIMMICH_IMMICH_API_URL: ${CIMMICH_IMMICH_API_URL:?set the credential-free Immich API URL in .env}
+    restart: "no"
+    network_mode: bridge
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
   cimmich-database:
     image: pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
     shm_size: 512mb
@@ -40,7 +66,12 @@ services:
   cimmich-face-provider-init:
     profiles: [face-provider]
     image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-api:current-source
-    command: ["/bin/sh", "/app/providers/opencv-sface/install-models.sh", "/face-provider"]
+    command:
+      [
+        "/bin/sh",
+        "/app/providers/opencv-sface/install-models.sh",
+        "/face-provider",
+      ]
     user: "0:0"
     volumes:
       - cimmich-face-provider:/face-provider
@@ -49,7 +80,7 @@ services:
 
   cimmich-api:
     build:
-      context: ..
+      context: .
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
     image: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-api:current-source
@@ -81,6 +112,8 @@ services:
       IMMICH_API_URL: ${CIMMICH_IMMICH_API_URL:-}
       PORT: "3101"
     depends_on:
+      cimmich-immich-preflight:
+        condition: service_completed_successfully
       cimmich-database:
         condition: service_healthy
       cimmich-storage-init:
@@ -114,7 +147,7 @@ services:
 
   cimmich-ui:
     build:
-      context: ..
+      context: .
       dockerfile: tools/cimmich_ui.Dockerfile
       args:
         PUBLIC_CIMMICH_API_URL: /cimmich-api
@@ -160,7 +193,7 @@ services:
     ports:
       - ${CIMMICH_COMPANION_UI_BIND_ADDRESS:-127.0.0.1}:${CIMMICH_COMPANION_UI_PORT:-3413}:80
     volumes:
-      - ./cimmich_gateway.conf.template:/template/default.conf.template:ro
+      - ./tools/cimmich_gateway.conf.template:/template/default.conf.template:ro
     restart: unless-stopped
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/]

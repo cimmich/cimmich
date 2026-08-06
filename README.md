@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Cimmich's current maintained release line is the bounded Community Preview.**
-> It targets `v1.1.0-community-preview.3`, migration-ledger schema 120/patch 1,
+> It targets `v1.1.0-community-preview.4`, migration-ledger schema 120/patch 1,
 > and exact Immich 3.1.0. When installing from GitHub, use the named bundles
 > attached to the Community Preview release you are reading; do not substitute
 > an older Public Beta bundle with the same project name.
@@ -30,7 +30,7 @@ GPT-5.6 Sol**.
 [Inspect the Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) · [Read the privacy boundary](docs/PRIVACY_BOUNDARY.md) ·
 [Check release proof](docs/RELEASE_READINESS.md) · [Review the Community Preview journeys](docs/COMMUNITY_PREVIEW_JOURNEYS.md) · [See the release strategy](docs/RELEASE_STRATEGY.md) · [Publication runbook](docs/COMMUNITY_PREVIEW_PUBLICATION.md) · [Brand asset notice](docs/BRAND_ASSETS.md)
 
-[Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Community conduct](CODE_OF_CONDUCT.md)
+[Get support](SUPPORT.md) · [Contribute](CONTRIBUTING.md) · [Development setup](DEVELOPMENT.md) · [Community conduct](CODE_OF_CONDUCT.md)
 
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
@@ -40,16 +40,19 @@ GPT-5.6 Sol**.
 
 ## Start here
 
-| What you want to do                                          | Where to begin                                                                                                    |
-| :----------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
-| **Ask an AI assistant to install and set up Cimmich**        | Give it this folder and [the agent installation contract](AGENT_INSTALL.md). This is the simplest supported path. |
-| **Add Cimmich beside my existing Immich library**            | Follow the [guided install](INSTALL.md#guided-install-recommended). This is the recommended real-library path.    |
-| **Explore Cimmich without using my photographs**             | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data).                                         |
-| **Choose Docker paths, ports and lifecycle commands myself** | Use the [advanced install](INSTALL.md#advanced-install).                                                          |
+| What you want to do                                      | Where to begin                                                                                |
+| :------------------------------------------------------- | :-------------------------------------------------------------------------------------------- |
+| **Inspect and start Cimmich with Docker Compose**        | Use the conventional [Compose quick start](INSTALL.md#docker-compose-quick-start).            |
+| **Add Cimmich with guarded backup/restore operations**   | Follow the [guided installer](INSTALL.md#guided-installer).                                   |
+| **Explore Cimmich without using my photographs**         | Start the [fictional Cedar House demo](#try-cimmich-with-fictional-data).                     |
+| **Understand the npm/pnpm and Immich SDK source layout** | Read the [development guide](DEVELOPMENT.md).                                                 |
+| **Optionally use a local AI assistant**                  | Review the same commands first, then use the [agent installation contract](AGENT_INSTALL.md). |
 
-The guided installer currently supports macOS and Linux. It does not require a
-model, does not ask for an API key in Terminal and does not import anything
-until the signed-in owner has previewed the proposed scope.
+Both real-library paths are source-visible and build the same containers. The
+guided installer adds guarded backup, restore, disable and removal operations.
+It currently supports macOS and Linux, does not require a model, does not ask
+for an API key in Terminal and does not import anything until the signed-in
+owner has previewed the proposed scope.
 
 **Prior-work disclosure:** Cimmich began from a private Immich-derived research
 seed built before Build Week. Its archive-processing experiments,
@@ -240,12 +243,27 @@ not target an existing Immich installation.
 ## Add Cimmich beside an existing Immich installation
 
 Start with the [installation guide](INSTALL.md). It explains which release
-bundle to download, the supported platforms and prerequisites, how to open
-Terminal in the extracted folder, and how to create the dedicated read-only
-Immich API key. Both guided and advanced paths create a separate Cimmich
-database, document volume, API, signed-in UI and loopback gateway.
+bundle to download, the supported platforms and prerequisites, how to inspect
+the root [`compose.yaml`](compose.yaml), and how to create the dedicated
+read-only Immich API key. Every path creates a separate Cimmich database,
+document volume, API, signed-in UI and loopback gateway.
 
-If Docker is unfamiliar—or an AI assistant is helping—start with:
+Experienced Docker users can start from the root Compose file without running
+a project script:
+
+```sh
+cp .env.example .env
+# Fill CIMMICH_DB_PASSWORD and confirm the two Immich URLs in .env.
+docker compose config --quiet
+docker compose up --build --detach --wait
+```
+
+The Compose preflight refuses to start the Cimmich API unless it can reach
+exact Immich 3.1.0. The UI and API remain behind the loopback gateway; enter a
+dedicated read-only Immich API key later in the signed-in, write-only Settings
+field.
+
+For guarded lifecycle operations, use the installer after inspecting it:
 
 ```sh
 ./tools/install.sh --check
