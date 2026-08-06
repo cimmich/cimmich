@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Cimmich's current maintained release line is the bounded Community Preview.**
-> It targets `v1.1.0-community-preview.2`, migration-ledger schema 120/patch 1,
+> It targets `v1.1.0-community-preview.3`, migration-ledger schema 120/patch 1,
 > and exact Immich 3.1.0. When installing from GitHub, use the named bundles
 > attached to the Community Preview release you are reading; do not substitute
 > an older Public Beta bundle with the same project name.

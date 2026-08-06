@@ -59,6 +59,7 @@ class AssetViewerManager extends BaseEventManager<Events> {
   #isFaceEditMode = $state(false);
   #isEditFacesPanelOpen = $state(false);
   #viewingAssetStoreState = $state<AssetResponseDto>();
+  #viewingAssetId: string | undefined;
   #viewState = $state<boolean>(false);
   #detailPanelTarget = $state<DetailPanelTarget>(null);
   #highlightedFaces = $state<Faces[]>([]);
@@ -293,9 +294,10 @@ class AssetViewerManager extends BaseEventManager<Events> {
   }
 
   setAsset(asset: AssetResponseDto) {
-    if (this.#viewingAssetStoreState?.id && this.#viewingAssetStoreState.id !== asset.id) {
+    if (this.#viewingAssetId && this.#viewingAssetId !== asset.id) {
       this.closeDetailPanel();
     }
+    this.#viewingAssetId = asset.id;
     this.#viewingAssetStoreState = asset;
     this.#viewState = true;
   }

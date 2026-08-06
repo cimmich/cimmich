@@ -5,7 +5,7 @@ Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview candidate: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.2` for exact Immich 3.1.0
+Current candidate target: `v1.1.0-community-preview.3` for exact Immich 3.1.0
 
 ## Community Preview candidate contract
 

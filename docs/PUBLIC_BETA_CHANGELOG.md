@@ -4,6 +4,16 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.3 — Projected-photo viewer repair
+
+This hotfix prevents the photo viewer from entering a Svelte reactive loop
+when it opens a photo from a Cimmich Person, Pet or other projected collection.
+The Info panel still closes when navigation changes the viewed photo, but its
+lifecycle check now uses a deliberately non-reactive asset identifier instead
+of subscribing the route loader to the state it writes. Preview `.2` remains
+immutable and is superseded by this release. The Build Week release remains
+unchanged.
+
 ## v1.1.0-community-preview.2 — Filming-findings repair
 
 This repair release closes ten product problems exposed while recording the
