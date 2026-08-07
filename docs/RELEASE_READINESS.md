@@ -3,6 +3,7 @@
 Updated: 2026-08-07
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 120/patch 1
+Current development source: migration-ledger schema 121/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release: `v1.1.0-community-preview.6` for exact Immich 3.1.0
@@ -216,7 +217,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 120; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 121; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -354,6 +355,10 @@ Schema 120 keeps folder/date candidates in an explicit Needs check media lane
 instead of silently treating them as Main, ordered Stops or adjacent context.
 It also persists bounded Place location provenance and uncertainty alongside
 point, area or route geometry without changing source-photo EXIF.
+Schema 121 keeps photo corrections in Cimmich: quarter-turn presentation,
+capture-time overrides and effective Places are reversible owner decisions and
+do not mutate source files or Immich. Likely-sideways Face pose, future dates
+and conflicting Places now have separate deterministic Photo details queues.
 
 ## Historical Public Beta Patch 6 certification
 

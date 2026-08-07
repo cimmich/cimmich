@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { integrationSettingsPack } from "./integration-settings.mjs";
+import { createReviewRoutes } from "./review-routes.mjs";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
@@ -211,6 +212,12 @@ export const createCimmichServer = ({
   }
   const requireProjection = (surfaceKey) =>
     visibility?.requireProjection?.(surfaceKey);
+  const reviewRoutes = createReviewRoutes(
+    repository,
+    requireProjection,
+    readJsonBody,
+    sendJson,
+  );
 
   const handleRequest = async (request, response) => {
     const requestId = randomUUID();
@@ -3406,123 +3413,7 @@ export const createCimmichServer = ({
         );
         return;
       }
-      if (
-        request.method === "GET" &&
-        url.pathname === "/v1/review/machine-suggestions"
-      ) {
-        requireProjection("machine_suggestions");
-        sendJson(
-          response,
-          200,
-          {
-            items: await repository.machineSuggestions({
-              leadPersonId: url.searchParams.get("leadPersonId"),
-              limit: url.searchParams.get("limit"),
-            }),
-          },
-          allowedOrigin,
-        );
-        return;
-      }
-      if (
-        request.method === "GET" &&
-        url.pathname === "/v1/review/identity-audit"
-      ) {
-        requireProjection("machine_suggestions");
-        sendJson(
-          response,
-          200,
-          {
-            run: await repository.identityAuditLatest(),
-          },
-          allowedOrigin,
-        );
-        return;
-      }
-      if (
-        request.method === "POST" &&
-        url.pathname === "/v1/review/identity-audit"
-      ) {
-        requireProjection("machine_suggestions");
-        const body = await readJsonBody(request);
-        sendJson(
-          response,
-          202,
-          {
-            run: await repository.startIdentityAudit({
-              actorId: request.headers["x-cimmich-actor"],
-              ...(body.detectorConfigDigest
-                ? { detectorConfigDigest: body.detectorConfigDigest }
-                : {}),
-            }),
-          },
-          allowedOrigin,
-        );
-        return;
-      }
-      if (
-        request.method === "GET" &&
-        url.pathname === "/v1/review/identity-audit/leads"
-      ) {
-        requireProjection("machine_suggestions");
-        sendJson(
-          response,
-          200,
-          await repository.identityAuditLeads(),
-          allowedOrigin,
-        );
-        return;
-      }
-      if (
-        request.method === "GET" &&
-        url.pathname === "/v1/review/identity-audit/items"
-      ) {
-        requireProjection("machine_suggestions");
-        sendJson(
-          response,
-          200,
-          await repository.identityAuditItems({
-            kind: url.searchParams.get("kind"),
-            limit: url.searchParams.get("limit"),
-            offset: url.searchParams.get("offset"),
-            personId: url.searchParams.get("personId"),
-          }),
-          allowedOrigin,
-        );
-        return;
-      }
-      if (
-        request.method === "POST" &&
-        url.pathname === "/v1/review/identity-audit/items/dismiss:batch"
-      ) {
-        requireProjection("machine_suggestions");
-        const body = await readJsonBody(request);
-        sendJson(
-          response,
-          200,
-          await repository.dismissIdentityAuditItems({
-            actorId: request.headers["x-cimmich-actor"],
-            items: body.items,
-          }),
-          allowedOrigin,
-        );
-        return;
-      }
-      const identityAuditDismissMatch = url.pathname.match(
-        /^\/v1\/review\/identity-audit\/items\/(untagged_match|accepted_contradiction)\/([^/]+)\/dismiss$/,
-      );
-      if (request.method === "POST" && identityAuditDismissMatch) {
-        requireProjection("machine_suggestions");
-        sendJson(
-          response,
-          200,
-          await repository.dismissIdentityAuditItem({
-            actorId: request.headers["x-cimmich-actor"],
-            faceId: decodeURIComponent(identityAuditDismissMatch[2]),
-            kind: identityAuditDismissMatch[1],
-          }),
-          allowedOrigin,
-        );
+      if (await reviewRoutes(request, response, url, allowedOrigin)) {
         return;
       }
       const machineSuggestionAcceptMatch = url.pathname.match(
