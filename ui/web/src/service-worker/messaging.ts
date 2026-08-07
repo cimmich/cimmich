@@ -8,7 +8,7 @@ const sw = globalThis as unknown as ServiceWorkerGlobalScope;
 
 export const installMessageListener = () => {
   sw.addEventListener('message', (event) => {
-    if (!event.data?.type) {
+    if (event.origin !== sw.location.origin || !event.data?.type) {
       return;
     }
 
