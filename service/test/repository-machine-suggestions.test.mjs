@@ -313,6 +313,93 @@ test("simultaneous machine review consumers share one best-Prime scoring snapsho
   assert.equal(calls, 1);
 });
 
+test("expired machine review serves the completed snapshot while refreshing", async () => {
+  const originalNow = Date.now;
+  let now = 1_000;
+  Date.now = () => now;
+  let calls = 0;
+  let releaseRefresh;
+  const refreshGate = new Promise((resolve) => {
+    releaseRefresh = resolve;
+  });
+  const row = (suffix) => ({
+    asset_id: `asset-${suffix}`,
+    box_h: 0.2,
+    box_w: 0.2,
+    box_x: 0.1,
+    box_y: 0.1,
+    candidate_rank: 1,
+    can_suggest: true,
+    capture_time: null,
+    config_digest: matchingProvider.configDigest,
+    detection_confidence: 0.9,
+    display_name: `Person ${suffix}`,
+    face_id: `face-${suffix}`,
+    height: 1000,
+    individual_top3: 0.8,
+    lead_can_suggest: true,
+    lead_margin: 0.2,
+    media_kind: "image",
+    person_id: `person-${suffix}`,
+    policy_score_floor: 0,
+    prime_score: 0.9,
+    prototype_score: null,
+    quality_measurements: { quality_score: 0.9 },
+    quality_score: 0.9,
+    raw_prime_score: 0.9,
+    secondary_score: null,
+    width: 1000,
+  });
+  const sql = async (strings) => {
+    if (!strings.join("?").includes("WITH face_contexts AS MATERIALIZED")) {
+      throw new Error("Unexpected repository query");
+    }
+    calls += 1;
+    if (calls === 1) return [row("old")];
+    await refreshGate;
+    return [row("new")];
+  };
+  const repository = createCimmichRepository(sql, new Map(), null, {
+    conditionConsensusReviewEnabled: false,
+    matchingProvider,
+  });
+
+  try {
+    const first = await repository.machineSuggestions({ limit: 24 });
+    now += 15 * 60 * 1000 + 1;
+    const stale = await repository.machineSuggestions({ limit: 24 });
+
+    assert.deepEqual(
+      first.map(({ face_id }) => face_id),
+      ["face-old"],
+    );
+    assert.deepEqual(
+      stale.map(({ face_id }) => face_id),
+      ["face-old"],
+    );
+    assert.equal(calls, 2);
+
+    releaseRefresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    const refreshed = await repository.machineSuggestions({ limit: 24 });
+    assert.deepEqual(
+      refreshed.map(({ face_id }) => face_id),
+      ["face-new"],
+    );
+    assert.equal(calls, 2);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
+test("service startup prewarms the shared machine-review snapshot", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/index.mjs", import.meta.url), "utf8"),
+  );
+  const listen = source.slice(source.indexOf("server.listen"));
+  assert.match(listen, /repository\.machineSuggestions\(\{ limit: 24 \}\)/);
+});
+
 test("machine suggestion limits truncate one stable ranked projection shared with summary", async () => {
   let scoringCalls = 0;
   let summaryCalls = 0;
