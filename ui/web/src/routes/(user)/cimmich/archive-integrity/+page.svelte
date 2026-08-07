@@ -67,6 +67,8 @@
     const amount = value / 1024 ** power;
     return `${amount >= 10 || power === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[power]}`;
   };
+  const countLabel = (value: number, singular: string, plural = `${singular}s`) =>
+    `${number.format(value)} ${value === 1 ? singular : plural}`;
   const formatDate = (value: string | null) =>
     value
       ? new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
@@ -504,7 +506,7 @@
                         <p>
                           <strong class="text-gray-900 dark:text-white">Cimmich evidence:</strong>
                           {cimmichEvidence
-                            ? `${cimmichEvidence.people} people · ${cimmichEvidence.faceAssignments} face · ${cimmichEvidence.headAssignments} head · ${cimmichEvidence.bodyAssignments} body · ${cimmichEvidence.presenceAssignments} presence`
+                            ? `${countLabel(cimmichEvidence.people, 'person', 'people')} · ${countLabel(cimmichEvidence.faceAssignments, 'face')} · ${countLabel(cimmichEvidence.headAssignments, 'head')} · ${countLabel(cimmichEvidence.bodyAssignments, 'body', 'bodies')} · ${countLabel(cimmichEvidence.presenceAssignments, 'presence', 'presence')}`
                             : 'Byte-linked evidence unavailable'}
                         </p>
                       </div>
