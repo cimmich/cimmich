@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { samePhotoAcceptedCandidateFloor } from "./candidate-context-policy.mjs";
 import {
+  faceReviewReasonError,
+  faceReviewReasonCode,
+  readDeferredFaceReviews,
+} from "./deferred-face-review.mjs";
+import {
   applyPrimeCurations,
   buildPrimeCurations,
   loadPrimeCuratorFaces,
@@ -3345,7 +3350,7 @@ export const createCimmichRepository = (
           AND cimmich_face_match_eligible(
             fo.detection_confidence, fo.box_w, fo.box_h
           )
-          AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
+          AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
           AND NOT EXISTS (
             SELECT 1 FROM identity_claim accepted
             WHERE accepted.face_id = fo.face_id AND accepted.state = 'accepted'
@@ -3756,6 +3761,17 @@ export const createCimmichRepository = (
         }
         throw error;
       }
+    },
+
+    async deferredFaceReviews({ limit = 100 } = {}) {
+      return readDeferredFaceReviews({
+        bridge,
+        bridgeFields,
+        cleanLimit,
+        limit,
+        presentationRank,
+        sql,
+      });
     },
 
     clearPeopleHotSnapshot() {
@@ -5209,7 +5225,7 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           fo.detection_confidence, fo.box_w, fo.box_h
         )
-        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
         AND p.status = 'active'
         AND p.subject_kind = 'person'
         AND cimmich_visibility_person_rank(p.person_id) <= ${presentationRank()}
@@ -5284,7 +5300,18 @@ export const createCimmichRepository = (
         face.detection_confidence::float8, face.quality_measurements,
         accepted.identity_claim_id AS current_claim_id,
         accepted.person_id AS current_person_id,
-        current_person.display_name AS current_person_name
+        current_person.display_name AS current_person_name,
+        (
+          SELECT count(*)::int
+          FROM current_face_identity same_photo_identity
+          JOIN face_observation same_photo_face
+            ON same_photo_face.face_id = same_photo_identity.face_id
+              AND same_photo_face.state = 'valid'
+          WHERE same_photo_identity.person_id = claim.person_id
+            AND same_photo_identity.state = 'accepted'
+            AND same_photo_face.asset_id = face.asset_id
+            AND same_photo_face.face_id <> face.face_id
+        ) AS same_photo_accepted_count
       FROM identity_claim claim
       JOIN current_source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
@@ -5315,23 +5342,8 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
-        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
-        AND (
-          coalesce(nullif(claim.evidence_refs->>'best_score', '')::float8, claim.calibrated_confidence::float8, -1)
-            >= ${samePhotoAcceptedCandidateFloor}
-          OR NOT EXISTS (
-            SELECT 1
-            FROM identity_claim same_photo_claim
-            JOIN face_observation same_photo_face
-              ON same_photo_face.face_id = same_photo_claim.face_id
-              AND same_photo_face.state = 'valid'
-            WHERE same_photo_claim.person_id = claim.person_id
-              AND same_photo_claim.state = 'accepted'
-              AND same_photo_face.asset_id = face.asset_id
-              AND same_photo_face.face_id <> face.face_id
-          )
-        )
       ORDER BY CASE
           WHEN nullif(claim.evidence_refs->>'margin', '')::float8 > 0 THEN 0
           WHEN nullif(claim.evidence_refs->>'margin', '') IS NULL THEN 1
@@ -5382,26 +5394,8 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
-        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
-        AND (
-          coalesce(
-            nullif(claim.evidence_refs->>'best_score', '')::float8,
-            claim.calibrated_confidence::float8,
-            -1
-          ) >= ${samePhotoAcceptedCandidateFloor}
-          OR NOT EXISTS (
-            SELECT 1
-            FROM identity_claim same_photo_claim
-            JOIN face_observation same_photo_face
-              ON same_photo_face.face_id = same_photo_claim.face_id
-              AND same_photo_face.state = 'valid'
-            WHERE same_photo_claim.person_id = claim.person_id
-              AND same_photo_claim.state = 'accepted'
-              AND same_photo_face.asset_id = face.asset_id
-              AND same_photo_face.face_id <> face.face_id
-          )
-        )
       GROUP BY claim.person_id, person.display_name
       ORDER BY suggestion_count DESC, person.display_name, claim.person_id
     `;
@@ -6961,10 +6955,14 @@ export const createCimmichRepository = (
           rejected.identity_claim_id AS rejected_identity_claim_id,
           rejected.person_id AS rejected_person_id, rejected.display_name AS rejected_display_name,
           CASE
-            WHEN review.reason_code = 'face_review_later' AND review.action = 'ignore' THEN 'later'
+            WHEN review.reason_code IN ('face_review_later', 'face_review_geometry') AND review.action = 'ignore' THEN 'later'
             WHEN review.reason_code = 'face_review_unknown' AND review.action = 'ignore' THEN 'unknown'
             ELSE 'active'
           END AS review_disposition,
+          CASE
+            WHEN review.reason_code = 'face_review_geometry' AND review.action = 'ignore' THEN 'geometry'
+            ELSE 'general'
+          END AS review_reason,
           review.decision_id AS review_decision_id,
           coalesce(gallery.buckets, ARRAY[]::text[]) AS buckets
         FROM face_observation fo
@@ -8738,6 +8736,7 @@ export const createCimmichRepository = (
       commandId,
       disposition,
       faceId,
+      reviewReason = "general",
     }) {
       const actor = cleanActor(actorId);
       if (!actor) {
@@ -8754,9 +8753,16 @@ export const createCimmichRepository = (
           "FACE_REVIEW_DISPOSITION_INVALID",
         );
       }
+      const reviewReasonError = faceReviewReasonError({
+        disposition,
+        reviewReason,
+      });
+      if (reviewReasonError)
+        throw typedError(reviewReasonError[0], 400, reviewReasonError[1]);
       const stableCommandId = cleanIdentityCommandId(commandId);
+      const reasonCode = faceReviewReasonCode({ disposition, reviewReason });
       const stableDecisionId = identityDecisionIdFor(
-        `face_review_${disposition}`,
+        reasonCode,
         stableCommandId,
       );
       const result = await sql.begin(async (tx) => {
@@ -8780,12 +8786,6 @@ export const createCimmichRepository = (
           FROM decision
           WHERE decision_id = ${stableDecisionId}
         `;
-        const reasonCode =
-          disposition === "later"
-            ? "face_review_later"
-            : disposition === "unknown"
-              ? "face_review_unknown"
-              : "face_review_resumed";
         if (replay) {
           if (replay.actor_id !== actor || replay.reason_code !== reasonCode) {
             throw typedError(
@@ -8799,14 +8799,15 @@ export const createCimmichRepository = (
             decisionId: replay.decision_id,
             disposition,
             faceId,
+            reviewReason,
             replayed: true,
             schemaVersion: "cimmich.face-review-disposition.v1",
           };
         }
         const [current] = await tx`
-          SELECT decision_id,
+          SELECT decision_id, reason_code,
             CASE
-              WHEN reason_code = 'face_review_later' AND action = 'ignore' THEN 'later'
+              WHEN reason_code IN ('face_review_later', 'face_review_geometry') AND action = 'ignore' THEN 'later'
               WHEN reason_code = 'face_review_unknown' AND action = 'ignore' THEN 'unknown'
               ELSE 'active'
             END AS disposition
@@ -8815,12 +8816,13 @@ export const createCimmichRepository = (
           ORDER BY created_at DESC, decision_id DESC
           LIMIT 1
         `;
-        if ((current?.disposition || "active") === disposition) {
+        if (current?.reason_code === reasonCode) {
           return {
             changed: false,
             decisionId: current?.decision_id || null,
             disposition,
             faceId,
+            reviewReason,
             replayed: false,
             schemaVersion: "cimmich.face-review-disposition.v1",
           };
@@ -8850,6 +8852,7 @@ export const createCimmichRepository = (
           decisionId: stableDecisionId,
           disposition,
           faceId,
+          reviewReason,
           replayed: false,
           schemaVersion: "cimmich.face-review-disposition.v1",
         };

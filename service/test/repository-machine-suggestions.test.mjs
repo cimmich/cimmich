@@ -850,6 +850,39 @@ test("identity-changing commands invalidate the shared machine-suggestion snapsh
   }
 });
 
+test("deferred review survives matcher churn and same-photo candidates stay reviewable", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const deferred = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../src/deferred-face-review.mjs", import.meta.url),
+      "utf8",
+    ),
+  );
+  const machine = source.slice(
+    source.indexOf("async machineSuggestions"),
+    source.indexOf("async deferredFaceReviews"),
+  );
+  const personCandidates = source.slice(
+    source.indexOf("async personCandidates"),
+    source.indexOf("async personCandidateSummary"),
+  );
+
+  assert.match(machine, /face_review_later/);
+  assert.match(machine, /face_review_geometry/);
+  assert.match(deferred, /DISTINCT ON \(subject_id\)/);
+  assert.match(deferred, /face_review_geometry/);
+  assert.match(deferred, /count\(\*\) OVER\(\)/);
+  assert.match(deferred, /claim\.state IN \('accepted', 'candidate'\)/);
+  assert.doesNotMatch(
+    deferred,
+    /NOT EXISTS \(\s*SELECT 1 FROM current_face_identity accepted/,
+  );
+  assert.match(personCandidates, /same_photo_accepted_count/);
+  assert.doesNotMatch(personCandidates, /samePhotoAcceptedCandidateFloor/);
+});
+
 test("lead click-through is filtered at query level and matches any suggested rank", async () => {
   const candidate = (rank, personId) => ({
     asset_id: "asset-1",

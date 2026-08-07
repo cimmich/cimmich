@@ -4,11 +4,16 @@
   import { Route } from '$lib/route';
   import {
     acceptCimmichMachineSuggestion,
+    createCimmichIdentityCorrectionCommandId,
+    getCimmichDeferredFaceReviews,
     getCimmichFaceMatchingOperatorStatus,
     getCimmichImmichOnboardingStatus,
     getCimmichMachineSuggestions,
     getCimmichStewardPlan,
     markCimmichMachineSuggestionUnknown,
+    setCimmichFaceReviewDisposition,
+    type CimmichDeferredFaceReview,
+    type CimmichDeferredFaceReviewPage,
     type CimmichFaceMatchingOperatorStatus,
     type CimmichImmichOnboardingStatus,
     type CimmichMachineSuggestion,
@@ -33,6 +38,12 @@
   import { emptyReviewPresentation, reviewHasVisibleEvidence } from './steward-presentation';
 
   let suggestions = $state<CimmichMachineSuggestion[]>([]);
+  let deferred = $state<CimmichDeferredFaceReviewPage>({
+    items: [],
+    limit: 100,
+    schemaVersion: 'cimmich.deferred-face-review.v1',
+    total: 0,
+  });
   let plan = $state<CimmichStewardPlan>();
   let faceOperator = $state<CimmichFaceMatchingOperatorStatus>();
   let onboarding = $state<CimmichImmichOnboardingStatus>();
@@ -40,12 +51,11 @@
   let error = $state('');
   let busyFaceId = $state('');
   let selectedPeople = $state<Record<string, string>>({});
-  let skippedFaceIds = $state<string[]>([]);
   let resultMessage = $state('');
   let loadGeneration = 0;
 
   const visibleSuggestions = $derived.by(() => {
-    const available = suggestions.filter((item) => !skippedFaceIds.includes(item.face_id));
+    const available = suggestions;
     if (!plan?.focusFaceIds.length) {
       return available;
     }
@@ -80,11 +90,11 @@
     onboarding = undefined;
     suggestions = [];
     selectedPeople = {};
-    skippedFaceIds = [];
     try {
-      const [nextPlan, nextSuggestions, nextFaceOperator, nextOnboarding] = await Promise.all([
+      const [nextPlan, nextSuggestions, nextDeferred, nextFaceOperator, nextOnboarding] = await Promise.all([
         getCimmichStewardPlan(),
         getCimmichMachineSuggestions(24),
+        getCimmichDeferredFaceReviews(100),
         getCimmichFaceMatchingOperatorStatus().catch(() => undefined),
         getCimmichImmichOnboardingStatus().catch(() => undefined),
       ]);
@@ -95,7 +105,7 @@
       faceOperator = nextFaceOperator;
       onboarding = nextOnboarding;
       suggestions = nextSuggestions;
-      skippedFaceIds = [];
+      deferred = nextDeferred;
       selectedPeople = Object.fromEntries(
         nextSuggestions
           .filter((item) => item.candidates[0])
@@ -133,6 +143,29 @@
       width: item.width ?? 0,
     });
   };
+
+  const deferredCropStyle = (item: CimmichDeferredFaceReview) =>
+    cimmichSquareCropBackgroundStyle({
+      boxH: item.box.h,
+      boxW: item.box.w,
+      boxX: item.box.x,
+      boxY: item.box.y,
+      height: item.height,
+      padding: 2.8,
+      url: getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: item.width,
+    });
+
+  const deferredHref = (item: CimmichDeferredFaceReview) =>
+    item.candidate
+      ? Route.viewCimmichPersonAsset({
+          faceId: item.faceId,
+          id: item.sourceAssetId,
+          overlay: 'machinery',
+          personId: item.candidate.personId,
+          personName: item.candidate.displayName,
+        })
+      : Route.viewCimmichFaceAsset({ faceId: item.faceId, id: item.sourceAssetId });
 
   const reasonLabel = (reason: CimmichMachineSuggestion['review_reason']) =>
     reason === 'close_alternatives' ? 'Close call' : reason === 'weak_face' ? 'Hard photo' : 'Clear lead';
@@ -188,12 +221,53 @@
     }
   };
 
-  const skipActive = () => {
-    if (!active) {
+  const saveActiveForLater = async () => {
+    if (!active || busyFaceId) {
       return;
     }
-    skippedFaceIds = [...skippedFaceIds, active.face_id];
-    resultMessage = 'Skipped for this visit.';
+    busyFaceId = active.face_id;
+    error = '';
+    try {
+      await setCimmichFaceReviewDisposition(
+        active.face_id,
+        'later',
+        createCimmichIdentityCorrectionCommandId('steward-review-later'),
+      );
+      const nextDeferred = await getCimmichDeferredFaceReviews(100);
+      finishDecision(active.face_id, 'Saved for later. It will remain in this queue until you resume it.');
+      deferred = nextDeferred;
+    } catch (error_) {
+      error = error_ instanceof Error ? error_.message : 'The review could not be saved for later.';
+    } finally {
+      busyFaceId = '';
+    }
+  };
+
+  const resumeDeferred = async (item: CimmichDeferredFaceReview) => {
+    if (busyFaceId) {
+      return;
+    }
+    busyFaceId = item.faceId;
+    error = '';
+    try {
+      await setCimmichFaceReviewDisposition(
+        item.faceId,
+        'active',
+        createCimmichIdentityCorrectionCommandId('steward-review-resume'),
+      );
+      deferred = {
+        ...deferred,
+        items: deferred.items.filter(({ faceId }) => faceId !== item.faceId),
+        total: Math.max(0, deferred.total - 1),
+      };
+      resultMessage = 'Returned to active review.';
+      await load();
+      resultMessage = 'Returned to active review.';
+    } catch (error_) {
+      error = error_ instanceof Error ? error_.message : 'The review could not be resumed.';
+    } finally {
+      busyFaceId = '';
+    }
   };
 </script>
 
@@ -269,6 +343,75 @@
     {/if}
 
     <IdentityAuditPanel />
+
+    {#if deferred.total > 0}
+      <section
+        class="grid gap-4 rounded-3xl border border-sky-200 bg-sky-50/60 p-5 dark:border-sky-900 dark:bg-sky-950/20"
+        aria-labelledby="saved-face-reviews-heading"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 id="saved-face-reviews-heading" class="text-lg font-semibold">Saved for later</h2>
+              <span
+                class="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800 dark:bg-sky-900 dark:text-sky-100"
+                >{deferred.total}</span
+              >
+            </div>
+            <p class="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
+              Durable review pointers. Box fixes stay here even if later identity decisions change the matcher’s
+              suggestions.
+            </p>
+          </div>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {#each deferred.items as item (item.faceId)}
+            <article
+              class="overflow-hidden rounded-2xl border border-sky-200 bg-white dark:border-sky-900 dark:bg-immich-dark-bg"
+            >
+              <a
+                class="block aspect-4/3 bg-gray-200 bg-cover bg-no-repeat"
+                href={deferredHref(item)}
+                style={deferredCropStyle(item)}
+                aria-label={`Open ${item.filename || 'saved Face'}`}
+              ></a>
+              <div class="grid gap-3 p-3">
+                <div>
+                  <span
+                    class={item.reason === 'geometry'
+                      ? 'rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900 dark:bg-amber-900 dark:text-amber-100'
+                      : 'rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-900 dark:bg-sky-900 dark:text-sky-100'}
+                  >
+                    {item.reason === 'geometry' ? 'Box fix' : 'Later'}
+                  </span>
+                  <p class="mt-2 truncate text-sm font-semibold">{item.filename || 'Photo'}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {item.candidate
+                      ? `${item.candidate.displayName}${item.candidate.score === null ? '' : ` · ${Math.round(item.candidate.score * 100)}%`}`
+                      : 'No current identity suggestion'}
+                  </p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <a
+                    class="min-h-10 rounded-xl bg-immich-primary px-3 py-2 text-center text-sm font-semibold text-white"
+                    href={deferredHref(item)}
+                  >
+                    {item.reason === 'geometry' ? 'Fix box' : 'Open Face'}
+                  </a>
+                  <button
+                    class="min-h-10 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 dark:border-gray-600"
+                    type="button"
+                    disabled={Boolean(busyFaceId)}
+                    onclick={() => void resumeDeferred(item)}
+                    >{busyFaceId === item.faceId ? 'Resuming…' : 'Resume'}</button
+                  >
+                </div>
+              </div>
+            </article>
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     {#if loading}
       <section
@@ -404,7 +547,7 @@
                   type="button"
                   class="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 transition hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-900"
                   disabled={Boolean(busyFaceId)}
-                  onclick={skipActive}><Icon icon={mdiSkipNext} size="18" /> Later</button
+                  onclick={() => void saveActiveForLater()}><Icon icon={mdiSkipNext} size="18" /> Later</button
                 >
               </div>
             {:else}
@@ -412,7 +555,7 @@
                 type="button"
                 class="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
                 disabled={Boolean(busyFaceId)}
-                onclick={skipActive}><Icon icon={mdiSkipNext} size="18" /> Later</button
+                onclick={() => void saveActiveForLater()}><Icon icon={mdiSkipNext} size="18" /> Later</button
               >
             {/if}
           </div>

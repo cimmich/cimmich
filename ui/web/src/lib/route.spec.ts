@@ -43,6 +43,14 @@ describe('Route', () => {
     });
   });
 
+  describe(Route.viewCimmichFaceAsset.name, () => {
+    it('opens a Face directly without inventing a Person context', () => {
+      expect(Route.viewCimmichFaceAsset({ faceId: 'face-1', id: 'asset-1' })).toBe(
+        '/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery',
+      );
+    });
+  });
+
   describe(Route.viewCimmichPetAsset.name, () => {
     it('preserves the Pet viewer context with encoded stable identity', () => {
       expect(Route.viewCimmichPetAsset({ id: 'asset-1', petId: 'pet-1', petName: 'Juniper' })).toBe(

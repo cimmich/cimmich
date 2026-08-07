@@ -124,6 +124,8 @@ export const Route = {
   // photos
   photos: (params?: { at?: string; organise?: 1 }) => '/photos' + asQueryString(params),
   viewAsset: ({ id }: { id: string }) => `/photos/${id}`,
+  viewCimmichFaceAsset: ({ faceId, id }: { faceId: string; id: string }) =>
+    `/photos/${id}` + asQueryString({ cimmichFaceId: faceId, cimmichOverlay: 'machinery' }),
   viewCimmichPersonAsset: ({
     faceId,
     id,

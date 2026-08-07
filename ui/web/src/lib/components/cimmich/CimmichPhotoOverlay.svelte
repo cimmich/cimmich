@@ -3,6 +3,8 @@
   import { tick } from 'svelte';
   import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { AssetResponseDto } from '@immich/sdk';
+  import CimmichFaceReviewQueueActions from './CimmichFaceReviewQueueActions.svelte';
+  import { cimmichFaceReviewMessage } from '$lib/services/cimmich-deferred-face-review';
   import { Route } from '$lib/route';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
@@ -589,7 +591,11 @@
     }
   };
 
-  const applyFaceReviewDisposition = async (face: CimmichFaceOverlay, disposition: 'active' | 'later' | 'unknown') => {
+  const applyFaceReviewDisposition = async (
+    face: CimmichFaceOverlay,
+    disposition: 'active' | 'later' | 'unknown',
+    reviewReason: 'general' | 'geometry' = 'general',
+  ) => {
     isFaceActionSaving = true;
     faceActionError = '';
     try {
@@ -597,15 +603,11 @@
         face.id,
         disposition,
         createCimmichIdentityCorrectionCommandId(`face-review-${disposition}`),
+        reviewReason,
       );
       await refreshDetailedEvidence();
       selectedFaceId = face.id;
-      faceActionMessage =
-        disposition === 'later'
-          ? 'Saved for later review.'
-          : disposition === 'unknown'
-            ? 'Marked as an unknown person. The Face remains available to review.'
-            : 'Returned to active review.';
+      faceActionMessage = cimmichFaceReviewMessage(disposition, reviewReason);
     } catch (error) {
       faceActionError = error instanceof Error ? error.message : 'Unable to update this Face review';
     } finally {
@@ -5524,11 +5526,6 @@
               </div>
             </details>
           {/if}
-          {#if selectedFace.reviewDisposition === 'later'}
-            <p class="rounded-sm bg-sky-400/15 px-2 py-1 text-sky-100">Saved for later review.</p>
-          {:else if selectedFace.reviewDisposition === 'unknown'}
-            <p class="rounded-sm bg-slate-400/15 px-2 py-1 text-slate-100">Marked as an unknown person.</p>
-          {/if}
           {#if selectedFace.rejectedClaimId}
             <div class="flex items-center justify-between gap-3 rounded-sm bg-amber-400/15 px-2 py-1.5 text-amber-100">
               <span>Previously rejected · {selectedFace.rejectedName || 'Suggestion'}</span>
@@ -5562,12 +5559,12 @@
                       : 'Save changes'}
             </button>
             {#if faceEvidenceKindDraft === 'face'}
-              <button
-                class="min-h-11 w-full rounded-sm border border-white/20 px-3 font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
-                disabled={isFaceActionSaving || selectedFace.reviewDisposition === 'later'}
-                type="button"
-                onclick={() => void applyFaceReviewDisposition(selectedFace, 'later')}>Review later</button
-              >
+              <CimmichFaceReviewQueueActions
+                busy={isFaceActionSaving}
+                disposition={selectedFace.reviewDisposition}
+                reviewReason={selectedFace.reviewReason}
+                onSet={(disposition, reason) => void applyFaceReviewDisposition(selectedFace, disposition, reason)}
+              />
               {#if holdingPeople.length > 0}
                 <div class="relative">
                   <button

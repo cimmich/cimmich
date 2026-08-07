@@ -34,6 +34,7 @@ import {
   getCimmichDocumentContent,
   getCimmichEnhancedComponentStatus,
   getCimmichDocuments,
+  getCimmichDeferredFaceReviews,
   getCimmichIdentityFacesPage,
   getCimmichIdentityCorrectionDiscovery,
   getCimmichIdentityCorrectionHistory,
@@ -446,9 +447,30 @@ describe('Cimmich Unknown person client contract', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:3101/v1/faces/face%2F1/review-disposition',
       expect.objectContaining({
-        body: JSON.stringify({ commandId: 'face-review.unknown.1', disposition: 'unknown' }),
+        body: JSON.stringify({
+          commandId: 'face-review.unknown.1',
+          disposition: 'unknown',
+          reviewReason: 'general',
+        }),
         method: 'POST',
       }),
+    );
+    fetchMock.mockRestore();
+  });
+
+  it('loads durable deferred Face reviews', async () => {
+    const result = {
+      items: [],
+      limit: 100,
+      schemaVersion: 'cimmich.deferred-face-review.v1' as const,
+      total: 0,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(result));
+
+    await expect(getCimmichDeferredFaceReviews(100)).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3101/v1/review/faces/deferred?limit=100',
+      expect.any(Object),
     );
     fetchMock.mockRestore();
   });

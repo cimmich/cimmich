@@ -13,11 +13,11 @@ import {
   type CimmichManualObjectRegionTag,
 } from '$lib/services/cimmich.service';
 import { getAssetMediaUrl } from '$lib/utils';
+import { cimmichFaceReviewOverlayState } from './cimmich-deferred-face-review';
 
 type CountMap = Record<string, number>;
 const isNonEmptyString = (value: null | string | undefined): value is string =>
   typeof value === 'string' && value.length > 0;
-
 export type CimmichTypedEntity = {
   confidence?: number;
   description?: string;
@@ -144,6 +144,7 @@ export type CimmichFaceOverlay = {
   rejectedPersonIdentityKey?: string;
   reviewDecisionId?: string;
   reviewDisposition?: 'active' | 'later' | 'unknown';
+  reviewReason?: 'general' | 'geometry';
   marginOverNextIdentity?: string;
   name: string;
   nextIdentityName?: string;
@@ -2305,8 +2306,7 @@ const evidenceFromCimmichAsset = (asset: CimmichAssetEvidence): CimmichPhotoEvid
       rejectedClaimId: face.rejected_identity_claim_id ?? undefined,
       rejectedName: face.rejected_display_name ?? undefined,
       rejectedPersonIdentityKey: face.rejected_person_id ?? undefined,
-      reviewDecisionId: face.review_decision_id ?? undefined,
-      reviewDisposition: face.review_disposition,
+      ...cimmichFaceReviewOverlayState(face),
       source: 'cimmich',
       status: face.display_name ? 'named' : 'untagged',
     };
