@@ -365,6 +365,9 @@ test("audit item counts share the row query's guarded predicate", async () => {
     /face\.state = 'valid'/,
     /asset\.state = 'active'/,
     /cimmich_visibility_asset_rank\(asset\.asset_id\) <=/,
+    /item\.audit_kind <> 'untagged_match'[\s\S]*cimmich_face_match_eligible/,
+    /same_photo_identity\.person_id = item\.suggested_person_id/,
+    /same_photo_face\.asset_id = item\.asset_id/,
   ]) {
     assert.match(countQuery, guard);
     assert.match(itemQuery, guard);
@@ -436,11 +439,34 @@ test("audit leads group all open untagged matches by known Person", async () => 
   assert.equal(result.run.stale, false);
   assert.match(leadsQuery, /item\.audit_kind = 'untagged_match'/);
   assert.match(leadsQuery, /item\.review_state = 'open'/);
+  assert.match(leadsQuery, /accepted_face_identity AS MATERIALIZED/);
+  assert.match(leadsQuery, /accepted_people_by_asset AS MATERIALIZED/);
+  assert.match(leadsQuery, /JOIN face_observation face/);
+  assert.match(leadsQuery, /JOIN face_embedding query_embedding/);
+  assert.match(leadsQuery, /cimmich_face_match_eligible/);
   assert.match(
     leadsQuery,
-    /NOT EXISTS \(\s+SELECT 1 FROM current_face_identity/,
+    /same_photo_identity\.person_id = item\.suggested_person_id/,
   );
+  assert.match(leadsQuery, /selected_identity\.face_id IS NULL/);
+  assert.match(leadsQuery, /same_photo_identity\.person_id IS NULL/);
   assert.match(leadsQuery, /ORDER BY suggestion_count DESC/);
+});
+
+test("incremental audit does not carry stale matching suggestions", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /prior\.audit_kind <> 'untagged_match'[\s\S]*cimmich_face_match_eligible/,
+  );
+  assert.match(
+    source,
+    /same_photo_identity\.person_id = prior\.suggested_person_id/,
+  );
+  assert.match(source, /same_photo_face\.asset_id = prior\.asset_id/);
 });
 
 test("independent evidence suppresses only replay-consistent same-photo candidates", async () => {

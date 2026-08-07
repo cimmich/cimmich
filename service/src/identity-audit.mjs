@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -218,6 +219,17 @@ const auditSql = async (
           ON face.face_id = prior.face_id AND face.state = 'valid'
         WHERE prior.audit_run_id = ${baseRunId}
           AND prior.face_id <> ALL(${incrementalFaceIds})
+          AND (prior.audit_kind <> 'untagged_match' OR cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h))
+          AND NOT EXISTS (
+            SELECT 1
+            FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
+              ON same_photo_face.face_id = same_photo_identity.face_id
+              AND same_photo_face.state = 'valid'
+            WHERE same_photo_identity.state = 'accepted'
+              AND same_photo_identity.person_id = prior.suggested_person_id
+              AND same_photo_face.asset_id = prior.asset_id
+              AND same_photo_face.face_id <> prior.face_id
+          )
           AND (
             (prior.audit_kind = 'untagged_match' AND NOT EXISTS (
               SELECT 1 FROM current_face_identity current
@@ -1188,6 +1200,20 @@ export const createIdentityAudit = (
         AND asset.state = 'active'
         AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
         AND (
+          item.audit_kind <> 'untagged_match' OR
+          cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
+            ON same_photo_face.face_id = same_photo_identity.face_id
+            AND same_photo_face.state = 'valid'
+          WHERE same_photo_identity.state = 'accepted'
+            AND same_photo_identity.person_id = item.suggested_person_id
+            AND same_photo_face.asset_id = item.asset_id
+            AND same_photo_face.face_id <> item.face_id
+        )
+        AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
             SELECT 1 FROM current_face_identity current
             WHERE current.face_id = item.face_id AND current.state = 'accepted'
@@ -1379,6 +1405,20 @@ export const createIdentityAudit = (
         AND asset.state = 'active'
         AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
         AND (
+          item.audit_kind <> 'untagged_match'
+          OR cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
+            ON same_photo_face.face_id = same_photo_identity.face_id
+            AND same_photo_face.state = 'valid'
+          WHERE same_photo_identity.state = 'accepted'
+            AND same_photo_identity.person_id = item.suggested_person_id
+            AND same_photo_face.asset_id = item.asset_id
+            AND same_photo_face.face_id <> item.face_id
+        )
+        AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
             SELECT 1 FROM current_face_identity current
             WHERE current.face_id = item.face_id AND current.state = 'accepted'
@@ -1476,55 +1516,14 @@ export const createIdentityAudit = (
     };
   };
 
-  const leads = async () => {
-    await reconcileInterruptedRun();
-    const [run] = await sql`
-      SELECT * FROM identity_audit_run
-      WHERE state = 'completed'
-      ORDER BY started_at DESC, audit_run_id DESC
-      LIMIT 1
-    `;
-    if (!run) {
-      return {
-        items: [],
-        run: await latest(),
-        schemaVersion: identityAuditSchemaVersion,
-        total: 0,
-      };
-    }
-    const rows = await sql`
-      SELECT item.suggested_person_id, person.display_name,
-        count(*)::int AS suggestion_count
-      FROM identity_audit_item item
-      JOIN current_person person
-        ON person.person_id = item.suggested_person_id
-      WHERE item.audit_run_id = ${run.audit_run_id}
-        AND item.audit_kind = 'untagged_match'
-        AND item.review_state = 'open'
-        AND person.status = 'active'
-        AND person.subject_kind = 'person'
-        AND cimmich_visibility_person_rank(person.person_id)
-          <= ${presentationRank()}
-        AND NOT EXISTS (
-          SELECT 1 FROM current_face_identity current
-          WHERE current.face_id = item.face_id
-            AND current.state = 'accepted'
-        )
-      GROUP BY item.suggested_person_id, person.display_name
-      ORDER BY suggestion_count DESC, lower(person.display_name),
-        item.suggested_person_id
-    `;
-    return {
-      items: rows.map((row) => ({
-        displayName: row.display_name,
-        personId: row.suggested_person_id,
-        suggestionCount: Number(row.suggestion_count),
-      })),
-      run: projectRun(run, run.pack_id),
-      schemaVersion: identityAuditSchemaVersion,
-      total: rows.length,
-    };
-  };
+  const leads = createIdentityAuditLeads({
+    latest,
+    presentationRank,
+    projectRun,
+    reconcileInterruptedRun,
+    schemaVersion: identityAuditSchemaVersion,
+    sql,
+  });
 
   const dismiss = async ({ actorId, faceId, kind } = {}) => {
     await reconcileInterruptedRun();
