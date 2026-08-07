@@ -356,6 +356,26 @@ test("schema 120 adds an explicit Event needs-check admission lane", async () =>
   assert.match(migration, /BETWEEN 0 AND 1000000/);
 });
 
+test("schema 121 records reversible Cimmich-only asset corrections", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0121_asset_correction_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /CREATE TABLE asset_correction \(/);
+  assert.match(migration, /'rotation','capture_time','place'/);
+  assert.match(migration, /rotation_quarter_turns BETWEEN 0 AND 3/);
+  assert.match(
+    migration,
+    /CREATE UNIQUE INDEX asset_correction_one_active_kind/,
+  );
+  assert.match(migration, /CREATE TABLE asset_correction_command \(/);
+  assert.match(migration, /CREATE VIEW current_asset_correction AS/);
+  assert.match(migration, /Asset corrections are append-only/);
+  assert.doesNotMatch(migration, /UPDATE immich|ALTER TABLE asset ADD COLUMN/i);
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

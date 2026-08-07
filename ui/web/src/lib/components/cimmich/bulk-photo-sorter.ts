@@ -24,6 +24,8 @@ export type BulkPhotoSorterActionKind =
   | 'event-attach'
   | 'favorite'
   | 'place-attach'
+  | 'rotate-left'
+  | 'rotate-right'
   | 'tag-add'
   | 'tag-remove'
   | 'unarchive'
@@ -34,6 +36,7 @@ export type BulkPhotoSorterActionKind =
 
 export type BulkPhotoSorterUndoReceipt = {
   action: BulkPhotoSorterActionKind;
+  assetCorrectionDecisionIds: string[];
   assetIds: string[];
   contextDecisionIds: string[];
   label: string;
@@ -61,6 +64,8 @@ const bulkPhotoSorterActionKinds = new Set<BulkPhotoSorterActionKind>([
   'event-attach',
   'favorite',
   'place-attach',
+  'rotate-left',
+  'rotate-right',
   'tag-add',
   'tag-remove',
   'unarchive',
@@ -81,6 +86,7 @@ const isUndoReceipt = (value: unknown): value is BulkPhotoSorterUndoReceipt => {
   return (
     bulkPhotoSorterActionKinds.has(item.action as BulkPhotoSorterActionKind) &&
     isStringArray(item.assetIds) &&
+    isStringArray(item.assetCorrectionDecisionIds ?? []) &&
     isStringArray(item.contextDecisionIds) &&
     typeof item.label === 'string' &&
     typeof item.targetId === 'string' &&
@@ -271,6 +277,8 @@ export const bulkPhotoSorterActionLabel = (action: BulkPhotoSorterActionKind) =>
     'event-attach': 'Attach to Event',
     favorite: 'Favourite',
     'place-attach': 'Attach to Place',
+    'rotate-left': 'Rotate left',
+    'rotate-right': 'Rotate right',
     'tag-add': 'Add tag',
     'tag-remove': 'Remove tag',
     unarchive: 'Unarchive',

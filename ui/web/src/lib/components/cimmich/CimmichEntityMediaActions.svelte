@@ -8,10 +8,12 @@
     getCimmichContextEntities,
     getCimmichPeople,
     getCimmichPets,
+    rotateCimmichAssets,
     setCimmichManualPresence,
     setCimmichVisibilityObjects,
     undoCimmichContextDecision,
     undoCimmichManualPresence,
+    undoCimmichAssetCorrections,
     undoCimmichVisibilityDecision,
     type CimmichContextEntity,
     type CimmichPerson,
@@ -32,28 +34,18 @@
   } from '@immich/sdk';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
   import {
-    mdiAccountMultipleOutline,
     mdiAlertCircleOutline,
-    mdiArchiveArrowDownOutline,
-    mdiArchiveArrowUpOutline,
-    mdiCalendarBlankOutline,
     mdiCheckCircleOutline,
     mdiClose,
-    mdiHeartOutline,
-    mdiImageAlbum,
     mdiImageMove,
-    mdiLinkOff,
-    mdiLockOutline,
-    mdiMapMarkerOutline,
-    mdiPackageVariantClosed,
-    mdiPawOutline,
     mdiSelectAll,
-    mdiTagOutline,
     mdiUndoVariant,
   } from '@mdi/js';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import Combobox, { type ComboBoxOption } from '../shared-components/Combobox.svelte';
   import {
+    CIMMICH_ENTITY_MEDIA_ACTION_GROUPS,
+    cimmichEntityMediaActionIcon,
     cimmichEntityMediaActionLabel,
     cimmichEntityMediaActionNeedsTarget,
     cimmichEntityMediaActionVisibilityTier,
@@ -132,6 +124,8 @@
       'visibility-standard',
       'visibility-personal',
       'visibility-private',
+      'rotate-left',
+      'rotate-right',
       'tag-add',
       'tag-remove',
       'album-add',
@@ -203,30 +197,7 @@
         id: 'context',
         label: 'Organise',
       },
-      {
-        actions: ['presence-current', 'presence-person', 'presence-pet'],
-        icon: mdiAccountMultipleOutline,
-        id: 'presence',
-        label: 'People & pets',
-      },
-      {
-        actions: ['visibility-standard', 'visibility-personal', 'visibility-private'],
-        icon: mdiLockOutline,
-        id: 'privacy',
-        label: 'Privacy',
-      },
-      {
-        actions: ['tag-add', 'tag-remove', 'album-add'],
-        icon: mdiTagOutline,
-        id: 'metadata',
-        label: 'Tags & albums',
-      },
-      {
-        actions: ['favorite', 'unfavorite', 'archive', 'unarchive'],
-        icon: mdiImageAlbum,
-        id: 'library',
-        label: 'Library',
-      },
+      ...CIMMICH_ENTITY_MEDIA_ACTION_GROUPS.map((group) => ({ ...group, actions: [...group.actions] })),
     ];
   const actionGroups = $derived(
     actionGroupDefinitions
@@ -244,26 +215,9 @@
       : cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
 
   const actionIcon = (selectedAction: MediaUiAction) =>
-    ({
-      'album-add': mdiImageAlbum,
-      archive: mdiArchiveArrowDownOutline,
-      'context-detach': mdiLinkOff,
-      'event-attach': mdiCalendarBlankOutline,
-      favorite: mdiHeartOutline,
-      'object-attach': mdiPackageVariantClosed,
-      'place-attach': mdiMapMarkerOutline,
-      'place-move-within': mdiImageMove,
-      'presence-current': currentSubject?.subjectKind === 'pet' ? mdiPawOutline : mdiAccountMultipleOutline,
-      'presence-person': mdiAccountMultipleOutline,
-      'presence-pet': mdiPawOutline,
-      'tag-add': mdiTagOutline,
-      'tag-remove': mdiTagOutline,
-      unarchive: mdiArchiveArrowUpOutline,
-      unfavorite: mdiHeartOutline,
-      'visibility-personal': mdiLockOutline,
-      'visibility-private': mdiLockOutline,
-      'visibility-standard': mdiLockOutline,
-    })[selectedAction];
+    selectedAction === 'place-move-within'
+      ? mdiImageMove
+      : cimmichEntityMediaActionIcon(selectedAction, currentSubject);
 
   const asError = (caught: unknown) =>
     caught instanceof Error ? caught.message : 'The action could not be completed.';
@@ -403,6 +357,7 @@
     label: string,
   ): CimmichEntityMediaActionReceipt => ({
     action: selectedAction,
+    assetCorrectionDecisionIds: [],
     albumId: selectedAction === 'album-add' ? targetId : '',
     assetIds: [],
     completedAt: new Date().toISOString(),
@@ -456,7 +411,14 @@
     const next = emptyReceipt(selectedAction, label);
     try {
       const visibilityTier = cimmichEntityMediaActionVisibilityTier(selectedAction);
-      if (visibilityTier) {
+      if (selectedAction === 'rotate-left' || selectedAction === 'rotate-right') {
+        const result = await rotateCimmichAssets(
+          items.map(({ assetId }) => assetId),
+          selectedAction === 'rotate-left' ? 'left' : 'right',
+        );
+        next.assetCorrectionDecisionIds?.push(...(result.decisionIds ?? []));
+        next.assetIds.push(...items.map(({ assetId }) => assetId));
+      } else if (visibilityTier) {
         const result = await setCimmichVisibilityObjects(
           items.map(({ assetId }) => ({ objectId: assetId, objectScope: 'asset', visibilityTier })),
           createCimmichVisibilityCommandId('entity-media'),
@@ -601,6 +563,7 @@
       }
     } catch (error_) {
       const partial =
+        (next.assetCorrectionDecisionIds?.length ?? 0) > 0 ||
         next.contextDecisionIds.length > 0 ||
         next.presenceDecisionIds.length > 0 ||
         next.visibilityDecisionIds.length > 0 ||
@@ -624,6 +587,9 @@
     error = '';
     progress = `Undoing ${receipt.label}…`;
     try {
+      if (receipt.assetCorrectionDecisionIds?.length) {
+        await undoCimmichAssetCorrections(receipt.assetCorrectionDecisionIds);
+      }
       for (const decisionId of receipt.contextDecisionIds) {
         await undoCimmichContextDecision(decisionId, createCimmichContextCommandId('entity-media-undo'));
       }

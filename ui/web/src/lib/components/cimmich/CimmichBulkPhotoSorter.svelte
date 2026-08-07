@@ -44,6 +44,8 @@
     mdiUndoVariant,
   } from '@mdi/js';
   import { SvelteSet } from 'svelte/reactivity';
+  import { applyBulkPhotoRotation, undoBulkPhotoRotation } from './bulk-photo-corrections';
+  import CimmichBulkPhotoActionSelect from './CimmichBulkPhotoActionSelect.svelte';
   import {
     BULK_PHOTO_SORTER_BATCH_SIZE,
     BULK_PHOTO_SORTER_PAGE_SIZE,
@@ -63,7 +65,6 @@
     type BulkPhotoSorterOperationReceipt,
     type BulkPhotoSorterUndoReceipt,
   } from './bulk-photo-sorter';
-
   let filters = $state(emptyBulkPhotoSorterFilters());
   let action = $state<BulkPhotoSorterActionKind>('tag-add');
   let targetId = $state('');
@@ -486,6 +487,7 @@
       partialUndo = {
         action,
         assetIds: [],
+        assetCorrectionDecisionIds: [],
         contextDecisionIds: [],
         label,
         targetId,
@@ -507,6 +509,7 @@
           undo: {
             ...partialUndo,
             assetIds: [...partialUndo.assetIds],
+            assetCorrectionDecisionIds: [...partialUndo.assetCorrectionDecisionIds],
             contextDecisionIds: [...partialUndo.contextDecisionIds],
             visibilityDecisionIds: [...partialUndo.visibilityDecisionIds],
           },
@@ -546,6 +549,18 @@
           applied: result.applied,
           undo: result.decisionIds.length > 0 ? partialUndo : null,
         });
+      } else if (action === 'rotate-left' || action === 'rotate-right') {
+        const result = await applyBulkPhotoRotation(
+          snapshot.map(({ id }) => id),
+          action === 'rotate-left' ? 'left' : 'right',
+          (assetIds, decisionIds) => {
+            partialUndo!.assetIds.push(...assetIds);
+            partialUndo!.assetCorrectionDecisionIds.push(...decisionIds);
+            persistPartialUndo();
+          },
+          updateProgress,
+        );
+        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
       } else {
         const result = await applyNativeAction(snapshot, partialUndo, persistPartialUndo);
         completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
@@ -559,6 +574,7 @@
       const hasUndoWork = Boolean(
         partialUndo &&
         (partialUndo.assetIds.length > 0 ||
+          partialUndo.assetCorrectionDecisionIds.length > 0 ||
           partialUndo.contextDecisionIds.length > 0 ||
           partialUndo.visibilityDecisionIds.length > 0),
       );
@@ -591,6 +607,7 @@
     const remaining: BulkPhotoSorterUndoReceipt = {
       ...undoReceipt,
       assetIds: [...undoReceipt.assetIds],
+      assetCorrectionDecisionIds: [...(undoReceipt.assetCorrectionDecisionIds ?? [])],
       contextDecisionIds: [...undoReceipt.contextDecisionIds],
       visibilityDecisionIds: [...undoReceipt.visibilityDecisionIds],
     };
@@ -600,6 +617,7 @@
         undo: {
           ...remaining,
           assetIds: [...remaining.assetIds],
+          assetCorrectionDecisionIds: [...remaining.assetCorrectionDecisionIds],
           contextDecisionIds: [...remaining.contextDecisionIds],
           visibilityDecisionIds: [...remaining.visibilityDecisionIds],
         },
@@ -667,6 +685,15 @@
             bulkTagAssets({ tagBulkAssetsDto: { assetIds: batch, tagIds: [remaining.targetId] } }),
           );
 
+          break;
+        }
+        case 'rotate-left':
+        case 'rotate-right': {
+          await undoBulkPhotoRotation(remaining.assetCorrectionDecisionIds, (decisionIds) => {
+            remaining.assetCorrectionDecisionIds.splice(0, decisionIds.length);
+            remaining.assetIds.splice(0, decisionIds.length);
+            persistRemaining();
+          });
           break;
         }
         default: {
@@ -966,34 +993,7 @@
         A saved Undo receipt is still active. Undo it or keep those changes before applying another action.
       </p>{/if}
     <div class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-      <label class="grid gap-1.5 text-sm font-medium"
-        >Action
-        <select
-          class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
-          value={action}
-          onchange={selectAction}
-        >
-          <optgroup label="Tags and albums"
-            ><option value="tag-add">Add tag</option><option value="tag-remove">Remove tag</option><option
-              value="album-add">Add to album</option
-            ></optgroup
-          >
-          <optgroup label="Immich library"
-            ><option value="favorite">Favourite</option><option value="unfavorite">Remove favourite</option><option
-              value="archive">Archive</option
-            ><option value="unarchive">Unarchive</option></optgroup
-          >
-          <optgroup label="Cimmich privacy"
-            ><option value="visibility-standard">Set visibility to Standard</option><option value="visibility-personal"
-              >Set visibility to Personal</option
-            ><option value="visibility-private">Set visibility to Private</option></optgroup
-          >
-          <optgroup label="Cimmich context"
-            ><option value="place-attach">Attach to Place</option><option value="event-attach">Attach to Event</option
-            ></optgroup
-          >
-        </select>
-      </label>
+      <CimmichBulkPhotoActionSelect value={action} onchange={selectAction} />
       {#if needsTarget}
         <div class="grid gap-1.5 text-sm font-medium">
           <span>Destination</span>
