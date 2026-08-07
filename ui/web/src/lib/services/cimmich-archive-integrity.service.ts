@@ -38,7 +38,28 @@ export type CimmichExactDuplicatePage = {
   };
 };
 
+export type CimmichArchiveSourceEvidence = {
+  assetId: string;
+  bodyAssignments: number;
+  contentDigest: string;
+  faceAssignments: number;
+  headAssignments: number;
+  people: number;
+  presenceAssignments: number;
+  sourceAssetId: string;
+};
+
+export type CimmichArchiveSourceEvidencePage = {
+  items: CimmichArchiveSourceEvidence[];
+  schemaVersion: 'cimmich.archive-integrity.v1';
+};
+
 export const getCimmichExactDuplicates = ({ limit = 24, offset = 0 } = {}) => {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   return request<CimmichExactDuplicatePage>(`/v1/archive-integrity/exact-duplicates?${search.toString()}`);
+};
+
+export const getCimmichArchiveSourceEvidence = (sourceAssetIds: string[]) => {
+  const search = new URLSearchParams({ sourceAssetIds: sourceAssetIds.join(',') });
+  return request<CimmichArchiveSourceEvidencePage>(`/v1/archive-integrity/source-evidence?${search.toString()}`);
 };

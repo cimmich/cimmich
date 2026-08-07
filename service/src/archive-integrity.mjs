@@ -9,6 +9,32 @@ const cleanInteger = (value, fallback, maximum) => {
 
 const count = (value) => Number(value || 0);
 
+const sourceAssetIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const cleanSourceAssetIds = (values) => {
+  const sourceAssetIds = [values]
+    .flat()
+    .flatMap((value) => String(value || "").split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const unique = [...new Set(sourceAssetIds)];
+  if (
+    unique.length === 0 ||
+    unique.length > 100 ||
+    unique.some((value) => !sourceAssetIdPattern.test(value))
+  ) {
+    throw Object.assign(
+      new Error("Archive integrity source asset IDs are invalid"),
+      {
+        code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_IDS_INVALID",
+        statusCode: 400,
+      },
+    );
+  }
+  return unique;
+};
+
 const captureTime = (value) => {
   if (!value) return null;
   if (typeof value.toISOString === "function") return value.toISOString();
@@ -41,6 +67,77 @@ const visibleCopiesSql = (sql, visibleRank) => sql`
 `;
 
 export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
+  async archiveIntegritySourceEvidence({ sourceAssetIds } = {}) {
+    const requestedIds = cleanSourceAssetIds(sourceAssetIds);
+    const visibleRank = presentationRank();
+    const rows = await sql`
+      WITH requested(source_asset_id, position) AS (
+        SELECT source_asset_id, ordinality::int
+        FROM unnest(${requestedIds}::text[]) WITH ORDINALITY
+          AS requested(source_asset_id, ordinality)
+      ), visible_bindings AS MATERIALIZED (
+        SELECT requested.position, requested.source_asset_id,
+          binding.asset_id, fingerprint.content_digest
+        FROM requested
+        JOIN immich_asset_projection projection
+          ON projection.immich_asset_id = requested.source_asset_id
+          AND projection.state = 'active'
+        JOIN asset_source_binding binding
+          ON binding.source_kind = 'immich'
+          AND binding.source_id = projection.source_id
+          AND binding.external_asset_id = projection.immich_asset_id
+          AND binding.state = 'active'
+        JOIN asset
+          ON asset.asset_id = binding.asset_id AND asset.state = 'active'
+        JOIN media_content_fingerprint fingerprint
+          ON fingerprint.content_id = binding.content_id
+          AND fingerprint.hash_algorithm = 'sha256'
+          AND fingerprint.verification = 'byte_verified'
+        WHERE cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+      ), accepted_associations AS MATERIALIZED (
+        SELECT visible.asset_id,
+          count(*) FILTER (
+            WHERE association.association_type = 'face'
+          )::int AS face_assignments,
+          count(*) FILTER (
+            WHERE association.association_type = 'head'
+          )::int AS head_assignments,
+          count(*) FILTER (
+            WHERE association.association_type = 'body'
+          )::int AS body_assignments,
+          count(*) FILTER (
+            WHERE association.association_type = 'presence'
+          )::int AS presence_assignments,
+          count(DISTINCT association.person_id)::int AS people
+        FROM (SELECT DISTINCT asset_id FROM visible_bindings) visible
+        LEFT JOIN person_assets association
+          ON association.asset_id = visible.asset_id
+          AND association.authority_state = 'accepted'
+        GROUP BY visible.asset_id
+      )
+      SELECT visible.position, visible.source_asset_id, visible.asset_id,
+        visible.content_digest, evidence.face_assignments,
+        evidence.head_assignments, evidence.body_assignments,
+        evidence.presence_assignments,
+        evidence.people
+      FROM visible_bindings visible
+      JOIN accepted_associations evidence USING (asset_id)
+      ORDER BY visible.position
+    `;
+    return {
+      items: rows.map((row) => ({
+        assetId: row.asset_id,
+        bodyAssignments: count(row.body_assignments),
+        contentDigest: row.content_digest,
+        faceAssignments: count(row.face_assignments),
+        headAssignments: count(row.head_assignments),
+        people: count(row.people),
+        presenceAssignments: count(row.presence_assignments),
+        sourceAssetId: row.source_asset_id,
+      })),
+      schemaVersion: archiveIntegritySchemaVersion,
+    };
+  },
   async exactDuplicates({ limit, offset } = {}) {
     const pageSize = Math.max(1, cleanInteger(limit, 24, 100));
     const pageOffset = cleanInteger(offset, 0, 1_000_000);
