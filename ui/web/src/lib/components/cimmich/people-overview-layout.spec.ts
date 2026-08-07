@@ -36,7 +36,7 @@ describe('People overview layout', () => {
     expect(source).toContain('icon: peopleSort.key === option.id ? mdiCheck : undefined');
     expect(source).toContain('Any photo count');
     expect(source).toContain('Minimum photo count');
-    expect(source).toContain('aria-label="Sort people"');
+    expect(source).toContain("viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'");
   });
 
   it('reuses the compact profile control language and supports grid density', async () => {
