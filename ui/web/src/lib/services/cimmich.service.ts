@@ -1562,7 +1562,7 @@ export type CimmichAssetEvidence = {
     box_y: number;
     buckets: string[];
     calibrated_confidence: number | null;
-    candidate_abstain_reason: 'accepted_identity' | 'no_active_embedding' | 'no_same_space_candidate' | null;
+    candidate_abstain_reason: string | null;
     candidate_confidence: number | null;
     candidate_display_name: string | null;
     candidate_identity_claim_id: string | null;

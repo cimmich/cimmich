@@ -57,6 +57,7 @@ test("Person candidate summary is grouped from the active SourcePack without aud
   assert.match(statement, /claim\.origin = 'prime_match'/);
   assert.match(statement, /source_pack_prime_match/);
   assert.match(statement, /claim\.state = 'candidate'/);
+  assert.match(statement, /cimmich_face_match_eligible/);
   assert.doesNotMatch(statement, /identity_audit/);
 });
 
@@ -892,6 +893,9 @@ test("single-face matching gates the query asset at the current visibility rank"
   );
   assert.match(statement, /JOIN asset query_asset/);
   assert.match(statement, /query_asset\.state = 'active'/);
+  assert.match(statement, /cimmich_face_match_eligible/);
+  assert.match(statement, /FROM current_source_pack pack/);
+  assert.match(statement, /governed_candidate/);
   assert.match(
     statement,
     /cimmich_visibility_asset_rank\(query_asset\.asset_id\) <=/,
@@ -975,6 +979,7 @@ test("owner Face review comparisons are visible same-space evidence without Sour
   assert.match(statement, /reference\.dimension = query\.dimension/);
   assert.match(statement, /reference\.face_id <> query\.face_id/);
   assert.match(statement, /reference_face\.asset_id <> query\.asset_id/);
+  assert.match(statement, /cimmich_face_match_eligible\(/);
   assert.match(statement, /current_face_capture_context/);
   assert.match(statement, /identity\.state = 'accepted'/);
   assert.match(statement, /no_independent_compatible_reference_face/);
@@ -1126,17 +1131,12 @@ test("owner Face review comparisons explain a genuinely empty compatible library
 });
 
 test("owner Face review comparison does not change the governed Prime matcher", async () => {
-  const source = await import("node:fs/promises").then(({ readFile }) =>
-    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  const governedSource = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../src/face-match-repository.mjs", import.meta.url),
+      "utf8",
+    ),
   );
-  const governedStart = source.indexOf(
-    "async faceMatches({ faceId, limit = 5 })",
-  );
-  const reviewStart = source.indexOf(
-    "async faceReviewComparisons",
-    governedStart,
-  );
-  const governedSource = source.slice(governedStart, reviewStart);
 
   assert.match(governedSource, /JOIN matching_gallery gallery/);
   assert.match(governedSource, /gallery\.bucket_kind = 'prime'/);

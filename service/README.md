@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 121. Schema 76 adds
+patch level 1. Current post-submission source is schema 122. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -162,6 +162,10 @@ Place corrections. Corrections are append-only owner decisions with command
 replay, supersession and Undo; they never write source media or the Immich
 database. Deterministic Orientation, future-date and conflicting-Place queues
 surface review proposals without granting machinery correction authority.
+Schema 122 preserves difficult Face observations for owner inspection while
+excluding measured reject-noise regions from identity matching. It retires only
+their unreviewed historical Prime candidates and leaves accepted decisions
+untouched.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

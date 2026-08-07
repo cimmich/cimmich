@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -34,7 +33,6 @@ export const identityAuditTransactionTimeoutMs = 1_860_000;
 export const identityAuditInterruptThresholdMs =
   identityAuditTransactionTimeoutMs + 4 * 60_000;
 export const identityAuditHeartbeatIntervalMs = 60_000;
-
 const cleanFrontierLimit = (value, fallback) => {
   const parsed = Number(value ?? fallback);
   return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
@@ -52,7 +50,6 @@ const cleanConcurrency = (value, fallback) => {
     ? parsed
     : fallback;
 };
-
 const cleanLimit = (value) =>
   Math.min(50, Math.max(1, Number.parseInt(String(value || 20), 10) || 20));
 const cleanOffset = (value) =>
@@ -270,6 +267,7 @@ const auditSql = async (
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE face.state = 'valid'
+          AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
           AND (${!incremental} OR face.face_id = ANY(${incrementalFaceIds}))
           AND NOT EXISTS (
             SELECT 1 FROM current_face_identity accepted
@@ -430,6 +428,7 @@ const auditSql = async (
         AND asset.state = 'active'
         AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
       WHERE face.state = 'valid'
+        AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
         AND NOT EXISTS (
           SELECT 1 FROM current_face_identity accepted
           WHERE accepted.face_id = face.face_id AND accepted.state = 'accepted'
@@ -1035,6 +1034,7 @@ export const createIdentityAudit = (
           AND embedding.model_version = current_pack.model_version
           AND embedding.config_digest = current_pack.config_digest
         WHERE result.detector_config_digest = ${exactDetectorConfigDigest}
+          AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
           AND NOT EXISTS (
             SELECT 1 FROM current_face_identity accepted
             WHERE accepted.face_id = face.face_id

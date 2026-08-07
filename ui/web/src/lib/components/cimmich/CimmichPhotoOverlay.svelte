@@ -23,7 +23,6 @@
     decideCimmichIdentityCandidate,
     detachCimmichContextAssets,
     getCimmichContextEntities,
-    getCimmichFaceMatches,
     getCimmichIdentityCorrectionDiscovery,
     getCimmichIdentityCorrectionHistory,
     getCimmichManualSubjectTags,
@@ -72,6 +71,7 @@
   import { scaleToFit } from '$lib/utils/container-utils';
   import {
     authoredBodyTagRepresentsOverlay,
+    faceMatchUi,
     getCimmichPersonPhotoContext,
     isNamedBody,
     isNamedFace,
@@ -637,9 +637,9 @@
     faceMatchesForId = face.id;
     faceMatches = [];
     faceMatchesError = '';
-    faceMatchesLoading = true;
+    faceMatchesLoading = false;
     try {
-      const matches = await getCimmichFaceMatches(face.id, 5);
+      const matches: CimmichFaceOwnerReviewMatch[] = faceMatchUi.ownerReview(face.candidateMatches);
       if (faceMatchesForId === face.id) {
         faceMatches = matches;
       }
@@ -1342,7 +1342,7 @@
   );
   const machineFaceLabel = (face: CimmichFaceOverlay, linkedBody?: CimmichBodyOverlay) =>
     linkedBody ? `${facePeopleTagLabel(face)} · face + body` : `Face · ${facePeopleTagLabel(face)}`;
-  const bestFaceCandidate = (face: CimmichFaceOverlay) => face.candidateMatches?.find((match) => match.displayEligible);
+  const bestFaceCandidate = (face: CimmichFaceOverlay) => faceMatchUi.governed(face.candidateMatches)[0];
   const candidateSimilarityLabel = (score: number) => `${Math.round(score * 100)}%`;
   const machineBodyLabel = (body: CimmichBodyOverlay) => {
     const mode = bodyPeopleTagMode(body);
@@ -4192,7 +4192,7 @@
                 <Icon icon={mdiCheck} size="14" />
               </button>
               <div class="cimmich-machine-candidate-list" aria-label="Candidate matches">
-                {#each face.candidateMatches ?? [] as candidate (candidate.personId)}
+                {#each faceMatchUi.governed(face.candidateMatches) as candidate (candidate.personId)}
                   <span>
                     <span>{candidate.personName} · {candidateSimilarityLabel(candidate.rawScore)}</span>
                     <button
@@ -5479,7 +5479,7 @@
                   Up to five strongest matches. Type any other name above.
                 </p>
               {:else}
-                <p class="p-2 text-white/50">No compatible reference photos yet.</p>
+                <p class="p-2 text-white/50">{faceMatchUi.emptyLabel(selectedFace?.candidateAbstainReason)}</p>
               {/if}
             </div>
           {/if}
