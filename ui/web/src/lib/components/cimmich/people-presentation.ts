@@ -8,6 +8,10 @@ type SortablePerson = {
   display_name: string;
 };
 
+type ReviewSortablePerson = SortablePerson & {
+  person_id: string;
+};
+
 export const defaultPeopleSort: PeopleSortState = { direction: 'desc', key: 'photos' };
 
 export const nextPeopleSort = (current: PeopleSortState, key: PeopleSortKey): PeopleSortState => {
@@ -25,6 +29,16 @@ export const comparePeople = (left: SortablePerson, right: SortablePerson, sort:
 
   const difference = left.display_name.localeCompare(right.display_name);
   return sort.direction === 'asc' ? difference : -difference;
+};
+
+export const comparePeopleByReviewCount = (
+  left: ReviewSortablePerson,
+  right: ReviewSortablePerson,
+  reviewCounts: ReadonlyMap<string, number>,
+  fallbackSort: PeopleSortState,
+) => {
+  const difference = (reviewCounts.get(right.person_id) ?? 0) - (reviewCounts.get(left.person_id) ?? 0);
+  return difference || comparePeople(left, right, fallbackSort);
 };
 
 type PersonViewEvidence = {

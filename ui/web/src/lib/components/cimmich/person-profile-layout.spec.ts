@@ -107,6 +107,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('showMoreCimmichIdentityAudit');
     expect(source).toContain('Previously untagged');
     expect(source).toContain('Existing tag disputed');
+    expect(source).toContain("section.startsWith('identity-audit:') || section === 'machine-suggestions' ? 50 : 20");
+    expect(source).toContain("'Show 50 more'");
     expect(source).toContain('Show 20 more');
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
     expect(source).toContain('getCimmichPersonAssetsPage(personId, 120)');

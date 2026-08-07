@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { chooseInitialPeopleView, comparePeople, defaultPeopleSort, nextPeopleSort } from './people-presentation';
+import {
+  chooseInitialPeopleView,
+  comparePeople,
+  comparePeopleByReviewCount,
+  defaultPeopleSort,
+  nextPeopleSort,
+} from './people-presentation';
 
 const person = (
   overrides: Partial<Parameters<typeof chooseInitialPeopleView>[0][number]> = {},
@@ -57,5 +63,26 @@ describe('People sorting', () => {
   it('sorts names A–Z or Z–A', () => {
     expect([maya, alex].sort((a, b) => comparePeople(a, b, { direction: 'asc', key: 'names' }))).toEqual([alex, maya]);
     expect([alex, maya].sort((a, b) => comparePeople(a, b, { direction: 'desc', key: 'names' }))).toEqual([maya, alex]);
+  });
+
+  it('sorts suggestions by review backlog before using the selected people sort as a tie-break', () => {
+    const reviewCounts = new Map([
+      ['alex', 14],
+      ['maya', 3],
+      ['zoe', 14],
+    ]);
+    const people = [
+      { ...maya, person_id: 'maya' },
+      { ...alex, person_id: 'alex' },
+      { asset_count: 2, display_name: 'Zoe', person_id: 'zoe' },
+    ];
+
+    expect(
+      people.sort((a, b) => comparePeopleByReviewCount(a, b, reviewCounts, { direction: 'asc', key: 'names' })),
+    ).toEqual([
+      { ...alex, person_id: 'alex' },
+      { asset_count: 2, display_name: 'Zoe', person_id: 'zoe' },
+      { ...maya, person_id: 'maya' },
+    ]);
   });
 });
