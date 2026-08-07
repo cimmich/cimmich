@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { chmod, open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { chmod, open, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import {
   createImmichCompanion,
@@ -45,15 +46,20 @@ const normalizeCredential = ({ apiBaseUrl, apiKey }) => {
 
 const readCredential = async (filename) => {
   if (!filename) return null;
+  let handle;
   try {
-    const metadata = await stat(filename);
+    handle = await open(
+      filename,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+    const metadata = await handle.stat();
     if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
       throw typedError(
         "IMMICH_COMPANION_CREDENTIAL_FILE_UNSAFE",
         "Immich credential file must be a private regular file",
       );
     }
-    const value = JSON.parse(await readFile(filename, "utf8"));
+    const value = JSON.parse(await handle.readFile("utf8"));
     if (
       !value ||
       typeof value !== "object" ||
@@ -70,6 +76,8 @@ const readCredential = async (filename) => {
       "IMMICH_COMPANION_CREDENTIAL_FILE_INVALID",
       "Immich credential file is invalid",
     );
+  } finally {
+    await handle?.close().catch(() => {});
   }
 };
 

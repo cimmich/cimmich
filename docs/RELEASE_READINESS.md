@@ -1,15 +1,15 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-06
+Updated: 2026-08-07
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview candidate: migration-ledger schema 120/patch 1
+Current Community Preview release: migration-ledger schema 120/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate target: `v1.1.0-community-preview.6` for exact Immich 3.1.0
+Current release: `v1.1.0-community-preview.6` for exact Immich 3.1.0
 
-## Community Preview candidate contract
+## Community Preview release contract
 
-The candidate is English-first and supports guided macOS/Linux installation
+The release is English-first and supports guided macOS/Linux installation
 beside exact Immich 3.1.0. Native Windows, other Immich versions,
 Internet-facing or multi-user deployment, automatic identity acceptance and
 representative matching-accuracy claims are explicitly outside this preview.
@@ -27,15 +27,14 @@ Release evidence must be produced from one clean immutable commit and include:
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
 
-## Community Preview 6 self-contained-install gate — 2026-08-07
+## Community Preview 6 self-contained-install close — 2026-08-07
 
 Preview 6 changes no product behavior or schema. It removes the unpublished
 Preview 5 candidate's dependency on separately visible GHCR packages: the
 ordinary public Compose path and guarded installer build the exact checked-in
 API and UI Dockerfiles locally.
 
-The candidate must not publish until all Preview 5 source/product gates pass
-plus:
+The release required all Preview 5 source/product gates plus:
 
 - root Compose defaults contain no Cimmich registry reference and use local,
   versioned API/UI image names;
@@ -49,8 +48,12 @@ plus:
 - logged-out release downloads, checksums, README and Build Week visibility
   pass after publication.
 
-Bundle hashes, exact commit/tree and logged-out proof remain publication-time
-gates and are not claimed by this source edit.
+Publication closed at commit
+`8c4d4abf220f90e20e5021df770d31cdb0d7c444`, tree
+`8d4b261c19370f2e20763768e62a7854e09f2b41`. Logged-out downloads reproduced
+tar SHA-256 `6aa99eb514b92a14c6c2c4ef5cc70420865ec96a02e869841db0ecd9352f8080`
+and ZIP SHA-256
+`3ccf7ce884e28060db71cb67ae8e479590fdafee01887021d397d02e1fc22ba3`.
 
 ## Community Preview 5 operability gate — 2026-08-06
 

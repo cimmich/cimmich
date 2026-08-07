@@ -15,9 +15,8 @@ The exact submitted revision is preserved in three ways:
 3. the Devpost entry and README link directly to that immutable release.
 
 The tag, release, release assets, submitted links and free evaluation route
-remain unchanged and available through at least **2026-08-05 17:00 PT**.
-`main` is the living product branch and may advance without rewriting that
-submission history.
+remain permanently available. `main` is the living product branch and may
+advance without rewriting that submission history.
 
 ## Continued development
 
@@ -29,13 +28,13 @@ Development does not stop after submission:
   of the submitted revision;
 - never move, replace or delete the submitted tag, release, assets or evaluation
   links; and
-- publish the first maintained-product milestone as the GitHub pre-release
-  **Cimmich v1.0.1 — Public Beta**, tagged `v1.0.1-beta.1`.
+- publish later maintained-product milestones as new named releases with their
+  own exact commits, artifacts and verification.
 
-The schema-120 Community Preview line uses
-`v1.1.0-community-preview.0`, `.1`, and later prerelease numbers. A stable
-release comes only after the installation, compatibility, usability and
-real-library boundaries are strong enough for wider promotion.
+The current maintained release is `v1.1.0-community-preview.6` on schema
+120/patch 1. Later preview numbers must never move or replace an existing tag.
+A stable release comes only after the installation, compatibility, usability
+and real-library boundaries are strong enough for wider promotion.
 
 Every public-beta release intended for newcomers must include three named
 assets in addition to GitHub's automatic source archives:
@@ -72,16 +71,16 @@ but they are not the documented beginner download.
 claim that inherited Immich/Rimmich work was created during the competition.
 The [Build Week evidence index](BUILD_WEEK_EVIDENCE.md) records that boundary.
 
-`v1.0.1-beta.1` means “the first maintained Cimmich public beta after Build
-Week.” It does not replace or revise the submitted edition. The human-facing
-release title is **Cimmich v1.0.1 — Public Beta**; GitHub marks it as a
-pre-release so the Build Week release remains the latest stable release.
+`v1.1.0-community-preview.6` means the exact current self-contained Community
+Preview. It does not replace or revise the submitted edition. Its named tar,
+ZIP and checksum assets remain bound to that tag while `main` continues through
+reviewed pull requests.
 
 Do not create a second Cimmich repository for later development. A second
 repository would split issues, stars, contributors, documentation and
 provenance while giving reviewers and users two competing sources of truth.
 
-## Initial publication sequence
+## Historical initial publication sequence
 
 1. Import only the final privacy-cleared publication tree into the empty private
    `cimmich/cimmich` repository.
@@ -96,9 +95,9 @@ provenance while giving reviewers and users two competing sources of truth.
 The `v1.0.0-build-week` release also carries the canonical Cedar House archive
 `cimmich-cedar-house-v1.tar.gz`, SHA-256
 `937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f`.
-The release and repository must remain private until that exact attachment is
-present; after publication, verify its stable URL and checksum from a logged-out
-context before submitting any Build Week evaluation link.
+The release and repository remained private until that exact attachment was
+present. The stable URL and checksum were then verified from a logged-out
+context before the Build Week evaluation link was submitted.
 
 Repository visibility, publication, release creation and submitted-link changes
 remain explicit owner actions.

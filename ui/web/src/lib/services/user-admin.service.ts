@@ -30,6 +30,7 @@ import UserDeleteConfirmModal from '$lib/modals/UserDeleteConfirmModal.svelte';
 import UserRestoreConfirmModal from '$lib/modals/UserRestoreConfirmModal.svelte';
 import { Route } from '$lib/route';
 import type { HeaderButtonActionItem } from '$lib/types';
+import { generateSecurePassword } from '$lib/utils/generate-secure-password';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
@@ -155,23 +156,6 @@ export const handleNavigateUserAdmin = async (user: UserAdminResponseDto) => {
   await goto(`/admin/users/${user.id}`);
 };
 
-// TODO move password reset server-side
-const generatePassword = (length: number = 16) => {
-  let generatedPassword = '';
-
-  const characterSet = '0123456789' + 'abcdefghijklmnopqrstuvwxyz' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' + ',.-{}+!#$%/()=?';
-
-  for (let i = 0; i < length; i++) {
-    let randomNumber = crypto.getRandomValues(new Uint32Array(1))[0];
-    randomNumber = randomNumber / 2 ** 32;
-    randomNumber = Math.floor(randomNumber * characterSet.length);
-
-    generatedPassword += characterSet[randomNumber];
-  }
-
-  return generatedPassword;
-};
-
 const handleResetPasswordUserAdmin = async (user: UserAdminResponseDto) => {
   const $t = await getFormatter();
   const prompt = $t('admin.confirm_user_password_reset', { values: { user: user.name } });
@@ -181,7 +165,7 @@ const handleResetPasswordUserAdmin = async (user: UserAdminResponseDto) => {
   }
 
   try {
-    const dto = { password: generatePassword(), shouldChangePassword: true };
+    const dto = { password: generateSecurePassword(), shouldChangePassword: true };
     const response = await updateUserAdmin({ id: user.id, userAdminUpdateDto: dto });
     eventManager.emit('UserAdminUpdate', response);
     toastManager.primary();

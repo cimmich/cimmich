@@ -810,15 +810,15 @@ export const createDocumentStore = (
     }
     await mkdir(dirname(absolute), { recursive: true });
     try {
-      const existing = await stat(absolute);
-      if (existing.size !== bytes.length) {
+      const existing = await readFile(absolute);
+      if (existing.length !== bytes.length) {
         throw typedError(
           "Stored Document digest collision",
           500,
           "DOCUMENT_STORE_ISOLATION_FAILURE",
         );
       }
-      if (digest(await readFile(absolute)) !== sha256) {
+      if (digest(existing) !== sha256) {
         throw typedError(
           "Stored Document content failed integrity verification",
           500,
