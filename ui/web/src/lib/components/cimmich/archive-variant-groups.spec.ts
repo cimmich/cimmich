@@ -72,6 +72,9 @@ describe('Archive variant grouping', () => {
     expect(result[0]?.differences).toContain('File sizes differ');
     expect(result[0]?.differences).toContain('Immich People differ');
     expect(result[0]?.suggestedKeepAssetIds).toEqual(['variant-b']);
+    expect(result[0]?.canonicalPlan.status).toBe('candidate');
+    expect(result[0]?.canonicalPlan.preferredAssetId).toBe('variant-b');
+    expect(result[1]?.canonicalPlan.status).toBe('hold_exact');
   });
 
   it('keeps incomplete byte evidence explicitly candidate-only', () => {
@@ -81,5 +84,56 @@ describe('Archive variant grouping', () => {
     );
 
     expect(group?.classification).toBe('similarity_candidate');
+    expect(group?.canonicalPlan.status).toBe('hold_incomplete');
+    expect(group?.canonicalPlan.preferredAssetId).toBeNull();
+  });
+
+  it('prefers an original capture format before a rendered derivative and explains the caution', () => {
+    const [group] = buildArchiveVariantGroups(
+      [
+        {
+          assets: [
+            asset('raw', {
+              exifInfo: { fileSizeInByte: 26_000_000 },
+              height: 160,
+              originalFileName: 'DSC_8875.NEF',
+              width: 120,
+            }),
+            asset('rendered', {
+              exifInfo: { fileSizeInByte: 4_300_000 },
+              height: 6016,
+              originalFileName: 'DSC_8875.NEF.jpg',
+              width: 4016,
+            }),
+          ],
+          duplicateId: 'raw-rendered',
+          suggestedKeepAssetIds: ['rendered'],
+        },
+      ],
+      [evidence('raw', 'a'.repeat(64)), evidence('rendered', 'b'.repeat(64))],
+    );
+
+    expect(group?.canonicalPlan.status).toBe('candidate');
+    expect(group?.canonicalPlan.preferredAssetId).toBe('raw');
+    expect(group?.canonicalPlan.reasons[0]).toContain('NEF is an original capture format');
+    expect(group?.canonicalPlan.cautions).toContain(
+      'A rendered companion may still be needed for viewing or intentional edits.',
+    );
+  });
+
+  it('holds a byte-different tie instead of using filenames or Immich suggested keep IDs', () => {
+    const [group] = buildArchiveVariantGroups(
+      [
+        {
+          assets: [asset('same-a'), asset('same-b')],
+          duplicateId: 'ambiguous',
+          suggestedKeepAssetIds: ['same-b'],
+        },
+      ],
+      [evidence('same-a', 'a'.repeat(64)), evidence('same-b', 'b'.repeat(64))],
+    );
+
+    expect(group?.canonicalPlan.status).toBe('hold_ambiguous');
+    expect(group?.canonicalPlan.preferredAssetId).toBeNull();
   });
 });

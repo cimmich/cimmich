@@ -3,11 +3,58 @@ import type { CimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive
 
 export type ArchiveVariantClassification = 'verified_exact' | 'verified_variant' | 'similarity_candidate';
 
+export type ArchiveCanonicalPlanStatus = 'candidate' | 'hold_exact' | 'hold_incomplete' | 'hold_ambiguous';
+
+export type ArchiveCanonicalSignal = {
+  assetId: string;
+  evidenceLinks: number;
+  extension: string;
+  fileSize: number;
+  metadataFields: number;
+  originalCapture: number;
+  pixelCount: number;
+};
+
+export type ArchiveCanonicalPlan = {
+  cautions: string[];
+  preferredAssetId: string | null;
+  rankings: Map<string, ArchiveCanonicalSignal & { position: number }>;
+  reasons: string[];
+  status: ArchiveCanonicalPlanStatus;
+};
+
 export type ArchiveVariantGroup = DuplicateResponseDto & {
+  canonicalPlan: ArchiveCanonicalPlan;
   classification: ArchiveVariantClassification;
   differences: string[];
   evidence: Map<string, CimmichArchiveSourceEvidence>;
 };
+
+const originalCaptureExtensions = new Set([
+  '3fr',
+  'arw',
+  'cr2',
+  'cr3',
+  'dcr',
+  'dng',
+  'erf',
+  'iiq',
+  'kdc',
+  'mef',
+  'mos',
+  'mrw',
+  'nef',
+  'nrw',
+  'orf',
+  'pef',
+  'raf',
+  'raw',
+  'rw2',
+  'rwl',
+  'sr2',
+  'srf',
+  'srw',
+]);
 
 const normalized = (value: unknown) => {
   if (value === undefined) {
@@ -35,6 +82,158 @@ const evidenceSignature = (evidence: CimmichArchiveSourceEvidence | undefined) =
         evidence.presenceAssignments,
       ].join(':')
     : null;
+
+const extensionFor = (asset: AssetResponseDto) => asset.originalFileName.split('.').at(-1)?.toLocaleLowerCase() ?? '';
+
+const metadataFieldCount = (asset: AssetResponseDto) => {
+  const exif = asset.exifInfo;
+  return [
+    exif?.dateTimeOriginal,
+    exif?.latitude !== null &&
+      exif?.latitude !== undefined &&
+      exif?.longitude !== null &&
+      exif?.longitude !== undefined,
+    exif?.make,
+    exif?.model,
+    exif?.lensModel,
+    exif?.orientation,
+    exif?.description,
+    exif?.rating,
+  ].filter(Boolean).length;
+};
+
+const canonicalSignal = (
+  asset: AssetResponseDto,
+  evidence: CimmichArchiveSourceEvidence | undefined,
+): ArchiveCanonicalSignal => {
+  const extension = extensionFor(asset);
+  return {
+    assetId: asset.id,
+    evidenceLinks:
+      (asset.people?.length ?? 0) +
+      (asset.tags?.length ?? 0) +
+      (evidence
+        ? evidence.people +
+          evidence.faceAssignments +
+          evidence.headAssignments +
+          evidence.bodyAssignments +
+          evidence.presenceAssignments
+        : 0),
+    extension,
+    fileSize: Number(asset.exifInfo?.fileSizeInByte ?? 0),
+    metadataFields: metadataFieldCount(asset),
+    originalCapture: originalCaptureExtensions.has(extension) ? 1 : 0,
+    pixelCount: Number(asset.width ?? 0) * Number(asset.height ?? 0),
+  };
+};
+
+const signalValues = (signal: ArchiveCanonicalSignal) => [
+  signal.originalCapture,
+  signal.pixelCount,
+  signal.fileSize,
+  signal.metadataFields,
+  signal.evidenceLinks,
+];
+
+const compareSignals = (left: ArchiveCanonicalSignal, right: ArchiveCanonicalSignal) => {
+  const leftValues = signalValues(left);
+  const rightValues = signalValues(right);
+  for (let index = 0; index < leftValues.length; index += 1) {
+    const difference = (rightValues[index] ?? 0) - (leftValues[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return left.assetId.localeCompare(right.assetId);
+};
+
+const sameSignals = (left: ArchiveCanonicalSignal, right: ArchiveCanonicalSignal) =>
+  signalValues(left).every((value, index) => value === signalValues(right)[index]);
+
+const megapixels = (value: number) => `${(value / 1_000_000).toFixed(1)} MP`;
+
+const sizeLabel = (value: number) => {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const power = value > 0 ? Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1) : 0;
+  const amount = value / 1024 ** power;
+  return `${amount >= 10 || power === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[power]}`;
+};
+
+const candidateReasons = (preferred: ArchiveCanonicalSignal, runnerUp: ArchiveCanonicalSignal) => {
+  const reasons: string[] = [];
+  if (preferred.originalCapture !== runnerUp.originalCapture) {
+    reasons.push(`${preferred.extension.toLocaleUpperCase()} is an original capture format.`);
+  }
+  if (preferred.pixelCount !== runnerUp.pixelCount) {
+    reasons.push(`${megapixels(preferred.pixelCount)} versus ${megapixels(runnerUp.pixelCount)}.`);
+  }
+  if (preferred.fileSize !== runnerUp.fileSize) {
+    reasons.push(`Larger complete file: ${sizeLabel(preferred.fileSize)} versus ${sizeLabel(runnerUp.fileSize)}.`);
+  }
+  if (preferred.metadataFields !== runnerUp.metadataFields) {
+    reasons.push(`More capture metadata: ${preferred.metadataFields} fields versus ${runnerUp.metadataFields}.`);
+  }
+  if (preferred.evidenceLinks !== runnerUp.evidenceLinks) {
+    reasons.push(
+      `Richer organisation and identity evidence: ${preferred.evidenceLinks} links versus ${runnerUp.evidenceLinks}.`,
+    );
+  }
+  return reasons.slice(0, 3);
+};
+
+const canonicalPlanFor = (
+  assets: AssetResponseDto[],
+  evidence: Map<string, CimmichArchiveSourceEvidence>,
+  classification: ArchiveVariantClassification,
+  differences: string[],
+): ArchiveCanonicalPlan => {
+  const ranked = assets.map((asset) => canonicalSignal(asset, evidence.get(asset.id))).sort(compareSignals);
+  const rankings = new Map(ranked.map((signal, index) => [signal.assetId, { ...signal, position: index + 1 }]));
+  const shared = { preferredAssetId: null, rankings };
+  if (classification === 'verified_exact') {
+    return {
+      ...shared,
+      cautions: ['Choose copy retention only after backup and copy-local organisation review.'],
+      reasons: ['Complete-file digests are identical; a media-quality winner would be false precision.'],
+      status: 'hold_exact',
+    };
+  }
+  if (classification === 'similarity_candidate') {
+    return {
+      ...shared,
+      cautions: ['Complete byte evidence is required before preservation planning.'],
+      reasons: ['At least one file lacks Cimmich byte verification.'],
+      status: 'hold_incomplete',
+    };
+  }
+  const preferred = ranked[0];
+  const runnerUp = ranked[1];
+  if (!preferred || !runnerUp || sameSignals(preferred, runnerUp)) {
+    return {
+      ...shared,
+      cautions: ['Visual crop, focus and edit intent require owner review.'],
+      reasons: ['Available preservation signals do not establish a unique preferred version.'],
+      status: 'hold_ambiguous',
+    };
+  }
+  const cautions = ['Visual crop, focus and edit intent still require owner review.'];
+  if (differences.some((difference) => /People|Tags|Cimmich evidence/.test(difference))) {
+    cautions.push('Identity or organisation evidence differs; merge or export it before any retirement.');
+  }
+  if (preferred.originalCapture === 1) {
+    cautions.push('A rendered companion may still be needed for viewing or intentional edits.');
+  }
+  if (differences.some((difference) => /Capture dates|Location/.test(difference))) {
+    cautions.push('Conflicting date or location metadata needs owner confirmation.');
+  }
+  return {
+    cautions,
+    preferredAssetId: preferred.assetId,
+    rankings,
+    reasons: candidateReasons(preferred, runnerUp),
+    status: 'candidate',
+  };
+};
 
 const differencesFor = (assets: AssetResponseDto[], evidence: Map<string, CimmichArchiveSourceEvidence>): string[] => {
   const facts: Array<[string, (asset: AssetResponseDto) => unknown]> = [
@@ -79,10 +278,12 @@ export const buildArchiveVariantGroups = (
           ? 'verified_exact'
           : 'verified_variant'
         : 'similarity_candidate';
+    const differences = differencesFor(group.assets, evidence);
     return {
       ...group,
+      canonicalPlan: canonicalPlanFor(group.assets, evidence, classification, differences),
       classification,
-      differences: differencesFor(group.assets, evidence),
+      differences,
       evidence,
     };
   });
