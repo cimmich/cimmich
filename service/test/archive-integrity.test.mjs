@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  archiveBackupProofSchemaVersion,
   archiveIntegritySchemaVersion,
   createArchiveIntegrityStore,
 } from "../src/archive-integrity.mjs";
@@ -233,4 +234,92 @@ test("source evidence rejects missing, malformed and oversized asset sets", asyn
     }),
     { code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_IDS_INVALID", statusCode: 400 },
   );
+});
+
+test("backup proof refuses to treat source-system copies as independent storage", async () => {
+  const statements = [];
+  const sourceAssetId = "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7";
+  const sql = (strings, ..._values) => {
+    const statement = strings.join(" ? ");
+    statements.push(statement);
+    if (statement.includes("SELECT binding.content_id")) {
+      return { kind: "visible-copies" };
+    }
+    if (statement.includes("AS byte_verified_items")) {
+      return Promise.resolve([
+        {
+          byte_verified_bytes: "647067285586",
+          byte_verified_items: "119860",
+          maximum_source_systems_per_item: 1,
+          multiple_source_system_items: 0,
+          source_system_count: 1,
+        },
+      ]);
+    }
+    if (statement.includes("WITH requested(source_asset_id, position)")) {
+      return Promise.resolve([
+        {
+          byte_length: "4096",
+          content_digest: "d".repeat(64),
+          source_asset_id: sourceAssetId,
+          source_system_count: 1,
+        },
+      ]);
+    }
+    throw new Error(`Unexpected SQL: ${statement.slice(0, 120)}`);
+  };
+
+  const result = await createArchiveIntegrityStore(sql, {
+    presentationRank: () => 2,
+  }).archiveIntegrityBackupProof({ sourceAssetIds: sourceAssetId });
+
+  assert.equal(result.schemaVersion, archiveBackupProofSchemaVersion);
+  assert.deepEqual(result.summary, {
+    byteVerifiedBytes: 647067285586,
+    byteVerifiedItems: 119860,
+    independentDestinationCount: 0,
+    independentlyProtectedItems: 0,
+    maximumSourceSystemsPerItem: 1,
+    multipleSourceSystemItems: 0,
+    proofState: "storage_domain_evidence_required",
+    sourceSystemCount: 1,
+    unprovenItems: 119860,
+  });
+  assert.deepEqual(result.items, [
+    {
+      byteLength: 4096,
+      contentDigest: "d".repeat(64),
+      independentDestinationCount: 0,
+      proofState: "storage_domain_evidence_required",
+      sourceAssetId,
+      sourceSystemCount: 1,
+    },
+  ]);
+  assert.ok(
+    statements.every(
+      (statement) => !/\b(DELETE|UPDATE|INSERT)\b/.test(statement),
+    ),
+  );
+});
+
+test("backup proof allows a summary-only readiness read", async () => {
+  let requestedQueryRan = false;
+  const sql = (strings, ..._values) => {
+    const statement = strings.join(" ? ");
+    if (statement.includes("SELECT binding.content_id")) {
+      return { kind: "visible-copies" };
+    }
+    if (statement.includes("AS byte_verified_items")) {
+      return Promise.resolve([{}]);
+    }
+    requestedQueryRan = true;
+    return Promise.resolve([]);
+  };
+  const result = await createArchiveIntegrityStore(sql, {
+    presentationRank: () => 0,
+  }).archiveIntegrityBackupProof();
+
+  assert.equal(requestedQueryRan, false);
+  assert.deepEqual(result.items, []);
+  assert.equal(result.summary.unprovenItems, 0);
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
+  import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import {
     buildArchiveVariantGroups,
     type ArchiveCanonicalPlanStatus,
@@ -8,8 +9,11 @@
   } from '$lib/components/cimmich/archive-variant-groups';
   import { Route } from '$lib/route';
   import {
+    getCimmichArchiveBackupProof,
     getCimmichArchiveSourceEvidence,
     getCimmichExactDuplicates,
+    type CimmichArchiveBackupProofItem,
+    type CimmichArchiveBackupProofPage,
     type CimmichExactDuplicateGroup,
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
@@ -34,7 +38,7 @@
   }
 
   let { data }: Props = $props();
-  let mode = $state<'exact' | 'variants' | 'plan'>('exact');
+  let mode = $state<'exact' | 'variants' | 'plan' | 'backup'>('exact');
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
   let loaded = $state(false);
@@ -55,6 +59,21 @@
   let visibleVariantCount = $state(12);
   let planFilter = $state<'all' | 'candidate' | 'held'>('all');
   let visiblePlanCount = $state(12);
+  let backupError = $state('');
+  let backupItems = $state(new Map<string, CimmichArchiveBackupProofItem>());
+  let backupLoaded = $state(false);
+  let backupLoading = $state(false);
+  let backupSummary = $state<CimmichArchiveBackupProofPage['summary']>({
+    byteVerifiedBytes: 0,
+    byteVerifiedItems: 0,
+    independentDestinationCount: 0,
+    independentlyProtectedItems: 0,
+    maximumSourceSystemsPerItem: 0,
+    multipleSourceSystemItems: 0,
+    proofState: 'storage_domain_evidence_required',
+    sourceSystemCount: 0,
+    unprovenItems: 0,
+  });
   let filteredVariantGroups = $derived(
     variantGroups.filter((group) => variantFilter === 'all' || group.classification === variantFilter),
   );
@@ -68,7 +87,6 @@
     ),
   );
   let visiblePlanGroups = $derived(filteredPlanGroups.slice(0, visiblePlanCount));
-
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -128,6 +146,56 @@
       ?.map((tag) => tag.value)
       .filter(Boolean)
       .join(', ') || 'No Immich Tags';
+  let summaryMetrics = $derived.by(() => {
+    if (mode === 'exact') {
+      return [
+        { label: 'Exact groups', value: number.format(summary.duplicateGroups) },
+        { label: 'Files in groups', value: number.format(summary.copiesInGroups) },
+        { label: 'Redundant copies', value: number.format(summary.redundantCopies) },
+        { label: 'Potential space', value: formatBytes(summary.reclaimableBytes) },
+      ];
+    }
+    if (mode === 'variants') {
+      return [
+        { label: 'Similarity groups', value: number.format(variantGroups.length) },
+        {
+          label: 'Files compared',
+          value: number.format(variantGroups.reduce((total, group) => total + group.assets.length, 0)),
+        },
+        {
+          label: 'Bytes differ',
+          value: number.format(variantGroups.filter((group) => group.classification === 'verified_variant').length),
+        },
+        {
+          label: 'Exact overlap',
+          value: number.format(variantGroups.filter((group) => group.classification === 'verified_exact').length),
+        },
+      ];
+    }
+    if (mode === 'plan') {
+      return [
+        { label: 'Groups assessed', value: number.format(variantGroups.length) },
+        {
+          label: 'Preferred candidates',
+          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'candidate').length),
+        },
+        {
+          label: 'Held for review',
+          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status !== 'candidate').length),
+        },
+        {
+          label: 'Exact-byte holds',
+          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'hold_exact').length),
+        },
+      ];
+    }
+    return [
+      { label: 'Byte-verified media', value: number.format(backupSummary.byteVerifiedItems) },
+      { label: 'Independently protected', value: number.format(backupSummary.independentlyProtectedItems) },
+      { label: 'Need destination proof', value: number.format(backupSummary.unprovenItems) },
+      { label: 'Verified destinations', value: number.format(backupSummary.independentDestinationCount) },
+    ];
+  });
 
   const load = async ({ append = false } = {}) => {
     if (append) {
@@ -150,6 +218,27 @@
     }
   };
 
+  const loadBackupProof = async (sourceAssetIds: string[]) => {
+    backupLoading = true;
+    backupError = '';
+    try {
+      const items: CimmichArchiveBackupProofItem[] = [];
+      const firstPage = await getCimmichArchiveBackupProof(sourceAssetIds.slice(0, 80));
+      items.push(...firstPage.items);
+      for (let index = 80; index < sourceAssetIds.length; index += 80) {
+        const page = await getCimmichArchiveBackupProof(sourceAssetIds.slice(index, index + 80));
+        items.push(...page.items);
+      }
+      backupSummary = firstPage.summary;
+      backupItems = new Map(items.map((item) => [item.sourceAssetId, item]));
+      backupLoaded = true;
+    } catch (error_) {
+      backupError = error_ instanceof Error ? error_.message : 'Cimmich could not read independent backup evidence.';
+    } finally {
+      backupLoading = false;
+    }
+  };
+
   const loadVariants = async () => {
     variantsLoading = true;
     variantError = '';
@@ -162,6 +251,7 @@
         evidence.push(...page.items);
       }
       variantGroups = buildArchiveVariantGroups(nativeGroups, evidence);
+      await loadBackupProof(sourceAssetIds);
       variantsLoaded = true;
       visibleVariantCount = 12;
       visiblePlanCount = 12;
@@ -195,10 +285,11 @@
         <button
           type="button"
           class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-          disabled={loading || loadingMore || variantsLoading}
+          disabled={loading || loadingMore || variantsLoading || backupLoading}
           onclick={() => void (mode === 'exact' ? load() : loadVariants())}
         >
-          <Icon icon={mdiRefresh} size="18" class={loading || variantsLoading ? 'animate-spin' : ''} /> Refresh
+          <Icon icon={mdiRefresh} size="18" class={loading || variantsLoading || backupLoading ? 'animate-spin' : ''} />
+          Refresh
         </button>
       </div>
     </header>
@@ -237,10 +328,20 @@
       >
         Canonical plan {variantsLoaded ? `(${number.format(variantGroups.length)})` : ''}
       </button>
+      <button
+        type="button"
+        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'backup'
+          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
+          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
+        aria-pressed={mode === 'backup'}
+        onclick={() => (mode = 'backup')}
+      >
+        Backup proof
+      </button>
     </nav>
 
     <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Archive integrity summary">
-      {#each mode === 'exact' ? [{ label: 'Exact groups', value: number.format(summary.duplicateGroups) }, { label: 'Files in groups', value: number.format(summary.copiesInGroups) }, { label: 'Redundant copies', value: number.format(summary.redundantCopies) }, { label: 'Potential space', value: formatBytes(summary.reclaimableBytes) }] : mode === 'variants' ? [{ label: 'Similarity groups', value: number.format(variantGroups.length) }, { label: 'Files compared', value: number.format(variantGroups.reduce((total, group) => total + group.assets.length, 0)) }, { label: 'Bytes differ', value: number.format(variantGroups.filter((group) => group.classification === 'verified_variant').length) }, { label: 'Exact overlap', value: number.format(variantGroups.filter((group) => group.classification === 'verified_exact').length) }] : [{ label: 'Groups assessed', value: number.format(variantGroups.length) }, { label: 'Preferred candidates', value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'candidate').length) }, { label: 'Held for review', value: number.format(variantGroups.filter((group) => group.canonicalPlan.status !== 'candidate').length) }, { label: 'Exact-byte holds', value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'hold_exact').length) }] as metric (metric.label)}
+      {#each summaryMetrics as metric (metric.label)}
         <div
           class="rounded-3xl border border-gray-200 bg-white px-5 py-4 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
         >
@@ -275,12 +376,19 @@
               catalogue, People, Tags and Cimmich-evidence differences. Suggested keep/bin decisions are deliberately
               ignored here.
             </p>
-          {:else}
+          {:else if mode === 'plan'}
             <h2 class="font-semibold">A preservation lead, never a deletion instruction</h2>
             <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
               Cimmich compares original capture format, pixel dimensions, complete-file size, capture metadata and then
               organisation/identity evidence. Exact bytes, incomplete evidence and true ties are held. No recommendation
               is saved or grants authority to retire a file.
+            </p>
+          {:else}
+            <h2 class="font-semibold">Same disk is not a backup</h2>
+            <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
+              Complete-file SHA-256 proves byte identity, but multiple paths, partitions or Immich records on one
+              physical storage domain do not prove recovery. Retirement stays blocked until a separate destination
+              independently verifies the media bytes and, once exported, their sidecars.
             </p>
           {/if}
         </div>
@@ -588,7 +696,7 @@
           </button>
         </div>
       {/if}
-    {:else}
+    {:else if mode === 'plan'}
       <section class="space-y-4" aria-labelledby="canonical-plan-title">
         <div class="flex flex-wrap items-end justify-between gap-4 px-1">
           <div>
@@ -773,6 +881,16 @@
           </button>
         </div>
       {/if}
+    {:else}
+      <ArchiveBackupProof
+        error={backupError}
+        exactGroupCount={summary.duplicateGroups}
+        groups={variantGroups}
+        items={backupItems}
+        loaded={backupLoaded}
+        loading={backupLoading}
+        summary={backupSummary}
+      />
     {/if}
 
     <section
@@ -782,7 +900,7 @@
         Next integrity layers
       </p>
       <div class="mt-4 grid gap-3 md:grid-cols-3">
-        {#each [['Canonical planning', 'Live recommendation-only preservation leads; no choice or file change is saved.'], ['Backup proof', 'Verify canonical media and sidecars across independent destinations.'], ['Sidecar export', 'Merge owner-approved Cimmich truth into staged, round-trip-tested XMP.']] as item (item[0])}
+        {#each [['Canonical planning', 'Live recommendation-only preservation leads; no choice or file change is saved.'], ['Backup proof', 'Live readiness gate; the current archive has no independent destination proof.'], ['Sidecar export', 'Merge owner-approved Cimmich truth into staged, round-trip-tested XMP.']] as item (item[0])}
           <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/60">
             <h3 class="text-sm font-semibold">{item[0]}</h3>
             <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-300">{item[1]}</p>

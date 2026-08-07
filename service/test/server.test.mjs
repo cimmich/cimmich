@@ -3604,6 +3604,31 @@ test("Archive integrity reads bounded source evidence without mutation", async (
   assert.deepEqual(calls, [{ sourceAssetIds: "one,two" }]);
 });
 
+test("Archive integrity exposes read-only independent-backup readiness", async () => {
+  const calls = [];
+  const result = {
+    items: [],
+    schemaVersion: "cimmich.archive-backup-proof.v1",
+    summary: { independentlyProtectedItems: 0, unprovenItems: 119860 },
+  };
+  await withServer(
+    {
+      archiveIntegrityBackupProof: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/archive-integrity/backup-proof?sourceAssetIds=one%2Ctwo`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [{ sourceAssetIds: "one,two" }]);
+});
+
 test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
   const calls = [];
   const run = {

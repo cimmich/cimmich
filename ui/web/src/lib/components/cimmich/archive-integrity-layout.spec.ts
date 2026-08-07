@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 describe('Archive integrity layout', () => {
   it('keeps exact duplicate discovery explicit, inspectable and read-only', async () => {
     const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
+    const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
     const normalizedSource = source.replaceAll(/\s+/g, ' ');
@@ -26,6 +27,15 @@ describe('Archive integrity layout', () => {
     expect(variants).toContain("status: 'hold_ambiguous'");
     expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup proof');
+    expect(source).toContain('Same disk is not a backup');
+    expect(source).toContain('physical storage domain');
+    expect(backupProof).toContain('Retirement safety gate');
+    expect(backupProof).toContain('Independent backup proof');
+    expect(backupProof).toContain('0 verified independent destinations');
+    expect(backupProof).toContain('distinct failure domain');
+    expect(backupProof).toContain('Future retirement also requires the owner-approved sidecar set');
+    expect(backupProof).toContain('Not proven');
+    expect(backupProof).not.toContain("method: 'POST'");
     expect(source).toContain('Sidecar export');
     expect(source).not.toContain("method: 'POST'");
     expect(maintenance).toContain('Route.cimmichArchiveIntegrity()');
