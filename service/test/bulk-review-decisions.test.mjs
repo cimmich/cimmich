@@ -14,6 +14,76 @@ const repositoryWithTransaction = (handler, options = {}) => {
   return createCimmichRepository(sql, new Map(), null, options);
 };
 
+test("bulk candidate accept returns after the durable write while Prime maintenance continues", async () => {
+  let maintenanceStarted = false;
+  let releaseMaintenance;
+  const maintenanceGate = new Promise((resolve) => {
+    releaseMaintenance = resolve;
+  });
+  const repository = repositoryWithTransaction(async (strings, ...values) => {
+    const query = strings.join("?");
+    if (query.includes("FROM person")) {
+      return [{ display_name: "Someone", person_id: "person-batch" }];
+    }
+    if (query.includes("JOIN current_source_pack")) {
+      return [
+        {
+          evidence_refs: {},
+          face_id: "face-batch",
+          identity_claim_id: values[0],
+          person_id: "person-batch",
+          state: "candidate",
+        },
+      ];
+    }
+    if (
+      query.includes("WHERE face_id =") &&
+      query.includes("state = 'accepted'")
+    ) {
+      return [];
+    }
+    if (query.includes("SET state = 'accepted'")) {
+      return [
+        {
+          face_id: "face-batch",
+          identity_claim_id: "claim-batch",
+          person_id: "person-batch",
+          state: "accepted",
+        },
+      ];
+    }
+    if (query.includes("slug = 'holding'")) {
+      maintenanceStarted = true;
+      await maintenanceGate;
+      return [{ holding: true }];
+    }
+    if (query.includes("retired_buckets")) return [];
+    return [];
+  });
+
+  let responseSettled = false;
+  const response = repository
+    .bulkAcceptPersonCandidates({
+      actorId: "local-operator",
+      claimIds: ["claim-batch"],
+      personId: "person-batch",
+    })
+    .then((result) => {
+      responseSettled = true;
+      return result;
+    });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  const returnedBeforeMaintenance = responseSettled;
+  releaseMaintenance();
+  const result = await response;
+
+  assert.equal(maintenanceStarted, true);
+  assert.equal(returnedBeforeMaintenance, true);
+  assert.equal(result.acceptedCount, 1);
+  assert.equal(result.maintenancePending, true);
+});
+
 test("bulk candidate reject records one decision per claim inside one transaction", async () => {
   const statements = [];
   const repository = repositoryWithTransaction(async (strings, ...values) => {
