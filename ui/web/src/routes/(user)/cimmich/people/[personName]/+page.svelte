@@ -903,11 +903,14 @@
       ],
     },
   ]);
-  const cimmichIdentitySectionLimit = (section: string) => cimmichIdentitySectionLimits[section] ?? 20;
+  const cimmichIdentitySectionBatchSize = (section: string) =>
+    section.startsWith('identity-audit:') || section === 'machine-suggestions' ? 50 : 20;
+  const cimmichIdentitySectionLimit = (section: string) =>
+    cimmichIdentitySectionLimits[section] ?? cimmichIdentitySectionBatchSize(section);
   const showMoreCimmichIdentitySection = (section: string) => {
     cimmichIdentitySectionLimits = {
       ...cimmichIdentitySectionLimits,
-      [section]: cimmichIdentitySectionLimit(section) + 20,
+      [section]: cimmichIdentitySectionLimit(section) + cimmichIdentitySectionBatchSize(section),
     };
   };
   const cimmichIdentityServerBucket = (
@@ -1755,7 +1758,7 @@
       return;
     }
     const sectionId = `identity-audit:${kind}`;
-    const nextLimit = cimmichIdentitySectionLimit(sectionId) + 20;
+    const nextLimit = cimmichIdentitySectionLimit(sectionId) + cimmichIdentitySectionBatchSize(sectionId);
     const loadedAuditCount = cimmichIdentityAuditItems.filter((item) => item.kind === kind).length;
     const auditTotal = cimmichIdentityAuditTotals[kind];
     if (nextLimit > loadedItems.length && loadedAuditCount < auditTotal) {
@@ -4295,7 +4298,7 @@
                         disabled={Boolean(cimmichIdentityAuditLoadingKind)}
                         onclick={() => void showMoreCimmichIdentityAudit(auditGroup.kind, auditGroup.items)}
                       >
-                        {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 20 more'}
+                        {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 50 more'}
                       </button>
                     {/if}
                   </section>
@@ -4390,7 +4393,7 @@
                     <button
                       class="mx-auto min-h-11 rounded-md bg-white px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
                       type="button"
-                      onclick={() => showMoreCimmichIdentitySection('machine-suggestions')}>Show 20 more</button
+                      onclick={() => showMoreCimmichIdentitySection('machine-suggestions')}>Show 50 more</button
                     >
                   {/if}
                 </section>

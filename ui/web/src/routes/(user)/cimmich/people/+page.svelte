@@ -6,6 +6,7 @@
   import {
     chooseInitialPeopleView,
     comparePeople,
+    comparePeopleByReviewCount,
     defaultPeopleSort,
     nextPeopleSort,
     type PeopleSortKey,
@@ -156,7 +157,11 @@
       )
       .filter((person) => personInCategory(person, peopleCategory))
       .filter((person) => person.asset_count >= minimumPhotos)
-      .sort((a, b) => comparePeople(a, b, peopleSort));
+      .sort((a, b) =>
+        viewMode === 'candidates'
+          ? comparePeopleByReviewCount(a, b, cimmichCandidateCounts, peopleSort)
+          : comparePeople(a, b, peopleSort),
+      );
   });
 
   const peopleSortActions = $derived.by(() =>
@@ -411,7 +416,7 @@
           class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
           aria-label="People view options"
         >
-          <Tooltip text="Sort people">
+          <Tooltip text={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}>
             {#snippet child({ props })}
               <ContextMenuButton
                 {...props}
@@ -419,7 +424,7 @@
                 icon={mdiSortVariant}
                 items={peopleSortActions}
                 position="top-right"
-                aria-label="Sort people"
+                aria-label={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}
               />
             {/snippet}
           </Tooltip>
