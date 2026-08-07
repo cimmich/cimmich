@@ -23,6 +23,7 @@
     mdiArrowRight,
     mdiCodeJson,
     mdiCheck,
+    mdiContentDuplicate,
     mdiFaceRecognition,
     mdiHistory,
     mdiLockOutline,
@@ -304,6 +305,12 @@
       </a>
       <a
         class="rounded-full px-3 py-2 font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
+        href={Route.cimmichArchiveIntegrity()}
+      >
+        Archive integrity
+      </a>
+      <a
+        class="rounded-full px-3 py-2 font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
         href="#matching-workflow"
       >
         Face matching
@@ -321,6 +328,35 @@
         Guided
       </a>
     </nav>
+
+    <section
+      class="flex flex-col gap-4 rounded-3xl border border-emerald-200 bg-emerald-50 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-emerald-900 dark:bg-emerald-950/30"
+      aria-labelledby="archive-integrity-title"
+    >
+      <div class="flex items-start gap-3">
+        <span
+          class="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-200"
+        >
+          <Icon icon={mdiContentDuplicate} size="23" />
+        </span>
+        <div>
+          <p class="text-xs font-semibold tracking-[0.14em] text-emerald-700 uppercase dark:text-emerald-300">
+            Archive care
+          </p>
+          <h2 id="archive-integrity-title" class="mt-1 text-xl font-semibold">Exact duplicate discovery</h2>
+          <p class="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
+            Compare byte-verified copies before sidecar export, backup proof or any future removal plan. Discovery is
+            read-only.
+          </p>
+        </div>
+      </div>
+      <a
+        class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-emerald-700 px-5 text-sm font-semibold text-white dark:bg-emerald-300 dark:text-emerald-950"
+        href={Route.cimmichArchiveIntegrity()}
+      >
+        Review duplicates <Icon icon={mdiArrowRight} size="18" />
+      </a>
+    </section>
 
     {#if error}
       <div

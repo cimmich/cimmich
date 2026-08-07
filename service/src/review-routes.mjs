@@ -2,6 +2,22 @@ export const createReviewRoutes =
   (repository, requireProjection, readJsonBody, sendJson) =>
   async (request, response, url, allowedOrigin) => {
     if (
+      request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/exact-duplicates"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.exactDuplicates({
+          limit: url.searchParams.get("limit"),
+          offset: url.searchParams.get("offset"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
       request.method === "POST" &&
       url.pathname === "/v1/assets/corrections:batch"
     ) {

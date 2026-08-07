@@ -63,6 +63,7 @@ describe('Route', () => {
     it('keeps newcomer library setup separate from advanced maintenance', () => {
       expect(Route.cimmichSetup()).toBe('/cimmich/setup');
       expect(Route.cimmichMaintenance()).toBe('/cimmich/maintenance');
+      expect(Route.cimmichArchiveIntegrity()).toBe('/cimmich/archive-integrity');
     });
   });
 
