@@ -337,6 +337,15 @@ server.listen(port, host, () => {
         message: error instanceof Error ? error.message : String(error),
       });
     });
+  // The global best-Prime scorer is intentionally archive-wide and can take
+  // longer than an interactive browser deadline on a cold process. Build its
+  // shared evidence-only snapshot as the service becomes ready; Steward then
+  // serves that completed snapshot while later refreshes run in the background.
+  void repository.machineSuggestions({ limit: 24 }).catch((error) => {
+    console.error("Cimmich machine-suggestion prewarm failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
 });
 guidedServer.listen(guidedPort, host, () => {
   console.log(`Cimmich Guided service listening on ${host}:${guidedPort}`);

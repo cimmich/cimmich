@@ -22,6 +22,7 @@ import {
   lowQualityReasons,
 } from "./low-quality-policy.mjs";
 import { createMediaJobLedger } from "./media-job-ledger.mjs";
+import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.mjs";
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
@@ -1209,10 +1210,8 @@ export const createCimmichRepository = (
   const archiveIntegrity = createArchiveIntegrityStore(sql, {
     presentationRank,
   });
-  let machineSuggestionCache = null;
-  const invalidateMachineSuggestions = () => {
-    machineSuggestionCache = null;
-  };
+  const machineSuggestionSnapshot = createMachineSuggestionSnapshot();
+  const invalidateMachineSuggestions = machineSuggestionSnapshot.invalidate;
   // Private in-process snapshot of the unfiltered People projection - the
   // whole-grid read the live People page issues on every visit. It is served
   // hot, refreshed in the background once stale, and cleared by the server
@@ -2105,20 +2104,8 @@ export const createCimmichRepository = (
       // Reuse a fresh completed scorer snapshot when another review surface has
       // already paid for it, but never cold-start or wait on the archive-wide
       // machine-suggestion query from Home.
-      const cachedSuggestions = machineSuggestionCache;
-      let suggestionsReady = null;
-      if (
-        cachedSuggestions?.visibleRank === visibleRank &&
-        Number.isFinite(cachedSuggestions.expiresAt) &&
-        cachedSuggestions.expiresAt > Date.now()
-      ) {
-        try {
-          suggestionsReady = (await cachedSuggestions.promise).length;
-        } catch {
-          // Summary remains available when an optional review snapshot fails;
-          // null is deliberately different from a verified empty queue.
-        }
-      }
+      const cachedSuggestions = machineSuggestionSnapshot.peek({ visibleRank });
+      const suggestionsReady = cachedSuggestions?.length ?? null;
       return { ...row, suggestions_ready: suggestionsReady };
     },
 
@@ -3734,33 +3721,11 @@ export const createCimmichRepository = (
         // (or written into) the shared unfiltered snapshot.
         return projectSuggestions(await loadSuggestions(exactLeadPersonId));
       }
-      if (
-        machineSuggestionCache?.expiresAt > Date.now() &&
-        machineSuggestionCache.visibleRank === visibleRank
-      ) {
-        return projectSuggestions(await machineSuggestionCache.promise);
-      }
-      const promise = loadSuggestions("");
-      machineSuggestionCache = {
-        // Keep one scorer snapshot shared while it is in flight. Start the
-        // short reuse window only after PostgreSQL has finished; otherwise a
-        // cold query longer than the TTL is already stale when it resolves.
-        expiresAt: Number.POSITIVE_INFINITY,
-        promise,
+      return machineSuggestionSnapshot.read({
+        load: () => loadSuggestions(""),
+        project: projectSuggestions,
         visibleRank,
-      };
-      try {
-        const result = await promise;
-        if (machineSuggestionCache?.promise === promise) {
-          machineSuggestionCache.expiresAt = Date.now() + 5000;
-        }
-        return projectSuggestions(result);
-      } catch (error) {
-        if (machineSuggestionCache?.promise === promise) {
-          machineSuggestionCache = null;
-        }
-        throw error;
-      }
+      });
     },
 
     async deferredFaceReviews({ limit = 100 } = {}) {
