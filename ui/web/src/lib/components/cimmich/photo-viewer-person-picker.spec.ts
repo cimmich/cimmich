@@ -9,7 +9,8 @@ describe('photo viewer Person picker', () => {
   it('shows a bounded ranked shortlist without opening the entire People directory', async () => {
     const source = await readPhotoOverlay();
 
-    expect(source).toContain('faceMatchUi.ownerReview(face.candidateMatches)');
+    expect(source).toContain('await getCimmichFaceMatches(face.id, 5)');
+    expect(source).toContain('faceMatches = matches;');
     expect(source).toContain('Up to five strongest matches. Type any other name above.');
     expect(source).toContain('placeholder="Type a name or choose a match"');
     expect(source).not.toContain('cimmich-known-face-names');

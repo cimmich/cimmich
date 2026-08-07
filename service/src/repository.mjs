@@ -7115,39 +7115,12 @@ export const createCimmichRepository = (
 
       const displayFaces = dedupeAssetFaces(faceRows);
       const displayBodies = dedupeAssetBodies(bodyRows);
-      // Same bounded fan-out as faceMatchesBatch: each faceMatches call is a
-      // whole-gallery pgvector scan, and a crowded photo fired one per
-      // unidentified face concurrently, exhausting the connection pool.
-      const candidateLists = [];
-      for (let offset = 0; offset < displayFaces.length; offset += 4) {
-        const chunk = displayFaces.slice(offset, offset + 4);
-        candidateLists.push(
-          ...(await Promise.all(
-            chunk.map((face) =>
-              face.person_id || !face.match_eligible
-                ? Promise.resolve([])
-                : repository.faceMatches({ faceId: face.face_id, limit: 5 }),
-            ),
-          )),
-        );
-      }
-      const detailedFaces = displayFaces.map((face, index) => {
-        const matches = candidateLists[index]
-          .filter((match) => Number.isFinite(Number(match.prime_score)))
-          .map((match) => ({
-            displayEligible: true,
-            governedCandidate: match.governed_candidate === true,
-            personId: match.person_id,
-            personName: match.display_name,
-            rank: Number(match.rank),
-            rawScore: Number(match.prime_score),
-            scoreKind: "cosine_similarity",
-            scoreMeaning:
-              "Higher means closer in the same recognition space; this is not a probability.",
-          }));
-        const best = matches[0] || null;
-        const governed =
-          matches.find((match) => match.governedCandidate) || null;
+      // A photo read must return the recorded observations, not recompute a
+      // whole-library shortlist for every unknown face before any box can be
+      // shown. The persisted candidate is the governed presentation result;
+      // additional owner-review comparisons are loaded only when one face is
+      // opened in the editor.
+      const detailedFaces = displayFaces.map((face) => {
         const persistedCandidate = face.candidate_identity_claim_id
           ? {
               claimId: face.candidate_identity_claim_id,
@@ -7159,6 +7132,25 @@ export const createCimmichRepository = (
               personName: face.candidate_display_name,
             }
           : null;
+        const matches =
+          persistedCandidate &&
+          persistedCandidate.personId &&
+          persistedCandidate.personName &&
+          Number.isFinite(persistedCandidate.confidence)
+            ? [
+                {
+                  displayEligible: true,
+                  governedCandidate: true,
+                  personId: persistedCandidate.personId,
+                  personName: persistedCandidate.personName,
+                  rank: 1,
+                  rawScore: persistedCandidate.confidence,
+                  scoreKind: "cosine_similarity",
+                  scoreMeaning:
+                    "Higher means closer in the same recognition space; this is not a probability.",
+                },
+              ]
+            : [];
         return {
           ...face,
           candidate_abstain_reason: face.person_id
@@ -7169,19 +7161,12 @@ export const createCimmichRepository = (
                 ? null
                 : !face.has_active_embedding
                   ? "no_active_embedding"
-                  : governed
-                    ? null
-                    : best
-                      ? "no_governed_candidate"
-                      : "no_same_space_candidate",
-          candidate_confidence:
-            persistedCandidate?.confidence ?? governed?.rawScore ?? null,
-          candidate_display_name:
-            persistedCandidate?.personName ?? governed?.personName ?? null,
+                  : "no_governed_candidate",
+          candidate_confidence: persistedCandidate?.confidence ?? null,
+          candidate_display_name: persistedCandidate?.personName ?? null,
           candidate_identity_claim_id: persistedCandidate?.claimId ?? null,
           candidate_matches: matches,
-          candidate_person_id:
-            persistedCandidate?.personId ?? governed?.personId ?? null,
+          candidate_person_id: persistedCandidate?.personId ?? null,
           current_decision_id: face.current_decision_id || null,
           current_revision: Number(face.current_revision),
         };

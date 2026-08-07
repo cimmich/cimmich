@@ -4096,7 +4096,9 @@
                                     onclick={() => {
                                       cimmichIdentityAuditChangeFaceId =
                                         cimmichIdentityAuditChangeFaceId === item.faceId ? '' : item.faceId;
-                                      if (cimmichIdentityAuditChangeFaceId) void loadCimmichAuditMatches(item);
+                                      if (cimmichIdentityAuditChangeFaceId) {
+                                        void loadCimmichAuditMatches(item);
+                                      }
                                     }}>…</button
                                   >
                                 </div>
