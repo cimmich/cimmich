@@ -3547,6 +3547,39 @@ test("machine review and Memory Steward routes preserve their distinct authority
   );
 });
 
+test("Archive integrity exposes only bounded read-only exact duplicate groups", async () => {
+  const calls = [];
+  const result = {
+    groups: [],
+    limit: 12,
+    nextOffset: null,
+    offset: 24,
+    schemaVersion: "cimmich.archive-integrity.v1",
+    summary: {
+      copiesInGroups: 131,
+      duplicateGroups: 65,
+      reclaimableBytes: 1024,
+      redundantCopies: 66,
+    },
+  };
+  await withServer(
+    {
+      exactDuplicates: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/archive-integrity/exact-duplicates?limit=12&offset=24`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [{ limit: "12", offset: "24" }]);
+});
+
 test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
   const calls = [];
   const run = {

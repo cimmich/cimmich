@@ -106,6 +106,7 @@ export const Route = {
   cimmichActivity: ({ id }: { id: string }) => `/cimmich/activities/${encodeURIComponent(id)}`,
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
+  cimmichArchiveIntegrity: () => '/cimmich/archive-integrity',
   cimmichMaintenance: () => '/cimmich/maintenance',
   cimmichSetup: () => '/cimmich/setup',
   cimmichOrganise: () => '/cimmich/organise',

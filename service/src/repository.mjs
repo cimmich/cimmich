@@ -42,6 +42,7 @@ import {
 import { matcherPolicyMargin } from "./source-pack-evaluator.mjs";
 import { createTagAssetSearch } from "./tag-asset-search.mjs";
 import { attachAssetCorrections } from "./asset-correction-repository.mjs";
+import { createArchiveIntegrityStore } from "./archive-integrity.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
 
 const decisionReceiptId = "receipt_cimmich_local_review_service_v1";
@@ -1199,6 +1200,9 @@ export const createCimmichRepository = (
     presentationRank,
     queryFrontierLimit: options.identityAuditQueryFrontierLimit,
     sourceId: options.immichSourceId,
+  });
+  const archiveIntegrity = createArchiveIntegrityStore(sql, {
+    presentationRank,
   });
   let machineSuggestionCache = null;
   const invalidateMachineSuggestions = () => {
@@ -10289,6 +10293,7 @@ export const createCimmichRepository = (
     },
   };
   Object.assign(repository, observationCorrections);
+  Object.assign(repository, archiveIntegrity);
   attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {
     petMatchImport: petMatching.importBatch,
