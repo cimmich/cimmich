@@ -25,6 +25,7 @@
     getCimmichContextEntities,
     getCimmichIdentityCorrectionDiscovery,
     getCimmichIdentityCorrectionHistory,
+    getCimmichFaceMatches,
     getCimmichManualSubjectTags,
     getCimmichManualPresences,
     getCimmichPeople,
@@ -637,9 +638,9 @@
     faceMatchesForId = face.id;
     faceMatches = [];
     faceMatchesError = '';
-    faceMatchesLoading = false;
+    faceMatchesLoading = true;
     try {
-      const matches: CimmichFaceOwnerReviewMatch[] = faceMatchUi.ownerReview(face.candidateMatches);
+      const matches = await getCimmichFaceMatches(face.id, 5);
       if (faceMatchesForId === face.id) {
         faceMatches = matches;
       }
@@ -653,7 +654,6 @@
       }
     }
   };
-
   const bulkFaces = $derived.by(() =>
     [...faceOverlays]
       .filter((face) => face.status !== 'rejected' || showRejectedFaces || face.bucket === 'reject_manual_not_face')
@@ -3482,7 +3482,6 @@
       bundle = result.bundle;
       step2Readback = result.step2Readback;
       identityCorrectionUndoDecisionId = corrections.items[0]?.undo.decisionId ?? '';
-      await loadManualSubjectTagReadback(result.evidence?.summary?.searchRowId ?? '');
       isFacesVisible = true;
       isBodiesVisible = true;
       const requestedFace = result.evidence?.faceOverlays?.find((face) => face.id === requestedFaceId);
@@ -3490,6 +3489,7 @@
         overlayView = 'machinery';
         setSelectedFace(requestedFace, { editName: requestedFace.status !== 'named' });
       }
+      await loadManualSubjectTagReadback(result.evidence?.summary?.searchRowId ?? '');
     } catch (error) {
       if (generation !== evidenceLoadGeneration || asset.id !== assetId) {
         return;
