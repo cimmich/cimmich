@@ -5583,10 +5583,14 @@ export const createCimmichRepository = (
           );
         });
 
-      const maintenancePending = await refreshPrimeForPeople(
-        sql,
-        result.affectedPersonIds,
-      );
+      // The identity transaction is durable. Queue derived Prime rebuilds so a
+      // 50-item review returns before the interactive request budget expires.
+      // A committed Save must never surface as a false timeout.
+      const maintenancePending = result.affectedPersonIds
+        .map((affectedPersonId) =>
+          deferPrimeAfterCommand(sql, affectedPersonId),
+        )
+        .some(Boolean);
       invalidateMachineSuggestions();
       return {
         accepted: result.accepted,
