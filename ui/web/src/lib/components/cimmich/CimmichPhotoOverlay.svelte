@@ -571,7 +571,7 @@
 
   const acceptFaceCandidate = async (
     face: CimmichFaceOverlay,
-    candidate: NonNullable<CimmichFaceOverlay['candidateMatches']>[number],
+    candidate: Pick<NonNullable<CimmichFaceOverlay['candidateMatches']>[number], 'personId' | 'personName'>,
   ) => {
     candidateAcceptingFaceId = face.id;
     observationActionError = '';

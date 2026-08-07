@@ -118,14 +118,13 @@ describe('Person profile layout', () => {
     expect(source).toContain("overlay: 'people'");
     expect(source).toContain('getCimmichFaceMatches(item.faceId, 5)');
     expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
-    expect(source).toContain("'Mark as Head'");
-    expect(source).toContain("markAsHead && item.kind !== 'accepted_contradiction'");
-    expect(source).toMatch(/\{#if item\.kind === 'accepted_contradiction'\}[\s\S]{0,800}'Mark as Head'/);
-    expect(source).toContain("item.kind === 'untagged_match' ? 'col-span-2' : ''");
-    expect(source).toContain("'Change to…'");
+    expect(source).toContain('`Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`');
+    expect(source).toContain('cimmichAuditDecision(item).label');
+    expect(source).toContain('onclick={() => void changeCimmichAuditPerson(item)}');
+    expect(source).toContain('aria-label={`Choose a different person for ${item.filename}`}');
     expect(source).toContain("item.kind === 'untagged_match'");
     expect(source).toContain("[item.faceId]: ''");
-    expect(source).toContain("{#if item.kind !== 'untagged_match'}");
+    expect(source).toContain("{#if item.kind === 'accepted_contradiction'}");
     expect(source).not.toContain('onclick={() => void dismissCimmichAuditMatch(item)}');
     expect(source).toContain('aria-label="Likely identity matches"');
     expect(source).toContain('placeholder="Type a name"');
@@ -135,7 +134,6 @@ describe('Person profile layout', () => {
     expect(source).toContain('!cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor');
     expect(source).not.toContain('border-red-200 bg-red-50/40');
     expect(source).not.toContain('bg-red-50/60');
-    expect(source).toContain("setCimmichFaceBucket(personId, item.faceId, 'head')");
     expect(source).not.toContain("'Confirm move'");
     expect(source).toContain('setCimmichPersonPresentation(cimmichPerson.person_id, slotKind');
     expect(source).toContain("chooseCimmichPresentation('face', face, 'face')");
