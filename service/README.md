@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 120. Schema 76 adds
+patch level 1. Current post-submission source is schema 121. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -157,6 +157,11 @@ adjacent context until the owner decides what they mean; no existing link is
 silently reclassified by the migration. The same completion migration admits
 closed Place provenance and bounded uncertainty metadata inside existing point,
 area and route geometry while leaving source-photo EXIF untouched.
+Schema 121 adds Cimmich-owned, reversible per-asset Rotation, Capture time and
+Place corrections. Corrections are append-only owner decisions with command
+replay, supersession and Undo; they never write source media or the Immich
+database. Deterministic Orientation, future-date and conflicting-Place queues
+surface review proposals without granting machinery correction authority.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

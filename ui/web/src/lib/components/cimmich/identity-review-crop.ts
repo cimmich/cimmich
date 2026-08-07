@@ -11,7 +11,10 @@ export type IdentityReviewCropFrame = {
   y: number;
 };
 
+export type IdentityReviewQuarterTurns = 0 | 1 | 2 | 3;
+
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+const normalized = (value: number) => Number(value.toFixed(12));
 
 export const fitIdentityReviewCrop = (
   item: IdentityReviewCropSource,
@@ -50,4 +53,40 @@ export const fitIdentityReviewCrop = (
     x: clamp(centerX - w / 2, 0, 1 - w),
     y: clamp(centerY - h / 2, 0, 1 - h),
   };
+};
+
+export const rotateIdentityReviewSource = (
+  item: IdentityReviewCropSource,
+  quarterTurns: number,
+): IdentityReviewCropSource => {
+  const turns = (((Math.trunc(quarterTurns) % 4) + 4) % 4) as IdentityReviewQuarterTurns;
+  if (turns === 0) {
+    return item;
+  }
+  const { h, w, x, y } = item.box;
+  if (turns === 1) {
+    return { box: { h: w, w: h, x: normalized(1 - y - h), y: x }, height: item.width, width: item.height };
+  }
+  if (turns === 2) {
+    return {
+      box: { h, w, x: normalized(1 - x - w), y: normalized(1 - y - h) },
+      height: item.height,
+      width: item.width,
+    };
+  }
+  return { box: { h: w, w: h, x: y, y: normalized(1 - x - w) }, height: item.width, width: item.height };
+};
+
+export const identityReviewSvgTransform = (width: number, height: number, quarterTurns: number) => {
+  const turns = (((Math.trunc(quarterTurns) % 4) + 4) % 4) as IdentityReviewQuarterTurns;
+  if (turns === 1) {
+    return `translate(${height} 0) rotate(90)`;
+  }
+  if (turns === 2) {
+    return `translate(${width} ${height}) rotate(180)`;
+  }
+  if (turns === 3) {
+    return `translate(0 ${width}) rotate(-90)`;
+  }
+  return '';
 };

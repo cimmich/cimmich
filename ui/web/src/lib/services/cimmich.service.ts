@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 
+export * from './cimmich-asset-correction.service';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -1892,7 +1893,6 @@ export type CimmichIdentityAuditDismissBatchResult = {
   }>;
   schemaVersion: 'cimmich.identity-audit.v2';
 };
-
 export type CimmichIdentityAuditLead = {
   displayName: string;
   personId: string;
@@ -2571,7 +2571,7 @@ const visibilityHeaders = (surface: CimmichVisibilitySurface = 'interactive') =>
   'x-cimmich-surface': surface,
 });
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+export const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort('timeout'), 12_000);
   const abortFromCaller = () => controller.abort(init?.signal?.reason);

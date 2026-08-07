@@ -1,4 +1,20 @@
 import type { AssetVisibility } from '@immich/sdk';
+import {
+  mdiAccountMultipleOutline,
+  mdiArchiveArrowDownOutline,
+  mdiArchiveArrowUpOutline,
+  mdiCalendarBlankOutline,
+  mdiHeartOutline,
+  mdiImageAlbum,
+  mdiLinkOff,
+  mdiLockOutline,
+  mdiMapMarkerOutline,
+  mdiPackageVariantClosed,
+  mdiPawOutline,
+  mdiRotateLeft,
+  mdiRotateRight,
+  mdiTagOutline,
+} from '@mdi/js';
 import type { CimmichContextFamily, CimmichVisibilityTier } from '$lib/services/cimmich.service';
 
 export const ENTITY_MEDIA_SELECTION_LIMIT = 100;
@@ -38,6 +54,8 @@ export type CimmichEntityMediaActionKind =
   | 'favorite'
   | 'object-attach'
   | 'place-attach'
+  | 'rotate-left'
+  | 'rotate-right'
   | 'presence-current'
   | 'presence-person'
   | 'presence-pet'
@@ -49,8 +67,62 @@ export type CimmichEntityMediaActionKind =
   | 'visibility-private'
   | 'visibility-standard';
 
+export const CIMMICH_ENTITY_MEDIA_ACTION_GROUPS = [
+  {
+    actions: ['presence-current', 'presence-person', 'presence-pet'],
+    icon: mdiAccountMultipleOutline,
+    id: 'presence',
+    label: 'People & pets',
+  },
+  {
+    actions: ['visibility-standard', 'visibility-personal', 'visibility-private'],
+    icon: mdiLockOutline,
+    id: 'privacy',
+    label: 'Privacy',
+  },
+  {
+    actions: ['rotate-left', 'rotate-right', 'tag-add', 'tag-remove', 'album-add'],
+    icon: mdiTagOutline,
+    id: 'metadata',
+    label: 'Photo details',
+  },
+  {
+    actions: ['favorite', 'unfavorite', 'archive', 'unarchive'],
+    icon: mdiImageAlbum,
+    id: 'library',
+    label: 'Library',
+  },
+] as const;
+
+export const cimmichEntityMediaActionIcon = (
+  action: CimmichEntityMediaActionKind,
+  currentSubject?: CimmichEntityMediaSubject | null,
+) =>
+  ({
+    'album-add': mdiImageAlbum,
+    archive: mdiArchiveArrowDownOutline,
+    'context-detach': mdiLinkOff,
+    'event-attach': mdiCalendarBlankOutline,
+    favorite: mdiHeartOutline,
+    'object-attach': mdiPackageVariantClosed,
+    'place-attach': mdiMapMarkerOutline,
+    'presence-current': currentSubject?.subjectKind === 'pet' ? mdiPawOutline : mdiAccountMultipleOutline,
+    'presence-person': mdiAccountMultipleOutline,
+    'presence-pet': mdiPawOutline,
+    'rotate-left': mdiRotateLeft,
+    'rotate-right': mdiRotateRight,
+    'tag-add': mdiTagOutline,
+    'tag-remove': mdiTagOutline,
+    unarchive: mdiArchiveArrowUpOutline,
+    unfavorite: mdiHeartOutline,
+    'visibility-personal': mdiLockOutline,
+    'visibility-private': mdiLockOutline,
+    'visibility-standard': mdiLockOutline,
+  })[action];
+
 export type CimmichEntityMediaActionReceipt = {
   action: CimmichEntityMediaActionKind;
+  assetCorrectionDecisionIds?: string[];
   albumId: string;
   assetIds: string[];
   completedAt: string;
@@ -77,6 +149,8 @@ const actions = new Set<CimmichEntityMediaActionKind>([
   'favorite',
   'object-attach',
   'place-attach',
+  'rotate-left',
+  'rotate-right',
   'presence-current',
   'presence-person',
   'presence-pet',
@@ -100,6 +174,7 @@ export const isCimmichEntityMediaActionReceipt = (value: unknown): value is Cimm
   return (
     receipt.version === 1 &&
     actions.has(receipt.action as CimmichEntityMediaActionKind) &&
+    (receipt.assetCorrectionDecisionIds === undefined || stringArray(receipt.assetCorrectionDecisionIds)) &&
     typeof receipt.albumId === 'string' &&
     stringArray(receipt.assetIds) &&
     typeof receipt.completedAt === 'string' &&
@@ -187,6 +262,8 @@ export const cimmichEntityMediaActionLabel = (
     favorite: 'Favourite',
     'object-attach': 'Mark Thing depicted',
     'place-attach': 'Add to Place',
+    'rotate-left': 'Rotate left',
+    'rotate-right': 'Rotate right',
     'presence-current': `Mark ${currentSubject?.displayName || 'subject'} present`,
     'presence-person': 'Mark Person present',
     'presence-pet': 'Mark Pet present',

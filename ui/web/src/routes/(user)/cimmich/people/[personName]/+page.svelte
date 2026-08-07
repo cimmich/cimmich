@@ -6,7 +6,9 @@
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
+  import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
+  import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
   import {
     ENTITY_MEDIA_SELECTION_LIMIT,
@@ -285,6 +287,7 @@
   let cimmichIdentityAuditProgress = $state({ completed: 0, total: 0 });
   let cimmichIdentityAuditSavingId = $state('');
   let cimmichIdentityAuditSelection = $state<string[]>([]);
+  const cimmichPhotoReview = new CimmichPhotoReviewController((message) => toastManager.danger(message));
   let cimmichIdentityAuditTotals = $state<Record<CimmichIdentityAuditItem['kind'], number>>({
     accepted_contradiction: 0,
     untagged_match: 0,
@@ -903,11 +906,14 @@
       ],
     },
   ]);
-  const cimmichIdentitySectionLimit = (section: string) => cimmichIdentitySectionLimits[section] ?? 20;
+  const cimmichIdentitySectionBatchSize = (section: string) =>
+    section.startsWith('identity-audit:') || section === 'machine-suggestions' ? 50 : 20;
+  const cimmichIdentitySectionLimit = (section: string) =>
+    cimmichIdentitySectionLimits[section] ?? cimmichIdentitySectionBatchSize(section);
   const showMoreCimmichIdentitySection = (section: string) => {
     cimmichIdentitySectionLimits = {
       ...cimmichIdentitySectionLimits,
-      [section]: cimmichIdentitySectionLimit(section) + 20,
+      [section]: cimmichIdentitySectionLimit(section) + cimmichIdentitySectionBatchSize(section),
     };
   };
   const cimmichIdentityServerBucket = (
@@ -1435,22 +1441,6 @@
     ].join('; ');
   };
 
-  const cimmichMachineSuggestionCropStyle = (suggestion: CimmichMachineSuggestion) => {
-    if (!suggestion.sourceAssetId) {
-      return '';
-    }
-    return cimmichSquareCropBackgroundStyle({
-      boxH: suggestion.box_h,
-      boxW: suggestion.box_w,
-      boxX: suggestion.box_x,
-      boxY: suggestion.box_y,
-      height: suggestion.height ?? 0,
-      padding: 2.8,
-      url: getAssetMediaUrl({ id: suggestion.sourceAssetId, size: AssetMediaSize.Preview }),
-      width: suggestion.width ?? 0,
-    });
-  };
-
   const cimmichAuditCropStyle = (
     item:
       | Pick<CimmichIdentityAuditItem, 'box' | 'height' | 'sourceAssetId' | 'width'>
@@ -1466,16 +1456,6 @@
       `background-image: url("${getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview })}")`,
       `background-size: ${100 / crop.w}% ${100 / crop.h}%`,
       `background-position: ${positionX}% ${positionY}%`,
-    ].join('; ');
-  };
-
-  const cimmichAuditFaceOutlineStyle = (item: CimmichIdentityAuditItem) => {
-    const crop = fitIdentityReviewCrop(item);
-    return [
-      `left: ${clampPercent(((item.box.x - crop.x) / crop.w) * 100)}%`,
-      `top: ${clampPercent(((item.box.y - crop.y) / crop.h) * 100)}%`,
-      `width: ${clampPercent((item.box.w / crop.w) * 100)}%`,
-      `height: ${clampPercent((item.box.h / crop.h) * 100)}%`,
     ].join('; ');
   };
 
@@ -1745,6 +1725,7 @@
       accepted_contradiction: contradictionAudit.total,
       untagged_match: untaggedAudit.total,
     };
+    void cimmichPhotoReview.load(cimmichIdentityAuditItems.map(({ assetId }) => assetId));
   };
 
   const showMoreCimmichIdentityAudit = async (
@@ -1755,7 +1736,7 @@
       return;
     }
     const sectionId = `identity-audit:${kind}`;
-    const nextLimit = cimmichIdentitySectionLimit(sectionId) + 20;
+    const nextLimit = cimmichIdentitySectionLimit(sectionId) + cimmichIdentitySectionBatchSize(sectionId);
     const loadedAuditCount = cimmichIdentityAuditItems.filter((item) => item.kind === kind).length;
     const auditTotal = cimmichIdentityAuditTotals[kind];
     if (nextLimit > loadedItems.length && loadedAuditCount < auditTotal) {
@@ -1772,6 +1753,7 @@
           ...cimmichIdentityAuditItems,
           ...page.items.filter((item) => !seen.has(`${item.kind}:${item.faceId}`)),
         ];
+        void cimmichPhotoReview.load(page.items.map(({ assetId }) => assetId));
         cimmichIdentityAuditTotals = { ...cimmichIdentityAuditTotals, [kind]: page.total };
       } catch (error) {
         cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load more identity checks';
@@ -2380,6 +2362,12 @@
       cimmichIdentityAuditEvidenceExpanded = [];
       cimmichIdentityAuditSelection = [];
       cimmichIdentityAuditConfirmAction = '';
+      void cimmichPhotoReview.load([
+        ...untaggedAudit.items.map(({ assetId }) => assetId),
+        ...contradictionAudit.items.map(({ assetId }) => assetId),
+        ...machineSuggestions.map(({ asset_id }) => asset_id),
+        ...candidates.map(({ asset_id }) => asset_id),
+      ]);
       cimmichIdentityAuditMatches = {};
       cimmichIdentityAuditMatchesLoading = {};
       cimmichIdentityAuditTargetPersonIds = {};
@@ -3996,6 +3984,7 @@
                     </div>
                     <div class="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {#each auditGroup.items.slice(0, cimmichIdentitySectionLimit(`identity-audit:${auditGroup.kind}`)) as item (`${item.kind}:${item.faceId}`)}
+                        {@const photoContext = cimmichPhotoReview.context(item.assetId)}
                         <article
                           class={[
                             'flex h-full min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm dark:bg-immich-dark-bg',
@@ -4004,43 +3993,29 @@
                               : 'border-gray-200 dark:border-immich-dark-gray',
                           ]}
                         >
-                          <div class="relative">
-                            <a
-                              href={item.sourceAssetId
-                                ? Route.viewCimmichPersonAsset({
-                                    faceId: item.faceId,
-                                    id: item.sourceAssetId,
-                                    overlay: 'machinery',
-                                    personId: cimmichPerson.person_id,
-                                    personName: cimmichPerson.display_name,
-                                  })
-                                : undefined}
-                              class="block aspect-4/3 bg-gray-200 bg-cover"
-                              style={cimmichAuditCropStyle(item)}
-                              aria-label={`Open ${item.filename}`}
-                            ></a>
-                            <span
-                              class="pointer-events-none absolute border-2 border-dotted border-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.3)]"
-                              style={cimmichAuditFaceOutlineStyle(item)}
-                              aria-hidden="true"
-                            ></span>
-                            <span
-                              class="absolute bottom-2 left-2 rounded-sm bg-black/70 px-2 py-1 text-[11px] font-semibold text-white"
-                              >Photo to review</span
-                            >
-                            <label
-                              class="absolute top-2 right-2 grid size-10 cursor-pointer place-items-center rounded-full bg-black/70 shadow-sm"
-                            >
-                              <span class="sr-only">Select {item.filename}</span>
-                              <input
-                                class="size-5 accent-immich-primary"
-                                type="checkbox"
-                                checked={cimmichAuditSelected(item.faceId)}
-                                disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                onclick={(event) => toggleCimmichAuditSelection(item.faceId, event)}
-                              />
-                            </label>
-                          </div>
+                          <CimmichReviewPhotoMedia
+                            busy={Boolean(cimmichIdentityAuditSavingId || cimmichPhotoReview.savingId)}
+                            contextLabel={cimmichPhotoReview.label(item)}
+                            filename={item.filename}
+                            href={item.sourceAssetId
+                              ? Route.viewCimmichPersonAsset({
+                                  faceId: item.faceId,
+                                  id: item.sourceAssetId,
+                                  overlay: 'machinery',
+                                  personId: cimmichPerson.person_id,
+                                  personName: cimmichPerson.display_name,
+                                })
+                              : undefined}
+                            image={item}
+                            onRotate={(direction) => void cimmichPhotoReview.rotate(item.assetId, direction)}
+                            onToggle={(event) => toggleCimmichAuditSelection(item.faceId, event)}
+                            onUndo={photoContext?.rotationDecisionId
+                              ? () => void cimmichPhotoReview.undo(item.assetId, photoContext.rotationDecisionId ?? '')
+                              : undefined}
+                            rotationQuarterTurns={photoContext?.rotationQuarterTurns ?? 0}
+                            selected={cimmichAuditSelected(item.faceId)}
+                            sourceAssetId={item.sourceAssetId}
+                          />
                           <div class="flex min-w-0 flex-1 flex-col gap-3 p-3">
                             <div class="min-w-0">
                               <div class="flex flex-wrap items-center gap-2">
@@ -4295,7 +4270,7 @@
                         disabled={Boolean(cimmichIdentityAuditLoadingKind)}
                         onclick={() => void showMoreCimmichIdentityAudit(auditGroup.kind, auditGroup.items)}
                       >
-                        {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 20 more'}
+                        {cimmichIdentityAuditLoadingKind === auditGroup.kind ? 'Loading…' : 'Show 50 more'}
                       </button>
                     {/if}
                   </section>
@@ -4346,13 +4321,20 @@
                     {#each visibleCimmichMachineSuggestions.slice(0, cimmichIdentitySectionLimit('machine-suggestions')) as suggestion (suggestion.face_id)}
                       {@const selected = machineSuggestionSelected(suggestion.face_id)}
                       {@const lead = suggestion.candidates[0]}
+                      {@const photoContext = cimmichPhotoReview.context(suggestion.asset_id)}
                       <article
                         class={[
                           'overflow-hidden rounded-xl border-2 bg-white dark:bg-immich-dark-bg',
                           selected ? 'border-primary' : 'border-sky-200 dark:border-sky-900',
                         ]}
                       >
-                        <a
+                        <CimmichReviewPhotoMedia
+                          busy={Boolean(cimmichPhotoReview.savingId)}
+                          contextLabel={cimmichPhotoReview.label({
+                            assetId: suggestion.asset_id,
+                            captureTime: suggestion.capture_time,
+                          })}
+                          filename={suggestion.filename}
                           href={suggestion.sourceAssetId
                             ? Route.viewCimmichPersonAsset({
                                 faceId: suggestion.face_id,
@@ -4362,10 +4344,25 @@
                                 personName: cimmichPerson.display_name,
                               })
                             : undefined}
-                          class="block aspect-4/5 bg-gray-200 bg-cover"
-                          style={cimmichMachineSuggestionCropStyle(suggestion)}
-                          aria-label={`Open matching suggestion in ${suggestion.filename}`}
-                        ></a>
+                          image={{
+                            box: {
+                              h: suggestion.box_h,
+                              w: suggestion.box_w,
+                              x: suggestion.box_x,
+                              y: suggestion.box_y,
+                            },
+                            height: suggestion.height,
+                            width: suggestion.width,
+                          }}
+                          onRotate={(direction) => void cimmichPhotoReview.rotate(suggestion.asset_id, direction)}
+                          onUndo={photoContext?.rotationDecisionId
+                            ? () =>
+                                void cimmichPhotoReview.undo(suggestion.asset_id, photoContext.rotationDecisionId ?? '')
+                            : undefined}
+                          rotationQuarterTurns={photoContext?.rotationQuarterTurns ?? 0}
+                          sourceAssetId={suggestion.sourceAssetId}
+                          targetAspect={4 / 5}
+                        />
                         <label class="grid min-h-16 cursor-pointer grid-cols-[auto_1fr] items-start gap-2 p-3 text-sm">
                           <input
                             class="mt-0.5 size-4 accent-immich-primary"
@@ -4390,7 +4387,7 @@
                     <button
                       class="mx-auto min-h-11 rounded-md bg-white px-4 py-2 text-sm font-medium dark:bg-immich-dark-gray"
                       type="button"
-                      onclick={() => showMoreCimmichIdentitySection('machine-suggestions')}>Show 20 more</button
+                      onclick={() => showMoreCimmichIdentitySection('machine-suggestions')}>Show 50 more</button
                     >
                   {/if}
                 </section>

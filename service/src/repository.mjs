@@ -40,6 +40,8 @@ import {
 } from "./face-condition-classifier.mjs";
 import { matcherPolicyMargin } from "./source-pack-evaluator.mjs";
 import { createTagAssetSearch } from "./tag-asset-search.mjs";
+import { attachAssetCorrections } from "./asset-correction-repository.mjs";
+import { bridgeFields } from "./bridge-fields.mjs";
 
 const decisionReceiptId = "receipt_cimmich_local_review_service_v1";
 const userCommandReceiptId = "receipt_cimmich_local_identity_commands_v1";
@@ -564,13 +566,6 @@ const completeMergeCommand = async (
     WHERE command_id = ${commandId}
   `;
   return response;
-};
-
-const bridgeFields = (bridge, assetId) => {
-  const linked = bridge.get(assetId);
-  return linked
-    ? { filename: linked.filename, sourceAssetId: linked.sourceAssetId }
-    : { filename: "", sourceAssetId: "" };
 };
 
 // One definition of the explicit face/body presentation-slot columns and
@@ -10407,6 +10402,7 @@ export const createCimmichRepository = (
     },
   };
   Object.assign(repository, observationCorrections);
+  attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {
     petMatchImport: petMatching.importBatch,
     petMatchStatus: petMatching.status,

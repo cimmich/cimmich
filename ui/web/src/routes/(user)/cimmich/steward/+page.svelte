@@ -233,6 +233,17 @@
       </div>
     </header>
 
+    <nav class="flex w-fit gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Review area">
+      <a
+        class="rounded-lg bg-white px-4 py-2 text-sm font-semibold shadow-sm dark:bg-gray-700"
+        href={Route.cimmichSteward()}>People</a
+      >
+      <a
+        class="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300"
+        href={Route.cimmichPhotoReview()}>Photo details</a
+      >
+    </nav>
+
     {#if error}
       <div
         class="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"

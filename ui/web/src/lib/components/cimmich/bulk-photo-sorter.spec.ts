@@ -94,6 +94,7 @@ describe('bulk photo sorter', () => {
       undo: {
         action: 'favorite',
         assetIds: ['asset-1'],
+        assetCorrectionDecisionIds: [],
         contextDecisionIds: [],
         label: 'Favourite',
         targetId: '',
