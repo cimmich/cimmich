@@ -38,12 +38,11 @@
     width={outline.width}
     height={outline.height}
     fill="none"
-    stroke="rgba(255,255,255,0.78)"
-    stroke-width={Math.max(2, Math.min(rotated.width, rotated.height) * 0.003)}
-    stroke-dasharray={`${Math.max(4, Math.min(rotated.width, rotated.height) * 0.008)} ${Math.max(
-      3,
-      Math.min(rotated.width, rotated.height) * 0.006,
-    )}`}
+    stroke="rgba(255,255,255,0.7)"
+    stroke-width="2"
+    stroke-dasharray="0.1 4"
+    stroke-linecap="round"
     vector-effect="non-scaling-stroke"
+    style="filter: drop-shadow(0 0 1px rgba(0,0,0,0.7))"
   />
 </svg>
