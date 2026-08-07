@@ -6,11 +6,18 @@
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
+  import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
+  import {
+    personAwaitingCounts,
+    personIdentityAuditGroups,
+    samePhotoCollisionReview,
+    type CimmichPersonReviewItem,
+  } from '$lib/components/cimmich/same-photo-collision-review';
   import {
     ENTITY_MEDIA_SELECTION_LIMIT,
     type CimmichEntityMediaItem,
@@ -150,7 +157,6 @@
   import { Icon, Tooltip, toastManager } from '@immich/ui';
   import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PageData } from './$types';
-
   interface Props {
     data: PageData;
   }
@@ -239,15 +245,6 @@
     photo: CimmichPersonPhoto;
     proposedName: string;
   };
-  type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
-    candidateClaimId?: string;
-    candidateEvidence?: {
-      detectorConfidence: number;
-      matchScore: number | null;
-      margin: number | null;
-      secondBestScore: number | null;
-    };
-  };
   type CimmichHeroField = {
     fieldKey: CimmichPersonProfileFieldKey;
     label: string;
@@ -264,7 +261,6 @@
     x: number;
     y: number;
   };
-
   let { data }: Props = $props();
   let activeTab = $state<PersonTab>('photos');
   let cimmichPhotoGroup = $state<PersonPhotoGroup>('none');
@@ -723,6 +719,7 @@
         margin: margin ?? 0,
         mediaKind: candidate.media_kind,
         qualityMeasurements: candidate.quality_measurements,
+        samePhotoAcceptedCount: candidate.same_photo_accepted_count ?? 0,
         sourceAssetId: candidate.sourceAssetId,
         suggestedPerson: {
           displayName: candidate.display_name,
@@ -753,6 +750,9 @@
     }
     return [...merged.values()];
   });
+  const cimmichSamePhotoCollisions = $derived(samePhotoCollisionReview(cimmichPersonReviewItems));
+  const cimmichSamePhotoCollisionGroups = $derived(cimmichSamePhotoCollisions.groups);
+  const cimmichSamePhotoCollisionFaceIds = $derived(cimmichSamePhotoCollisions.faceIds);
   const visibleCimmichMachineSuggestions = $derived(
     machineSuggestionsForPerson(cimmichMachineSuggestions, cimmichPerson?.person_id ?? '', cimmichCandidates).filter(
       ({ face_id }) => !cimmichIdentityAuditFaceIds.has(face_id),
@@ -761,38 +761,22 @@
   const cimmichCandidateOnlyReviewItems = $derived(
     cimmichCandidateReviewItems.filter(({ faceId }) => !cimmichIdentityAuditFaceIds.has(faceId)),
   );
-  const cimmichNewMatchCount = $derived(
-    cimmichIdentityAuditTotals.untagged_match +
-      cimmichCandidateOnlyReviewItems.filter(({ kind }) => kind === 'untagged_match').length +
+  const cimmichAwaitingCounts = $derived(
+    personAwaitingCounts(
+      cimmichIdentityAuditTotals,
+      cimmichCandidateOnlyReviewItems,
       visibleCimmichMachineSuggestions.length,
+    ),
   );
-  const cimmichPossibleMistagCount = $derived(
-    cimmichIdentityAuditTotals.accepted_contradiction +
-      cimmichCandidateOnlyReviewItems.filter(({ kind }) => kind === 'accepted_contradiction').length,
+  const cimmichIdentityAuditGroups = $derived(
+    personIdentityAuditGroups({
+      auditTotals: cimmichIdentityAuditTotals,
+      candidateOnlyItems: cimmichCandidateOnlyReviewItems,
+      collisionFaceIds: cimmichSamePhotoCollisionFaceIds,
+      personName: cimmichPerson?.display_name ?? 'this person',
+      reviewItems: cimmichPersonReviewItems,
+    }),
   );
-  const cimmichAwaitingCount = $derived(cimmichNewMatchCount + cimmichPossibleMistagCount);
-  const cimmichIdentityAuditGroups = $derived([
-    {
-      description: `Previously untagged faces the matcher thinks may be ${cimmichPerson?.display_name ?? 'this person'}.`,
-      id: 'new-matches',
-      items: cimmichPersonReviewItems.filter(({ kind }) => kind === 'untagged_match'),
-      kind: 'untagged_match' as const,
-      title: 'New matches',
-      total:
-        cimmichIdentityAuditTotals.untagged_match +
-        cimmichCandidateOnlyReviewItems.filter(({ kind }) => kind === 'untagged_match').length,
-    },
-    {
-      description: `Existing identity tags the matcher disputes because it sees a stronger match to a different person.`,
-      id: 'possible-mistags',
-      items: cimmichPersonReviewItems.filter(({ kind }) => kind === 'accepted_contradiction'),
-      kind: 'accepted_contradiction' as const,
-      title: 'Possible mistags',
-      total:
-        cimmichIdentityAuditTotals.accepted_contradiction +
-        cimmichCandidateOnlyReviewItems.filter(({ kind }) => kind === 'accepted_contradiction').length,
-    },
-  ]);
   const groupedCimmichAssets = $derived(groupPersonPhotos(visibleCimmichAssets, cimmichPhotoGroup));
   const selectedCimmichPhotoItems = $derived<CimmichEntityMediaItem[]>(
     cimmichAssets
@@ -903,7 +887,7 @@
         {
           id: 'candidates',
           label: 'Checks',
-          count: `${cimmichNewMatchCount.toLocaleString()} new · ${cimmichPossibleMistagCount.toLocaleString()} mistags`,
+          count: `${cimmichAwaitingCounts.newMatches.toLocaleString()} new · ${cimmichAwaitingCounts.possibleMistags.toLocaleString()} mistags`,
         },
       ],
     },
@@ -3293,18 +3277,18 @@
                 onclick={() => void openCimmichIdentity()}
               >
                 Identity
-                {#if cimmichNewMatchCount > 0}
+                {#if cimmichAwaitingCounts.newMatches > 0}
                   <span
                     class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100"
                   >
-                    {cimmichNewMatchCount.toLocaleString()} new
+                    {cimmichAwaitingCounts.newMatches.toLocaleString()} new
                   </span>
                 {/if}
-                {#if cimmichPossibleMistagCount > 0}
+                {#if cimmichAwaitingCounts.possibleMistags > 0}
                   <span
                     class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-950 dark:text-red-200"
                   >
-                    {cimmichPossibleMistagCount.toLocaleString()} mistags
+                    {cimmichAwaitingCounts.possibleMistags.toLocaleString()} mistags
                   </span>
                 {/if}
               </button>
@@ -3746,7 +3730,7 @@
                       : cimmichIdentityFilter === 'presentation'
                         ? `${cimmichPresentationSelectionCount} of 3 selected`
                         : cimmichIdentityFilter === 'candidates'
-                          ? `${cimmichNewMatchCount.toLocaleString()} new matches · ${cimmichPossibleMistagCount.toLocaleString()} possible mistags`
+                          ? `${cimmichAwaitingCounts.newMatches.toLocaleString()} new matches · ${cimmichAwaitingCounts.possibleMistags.toLocaleString()} possible mistags`
                           : cimmichIdentityFilter === 'all'
                             ? `${cimmichIdentityFaces.length.toLocaleString()} accepted Face observations`
                             : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
@@ -3864,6 +3848,22 @@
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
           {:else if cimmichIdentityFilter === 'candidates'}
             <section class="grid gap-6" aria-label="Awaiting confirmation">
+              {#if cimmichSamePhotoCollisionGroups.length > 0}
+                <CimmichSamePhotoCollisionReview
+                  groups={cimmichSamePhotoCollisionGroups}
+                  onConfirm={(item) => void confirmCimmichAuditPerson(item)}
+                  onUnknownChanged={(item) => {
+                    cimmichIdentityMessage = 'Marked as unknown. Identity suggestions are paused.';
+                    finishCimmichAuditDecision(item);
+                  }}
+                  onUnknownError={(message) => (cimmichIdentityError = message)}
+                  onUnknownSaving={(item, saving) => (cimmichIdentityAuditSavingId = saving ? item.faceId : '')}
+                  personId={cimmichPerson.person_id}
+                  personName={cimmichPerson.display_name}
+                  photoReview={cimmichPhotoReview}
+                  savingId={cimmichIdentityAuditSavingId}
+                />
+              {/if}
               {#each cimmichIdentityAuditGroups as auditGroup (auditGroup.kind)}
                 {#if auditGroup.total > 0}
                   <section
@@ -4396,7 +4396,7 @@
                 </section>
               {/if}
 
-              {#if cimmichAwaitingCount === 0}
+              {#if cimmichAwaitingCounts.total === 0}
                 <p
                   class="rounded-xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-500 dark:border-gray-700"
                 >

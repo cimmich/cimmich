@@ -1,7 +1,9 @@
 import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
+import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 
 export * from './cimmich-asset-correction.service';
+export * from './cimmich-deferred-face-review';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -13,7 +15,6 @@ export type CimmichSummary = {
   suggestions_ready: number | null;
   user_decisions: number;
 };
-
 export type CimmichViewingMode = 'personal' | 'private' | 'standard';
 export type CimmichVisibilityTier = CimmichViewingMode;
 export type CimmichVisibilityScope =
@@ -34,7 +35,6 @@ export type CimmichVisibilitySurface =
   | 'notification'
   | 'share'
   | 'slideshow';
-
 export type CimmichVisibilityStatus = {
   capabilities: {
     album: boolean;
@@ -624,6 +624,7 @@ export type CimmichIdentityCandidate = {
   match_score?: number | null;
   person_id: string;
   quality_measurements: Record<string, number | string>;
+  same_photo_accepted_count?: number;
   sourceAssetId: string;
   source_margin: number | null;
   source_score: number | null;
@@ -1363,15 +1364,6 @@ export type CimmichDecisionResult = {
   state: 'accepted' | 'candidate' | 'rejected';
 };
 
-export type CimmichFaceReviewDispositionResult = {
-  changed: boolean;
-  decisionId: string | null;
-  disposition: 'active' | 'later' | 'unknown';
-  faceId: string;
-  replayed: boolean;
-  schemaVersion: 'cimmich.face-review-disposition.v1';
-};
-
 export type CimmichIdentityCorrectionResult = CimmichDecisionResult & {
   commandId: string;
   faceId: string;
@@ -1581,6 +1573,7 @@ export type CimmichAssetEvidence = {
     rejected_person_id: string | null;
     review_decision_id: string | null;
     review_disposition: 'active' | 'later' | 'unknown';
+    review_reason: 'general' | 'geometry';
   }>;
   filename: string;
   height: number;
@@ -2809,6 +2802,9 @@ export const getCimmichMachineSuggestions = async (limit = 24, leadPersonId = ''
   );
   return result.items;
 };
+
+export const getCimmichDeferredFaceReviews = (limit = 100) =>
+  request<import('./cimmich-deferred-face-review').CimmichDeferredFaceReviewPage>(deferredFaceReviewPath(limit));
 
 export const getCimmichIdentityAudit = async () => {
   const result = await request<{ run: CimmichIdentityAuditRun | null }>('/v1/review/identity-audit');
@@ -4362,9 +4358,13 @@ export const setCimmichFaceReviewDisposition = (
   faceId: string,
   disposition: 'active' | 'later' | 'unknown',
   commandId: string,
+  reviewReason: import('./cimmich-deferred-face-review').CimmichFaceReviewReason = 'general',
 ) =>
-  request<CimmichFaceReviewDispositionResult>(`/v1/faces/${encodeURIComponent(faceId)}/review-disposition`, {
-    body: JSON.stringify({ commandId, disposition }),
-    headers: { 'x-cimmich-actor': 'local-operator' },
-    method: 'POST',
-  });
+  request<import('./cimmich-deferred-face-review').CimmichFaceReviewDispositionResult>(
+    `/v1/faces/${encodeURIComponent(faceId)}/review-disposition`,
+    {
+      body: JSON.stringify({ commandId, disposition, reviewReason }),
+      headers: { 'x-cimmich-actor': 'local-operator' },
+      method: 'POST',
+    },
+  );

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
-const readPersonProfile = () => readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8');
+const readPersonProfile = async () => {
+  const sources = await Promise.all([
+    readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
+  ]);
+  return sources.join('\n');
+};
 
 describe('Person profile layout', () => {
   it('opens with a photo-led identity hero instead of an administrative record card', async () => {
@@ -87,10 +94,14 @@ describe('Person profile layout', () => {
     expect(source).toContain('Supporting matcher reference');
     expect(source).toContain('face.matching_reference_tier');
     expect(source).toContain('Awaiting confirmation');
-    expect(source).toContain("title: 'New matches'");
-    expect(source).toContain("title: 'Possible mistags'");
+    expect(source).toContain("title: isNewMatch ? 'New matches' : 'Possible mistags'");
     expect(source).toContain('const cimmichCandidateReviewItems');
     expect(source).toContain('const cimmichPersonReviewItems');
+    expect(source).toContain('const cimmichSamePhotoCollisionGroups');
+    expect(source).toContain('Multiple matches in one photo');
+    expect(source).toContain('bulk confirmation is');
+    expect(source).toContain('samePhotoAcceptedCount');
+    expect(source).toContain('Someone else, not a Face, or fix box');
     expect(source).toContain('candidateClaimId: candidate.identity_claim_id');
     expect(source).toContain('candidateEvidence');
     expect(source).toContain('fitIdentityReviewCrop(item)');
@@ -102,8 +113,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('candidateItems.map((item) => item.candidateClaimId)');
     expect(source).toContain('bulkAcceptCimmichPersonCandidates(');
     expect(source).not.toContain('Candidate identity claims');
-    expect(source).toContain('cimmichIdentityAuditTotals.untagged_match');
-    expect(source).toContain('cimmichIdentityAuditTotals.accepted_contradiction');
+    expect(source).toContain('auditTotals.untagged_match');
+    expect(source).toContain('auditTotals.accepted_contradiction');
     expect(source).toContain('showMoreCimmichIdentityAudit');
     expect(source).toContain('Previously untagged');
     expect(source).toContain('Existing tag disputed');

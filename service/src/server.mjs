@@ -3500,6 +3500,21 @@ export const createCimmichServer = ({
       const faceReviewDispositionMatch = url.pathname.match(
         /^\/v1\/faces\/([^/]+)\/review-disposition$/,
       );
+      if (
+        request.method === "GET" &&
+        url.pathname === "/v1/review/faces/deferred"
+      ) {
+        requireProjection("asset_evidence");
+        sendJson(
+          response,
+          200,
+          await repository.deferredFaceReviews({
+            limit: url.searchParams.get("limit"),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "POST" && faceReviewDispositionMatch) {
         requireProjection("asset_evidence");
         const body = await readJsonBody(request);
@@ -3511,6 +3526,7 @@ export const createCimmichServer = ({
             commandId: body.commandId,
             disposition: body.disposition,
             faceId: decodeURIComponent(faceReviewDispositionMatch[1]),
+            reviewReason: body.reviewReason,
           }),
           allowedOrigin,
         );

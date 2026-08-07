@@ -4179,6 +4179,15 @@ test("Face review exposes durable Later, Unknown and rejected-suggestion Restore
   };
   await withServer(
     {
+      deferredFaceReviews: async (input) => {
+        calls.push(["deferred", input]);
+        return {
+          items: [],
+          limit: 100,
+          schemaVersion: "cimmich.deferred-face-review.v1",
+          total: 0,
+        };
+      },
       decideIdentityClaim: async (input) => {
         calls.push(["claim", input]);
         return { changed: true, state: "candidate", ...input };
@@ -4201,6 +4210,7 @@ test("Face review exposes durable Later, Unknown and rejected-suggestion Restore
           body: JSON.stringify({
             commandId: "face-review.later.1",
             disposition: "later",
+            reviewReason: "geometry",
           }),
           headers: {
             "content-type": "application/json",
@@ -4211,6 +4221,15 @@ test("Face review exposes durable Later, Unknown and rejected-suggestion Restore
       );
       assert.equal(later.status, 200);
       assert.equal((await later.json()).disposition, "later");
+
+      const deferred = await fetch(
+        `${root}/v1/review/faces/deferred?limit=100`,
+      );
+      assert.equal(deferred.status, 200);
+      assert.equal(
+        (await deferred.json()).schemaVersion,
+        "cimmich.deferred-face-review.v1",
+      );
 
       const restored = await fetch(
         `${root}/v1/review/identity-claims/claim%2Frejected/decision`,
@@ -4236,8 +4255,10 @@ test("Face review exposes durable Later, Unknown and rejected-suggestion Restore
         commandId: "face-review.later.1",
         disposition: "later",
         faceId: "face/review",
+        reviewReason: "geometry",
       },
     ],
+    ["deferred", { limit: "100" }],
     [
       "claim",
       {
@@ -4248,7 +4269,11 @@ test("Face review exposes durable Later, Unknown and rejected-suggestion Restore
       },
     ],
   ]);
-  assert.deepEqual(surfaces, ["asset_evidence", "asset_evidence"]);
+  assert.deepEqual(surfaces, [
+    "asset_evidence",
+    "asset_evidence",
+    "asset_evidence",
+  ]);
 });
 
 test("Face identity save accepts exactly one existing-or-new Person selector", async () => {
