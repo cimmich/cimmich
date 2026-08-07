@@ -20,6 +20,7 @@
     togglePersonCandidateSelection,
   } from '$lib/components/cimmich/person-candidate-selection';
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
+  import { personAuditDecision } from '$lib/components/cimmich/person-audit-decision';
   import {
     groupPersonPhotos,
     personPhotoDateLabel,
@@ -1958,19 +1959,8 @@
     }
   };
 
-  const cimmichAuditTargetPersonId = (item: CimmichPersonReviewItem) =>
-    cimmichIdentityAuditTargetPersonIds[item.faceId] === undefined
-      ? item.suggestedPerson.personId
-      : cimmichIdentityAuditTargetPersonIds[item.faceId];
-
-  const cimmichAuditAlternativeMatches = (item: CimmichPersonReviewItem) => {
-    const matches = cimmichIdentityAuditMatches[item.faceId] ?? [];
-    return matches.filter(
-      ({ person_id }, index) =>
-        person_id !== item.suggestedPerson.personId &&
-        matches.findIndex((candidate) => candidate.person_id === person_id) === index,
-    );
-  };
+  const cimmichAuditDecision = (item: CimmichPersonReviewItem) =>
+    personAuditDecision(item, cimmichIdentityAuditTargetPersonIds, cimmichIdentityAuditMatches, cimmichSetupPeople);
   const cimmichAuditPersonSearchResults = (item: CimmichPersonReviewItem) => {
     const query = (cimmichIdentityAuditChangeQueries[item.faceId] ?? '').trim().toLocaleLowerCase();
     if (!query) {
@@ -2023,16 +2013,13 @@
     });
   };
 
-  const confirmCimmichAuditPerson = async (item: CimmichPersonReviewItem, markAsHead = false) => {
+  const confirmCimmichAuditPerson = async (item: CimmichPersonReviewItem) => {
     if (!cimmichPerson || cimmichIdentityAuditSavingId) {
-      return;
-    }
-    if (markAsHead && item.kind !== 'accepted_contradiction') {
       return;
     }
     const personId = cimmichPerson.person_id;
     const personName = cimmichPerson.display_name;
-    cimmichIdentityAuditSavingId = `${markAsHead ? 'head' : 'confirm'}:${item.faceId}`;
+    cimmichIdentityAuditSavingId = `confirm:${item.faceId}`;
     cimmichIdentityError = '';
     cimmichIdentityMessage = '';
     try {
@@ -2041,12 +2028,7 @@
         : item.assignedPerson?.personId === personId
           ? dismissCimmichIdentityAuditItem(item.kind, item.faceId)
           : acceptCimmichMachineSuggestion(item.faceId, personId));
-      if (markAsHead) {
-        await setCimmichFaceBucket(personId, item.faceId, 'head');
-      }
-      cimmichIdentityMessage = markAsHead
-        ? `Confirmed this as ${personName} and marked it as Head evidence.`
-        : `Confirmed this face as ${personName}.`;
+      cimmichIdentityMessage = `Confirmed this face as ${personName}.`;
       finishCimmichAuditDecision(item);
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this identity decision';
@@ -2059,15 +2041,7 @@
     if (!cimmichPerson || cimmichIdentityAuditSavingId) {
       return;
     }
-    const targetPersonId = cimmichAuditTargetPersonId(item);
-    const target =
-      cimmichIdentityAuditMatches[item.faceId]?.find(({ person_id }) => person_id === targetPersonId) ??
-      cimmichSetupPeople.find(({ person_id }) => person_id === targetPersonId) ??
-      (targetPersonId === item.suggestedPerson.personId
-        ? {
-            display_name: item.suggestedPerson.displayName,
-          }
-        : undefined);
+    const { targetPersonId, target } = cimmichAuditDecision(item);
     if (!targetPersonId || !target) {
       cimmichIdentityError = 'Choose one of the closest People before changing this identity.';
       return;
@@ -2090,7 +2064,10 @@
           ? dismissCimmichIdentityAuditItem(item.kind, item.faceId)
           : acceptCimmichMachineSuggestion(item.faceId, targetPersonId));
       }
-      cimmichIdentityMessage = `Changed this face to ${target.display_name}.`;
+      cimmichIdentityMessage =
+        targetPersonId === item.assignedPerson?.personId
+          ? `Left this face as ${target.display_name}.`
+          : `Changed this face to ${target.display_name}.`;
       finishCimmichAuditDecision(item);
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to change this identity';
@@ -4097,39 +4074,62 @@
                               {/if}
                             {/if}
                             <div class="mt-auto grid min-w-0 grid-cols-2 gap-2">
-                              <button
-                                class={[
-                                  'min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40',
-                                  item.kind === 'untagged_match' ? 'col-span-2' : '',
-                                ]}
-                                type="button"
-                                disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                onclick={() => void confirmCimmichAuditPerson(item)}
-                              >
-                                {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
-                                  ? 'Saving…'
-                                  : `Confirm ${cimmichPerson.display_name}`}
-                              </button>
                               {#if item.kind === 'accepted_contradiction'}
+                                <div class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
+                                  <button
+                                    class="min-h-10 min-w-0 rounded-md bg-amber-600 p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
+                                    type="button"
+                                    disabled={Boolean(cimmichIdentityAuditSavingId) ||
+                                      !cimmichAuditDecision(item).target}
+                                    onclick={() => void changeCimmichAuditPerson(item)}
+                                  >
+                                    {cimmichIdentityAuditSavingId === `change:${item.faceId}`
+                                      ? 'Saving…'
+                                      : cimmichAuditDecision(item).label}
+                                  </button>
+                                  <button
+                                    class="min-h-10 rounded-md border border-gray-300 text-lg font-bold disabled:opacity-40 dark:border-gray-600"
+                                    type="button"
+                                    aria-label={`Choose a different person for ${item.filename}`}
+                                    aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
+                                    disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                    onclick={() => {
+                                      cimmichIdentityAuditChangeFaceId =
+                                        cimmichIdentityAuditChangeFaceId === item.faceId ? '' : item.faceId;
+                                      if (cimmichIdentityAuditChangeFaceId) void loadCimmichAuditMatches(item);
+                                    }}>…</button
+                                  >
+                                </div>
                                 <button
-                                  class="min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
+                                  class="col-span-2 min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
                                   type="button"
                                   disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                  onclick={() => void confirmCimmichAuditPerson(item, true)}
+                                  onclick={() => void confirmCimmichAuditPerson(item)}
                                 >
-                                  {cimmichIdentityAuditSavingId === `head:${item.faceId}` ? 'Saving…' : 'Mark as Head'}
+                                  {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
+                                    ? 'Saving…'
+                                    : `Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`}
                                 </button>
-                              {/if}
-                              <button
-                                class="col-span-2 min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
-                                type="button"
-                                aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
-                                disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                onclick={() => {
-                                  const opening = cimmichIdentityAuditChangeFaceId !== item.faceId;
-                                  cimmichIdentityAuditChangeFaceId = opening ? item.faceId : '';
-                                  if (opening) {
-                                    if (item.kind === 'untagged_match') {
+                              {:else}
+                                <button
+                                  class="col-span-2 min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
+                                  type="button"
+                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                  onclick={() => void confirmCimmichAuditPerson(item)}
+                                >
+                                  {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
+                                    ? 'Saving…'
+                                    : `Confirm ${cimmichPerson.display_name}`}
+                                </button>
+                                <button
+                                  class="col-span-2 min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+                                  type="button"
+                                  aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
+                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                  onclick={() => {
+                                    const opening = cimmichIdentityAuditChangeFaceId !== item.faceId;
+                                    cimmichIdentityAuditChangeFaceId = opening ? item.faceId : '';
+                                    if (opening) {
                                       cimmichIdentityAuditTargetPersonIds = {
                                         ...cimmichIdentityAuditTargetPersonIds,
                                         [item.faceId]: '',
@@ -4138,17 +4138,15 @@
                                         ...cimmichIdentityAuditChangeQueries,
                                         [item.faceId]: '',
                                       };
+                                      void loadCimmichAuditMatches(item);
                                     }
-                                    void loadCimmichAuditMatches(item);
-                                  }
-                                }}
-                              >
-                                {cimmichIdentityAuditChangeFaceId === item.faceId
-                                  ? 'Close change'
-                                  : item.kind === 'untagged_match'
-                                    ? `Not ${cimmichPerson.display_name}`
-                                    : 'Change to…'}
-                              </button>
+                                  }}
+                                >
+                                  {cimmichIdentityAuditChangeFaceId === item.faceId
+                                    ? 'Close change'
+                                    : `Not ${cimmichPerson.display_name}`}
+                                </button>
+                              {/if}
                               {#if cimmichIdentityAuditChangeFaceId === item.faceId}
                                 <div
                                   class="col-span-2 grid min-w-0 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-black/10"
@@ -4158,7 +4156,7 @@
                                     <select
                                       aria-label="Likely identity matches"
                                       class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
-                                      value={cimmichAuditTargetPersonId(item)}
+                                      value={cimmichAuditDecision(item).targetPersonId}
                                       disabled={Boolean(cimmichIdentityAuditSavingId)}
                                       onchange={(event) => {
                                         cimmichIdentityAuditTargetPersonIds = {
@@ -4171,15 +4169,20 @@
                                         };
                                       }}
                                     >
-                                      {#if !cimmichAuditTargetPersonId(item)}
+                                      {#if !cimmichAuditDecision(item).targetPersonId}
                                         <option value="">Choose a person</option>
                                       {/if}
-                                      {#if item.kind !== 'untagged_match'}
+                                      {#if item.kind === 'accepted_contradiction'}
                                         <option value={item.suggestedPerson.personId}>
                                           {item.suggestedPerson.displayName} · likely match
                                         </option>
+                                        {#if item.assignedPerson && !cimmichAuditDecision(item).alternativeMatches.some(({ person_id }) => person_id === item.assignedPerson?.personId)}
+                                          <option value={item.assignedPerson.personId}>
+                                            {item.assignedPerson.displayName} · current
+                                          </option>
+                                        {/if}
                                       {/if}
-                                      {#each cimmichAuditAlternativeMatches(item) as match (match.person_id)}
+                                      {#each cimmichAuditDecision(item).alternativeMatches as match (match.person_id)}
                                         <option value={match.person_id}>
                                           {match.display_name}{match.current_identity ? ' · current' : ''}
                                         </option>
@@ -4230,25 +4233,14 @@
                                     <p class="text-xs text-gray-500">No matching Person. Try another spelling.</p>
                                   {/if}
                                   <div
-                                    class="flex items-center justify-end gap-2 border-t border-gray-200 pt-2 dark:border-gray-700"
+                                    class="flex items-center justify-end border-t border-gray-200 pt-2 dark:border-gray-700"
                                   >
                                     <button
                                       class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                       type="button"
                                       onclick={() => (cimmichIdentityAuditChangeFaceId = '')}
                                     >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      class="min-h-9 rounded-md bg-gray-900 px-3 text-xs font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-gray-900"
-                                      type="button"
-                                      disabled={Boolean(cimmichIdentityAuditSavingId) ||
-                                        !cimmichAuditTargetPersonId(item)}
-                                      onclick={() => void changeCimmichAuditPerson(item)}
-                                    >
-                                      {cimmichIdentityAuditSavingId === `change:${item.faceId}`
-                                        ? 'Saving…'
-                                        : 'Apply change'}
+                                      {item.kind === 'accepted_contradiction' ? 'Close' : 'Cancel'}
                                     </button>
                                   </div>
                                   {#if cimmichIdentityAuditMatchesLoading[item.faceId]}
