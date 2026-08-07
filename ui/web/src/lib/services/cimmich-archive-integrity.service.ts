@@ -54,6 +54,31 @@ export type CimmichArchiveSourceEvidencePage = {
   schemaVersion: 'cimmich.archive-integrity.v1';
 };
 
+export type CimmichArchiveBackupProofItem = {
+  byteLength: number;
+  contentDigest: string;
+  independentDestinationCount: number;
+  proofState: 'storage_domain_evidence_required';
+  sourceAssetId: string;
+  sourceSystemCount: number;
+};
+
+export type CimmichArchiveBackupProofPage = {
+  items: CimmichArchiveBackupProofItem[];
+  schemaVersion: 'cimmich.archive-backup-proof.v1';
+  summary: {
+    byteVerifiedBytes: number;
+    byteVerifiedItems: number;
+    independentDestinationCount: number;
+    independentlyProtectedItems: number;
+    maximumSourceSystemsPerItem: number;
+    multipleSourceSystemItems: number;
+    proofState: 'storage_domain_evidence_required';
+    sourceSystemCount: number;
+    unprovenItems: number;
+  };
+};
+
 export const getCimmichExactDuplicates = ({ limit = 24, offset = 0 } = {}) => {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   return request<CimmichExactDuplicatePage>(`/v1/archive-integrity/exact-duplicates?${search.toString()}`);
@@ -62,4 +87,13 @@ export const getCimmichExactDuplicates = ({ limit = 24, offset = 0 } = {}) => {
 export const getCimmichArchiveSourceEvidence = (sourceAssetIds: string[]) => {
   const search = new URLSearchParams({ sourceAssetIds: sourceAssetIds.join(',') });
   return request<CimmichArchiveSourceEvidencePage>(`/v1/archive-integrity/source-evidence?${search.toString()}`);
+};
+
+export const getCimmichArchiveBackupProof = (sourceAssetIds: string[] = []) => {
+  const search = new URLSearchParams();
+  if (sourceAssetIds.length > 0) {
+    search.set('sourceAssetIds', sourceAssetIds.join(','));
+  }
+  const suffix = sourceAssetIds.length > 0 ? `?${search.toString()}` : '';
+  return request<CimmichArchiveBackupProofPage>(`/v1/archive-integrity/backup-proof${suffix}`);
 };

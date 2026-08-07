@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCimmichArchiveSourceEvidence, getCimmichExactDuplicates } from './cimmich-archive-integrity.service';
+import {
+  getCimmichArchiveBackupProof,
+  getCimmichArchiveSourceEvidence,
+  getCimmichExactDuplicates,
+} from './cimmich-archive-integrity.service';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -60,6 +64,35 @@ describe('Cimmich Archive integrity client', () => {
     expect(result.items[0]?.headAssignments).toBe(1);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:3101/v1/archive-integrity/source-evidence?sourceAssetIds=source-one%2Csource-two',
+      expect.any(Object),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('reads backup readiness without creating a destination claim', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({
+        items: [],
+        schemaVersion: 'cimmich.archive-backup-proof.v1',
+        summary: {
+          byteVerifiedBytes: 647_067_285_586,
+          byteVerifiedItems: 119_860,
+          independentDestinationCount: 0,
+          independentlyProtectedItems: 0,
+          maximumSourceSystemsPerItem: 1,
+          multipleSourceSystemItems: 0,
+          proofState: 'storage_domain_evidence_required',
+          sourceSystemCount: 1,
+          unprovenItems: 119_860,
+        },
+      }),
+    );
+
+    const result = await getCimmichArchiveBackupProof();
+
+    expect(result.summary.independentlyProtectedItems).toBe(0);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3101/v1/archive-integrity/backup-proof',
       expect.any(Object),
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();

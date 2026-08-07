@@ -19,6 +19,21 @@ export const createReviewRoutes =
     }
     if (
       request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/backup-proof"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityBackupProof({
+          sourceAssetIds: url.searchParams.get("sourceAssetIds"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "GET" &&
       url.pathname === "/v1/archive-integrity/source-evidence"
     ) {
       requireProjection("asset_detail");

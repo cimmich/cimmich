@@ -1,4 +1,6 @@
 export const archiveIntegritySchemaVersion = "cimmich.archive-integrity.v1";
+export const archiveBackupProofSchemaVersion =
+  "cimmich.archive-backup-proof.v1";
 
 const cleanInteger = (value, fallback, maximum) => {
   const parsed = Number(value);
@@ -35,6 +37,13 @@ const cleanSourceAssetIds = (values) => {
   return unique;
 };
 
+const cleanOptionalSourceAssetIds = (values) => {
+  if (values === undefined || values === null || String(values).trim() === "") {
+    return [];
+  }
+  return cleanSourceAssetIds(values);
+};
+
 const captureTime = (value) => {
   if (!value) return null;
   if (typeof value.toISOString === "function") return value.toISOString();
@@ -42,7 +51,8 @@ const captureTime = (value) => {
 };
 
 const visibleCopiesSql = (sql, visibleRank) => sql`
-  SELECT binding.content_id, binding.asset_id, content.byte_length,
+  SELECT binding.content_id, binding.asset_id, binding.source_kind,
+    binding.source_id, content.byte_length,
     fingerprint.content_digest,
     projection.immich_asset_id AS source_asset_id,
     projection.original_file_name AS filename,
@@ -67,6 +77,102 @@ const visibleCopiesSql = (sql, visibleRank) => sql`
 `;
 
 export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
+  async archiveIntegrityBackupProof({ sourceAssetIds } = {}) {
+    const requestedIds = cleanOptionalSourceAssetIds(sourceAssetIds);
+    const visibleRank = presentationRank();
+    const visibleCopies = visibleCopiesSql(sql, visibleRank);
+    const [summary = {}] = await sql`
+      WITH visible_copies AS MATERIALIZED (${visibleCopies}),
+      visible_content AS (
+        SELECT content_id, max(byte_length) AS byte_length
+        FROM visible_copies
+        GROUP BY content_id
+      ), source_counts AS (
+        SELECT content.content_id,
+          count(DISTINCT binding.source_kind || ':' || binding.source_id)::int
+            AS source_system_count
+        FROM visible_content content
+        JOIN asset_source_binding binding
+          ON binding.content_id = content.content_id
+          AND binding.state = 'active'
+        GROUP BY content.content_id
+      )
+      SELECT (SELECT count(*) FROM visible_content)::bigint
+          AS byte_verified_items,
+        (SELECT coalesce(sum(byte_length), 0) FROM visible_content)::bigint
+          AS byte_verified_bytes,
+        (SELECT count(*) FROM source_counts WHERE source_system_count > 1)::bigint
+          AS multiple_source_system_items,
+        (SELECT coalesce(max(source_system_count), 0) FROM source_counts)::int
+          AS maximum_source_systems_per_item,
+        (SELECT count(DISTINCT source_kind || ':' || source_id)
+          FROM visible_copies)::int AS source_system_count
+    `;
+    let items = [];
+    if (requestedIds.length > 0) {
+      const rows = await sql`
+        WITH requested(source_asset_id, position) AS (
+          SELECT source_asset_id, ordinality::int
+          FROM unnest(${requestedIds}::text[]) WITH ORDINALITY
+            AS requested(source_asset_id, ordinality)
+        )
+        SELECT requested.position, requested.source_asset_id,
+          content.byte_length, fingerprint.content_digest,
+          count(DISTINCT all_binding.source_kind || ':' || all_binding.source_id)::int
+            AS source_system_count
+        FROM requested
+        JOIN immich_asset_projection projection
+          ON projection.immich_asset_id = requested.source_asset_id
+          AND projection.state = 'active'
+        JOIN asset_source_binding binding
+          ON binding.source_kind = 'immich'
+          AND binding.source_id = projection.source_id
+          AND binding.external_asset_id = projection.immich_asset_id
+          AND binding.state = 'active'
+        JOIN asset
+          ON asset.asset_id = binding.asset_id AND asset.state = 'active'
+        JOIN media_content content
+          ON content.content_id = binding.content_id AND content.state = 'active'
+        JOIN media_content_fingerprint fingerprint
+          ON fingerprint.content_id = content.content_id
+          AND fingerprint.hash_algorithm = 'sha256'
+          AND fingerprint.verification = 'byte_verified'
+        JOIN asset_source_binding all_binding
+          ON all_binding.content_id = content.content_id
+          AND all_binding.state = 'active'
+        WHERE cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+        GROUP BY requested.position, requested.source_asset_id,
+          content.byte_length, fingerprint.content_digest
+        ORDER BY requested.position
+      `;
+      items = rows.map((row) => ({
+        byteLength: count(row.byte_length),
+        contentDigest: row.content_digest,
+        independentDestinationCount: 0,
+        proofState: "storage_domain_evidence_required",
+        sourceAssetId: row.source_asset_id,
+        sourceSystemCount: count(row.source_system_count),
+      }));
+    }
+    const byteVerifiedItems = count(summary.byte_verified_items);
+    return {
+      items,
+      schemaVersion: archiveBackupProofSchemaVersion,
+      summary: {
+        byteVerifiedBytes: count(summary.byte_verified_bytes),
+        byteVerifiedItems,
+        independentDestinationCount: 0,
+        independentlyProtectedItems: 0,
+        maximumSourceSystemsPerItem: count(
+          summary.maximum_source_systems_per_item,
+        ),
+        multipleSourceSystemItems: count(summary.multiple_source_system_items),
+        proofState: "storage_domain_evidence_required",
+        sourceSystemCount: count(summary.source_system_count),
+        unprovenItems: byteVerifiedItems,
+      },
+    };
+  },
   async archiveIntegritySourceEvidence({ sourceAssetIds } = {}) {
     const requestedIds = cleanSourceAssetIds(sourceAssetIds);
     const visibleRank = presentationRank();
