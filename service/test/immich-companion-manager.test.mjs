@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -110,4 +117,27 @@ test("failed validation cannot create the credential store", async () => {
     (error) => error.code === "IMMICH_COMPANION_AUTH_FAILED",
   );
   await assert.rejects(readFile(filename), (error) => error.code === "ENOENT");
+});
+
+test("credential loading refuses a symbolic-link path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-companion-manager-"));
+  const target = join(root, "credential-target.json");
+  const filename = join(root, "immich-credential.json");
+  await writeFile(
+    target,
+    JSON.stringify({
+      apiBaseUrl: "http://immich.test/api",
+      apiKey: "fixture-secret-key-123456",
+    }),
+  );
+  await chmod(target, 0o600);
+  await symlink(target, filename);
+
+  await assert.rejects(
+    createImmichCompanionManager({
+      credentialFile: filename,
+      fetchImpl: readyFetch,
+    }),
+    (error) => error.code === "IMMICH_COMPANION_CREDENTIAL_FILE_INVALID",
+  );
 });

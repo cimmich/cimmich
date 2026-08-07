@@ -12,15 +12,15 @@ export const installMessageListener = () => {
       return;
     }
 
+    const client = event.source;
+    if (!client || !('url' in client) || new URL(client.url).origin !== sw.location.origin) {
+      return;
+    }
+
     switch (event.data.type) {
       case 'cancel': {
-        const url = event.data.url ? new URL(event.data.url, self.location.origin) : undefined;
-        if (!url) {
-          return;
-        }
-
-        const client = event.source;
-        if (!client) {
+        const url = event.data.url ? new URL(event.data.url, sw.location.origin) : undefined;
+        if (!url || url.origin !== sw.location.origin) {
           return;
         }
 

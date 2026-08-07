@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statfsSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  statfsSync,
+} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -59,13 +67,18 @@ let configuration = {
   requiredKeys: "unknown",
 };
 let values = new Map();
-if (!stateRoot || !environmentFile || !existsSync(environmentFile)) {
+if (!stateRoot || !environmentFile) {
   addError("CONFIG_NOT_FOUND");
 } else {
+  let descriptor;
   try {
-    const mode = statSync(environmentFile).mode & 0o777;
+    descriptor = openSync(
+      environmentFile,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+    const mode = fstatSync(descriptor).mode & 0o777;
     if ((mode & 0o077) !== 0) addError("CONFIG_PERMISSIONS_TOO_OPEN");
-    values = parseEnvironment(readFileSync(environmentFile, "utf8"));
+    values = parseEnvironment(readFileSync(descriptor, "utf8"));
     const complete = requiredKeys.every((key) => values.get(key));
     if (!complete) addError("CONFIG_REQUIRED_VALUE_MISSING");
     configuration = {
@@ -73,8 +86,12 @@ if (!stateRoot || !environmentFile || !existsSync(environmentFile)) {
       permissions: (mode & 0o077) === 0 ? "private" : "too-open",
       requiredKeys: complete ? "present" : "incomplete",
     };
-  } catch {
-    addError("CONFIG_UNREADABLE");
+  } catch (error) {
+    addError(
+      error?.code === "ENOENT" ? "CONFIG_NOT_FOUND" : "CONFIG_UNREADABLE",
+    );
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 

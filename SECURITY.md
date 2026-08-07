@@ -5,11 +5,11 @@ therefore contain unusually sensitive facts even when they contain no media.
 
 ## Supported versions
 
-| Version                        | Supported                                          |
-| :----------------------------- | :------------------------------------------------- |
-| `v1.1.0-community-preview.x`   | Yes, while the preview is current                  |
-| `v1.0.1-beta.6`                | Critical fixes only until the preview is published |
-| Older beta and Build Week tags | No                                                 |
+| Version                         | Supported                                         |
+| :------------------------------ | :------------------------------------------------ |
+| `v1.1.0-community-preview.6`    | Yes, while Community Preview 6 is current        |
+| Earlier Community Preview tags | No; upgrade to the current named release         |
+| Public Beta and Build Week tags | No                                                |
 
 `main` is reviewed for the next candidate but is not a substitute for a named
 release when reporting an installed-version problem.

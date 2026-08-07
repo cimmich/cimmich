@@ -20,9 +20,10 @@ What user problem does this change solve, and what should be observably better?
       weights or generated runtime state were added.
 - [ ] Documentation and explicit nonclaims were updated.
 
-## Release target
+## Publication boundary
 
-- [ ] `post-build-week` during the judging freeze.
-- [ ] `main` after the judging freeze.
-- [ ] Critical judged-build correction with the submitted tag preserved and
-      the reason documented.
+- [ ] Maintained product change for reviewed merge into `main`.
+- [ ] Future named Community Preview release candidate requiring full release
+      evidence and new immutable artifacts.
+- [ ] Critical submitted-build correction; the existing Build Week tag,
+      release, assets and evidence remain untouched and the reason is recorded.
