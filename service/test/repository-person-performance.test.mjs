@@ -58,7 +58,36 @@ test("Person candidate summary is grouped from the active SourcePack without aud
   assert.match(statement, /source_pack_prime_match/);
   assert.match(statement, /claim\.state = 'candidate'/);
   assert.match(statement, /cimmich_face_match_eligible/);
+  assert.match(statement, /face_review_unknown/);
   assert.doesNotMatch(statement, /identity_audit/);
+});
+
+test("Person candidate reads honor a current owner Unknown decision", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const slices = [
+    source.slice(
+      source.indexOf("async identityCandidates"),
+      source.indexOf("async personCandidates"),
+    ),
+    source.slice(
+      source.indexOf("async personCandidates"),
+      source.indexOf("async personCandidateSummary"),
+    ),
+    source.slice(
+      source.indexOf("async personCandidateSummary"),
+      source.indexOf("async bulkAcceptPersonCandidates"),
+    ),
+  ];
+  for (const method of slices) {
+    assert.match(method, /subject_type = 'face_review'/);
+    assert.match(method, /face_review_unknown/);
+    assert.match(
+      method,
+      /ORDER BY review\.created_at DESC, review\.decision_id DESC/,
+    );
+  }
 });
 
 test("People project ordinary accepted Faces and accepted Body regions without matching authority", async () => {

@@ -129,6 +129,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('aria-label="Likely identity matches"');
     expect(source).toContain('placeholder="Type a name"');
     expect(source).toContain('cimmichAuditPersonSearchResults(item)');
+    expect(source).toContain('<CimmichUnknownPersonAction');
+    expect(source).toContain("'Someone else…'");
     expect(source).toContain("'Rescan Heads'");
     expect(source).toContain("await loadCimmichIdentityBucket('head')");
     expect(source).toContain('!cimmichIdentityServerBucket(cimmichIdentityFilter) && cimmichIdentityNextCursor');
