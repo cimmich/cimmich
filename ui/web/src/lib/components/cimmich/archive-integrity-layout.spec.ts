@@ -20,6 +20,11 @@ describe('Archive integrity layout', () => {
     expect(normalizedSource).toContain('Suggested keep/bin decisions are deliberately');
     expect(source).not.toContain('resolveDuplicates');
     expect(source).not.toContain('suggestedKeepAssetIds');
+    expect(source).toContain('Canonical plan');
+    expect(normalizedSource).toContain('A preservation lead, never a deletion instruction');
+    expect(normalizedSource).toContain('No recommendation is saved or grants authority to retire a file');
+    expect(variants).toContain("status: 'hold_ambiguous'");
+    expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup proof');
     expect(source).toContain('Sidecar export');
     expect(source).not.toContain("method: 'POST'");
