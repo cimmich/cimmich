@@ -160,25 +160,27 @@ const sizeLabel = (value: number) => {
 };
 
 const candidateReasons = (preferred: ArchiveCanonicalSignal, runnerUp: ArchiveCanonicalSignal) => {
-  const reasons: string[] = [];
   if (preferred.originalCapture !== runnerUp.originalCapture) {
-    reasons.push(`${preferred.extension.toLocaleUpperCase()} is an original capture format.`);
+    return [`${preferred.extension.toLocaleUpperCase()} is an original capture format, which ranks first.`];
   }
   if (preferred.pixelCount !== runnerUp.pixelCount) {
-    reasons.push(`${megapixels(preferred.pixelCount)} versus ${megapixels(runnerUp.pixelCount)}.`);
+    return [
+      `Higher pixel dimensions rank first: ${megapixels(preferred.pixelCount)} versus ${megapixels(runnerUp.pixelCount)}.`,
+    ];
   }
   if (preferred.fileSize !== runnerUp.fileSize) {
-    reasons.push(`Larger complete file: ${sizeLabel(preferred.fileSize)} versus ${sizeLabel(runnerUp.fileSize)}.`);
+    return [
+      `Larger complete file breaks the tie: ${sizeLabel(preferred.fileSize)} versus ${sizeLabel(runnerUp.fileSize)}.`,
+    ];
   }
   if (preferred.metadataFields !== runnerUp.metadataFields) {
-    reasons.push(`More capture metadata: ${preferred.metadataFields} fields versus ${runnerUp.metadataFields}.`);
+    return [
+      `More capture metadata breaks the tie: ${preferred.metadataFields} fields versus ${runnerUp.metadataFields}.`,
+    ];
   }
-  if (preferred.evidenceLinks !== runnerUp.evidenceLinks) {
-    reasons.push(
-      `Richer organisation and identity evidence: ${preferred.evidenceLinks} links versus ${runnerUp.evidenceLinks}.`,
-    );
-  }
-  return reasons.slice(0, 3);
+  return [
+    `Richer organisation and identity evidence breaks the tie: ${preferred.evidenceLinks} links versus ${runnerUp.evidenceLinks}.`,
+  ];
 };
 
 const canonicalPlanFor = (

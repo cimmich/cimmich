@@ -74,6 +74,7 @@ describe('Archive variant grouping', () => {
     expect(result[0]?.suggestedKeepAssetIds).toEqual(['variant-b']);
     expect(result[0]?.canonicalPlan.status).toBe('candidate');
     expect(result[0]?.canonicalPlan.preferredAssetId).toBe('variant-b');
+    expect(result[0]?.canonicalPlan.reasons).toEqual(['Larger complete file breaks the tie: 20 B versus 10 B.']);
     expect(result[1]?.canonicalPlan.status).toBe('hold_exact');
   });
 
@@ -115,7 +116,7 @@ describe('Archive variant grouping', () => {
 
     expect(group?.canonicalPlan.status).toBe('candidate');
     expect(group?.canonicalPlan.preferredAssetId).toBe('raw');
-    expect(group?.canonicalPlan.reasons[0]).toContain('NEF is an original capture format');
+    expect(group?.canonicalPlan.reasons).toEqual(['NEF is an original capture format, which ranks first.']);
     expect(group?.canonicalPlan.cautions).toContain(
       'A rendered companion may still be needed for viewing or intentional edits.',
     );
