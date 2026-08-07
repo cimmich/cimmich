@@ -469,6 +469,24 @@ test("incremental audit does not carry stale matching suggestions", async () => 
   assert.match(source, /same_photo_face\.asset_id = prior\.asset_id/);
 });
 
+test("owner Unknown decisions suppress untagged audit generation, cards, totals and leads", async () => {
+  const auditSource = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  const leadsSource = await readFile(
+    new URL("../src/identity-audit-leads.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.equal(auditSource.match(/face_review_unknown/g)?.length, 3);
+  assert.match(auditSource, /subject_type = 'face_review'/);
+  assert.match(leadsSource, /face_review_unknown/);
+  assert.match(
+    leadsSource,
+    /ORDER BY review\.created_at DESC, review\.decision_id DESC/,
+  );
+});
+
 test("independent evidence suppresses only replay-consistent same-photo candidates", async () => {
   const digest = (character) => character.repeat(64);
   const candidates = [

@@ -63,6 +63,7 @@ import {
   setCimmichManualPresence,
   setCimmichFaceIdentitiesBatch,
   setCimmichFaceIdentity,
+  setCimmichFaceReviewDisposition,
   setCimmichViewingMode,
   searchCimmichSmart,
   referenceCimmichDocument,
@@ -423,6 +424,32 @@ describe('Cimmich bounded People review client contracts', () => {
       body: JSON.stringify({ items: [{ faceId: 'face/1', personId: 'person-1' }] }),
       method: 'POST',
     });
+    fetchMock.mockRestore();
+  });
+});
+
+describe('Cimmich Unknown person client contract', () => {
+  it('writes a replay-safe Face review disposition', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({
+        changed: true,
+        decisionId: 'decision-unknown',
+        disposition: 'unknown',
+        faceId: 'face/1',
+        replayed: false,
+        schemaVersion: 'cimmich.face-review-disposition.v1',
+      }),
+    );
+
+    await setCimmichFaceReviewDisposition('face/1', 'unknown', 'face-review.unknown.1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:3101/v1/faces/face%2F1/review-disposition',
+      expect.objectContaining({
+        body: JSON.stringify({ commandId: 'face-review.unknown.1', disposition: 'unknown' }),
+        method: 'POST',
+      }),
+    );
     fetchMock.mockRestore();
   });
 });

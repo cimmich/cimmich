@@ -3341,6 +3341,7 @@ export const createCimmichRepository = (
           AND cimmich_face_match_eligible(
             fo.detection_confidence, fo.box_w, fo.box_h
           )
+          AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
           AND NOT EXISTS (
             SELECT 1 FROM identity_claim accepted
             WHERE accepted.face_id = fo.face_id AND accepted.state = 'accepted'
@@ -5204,6 +5205,7 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           fo.detection_confidence, fo.box_w, fo.box_h
         )
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = fo.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
         AND p.status = 'active'
         AND p.subject_kind = 'person'
         AND cimmich_visibility_person_rank(p.person_id) <= ${presentationRank()}
@@ -5309,6 +5311,7 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
         AND (
           coalesce(nullif(claim.evidence_refs->>'best_score', '')::float8, claim.calibrated_confidence::float8, -1)
@@ -5375,6 +5378,7 @@ export const createCimmichRepository = (
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
         AND (
           coalesce(
@@ -8751,7 +8755,7 @@ export const createCimmichRepository = (
         `face_review_${disposition}`,
         stableCommandId,
       );
-      return sql.begin(async (tx) => {
+      const result = await sql.begin(async (tx) => {
         const [face] = await tx`
           SELECT face.face_id
           FROM face_observation face
@@ -8846,6 +8850,8 @@ export const createCimmichRepository = (
           schemaVersion: "cimmich.face-review-disposition.v1",
         };
       });
+      invalidateMachineSuggestions();
+      return result;
     },
 
     async rejectAcceptedIdentity({ actorId, claimId, commandId, note = "" }) {

@@ -70,7 +70,6 @@ const cleanDetectorConfigDigest = (value) => {
   }
   return digest;
 };
-
 export const carryForwardIdentityAuditDismissals = async (
   sql,
   { kind, runId } = {},
@@ -108,7 +107,6 @@ export const carryForwardIdentityAuditDismissals = async (
       AND current.review_state = 'open'
   `;
 };
-
 const projectRun = (row, currentPackId = null) =>
   row
     ? {
@@ -280,6 +278,7 @@ const auditSql = async (
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE face.state = 'valid'
           AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
+          AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
           AND (${!incremental} OR face.face_id = ANY(${incrementalFaceIds}))
           AND NOT EXISTS (
             SELECT 1 FROM current_face_identity accepted
@@ -1203,6 +1202,7 @@ export const createIdentityAudit = (
           item.audit_kind <> 'untagged_match' OR
           cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
         )
+        AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown')
         AND NOT EXISTS (
           SELECT 1
           FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
@@ -1408,6 +1408,7 @@ export const createIdentityAudit = (
           item.audit_kind <> 'untagged_match'
           OR cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
         )
+        AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown')
         AND NOT EXISTS (
           SELECT 1
           FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face

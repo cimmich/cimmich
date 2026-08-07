@@ -822,6 +822,8 @@ test("candidate evidence keeps the request-bound visibility rank across async wo
   assert.match(method, /allTrustedShortlistBatchLimit/);
   assert.match(method, /set_config\(\s*'statement_timeout'/);
   assert.match(method, /set_config\(\s*'transaction_timeout'/);
+  assert.match(method, /subject_type = 'face_review'/);
+  assert.match(method, /face_review_unknown/);
 });
 
 test("identity-changing commands invalidate the shared machine-suggestion snapshot", async () => {
@@ -838,6 +840,7 @@ test("identity-changing commands invalidate the shared machine-suggestion snapsh
     ["unmergePeople", "identityCandidates"],
     ["bulkAcceptPersonCandidates", "personAssets"],
     ["movePersonFace", "dismissMachineSuggestion"],
+    ["setFaceReviewDisposition", "rejectAcceptedIdentity"],
   ]) {
     assert.match(
       methodBody(name, nextName),

@@ -69,6 +69,7 @@ export const createIdentityAuditLeads = ({
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
+        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
         AND selected_identity.face_id IS NULL
         AND same_photo_identity.person_id IS NULL
       GROUP BY item.suggested_person_id, person.display_name

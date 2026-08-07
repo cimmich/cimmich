@@ -7,6 +7,7 @@
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
+  import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
@@ -4123,8 +4124,18 @@
                                     ? 'Saving…'
                                     : `Confirm ${cimmichPerson.display_name}`}
                                 </button>
+                                <CimmichUnknownPersonAction
+                                  busy={Boolean(cimmichIdentityAuditSavingId)}
+                                  faceId={item.faceId}
+                                  onChanged={() => {
+                                    cimmichIdentityMessage = 'Marked as unknown. Identity suggestions are paused.';
+                                    finishCimmichAuditDecision(item);
+                                  }}
+                                  onError={(message) => (cimmichIdentityError = message)}
+                                  onSaving={(saving) => (cimmichIdentityAuditSavingId = saving ? item.faceId : '')}
+                                />
                                 <button
-                                  class="col-span-2 min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+                                  class="min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
                                   type="button"
                                   aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
                                   disabled={Boolean(cimmichIdentityAuditSavingId)}
@@ -4144,9 +4155,7 @@
                                     }
                                   }}
                                 >
-                                  {cimmichIdentityAuditChangeFaceId === item.faceId
-                                    ? 'Close change'
-                                    : `Not ${cimmichPerson.display_name}`}
+                                  {cimmichIdentityAuditChangeFaceId === item.faceId ? 'Close change' : 'Someone else…'}
                                 </button>
                               {/if}
                               {#if cimmichIdentityAuditChangeFaceId === item.faceId}
