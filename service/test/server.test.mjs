@@ -3580,6 +3580,30 @@ test("Archive integrity exposes only bounded read-only exact duplicate groups", 
   assert.deepEqual(calls, [{ limit: "12", offset: "24" }]);
 });
 
+test("Archive integrity reads bounded source evidence without mutation", async () => {
+  const calls = [];
+  const result = {
+    items: [],
+    schemaVersion: "cimmich.archive-integrity.v1",
+  };
+  await withServer(
+    {
+      archiveIntegritySourceEvidence: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/archive-integrity/source-evidence?sourceAssetIds=one%2Ctwo`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [{ sourceAssetIds: "one,two" }]);
+});
+
 test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
   const calls = [];
   const run = {

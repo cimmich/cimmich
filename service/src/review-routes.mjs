@@ -18,6 +18,21 @@ export const createReviewRoutes =
       return true;
     }
     if (
+      request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/source-evidence"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegritySourceEvidence({
+          sourceAssetIds: url.searchParams.get("sourceAssetIds"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
       request.method === "POST" &&
       url.pathname === "/v1/assets/corrections:batch"
     ) {
