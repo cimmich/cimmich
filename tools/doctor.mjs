@@ -67,7 +67,7 @@ let configuration = {
   requiredKeys: "unknown",
 };
 let values = new Map();
-if (!stateRoot || !environmentFile || !existsSync(environmentFile)) {
+if (!stateRoot || !environmentFile) {
   addError("CONFIG_NOT_FOUND");
 } else {
   let descriptor;
@@ -86,8 +86,10 @@ if (!stateRoot || !environmentFile || !existsSync(environmentFile)) {
       permissions: (mode & 0o077) === 0 ? "private" : "too-open",
       requiredKeys: complete ? "present" : "incomplete",
     };
-  } catch {
-    addError("CONFIG_UNREADABLE");
+  } catch (error) {
+    addError(
+      error?.code === "ENOENT" ? "CONFIG_NOT_FOUND" : "CONFIG_UNREADABLE",
+    );
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
