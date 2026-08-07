@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   authoredBodyTagRepresentsOverlay,
+  faceMatchUi,
   getCimmichPersonPhotoContext,
   getCimmichPetPhotoContext,
   isNamedBody,
@@ -22,6 +23,20 @@ import {
 } from './photo-viewer-presentation';
 
 describe('photo viewer presentation context', () => {
+  it('keeps raw Face comparisons review-only until the governed matcher admits one', () => {
+    const raw = {
+      displayEligible: true as const,
+      governedCandidate: false,
+      personId: 'person-ledjo',
+      personName: 'Ledjo',
+      rank: 1,
+      rawScore: 0.17,
+      scoreKind: 'cosine_similarity' as const,
+    };
+    expect(faceMatchUi.governed([raw])).toEqual([]);
+    expect(faceMatchUi.ownerReview([raw])[0]).toMatchObject({ display_name: 'Ledjo', similarity: 0.17 });
+  });
+
   it('never preselects an unaccepted Person suggestion in the Face editor', () => {
     expect(projectFaceEditorPersonDraft({ acceptedName: '', candidateName: 'Alex Okafor' })).toBe('');
     expect(projectFaceEditorPersonDraft({ acceptedName: ' Maya Chen ', candidateName: 'Alex Okafor' })).toBe(

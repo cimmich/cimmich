@@ -113,7 +113,7 @@ export type CimmichFaceOverlay = {
   };
   bucket: string;
   bucketConfidence: string;
-  candidateAbstainReason?: 'accepted_identity' | 'no_active_embedding' | 'no_same_space_candidate';
+  candidateAbstainReason?: string;
   candidateIdentityKey?: string;
   candidateClaimId?: string;
   candidateMatches?: Array<{

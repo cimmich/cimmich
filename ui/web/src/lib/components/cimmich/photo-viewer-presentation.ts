@@ -166,6 +166,41 @@ export const projectFaceEditorPersonDraft = ({
   candidateName?: string | null;
 }) => acceptedName?.trim() ?? '';
 
+type FaceComparison = {
+  displayEligible: true;
+  governedCandidate?: boolean;
+  personId: string;
+  personName: string;
+  rank: number;
+  rawScore: number;
+  scoreKind: 'cosine_similarity';
+};
+
+const governedFaceCandidates = (matches?: FaceComparison[]) =>
+  matches?.filter((match) => match.displayEligible && match.governedCandidate) ?? [];
+
+const projectFaceOwnerReviewMatches = (matches?: FaceComparison[]) =>
+  (matches ?? []).slice(0, 5).map((match) => ({
+    accepted_example_count: 0,
+    current_identity: false,
+    display_name: match.personName,
+    person_id: match.personId,
+    prime_score: match.rawScore,
+    rank: match.rank,
+    score_kind: match.scoreKind,
+    similarity: match.rawScore,
+    unavailable_reason: null,
+  }));
+
+export const faceMatchUi = {
+  emptyLabel: (reason?: string) =>
+    reason === 'reject_noise'
+      ? 'This region is below the Face matching quality floor.'
+      : 'No compatible reference photos yet.',
+  governed: governedFaceCandidates,
+  ownerReview: projectFaceOwnerReviewMatches,
+};
+
 export const placeFaceDetailsPanel = ({
   editing,
   face,

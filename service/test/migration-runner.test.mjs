@@ -376,6 +376,32 @@ test("schema 121 records reversible Cimmich-only asset corrections", async () =>
   assert.doesNotMatch(migration, /UPDATE immich|ALTER TABLE asset ADD COLUMN/i);
 });
 
+test("schema 122 makes reject-noise observations ineligible for identity matching", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0122_face_match_eligibility_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    migration,
+    /CREATE OR REPLACE FUNCTION cimmich_face_match_eligible/,
+  );
+  assert.match(migration, /detection_confidence >= 0\.24/);
+  assert.match(migration, /box_w \* box_h >= 0\.00015/);
+  assert.match(migration, /claim\.state = 'candidate'/);
+  assert.match(migration, /claim\.origin = 'prime_match'/);
+  assert.match(migration, /SET state = 'superseded'/);
+  assert.doesNotMatch(migration, /claim\.state = 'accepted'/);
+  assert.doesNotMatch(
+    migration,
+    /UPDATE face_observation|UPDATE face_embedding/,
+  );
+});
+
 test("schema 114 persists a bounded satellite Plan viewport without changing Place geometry", async () => {
   const migration = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

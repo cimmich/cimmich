@@ -30,6 +30,7 @@ import { createBasicSmartSearch } from "./basic-smart-search.mjs";
 import { createDocumentStore } from "./documents.mjs";
 import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
 import { createIdentityAudit } from "./identity-audit.mjs";
+import { createFaceMatches } from "./face-match-repository.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
@@ -995,6 +996,12 @@ export const createCimmichRepository = (
     options.expectedSchemaPatchCount ?? -1,
   );
   const presentationRank = () => visibility?.currentRank() ?? 0;
+  const faceMatches = createFaceMatches({
+    cleanLimit,
+    matcherPolicyVersion: machineMatcherPolicyVersion,
+    presentationRank,
+    sql,
+  });
   const searchTagAssets = createTagAssetSearch(sql, {
     bridge,
     presentationRank,
@@ -2076,6 +2083,9 @@ export const createCimmichRepository = (
         (SELECT count(*)::int FROM identity_claim claim
           JOIN face_observation face ON face.face_id = claim.face_id
           WHERE claim.state = 'candidate'
+            AND cimmich_face_match_eligible(
+              face.detection_confidence, face.box_w, face.box_h
+            )
             AND NOT EXISTS (
               SELECT 1 FROM hidden_assets hidden
               WHERE hidden.object_id = face.asset_id
@@ -3328,6 +3338,9 @@ export const createCimmichRepository = (
             AND pipeline.state = 'recognized'
         ) runtime ON true
         WHERE fo.state = 'valid'
+          AND cimmich_face_match_eligible(
+            fo.detection_confidence, fo.box_w, fo.box_h
+          )
           AND NOT EXISTS (
             SELECT 1 FROM identity_claim accepted
             WHERE accepted.face_id = fo.face_id AND accepted.state = 'accepted'
@@ -3811,7 +3824,8 @@ export const createCimmichRepository = (
         SELECT current.person_id, current.face_id, current.state,
           current.identity_claim_id, claim.evidence_refs, claim.calibrated_confidence,
           fo.asset_id, fo.box_x, fo.box_y, fo.box_w, fo.box_h,
-          fo.quality_measurements, fo.state AS face_state
+          fo.detection_confidence, fo.quality_measurements,
+          fo.state AS face_state
         FROM current_face_identity current
         JOIN identity_claim claim ON claim.identity_claim_id = current.identity_claim_id
         JOIN face_observation fo ON fo.face_id = current.face_id
@@ -3890,6 +3904,9 @@ export const createCimmichRepository = (
           count(*) FILTER (WHERE current.state = 'accepted')::int AS accepted_faces,
           count(*) FILTER (
             WHERE current.state = 'candidate'
+              AND cimmich_face_match_eligible(
+                current.detection_confidence, current.box_w, current.box_h
+              )
               AND coalesce(current.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
               AND (
                 coalesce(nullif(current.evidence_refs->>'best_score', '')::float8, current.calibrated_confidence::float8, -1)
@@ -3944,6 +3961,9 @@ export const createCimmichRepository = (
           ON accepted_photo.person_id = identity.person_id
           AND accepted_photo.asset_id = identity.asset_id
         WHERE identity.state = 'candidate' AND identity.face_state = 'valid'
+          AND cimmich_face_match_eligible(
+            identity.detection_confidence, identity.box_w, identity.box_h
+          )
           AND coalesce(identity.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
           AND (
             coalesce(nullif(identity.evidence_refs->>'best_score', '')::float8, identity.calibrated_confidence::float8, -1)
@@ -4252,6 +4272,11 @@ export const createCimmichRepository = (
           JOIN identity_claim claim ON claim.identity_claim_id = identity.identity_claim_id
           JOIN face_observation claim_face ON claim_face.face_id = claim.face_id AND claim_face.state = 'valid'
           WHERE identity.person_id = p.person_id AND identity.state = 'candidate'
+            AND cimmich_face_match_eligible(
+              claim_face.detection_confidence,
+              claim_face.box_w,
+              claim_face.box_h
+            )
             AND NOT EXISTS (
               SELECT 1 FROM hidden_assets hidden
               WHERE hidden.object_id = claim_face.asset_id
@@ -5176,6 +5201,9 @@ export const createCimmichRepository = (
       JOIN face_observation fo ON fo.face_id = ic.face_id
       JOIN asset a ON a.asset_id = fo.asset_id
       WHERE ic.state = 'candidate'
+        AND cimmich_face_match_eligible(
+          fo.detection_confidence, fo.box_w, fo.box_h
+        )
         AND p.status = 'active'
         AND p.subject_kind = 'person'
         AND cimmich_visibility_person_rank(p.person_id) <= ${presentationRank()}
@@ -5278,6 +5306,9 @@ export const createCimmichRepository = (
       WHERE claim.person_id = ${String(personId || "")}
         AND claim.state = 'candidate'
         AND claim.origin = 'prime_match'
+        AND cimmich_face_match_eligible(
+          face.detection_confidence, face.box_w, face.box_h
+        )
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
         AND (
           coalesce(nullif(claim.evidence_refs->>'best_score', '')::float8, claim.calibrated_confidence::float8, -1)
@@ -5341,6 +5372,9 @@ export const createCimmichRepository = (
         AND asset.state = 'active'
       WHERE claim.state = 'candidate'
         AND claim.origin = 'prime_match'
+        AND cimmich_face_match_eligible(
+          face.detection_confidence, face.box_w, face.box_h
+        )
         AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
         AND (
           coalesce(
@@ -5437,6 +5471,11 @@ export const createCimmichRepository = (
             AND pack.evaluation_status = 'passed'
             AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
               claim.evidence_refs->>'policy_version'
+          JOIN face_observation face ON face.face_id = claim.face_id
+            AND face.state = 'valid'
+            AND cimmich_face_match_eligible(
+              face.detection_confidence, face.box_w, face.box_h
+            )
           WHERE claim.identity_claim_id = ${claimId}
             AND claim.origin = 'prime_match'
             AND coalesce(claim.evidence_refs->>'assignment_decision', '') =
@@ -6572,167 +6611,7 @@ export const createCimmichRepository = (
       };
     },
 
-    async faceMatches({ faceId, limit = 5 }) {
-      const boundedLimit = cleanLimit(limit, 5, 12);
-      const rows = await sql`
-      WITH query AS (
-        SELECT fo.face_id, fo.asset_id, fe.model_family, fe.model_version,
-          fe.config_digest, fe.dimension, fe.embedding,
-          coalesce((
-            SELECT array_agg(context.context_id ORDER BY context.context_id)
-            FROM current_face_capture_context context
-            WHERE context.face_id = fo.face_id
-          ), ARRAY[]::text[]) AS query_context_ids,
-          accepted.person_id AS current_person_id
-        FROM face_observation fo
-        JOIN asset query_asset ON query_asset.asset_id = fo.asset_id
-          AND query_asset.state = 'active'
-        JOIN LATERAL (
-          SELECT current.*
-          FROM face_embedding current
-          WHERE current.face_id = fo.face_id AND current.state = 'active'
-          ORDER BY (
-            SELECT count(*)
-            FROM matching_gallery gallery
-            WHERE gallery.model_family = current.model_family
-              AND gallery.model_version = current.model_version
-              AND gallery.config_digest = current.config_digest
-              AND gallery.dimension = current.dimension
-          ) DESC, current.created_at DESC, current.embedding_id
-          LIMIT 1
-        ) fe ON true
-        LEFT JOIN LATERAL (
-          SELECT identity.person_id
-          FROM current_face_identity identity
-          WHERE identity.face_id = fo.face_id AND identity.state = 'accepted'
-          LIMIT 1
-        ) accepted ON true
-        WHERE fo.face_id = ${String(faceId || "")} AND fo.state = 'valid'
-          AND cimmich_visibility_asset_rank(query_asset.asset_id) <= ${presentationRank()}
-      ), prime_face_evidence_raw AS (
-        SELECT gallery.person_id,
-          coalesce((
-            SELECT 'context:' || min(context.context_id)
-            FROM current_face_capture_context context
-            WHERE context.face_id = gallery.face_id
-          ), 'asset:' || reference_face.asset_id) AS evidence_unit,
-          (1 - (gallery.embedding <=> query.embedding))::float8 AS score
-        FROM query
-        JOIN matching_gallery gallery
-          ON gallery.model_family = query.model_family
-          AND gallery.model_version = query.model_version
-          AND gallery.config_digest = query.config_digest
-          AND gallery.dimension = query.dimension
-          AND gallery.bucket_kind = 'prime'
-        JOIN face_observation reference_face
-          ON reference_face.face_id = gallery.face_id AND reference_face.state = 'valid'
-        WHERE reference_face.asset_id <> query.asset_id
-          AND cimmich_visibility_asset_rank(reference_face.asset_id) <= ${presentationRank()}
-          AND gallery.person_id IS DISTINCT FROM query.current_person_id
-          AND NOT EXISTS (
-            SELECT 1
-            FROM current_face_capture_context reference_context
-            WHERE reference_context.face_id = gallery.face_id
-              AND reference_context.context_id = ANY(query.query_context_ids)
-          )
-      ), prime_face_evidence AS (
-        SELECT person_id, evidence_unit, max(score)::float8 AS score
-        FROM prime_face_evidence_raw
-        GROUP BY person_id, evidence_unit
-      ), prime_face_ranked AS (
-        SELECT *, row_number() OVER (
-          PARTITION BY person_id ORDER BY score DESC, evidence_unit
-        ) AS evidence_rank
-        FROM prime_face_evidence
-      ), individual_scores AS (
-        SELECT person_id, max(score)::float8 AS individual_max,
-          avg(score) FILTER (WHERE evidence_rank <= 3)::float8 AS individual_top3
-        FROM prime_face_ranked
-        GROUP BY person_id
-      ), prototype_scores AS (
-        SELECT prototype.person_id,
-          max(1 - (prototype.embedding <=> query.embedding))::float8 AS prototype_score
-        FROM query
-        JOIN current_reference_prototype prototype
-          ON prototype.model_family = query.model_family
-          AND prototype.model_version = query.model_version
-          AND prototype.config_digest = query.config_digest
-          AND prototype.dimension = query.dimension
-        JOIN reference_bucket bucket
-          ON bucket.bucket_id = prototype.bucket_id AND bucket.bucket_kind = 'prime'
-        WHERE prototype.person_id IS DISTINCT FROM query.current_person_id
-          AND cardinality(query.query_context_ids) = 0
-          AND EXISTS (
-            SELECT 1
-            FROM current_face_identity visible_identity
-            JOIN face_observation visible_face
-              ON visible_face.face_id = visible_identity.face_id
-              AND visible_face.state = 'valid'
-            WHERE visible_identity.person_id = prototype.person_id
-              AND visible_identity.state = 'accepted'
-              AND cimmich_visibility_asset_rank(visible_face.asset_id) <= ${presentationRank()}
-          )
-        GROUP BY prototype.person_id
-      ), prime_scores AS (
-        SELECT individual.person_id,
-          individual.individual_max::float8 AS raw_prime_score,
-          individual.individual_max::float8 AS prime_score,
-          individual.individual_top3,
-          prototype.prototype_score
-        FROM individual_scores individual
-        LEFT JOIN prototype_scores prototype USING (person_id)
-      ), ranked AS (
-        SELECT person_id, raw_prime_score, prime_score, individual_top3, prototype_score,
-          row_number() OVER (
-            ORDER BY prime_score DESC, individual_top3 DESC NULLS LAST,
-              prototype_score DESC NULLS LAST, person_id
-          )::int AS rank
-        FROM prime_scores
-      )
-      SELECT ranked.rank, ranked.person_id, person.display_name,
-        ranked.prime_score, ranked.raw_prime_score,
-        ranked.individual_top3 AS prime_top3_score, ranked.prototype_score,
-        secondary.secondary_score
-      FROM ranked
-      JOIN current_person person ON person.person_id = ranked.person_id
-        AND person.status = 'active' AND person.subject_kind = 'person'
-        AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
-        AND EXISTS (
-          SELECT 1
-          FROM current_face_identity visible_identity
-          JOIN face_observation visible_face
-            ON visible_face.face_id = visible_identity.face_id
-            AND visible_face.state = 'valid'
-          WHERE visible_identity.person_id = ranked.person_id
-            AND visible_identity.state = 'accepted'
-            AND cimmich_visibility_asset_rank(visible_face.asset_id) <= ${presentationRank()}
-        )
-      CROSS JOIN query
-      LEFT JOIN LATERAL (
-        SELECT max(1 - (gallery.embedding <=> query.embedding))::float8 AS secondary_score
-        FROM matching_gallery gallery
-        JOIN face_observation reference_face
-          ON reference_face.face_id = gallery.face_id AND reference_face.state = 'valid'
-        WHERE gallery.person_id = ranked.person_id
-          AND gallery.bucket_kind = 'secondary'
-          AND gallery.model_family = query.model_family
-          AND gallery.model_version = query.model_version
-          AND gallery.config_digest = query.config_digest
-          AND gallery.dimension = query.dimension
-          AND reference_face.asset_id <> query.asset_id
-          AND cimmich_visibility_asset_rank(reference_face.asset_id) <= ${presentationRank()}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM current_face_capture_context reference_context
-            WHERE reference_context.face_id = gallery.face_id
-              AND reference_context.context_id = ANY(query.query_context_ids)
-          )
-      ) secondary ON true
-      ORDER BY ranked.rank
-      LIMIT ${boundedLimit}
-    `;
-      return rows;
-    },
+    faceMatches,
 
     async faceReviewComparisons({ faceId, limit = 5 }) {
       const boundedLimit = cleanLimit(limit, 6, 12);
@@ -6779,8 +6658,8 @@ export const createCimmichRepository = (
             ORDER BY identity.identity_claim_id
             LIMIT 1
           ) accepted ON true
-          WHERE face.face_id = ${String(faceId || "")}
-            AND face.state = 'valid'
+          WHERE face.face_id = ${String(faceId || "")} AND face.state = 'valid'
+            AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
             AND NOT EXISTS (
               SELECT 1 FROM hidden_assets hidden
               WHERE hidden.object_id = query_asset.asset_id
@@ -7062,6 +6941,9 @@ export const createCimmichRepository = (
         SELECT fo.face_id, fo.box_x::float8, fo.box_y::float8, fo.box_w::float8, fo.box_h::float8,
           fo.current_revision, fo.current_decision_id,
           fo.detection_confidence::float8, fo.quality_measurements,
+          cimmich_face_match_eligible(
+            fo.detection_confidence, fo.box_w, fo.box_h
+          ) AS match_eligible,
           EXISTS (SELECT 1 FROM face_embedding active_embedding
             WHERE active_embedding.face_id = fo.face_id AND active_embedding.state = 'active') AS has_active_embedding,
           accepted.identity_claim_id, accepted.person_id, accepted.display_name,
@@ -7094,6 +6976,9 @@ export const createCimmichRepository = (
           FROM identity_claim ic
           JOIN person p ON p.person_id = ic.person_id
           WHERE ic.face_id = fo.face_id AND ic.state = 'candidate'
+            AND cimmich_face_match_eligible(
+              fo.detection_confidence, fo.box_w, fo.box_h
+            )
             AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
               <= ${presentationRank()}
             AND (
@@ -7239,7 +7124,7 @@ export const createCimmichRepository = (
         candidateLists.push(
           ...(await Promise.all(
             chunk.map((face) =>
-              face.person_id
+              face.person_id || !face.match_eligible
                 ? Promise.resolve([])
                 : repository.faceMatches({ faceId: face.face_id, limit: 5 }),
             ),
@@ -7251,6 +7136,7 @@ export const createCimmichRepository = (
           .filter((match) => Number.isFinite(Number(match.prime_score)))
           .map((match) => ({
             displayEligible: true,
+            governedCandidate: match.governed_candidate === true,
             personId: match.person_id,
             personName: match.display_name,
             rank: Number(match.rank),
@@ -7260,6 +7146,8 @@ export const createCimmichRepository = (
               "Higher means closer in the same recognition space; this is not a probability.",
           }));
         const best = matches[0] || null;
+        const governed =
+          matches.find((match) => match.governedCandidate) || null;
         const persistedCandidate = face.candidate_identity_claim_id
           ? {
               claimId: face.candidate_identity_claim_id,
@@ -7275,21 +7163,25 @@ export const createCimmichRepository = (
           ...face,
           candidate_abstain_reason: face.person_id
             ? "accepted_identity"
-            : persistedCandidate
-              ? null
-              : !face.has_active_embedding
-                ? "no_active_embedding"
-                : best
-                  ? null
-                  : "no_same_space_candidate",
+            : !face.match_eligible
+              ? "reject_noise"
+              : persistedCandidate
+                ? null
+                : !face.has_active_embedding
+                  ? "no_active_embedding"
+                  : governed
+                    ? null
+                    : best
+                      ? "no_governed_candidate"
+                      : "no_same_space_candidate",
           candidate_confidence:
-            persistedCandidate?.confidence ?? best?.rawScore ?? null,
+            persistedCandidate?.confidence ?? governed?.rawScore ?? null,
           candidate_display_name:
-            persistedCandidate?.personName ?? best?.personName ?? null,
+            persistedCandidate?.personName ?? governed?.personName ?? null,
           candidate_identity_claim_id: persistedCandidate?.claimId ?? null,
           candidate_matches: matches,
           candidate_person_id:
-            persistedCandidate?.personId ?? best?.personId ?? null,
+            persistedCandidate?.personId ?? governed?.personId ?? null,
           current_decision_id: face.current_decision_id || null,
           current_revision: Number(face.current_revision),
         };
