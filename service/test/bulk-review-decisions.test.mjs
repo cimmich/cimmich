@@ -25,7 +25,7 @@ test("bulk candidate accept returns after the durable write while Prime maintena
     if (query.includes("FROM person")) {
       return [{ display_name: "Someone", person_id: "person-batch" }];
     }
-    if (query.includes("JOIN current_source_pack")) {
+    if (query.includes("JOIN source_pack pack")) {
       return [
         {
           evidence_refs: {},

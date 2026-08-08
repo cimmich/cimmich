@@ -678,6 +678,55 @@ test("asset search requires an explicit visibility and preserves stable paginati
   });
 });
 
+test("asset search can request path-free People only for targeted discovery", async () => {
+  const calls = [];
+  const companion = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith("/server/version")) {
+        return jsonResponse({ major: 3, minor: 1, patch: 0 });
+      }
+      if (url.endsWith("/users/me")) {
+        return jsonResponse({ id: asset().ownerId, isAdmin: false });
+      }
+      if (url.endsWith("/search/metadata")) {
+        return jsonResponse({
+          assets: {
+            items: [
+              {
+                ...asset(),
+                people: [
+                  {
+                    birthDate: null,
+                    id: "anonymous-person",
+                    isHidden: false,
+                    name: "",
+                    thumbnailPath: "private/upstream/path",
+                    updatedAt: "2026-08-08T00:00:00.000Z",
+                  },
+                ],
+              },
+            ],
+            nextPage: null,
+          },
+        });
+      }
+      throw new Error("unexpected route");
+    },
+  });
+
+  const result = await companion.listAssets({
+    includePeople: true,
+    visibility: "timeline",
+  });
+  assert.equal(result.items[0].people[0].name, null);
+  assert.equal(JSON.stringify(result).includes("private/upstream"), false);
+  const request = calls.find((call) => call.url.endsWith("/search/metadata"));
+  assert.equal(JSON.parse(request.options.body).withPeople, true);
+});
+
 test("locked inventory reports its interactive elevation boundary without blocking API-key inventory", async () => {
   const calls = [];
   const companion = createImmichCompanion({
