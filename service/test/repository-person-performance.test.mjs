@@ -85,6 +85,21 @@ test("Person candidate detail and acceptance retain the same passed-pack review 
   }
 });
 
+test("Person candidate same-photo counts are projected once instead of rescanning current identity per candidate", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const method = source.slice(
+    source.indexOf("async personCandidates"),
+    source.indexOf("async bulkAcceptPersonCandidates"),
+  );
+
+  assert.match(method, /WITH accepted_asset_counts AS NOT MATERIALIZED/);
+  assert.match(method, /GROUP BY accepted_face\.asset_id/);
+  assert.match(method, /LEFT JOIN accepted_asset_counts same_photo/);
+  assert.doesNotMatch(method, /FROM current_face_identity same_photo_identity/);
+});
+
 test("Person candidate reads honor a current owner Unknown decision", async () => {
   const { readFile } = await import("node:fs/promises");
   const [source, summarySource] = await Promise.all([

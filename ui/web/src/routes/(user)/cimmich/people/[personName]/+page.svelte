@@ -18,6 +18,7 @@
     type CimmichIdentityMoveUndo,
   } from '$lib/components/cimmich/identity-move-undo';
   import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
+  import { createKnownClusterReviewController } from '$lib/components/cimmich/known-cluster-review-controller';
   import type {
     CimmichHeroField,
     CimmichPersonConnection,
@@ -131,6 +132,7 @@
     type CimmichPersonSetup,
     type CimmichVisibilityObject,
   } from '$lib/services/cimmich.service';
+  import { onDestroy } from 'svelte';
   import {
     getCimmichKnownPersonClusterSuggestions,
     type CimmichKnownPersonClusterSuggestion,
@@ -285,6 +287,23 @@
   let cimmichTabsCanScrollRight = $state(false);
   let cimmichTabsScroller = $state<HTMLDivElement>();
   let personProjectionGeneration = 0;
+  const cimmichKnownClusterReview = createKnownClusterReviewController({
+    current: () =>
+      cimmichPerson
+        ? {
+            generation: personProjectionGeneration,
+            personId: cimmichPerson.person_id,
+            personName: cimmichPerson.display_name,
+          }
+        : undefined,
+    loadCandidates: getCimmichPersonCandidates,
+    removeCluster: (clusterId) =>
+      (cimmichKnownClusterSuggestions = cimmichKnownClusterSuggestions.filter((item) => item.clusterId !== clusterId)),
+    setCandidates: (candidates) => (cimmichCandidates = candidates),
+    setError: (message) => (cimmichIdentityError = message),
+    setMessage: (message) => (cimmichIdentityMessage = message),
+  });
+  onDestroy(() => cimmichKnownClusterReview.dispose());
   let cimmichProfile = $state<CimmichPersonProfileProjection>();
   let cimmichProfileDefaults = $state<CimmichPersonProfileDisplayDefaults>();
   let cimmichProfileDisplay = $state<CimmichPersonProfileDisplay>();
@@ -2269,35 +2288,6 @@
     }
   };
 
-  const finishCimmichKnownClusterSuggestion = async (result: {
-    candidateCount: number;
-    clusterId: string;
-    kind: 'review' | 'reject' | 'ungroup';
-  }) => {
-    cimmichKnownClusterSuggestions = cimmichKnownClusterSuggestions.filter(
-      ({ clusterId }) => clusterId !== result.clusterId,
-    );
-    if (result.kind === 'reject') {
-      cimmichIdentityMessage = 'This group is no longer suggested for this Person and is available in Possible people.';
-      return;
-    }
-    if (result.kind === 'ungroup') {
-      cimmichIdentityMessage =
-        'This exact recurring group was rejected. Its photos remain unassigned and no identity was changed.';
-      return;
-    }
-    if (!cimmichPerson) {
-      return;
-    }
-    try {
-      cimmichCandidates = await getCimmichPersonCandidates(cimmichPerson.person_id);
-      cimmichIdentityMessage = `${result.candidateCount.toLocaleString()} grouped Faces were moved into ${cimmichPerson.display_name}’s Checks. Nothing was confirmed.`;
-    } catch (error) {
-      cimmichIdentityError =
-        error instanceof Error ? error.message : 'The group moved, but Cimmich could not reload the Checks queue.';
-    }
-  };
-
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
     cimmichMode = 'identity';
     if (!cimmichPerson || cimmichIdentityLoaded || cimmichIdentityLoading) {
@@ -3020,6 +3010,7 @@
   $effect(() => {
     void cimmichVisibilityManager.version;
     const generation = ++personProjectionGeneration;
+    cimmichKnownClusterReview.cancelPending();
     cimmichPerson = undefined;
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
@@ -3867,7 +3858,7 @@
             <section class="grid gap-6" aria-label="Awaiting confirmation">
               <CimmichKnownPersonClusters
                 items={cimmichKnownClusterSuggestions}
-                onChanged={(result) => void finishCimmichKnownClusterSuggestion(result)}
+                onChanged={cimmichKnownClusterReview.finish}
                 personId={cimmichPerson.person_id}
                 personName={cimmichPerson.display_name}
               />
