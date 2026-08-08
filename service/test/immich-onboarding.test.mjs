@@ -731,6 +731,107 @@ test("possible people exclude unnamed source clusters already tagged to a known 
   assert.deepEqual(projected, []);
 });
 
+test("possible people scan only assets carrying unnamed Immich People", async () => {
+  const anonymousPerson = {
+    id: "source-person-anonymous",
+    isHidden: false,
+    name: null,
+    sourceRevision: "d".repeat(64),
+  };
+  const assetCalls = [];
+  const faceCalls = [];
+  const companion = {
+    listAssetFaces: async ({ assetId }) => {
+      faceCalls.push(assetId);
+      return {
+        assetId,
+        items: [
+          {
+            ...sourceFace(
+              "source-face-anonymous",
+              { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+              anonymousPerson.id,
+            ),
+            imageHeight: 3000,
+            imageWidth: 4000,
+            person: anonymousPerson,
+          },
+        ],
+      };
+    },
+    listAssets: async (input) => {
+      assetCalls.push(input);
+      return {
+        items: [
+          {
+            assetType: "image",
+            captureTime: "2024-08-08T00:00:00.000Z",
+            immichAssetId: "ordinary-asset",
+            inputRevision: "a".repeat(64),
+            people: [
+              {
+                id: "named-person",
+                isHidden: false,
+                name: "Named",
+                sourceRevision: "b".repeat(64),
+              },
+            ],
+            visibility: "timeline",
+          },
+          {
+            assetType: "image",
+            captureTime: "2024-08-08T00:00:00.000Z",
+            immichAssetId: "anonymous-asset",
+            inputRevision: "c".repeat(64),
+            people: [anonymousPerson],
+            visibility: "timeline",
+          },
+        ],
+        nextCursor: null,
+      };
+    },
+    listPeople: async () => {
+      throw new Error(
+        "possible-person discovery must not enumerate People separately",
+      );
+    },
+    status: async () => ({
+      capabilities: { mediaRead: true },
+      immichVersion: "3.1.0",
+      principal: { userId: "owner-fixture" },
+      state: "ready",
+    }),
+    verifyOnboardingPermissions: verifiedOnboardingPermissions,
+  };
+  const onboarding = createImmichOnboarding({
+    companion,
+    immichInventory: { synchronize: async () => ({}) },
+    resolveCimmichAssetId: ({ immichAssetId }) => `cimmich-${immichAssetId}`,
+    sql: async () => [],
+  });
+
+  const preview = await onboarding.personClusters({
+    scope: {
+      importPeople: true,
+      includeHiddenPeople: false,
+      mediaKinds: ["image", "video"],
+      providerMode: "deferred",
+      visibilities: ["timeline"],
+    },
+    viewingMode: "Standard",
+  });
+
+  assert.equal(assetCalls.length, 1);
+  assert.equal(assetCalls[0].includePeople, true);
+  assert.deepEqual(faceCalls, ["anonymous-asset"]);
+  assert.equal(preview.clusters.length, 1);
+  assert.equal(preview.clusters[0].immichPersonId, anonymousPerson.id);
+  assert.equal(
+    preview.clusters[0].representative.sourceAssetId,
+    "anonymous-asset",
+  );
+});
+
 test("status exposes only non-secret exact resume bindings", async () => {
   const sql = async () => [
     {

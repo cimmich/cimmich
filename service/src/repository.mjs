@@ -5279,8 +5279,11 @@ export const createCimmichRepository = (
             AND same_photo_face.face_id <> face.face_id
         ) AS same_photo_accepted_count
       FROM identity_claim claim
-      JOIN current_source_pack pack
+      -- A retired pack must stop producing new matches, but the immutable
+      -- candidate claims it already produced remain a human review queue.
+      JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+        AND pack.state IN ('active', 'retired')
         AND pack.evaluation_status = 'passed'
         AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
           claim.evidence_refs->>'policy_version'
@@ -5340,8 +5343,11 @@ export const createCimmichRepository = (
         max(nullif(claim.evidence_refs->>'best_score', '')::float8)::float8 AS best_score,
         max(nullif(claim.evidence_refs->>'margin', '')::float8)::float8 AS best_margin
       FROM identity_claim claim
-      JOIN current_source_pack pack
+      -- Review claims against the exact evaluated pack that produced them.
+      -- Pack retirement removes generation authority, not review history.
+      JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+        AND pack.state IN ('active', 'retired')
         AND pack.evaluation_status = 'passed'
         AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
           claim.evidence_refs->>'policy_version'
@@ -5435,8 +5441,9 @@ export const createCimmichRepository = (
           SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
             claim.state, claim.evidence_refs
           FROM identity_claim claim
-          JOIN current_source_pack pack
+          JOIN source_pack pack
             ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
+            AND pack.state IN ('active', 'retired')
             AND pack.evaluation_status = 'passed'
             AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
               claim.evidence_refs->>'policy_version'

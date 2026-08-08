@@ -3748,7 +3748,7 @@ test("full identity audit routes expose background status, bounded queues and ex
   ]);
 });
 
-test("People candidate summary exposes active SourcePack claims without identity-audit routing", async () => {
+test("People candidate summary exposes evaluated SourcePack review claims without identity-audit routing", async () => {
   const calls = [];
   const summary = {
     items: [

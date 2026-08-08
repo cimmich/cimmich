@@ -3,7 +3,7 @@ import test from "node:test";
 import { createCimmichRepository } from "../src/repository.mjs";
 import { createFragmentAwareSql } from "./fixtures/fragment-aware-sql.mjs";
 
-test("Person candidate summary is grouped from the active SourcePack without audit data", async () => {
+test("Person candidate summary retains review claims from a retired passed SourcePack", async () => {
   let statement = "";
   const sql = async (strings) => {
     statement = strings.join("?");
@@ -53,13 +53,37 @@ test("Person candidate summary is grouped from the active SourcePack without aud
     totalCandidates: 6,
     totalPeople: 2,
   });
-  assert.match(statement, /JOIN current_source_pack pack/);
+  assert.match(statement, /JOIN source_pack pack/);
+  assert.match(statement, /pack\.state IN \('active', 'retired'\)/);
+  assert.doesNotMatch(statement, /JOIN current_source_pack pack/);
   assert.match(statement, /claim\.origin = 'prime_match'/);
   assert.match(statement, /source_pack_prime_match/);
   assert.match(statement, /claim\.state = 'candidate'/);
   assert.match(statement, /cimmich_face_match_eligible/);
   assert.match(statement, /face_review_unknown/);
   assert.doesNotMatch(statement, /identity_audit/);
+});
+
+test("Person candidate detail and acceptance retain the same passed-pack review boundary", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const slices = [
+    source.slice(
+      source.indexOf("async personCandidates"),
+      source.indexOf("async personCandidateSummary"),
+    ),
+    source.slice(
+      source.indexOf("async bulkAcceptPersonCandidates"),
+      source.indexOf("async personAssets"),
+    ),
+  ];
+  for (const method of slices) {
+    assert.match(method, /JOIN source_pack pack/);
+    assert.match(method, /pack\.state IN \('active', 'retired'\)/);
+    assert.match(method, /pack\.evaluation_status = 'passed'/);
+    assert.doesNotMatch(method, /JOIN current_source_pack pack/);
+  }
 });
 
 test("Person candidate reads honor a current owner Unknown decision", async () => {

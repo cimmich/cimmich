@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  projectImmichAsset,
+  projectImmichPerson,
+} from "./immich-companion-projection.mjs";
+
+export { projectImmichAsset, projectImmichPerson };
 
 export const IMMICH_COMPANION_SCHEMA_VERSION = "cimmich.immich-companion.v1";
 export const IMMICH_COMPANION_SUPPORTED_VERSION = "3.1.0";
@@ -9,7 +15,6 @@ export const IMMICH_COMPANION_DEFAULT_MAX_FINGERPRINT_BYTES =
 export const IMMICH_COMPANION_DEFAULT_FINGERPRINT_TIMEOUT_MS = 15 * 60 * 1000;
 
 const VISIBILITIES = new Set(["timeline", "archive", "hidden", "locked"]);
-const ASSET_TYPES = new Set(["IMAGE", "VIDEO", "AUDIO", "OTHER"]);
 const JSON_ROUTE_ALLOWLIST = [
   { authenticated: false, method: "GET", path: /^\/server\/version$/ },
   { authenticated: true, method: "GET", path: /^\/users\/me$/ },
@@ -131,124 +136,6 @@ const parseVersion = (value) => {
     patch,
     prerelease,
     semver: `${major}.${minor}.${patch}${prerelease == null ? "" : `-rc.${prerelease}`}`,
-  };
-};
-
-const assetInputRevision = (asset) =>
-  createHash("sha256")
-    .update(
-      JSON.stringify([
-        asset.id,
-        asset.checksum,
-        asset.updatedAt,
-        asset.fileModifiedAt,
-        asset.type,
-      ]),
-    )
-    .digest("hex");
-
-export const projectImmichAsset = (value) => {
-  if (!value || typeof value !== "object") {
-    throw companionError(
-      "IMMICH_COMPANION_PROTOCOL_INVALID",
-      "Immich asset response is invalid",
-      502,
-    );
-  }
-  const id = requiredText(value.id, "asset.id");
-  const ownerId = requiredText(value.ownerId, "asset.ownerId");
-  const type = requiredText(value.type, "asset.type");
-  if (!ASSET_TYPES.has(type)) {
-    throw companionError(
-      "IMMICH_COMPANION_PROTOCOL_INVALID",
-      "Immich asset type is unsupported",
-      502,
-    );
-  }
-  const visibility = requiredText(value.visibility, "asset.visibility");
-  if (!VISIBILITIES.has(visibility)) {
-    throw companionError(
-      "IMMICH_COMPANION_PROTOCOL_INVALID",
-      "Immich asset visibility is unsupported",
-      502,
-    );
-  }
-  const checksum = requiredText(value.checksum, "asset.checksum");
-  const createdAt = requiredText(value.createdAt, "asset.createdAt");
-  const fileCreatedAt = requiredText(
-    value.fileCreatedAt,
-    "asset.fileCreatedAt",
-  );
-  const fileModifiedAt = requiredText(
-    value.fileModifiedAt,
-    "asset.fileModifiedAt",
-  );
-  const updatedAt = requiredText(value.updatedAt, "asset.updatedAt");
-  const typeName = type.toLowerCase();
-  const projected = {
-    immichAssetId: id,
-    ownerId,
-    assetType: typeName,
-    visibility,
-    checksum,
-    createdAt,
-    captureTime: fileCreatedAt,
-    fileModifiedAt,
-    updatedAt,
-    localDateTime: optionalText(value.localDateTime),
-    originalFileName: optionalText(value.originalFileName),
-    originalMimeType: optionalText(value.originalMimeType),
-    width:
-      Number.isInteger(value.width) && value.width >= 0 ? value.width : null,
-    height:
-      Number.isInteger(value.height) && value.height >= 0 ? value.height : null,
-    duration:
-      Number.isInteger(value.duration) && value.duration >= 0
-        ? value.duration
-        : null,
-    isArchived: Boolean(value.isArchived),
-    isFavorite: Boolean(value.isFavorite),
-    isOffline: Boolean(value.isOffline),
-    isTrashed: Boolean(value.isTrashed),
-  };
-  return {
-    ...projected,
-    inputRevision: assetInputRevision({
-      checksum,
-      fileModifiedAt,
-      id,
-      type,
-      updatedAt,
-    }),
-  };
-};
-
-export const projectImmichPerson = (value) => {
-  if (!value || typeof value !== "object") {
-    throw companionError(
-      "IMMICH_COMPANION_PROTOCOL_INVALID",
-      "Immich Person response is invalid",
-      502,
-    );
-  }
-  const id = requiredText(value.id, "person.id");
-  // Immich may retain a stable Person/Face grouping before the owner gives the
-  // Person a label. That is valid upstream topology, but it is not importable
-  // identity truth until a label exists.
-  const name = optionalText(value.name);
-  const source = {
-    birthDate: optionalText(value.birthDate),
-    id,
-    isFavorite: Boolean(value.isFavorite),
-    isHidden: Boolean(value.isHidden),
-    name,
-    updatedAt: optionalText(value.updatedAt),
-  };
-  return {
-    ...source,
-    sourceRevision: createHash("sha256")
-      .update(JSON.stringify(source))
-      .digest("hex"),
   };
 };
 
@@ -914,6 +801,7 @@ export const createImmichCompanion = ({
 
   const listAssets = async ({
     cursor = "",
+    includePeople = false,
     limit = 100,
     updatedAfter = "",
     visibility,
@@ -928,6 +816,13 @@ export const createImmichCompanion = ({
       );
     }
     const normalizedLimit = Number(limit);
+    if (typeof includePeople !== "boolean") {
+      throw companionError(
+        "IMMICH_COMPANION_INCLUDE_PEOPLE_INVALID",
+        "Immich asset People inclusion must be boolean",
+        400,
+      );
+    }
     if (
       !Number.isInteger(normalizedLimit) ||
       normalizedLimit < 1 ||
@@ -970,7 +865,7 @@ export const createImmichCompanion = ({
           visibility: normalizedVisibility,
           withDeleted: false,
           withExif: false,
-          withPeople: false,
+          withPeople: includePeople,
           withStacked: false,
           ...(normalizedUpdatedAfter
             ? { updatedAfter: new Date(normalizedUpdatedAfter).toISOString() }
@@ -1004,7 +899,9 @@ export const createImmichCompanion = ({
       schemaVersion: IMMICH_COMPANION_SCHEMA_VERSION,
       immichVersion: receipt.immichVersion,
       visibility: normalizedVisibility,
-      items: result.assets.items.map(projectImmichAsset),
+      items: result.assets.items.map((asset) =>
+        projectImmichAsset(asset, { includePeople }),
+      ),
       nextCursor:
         result.assets.nextPage == null
           ? null
