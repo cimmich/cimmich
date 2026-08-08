@@ -100,6 +100,23 @@ test("Person candidate same-photo counts are projected once instead of rescannin
   assert.doesNotMatch(method, /FROM current_face_identity same_photo_identity/);
 });
 
+test("Person candidate current assignments and owner review decisions are projected once", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const method = source.slice(
+    source.indexOf("async personCandidates"),
+    source.indexOf("async bulkAcceptPersonCandidates"),
+  );
+
+  assert.match(method, /current_acceptance AS MATERIALIZED/);
+  assert.match(method, /latest_face_review AS MATERIALIZED/);
+  assert.match(method, /LEFT JOIN current_acceptance accepted/);
+  assert.match(method, /LEFT JOIN latest_face_review review/);
+  assert.doesNotMatch(method, /LEFT JOIN LATERAL/);
+  assert.doesNotMatch(method, /coalesce\(\(SELECT review\.reason_code/);
+});
+
 test("Person candidate reads honor a current owner Unknown decision", async () => {
   const { readFile } = await import("node:fs/promises");
   const [source, summarySource] = await Promise.all([
@@ -125,7 +142,7 @@ test("Person candidate reads honor a current owner Unknown decision", async () =
     assert.match(method, /face_review_unknown/);
     assert.match(
       method,
-      /ORDER BY review\.created_at DESC, review\.decision_id DESC/,
+      /ORDER BY (?:review\.subject_id,\s+)?review\.created_at DESC, review\.decision_id DESC/,
     );
   }
 });
