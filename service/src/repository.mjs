@@ -5246,7 +5246,17 @@ export const createCimmichRepository = (
       await requireVisibleSubject(personId);
       const boundedLimit = cleanLimit(limit, 500, 5000);
       const rows = await sql`
-      SELECT claim.identity_claim_id, claim.face_id, claim.person_id, person.display_name,
+      WITH accepted_asset_counts AS NOT MATERIALIZED (
+        SELECT accepted_face.asset_id, count(*)::int AS accepted_count
+        FROM identity_claim accepted
+        JOIN face_observation accepted_face
+          ON accepted_face.face_id = accepted.face_id AND accepted_face.state = 'valid'
+        WHERE accepted.person_id = ${String(personId || "")}
+          AND accepted.state = 'accepted'
+        GROUP BY accepted_face.asset_id
+      )
+      SELECT claim.identity_claim_id, claim.face_id, claim.person_id, claim.origin,
+        claim.evidence_refs->>'cluster_id' AS cluster_id, person.display_name,
         claim.calibrated_confidence::float8,
         nullif(claim.evidence_refs->>'best_score', '')::float8 AS source_score,
         nullif(claim.evidence_refs->>'margin', '')::float8 AS source_margin,
@@ -5282,17 +5292,11 @@ export const createCimmichRepository = (
         accepted.identity_claim_id AS current_claim_id,
         accepted.person_id AS current_person_id,
         current_person.display_name AS current_person_name,
-        (
-          SELECT count(*)::int
-          FROM current_face_identity same_photo_identity
-          JOIN face_observation same_photo_face
-            ON same_photo_face.face_id = same_photo_identity.face_id
-              AND same_photo_face.state = 'valid'
-          WHERE same_photo_identity.person_id = claim.person_id
-            AND same_photo_identity.state = 'accepted'
-            AND same_photo_face.asset_id = face.asset_id
-            AND same_photo_face.face_id <> face.face_id
-        ) AS same_photo_accepted_count
+        greatest(
+          0,
+          coalesce(same_photo.accepted_count, 0) -
+            CASE WHEN accepted.person_id = claim.person_id THEN 1 ELSE 0 END
+        )::int AS same_photo_accepted_count
       FROM identity_claim claim
       -- A retired pack must stop producing new matches, but the immutable
       -- candidate claims it already produced remain a human review queue.
@@ -5320,6 +5324,8 @@ export const createCimmichRepository = (
         LIMIT 1
       ) accepted ON true
       LEFT JOIN person current_person ON current_person.person_id = accepted.person_id
+      LEFT JOIN accepted_asset_counts same_photo
+        ON same_photo.asset_id = face.asset_id
       WHERE claim.person_id = ${String(personId || "")}
         AND claim.state = 'candidate'
         AND cimmich_face_match_eligible(

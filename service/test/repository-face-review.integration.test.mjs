@@ -259,6 +259,17 @@ integrationTest(
         claim.evidence_refs.run_id,
         "possible_run_11111111111111111111111111111111",
       );
+      const candidates = await repository.personCandidates({
+        limit: 5000,
+        personId: "person_possible_people_resolution_test",
+      });
+      assert.equal(candidates.length, 1);
+      assert.equal(candidates[0].origin, "cluster_propagation");
+      assert.equal(
+        candidates[0].cluster_id,
+        "cluster_possible_people_resolution_test",
+      );
+      assert.equal(candidates[0].same_photo_accepted_count, 0);
     } finally {
       await sql.end({ timeout: 5 });
     }

@@ -4,7 +4,10 @@ const finite = (value: number | null | undefined) =>
   typeof value === 'number' && Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
 
 export const hasUsefulCandidateSeparation = (candidate: CimmichIdentityCandidate) =>
-  finite(candidate.source_margin) > 0;
+  finite(candidate.source_margin) > 0 || candidate.origin === 'cluster_propagation';
+
+const candidateLane = (candidate: CimmichIdentityCandidate) =>
+  finite(candidate.source_margin) > 0 ? 0 : candidate.origin === 'cluster_propagation' ? 1 : 2;
 
 export const preparePersonCandidates = (candidates: CimmichIdentityCandidate[]) =>
   candidates
@@ -12,6 +15,7 @@ export const preparePersonCandidates = (candidates: CimmichIdentityCandidate[]) 
     .slice()
     .sort(
       (left, right) =>
+        candidateLane(left) - candidateLane(right) ||
         finite(right.source_margin) - finite(left.source_margin) ||
         finite(right.match_score) - finite(left.match_score) ||
         right.detection_confidence - left.detection_confidence ||

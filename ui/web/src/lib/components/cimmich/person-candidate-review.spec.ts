@@ -7,6 +7,7 @@ const candidate = (
   score: number | null,
   margin: number | null,
   detectionConfidence = 0.9,
+  origin?: CimmichIdentityCandidate['origin'],
 ): CimmichIdentityCandidate =>
   ({
     asset_id: `asset-${id}`,
@@ -21,6 +22,7 @@ const candidate = (
     filename: `${id}.jpg`,
     identity_claim_id: id,
     match_score: score,
+    origin,
     source_margin: margin,
     sourceAssetId: `source-${id}`,
   }) as CimmichIdentityCandidate;
@@ -38,5 +40,21 @@ describe('Person candidate review presentation', () => {
       'close',
     ]);
     expect(hasUsefulCandidateSeparation(candidates[0])).toBe(false);
+  });
+
+  it('keeps owner-routed recurring-group candidates visible after scored matcher candidates', () => {
+    const candidates = [
+      candidate('group-high', 0.91, null, 0.9, 'cluster_propagation'),
+      candidate('ordinary-unscored', 0.99, null, 0.9, 'prime_match'),
+      candidate('scored', 0.75, 0.08),
+      candidate('group-low', 0.64, null, 0.9, 'cluster_propagation'),
+    ];
+
+    expect(preparePersonCandidates(candidates).map(({ identity_claim_id }) => identity_claim_id)).toEqual([
+      'scored',
+      'group-high',
+      'group-low',
+    ]);
+    expect(hasUsefulCandidateSeparation(candidates[0])).toBe(true);
   });
 });

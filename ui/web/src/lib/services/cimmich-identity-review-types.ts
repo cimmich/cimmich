@@ -6,6 +6,7 @@ export type CimmichIdentityCandidate = {
   box_y: number;
   calibrated_confidence: number | null;
   capture_time: string | null;
+  cluster_id?: string | null;
   current_claim_id?: string | null;
   current_decision_id: string | null;
   current_person_id?: string | null;
@@ -19,6 +20,7 @@ export type CimmichIdentityCandidate = {
   identity_claim_id: string;
   media_kind: 'image' | 'video';
   match_score?: number | null;
+  origin?: 'cluster_propagation' | 'prime_match' | string;
   person_id: string;
   quality_measurements: Record<string, number | string>;
   same_photo_accepted_count?: number;
