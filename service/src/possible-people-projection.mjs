@@ -44,16 +44,21 @@ export const projectPossiblePeopleRun = (row) =>
       }
     : null;
 
-export const readLatestPossiblePeopleRuns = async (sql) => {
+export const readLatestPossiblePeopleRuns = async (
+  sql,
+  algorithmVersion = null,
+) => {
   const [completed] = await sql`
     SELECT * FROM possible_person_run
     WHERE state = 'completed' AND classification_state = 'completed'
+      AND (${algorithmVersion}::text IS NULL OR algorithm_version = ${algorithmVersion})
     ORDER BY completed_at DESC, run_id DESC LIMIT 1
   `;
   const [active] = await sql`
     SELECT * FROM possible_person_run
     WHERE (state IN ('queued','running','failed')
       OR (state = 'completed' AND classification_state <> 'completed'))
+      AND (${algorithmVersion}::text IS NULL OR algorithm_version = ${algorithmVersion})
       AND (${completed?.created_at || null}::timestamptz IS NULL
         OR created_at > ${completed?.created_at || null}::timestamptz)
     ORDER BY created_at DESC, run_id DESC LIMIT 1
@@ -61,9 +66,15 @@ export const readLatestPossiblePeopleRuns = async (sql) => {
   return { active, completed };
 };
 
-export const createPossiblePeopleProjection = (sql, { schemaVersion }) => {
+export const createPossiblePeopleProjection = (
+  sql,
+  { algorithmVersion = null, schemaVersion },
+) => {
   const snapshot = async () => {
-    const { active, completed } = await readLatestPossiblePeopleRuns(sql);
+    const { active, completed } = await readLatestPossiblePeopleRuns(
+      sql,
+      algorithmVersion,
+    );
     const rows = completed
       ? await sql`
           SELECT cluster.cluster_id, cluster.status, cluster.linked_person_id,
@@ -139,7 +150,10 @@ export const createPossiblePeopleProjection = (sql, { schemaVersion }) => {
     `;
     if (!person)
       throw typedError("Active Person not found", 404, "PERSON_NOT_FOUND");
-    const { completed } = await readLatestPossiblePeopleRuns(sql);
+    const { completed } = await readLatestPossiblePeopleRuns(
+      sql,
+      algorithmVersion,
+    );
     const rows = completed
       ? await sql`
           SELECT cluster.cluster_id, cluster.cluster_digest, cluster.source_revision,

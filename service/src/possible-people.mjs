@@ -7,9 +7,10 @@ import {
   createPossiblePeopleProjection,
   projectPossiblePeopleRun as projectRun,
 } from "./possible-people-projection.mjs";
+import { PossiblePeopleUnionFind } from "./possible-people-union-find.mjs";
 
 const receiptId = "receipt_cimmich_possible_people_v1";
-const algorithmVersion = "cimmich-possible-people-graph-v1";
+const algorithmVersion = "cimmich-possible-people-graph-v2";
 const schemaVersion = "cimmich.possible-people-snapshot.v1";
 const seedLimit = 100_000;
 const neighbourLimit = 12;
@@ -138,7 +139,8 @@ const seedRun = async (sql, runId, presentationRank) => {
     SELECT embedding.model_family, embedding.model_version,
       embedding.config_digest, embedding.dimension, count(*)::int AS face_count
     FROM face_embedding embedding
-    JOIN face_observation face ON face.face_id = embedding.face_id AND face.state = 'valid'
+    JOIN current_matchable_physical_face face
+      ON face.face_id = embedding.face_id AND face.state = 'valid'
     JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
     WHERE embedding.state = 'active' AND embedding.dimension = 512
       AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
@@ -180,7 +182,7 @@ const seedRun = async (sql, runId, presentationRank) => {
               (face.box_w * face.box_h) DESC, face.face_id
           ) AS asset_face_rank
         FROM face_embedding embedding
-        JOIN face_observation face
+        JOIN current_matchable_physical_face face
           ON face.face_id = embedding.face_id AND face.state = 'valid'
         JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
         WHERE embedding.state = 'active' AND embedding.dimension = 512
@@ -192,12 +194,18 @@ const seedRun = async (sql, runId, presentationRank) => {
           )
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
           AND NOT EXISTS (
-            SELECT 1 FROM identity_claim accepted
-            WHERE accepted.face_id = face.face_id AND accepted.state = 'accepted'
+            SELECT 1
+            FROM current_face_physical_member claimed_member
+            JOIN identity_claim accepted ON accepted.face_id = claimed_member.face_id
+              AND accepted.state = 'accepted'
+            WHERE claimed_member.physical_face_id = face.physical_face_id
           )
           AND NOT EXISTS (
-            SELECT 1 FROM identity_claim candidate
-            WHERE candidate.face_id = face.face_id AND candidate.state = 'candidate'
+            SELECT 1
+            FROM current_face_physical_member claimed_member
+            JOIN identity_claim candidate ON candidate.face_id = claimed_member.face_id
+              AND candidate.state = 'candidate'
+            WHERE claimed_member.physical_face_id = face.physical_face_id
           )
           AND coalesce((
             SELECT review.reason_code FROM decision review
@@ -241,13 +249,14 @@ const processBatch = async (sql, run, presentationRank) => {
           AND seed.model_family = ${run.model_family}
           AND seed.model_version = ${run.model_version}
           AND seed.config_digest = ${run.config_digest}
-        JOIN face_observation seed_face ON seed_face.face_id = seed.face_id
+        JOIN current_matchable_physical_face seed_face
+          ON seed_face.face_id = seed.face_id
         CROSS JOIN LATERAL (
           SELECT candidate.face_id,
             (1 - (candidate.embedding::vector(512) <=> seed.embedding::vector(512)))::float8
               AS similarity
           FROM face_embedding candidate
-          JOIN face_observation candidate_face
+          JOIN current_matchable_physical_face candidate_face
             ON candidate_face.face_id = candidate.face_id AND candidate_face.state = 'valid'
           JOIN asset candidate_asset
             ON candidate_asset.asset_id = candidate_face.asset_id AND candidate_asset.state = 'active'
@@ -262,12 +271,18 @@ const processBatch = async (sql, run, presentationRank) => {
             )
             AND cimmich_visibility_asset_rank(candidate_asset.asset_id) <= ${presentationRank()}
             AND NOT EXISTS (
-              SELECT 1 FROM identity_claim accepted
-              WHERE accepted.face_id = candidate.face_id AND accepted.state = 'accepted'
+              SELECT 1
+              FROM current_face_physical_member claimed_member
+              JOIN identity_claim accepted ON accepted.face_id = claimed_member.face_id
+                AND accepted.state = 'accepted'
+              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
             )
             AND NOT EXISTS (
-              SELECT 1 FROM identity_claim suggested
-              WHERE suggested.face_id = candidate.face_id AND suggested.state = 'candidate'
+              SELECT 1
+              FROM current_face_physical_member claimed_member
+              JOIN identity_claim suggested ON suggested.face_id = claimed_member.face_id
+                AND suggested.state = 'candidate'
+              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
             )
             AND coalesce((
               SELECT review.reason_code FROM decision review
@@ -294,33 +309,6 @@ const processBatch = async (sql, run, presentationRank) => {
   });
 };
 
-class UnionFind {
-  constructor() {
-    this.parent = new Map();
-  }
-  add(value) {
-    if (!this.parent.has(value)) this.parent.set(value, value);
-  }
-  find(value) {
-    let root = this.parent.get(value);
-    while (root !== this.parent.get(root)) root = this.parent.get(root);
-    let current = value;
-    while (current !== root) {
-      const next = this.parent.get(current);
-      this.parent.set(current, root);
-      current = next;
-    }
-    return root;
-  }
-  union(left, right) {
-    this.add(left);
-    this.add(right);
-    const leftRoot = this.find(left);
-    const rightRoot = this.find(right);
-    if (leftRoot !== rightRoot) this.parent.set(rightRoot, leftRoot);
-  }
-}
-
 const finalizeRun = async (sql, run) => {
   const edges = await sql`
     SELECT left_face_id, right_face_id, similarity::float8, support_count
@@ -329,7 +317,7 @@ const finalizeRun = async (sql, run) => {
       AND (support_count = 2 OR similarity >= ${strongOneWayFloor})
     ORDER BY left_face_id, right_face_id
   `;
-  const union = new UnionFind();
+  const union = new PossiblePeopleUnionFind();
   const memberScore = new Map();
   for (const edge of edges) {
     union.union(edge.left_face_id, edge.right_face_id);
@@ -354,7 +342,7 @@ const finalizeRun = async (sql, run) => {
       asset.width, asset.height, asset.capture_time,
       projection.immich_asset_id AS source_asset_id,
       coalesce(place.locations, ARRAY[]::text[]) AS locations
-    FROM face_observation face
+    FROM current_matchable_physical_face face
     JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
     LEFT JOIN LATERAL (
       SELECT current_projection.immich_asset_id
@@ -506,7 +494,10 @@ export const createPossiblePeopleStore = (
 ) => {
   let worker = null;
   let classificationWorker = null;
-  const projection = createPossiblePeopleProjection(sql, { schemaVersion });
+  const projection = createPossiblePeopleProjection(sql, {
+    algorithmVersion,
+    schemaVersion,
+  });
 
   const runWorker = (runId) => {
     if (worker) return worker;
@@ -587,7 +578,7 @@ export const createPossiblePeopleStore = (
       if (command.replay) return command.replay;
       const [run] = await tx`
         SELECT * FROM possible_person_run
-        WHERE state = 'completed'
+        WHERE state = 'completed' AND algorithm_version = ${algorithmVersion}
         ORDER BY completed_at DESC, run_id DESC LIMIT 1 FOR UPDATE
       `;
       if (!run)
@@ -654,6 +645,7 @@ export const createPossiblePeopleStore = (
           WHERE run_id = ${active.run_id}
         `;
       }
+      await tx`SELECT cimmich_refresh_physical_face_reconciliation()`;
       const runId = `possible_run_${randomUUID().replaceAll("-", "")}`;
       await tx`
         INSERT INTO possible_person_run (
@@ -885,16 +877,24 @@ export const createPossiblePeopleStore = (
             ${receiptId}, 'sensitive-biometric'
           FROM face_cluster_member member
           JOIN face_observation face ON face.face_id = member.face_id AND face.state = 'valid'
+          JOIN current_face_physical_member member_physical
+            ON member_physical.face_id = member.face_id
           WHERE member.cluster_id = ${cluster.cluster_id}
             AND NOT EXISTS (
-              SELECT 1 FROM identity_claim accepted
-              WHERE accepted.face_id = member.face_id AND accepted.state = 'accepted'
+              SELECT 1
+              FROM current_face_physical_member accepted_member
+              JOIN identity_claim accepted ON accepted.face_id = accepted_member.face_id
+                AND accepted.state = 'accepted'
+                AND accepted.person_id = ${selectedPersonId}
+              WHERE accepted_member.physical_face_id = member_physical.physical_face_id
             )
             AND NOT EXISTS (
-              SELECT 1 FROM identity_claim duplicate
-              WHERE duplicate.face_id = member.face_id
+              SELECT 1
+              FROM current_face_physical_member candidate_member
+              JOIN identity_claim duplicate ON duplicate.face_id = candidate_member.face_id
                 AND duplicate.person_id = ${selectedPersonId}
                 AND duplicate.state = 'candidate'
+              WHERE candidate_member.physical_face_id = member_physical.physical_face_id
             )
           ON CONFLICT (identity_claim_id) DO NOTHING
           RETURNING identity_claim_id

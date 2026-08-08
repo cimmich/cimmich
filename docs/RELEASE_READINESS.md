@@ -3,7 +3,7 @@
 Updated: 2026-08-07
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 120/patch 1
-Current development source: migration-ledger schema 124/patch 1
+Current development source: migration-ledger schema 125/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release: `v1.1.0-community-preview.6` for exact Immich 3.1.0
@@ -217,7 +217,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 124; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 125; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -372,6 +372,13 @@ reference Face and thresholds, projects the group into the named Person's Checks
 and lets the owner move it into ordinary Face review or reject the proposed name.
 Neither classification nor projection accepts an identity, and an existing
 snapshot can be reclassified without rerunning neighbour discovery.
+Schema 125 makes physical Face identity distinct from source observations. It
+retains detector, legacy-import and XMP rows, but projects strong one-per-lane
+geometry equivalents through one canonical Face. Any group carrying conflicting
+accepted People remains unmerged and excluded from matching. The migration
+records and retires only unconfirmed graph-v1 candidates, while graph-v2 and all
+candidate writes consult the physical-Face boundary. Reconciliation runs only
+inside an explicit Possible people Refresh, never from a page load.
 
 ## Historical Public Beta Patch 6 certification
 

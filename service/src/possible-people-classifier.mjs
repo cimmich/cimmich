@@ -51,17 +51,27 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
       INSERT INTO possible_person_reference_match (
         person_id, display_name, face_id, embedding
       )
-      SELECT DISTINCT gallery.person_id, person.display_name, gallery.face_id,
+      SELECT DISTINCT ON (gallery.person_id, physical.physical_face_id)
+        gallery.person_id, person.display_name, physical.canonical_face_id AS face_id,
         embedding.embedding::vector(512)
       FROM current_reference_gallery gallery
       JOIN current_person person ON person.person_id = gallery.person_id
         AND person.status = 'active'
-      JOIN face_embedding embedding ON embedding.face_id = gallery.face_id
+      JOIN current_face_physical_member physical
+        ON physical.face_id = gallery.face_id
+        AND physical.reconciliation_state <> 'conflict'
+      JOIN face_embedding embedding ON embedding.face_id = physical.canonical_face_id
         AND embedding.state = 'active' AND embedding.dimension = 512
       WHERE gallery.membership_state = 'active'
         AND gallery.bucket_kind = ANY (
           ARRAY['prime','secondary','lq','head']::text[]
         )
+      ORDER BY gallery.person_id, physical.physical_face_id,
+        CASE gallery.bucket_kind
+          WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1
+          WHEN 'lq' THEN 2 ELSE 3
+        END,
+        gallery.face_id
     `;
     const [{ reference_count: referenceCount }] =
       await tx`SELECT count(*)::int AS reference_count FROM possible_person_reference_match`;
