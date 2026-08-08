@@ -12,7 +12,7 @@ describe('People suggestions layout', () => {
     expect(source).toContain('personMachineSuggestionCount(person.person_id)');
     expect(source).toContain('comparePeopleByReviewCount(a, b, cimmichCandidateCounts, peopleSort)');
     expect(source).toContain("viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'");
-    expect(source).toContain('matched faces from the current reference');
+    expect(source).toContain('matched faces from a saved evaluated reference');
     expect(source).toMatch(/Nothing\s+changes until you confirm/);
     expect(source).not.toContain('getCimmichIdentityAuditLeads()');
     expect(source).not.toContain('getCimmichMachineSuggestions(80)');
