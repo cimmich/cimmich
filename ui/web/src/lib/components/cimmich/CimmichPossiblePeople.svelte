@@ -1,13 +1,12 @@
 <script lang="ts">
+  import { getCimmichPeople, type CimmichImmichPersonCluster, type CimmichPerson } from '$lib/services/cimmich.service';
   import {
-    getCimmichPeople,
-    previewCimmichImmichPersonClusters,
-    resolveCimmichImmichPersonCluster,
-    undoCimmichImmichPersonClusterResolution,
-    type CimmichImmichOnboardingScope,
-    type CimmichImmichPersonCluster,
-    type CimmichPerson,
-  } from '$lib/services/cimmich.service';
+    getCimmichPossiblePeople,
+    refreshCimmichPossiblePeople,
+    resolveCimmichPossiblePerson,
+    undoCimmichPossiblePersonResolution,
+    type CimmichPossiblePeopleRun,
+  } from '$lib/services/possible-people.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { cimmichSquareCropBackgroundStyle, cimmichSquareCropFrame } from '$lib/utils/cimmich-crop';
   import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
@@ -22,6 +21,7 @@
     mdiMapMarkerOutline,
     mdiRefresh,
   } from '@mdi/js';
+  import { onDestroy } from 'svelte';
 
   interface Props {
     mode: 'active' | 'ignored';
@@ -41,14 +41,10 @@
   let loadGeneration = 0;
   let newNames = $state<Record<string, string>>({});
   let visibleCount = $state(20);
-
-  const scope: CimmichImmichOnboardingScope = {
-    importPeople: true,
-    includeHiddenPeople: false,
-    mediaKinds: ['image', 'video'],
-    providerMode: 'deferred',
-    visibilities: ['timeline'],
-  };
+  let activeRun = $state<CimmichPossiblePeopleRun | null>(null);
+  let completedRun = $state<CimmichPossiblePeopleRun | null>(null);
+  let refreshRequested = $state(false);
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
   const minimumRecurringPhotos = 5;
   const minimumSpreadPhotos = 3;
   const isIgnored = (cluster: CimmichImmichPersonCluster) =>
@@ -94,11 +90,13 @@
     loading = true;
     error = '';
     try {
-      const preview = await previewCimmichImmichPersonClusters(scope);
+      const preview = await getCimmichPossiblePeople();
       if (generation !== loadGeneration) {
         return;
       }
       clusters = preview.clusters;
+      activeRun = preview.activeRun;
+      completedRun = preview.completedRun;
       onignoredcount(
         preview.clusters.filter((cluster) => hasMeaningfulRecurrence(cluster) && isIgnored(cluster)).length,
       );
@@ -115,6 +113,35 @@
     }
   };
 
+  const pollExplicitRefresh = async () => {
+    if (!refreshRequested) return;
+    await load();
+    if (activeRun?.state === 'queued' || activeRun?.state === 'running') {
+      pollTimer = setTimeout(() => void pollExplicitRefresh(), 1500);
+      return;
+    }
+    refreshRequested = false;
+    if (activeRun?.state === 'failed') {
+      error = activeRun.errorMessage || 'Cimmich could not refresh Possible people.';
+    } else if (completedRun) {
+      notice = `Possible people refreshed: ${completedRun.clusterCount.toLocaleString()} groups found.`;
+    }
+  };
+
+  const refresh = async () => {
+    if (refreshRequested) return;
+    error = '';
+    notice = '';
+    refreshRequested = true;
+    try {
+      await refreshCimmichPossiblePeople(`possible-people.refresh.${createCimmichUuid()}`);
+      await pollExplicitRefresh();
+    } catch (error_) {
+      refreshRequested = false;
+      error = error_ instanceof Error ? error_.message : 'Cimmich could not start Possible people refresh.';
+    }
+  };
+
   const ignore = async (cluster: CimmichImmichPersonCluster) => {
     if (busyClusterId) {
       return;
@@ -123,11 +150,9 @@
     error = '';
     notice = '';
     try {
-      const result = await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
+      const result = await resolveCimmichPossiblePerson(cluster.immichPersonId, {
         action: 'later',
         commandId: `possible-person.ignore.${createCimmichUuid()}`,
-        expectedSourceRevision: cluster.sourceRevision,
-        scope,
         snapshotDigest: cluster.snapshotDigest,
       });
       const resolution = result.resolution;
@@ -185,18 +210,16 @@
     error = '';
     notice = '';
     try {
-      await resolveCimmichImmichPersonCluster(cluster.immichPersonId, {
+      const result = await resolveCimmichPossiblePerson(cluster.immichPersonId, {
         action,
         commandId: `possible-person.resolve.${createCimmichUuid()}`,
-        expectedSourceRevision: cluster.sourceRevision,
         ...(action === 'existing_person' ? { personId } : { newPersonName }),
-        scope,
         snapshotDigest: cluster.snapshotDigest,
       });
       notice =
         action === 'existing_person'
-          ? 'Possible person mapped. Update the Immich import when you want the full group admitted.'
-          : 'Person created and mapped. Update the Immich import when you want the full group admitted.';
+          ? `${result.candidateCount ?? cluster.faceCount} faces were added to that Person’s review queue.`
+          : `Person created; ${result.candidateCount ?? cluster.faceCount} faces were added to their review queue.`;
       openClusterId = '';
       clusters = clusters.filter((candidate) => candidate.immichPersonId !== cluster.immichPersonId);
     } catch (error_) {
@@ -214,10 +237,10 @@
     error = '';
     notice = '';
     try {
-      await undoCimmichImmichPersonClusterResolution(cluster.resolution.decisionId, {
-        commandId: `possible-person.restore.${createCimmichUuid()}`,
-        scope,
-      });
+      await undoCimmichPossiblePersonResolution(
+        cluster.resolution.decisionId,
+        `possible-person.restore.${createCimmichUuid()}`,
+      );
       const nextIgnoredCount = Math.max(0, ignoredClusters.length - 1);
       clusters = clusters.map((candidate) =>
         candidate.immichPersonId === cluster.immichPersonId
@@ -292,6 +315,11 @@
   $effect(() => {
     void load();
   });
+
+  onDestroy(() => {
+    refreshRequested = false;
+    if (pollTimer) clearTimeout(pollTimer);
+  });
 </script>
 
 <section
@@ -313,7 +341,7 @@
       </p>
     </div>
     <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold dark:bg-gray-800">
-      {loading ? 'Scanning' : displayedClusters.length.toLocaleString()}
+      {loading ? 'Loading' : displayedClusters.length.toLocaleString()}
     </span>
   </div>
 
@@ -333,6 +361,11 @@
       {#each [0, 1, 2] as placeholder (placeholder)}
         <div class="h-44 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800"></div>
       {/each}
+    </div>
+  {:else if !completedRun}
+    <div class="mt-5 flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-5 text-sm dark:bg-gray-800/50">
+      <Icon icon={mdiAccountQuestionOutline} size="24" />
+      <span>No Possible people snapshot yet. Use Refresh when you want Cimmich to check the current matches.</span>
     </div>
   {:else if displayedClusters.length === 0}
     <div class="mt-5 flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-5 text-sm dark:bg-gray-800/50">
@@ -481,9 +514,21 @@
   <button
     type="button"
     class="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full border border-gray-300 px-4 text-sm font-semibold disabled:opacity-50 dark:border-gray-600"
-    disabled={loading}
-    onclick={() => void load()}
+    disabled={loading || refreshRequested}
+    onclick={() => void refresh()}
   >
-    <Icon icon={mdiRefresh} size="17" /> Refresh possible people
+    <Icon icon={mdiRefresh} size="17" />
+    {refreshRequested ? 'Refreshing possible people…' : 'Refresh possible people'}
   </button>
+  {#if refreshRequested && activeRun}
+    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" role="status">
+      {activeRun.totalSeeds > 0
+        ? `${activeRun.processedSeeds.toLocaleString()} of ${activeRun.totalSeeds.toLocaleString()} faces checked`
+        : 'Preparing the Cimmich face snapshot…'}
+    </p>
+  {:else if completedRun?.completedAt}
+    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      Last checked {new Date(completedRun.completedAt).toLocaleString()}
+    </p>
+  {/if}
 </section>

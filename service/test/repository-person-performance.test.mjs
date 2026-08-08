@@ -56,8 +56,7 @@ test("Person candidate summary retains review claims from a retired passed Sourc
   assert.match(statement, /JOIN source_pack pack/);
   assert.match(statement, /pack\.state IN \('active', 'retired'\)/);
   assert.doesNotMatch(statement, /JOIN current_source_pack pack/);
-  assert.match(statement, /claim\.origin = 'prime_match'/);
-  assert.match(statement, /source_pack_prime_match/);
+  assert.match(statement, /cimmich_person_candidate_reviewable/);
   assert.match(statement, /claim\.state = 'candidate'/);
   assert.match(statement, /cimmich_face_match_eligible/);
   assert.match(statement, /face_review_unknown/);

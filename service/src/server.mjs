@@ -3160,6 +3160,69 @@ export const createCimmichServer = ({
       const personCandidatesMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/candidates$/,
       );
+      if (request.method === "GET" && url.pathname === "/v1/possible-people") {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.possiblePeopleSnapshot(),
+          allowedOrigin,
+        );
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/possible-people/refresh"
+      ) {
+        requireProjection("person_review");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          202,
+          await repository.possiblePeopleRefresh({
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const possiblePersonResolveMatch = url.pathname.match(
+        /^\/v1\/possible-people\/([^/]+)\/resolve$/,
+      );
+      if (request.method === "POST" && possiblePersonResolveMatch) {
+        requireProjection("person_review");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.possiblePeopleResolve({
+            ...body,
+            actorId: request.headers["x-cimmich-actor"],
+            clusterId: decodeURIComponent(possiblePersonResolveMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
+      const possiblePersonUndoMatch = url.pathname.match(
+        /^\/v1\/possible-people\/decisions\/([^/]+)\/undo$/,
+      );
+      if (request.method === "POST" && possiblePersonUndoMatch) {
+        requireProjection("person_review");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          await repository.possiblePeopleUndo({
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+            decisionId: decodeURIComponent(possiblePersonUndoMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (
         request.method === "GET" &&
         url.pathname === "/v1/people/candidate-summary"

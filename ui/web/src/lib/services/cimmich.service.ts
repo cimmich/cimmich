@@ -2600,16 +2600,11 @@ export const request = async <T>(path: string, init?: RequestInit, timeoutMs = d
     init?.signal?.removeEventListener('abort', abortFromCaller);
   }
 };
-
 export const getCimmichSummary = () => request<CimmichSummary>('/v1/summary');
-
 export const getCimmichIntegrationStatus = () => request<CimmichIntegrationStatus>('/v1/integrations/status');
-
 export const getCimmichEnhancedComponentStatus = () => request<CimmichEnhancedComponentStatus>('/v1/operator/enhanced');
-
 export const createCimmichEnhancedCommandId = (action: 'disable' | 'enable' | 'rollback' | 'update') =>
   `enhanced.${action}.${createCimmichUuid()}`;
-
 export const updateCimmichEnhancedComponent = (input: {
   action: 'disable' | 'enable' | 'rollback' | 'update';
   commandId: string;
@@ -2621,7 +2616,6 @@ export const updateCimmichEnhancedComponent = (input: {
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });
-
 export const getCimmichIntegrationSettingsPack = () =>
   request<CimmichIntegrationSettingsPack>('/v1/integrations/provider-settings-pack');
 

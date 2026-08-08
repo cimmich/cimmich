@@ -384,6 +384,63 @@ test("Immich unnamed-cluster routes preserve exact owner decisions and visibilit
   );
 });
 
+test("Possible people reads a stored snapshot and starts work only on explicit Refresh", async () => {
+  const calls = [];
+  const repository = {
+    possiblePeopleRefresh: async (input) => {
+      calls.push(["refresh", input]);
+      return {
+        changed: true,
+        run: { runId: "possible_run_1", state: "queued" },
+        schemaVersion: "cimmich.possible-people-snapshot.v1",
+      };
+    },
+    possiblePeopleSnapshot: async () => {
+      calls.push(["snapshot"]);
+      return {
+        activeRun: null,
+        clusters: [],
+        completedRun: null,
+        schemaVersion: "cimmich.possible-people-snapshot.v1",
+      };
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const snapshot = await fetch(`${root}/v1/possible-people`);
+      assert.equal(snapshot.status, 200);
+      assert.equal((await snapshot.json()).clusters.length, 0);
+      assert.equal(
+        calls.some(([kind]) => kind === "refresh"),
+        false,
+        "opening Possible people must not enqueue matching work",
+      );
+
+      const refreshed = await fetch(`${root}/v1/possible-people/refresh`, {
+        body: JSON.stringify({ commandId: "possible-people-refresh-1" }),
+        headers: {
+          "content-type": "application/json",
+          "x-cimmich-actor": "owner",
+        },
+        method: "POST",
+      });
+      assert.equal(refreshed.status, 202);
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "person_review"],
+    ["snapshot"],
+    ["visibility", "person_review"],
+    ["refresh", { actorId: "owner", commandId: "possible-people-refresh-1" }],
+  ]);
+});
+
 test("map asset filtering keeps visibility ahead of a bounded exact source-ID projection", async () => {
   const calls = [];
   const visibility = {
