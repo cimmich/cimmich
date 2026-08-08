@@ -18,7 +18,11 @@ describe('People suggestions layout', () => {
     expect(source).not.toContain('getCimmichMachineSuggestions(80)');
     expect(source).not.toContain('Full-library audit suggestions');
     expect(source).not.toContain('latest full-library audit');
+    expect(source).toContain("{#if viewMode === 'possible'}");
     expect(source).toContain('<CimmichPossiblePeople mode="active"');
-    expect(source).toContain("viewMode === 'candidates'");
+    expect(source.indexOf("{#if viewMode === 'possible'}")).toBeLessThan(
+      source.indexOf('<CimmichPossiblePeople mode="active"'),
+    );
+    expect(source).not.toContain('{#if viewMode === \'candidates\'}\n        <CimmichPossiblePeople mode="active"');
   });
 });

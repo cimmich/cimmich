@@ -77,6 +77,7 @@
   const viewModes: Array<{ id: PersonViewMode; label: string }> = [
     { id: 'faces', label: 'People' },
     { id: 'candidates', label: 'Suggestions' },
+    { id: 'possible', label: 'Possible people' },
     { id: 'needsFace', label: 'Needs attention' },
   ];
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
@@ -380,7 +381,13 @@
         >
           {#each viewModes as mode (mode.id)}
             {@const count =
-              mode.id === 'faces' ? faceBackedCount : mode.id === 'candidates' ? cimmichCandidateCount : needsFaceCount}
+              mode.id === 'faces'
+                ? faceBackedCount
+                : mode.id === 'candidates'
+                  ? cimmichCandidateCount
+                  : mode.id === 'needsFace'
+                    ? needsFaceCount
+                    : null}
             <button
               class={[
                 'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
@@ -393,69 +400,73 @@
               onclick={() => (viewMode = mode.id)}
             >
               {mode.label}
-              <span class="text-xs opacity-65">{count}</span>
+              {#if count !== null}
+                <span class="text-xs opacity-65">{count}</span>
+              {/if}
             </button>
             {#if mode.id === 'faces'}
               <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
             {/if}
           {/each}
         </div>
-        <label
-          class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-        >
-          <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
-          <input
-            bind:value={peopleQuery}
-            class="w-full bg-transparent outline-none"
-            placeholder="Search people"
-            aria-label="Search people"
-            type="search"
-          />
-        </label>
-        <div
-          class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
-          aria-label="People view options"
-        >
-          <Tooltip text={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}>
-            {#snippet child({ props })}
-              <ContextMenuButton
-                {...props}
-                class="size-10"
-                icon={mdiSortVariant}
-                items={peopleSortActions}
-                position="top-right"
-                aria-label={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}
-              />
-            {/snippet}
-          </Tooltip>
-          <Tooltip text="Filter people">
-            {#snippet child({ props })}
-              <ContextMenuButton
-                {...props}
-                class="size-10 border-l border-gray-200 dark:border-gray-700"
-                icon={mdiFilterVariant}
-                items={peopleFilterActions}
-                position="top-right"
-                aria-label="Filter people"
-              />
-            {/snippet}
-          </Tooltip>
+        {#if viewMode !== 'possible'}
           <label
-            class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-            title="Thumbnail size"
+            class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
           >
-            <Icon icon={mdiViewGridOutline} size="19" />
-            <select
-              class="absolute inset-0 size-full cursor-pointer opacity-0"
-              bind:value={peopleThumbnailSize}
-              aria-label="Thumbnail size"
-            >
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-            </select>
+            <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
+            <input
+              bind:value={peopleQuery}
+              class="w-full bg-transparent outline-none"
+              placeholder="Search people"
+              aria-label="Search people"
+              type="search"
+            />
           </label>
-        </div>
+          <div
+            class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+            aria-label="People view options"
+          >
+            <Tooltip text={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}>
+              {#snippet child({ props })}
+                <ContextMenuButton
+                  {...props}
+                  class="size-10"
+                  icon={mdiSortVariant}
+                  items={peopleSortActions}
+                  position="top-right"
+                  aria-label={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}
+                />
+              {/snippet}
+            </Tooltip>
+            <Tooltip text="Filter people">
+              {#snippet child({ props })}
+                <ContextMenuButton
+                  {...props}
+                  class="size-10 border-l border-gray-200 dark:border-gray-700"
+                  icon={mdiFilterVariant}
+                  items={peopleFilterActions}
+                  position="top-right"
+                  aria-label="Filter people"
+                />
+              {/snippet}
+            </Tooltip>
+            <label
+              class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+              title="Thumbnail size"
+            >
+              <Icon icon={mdiViewGridOutline} size="19" />
+              <select
+                class="absolute inset-0 size-full cursor-pointer opacity-0"
+                bind:value={peopleThumbnailSize}
+                aria-label="Thumbnail size"
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+          </div>
+        {/if}
       {/snippet}
     </CimmichSectionHeader>
 
@@ -556,168 +567,170 @@
     {#if !cimmichLoaded}
       <CimmichStatePanel tone="loading" title="Loading people" description="Reading the current People projection." />
     {:else if !cimmichError}
-      {#if viewMode === 'candidates'}
-        <div class="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold tracking-[0.14em] text-gray-500 uppercase dark:text-gray-400">
-              Known people
-            </p>
-            <h2 class="mt-1 text-xl font-semibold">People with suggestions</h2>
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              {cimmichCandidateSummary?.totalCandidates.toLocaleString() ?? '0'} matched faces from a saved evaluated reference
-              library, grouped by the known person they may belong to. Nothing changes until you confirm.
-            </p>
-          </div>
-          <span
-            class="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-100"
-          >
-            {cimmichCandidateCount.toLocaleString()}
-            {cimmichCandidateCount === 1 ? ' person' : ' people'}
-          </span>
-        </div>
-      {/if}
-      <section
-        class={[
-          'grid',
-          peopleThumbnailSize === 'small'
-            ? 'grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 xl:grid-cols-10'
-            : peopleThumbnailSize === 'large'
-              ? 'grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-              : 'grid-cols-3 gap-x-5 gap-y-8 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7',
-        ]}
-      >
-        {#each visibleCimmichPeople as person (person.person_id)}
-          <a
-            class="group flex min-w-0 flex-col items-center gap-3 text-center"
-            href={Route.cimmichPerson({ name: person.display_name, personId: person.person_id })}
-          >
+      {#if viewMode === 'possible'}
+        <CimmichPossiblePeople mode="active" onignoredcount={(count) => (ignoredPossiblePeopleCount = count)} />
+      {:else}
+        {#if viewMode === 'candidates'}
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p class="text-xs font-semibold tracking-[0.14em] text-gray-500 uppercase dark:text-gray-400">
+                Known people
+              </p>
+              <h2 class="mt-1 text-xl font-semibold">People with suggestions</h2>
+              <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                {cimmichCandidateSummary?.totalCandidates.toLocaleString() ?? '0'} matched faces from a saved evaluated reference
+                library, grouped by the known person they may belong to. Nothing changes until you confirm.
+              </p>
+            </div>
             <span
-              class={[
-                'relative block w-full rounded-full perspective-[900px]',
-                peopleThumbnailSize === 'small'
-                  ? 'max-w-24'
-                  : peopleThumbnailSize === 'large'
-                    ? 'max-w-48'
-                    : 'max-w-36',
-              ]}
+              class="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-100"
+            >
+              {cimmichCandidateCount.toLocaleString()}
+              {cimmichCandidateCount === 1 ? ' person' : ' people'}
+            </span>
+          </div>
+        {/if}
+        <section
+          class={[
+            'grid',
+            peopleThumbnailSize === 'small'
+              ? 'grid-cols-4 gap-x-4 gap-y-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 xl:grid-cols-10'
+              : peopleThumbnailSize === 'large'
+                ? 'grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                : 'grid-cols-3 gap-x-5 gap-y-8 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7',
+          ]}
+        >
+          {#each visibleCimmichPeople as person (person.person_id)}
+            <a
+              class="group flex min-w-0 flex-col items-center gap-3 text-center"
+              href={Route.cimmichPerson({ name: person.display_name, personId: person.person_id })}
             >
               <span
                 class={[
-                  'relative block aspect-square w-full rounded-full shadow-sm transition-transform duration-500 transform-3d motion-reduce:transition-none',
-                  person.presentationBody || person.bodyPreview
-                    ? 'group-hover:transform-[rotateY(180deg)] group-focus-visible:transform-[rotateY(180deg)]'
-                    : 'group-hover:scale-[1.02]',
+                  'relative block w-full rounded-full perspective-[900px]',
+                  peopleThumbnailSize === 'small'
+                    ? 'max-w-24'
+                    : peopleThumbnailSize === 'large'
+                      ? 'max-w-48'
+                      : 'max-w-36',
                 ]}
               >
                 <span
-                  class="absolute inset-0 overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
+                  class={[
+                    'relative block aspect-square w-full rounded-full shadow-sm transition-transform duration-500 transform-3d motion-reduce:transition-none',
+                    person.presentationBody || person.bodyPreview
+                      ? 'group-hover:transform-[rotateY(180deg)] group-focus-visible:transform-[rotateY(180deg)]'
+                      : 'group-hover:scale-[1.02]',
+                  ]}
                 >
-                  {#if person.presentationFace?.sourceAssetId || person.sourceAssetId}
-                    <img
-                      class="max-w-none"
-                      src={getAssetMediaUrl({
-                        id: person.presentationFace?.sourceAssetId ?? person.sourceAssetId,
-                        size: AssetMediaSize.Preview,
-                      })}
-                      style={person.presentationFace
-                        ? cimmichPresentationFaceCropStyle(person.presentationFace)
-                        : cimmichPersonCropStyle(person)}
-                      alt={person.display_name}
-                      draggable="false"
-                    />
-                  {:else}
+                  <span
+                    class="absolute inset-0 overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
+                  >
+                    {#if person.presentationFace?.sourceAssetId || person.sourceAssetId}
+                      <img
+                        class="max-w-none"
+                        src={getAssetMediaUrl({
+                          id: person.presentationFace?.sourceAssetId ?? person.sourceAssetId,
+                          size: AssetMediaSize.Preview,
+                        })}
+                        style={person.presentationFace
+                          ? cimmichPresentationFaceCropStyle(person.presentationFace)
+                          : cimmichPersonCropStyle(person)}
+                        alt={person.display_name}
+                        draggable="false"
+                      />
+                    {:else}
+                      <span
+                        class="flex size-full items-center justify-center text-xl font-semibold text-gray-700 dark:bg-immich-dark-gray dark:text-gray-200"
+                        aria-label={`${person.display_name} portrait unavailable in this viewing mode`}
+                      >
+                        {initials(person.display_name)}
+                      </span>
+                    {/if}
+                  </span>
+                  {#if !person.presentationFace?.sourceAssetId && !person.sourceAssetId}
                     <span
-                      class="flex size-full items-center justify-center text-xl font-semibold text-gray-700 dark:bg-immich-dark-gray dark:text-gray-200"
-                      aria-label={`${person.display_name} portrait unavailable in this viewing mode`}
+                      class="absolute right-1 bottom-1 z-10 flex size-8 items-center justify-center rounded-full border-2 border-white bg-gray-800 text-white shadow-sm dark:border-gray-950"
+                      title="Portrait unavailable in this viewing mode"
+                      aria-hidden="true"
                     >
-                      {initials(person.display_name)}
+                      <Icon icon={mdiImageOffOutline} size="16" />
+                    </span>
+                  {/if}
+                  {#if person.presentationBody || person.bodyPreview}
+                    <span
+                      class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
+                      aria-hidden="true"
+                    >
+                      <img
+                        class="max-w-none"
+                        src={getAssetMediaUrl({
+                          id: person.presentationBody?.sourceAssetId ?? person.bodyPreview?.sourceAssetId ?? '',
+                          size: AssetMediaSize.Preview,
+                        })}
+                        style={person.presentationBody
+                          ? cimmichPresentationBodyCropStyle(person.presentationBody)
+                          : cimmichBodyPreviewCropStyle(person.bodyPreview!)}
+                        alt=""
+                        draggable="false"
+                      />
                     </span>
                   {/if}
                 </span>
-                {#if !person.presentationFace?.sourceAssetId && !person.sourceAssetId}
-                  <span
-                    class="absolute right-1 bottom-1 z-10 flex size-8 items-center justify-center rounded-full border-2 border-white bg-gray-800 text-white shadow-sm dark:border-gray-950"
-                    title="Portrait unavailable in this viewing mode"
-                    aria-hidden="true"
-                  >
-                    <Icon icon={mdiImageOffOutline} size="16" />
-                  </span>
-                {/if}
-                {#if person.presentationBody || person.bodyPreview}
-                  <span
-                    class="absolute inset-0 transform-[rotateY(180deg)] overflow-hidden rounded-full bg-gray-200 backface-hidden dark:bg-gray-700"
-                    aria-hidden="true"
-                  >
-                    <img
-                      class="max-w-none"
-                      src={getAssetMediaUrl({
-                        id: person.presentationBody?.sourceAssetId ?? person.bodyPreview?.sourceAssetId ?? '',
-                        size: AssetMediaSize.Preview,
-                      })}
-                      style={person.presentationBody
-                        ? cimmichPresentationBodyCropStyle(person.presentationBody)
-                        : cimmichBodyPreviewCropStyle(person.bodyPreview!)}
-                      alt=""
-                      draggable="false"
-                    />
-                  </span>
-                {/if}
               </span>
-            </span>
-            <span class="w-full truncate text-sm font-medium">{person.display_name}</span>
-            {#if viewMode === 'needsFace' && person.needs_holding}
-              <span
-                class="-mt-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900 dark:bg-violet-950 dark:text-violet-100"
-                >Holding</span
-              >
-            {:else if viewMode === 'needsFace' && person.needs_sort}
-              <span
-                class="-mt-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100"
-                >Needs sorting</span
-              >
-            {:else if viewMode === 'candidates' && personHasSuggestions(person)}
-              <span
-                class="-mt-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-100"
-              >
-                {personMachineSuggestionCount(person.person_id).toLocaleString()}
-                {personMachineSuggestionCount(person.person_id) === 1 ? 'photo to review' : 'photos to review'}
-              </span>
-            {/if}
-            <span class="w-full truncate text-xs text-gray-500 dark:text-gray-400">
-              {#if person.asset_count === 0}
-                No photos in this view
-              {:else}
-                {person.asset_count.toLocaleString()}
-                {person.asset_count === 1 ? 'photo' : 'photos'}
+              <span class="w-full truncate text-sm font-medium">{person.display_name}</span>
+              {#if viewMode === 'needsFace' && person.needs_holding}
+                <span
+                  class="-mt-2 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900 dark:bg-violet-950 dark:text-violet-100"
+                  >Holding</span
+                >
+              {:else if viewMode === 'needsFace' && person.needs_sort}
+                <span
+                  class="-mt-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                  >Needs sorting</span
+                >
+              {:else if viewMode === 'candidates' && personHasSuggestions(person)}
+                <span
+                  class="-mt-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-100"
+                >
+                  {personMachineSuggestionCount(person.person_id).toLocaleString()}
+                  {personMachineSuggestionCount(person.person_id) === 1 ? 'photo to review' : 'photos to review'}
+                </span>
               {/if}
-            </span>
-          </a>
-        {:else}
-          <div class="col-span-full">
-            <CimmichStatePanel
-              title={peopleQuery
-                ? 'No matching people'
-                : viewMode === 'candidates'
-                  ? 'No known-Person suggestions'
-                  : viewMode === 'needsFace'
-                    ? 'No people need attention'
-                    : 'No people to show'}
-              description={peopleQuery
-                ? 'Try another name or clear the current filters.'
-                : viewMode === 'candidates'
-                  ? 'No saved evaluated reference library has open face suggestions for known people.'
-                  : viewMode === 'needsFace'
-                    ? 'No one currently needs sorting or Holding.'
-                    : 'People will appear here when the current projection contains them.'}
-            />
-          </div>
-        {/each}
-      </section>
+              <span class="w-full truncate text-xs text-gray-500 dark:text-gray-400">
+                {#if person.asset_count === 0}
+                  No photos in this view
+                {:else}
+                  {person.asset_count.toLocaleString()}
+                  {person.asset_count === 1 ? 'photo' : 'photos'}
+                {/if}
+              </span>
+            </a>
+          {:else}
+            <div class="col-span-full">
+              <CimmichStatePanel
+                title={peopleQuery
+                  ? 'No matching people'
+                  : viewMode === 'candidates'
+                    ? 'No known-Person suggestions'
+                    : viewMode === 'needsFace'
+                      ? 'No people need attention'
+                      : 'No people to show'}
+                description={peopleQuery
+                  ? 'Try another name or clear the current filters.'
+                  : viewMode === 'candidates'
+                    ? 'No saved evaluated reference library has open face suggestions for known people.'
+                    : viewMode === 'needsFace'
+                      ? 'No one currently needs sorting or Holding.'
+                      : 'People will appear here when the current projection contains them.'}
+              />
+            </div>
+          {/each}
+        </section>
 
-      {#if viewMode === 'candidates'}
-        <CimmichPossiblePeople mode="active" onignoredcount={(count) => (ignoredPossiblePeopleCount = count)} />
-      {:else if viewMode === 'needsFace'}
-        <CimmichPossiblePeople mode="ignored" onignoredcount={(count) => (ignoredPossiblePeopleCount = count)} />
+        {#if viewMode === 'needsFace'}
+          <CimmichPossiblePeople mode="ignored" onignoredcount={(count) => (ignoredPossiblePeopleCount = count)} />
+        {/if}
       {/if}
     {/if}
   </div>
