@@ -139,16 +139,16 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
         UPDATE face_cluster cluster
         SET suggested_person_id = eligible.lead_person_id,
           suggestion_evidence = cluster.suggestion_evidence || jsonb_build_object(
-            'classificationVersion', ${classificationVersion},
+            'classificationVersion', ${classificationVersion}::text,
             'leadScore', eligible.lead_score,
             'margin', CASE WHEN eligible.runner_score IS NULL
               THEN NULL ELSE eligible.lead_score - eligible.runner_score END,
             'referenceFaceId', eligible.reference_face_id,
-            'referenceNeighbourLimit', ${referenceNeighbourLimit},
+            'referenceNeighbourLimit', ${referenceNeighbourLimit}::int,
             'runnerPersonId', eligible.runner_person_id,
             'runnerScore', eligible.runner_score,
-            'scoreFloor', ${knownPersonScoreFloor},
-            'marginFloor', ${knownPersonMarginFloor}
+            'scoreFloor', ${knownPersonScoreFloor}::float8,
+            'marginFloor', ${knownPersonMarginFloor}::float8
           ),
           classification_version = ${classificationVersion}, classified_at = now()
         FROM eligible

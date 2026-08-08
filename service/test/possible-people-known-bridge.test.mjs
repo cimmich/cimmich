@@ -16,6 +16,10 @@ test("known-Person classification is versioned, separated and never identity aut
   assert.match(classifier, /knownPersonMarginFloor: 0\.1/);
   assert.match(classifier, /runnerPersonId/);
   assert.match(classifier, /referenceFaceId/);
+  assert.match(classifier, /\$\{classificationVersion\}::text/);
+  assert.match(classifier, /\$\{referenceNeighbourLimit\}::int/);
+  assert.match(classifier, /\$\{knownPersonScoreFloor\}::float8/);
+  assert.match(classifier, /\$\{knownPersonMarginFloor\}::float8/);
   assert.match(classifier, /rejectedPersonIds/);
   assert.doesNotMatch(classifier, /INSERT INTO identity_claim/);
   assert.doesNotMatch(classifier, /state\s*=\s*'accepted'/);
