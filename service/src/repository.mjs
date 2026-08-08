@@ -5254,6 +5254,32 @@ export const createCimmichRepository = (
         WHERE accepted.person_id = ${String(personId || "")}
           AND accepted.state = 'accepted'
         GROUP BY accepted_face.asset_id
+      ), current_acceptance AS MATERIALIZED (
+        SELECT DISTINCT ON (current.face_id)
+          current.face_id, current.identity_claim_id, current.person_id
+        FROM identity_claim target
+        JOIN identity_claim current
+          ON current.face_id = target.face_id AND current.state = 'accepted'
+        JOIN person accepted_person ON accepted_person.person_id = current.person_id
+          AND accepted_person.status = 'active'
+          AND cimmich_visibility_subject_rank(
+            accepted_person.subject_kind, accepted_person.person_id
+          ) <= ${presentationRank()}
+        WHERE target.person_id = ${String(personId || "")}
+          AND target.state = 'candidate'
+        ORDER BY current.face_id, current.created_at DESC,
+          current.identity_claim_id DESC
+      ), latest_face_review AS MATERIALIZED (
+        SELECT DISTINCT ON (review.subject_id)
+          review.subject_id AS face_id, review.reason_code
+        FROM identity_claim target
+        JOIN decision review
+          ON review.subject_id = target.face_id
+          AND review.subject_type = 'face_review'
+        WHERE target.person_id = ${String(personId || "")}
+          AND target.state = 'candidate'
+        ORDER BY review.subject_id,
+          review.created_at DESC, review.decision_id DESC
       )
       SELECT claim.identity_claim_id, claim.face_id, claim.person_id, claim.origin,
         claim.evidence_refs->>'cluster_id' AS cluster_id, person.display_name,
@@ -5311,27 +5337,19 @@ export const createCimmichRepository = (
         AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
       JOIN face_observation face ON face.face_id = claim.face_id AND face.state = 'valid'
       JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
-      LEFT JOIN LATERAL (
-        SELECT current.identity_claim_id, current.person_id
-        FROM identity_claim current
-        JOIN person accepted_person ON accepted_person.person_id = current.person_id
-          AND accepted_person.status = 'active'
-          AND cimmich_visibility_subject_rank(
-            accepted_person.subject_kind, accepted_person.person_id
-          ) <= ${presentationRank()}
-        WHERE current.face_id = claim.face_id AND current.state = 'accepted'
-        ORDER BY current.created_at DESC, current.identity_claim_id DESC
-        LIMIT 1
-      ) accepted ON true
+      LEFT JOIN current_acceptance accepted ON accepted.face_id = claim.face_id
       LEFT JOIN person current_person ON current_person.person_id = accepted.person_id
       LEFT JOIN accepted_asset_counts same_photo
         ON same_photo.asset_id = face.asset_id
+      LEFT JOIN latest_face_review review ON review.face_id = claim.face_id
       WHERE claim.person_id = ${String(personId || "")}
         AND claim.state = 'candidate'
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
-        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
+        AND coalesce(review.reason_code, '') NOT IN (
+          'face_review_unknown', 'face_review_later', 'face_review_geometry'
+        )
         AND cimmich_person_candidate_reviewable(
           claim.origin, claim.evidence_refs, pack.pack_id
         )
