@@ -52,6 +52,12 @@ import { createTagAssetSearch } from "./tag-asset-search.mjs";
 import { attachAssetCorrections } from "./asset-correction-repository.mjs";
 import { createArchiveIntegrityStore } from "./archive-integrity.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
+import {
+  readAcceptedPhysicalFaceClaims,
+  readVisibleCanonicalPhysicalFace,
+  retireAcceptedPhysicalFaceEvidence,
+  supersedeOtherPhysicalFaceCandidates,
+} from "./physical-face-repository.mjs";
 
 const decisionReceiptId = "receipt_cimmich_local_review_service_v1";
 const userCommandReceiptId = "receipt_cimmich_local_identity_commands_v1";
@@ -5199,7 +5205,10 @@ export const createCimmichRepository = (
         fo.quality_measurements
       FROM identity_claim ic
       JOIN person p ON p.person_id = ic.person_id
-      JOIN face_observation fo ON fo.face_id = ic.face_id
+      JOIN current_face_physical_member candidate_physical
+        ON candidate_physical.face_id = ic.face_id
+      JOIN current_display_face fo
+        ON fo.physical_face_id = candidate_physical.physical_face_id
       JOIN asset a ON a.asset_id = fo.asset_id
       WHERE ic.state = 'candidate'
         AND cimmich_face_match_eligible(
@@ -5211,6 +5220,15 @@ export const createCimmichRepository = (
         AND cimmich_visibility_person_rank(p.person_id) <= ${presentationRank()}
         AND ic.evidence_refs->>'automatic_acceptance' = 'true'
         AND coalesce(ic.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM current_face_physical_member accepted_physical
+          JOIN identity_claim accepted
+            ON accepted.face_id = accepted_physical.face_id
+            AND accepted.state = 'accepted'
+            AND accepted.person_id = ic.person_id
+          WHERE accepted_physical.physical_face_id = candidate_physical.physical_face_id
+        )
         AND (
           coalesce(nullif(ic.evidence_refs->>'best_score', '')::float8, ic.calibrated_confidence::float8, -1)
             >= ${samePhotoAcceptedCandidateFloor}
@@ -5247,10 +5265,13 @@ export const createCimmichRepository = (
       const boundedLimit = cleanLimit(limit, 500, 5000);
       const rows = await sql`
       WITH accepted_asset_counts AS MATERIALIZED (
-        SELECT accepted_face.asset_id, count(*)::int AS accepted_count
+        SELECT accepted_face.asset_id,
+          count(DISTINCT accepted_physical.physical_face_id)::int AS accepted_count
         FROM identity_claim accepted
         JOIN face_observation accepted_face
           ON accepted_face.face_id = accepted.face_id AND accepted_face.state = 'valid'
+        JOIN current_face_physical_member accepted_physical
+          ON accepted_physical.face_id = accepted.face_id
         WHERE accepted.person_id = ${String(personId || "")}
           AND accepted.state = 'accepted'
         GROUP BY accepted_face.asset_id
@@ -5260,11 +5281,15 @@ export const createCimmichRepository = (
         ) AS counts
         FROM accepted_asset_counts
       ), current_acceptance AS MATERIALIZED (
-        SELECT DISTINCT ON (current.face_id)
-          current.face_id, current.identity_claim_id, current.person_id
+        SELECT DISTINCT ON (target.face_id)
+          target.face_id, current.identity_claim_id, current.person_id
         FROM identity_claim target
+        JOIN current_face_physical_member target_physical
+          ON target_physical.face_id = target.face_id
+        JOIN current_face_physical_member current_physical
+          ON current_physical.physical_face_id = target_physical.physical_face_id
         JOIN identity_claim current
-          ON current.face_id = target.face_id AND current.state = 'accepted'
+          ON current.face_id = current_physical.face_id AND current.state = 'accepted'
         JOIN person accepted_person ON accepted_person.person_id = current.person_id
           AND accepted_person.status = 'active'
           AND cimmich_visibility_subject_rank(
@@ -5272,7 +5297,7 @@ export const createCimmichRepository = (
           ) <= ${presentationRank()}
         WHERE target.person_id = ${String(personId || "")}
           AND target.state = 'candidate'
-        ORDER BY current.face_id, current.created_at DESC,
+        ORDER BY target.face_id, current.created_at DESC,
           current.identity_claim_id DESC
       ), latest_face_review AS MATERIALIZED (
         SELECT DISTINCT ON (review.subject_id)
@@ -5340,7 +5365,11 @@ export const createCimmichRepository = (
       JOIN person ON person.person_id = claim.person_id
         AND person.status = 'active' AND person.subject_kind = 'person'
         AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
-      JOIN face_observation face ON face.face_id = claim.face_id AND face.state = 'valid'
+      JOIN current_face_physical_member candidate_physical
+        ON candidate_physical.face_id = claim.face_id
+      JOIN current_display_face face
+        ON face.physical_face_id = candidate_physical.physical_face_id
+        AND face.state = 'valid'
       JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
       CROSS JOIN accepted_asset_count_map accepted_counts
       LEFT JOIN current_acceptance accepted ON accepted.face_id = claim.face_id
@@ -5356,6 +5385,15 @@ export const createCimmichRepository = (
         )
         AND cimmich_person_candidate_reviewable(
           claim.origin, claim.evidence_refs, pack.pack_id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM current_face_physical_member accepted_physical
+          JOIN identity_claim accepted_same_person
+            ON accepted_same_person.face_id = accepted_physical.face_id
+            AND accepted_same_person.state = 'accepted'
+            AND accepted_same_person.person_id = claim.person_id
+          WHERE accepted_physical.physical_face_id = candidate_physical.physical_face_id
         )
       ORDER BY CASE
           WHEN nullif(claim.evidence_refs->>'margin', '')::float8 > 0 THEN 0
@@ -5429,8 +5467,10 @@ export const createCimmichRepository = (
           for (const claimId of selectedIds) {
             const [claim] = await tx`
           SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
-            claim.state, claim.evidence_refs
+            claim.state, claim.evidence_refs, physical.physical_face_id
           FROM identity_claim claim
+          JOIN current_face_physical_member physical
+            ON physical.face_id = claim.face_id
           LEFT JOIN source_pack pack
             ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
             AND pack.state IN ('active', 'retired')
@@ -5463,7 +5503,7 @@ export const createCimmichRepository = (
                 },
               );
             }
-            if (faceIds.has(claim.face_id)) {
+            if (faceIds.has(claim.physical_face_id)) {
               throw Object.assign(
                 new Error(
                   "Selection contains more than one candidate for the same face",
@@ -5474,21 +5514,18 @@ export const createCimmichRepository = (
                 },
               );
             }
-            faceIds.add(claim.face_id);
+            faceIds.add(claim.physical_face_id);
             claims.push(claim);
           }
 
           const affectedPersonIds = new Set([target.person_id]);
           const accepted = [];
           for (const claim of claims) {
-            const [current] = await tx`
-          SELECT identity_claim_id, person_id
-          FROM identity_claim
-          WHERE face_id = ${claim.face_id} AND state = 'accepted'
-          ORDER BY created_at DESC, identity_claim_id DESC
-          LIMIT 1
-          FOR UPDATE
-        `;
+            const currentClaims = await readAcceptedPhysicalFaceClaims(
+              tx,
+              claim.physical_face_id,
+            );
+            const current = currentClaims[0] || null;
             if (current?.person_id === target.person_id) {
               throw Object.assign(
                 new Error(
@@ -5516,33 +5553,24 @@ export const createCimmichRepository = (
           )
         `;
 
-            if (current) {
-              affectedPersonIds.add(current.person_id);
-              const memberships = await tx`
-            SELECT bucket_id
-            FROM current_reference_gallery
-            WHERE person_id = ${current.person_id} AND face_id = ${claim.face_id}
-              AND membership_state = 'active'
-          `;
-              for (const membership of memberships) {
-                await tx`
-              INSERT INTO bucket_membership_event (
-                membership_event_id, bucket_id, face_id, action, actor_kind,
-                reason_code, reason_text, producer_receipt_id, privacy_class
-              ) VALUES (
-                ${`membership_${randomUUID().replaceAll("-", "")}`}, ${membership.bucket_id}, ${claim.face_id},
-                'remove', 'user', 'candidate_bulk_reassignment',
-                'Removed after accepting a candidate for another Person',
-                ${userCommandReceiptId}, 'sensitive-biometric'
-              )
-            `;
-              }
-              await tx`
-            UPDATE identity_claim
-            SET state = 'superseded'
-            WHERE identity_claim_id = ${current.identity_claim_id} AND state = 'accepted'
-          `;
+            if (currentClaims.length > 0) {
+              currentClaims.forEach((acceptedClaim) =>
+                affectedPersonIds.add(acceptedClaim.person_id),
+              );
+              await retireAcceptedPhysicalFaceEvidence(tx, {
+                claims: currentClaims,
+                reasonCode: "candidate_bulk_reassignment",
+                reasonText:
+                  "Removed after accepting a candidate for another Person",
+                userCommandReceiptId,
+              });
             }
+
+            await supersedeOtherPhysicalFaceCandidates(tx, {
+              decisionId,
+              exceptClaimId: claim.identity_claim_id,
+              physicalFaceId: claim.physical_face_id,
+            });
 
             const [updated] = await tx`
           UPDATE identity_claim
@@ -6929,12 +6957,14 @@ export const createCimmichRepository = (
           END AS review_reason,
           review.decision_id AS review_decision_id,
           coalesce(gallery.buckets, ARRAY[]::text[]) AS buckets
-        FROM face_observation fo
+        FROM current_display_face fo
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name
-          FROM identity_claim ic
+          FROM current_face_physical_member evidence_face
+          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
           JOIN person p ON p.person_id = ic.person_id
-          WHERE ic.face_id = fo.face_id AND ic.state = 'accepted'
+          WHERE evidence_face.physical_face_id = fo.physical_face_id
+            AND ic.state = 'accepted'
             AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
               <= ${presentationRank()}
           ORDER BY ic.created_at DESC, ic.identity_claim_id DESC
@@ -6943,9 +6973,20 @@ export const createCimmichRepository = (
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name,
             coalesce(nullif(ic.evidence_refs->>'best_score', '')::numeric, ic.calibrated_confidence) AS calibrated_confidence
-          FROM identity_claim ic
+          FROM current_face_physical_member evidence_face
+          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
           JOIN person p ON p.person_id = ic.person_id
-          WHERE ic.face_id = fo.face_id AND ic.state = 'candidate'
+          WHERE evidence_face.physical_face_id = fo.physical_face_id
+            AND ic.state = 'candidate'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_physical_member accepted_evidence_face
+              JOIN identity_claim accepted_same_person
+                ON accepted_same_person.face_id = accepted_evidence_face.face_id
+                AND accepted_same_person.state = 'accepted'
+                AND accepted_same_person.person_id = ic.person_id
+              WHERE accepted_evidence_face.physical_face_id = fo.physical_face_id
+            )
             AND cimmich_face_match_eligible(
               fo.detection_confidence, fo.box_w, fo.box_h
             )
@@ -6963,7 +7004,12 @@ export const createCimmichRepository = (
                 WHERE same_photo_claim.person_id = ic.person_id
                   AND same_photo_claim.state = 'accepted'
                   AND same_photo_face.asset_id = fo.asset_id
-                  AND same_photo_face.face_id <> fo.face_id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM current_face_physical_member same_physical
+                    WHERE same_physical.face_id = same_photo_face.face_id
+                      AND same_physical.physical_face_id = fo.physical_face_id
+                  )
               )
             )
           ORDER BY coalesce(nullif(ic.evidence_refs->>'best_score', '')::numeric, ic.calibrated_confidence) DESC NULLS LAST,
@@ -6972,9 +7018,11 @@ export const createCimmichRepository = (
         ) candidate ON true
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name
-          FROM identity_claim ic
+          FROM current_face_physical_member evidence_face
+          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
           JOIN person p ON p.person_id = ic.person_id
-          WHERE ic.face_id = fo.face_id AND ic.state = 'rejected'
+          WHERE evidence_face.physical_face_id = fo.physical_face_id
+            AND ic.state = 'rejected'
             AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
               <= ${presentationRank()}
           ORDER BY ic.created_at DESC, ic.identity_claim_id DESC
@@ -6982,15 +7030,19 @@ export const createCimmichRepository = (
         ) rejected ON true
         LEFT JOIN LATERAL (
           SELECT decision_id, action, reason_code
-          FROM decision
-          WHERE subject_type = 'face_review' AND subject_id = fo.face_id
+          FROM current_face_physical_member evidence_face
+          JOIN decision ON decision.subject_id = evidence_face.face_id
+            AND decision.subject_type = 'face_review'
+          WHERE evidence_face.physical_face_id = fo.physical_face_id
           ORDER BY created_at DESC, decision_id DESC
           LIMIT 1
         ) review ON true
         LEFT JOIN LATERAL (
           SELECT array_agg(g.bucket_kind || coalesce(':' || g.bucket_name, '') ORDER BY g.bucket_kind, g.bucket_name) AS buckets
-          FROM current_reference_gallery g
-          WHERE g.face_id = fo.face_id AND g.membership_state = 'active'
+          FROM current_face_physical_member evidence_face
+          JOIN current_reference_gallery g ON g.face_id = evidence_face.face_id
+          WHERE evidence_face.physical_face_id = fo.physical_face_id
+            AND g.membership_state = 'active'
         ) gallery ON true
         WHERE fo.asset_id = ${linked.assetId} AND fo.state = 'valid'
         ORDER BY fo.face_id
@@ -7012,7 +7064,8 @@ export const createCimmichRepository = (
         SELECT bo.body_id, bo.box_x::float8, bo.box_y::float8, bo.box_w::float8, bo.box_h::float8,
           bo.current_revision, bo.current_decision_id,
           bo.head_box_x::float8, bo.head_box_y::float8, bo.head_box_w::float8, bo.head_box_h::float8,
-          bo.quality_measurements, tag.person_id, tag.display_name, tag.supporting_face_id,
+          bo.quality_measurements, tag.person_id, tag.display_name,
+          coalesce(supporting_physical.canonical_face_id, tag.supporting_face_id) AS supporting_face_id,
           tag.origin AS body_link_origin, tag.decision_id AS body_link_decision_id,
           pose.body_id AS pose_body_id, pose.coordinate_space AS pose_coordinate_space,
           pose.joint_schema AS pose_joint_schema, pose.topology_id AS pose_topology_id,
@@ -7032,6 +7085,8 @@ export const createCimmichRepository = (
           ORDER BY bt.created_at DESC, bt.body_tag_id DESC
           LIMIT 1
         ) tag ON true
+        LEFT JOIN current_face_physical_member supporting_physical
+          ON supporting_physical.face_id = tag.supporting_face_id
         LEFT JOIN body_pose_evidence pose ON pose.body_id = bo.body_id
         WHERE bo.asset_id = ${linked.assetId} AND bo.state = 'valid'
         ORDER BY bo.body_id
@@ -9892,27 +9947,22 @@ export const createCimmichRepository = (
             : "";
       const result = await sql
         .begin(async (tx) => {
-          const [face] = await tx`
-        SELECT face_id, asset_id
-        FROM face_observation
-        WHERE face_id = ${String(faceId || "")} AND state = 'valid'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
-        FOR UPDATE
-      `;
+          const visibleRank = presentationRank();
+          const face = await readVisibleCanonicalPhysicalFace(tx, {
+            faceId,
+            presentationRank: visibleRank,
+          });
           if (!face)
             throw typedError(
               "Visible current Face observation not found",
               404,
               "FACE_OBSERVATION_NOT_FOUND",
             );
-          const [current] = await tx`
-        SELECT identity_claim_id, person_id
-        FROM identity_claim
-        WHERE face_id = ${face.face_id} AND state = 'accepted'
-        ORDER BY created_at DESC, identity_claim_id DESC
-        LIMIT 1
-        FOR UPDATE
-      `;
+          const currentClaims = await readAcceptedPhysicalFaceClaims(
+            tx,
+            face.physical_face_id,
+          );
+          const current = currentClaims[0] || null;
           let target;
           let createdPerson = false;
           if (createPerson) {
@@ -10055,35 +10105,18 @@ export const createCimmichRepository = (
           ${userCommandReceiptId}, 'sensitive-biometric'
         )
       `;
-          if (current) {
-            await tx`
-          UPDATE identity_claim
-          SET state = 'superseded'
-          WHERE identity_claim_id = ${current.identity_claim_id} AND state = 'accepted'
-        `;
-            const memberships = await tx`
-          SELECT bucket_id
-          FROM current_reference_gallery
-          WHERE person_id = ${current.person_id} AND face_id = ${face.face_id} AND membership_state = 'active'
-        `;
-            for (const membership of memberships) {
-              await tx`
-            INSERT INTO bucket_membership_event (
-              membership_event_id, bucket_id, face_id, action, actor_kind,
-              reason_code, reason_text, producer_receipt_id, privacy_class
-            ) VALUES (
-              ${`membership_${randomUUID().replaceAll("-", "")}`}, ${membership.bucket_id}, ${face.face_id},
-              'remove', 'user', 'identity_reassigned', 'Removed after accepted identity reassignment',
-              ${userCommandReceiptId}, 'sensitive-biometric'
-            )
-          `;
-            }
+          if (currentClaims.length > 0) {
+            await retireAcceptedPhysicalFaceEvidence(tx, {
+              claims: currentClaims,
+              reasonCode: "identity_reassigned",
+              reasonText: "Removed after accepted identity reassignment",
+              userCommandReceiptId,
+            });
           }
-          await tx`
-        UPDATE identity_claim
-        SET state = 'superseded', decision_id = ${decisionId}
-        WHERE face_id = ${face.face_id} AND state = 'candidate'
-      `;
+          await supersedeOtherPhysicalFaceCandidates(tx, {
+            decisionId,
+            physicalFaceId: face.physical_face_id,
+          });
           const claimId = `claim_${randomUUID().replaceAll("-", "")}`;
           await tx`
         INSERT INTO identity_claim (

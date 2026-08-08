@@ -22,7 +22,7 @@ test("asset evidence returns persisted candidates without whole-gallery matching
     if (statement.includes("SELECT asset_id FROM asset")) {
       return [{ asset_id: "asset-1" }];
     }
-    if (statement.includes("FROM face_observation fo")) {
+    if (statement.includes("FROM current_display_face fo")) {
       return [
         {
           buckets: [],
