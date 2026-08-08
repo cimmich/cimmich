@@ -564,7 +564,7 @@
             </p>
             <h2 class="mt-1 text-xl font-semibold">People with suggestions</h2>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              {cimmichCandidateSummary?.totalCandidates.toLocaleString() ?? '0'} matched faces from the current reference
+              {cimmichCandidateSummary?.totalCandidates.toLocaleString() ?? '0'} matched faces from a saved evaluated reference
               library, grouped by the known person they may belong to. Nothing changes until you confirm.
             </p>
           </div>
@@ -705,7 +705,7 @@
               description={peopleQuery
                 ? 'Try another name or clear the current filters.'
                 : viewMode === 'candidates'
-                  ? 'The current reference library has no open face suggestions for known people.'
+                  ? 'No saved evaluated reference library has open face suggestions for known people.'
                   : viewMode === 'needsFace'
                     ? 'No one currently needs sorting or Holding.'
                     : 'People will appear here when the current projection contains them.'}
