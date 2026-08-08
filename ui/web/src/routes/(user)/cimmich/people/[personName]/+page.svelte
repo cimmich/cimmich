@@ -7,11 +7,23 @@
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
+  import CimmichKnownPersonClusters from '$lib/components/cimmich/CimmichKnownPersonClusters.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
+  import {
+    restoreIdentityMoveUndo,
+    storeIdentityMoveUndo,
+    type CimmichIdentityMoveUndo,
+  } from '$lib/components/cimmich/identity-move-undo';
   import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
+  import type {
+    CimmichHeroField,
+    CimmichPersonConnection,
+    CimmichPresentationDrag,
+    CimmichPresentationFrame,
+  } from '$lib/components/cimmich/person-page-types';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
   import {
     personAwaitingCounts,
@@ -120,6 +132,10 @@
     type CimmichVisibilityObject,
   } from '$lib/services/cimmich.service';
   import {
+    getCimmichKnownPersonClusterSuggestions,
+    type CimmichKnownPersonClusterSuggestion,
+  } from '$lib/services/possible-people.service';
+  import {
     buildCimmichPeopleIndex,
     resolveCimmichAssetsByFilename,
     updateCimmichFace,
@@ -179,63 +195,6 @@
     | 'secondary';
   type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
-  type CimmichIdentityMoveUndo = {
-    bodyId?: string;
-    destinationPersonId: string;
-    faceId: string;
-    moveBody: boolean;
-    originalPersonId: string;
-  };
-  const identityMoveUndoKey = (personId: string) => `cimmich.identity-move-undo.v1.${personId}`;
-  const storeIdentityMoveUndo = (personId: string, receipt: CimmichIdentityMoveUndo | null) => {
-    try {
-      const key = identityMoveUndoKey(personId);
-      if (!receipt) {
-        globalThis.localStorage.removeItem(key);
-        return;
-      }
-      globalThis.localStorage.setItem(key, JSON.stringify({ receipt, savedAt: Date.now() }));
-    } catch {
-      // The move remains durable even when this browser refuses local storage;
-      // only the convenience affordance is unavailable after a reload.
-    }
-  };
-  const restoreIdentityMoveUndo = (personId: string): CimmichIdentityMoveUndo | null => {
-    try {
-      const raw = globalThis.localStorage.getItem(identityMoveUndoKey(personId));
-      if (!raw) {
-        return null;
-      }
-      const value = JSON.parse(raw) as { receipt?: Partial<CimmichIdentityMoveUndo>; savedAt?: number };
-      const receipt = value.receipt;
-      if (
-        !Number.isFinite(value.savedAt) ||
-        Date.now() - Number(value.savedAt) > 24 * 60 * 60 * 1000 ||
-        !receipt ||
-        !receipt.destinationPersonId ||
-        !receipt.faceId ||
-        receipt.originalPersonId !== personId ||
-        typeof receipt.moveBody !== 'boolean'
-      ) {
-        storeIdentityMoveUndo(personId, null);
-        return null;
-      }
-      return receipt as CimmichIdentityMoveUndo;
-    } catch {
-      storeIdentityMoveUndo(personId, null);
-      return null;
-    }
-  };
-  type CimmichPersonConnection = {
-    directRelations?: Array<{ relationId: string; relationType: string }>;
-    displayName: string;
-    entityId: string;
-    entityKind: 'event' | 'object' | 'person' | 'place';
-    metaLabel: string;
-    photoCount: number;
-    sourceAssetId: string | null;
-    typeKind: string;
-  };
   type PhotoFilter = 'all' | 'body' | 'face' | 'needs';
   type PersonTab = 'identity' | 'maintenance' | 'photos' | 'places' | 'signals' | 'story' | 'with';
   type FaceConfirmationCandidate = {
@@ -247,22 +206,6 @@
     mediaId: string;
     photo: CimmichPersonPhoto;
     proposedName: string;
-  };
-  type CimmichHeroField = {
-    fieldKey: CimmichPersonProfileFieldKey;
-    label: string;
-    value: string;
-  };
-  type CimmichPresentationFrame = {
-    centerX: number;
-    centerY: number;
-    zoom: number;
-  };
-  type CimmichPresentationDrag = {
-    pointerId: number;
-    slotKind: CimmichPersonPresentationSlot;
-    x: number;
-    y: number;
   };
   let { data }: Props = $props();
   let activeTab = $state<PersonTab>('photos');
@@ -325,6 +268,7 @@
   let cimmichMachineSuggestionSaving = $state(false);
   let cimmichMachineSuggestionSelection = $state<string[]>([]);
   let cimmichMachineSuggestions = $state<CimmichMachineSuggestion[]>([]);
+  let cimmichKnownClusterSuggestions = $state<CimmichKnownPersonClusterSuggestion[]>([]);
   let cimmichPresentation = $state<CimmichPersonPresentation>();
   let cimmichPresentationPickerSlot = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichPresentationFrames = $state<Record<CimmichPersonPresentationSlot, CimmichPresentationFrame>>({
@@ -772,13 +716,21 @@
   const cimmichCandidateOnlyReviewItems = $derived(
     cimmichCandidateReviewItems.filter(({ faceId }) => !cimmichIdentityAuditFaceIds.has(faceId)),
   );
-  const cimmichAwaitingCounts = $derived(
-    personAwaitingCounts(
+  const cimmichKnownClusterPhotoCount = $derived(
+    cimmichKnownClusterSuggestions.reduce((total, item) => total + item.evidence.photoCount, 0),
+  );
+  const cimmichAwaitingCounts = $derived.by(() => {
+    const base = personAwaitingCounts(
       cimmichIdentityAuditTotals,
       cimmichCandidateOnlyReviewItems,
       visibleCimmichMachineSuggestions.length,
-    ),
-  );
+    );
+    return {
+      ...base,
+      newMatches: base.newMatches + cimmichKnownClusterPhotoCount,
+      total: base.total + cimmichKnownClusterPhotoCount,
+    };
+  });
   const cimmichIdentityAuditGroups = $derived(
     personIdentityAuditGroups({
       auditTotals: cimmichIdentityAuditTotals,
@@ -2317,6 +2269,30 @@
     }
   };
 
+  const finishCimmichKnownClusterSuggestion = async (result: {
+    candidateCount: number;
+    clusterId: string;
+    kind: 'review' | 'reject';
+  }) => {
+    cimmichKnownClusterSuggestions = cimmichKnownClusterSuggestions.filter(
+      ({ clusterId }) => clusterId !== result.clusterId,
+    );
+    if (result.kind === 'reject') {
+      cimmichIdentityMessage = 'This group is no longer suggested for this Person and is available in Possible people.';
+      return;
+    }
+    if (!cimmichPerson) {
+      return;
+    }
+    try {
+      cimmichCandidates = await getCimmichPersonCandidates(cimmichPerson.person_id);
+      cimmichIdentityMessage = `${result.candidateCount.toLocaleString()} grouped Faces were moved into ${cimmichPerson.display_name}’s Checks. Nothing was confirmed.`;
+    } catch (error) {
+      cimmichIdentityError =
+        error instanceof Error ? error.message : 'The group moved, but Cimmich could not reload the Checks queue.';
+    }
+  };
+
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
     cimmichMode = 'identity';
     if (!cimmichPerson || cimmichIdentityLoaded || cimmichIdentityLoading) {
@@ -2326,13 +2302,22 @@
     cimmichIdentityError = '';
     try {
       const personId = cimmichPerson.person_id;
-      const [facesPage, assetsPage, candidates, presentation, untaggedAudit, contradictionAudit] = await Promise.all([
+      const [
+        facesPage,
+        assetsPage,
+        candidates,
+        presentation,
+        untaggedAudit,
+        contradictionAudit,
+        knownClusterSuggestions,
+      ] = await Promise.all([
         getCimmichIdentityFacesPage(personId, 120),
         getCimmichPersonAssetsPage(personId, 120),
         getCimmichPersonCandidates(personId),
         getCimmichPersonPresentation(personId),
         getCimmichIdentityAuditItems('untagged_match', 0, 50, personId),
         getCimmichIdentityAuditItems('accepted_contradiction', 0, 50, personId),
+        getCimmichKnownPersonClusterSuggestions(personId),
       ]);
       const machineSuggestions =
         untaggedAudit.run?.state === 'completed' ? [] : await getCimmichMachineSuggestions(80, personId);
@@ -2346,6 +2331,7 @@
       cimmichAssets = assetsPage.items;
       cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichCandidates = candidates;
+      cimmichKnownClusterSuggestions = knownClusterSuggestions;
       cimmichMachineSuggestions = machineSuggestions;
       cimmichIdentityAuditItems = [...untaggedAudit.items, ...contradictionAudit.items];
       cimmichIdentityAuditTotals = {
@@ -3044,6 +3030,7 @@
     cimmichIdentityFaceSummary = { all: 0, head: 0, lowQuality: 0, prime: 0, secondary: 0 };
     cimmichIdentityNextCursor = null;
     cimmichCandidates = [];
+    cimmichKnownClusterSuggestions = [];
     cimmichMachineSuggestions = [];
     cimmichMachineSuggestionSelection = [];
     cimmichMachineSuggestionConfirm = false;
@@ -3873,6 +3860,12 @@
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
           {:else if cimmichIdentityFilter === 'candidates'}
             <section class="grid gap-6" aria-label="Awaiting confirmation">
+              <CimmichKnownPersonClusters
+                items={cimmichKnownClusterSuggestions}
+                onChanged={(result) => void finishCimmichKnownClusterSuggestion(result)}
+                personId={cimmichPerson.person_id}
+                personName={cimmichPerson.display_name}
+              />
               {#if cimmichSamePhotoCollisionGroups.length > 0}
                 <CimmichSamePhotoCollisionReview
                   correction={cimmichIdentityAuditCorrection}

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { integrationSettingsPack } from "./integration-settings.mjs";
 import { createReviewRoutes } from "./review-routes.mjs";
+import { matchPossiblePeopleRoutes } from "./possible-people-routes.mjs";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
@@ -3157,9 +3158,12 @@ export const createCimmichServer = ({
         );
         return;
       }
-      const personCandidatesMatch = url.pathname.match(
-        /^\/v1\/people\/([^/]+)\/candidates$/,
-      );
+      const {
+        personCandidatesMatch,
+        personKnownClusterSuggestionsMatch,
+        possiblePersonResolveMatch,
+        possiblePersonUndoMatch,
+      } = matchPossiblePeopleRoutes(url.pathname);
       if (request.method === "GET" && url.pathname === "/v1/possible-people") {
         requireProjection("person_review");
         sendJson(
@@ -3187,9 +3191,23 @@ export const createCimmichServer = ({
         );
         return;
       }
-      const possiblePersonResolveMatch = url.pathname.match(
-        /^\/v1\/possible-people\/([^/]+)\/resolve$/,
-      );
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/possible-people/classify"
+      ) {
+        requireProjection("person_review");
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          202,
+          await repository.possiblePeopleClassify({
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "POST" && possiblePersonResolveMatch) {
         requireProjection("person_review");
         const body = await readJsonBody(request);
@@ -3205,9 +3223,6 @@ export const createCimmichServer = ({
         );
         return;
       }
-      const possiblePersonUndoMatch = url.pathname.match(
-        /^\/v1\/possible-people\/decisions\/([^/]+)\/undo$/,
-      );
       if (request.method === "POST" && possiblePersonUndoMatch) {
         requireProjection("person_review");
         const body = await readJsonBody(request);
@@ -3247,6 +3262,18 @@ export const createCimmichServer = ({
               personId: decodeURIComponent(personCandidatesMatch[1]),
             }),
           },
+          allowedOrigin,
+        );
+        return;
+      }
+      if (request.method === "GET" && personKnownClusterSuggestionsMatch) {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.possiblePeopleKnownSuggestions({
+            personId: decodeURIComponent(personKnownClusterSuggestionsMatch[1]),
+          }),
           allowedOrigin,
         );
         return;

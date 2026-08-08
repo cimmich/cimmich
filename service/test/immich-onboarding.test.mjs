@@ -747,6 +747,13 @@ test("possible people scan only assets carrying unnamed Immich People", async ()
         assetId,
         items: [
           {
+            assetType: "image",
+            captureTime: "2024-08-08T00:00:00.000Z",
+            immichAssetId: "people-projection-omitted",
+            inputRevision: "e".repeat(64),
+            visibility: "timeline",
+          },
+          {
             ...sourceFace(
               "source-face-anonymous",
               { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },

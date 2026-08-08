@@ -1,4 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  classifyPossiblePeopleRun,
+  possiblePeopleClassificationContract,
+} from "./possible-people-classifier.mjs";
+import {
+  createPossiblePeopleProjection,
+  projectPossiblePeopleRun as projectRun,
+} from "./possible-people-projection.mjs";
 
 const receiptId = "receipt_cimmich_possible_people_v1";
 const algorithmVersion = "cimmich-possible-people-graph-v1";
@@ -8,6 +16,8 @@ const neighbourLimit = 12;
 const similarityFloor = 0.55;
 const strongOneWayFloor = 0.68;
 const batchSize = 250;
+const { classificationVersion, knownPersonMarginFloor, knownPersonScoreFloor } =
+  possiblePeopleClassificationContract;
 
 const typedError = (message, statusCode, code, details) =>
   Object.assign(new Error(message), {
@@ -121,39 +131,6 @@ const completeCommand = async (tx, commandId, response) => {
     WHERE command_id = ${commandId}
   `;
   return response;
-};
-
-const projectRun = (row) =>
-  row
-    ? {
-        clusterCount: Number(row.cluster_count),
-        completedAt: row.completed_at,
-        createdAt: row.created_at,
-        edgeCount: Number(row.edge_count),
-        errorCode: row.error_code,
-        errorMessage: row.error_message,
-        processedSeeds: Number(row.processed_seeds),
-        runId: row.run_id,
-        startedAt: row.started_at,
-        state: row.state,
-        totalSeeds: Number(row.total_seeds),
-      }
-    : null;
-
-const latestRuns = async (sql) => {
-  const [completed] = await sql`
-    SELECT * FROM possible_person_run
-    WHERE state = 'completed'
-    ORDER BY completed_at DESC, run_id DESC LIMIT 1
-  `;
-  const [active] = await sql`
-    SELECT * FROM possible_person_run
-    WHERE state IN ('queued','running','failed')
-      AND (${completed?.created_at || null}::timestamptz IS NULL
-        OR created_at > ${completed?.created_at || null}::timestamptz)
-    ORDER BY created_at DESC, run_id DESC LIMIT 1
-  `;
-  return { active, completed };
 };
 
 const seedRun = async (sql, runId, presentationRank) => {
@@ -466,7 +443,8 @@ const finalizeRun = async (sql, run) => {
   await sql.begin(async (tx) => {
     for (const cluster of clusters) {
       const [previous] = await tx`
-        SELECT status, linked_person_id, current_decision_id
+        SELECT status, linked_person_id, current_decision_id,
+          suggestion_evidence
         FROM face_cluster
         WHERE cluster_digest = ${cluster.clusterDigest}
           AND possible_person_run_id IS NOT NULL
@@ -476,13 +454,15 @@ const finalizeRun = async (sql, run) => {
         INSERT INTO face_cluster (
           cluster_id, producer_receipt_id, status, linked_person_id, member_count,
           privacy_class, possible_person_run_id, cluster_digest,
-          representative_face_id, evidence, source_revision, current_decision_id
+          representative_face_id, evidence, source_revision, current_decision_id,
+          suggestion_evidence
         ) VALUES (
           ${cluster.clusterId}, ${receiptId}, ${previous?.status || "open"},
           ${previous?.linked_person_id || null}, ${cluster.members.length},
           'sensitive-biometric', ${run.run_id}, ${cluster.clusterDigest},
           ${cluster.representative.face_id}, ${tx.json(cluster.evidence)},
-          ${cluster.clusterDigest}, ${previous?.current_decision_id || null}
+          ${cluster.clusterDigest}, ${previous?.current_decision_id || null},
+          ${tx.json(previous?.suggestion_evidence || {})}
         )
       `;
       const memberRows = cluster.members
@@ -506,12 +486,18 @@ const finalizeRun = async (sql, run) => {
       }
     }
     await tx`
-      UPDATE possible_person_run SET state = 'completed', completed_at = now(),
-        edge_count = (SELECT count(*)::int FROM possible_person_edge WHERE run_id = ${run.run_id}),
+      UPDATE possible_person_run
+      SET edge_count = (SELECT count(*)::int FROM possible_person_edge WHERE run_id = ${run.run_id}),
         cluster_count = ${clusters.length}
       WHERE run_id = ${run.run_id} AND state = 'running'
     `;
   });
+  await classifyPossiblePeopleRun(sql, run.run_id);
+  await sql`
+    UPDATE possible_person_run SET state = 'completed', completed_at = now()
+    WHERE run_id = ${run.run_id} AND state = 'running'
+      AND classification_state = 'completed'
+  `;
 };
 
 export const createPossiblePeopleStore = (
@@ -519,6 +505,8 @@ export const createPossiblePeopleStore = (
   { createPerson, presentationRank = () => 0 } = {},
 ) => {
   let worker = null;
+  let classificationWorker = null;
+  const projection = createPossiblePeopleProjection(sql, { schemaVersion });
 
   const runWorker = (runId) => {
     if (worker) return worker;
@@ -540,7 +528,21 @@ export const createPossiblePeopleStore = (
         await sql`
           UPDATE possible_person_run SET state = 'failed',
             error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
-            error_message = ${String(error?.message || error).slice(0, 500)}
+            error_message = ${String(error?.message || error).slice(0, 500)},
+            classification_state = CASE
+              WHEN classification_state = 'running' THEN 'failed'
+              ELSE classification_state
+            END,
+            classification_error_code = CASE
+              WHEN classification_state = 'running'
+                THEN ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)}
+              ELSE classification_error_code
+            END,
+            classification_error_message = CASE
+              WHEN classification_state = 'running'
+                THEN ${String(error?.message || error).slice(0, 500)}
+              ELSE classification_error_message
+            END
           WHERE run_id = ${runId} AND state IN ('queued','running')
         `.catch(() => {});
       } finally {
@@ -550,71 +552,73 @@ export const createPossiblePeopleStore = (
     return worker;
   };
 
-  const snapshot = async () => {
-    const { active, completed } = await latestRuns(sql);
-    const rows = completed
-      ? await sql`
-          SELECT cluster.cluster_id, cluster.status, cluster.linked_person_id,
-            cluster.cluster_digest, cluster.source_revision, cluster.evidence,
-            cluster.current_decision_id, face.face_id, face.box_x::float8,
-            face.box_y::float8, face.box_w::float8, face.box_h::float8,
-            asset.width, asset.height,
-            projection.immich_asset_id AS source_asset_id
-          FROM face_cluster cluster
-          JOIN face_observation face ON face.face_id = cluster.representative_face_id
-          JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
-          LEFT JOIN LATERAL (
-            SELECT current_projection.immich_asset_id
-            FROM immich_asset_projection current_projection
-            WHERE current_projection.cimmich_asset_id = asset.asset_id
-              AND current_projection.state = 'active'
-            ORDER BY current_projection.last_seen_at DESC, current_projection.source_id
-            LIMIT 1
-          ) projection ON true
-          WHERE cluster.possible_person_run_id = ${completed.run_id}
-          ORDER BY (cluster.evidence->>'photoCount')::int DESC, cluster.cluster_id
-        `
-      : [];
-    return {
-      activeRun: projectRun(active),
-      clusters: rows
-        .filter((row) => row.source_asset_id)
-        .map((row) => ({
-          evidence: row.evidence,
-          faceCount: Number(row.evidence?.faceCount || 0),
-          immichPersonId: row.cluster_id,
-          representative: {
-            assetInputRevision: row.source_revision,
-            box: { h: row.box_h, w: row.box_w, x: row.box_x, y: row.box_y },
-            faceId: row.face_id,
-            height: row.height,
-            sourceAssetId: row.source_asset_id,
-            width: row.width,
-          },
-          resolution:
-            row.status === "closed"
-              ? {
-                  action: "later",
-                  decisionId: row.current_decision_id,
-                  personId: null,
-                  resolutionId: row.current_decision_id,
-                  state: "later",
-                }
-              : row.status === "linked"
-                ? {
-                    action: "existing_person",
-                    decisionId: row.current_decision_id,
-                    personId: row.linked_person_id,
-                    resolutionId: row.current_decision_id,
-                    state: "resolved",
-                  }
-                : { state: "unresolved" },
-          snapshotDigest: row.cluster_digest,
-          sourceRevision: row.source_revision,
-        })),
-      completedRun: projectRun(completed),
-      schemaVersion,
-    };
+  const runClassificationWorker = (runId) => {
+    if (classificationWorker) return classificationWorker;
+    classificationWorker = (async () => {
+      try {
+        await classifyPossiblePeopleRun(sql, runId);
+      } catch (error) {
+        await sql`
+          UPDATE possible_person_run
+          SET classification_state = 'failed',
+            classification_error_code = ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)},
+            classification_error_message = ${String(error?.message || error).slice(0, 500)}
+          WHERE run_id = ${runId} AND state = 'completed'
+            AND classification_state <> 'completed'
+        `.catch(() => {});
+      } finally {
+        classificationWorker = null;
+      }
+    })();
+    return classificationWorker;
+  };
+
+  const classifyLatest = async ({ actorId, commandId }) => {
+    const actor = cleanActor(actorId);
+    const stableCommandId = cleanCommandId(commandId);
+    const requestDigest = digest({ classificationVersion, kind: "classify" });
+    const result = await sql.begin(async (tx) => {
+      const command = await beginCommand(tx, {
+        actorId: actor,
+        commandId: stableCommandId,
+        commandKind: "classify",
+        requestDigest,
+      });
+      if (command.replay) return command.replay;
+      const [run] = await tx`
+        SELECT * FROM possible_person_run
+        WHERE state = 'completed'
+        ORDER BY completed_at DESC, run_id DESC LIMIT 1 FOR UPDATE
+      `;
+      if (!run)
+        throw typedError(
+          "No completed Possible people snapshot is available",
+          409,
+          "POSSIBLE_PEOPLE_SNAPSHOT_EMPTY",
+        );
+      if (run.classification_state === "completed") {
+        return completeCommand(tx, stableCommandId, {
+          changed: false,
+          replayed: false,
+          run: projectRun(run),
+          schemaVersion,
+        });
+      }
+      await tx`
+        UPDATE possible_person_run
+        SET classification_state = 'pending',
+          classification_error_code = NULL, classification_error_message = NULL
+        WHERE run_id = ${run.run_id}
+      `;
+      return completeCommand(tx, stableCommandId, {
+        changed: true,
+        replayed: false,
+        run: projectRun({ ...run, classification_state: "pending" }),
+        schemaVersion,
+      });
+    });
+    if (result.changed) void runClassificationWorker(result.run.runId);
+    return result;
   };
 
   const refresh = async ({ actorId, commandId }) => {
@@ -695,7 +699,14 @@ export const createPossiblePeopleStore = (
     const actor = cleanActor(actorId);
     const stableCommandId = cleanCommandId(commandId);
     const stableClusterId = cleanId(clusterId, "Possible person cluster ID");
-    if (!new Set(["later", "existing_person", "create_person"]).has(action)) {
+    if (
+      !new Set([
+        "later",
+        "existing_person",
+        "create_person",
+        "not_suggested_person",
+      ]).has(action)
+    ) {
       throw typedError(
         "Possible person action is invalid",
         400,
@@ -734,7 +745,8 @@ export const createPossiblePeopleStore = (
       });
       if (command.replay) return command.replay;
       const [cluster] = await tx`
-        SELECT cluster_id, cluster_digest, status, possible_person_run_id
+        SELECT cluster_id, cluster_digest, status, possible_person_run_id,
+          suggested_person_id, suggestion_evidence
         FROM face_cluster WHERE cluster_id = ${stableClusterId} FOR UPDATE
       `;
       if (!cluster || cluster.cluster_digest !== String(snapshotDigest || "")) {
@@ -743,6 +755,48 @@ export const createPossiblePeopleStore = (
           409,
           "POSSIBLE_PEOPLE_SNAPSHOT_STALE",
         );
+      }
+      if (action === "not_suggested_person") {
+        if (!cluster.suggested_person_id) {
+          throw typedError(
+            "This recurring group no longer has a known-Person suggestion",
+            409,
+            "POSSIBLE_PEOPLE_SNAPSHOT_STALE",
+          );
+        }
+        const decisionId = stableId("decision_possible_", stableCommandId);
+        await tx`
+          INSERT INTO decision (
+            decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+            reason_code, note, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${decisionId}, 'face_cluster', ${cluster.cluster_id}, 'reject',
+            'user', ${actor}, 'possible_person_known_match_rejected',
+            ${`Reject grouped suggestion for ${cluster.suggested_person_id}`},
+            ${receiptId}, 'sensitive-biometric'
+          )
+        `;
+        await tx`
+          UPDATE face_cluster
+          SET suggested_person_id = NULL,
+            suggestion_evidence = jsonb_set(
+              suggestion_evidence,
+              '{rejectedPersonIds}',
+              coalesce(suggestion_evidence->'rejectedPersonIds', '[]'::jsonb)
+                || to_jsonb(${cluster.suggested_person_id}::text),
+              true
+            ),
+            current_decision_id = ${decisionId}
+          WHERE cluster_id = ${cluster.cluster_id}
+        `;
+        return completeCommand(tx, stableCommandId, {
+          changed: true,
+          decisionId,
+          replayed: false,
+          resolution: null,
+          schemaVersion,
+          state: "rejected_known_match",
+        });
       }
       if (action !== "later") {
         const [person] = await tx`
@@ -786,7 +840,7 @@ export const createPossiblePeopleStore = (
             greatest(0, least(1, member.membership_score)),
             jsonb_build_object(
               'assignment_decision', 'cluster_propagation_candidate',
-              'automatic_acceptance', 'true',
+              'automatic_acceptance', 'false',
               'best_score', member.membership_score,
               'cluster_id', ${cluster.cluster_id},
               'policy_version', ${algorithmVersion},
@@ -878,11 +932,21 @@ export const createPossiblePeopleStore = (
     });
   };
 
-  return { refresh, resolve, snapshot, undo };
+  return {
+    classifyLatest,
+    knownSuggestions: projection.knownSuggestions,
+    refresh,
+    resolve,
+    snapshot: projection.snapshot,
+    undo,
+  };
 };
 
 export const possiblePeopleContract = Object.freeze({
   algorithmVersion,
+  classificationVersion,
+  knownPersonMarginFloor,
+  knownPersonScoreFloor,
   neighbourLimit,
   schemaVersion,
   seedLimit,

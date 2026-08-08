@@ -49,7 +49,7 @@ test("Person candidate summary retains review claims from a retired passed Sourc
         suggestionCount: 2,
       },
     ],
-    schemaVersion: "cimmich.person-candidate-summary.v1",
+    schemaVersion: "cimmich.person-candidate-summary.v2",
     totalCandidates: 6,
     totalPeople: 2,
   });
@@ -70,7 +70,7 @@ test("Person candidate detail and acceptance retain the same passed-pack review 
   const slices = [
     source.slice(
       source.indexOf("async personCandidates"),
-      source.indexOf("async personCandidateSummary"),
+      source.indexOf("async bulkAcceptPersonCandidates"),
     ),
     source.slice(
       source.indexOf("async bulkAcceptPersonCandidates"),
@@ -86,9 +86,14 @@ test("Person candidate detail and acceptance retain the same passed-pack review 
 });
 
 test("Person candidate reads honor a current owner Unknown decision", async () => {
-  const source = await import("node:fs/promises").then(({ readFile }) =>
+  const { readFile } = await import("node:fs/promises");
+  const [source, summarySource] = await Promise.all([
     readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
-  );
+    readFile(
+      new URL("../src/person-candidate-summary.mjs", import.meta.url),
+      "utf8",
+    ),
+  ]);
   const slices = [
     source.slice(
       source.indexOf("async identityCandidates"),
@@ -96,12 +101,9 @@ test("Person candidate reads honor a current owner Unknown decision", async () =
     ),
     source.slice(
       source.indexOf("async personCandidates"),
-      source.indexOf("async personCandidateSummary"),
-    ),
-    source.slice(
-      source.indexOf("async personCandidateSummary"),
       source.indexOf("async bulkAcceptPersonCandidates"),
     ),
+    summarySource,
   ];
   for (const method of slices) {
     assert.match(method, /subject_type = 'face_review'/);

@@ -44,7 +44,9 @@ export const scanUnnamed = async (companion, scope) => {
         );
       }
       for (const asset of page.items) {
-        const hasUnnamedPerson = asset.people.some(
+        const hasUnnamedPerson = (
+          Array.isArray(asset.people) ? asset.people : []
+        ).some(
           (person) =>
             !person.name && (scope.includeHiddenPeople || !person.isHidden),
         );
