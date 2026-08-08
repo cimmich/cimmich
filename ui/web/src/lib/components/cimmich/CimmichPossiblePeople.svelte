@@ -114,7 +114,9 @@
   };
 
   const pollExplicitRefresh = async () => {
-    if (!refreshRequested) return;
+    if (!refreshRequested) {
+      return;
+    }
     await load();
     if (activeRun?.state === 'queued' || activeRun?.state === 'running') {
       pollTimer = setTimeout(() => void pollExplicitRefresh(), 1500);
@@ -129,7 +131,9 @@
   };
 
   const refresh = async () => {
-    if (refreshRequested) return;
+    if (refreshRequested) {
+      return;
+    }
     error = '';
     notice = '';
     refreshRequested = true;
@@ -318,7 +322,9 @@
 
   onDestroy(() => {
     refreshRequested = false;
-    if (pollTimer) clearTimeout(pollTimer);
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+    }
   });
 </script>
 

@@ -614,7 +614,7 @@ export type CimmichPersonCandidateSummary = {
     personId: string;
     suggestionCount: number;
   }>;
-  schemaVersion: 'cimmich.person-candidate-summary.v1';
+  schemaVersion: 'cimmich.person-candidate-summary.v2';
   totalCandidates: number;
   totalPeople: number;
 };

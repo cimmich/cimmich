@@ -953,7 +953,7 @@ test("deferred review survives matcher churn and same-photo candidates stay revi
   );
   const personCandidates = source.slice(
     source.indexOf("async personCandidates"),
-    source.indexOf("async personCandidateSummary"),
+    source.indexOf("async bulkAcceptPersonCandidates"),
   );
 
   assert.match(machine, /face_review_later/);

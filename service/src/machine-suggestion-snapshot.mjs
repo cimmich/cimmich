@@ -7,7 +7,9 @@ export const createMachineSuggestionSnapshot = () => {
 
   const invalidate = () => {
     epoch += 1;
-    if (cache) cache.expiresAt = 0;
+    // Explicit identity decisions are stronger than ordinary TTL expiry: the
+    // next review read must not project the invalidated result even once.
+    cache = null;
   };
 
   const peek = ({ visibleRank }) => {

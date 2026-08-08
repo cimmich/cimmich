@@ -39,6 +39,7 @@ import { createIdentityAudit } from "./identity-audit.mjs";
 import { createFaceMatches } from "./face-match-repository.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
+import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -1172,6 +1173,9 @@ export const createCimmichRepository = (
   });
   const possiblePeople = createPossiblePeopleStore(sql, {
     createPerson: personCreates.create,
+    presentationRank,
+  });
+  const personCandidateSummary = createPersonCandidateSummary(sql, {
     presentationRank,
   });
   const xmpSidecarReview = createXmpSidecarReviewStore(sql, {
@@ -2461,6 +2465,8 @@ export const createCimmichRepository = (
     smartSearch: basicSmartSearch.search,
     createPerson: personCreates.create,
     possiblePeopleRefresh: possiblePeople.refresh,
+    possiblePeopleClassify: possiblePeople.classifyLatest,
+    possiblePeopleKnownSuggestions: possiblePeople.knownSuggestions,
     possiblePeopleResolve: possiblePeople.resolve,
     possiblePeopleSnapshot: possiblePeople.snapshot,
     possiblePeopleUndo: possiblePeople.undo,
@@ -5345,62 +5351,7 @@ export const createCimmichRepository = (
       }));
     },
 
-    async personCandidateSummary() {
-      const rows = await sql`
-      SELECT claim.person_id, person.display_name,
-        count(*)::int AS suggestion_count,
-        count(DISTINCT face.asset_id)::int AS asset_count,
-        max(nullif(claim.evidence_refs->>'best_score', '')::float8)::float8 AS best_score,
-        max(nullif(claim.evidence_refs->>'margin', '')::float8)::float8 AS best_margin
-      FROM identity_claim claim
-      -- Review claims against the exact evaluated pack that produced them.
-      -- Pack retirement removes generation authority, not review history.
-      LEFT JOIN source_pack pack
-        ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
-        AND pack.state IN ('active', 'retired')
-        AND pack.evaluation_status = 'passed'
-        AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
-          claim.evidence_refs->>'policy_version'
-      JOIN person
-        ON person.person_id = claim.person_id
-        AND person.status = 'active'
-        AND person.subject_kind = 'person'
-        AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
-      JOIN face_observation face
-        ON face.face_id = claim.face_id
-        AND face.state = 'valid'
-      JOIN asset
-        ON asset.asset_id = face.asset_id
-        AND asset.state = 'active'
-      WHERE claim.state = 'candidate'
-        AND cimmich_face_match_eligible(
-          face.detection_confidence, face.box_w, face.box_h
-        )
-        AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
-        AND cimmich_person_candidate_reviewable(
-          claim.origin, claim.evidence_refs, pack.pack_id
-        )
-      GROUP BY claim.person_id, person.display_name
-      ORDER BY suggestion_count DESC, person.display_name, claim.person_id
-    `;
-
-      return {
-        items: rows.map((row) => ({
-          assetCount: Number(row.asset_count),
-          bestMargin: row.best_margin,
-          bestScore: row.best_score,
-          displayName: row.display_name,
-          personId: row.person_id,
-          suggestionCount: Number(row.suggestion_count),
-        })),
-        schemaVersion: "cimmich.person-candidate-summary.v1",
-        totalCandidates: rows.reduce(
-          (total, row) => total + Number(row.suggestion_count),
-          0,
-        ),
-        totalPeople: rows.length,
-      };
-    },
+    personCandidateSummary,
 
     async bulkAcceptPersonCandidates({ actorId, claimIds, personId }) {
       const actor = cleanActor(actorId);
@@ -5467,7 +5418,7 @@ export const createCimmichRepository = (
             AND cimmich_person_candidate_reviewable(
               claim.origin, claim.evidence_refs, pack.pack_id
             )
-          FOR UPDATE
+          FOR UPDATE OF claim
         `;
             if (
               !claim ||

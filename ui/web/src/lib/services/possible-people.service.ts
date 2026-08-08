@@ -6,6 +6,8 @@ import {
 } from './cimmich.service';
 
 export type CimmichPossiblePeopleRun = {
+  classificationState?: 'pending' | 'running' | 'completed' | 'failed';
+  classifiedClusterCount?: number;
   clusterCount: number;
   completedAt: string | null;
   createdAt: string;
@@ -26,11 +28,42 @@ export type CimmichPossiblePeopleSnapshot = {
   schemaVersion: 'cimmich.possible-people-snapshot.v1';
 };
 
+export type CimmichKnownPersonClusterSuggestion = {
+  clusterId: string;
+  evidence: CimmichImmichPersonCluster['evidence'];
+  faceCount: number;
+  match: {
+    classificationVersion: string;
+    leadScore: number;
+    margin: number | null;
+    referenceFaceId: string | null;
+    runnerPersonId: string | null;
+    runnerScore: number | null;
+  };
+  representative: {
+    box: { h: number; w: number; x: number; y: number };
+    faceId: string;
+    height: number | null;
+    sourceAssetId: string;
+    width: number | null;
+  };
+  snapshotDigest: string;
+  sourceRevision: string;
+};
+
 type PossiblePersonResolutionResult = CimmichImmichPersonResolutionResult & {
   candidateCount?: number;
 };
 
 export const getCimmichPossiblePeople = () => request<CimmichPossiblePeopleSnapshot>('/v1/possible-people');
+
+export const getCimmichKnownPersonClusterSuggestions = async (personId: string) => {
+  const result = await request<{
+    items: CimmichKnownPersonClusterSuggestion[];
+    schemaVersion: 'cimmich.known-person-cluster-suggestions.v1';
+  }>(`/v1/people/${encodeURIComponent(personId)}/possible-clusters`);
+  return result.items;
+};
 
 export const refreshCimmichPossiblePeople = (commandId: string) =>
   request<{ changed: boolean; replayed: boolean; run: CimmichPossiblePeopleRun; schemaVersion: string }>(
@@ -42,10 +75,22 @@ export const refreshCimmichPossiblePeople = (commandId: string) =>
     },
   );
 
+export const classifyCimmichPossiblePeople = (commandId: string) =>
+  request<{ changed: boolean; replayed: boolean; run: CimmichPossiblePeopleRun; schemaVersion: string }>(
+    '/v1/possible-people/classify',
+    {
+      body: JSON.stringify({ commandId }),
+      headers: { 'x-cimmich-actor': 'local-operator' },
+      method: 'POST',
+    },
+  );
+
 export const resolveCimmichPossiblePerson = (
   clusterId: string,
   input: {
-    action: Extract<CimmichImmichPersonResolutionAction, 'create_person' | 'existing_person' | 'later'>;
+    action:
+      | Extract<CimmichImmichPersonResolutionAction, 'create_person' | 'existing_person' | 'later'>
+      | 'not_suggested_person';
     commandId: string;
     newPersonName?: string;
     personId?: string;

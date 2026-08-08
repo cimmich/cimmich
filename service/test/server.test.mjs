@@ -387,6 +387,21 @@ test("Immich unnamed-cluster routes preserve exact owner decisions and visibilit
 test("Possible people reads a stored snapshot and starts work only on explicit Refresh", async () => {
   const calls = [];
   const repository = {
+    possiblePeopleClassify: async (input) => {
+      calls.push(["classify", input]);
+      return {
+        changed: true,
+        run: { runId: "possible_run_1", state: "running" },
+        schemaVersion: "cimmich.possible-people-snapshot.v1",
+      };
+    },
+    possiblePeopleKnownSuggestions: async (input) => {
+      calls.push(["known", input]);
+      return {
+        items: [],
+        schemaVersion: "cimmich.known-person-cluster-suggestions.v1",
+      };
+    },
     possiblePeopleRefresh: async (input) => {
       calls.push(["refresh", input]);
       return {
@@ -430,6 +445,22 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
         method: "POST",
       });
       assert.equal(refreshed.status, 202);
+
+      const classified = await fetch(`${root}/v1/possible-people/classify`, {
+        body: JSON.stringify({ commandId: "possible-people-classify-1" }),
+        headers: {
+          "content-type": "application/json",
+          "x-cimmich-actor": "owner",
+        },
+        method: "POST",
+      });
+      assert.equal(classified.status, 202);
+
+      const known = await fetch(
+        `${root}/v1/people/person%2Fone/possible-clusters`,
+      );
+      assert.equal(known.status, 200);
+      assert.deepEqual((await known.json()).items, []);
     },
     { visibility },
   );
@@ -438,6 +469,10 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
     ["snapshot"],
     ["visibility", "person_review"],
     ["refresh", { actorId: "owner", commandId: "possible-people-refresh-1" }],
+    ["visibility", "person_review"],
+    ["classify", { actorId: "owner", commandId: "possible-people-classify-1" }],
+    ["visibility", "person_review"],
+    ["known", { personId: "person/one" }],
   ]);
 });
 
@@ -3818,7 +3853,7 @@ test("People candidate summary exposes evaluated SourcePack review claims withou
         suggestionCount: 4,
       },
     ],
-    schemaVersion: "cimmich.person-candidate-summary.v1",
+    schemaVersion: "cimmich.person-candidate-summary.v2",
     totalCandidates: 4,
     totalPeople: 1,
   };

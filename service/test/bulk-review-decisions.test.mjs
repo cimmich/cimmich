@@ -15,6 +15,7 @@ const repositoryWithTransaction = (handler, options = {}) => {
 };
 
 test("bulk candidate accept returns after the durable write while Prime maintenance continues", async () => {
+  let candidateLockScoped = false;
   let maintenanceStarted = false;
   let releaseMaintenance;
   const maintenanceGate = new Promise((resolve) => {
@@ -26,6 +27,7 @@ test("bulk candidate accept returns after the durable write while Prime maintena
       return [{ display_name: "Someone", person_id: "person-batch" }];
     }
     if (query.includes("JOIN source_pack pack")) {
+      candidateLockScoped = query.includes("FOR UPDATE OF claim");
       return [
         {
           evidence_refs: {},
@@ -79,6 +81,7 @@ test("bulk candidate accept returns after the durable write while Prime maintena
   const result = await response;
 
   assert.equal(maintenanceStarted, true);
+  assert.equal(candidateLockScoped, true);
   assert.equal(returnedBeforeMaintenance, true);
   assert.equal(result.acceptedCount, 1);
   assert.equal(result.maintenancePending, true);

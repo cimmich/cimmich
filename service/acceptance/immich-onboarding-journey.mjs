@@ -41,6 +41,7 @@ const companion = {
               assetType: "image",
               immichAssetId: sourceAssetId,
               inputRevision,
+              people,
               visibility,
             },
           ]

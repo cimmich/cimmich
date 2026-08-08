@@ -425,7 +425,7 @@ describe('Cimmich bounded People review client contracts', () => {
       .mockResolvedValueOnce(
         Response.json({
           items: [],
-          schemaVersion: 'cimmich.person-candidate-summary.v1',
+          schemaVersion: 'cimmich.person-candidate-summary.v2',
           totalCandidates: 0,
           totalPeople: 0,
         }),
