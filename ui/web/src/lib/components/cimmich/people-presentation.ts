@@ -1,4 +1,4 @@
-export type PeopleViewMode = 'candidates' | 'faces' | 'needsFace';
+export type PeopleViewMode = 'candidates' | 'faces' | 'needsFace' | 'possible';
 export type PeopleSortKey = 'names' | 'photos';
 export type PeopleSortDirection = 'asc' | 'desc';
 export type PeopleSortState = { direction: PeopleSortDirection; key: PeopleSortKey };
@@ -54,6 +54,7 @@ export const chooseInitialPeopleView = (people: PersonViewEvidence[]): PeopleVie
     faces: people.length,
     candidates: people.filter((person) => person.candidate_faces > 0).length,
     needsFace: people.filter((person) => person.needs_holding || person.needs_sort).length,
+    possible: 0,
   };
 
   let best: PeopleViewMode = 'faces';
