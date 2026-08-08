@@ -2444,6 +2444,8 @@ export class CimmichServiceError extends Error {
 }
 
 const apiRoot = (env.PUBLIC_CIMMICH_API_URL || 'http://127.0.0.1:3101').replace(/\/$/, '');
+const defaultRequestTimeoutMs = 12_000;
+const possiblePeopleDiscoveryTimeoutMs = 120_000;
 
 let cimmichVisibilityDeviceId: string | undefined;
 let cimmichVisibilityIntentSequence: number | undefined;
@@ -2540,9 +2542,9 @@ const visibilityHeaders = (surface: CimmichVisibilitySurface = 'interactive') =>
   'x-cimmich-surface': surface,
 });
 
-export const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+export const request = async <T>(path: string, init?: RequestInit, timeoutMs = defaultRequestTimeoutMs): Promise<T> => {
   const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort('timeout'), 12_000);
+  const timeout = globalThis.setTimeout(() => controller.abort('timeout'), timeoutMs);
   const abortFromCaller = () => controller.abort(init?.signal?.reason);
   init?.signal?.addEventListener('abort', abortFromCaller, { once: true });
   try {
@@ -2656,10 +2658,14 @@ export const importCimmichImmichOnboarding = (input: {
   });
 
 export const previewCimmichImmichPersonClusters = (scope: CimmichImmichOnboardingScope) =>
-  request<CimmichImmichPersonClusterPreview>('/v1/onboarding/immich/person-clusters:preview', {
-    body: JSON.stringify({ scope }),
-    method: 'POST',
-  });
+  request<CimmichImmichPersonClusterPreview>(
+    '/v1/onboarding/immich/person-clusters:preview',
+    {
+      body: JSON.stringify({ scope }),
+      method: 'POST',
+    },
+    possiblePeopleDiscoveryTimeoutMs,
+  );
 
 export const resolveCimmichImmichPersonCluster = (
   immichPersonId: string,

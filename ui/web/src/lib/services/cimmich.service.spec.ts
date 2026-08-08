@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CimmichServiceError,
+  type CimmichImmichOnboardingScope,
   adoptCimmichLegacyPetDocument,
   attachCimmichManualSubjectTag,
   attachCimmichContextAssets,
@@ -61,6 +62,7 @@ import {
   importCimmichDocument,
   patchCimmichPersonDetailsDisplay,
   patchCimmichPersonDetailsDisplayDefaults,
+  previewCimmichImmichPersonClusters,
   setCimmichManualPresence,
   setCimmichFaceIdentitiesBatch,
   setCimmichFaceIdentity,
@@ -92,6 +94,43 @@ import {
   updateCimmichEnhancedComponent,
   dismissCimmichIdentityAuditItemsBatch,
 } from './cimmich.service';
+
+describe('Cimmich long-running discovery client contract', () => {
+  it('does not apply the ordinary 12-second request bound to possible-Person discovery', async () => {
+    vi.useFakeTimers();
+    const scope: CimmichImmichOnboardingScope = {
+      importPeople: true,
+      includeHiddenPeople: false,
+      mediaKinds: ['image', 'video'],
+      providerMode: 'deferred',
+      visibilities: ['timeline'],
+    };
+    const preview = { clusters: [], scope };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((resolve, reject) => {
+          const completion = globalThis.setTimeout(() => resolve(Response.json(preview)), 13_000);
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              globalThis.clearTimeout(completion);
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    try {
+      const request = previewCimmichImmichPersonClusters(scope);
+      await vi.advanceTimersByTimeAsync(13_000);
+      await expect(request).resolves.toEqual(preview);
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe('Cimmich Immich Person resolution owner contract', () => {
   it('binds resolve and Undo writes to the local owner actor', async () => {
