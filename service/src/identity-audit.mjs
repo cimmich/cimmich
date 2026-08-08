@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
+import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -1230,6 +1231,7 @@ export const createIdentityAudit = (
     const rows = await sql`
       SELECT item.*, face.box_x, face.box_y, face.box_w, face.box_h,
         face.detection_confidence, face.quality_measurements,
+        face.current_revision, face.current_decision_id,
         asset.capture_time, asset.media_kind, asset.width, asset.height,
         assigned.display_name AS assigned_display_name,
         suggested.display_name AS suggested_display_name,
@@ -1478,6 +1480,8 @@ export const createIdentityAudit = (
           y: Number(row.box_y),
         },
         captureTime: row.capture_time,
+        currentDecisionId: row.current_decision_id,
+        currentRevision: Number(row.current_revision),
         detectionConfidence: Number(row.detection_confidence),
         faceId: row.face_id,
         height: row.height,
@@ -1486,12 +1490,7 @@ export const createIdentityAudit = (
         mediaKind: row.media_kind,
         qualityMeasurements: row.quality_measurements || {},
         suggestedPerson: {
-          confidenceBand:
-            Number(row.suggested_score) >= 0.75
-              ? "high"
-              : Number(row.suggested_score) >= 0.6
-                ? "medium"
-                : "low",
+          confidenceBand: identityAuditConfidenceBand(row.suggested_score),
           displayName: row.suggested_display_name,
           personId: row.suggested_person_id,
           reference: projectReference(row, "suggested"),

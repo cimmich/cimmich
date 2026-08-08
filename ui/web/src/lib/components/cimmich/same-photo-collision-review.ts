@@ -8,6 +8,8 @@ export type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
     margin: number | null;
     secondBestScore: number | null;
   };
+  currentDecisionId?: string | null;
+  currentRevision?: number;
   samePhotoAcceptedCount?: number;
 };
 
@@ -16,7 +18,10 @@ export type CimmichSamePhotoCollisionGroup = {
   items: CimmichPersonReviewItem[];
 };
 
-export const samePhotoCollisionReview = (items: CimmichPersonReviewItem[]) => {
+export const samePhotoCollisionReview = (
+  items: CimmichPersonReviewItem[],
+  retainedAssetIds: ReadonlySet<string> = new Set(),
+) => {
   const byAsset = new Map<string, CimmichPersonReviewItem[]>();
   for (const item of items) {
     byAsset.set(item.assetId, [...(byAsset.get(item.assetId) ?? []), item]);
@@ -24,7 +29,9 @@ export const samePhotoCollisionReview = (items: CimmichPersonReviewItem[]) => {
   const groups = [...byAsset.entries()]
     .filter(
       ([, assetItems]) =>
-        assetItems.length > 1 || assetItems.some(({ samePhotoAcceptedCount }) => (samePhotoAcceptedCount ?? 0) > 0),
+        assetItems.length > 1 ||
+        retainedAssetIds.has(assetItems[0]?.assetId ?? '') ||
+        assetItems.some(({ samePhotoAcceptedCount }) => (samePhotoAcceptedCount ?? 0) > 0),
     )
     .map(([assetId, assetItems]) => ({
       assetId,

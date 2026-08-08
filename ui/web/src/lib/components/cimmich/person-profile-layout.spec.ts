@@ -5,6 +5,7 @@ const readPersonProfile = async () => {
   const sources = await Promise.all([
     readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/identity-audit-correction-controller.svelte.ts', 'utf8'),
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
   ]);
   return sources.join('\n');
@@ -101,7 +102,12 @@ describe('Person profile layout', () => {
     expect(source).toContain('Multiple matches in one photo');
     expect(source).toContain('bulk confirmation is');
     expect(source).toContain('samePhotoAcceptedCount');
-    expect(source).toContain('Someone else, not a Face, or fix box');
+    expect(source).toContain("'Correct…'");
+    expect(source).toContain('Fix box later');
+    expect(source).toContain('Not a face');
+    expect(source).toContain('Resize box now');
+    expect(source).toContain('cimmichIdentityCollisionAssetIds');
+    expect(source).toContain('retainCimmichCollisionAsset(item)');
     expect(source).toContain('candidateClaimId: candidate.identity_claim_id');
     expect(source).toContain('candidateEvidence');
     expect(source).toContain('fitIdentityReviewCrop(item)');
@@ -130,7 +136,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('getCimmichFaceMatches(item.faceId, 5)');
     expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
     expect(source).toContain('`Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`');
-    expect(source).toContain('cimmichAuditDecision(item).label');
+    expect(source).toContain('cimmichIdentityAuditCorrection.decision(item).label');
     expect(source).toContain('onclick={() => void changeCimmichAuditPerson(item)}');
     expect(source).toContain('aria-label={`Choose a different person for ${item.filename}`}');
     expect(source).toContain("item.kind === 'untagged_match'");
@@ -139,7 +145,7 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('onclick={() => void dismissCimmichAuditMatch(item)}');
     expect(source).toContain('aria-label="Likely identity matches"');
     expect(source).toContain('placeholder="Type a name"');
-    expect(source).toContain('cimmichAuditPersonSearchResults(item)');
+    expect(source).toContain('cimmichIdentityAuditCorrection.searchResults(item)');
     expect(source).toContain('<CimmichUnknownPersonAction');
     expect(source).toContain("'Someone else…'");
     expect(source).toContain("'Rescan Heads'");

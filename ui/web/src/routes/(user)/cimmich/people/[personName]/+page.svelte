@@ -9,6 +9,7 @@
   import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
+  import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { CimmichPhotoReviewController } from '$lib/components/cimmich/photo-review-controller.svelte';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
@@ -28,7 +29,6 @@
     togglePersonCandidateSelection,
   } from '$lib/components/cimmich/person-candidate-selection';
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
-  import { personAuditDecision } from '$lib/components/cimmich/person-audit-decision';
   import {
     groupPersonPhotos,
     personPhotoDateLabel,
@@ -50,6 +50,7 @@
     CimmichServiceError,
     createCimmichContextCommandId,
     createCimmichIdentityCorrectionCommandId,
+    createCimmichObservationCorrectionCommandId,
     createCimmichPersonMergeIntentTracker,
     decideCimmichFaceModifierProposal,
     decideCimmichIdentityCandidate,
@@ -79,6 +80,7 @@
     getCimmichPersonSetup,
     getCimmichVisibilityObject,
     mergeCimmichPeople,
+    markCimmichFaceNotFace,
     moveCimmichIdentityFace,
     rejectCimmichAcceptedIdentity,
     rescanCimmichHeadEvidence,
@@ -86,6 +88,7 @@
     setCimmichFaceBucket,
     setCimmichFaceIdentitiesBatch,
     setCimmichFaceModifier,
+    setCimmichFaceReviewDisposition,
     setCimmichPersonCategory,
     setCimmichPersonPresentation,
     setCimmichPersonSubjectKind,
@@ -274,13 +277,9 @@
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
   let cimmichIdentityError = $state('');
   let cimmichIdentityAuditEvidenceExpanded = $state<string[]>([]);
-  let cimmichIdentityAuditChangeFaceId = $state('');
-  let cimmichIdentityAuditChangeQueries = $state<Record<string, string>>({});
+  let cimmichIdentityCollisionAssetIds = $state<string[]>([]);
   let cimmichIdentityAuditConfirmAction = $state<'' | 'accept' | 'dismiss'>('');
   let cimmichIdentityAuditItems = $state<CimmichIdentityAuditItem[]>([]);
-  let cimmichIdentityAuditMatches = $state<Record<string, CimmichFaceOwnerReviewMatch[]>>({});
-  let cimmichIdentityAuditMatchesLoading = $state<Record<string, boolean>>({});
-  let cimmichIdentityAuditTargetPersonIds = $state<Record<string, string>>({});
   let cimmichIdentityAuditLoadingKind = $state<CimmichIdentityAuditItem['kind'] | ''>('');
   let cimmichIdentityAuditProgress = $state({ completed: 0, total: 0 });
   let cimmichIdentityAuditSavingId = $state('');
@@ -364,6 +363,11 @@
   let cimmichSetupMergePreview = $state<CimmichMergePreview>();
   const cimmichSetupMergeIntents = createCimmichPersonMergeIntentTracker();
   let cimmichSetupPeople = $state<CimmichPerson[]>([]);
+  const cimmichIdentityAuditCorrection = new CimmichIdentityAuditCorrectionController(
+    () => cimmichSetupPeople,
+    () => cimmichPerson?.person_id ?? '',
+    (message) => (cimmichIdentityError = message),
+  );
   let cimmichSetupSaving = $state('');
   let cimmichSetupSubjectConfirm = $state<'person' | 'pet'>();
   let loadError = $state('');
@@ -708,6 +712,8 @@
           secondBestScore: matchScore !== null && margin !== null && margin <= matchScore ? matchScore - margin : null,
         },
         captureTime: candidate.capture_time,
+        currentDecisionId: candidate.current_decision_id,
+        currentRevision: candidate.current_revision,
         detectionConfidence: candidate.detection_confidence,
         faceId: candidate.face_id,
         filename: candidate.filename,
@@ -744,13 +750,18 @@
               ...audited,
               candidateClaimId: candidate.candidateClaimId,
               candidateEvidence: candidate.candidateEvidence,
+              currentDecisionId: candidate.currentDecisionId,
+              currentRevision: candidate.currentRevision,
+              samePhotoAcceptedCount: candidate.samePhotoAcceptedCount,
             }
           : candidate,
       );
     }
     return [...merged.values()];
   });
-  const cimmichSamePhotoCollisions = $derived(samePhotoCollisionReview(cimmichPersonReviewItems));
+  const cimmichSamePhotoCollisions = $derived(
+    samePhotoCollisionReview(cimmichPersonReviewItems, new Set(cimmichIdentityCollisionAssetIds)),
+  );
   const cimmichSamePhotoCollisionGroups = $derived(cimmichSamePhotoCollisions.groups);
   const cimmichSamePhotoCollisionFaceIds = $derived(cimmichSamePhotoCollisions.faceIds);
   const visibleCimmichMachineSuggestions = $derived(
@@ -1927,44 +1938,22 @@
     }
   };
 
-  const loadCimmichAuditMatches = async (item: CimmichPersonReviewItem) => {
-    if (cimmichIdentityAuditMatches[item.faceId] || cimmichIdentityAuditMatchesLoading[item.faceId]) {
-      return;
+  const retainCimmichCollisionAsset = (item: CimmichPersonReviewItem) => {
+    if (
+      cimmichSamePhotoCollisionGroups.some(
+        ({ assetId, items }) => assetId === item.assetId && items.some(({ faceId }) => faceId === item.faceId),
+      ) &&
+      !cimmichIdentityCollisionAssetIds.includes(item.assetId)
+    ) {
+      cimmichIdentityCollisionAssetIds = [...cimmichIdentityCollisionAssetIds, item.assetId];
     }
-    cimmichIdentityAuditMatchesLoading = { ...cimmichIdentityAuditMatchesLoading, [item.faceId]: true };
-    try {
-      cimmichIdentityAuditMatches = {
-        ...cimmichIdentityAuditMatches,
-        [item.faceId]: await getCimmichFaceMatches(item.faceId, 5),
-      };
-    } catch (error) {
-      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load the closest People';
-    } finally {
-      cimmichIdentityAuditMatchesLoading = { ...cimmichIdentityAuditMatchesLoading, [item.faceId]: false };
-    }
-  };
-
-  const cimmichAuditDecision = (item: CimmichPersonReviewItem) =>
-    personAuditDecision(item, cimmichIdentityAuditTargetPersonIds, cimmichIdentityAuditMatches, cimmichSetupPeople);
-  const cimmichAuditPersonSearchResults = (item: CimmichPersonReviewItem) => {
-    const query = (cimmichIdentityAuditChangeQueries[item.faceId] ?? '').trim().toLocaleLowerCase();
-    if (!query) {
-      return [];
-    }
-    return cimmichSetupPeople
-      .filter(
-        (person) =>
-          person.subject_kind === 'person' &&
-          person.person_id !== cimmichPerson?.person_id &&
-          [person.display_name, ...person.aliases].join(' ').toLocaleLowerCase().includes(query),
-      )
-      .slice(0, 5);
   };
 
   const finishCimmichAuditDecision = (item: CimmichPersonReviewItem) => {
     if (!cimmichPerson) {
       return;
     }
+    retainCimmichCollisionAsset(item);
     const wasAuditItem = cimmichIdentityAuditItems.some(
       ({ faceId, kind }) => faceId === item.faceId && kind === item.kind,
     );
@@ -1981,14 +1970,7 @@
       );
     }
     cimmichIdentityAuditSelection = cimmichIdentityAuditSelection.filter((faceId) => faceId !== item.faceId);
-    cimmichIdentityAuditTargetPersonIds = Object.fromEntries(
-      Object.entries(cimmichIdentityAuditTargetPersonIds).filter(([faceId]) => faceId !== item.faceId),
-    );
-    cimmichIdentityAuditChangeFaceId =
-      cimmichIdentityAuditChangeFaceId === item.faceId ? '' : cimmichIdentityAuditChangeFaceId;
-    cimmichIdentityAuditChangeQueries = Object.fromEntries(
-      Object.entries(cimmichIdentityAuditChangeQueries).filter(([faceId]) => faceId !== item.faceId),
-    );
+    cimmichIdentityAuditCorrection.finish(item);
     void Promise.all([
       refreshCimmichIdentityAfterReview(),
       loadCimmichIdentityAuditQueues(cimmichPerson.person_id),
@@ -2026,7 +2008,7 @@
     if (!cimmichPerson || cimmichIdentityAuditSavingId) {
       return;
     }
-    const { targetPersonId, target } = cimmichAuditDecision(item);
+    const { targetPersonId, target } = cimmichIdentityAuditCorrection.decision(item);
     if (!targetPersonId || !target) {
       cimmichIdentityError = 'Choose one of the closest People before changing this identity.';
       return;
@@ -2056,6 +2038,55 @@
       finishCimmichAuditDecision(item);
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to change this identity';
+    } finally {
+      cimmichIdentityAuditSavingId = '';
+    }
+  };
+
+  const deferCimmichAuditBoxFix = async (item: CimmichPersonReviewItem) => {
+    if (cimmichIdentityAuditSavingId) {
+      return;
+    }
+    cimmichIdentityAuditSavingId = `fix-box:${item.faceId}`;
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      await setCimmichFaceReviewDisposition(
+        item.faceId,
+        'later',
+        createCimmichIdentityCorrectionCommandId('collision-fix-box-later'),
+        'geometry',
+      );
+      cimmichIdentityMessage = 'Saved this Face in Box fixes.';
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this Face for a box fix';
+    } finally {
+      cimmichIdentityAuditSavingId = '';
+    }
+  };
+
+  const markCimmichAuditFaceNotFace = async (item: CimmichPersonReviewItem) => {
+    if (cimmichIdentityAuditSavingId) {
+      return;
+    }
+    if (typeof item.currentRevision !== 'number') {
+      cimmichIdentityError = 'Reload this review before marking the region as not a Face.';
+      return;
+    }
+    cimmichIdentityAuditSavingId = `not-face:${item.faceId}`;
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      await markCimmichFaceNotFace(item.faceId, {
+        commandId: createCimmichObservationCorrectionCommandId('collision-not-face'),
+        expectedDecisionId: item.currentDecisionId ?? null,
+        expectedRevision: item.currentRevision,
+      });
+      cimmichIdentityMessage = 'Marked this region as not a Face.';
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to mark this region as not a Face';
     } finally {
       cimmichIdentityAuditSavingId = '';
     }
@@ -2330,11 +2361,8 @@
         ...machineSuggestions.map(({ asset_id }) => asset_id),
         ...candidates.map(({ asset_id }) => asset_id),
       ]);
-      cimmichIdentityAuditMatches = {};
-      cimmichIdentityAuditMatchesLoading = {};
-      cimmichIdentityAuditTargetPersonIds = {};
-      cimmichIdentityAuditChangeFaceId = '';
-      cimmichIdentityAuditChangeQueries = {};
+      cimmichIdentityAuditCorrection.reset();
+      cimmichIdentityCollisionAssetIds = [];
       cimmichMachineSuggestionSelection = [];
       cimmichMachineSuggestionConfirm = false;
       cimmichPresentation = presentation;
@@ -2394,11 +2422,8 @@
     cimmichIdentityAuditEvidenceExpanded = [];
     cimmichIdentityAuditSelection = [];
     cimmichIdentityAuditConfirmAction = '';
-    cimmichIdentityAuditMatches = {};
-    cimmichIdentityAuditMatchesLoading = {};
-    cimmichIdentityAuditTargetPersonIds = {};
-    cimmichIdentityAuditChangeFaceId = '';
-    cimmichIdentityAuditChangeQueries = {};
+    cimmichIdentityAuditCorrection.reset();
+    cimmichIdentityCollisionAssetIds = [];
     cimmichIdentityAuditSavingId = '';
     cimmichMachineSuggestionSelection = [];
     cimmichMachineSuggestionConfirm = false;
@@ -3850,8 +3875,12 @@
             <section class="grid gap-6" aria-label="Awaiting confirmation">
               {#if cimmichSamePhotoCollisionGroups.length > 0}
                 <CimmichSamePhotoCollisionReview
+                  correction={cimmichIdentityAuditCorrection}
                   groups={cimmichSamePhotoCollisionGroups}
+                  onChangePerson={(item) => void changeCimmichAuditPerson(item)}
                   onConfirm={(item) => void confirmCimmichAuditPerson(item)}
+                  onFixBoxLater={(item) => void deferCimmichAuditBoxFix(item)}
+                  onNotFace={(item) => void markCimmichAuditFaceNotFace(item)}
                   onUnknownChanged={(item) => {
                     cimmichIdentityMessage = 'Marked as unknown. Identity suggestions are paused.';
                     finishCimmichAuditDecision(item);
@@ -4081,26 +4110,20 @@
                                     class="min-h-10 min-w-0 rounded-md bg-amber-600 p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
                                     type="button"
                                     disabled={Boolean(cimmichIdentityAuditSavingId) ||
-                                      !cimmichAuditDecision(item).target}
+                                      !cimmichIdentityAuditCorrection.decision(item).target}
                                     onclick={() => void changeCimmichAuditPerson(item)}
                                   >
                                     {cimmichIdentityAuditSavingId === `change:${item.faceId}`
                                       ? 'Saving…'
-                                      : cimmichAuditDecision(item).label}
+                                      : cimmichIdentityAuditCorrection.decision(item).label}
                                   </button>
                                   <button
                                     class="min-h-10 rounded-md border border-gray-300 text-lg font-bold disabled:opacity-40 dark:border-gray-600"
                                     type="button"
                                     aria-label={`Choose a different person for ${item.filename}`}
-                                    aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
+                                    aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
                                     disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                    onclick={() => {
-                                      cimmichIdentityAuditChangeFaceId =
-                                        cimmichIdentityAuditChangeFaceId === item.faceId ? '' : item.faceId;
-                                      if (cimmichIdentityAuditChangeFaceId) {
-                                        void loadCimmichAuditMatches(item);
-                                      }
-                                    }}>…</button
+                                    onclick={() => cimmichIdentityAuditCorrection.toggle(item)}>…</button
                                   >
                                 </div>
                                 <button
@@ -4137,28 +4160,16 @@
                                 <button
                                   class="min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
                                   type="button"
-                                  aria-expanded={cimmichIdentityAuditChangeFaceId === item.faceId}
+                                  aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
                                   disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                  onclick={() => {
-                                    const opening = cimmichIdentityAuditChangeFaceId !== item.faceId;
-                                    cimmichIdentityAuditChangeFaceId = opening ? item.faceId : '';
-                                    if (opening) {
-                                      cimmichIdentityAuditTargetPersonIds = {
-                                        ...cimmichIdentityAuditTargetPersonIds,
-                                        [item.faceId]: '',
-                                      };
-                                      cimmichIdentityAuditChangeQueries = {
-                                        ...cimmichIdentityAuditChangeQueries,
-                                        [item.faceId]: '',
-                                      };
-                                      void loadCimmichAuditMatches(item);
-                                    }
-                                  }}
+                                  onclick={() => cimmichIdentityAuditCorrection.toggle(item)}
                                 >
-                                  {cimmichIdentityAuditChangeFaceId === item.faceId ? 'Close change' : 'Someone else…'}
+                                  {cimmichIdentityAuditCorrection.faceId === item.faceId
+                                    ? 'Close change'
+                                    : 'Someone else…'}
                                 </button>
                               {/if}
-                              {#if cimmichIdentityAuditChangeFaceId === item.faceId}
+                              {#if cimmichIdentityAuditCorrection.faceId === item.faceId}
                                 <div
                                   class="col-span-2 grid min-w-0 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-black/10"
                                 >
@@ -4167,36 +4178,16 @@
                                     <select
                                       aria-label="Likely identity matches"
                                       class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
-                                      value={cimmichAuditDecision(item).targetPersonId}
+                                      value={cimmichIdentityAuditCorrection.decision(item).targetPersonId}
                                       disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                      onchange={(event) => {
-                                        cimmichIdentityAuditTargetPersonIds = {
-                                          ...cimmichIdentityAuditTargetPersonIds,
-                                          [item.faceId]: event.currentTarget.value,
-                                        };
-                                        cimmichIdentityAuditChangeQueries = {
-                                          ...cimmichIdentityAuditChangeQueries,
-                                          [item.faceId]: '',
-                                        };
-                                      }}
+                                      onchange={(event) =>
+                                        cimmichIdentityAuditCorrection.setTarget(item, event.currentTarget.value)}
                                     >
-                                      {#if !cimmichAuditDecision(item).targetPersonId}
+                                      {#if !cimmichIdentityAuditCorrection.decision(item).targetPersonId}
                                         <option value="">Choose a person</option>
                                       {/if}
-                                      {#if item.kind === 'accepted_contradiction'}
-                                        <option value={item.suggestedPerson.personId}>
-                                          {item.suggestedPerson.displayName} · likely match
-                                        </option>
-                                        {#if item.assignedPerson && !cimmichAuditDecision(item).alternativeMatches.some(({ person_id }) => person_id === item.assignedPerson?.personId)}
-                                          <option value={item.assignedPerson.personId}>
-                                            {item.assignedPerson.displayName} · current
-                                          </option>
-                                        {/if}
-                                      {/if}
-                                      {#each cimmichAuditDecision(item).alternativeMatches as match (match.person_id)}
-                                        <option value={match.person_id}>
-                                          {match.display_name}{match.current_identity ? ' · current' : ''}
-                                        </option>
+                                      {#each cimmichIdentityAuditCorrection.options(item) as option (option.personId)}
+                                        <option value={option.personId}>{option.label}</option>
                                       {/each}
                                     </select>
                                   </label>
@@ -4204,43 +4195,31 @@
                                     Someone else
                                     <input
                                       class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
-                                      value={cimmichIdentityAuditChangeQueries[item.faceId] ?? ''}
+                                      value={cimmichIdentityAuditCorrection.query(item)}
                                       placeholder="Type a name"
                                       disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                      oninput={(event) => {
-                                        cimmichIdentityAuditChangeQueries = {
-                                          ...cimmichIdentityAuditChangeQueries,
-                                          [item.faceId]: event.currentTarget.value,
-                                        };
-                                        cimmichIdentityAuditTargetPersonIds = {
-                                          ...cimmichIdentityAuditTargetPersonIds,
-                                          [item.faceId]: '',
-                                        };
-                                      }}
+                                      oninput={(event) =>
+                                        cimmichIdentityAuditCorrection.setQuery(item, event.currentTarget.value)}
                                     />
                                   </label>
-                                  {#if cimmichAuditPersonSearchResults(item).length > 0}
+                                  {#if cimmichIdentityAuditCorrection.searchResults(item).length > 0}
                                     <div class="grid gap-1" aria-label="Matching People">
-                                      {#each cimmichAuditPersonSearchResults(item) as person (person.person_id)}
+                                      {#each cimmichIdentityAuditCorrection.searchResults(item) as person (person.person_id)}
                                         <button
                                           class="min-h-9 rounded-md bg-white px-3 text-left text-sm font-medium hover:bg-gray-100 dark:bg-immich-dark-gray dark:hover:bg-gray-700"
                                           type="button"
-                                          onclick={() => {
-                                            cimmichIdentityAuditTargetPersonIds = {
-                                              ...cimmichIdentityAuditTargetPersonIds,
-                                              [item.faceId]: person.person_id,
-                                            };
-                                            cimmichIdentityAuditChangeQueries = {
-                                              ...cimmichIdentityAuditChangeQueries,
-                                              [item.faceId]: person.display_name,
-                                            };
-                                          }}
+                                          onclick={() =>
+                                            cimmichIdentityAuditCorrection.selectSearchResult(
+                                              item,
+                                              person.person_id,
+                                              person.display_name,
+                                            )}
                                         >
                                           {person.display_name}
                                         </button>
                                       {/each}
                                     </div>
-                                  {:else if (cimmichIdentityAuditChangeQueries[item.faceId] ?? '').trim()}
+                                  {:else if cimmichIdentityAuditCorrection.query(item).trim()}
                                     <p class="text-xs text-gray-500">No matching Person. Try another spelling.</p>
                                   {/if}
                                   <div
@@ -4249,12 +4228,12 @@
                                     <button
                                       class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                       type="button"
-                                      onclick={() => (cimmichIdentityAuditChangeFaceId = '')}
+                                      onclick={() => cimmichIdentityAuditCorrection.toggle(item)}
                                     >
                                       {item.kind === 'accepted_contradiction' ? 'Close' : 'Cancel'}
                                     </button>
                                   </div>
-                                  {#if cimmichIdentityAuditMatchesLoading[item.faceId]}
+                                  {#if cimmichIdentityAuditCorrection.loading(item)}
                                     <p class="text-[11px] text-gray-500 dark:text-gray-400">
                                       Loading the closest matches…
                                     </p>
