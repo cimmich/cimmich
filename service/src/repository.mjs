@@ -39,6 +39,7 @@ import { createIdentityAudit } from "./identity-audit.mjs";
 import { createFaceMatches } from "./face-match-repository.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
+import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
 import {
@@ -1168,6 +1169,10 @@ export const createCimmichRepository = (
   const personCreates = createPersonCreateStore(sql, {
     companion: options.immichCompanion,
     immichSourceId: options.immichSourceId,
+  });
+  const possiblePeople = createPossiblePeopleStore(sql, {
+    createPerson: personCreates.create,
+    presentationRank,
   });
   const xmpSidecarReview = createXmpSidecarReviewStore(sql, {
     bridgeFields: (assetId) => bridgeFields(bridge, assetId),
@@ -2455,6 +2460,10 @@ export const createCimmichRepository = (
     undoManualPhotoContextDecision: manualPhotoContext.undo,
     smartSearch: basicSmartSearch.search,
     createPerson: personCreates.create,
+    possiblePeopleRefresh: possiblePeople.refresh,
+    possiblePeopleResolve: possiblePeople.resolve,
+    possiblePeopleSnapshot: possiblePeople.snapshot,
+    possiblePeopleUndo: possiblePeople.undo,
     xmpUnresolvedNames: xmpSidecarReview.list,
     async resolveXmpUnresolvedName(input) {
       const result = await xmpSidecarReview.resolve(input);
@@ -5281,7 +5290,7 @@ export const createCimmichRepository = (
       FROM identity_claim claim
       -- A retired pack must stop producing new matches, but the immutable
       -- candidate claims it already produced remain a human review queue.
-      JOIN source_pack pack
+      LEFT JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
         AND pack.state IN ('active', 'retired')
         AND pack.evaluation_status = 'passed'
@@ -5307,12 +5316,13 @@ export const createCimmichRepository = (
       LEFT JOIN person current_person ON current_person.person_id = accepted.person_id
       WHERE claim.person_id = ${String(personId || "")}
         AND claim.state = 'candidate'
-        AND claim.origin = 'prime_match'
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
         AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
-        AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
+        AND cimmich_person_candidate_reviewable(
+          claim.origin, claim.evidence_refs, pack.pack_id
+        )
       ORDER BY CASE
           WHEN nullif(claim.evidence_refs->>'margin', '')::float8 > 0 THEN 0
           WHEN nullif(claim.evidence_refs->>'margin', '') IS NULL THEN 1
@@ -5345,7 +5355,7 @@ export const createCimmichRepository = (
       FROM identity_claim claim
       -- Review claims against the exact evaluated pack that produced them.
       -- Pack retirement removes generation authority, not review history.
-      JOIN source_pack pack
+      LEFT JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
         AND pack.state IN ('active', 'retired')
         AND pack.evaluation_status = 'passed'
@@ -5363,12 +5373,13 @@ export const createCimmichRepository = (
         ON asset.asset_id = face.asset_id
         AND asset.state = 'active'
       WHERE claim.state = 'candidate'
-        AND claim.origin = 'prime_match'
         AND cimmich_face_match_eligible(
           face.detection_confidence, face.box_w, face.box_h
         )
         AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
-        AND coalesce(claim.evidence_refs->>'assignment_decision', '') = 'source_pack_prime_match'
+        AND cimmich_person_candidate_reviewable(
+          claim.origin, claim.evidence_refs, pack.pack_id
+        )
       GROUP BY claim.person_id, person.display_name
       ORDER BY suggestion_count DESC, person.display_name, claim.person_id
     `;
@@ -5441,7 +5452,7 @@ export const createCimmichRepository = (
           SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
             claim.state, claim.evidence_refs
           FROM identity_claim claim
-          JOIN source_pack pack
+          LEFT JOIN source_pack pack
             ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
             AND pack.state IN ('active', 'retired')
             AND pack.evaluation_status = 'passed'
@@ -5453,9 +5464,9 @@ export const createCimmichRepository = (
               face.detection_confidence, face.box_w, face.box_h
             )
           WHERE claim.identity_claim_id = ${claimId}
-            AND claim.origin = 'prime_match'
-            AND coalesce(claim.evidence_refs->>'assignment_decision', '') =
-              'source_pack_prime_match'
+            AND cimmich_person_candidate_reviewable(
+              claim.origin, claim.evidence_refs, pack.pack_id
+            )
           FOR UPDATE
         `;
             if (

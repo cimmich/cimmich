@@ -4,6 +4,7 @@ import CimmichPossiblePeople from './CimmichPossiblePeople.svelte';
 
 const mocks = vi.hoisted(() => ({
   getPeople: vi.fn(),
+  refresh: vi.fn(),
   preview: vi.fn(),
   resolve: vi.fn(),
   undo: vi.fn(),
@@ -11,9 +12,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('$lib/services/cimmich.service', () => ({
   getCimmichPeople: mocks.getPeople,
-  previewCimmichImmichPersonClusters: mocks.preview,
-  resolveCimmichImmichPersonCluster: mocks.resolve,
-  undoCimmichImmichPersonClusterResolution: mocks.undo,
+}));
+
+vi.mock('$lib/services/possible-people.service', () => ({
+  getCimmichPossiblePeople: mocks.preview,
+  refreshCimmichPossiblePeople: mocks.refresh,
+  resolveCimmichPossiblePerson: mocks.resolve,
+  undoCimmichPossiblePersonResolution: mocks.undo,
 }));
 
 vi.mock('$lib/utils', () => ({
@@ -60,6 +65,7 @@ describe('Possible people', () => {
       },
     ]);
     mocks.preview.mockResolvedValue({
+      activeRun: null,
       clusters: [
         cluster('recurring', 8, { state: 'unresolved' }),
         cluster('background', 2, { state: 'unresolved' }),
@@ -71,7 +77,20 @@ describe('Possible people', () => {
           state: 'later',
         }),
       ],
-      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      completedRun: {
+        clusterCount: 3,
+        completedAt: '2026-08-08T00:00:00.000Z',
+        createdAt: '2026-08-08T00:00:00.000Z',
+        edgeCount: 20,
+        errorCode: null,
+        errorMessage: null,
+        processedSeeds: 100,
+        runId: 'possible_run_test',
+        startedAt: '2026-08-08T00:00:00.000Z',
+        state: 'completed',
+        totalSeeds: 100,
+      },
+      schemaVersion: 'cimmich.possible-people-snapshot.v1',
     });
   });
 
@@ -93,8 +112,10 @@ describe('Possible people', () => {
     spreadRecurring.evidence.lastCaptureTime = '2024-01-01T00:00:00.000Z';
     spreadRecurring.evidence.timeSpanDays = 1461;
     mocks.preview.mockResolvedValue({
+      activeRun: null,
       clusters: [spreadRecurring, cluster('incidental-repeat', 3, { state: 'unresolved' })],
-      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      completedRun: { clusterCount: 2, completedAt: '2026-08-08T00:00:00.000Z', state: 'completed' },
+      schemaVersion: 'cimmich.possible-people-snapshot.v1',
     });
 
     const { getByText, getAllByRole } = render(CimmichPossiblePeople, { mode: 'active' });
@@ -125,13 +146,13 @@ describe('Possible people', () => {
         'recurring',
         expect.objectContaining({
           action: 'later',
-          expectedSourceRevision: 'a'.repeat(64),
           snapshotDigest: 'b'.repeat(64),
         }),
       ),
     );
     expect(queryByText('8 photos')).not.toBeInTheDocument();
     expect(mocks.preview).toHaveBeenCalledTimes(1);
+    expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
   it('maps a recurring group to a selected known Person without leaving the page', async () => {
@@ -163,10 +184,7 @@ describe('Possible people', () => {
     await fireEvent.click(getByRole('button', { name: 'Restore' }));
 
     await waitFor(() =>
-      expect(mocks.undo).toHaveBeenCalledWith(
-        'decision-ignore',
-        expect.objectContaining({ commandId: expect.stringContaining('possible-person.restore.') }),
-      ),
+      expect(mocks.undo).toHaveBeenCalledWith('decision-ignore', expect.stringContaining('possible-person.restore.')),
     );
   });
 
@@ -180,8 +198,10 @@ describe('Possible people', () => {
     higherPhotoCount.evidence.locationCount = 0;
     higherPhotoCount.evidence.timeSpanDays = 0;
     mocks.preview.mockResolvedValue({
+      activeRun: null,
       clusters: [highSpread, higherPhotoCount],
-      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      completedRun: { clusterCount: 2, completedAt: '2026-08-08T00:00:00.000Z', state: 'completed' },
+      schemaVersion: 'cimmich.possible-people-snapshot.v1',
     });
 
     const { getAllByRole, getByText } = render(CimmichPossiblePeople, { mode: 'active' });
