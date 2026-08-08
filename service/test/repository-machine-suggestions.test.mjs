@@ -967,6 +967,8 @@ test("deferred review survives matcher churn and same-photo candidates stay revi
     /NOT EXISTS \(\s*SELECT 1 FROM current_face_identity accepted/,
   );
   assert.match(personCandidates, /same_photo_accepted_count/);
+  assert.match(personCandidates, /face\.current_revision/);
+  assert.match(personCandidates, /face\.current_decision_id/);
   assert.doesNotMatch(personCandidates, /samePhotoAcceptedCandidateFloor/);
 });
 

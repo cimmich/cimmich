@@ -5263,6 +5263,7 @@ export const createCimmichRepository = (
         asset.asset_id, asset.media_kind, asset.width, asset.height, asset.capture_time,
         face.box_x::float8, face.box_y::float8, face.box_w::float8, face.box_h::float8,
         face.detection_confidence::float8, face.quality_measurements,
+        face.current_revision, face.current_decision_id,
         accepted.identity_claim_id AS current_claim_id,
         accepted.person_id AS current_person_id,
         current_person.display_name AS current_person_name,
@@ -5327,6 +5328,7 @@ export const createCimmichRepository = (
       return rows.map((row) => ({
         ...row,
         ...bridgeFields(bridge, row.asset_id),
+        current_revision: Number(row.current_revision),
       }));
     },
 

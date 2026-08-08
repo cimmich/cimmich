@@ -2,12 +2,17 @@
   import { Route } from '$lib/route';
   import CimmichReviewPhotoMedia from './CimmichReviewPhotoMedia.svelte';
   import CimmichUnknownPersonAction from './CimmichUnknownPersonAction.svelte';
+  import type { CimmichIdentityAuditCorrectionController } from './identity-audit-correction-controller.svelte';
   import type { CimmichPhotoReviewController } from './photo-review-controller.svelte';
   import type { CimmichPersonReviewItem, CimmichSamePhotoCollisionGroup } from './same-photo-collision-review';
 
   interface Props {
+    correction: CimmichIdentityAuditCorrectionController;
     groups: CimmichSamePhotoCollisionGroup[];
+    onChangePerson: (item: CimmichPersonReviewItem) => void;
     onConfirm: (item: CimmichPersonReviewItem) => void;
+    onFixBoxLater: (item: CimmichPersonReviewItem) => void;
+    onNotFace: (item: CimmichPersonReviewItem) => void;
     onUnknownChanged: (item: CimmichPersonReviewItem) => void;
     onUnknownError: (message: string) => void;
     onUnknownSaving: (item: CimmichPersonReviewItem, saving: boolean) => void;
@@ -18,8 +23,12 @@
   }
 
   let {
+    correction,
     groups,
+    onChangePerson,
     onConfirm,
+    onFixBoxLater,
+    onNotFace,
     onUnknownChanged,
     onUnknownError,
     onUnknownSaving,
@@ -122,16 +131,111 @@
                     onSaving={(saving) => onUnknownSaving(item, saving)}
                   />
                 {/if}
-                <a
-                  class="min-h-10 rounded-md border border-gray-300 px-3 py-2 text-center text-sm font-semibold hover:bg-white dark:border-gray-600 dark:hover:bg-gray-800"
-                  href={Route.viewCimmichPersonAsset({
-                    faceId: item.faceId,
-                    id: item.sourceAssetId,
-                    overlay: 'machinery',
-                    personId,
-                    personName,
-                  })}>Someone else, not a Face, or fix box</a
+                <button
+                  class="min-h-10 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+                  type="button"
+                  aria-expanded={correction.faceId === item.faceId}
+                  disabled={Boolean(savingId)}
+                  onclick={() => correction.toggle(item)}
                 >
+                  {correction.faceId === item.faceId ? 'Close correction' : 'Correct…'}
+                </button>
+                {#if correction.faceId === item.faceId}
+                  <div
+                    class="grid min-w-0 gap-2 rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-black/20"
+                  >
+                    <label class="grid min-w-0 gap-1 text-[11px] font-semibold text-gray-500">
+                      Likely matches
+                      <select
+                        aria-label="Likely identity matches"
+                        class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
+                        value={correction.decision(item).targetPersonId}
+                        disabled={Boolean(savingId)}
+                        onchange={(event) => correction.setTarget(item, event.currentTarget.value)}
+                      >
+                        {#if !correction.decision(item).targetPersonId}
+                          <option value="">Choose a person</option>
+                        {/if}
+                        {#each correction.options(item) as option (option.personId)}
+                          <option value={option.personId}>{option.label}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <label class="grid min-w-0 gap-1 text-[11px] font-semibold text-gray-500">
+                      Someone else
+                      <input
+                        class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
+                        value={correction.query(item)}
+                        placeholder="Type a name"
+                        disabled={Boolean(savingId)}
+                        oninput={(event) => correction.setQuery(item, event.currentTarget.value)}
+                      />
+                    </label>
+                    {#if correction.searchResults(item).length > 0}
+                      <div class="grid gap-1" aria-label="Matching People">
+                        {#each correction.searchResults(item) as person (person.person_id)}
+                          <button
+                            class="min-h-9 rounded-md bg-gray-50 px-3 text-left text-sm font-medium hover:bg-gray-100 dark:bg-immich-dark-gray dark:hover:bg-gray-700"
+                            type="button"
+                            onclick={() => correction.selectSearchResult(item, person.person_id, person.display_name)}
+                          >
+                            {person.display_name}
+                          </button>
+                        {/each}
+                      </div>
+                    {:else if correction.query(item).trim()}
+                      <p class="text-xs text-gray-500">No matching Person. Try another spelling.</p>
+                    {/if}
+                    <button
+                      class="min-h-10 rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                      type="button"
+                      disabled={Boolean(savingId) || !correction.decision(item).targetPersonId}
+                      onclick={() => onChangePerson(item)}
+                    >
+                      {savingId === `change:${item.faceId}` ? 'Saving…' : correction.decision(item).label}
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        class="min-h-10 rounded-md border border-sky-300 bg-sky-50 px-2 text-sm font-semibold text-sky-800 disabled:opacity-40 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100"
+                        type="button"
+                        disabled={Boolean(savingId)}
+                        onclick={() => onFixBoxLater(item)}
+                      >
+                        {savingId === `fix-box:${item.faceId}` ? 'Saving…' : 'Fix box later'}
+                      </button>
+                      <button
+                        class="min-h-10 rounded-md border border-gray-300 px-2 text-sm font-semibold disabled:opacity-40 dark:border-gray-600"
+                        type="button"
+                        disabled={Boolean(savingId)}
+                        onclick={() => onNotFace(item)}
+                      >
+                        {savingId === `not-face:${item.faceId}` ? 'Saving…' : 'Not a face'}
+                      </button>
+                    </div>
+                    <div
+                      class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 dark:border-gray-700"
+                    >
+                      <button
+                        class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                        type="button"
+                        onclick={() => correction.toggle(item)}>Cancel</button
+                      >
+                      <a
+                        class="min-h-9 rounded-md px-3 py-2 text-xs font-semibold text-immich-primary hover:bg-gray-100 dark:hover:bg-gray-800"
+                        href={Route.viewCimmichPersonAsset({
+                          faceId: item.faceId,
+                          id: item.sourceAssetId,
+                          overlay: 'machinery',
+                          personId,
+                          personName,
+                        })}>Resize box now</a
+                      >
+                    </div>
+                    {#if correction.loading(item)}
+                      <p class="text-[11px] text-gray-500 dark:text-gray-400">Loading the closest matches…</p>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </section>
           {/each}

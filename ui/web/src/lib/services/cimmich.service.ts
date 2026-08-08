@@ -1,9 +1,11 @@
 import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
+import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 
 export * from './cimmich-asset-correction.service';
 export * from './cimmich-deferred-face-review';
+export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -601,34 +603,6 @@ export type CimmichLegacyPetDocumentAdoptionResult = {
   replayed: boolean;
   schemaVersion: 'cimmich.document-legacy-pet.v1';
   undoneDecisionId?: string;
-};
-
-export type CimmichIdentityCandidate = {
-  asset_id: string;
-  box_h: number;
-  box_w: number;
-  box_x: number;
-  box_y: number;
-  calibrated_confidence: number | null;
-  capture_time: string | null;
-  current_claim_id?: string | null;
-  current_person_id?: string | null;
-  current_person_name?: string | null;
-  detection_confidence: number;
-  display_name: string;
-  face_id: string;
-  filename: string;
-  height: number;
-  identity_claim_id: string;
-  media_kind: 'image' | 'video';
-  match_score?: number | null;
-  person_id: string;
-  quality_measurements: Record<string, number | string>;
-  same_photo_accepted_count?: number;
-  sourceAssetId: string;
-  source_margin: number | null;
-  source_score: number | null;
-  width: number;
 };
 
 export type CimmichPersonCandidateSummary = {
@@ -1845,6 +1819,8 @@ export type CimmichIdentityAuditItem = {
   };
   box: { h: number; w: number; x: number; y: number };
   captureTime: string | null;
+  currentDecisionId?: string | null;
+  currentRevision?: number;
   detectionConfidence: number;
   faceId: string;
   filename: string;
