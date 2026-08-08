@@ -5207,8 +5207,9 @@ export const createCimmichRepository = (
       JOIN person p ON p.person_id = ic.person_id
       JOIN current_face_physical_member candidate_physical
         ON candidate_physical.face_id = ic.face_id
-      JOIN current_display_face fo
-        ON fo.physical_face_id = candidate_physical.physical_face_id
+      JOIN face_observation fo
+        ON fo.face_id = candidate_physical.canonical_face_id
+        AND fo.state = 'valid'
       JOIN asset a ON a.asset_id = fo.asset_id
       WHERE ic.state = 'candidate'
         AND cimmich_face_match_eligible(
@@ -5367,8 +5368,8 @@ export const createCimmichRepository = (
         AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
       JOIN current_face_physical_member candidate_physical
         ON candidate_physical.face_id = claim.face_id
-      JOIN current_display_face face
-        ON face.physical_face_id = candidate_physical.physical_face_id
+      JOIN face_observation face
+        ON face.face_id = candidate_physical.canonical_face_id
         AND face.state = 'valid'
       JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
       CROSS JOIN accepted_asset_count_map accepted_counts
