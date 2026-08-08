@@ -1,3 +1,5 @@
+import { readKnownPersonClusterPreviews } from "./known-person-cluster-previews.mjs";
+
 const typedError = (message, statusCode, code) =>
   Object.assign(new Error(message), { code, statusCode });
 
@@ -83,6 +85,7 @@ export const createPossiblePeopleProjection = (sql, { schemaVersion }) => {
           ) projection ON true
           WHERE cluster.possible_person_run_id = ${completed.run_id}
             AND cluster.suggested_person_id IS NULL
+            AND cluster.status IN ('open','closed','linked')
           ORDER BY (cluster.evidence->>'photoCount')::int DESC, cluster.cluster_id
         `
       : [];
@@ -162,6 +165,10 @@ export const createPossiblePeopleProjection = (sql, { schemaVersion }) => {
           ORDER BY (cluster.evidence->>'photoCount')::int DESC, cluster.cluster_id
         `
       : [];
+    const previews = await readKnownPersonClusterPreviews(
+      sql,
+      rows.map((row) => row.cluster_id),
+    );
     return {
       items: rows
         .filter((row) => row.source_asset_id)
@@ -191,10 +198,11 @@ export const createPossiblePeopleProjection = (sql, { schemaVersion }) => {
             sourceAssetId: row.source_asset_id,
             width: row.width,
           },
+          previews: previews.get(row.cluster_id) || [],
           snapshotDigest: row.cluster_digest,
           sourceRevision: row.source_revision,
         })),
-      schemaVersion: "cimmich.known-person-cluster-suggestions.v1",
+      schemaVersion: "cimmich.known-person-cluster-suggestions.v2",
     };
   };
 

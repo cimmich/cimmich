@@ -399,7 +399,7 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
       calls.push(["known", input]);
       return {
         items: [],
-        schemaVersion: "cimmich.known-person-cluster-suggestions.v1",
+        schemaVersion: "cimmich.known-person-cluster-suggestions.v2",
       };
     },
     possiblePeopleRefresh: async (input) => {

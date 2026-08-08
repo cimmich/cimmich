@@ -705,6 +705,7 @@ export const createPossiblePeopleStore = (
         "existing_person",
         "create_person",
         "not_suggested_person",
+        "ungroup",
       ]).has(action)
     ) {
       throw typedError(
@@ -755,6 +756,41 @@ export const createPossiblePeopleStore = (
           409,
           "POSSIBLE_PEOPLE_SNAPSHOT_STALE",
         );
+      }
+      if (action === "ungroup") {
+        if (cluster.status !== "open") {
+          throw typedError(
+            "This recurring group is no longer open for review",
+            409,
+            "POSSIBLE_PEOPLE_SNAPSHOT_STALE",
+          );
+        }
+        const decisionId = stableId("decision_possible_", stableCommandId);
+        await tx`
+          INSERT INTO decision (
+            decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+            reason_code, note, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${decisionId}, 'face_cluster', ${cluster.cluster_id}, 'split',
+            'user', ${actor}, 'possible_person_group_rejected',
+            'Reject this exact recurring Face grouping without assigning identity',
+            ${receiptId}, 'sensitive-biometric'
+          )
+        `;
+        await tx`
+          UPDATE face_cluster
+          SET status = 'split', linked_person_id = NULL,
+            suggested_person_id = NULL, current_decision_id = ${decisionId}
+          WHERE cluster_id = ${cluster.cluster_id}
+        `;
+        return completeCommand(tx, stableCommandId, {
+          changed: true,
+          decisionId,
+          replayed: false,
+          resolution: null,
+          schemaVersion,
+          state: "ungrouped",
+        });
       }
       if (action === "not_suggested_person") {
         if (!cluster.suggested_person_id) {

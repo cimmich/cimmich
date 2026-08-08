@@ -2272,13 +2272,18 @@
   const finishCimmichKnownClusterSuggestion = async (result: {
     candidateCount: number;
     clusterId: string;
-    kind: 'review' | 'reject';
+    kind: 'review' | 'reject' | 'ungroup';
   }) => {
     cimmichKnownClusterSuggestions = cimmichKnownClusterSuggestions.filter(
       ({ clusterId }) => clusterId !== result.clusterId,
     );
     if (result.kind === 'reject') {
       cimmichIdentityMessage = 'This group is no longer suggested for this Person and is available in Possible people.';
+      return;
+    }
+    if (result.kind === 'ungroup') {
+      cimmichIdentityMessage =
+        'This exact recurring group was rejected. Its photos remain unassigned and no identity was changed.';
       return;
     }
     if (!cimmichPerson) {

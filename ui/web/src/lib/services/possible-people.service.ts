@@ -47,6 +47,14 @@ export type CimmichKnownPersonClusterSuggestion = {
     sourceAssetId: string;
     width: number | null;
   };
+  previews: Array<{
+    box: { h: number; w: number; x: number; y: number };
+    faceId: string;
+    height: number | null;
+    membershipScore: number | null;
+    sourceAssetId: string;
+    width: number | null;
+  }>;
   snapshotDigest: string;
   sourceRevision: string;
 };
@@ -60,7 +68,7 @@ export const getCimmichPossiblePeople = () => request<CimmichPossiblePeopleSnaps
 export const getCimmichKnownPersonClusterSuggestions = async (personId: string) => {
   const result = await request<{
     items: CimmichKnownPersonClusterSuggestion[];
-    schemaVersion: 'cimmich.known-person-cluster-suggestions.v1';
+    schemaVersion: 'cimmich.known-person-cluster-suggestions.v2';
   }>(`/v1/people/${encodeURIComponent(personId)}/possible-clusters`);
   return result.items;
 };
@@ -90,7 +98,8 @@ export const resolveCimmichPossiblePerson = (
   input: {
     action:
       | Extract<CimmichImmichPersonResolutionAction, 'create_person' | 'existing_person' | 'later'>
-      | 'not_suggested_person';
+      | 'not_suggested_person'
+      | 'ungroup';
     commandId: string;
     newPersonName?: string;
     personId?: string;

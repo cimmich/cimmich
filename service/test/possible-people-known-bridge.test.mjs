@@ -6,9 +6,10 @@ const readSource = (name) =>
   readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
 
 test("known-Person classification is versioned, separated and never identity authority", async () => {
-  const [classifier, possiblePeople, projection] = await Promise.all([
+  const [classifier, possiblePeople, previews, projection] = await Promise.all([
     readSource("possible-people-classifier.mjs"),
     readSource("possible-people.mjs"),
+    readSource("known-person-cluster-previews.mjs"),
     readSource("possible-people-projection.mjs"),
   ]);
 
@@ -26,9 +27,16 @@ test("known-Person classification is versioned, separated and never identity aut
 
   assert.match(projection, /cluster\.suggested_person_id IS NULL/);
   assert.match(projection, /cluster\.suggested_person_id = \$\{/);
-  assert.match(projection, /known-person-cluster-suggestions\.v1/);
+  assert.match(projection, /known-person-cluster-suggestions\.v2/);
+  assert.match(previews, /previewLimit = 7/);
+  assert.match(previews, /DISTINCT ON \(member\.cluster_id, face\.asset_id\)/);
+  assert.match(previews, /face\.box_x::float8/);
+  assert.match(previews, /representative_rank/);
 
   assert.match(possiblePeople, /action === "not_suggested_person"/);
+  assert.match(possiblePeople, /action === "ungroup"/);
+  assert.match(possiblePeople, /possible_person_group_rejected/);
+  assert.match(possiblePeople, /status = 'split'/);
   assert.match(possiblePeople, /possible_person_known_match_rejected/);
   assert.match(possiblePeople, /'automatic_acceptance', 'false'/);
   assert.match(
