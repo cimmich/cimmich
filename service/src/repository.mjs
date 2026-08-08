@@ -5195,6 +5195,11 @@ export const createCimmichRepository = (
       if (personId) await requireVisibleSubject(personId);
       const boundedLimit = cleanLimit(limit, 5, 100);
       const rows = await sql`
+      WITH accepted_physical_people AS MATERIALIZED (
+        SELECT DISTINCT accepted_physical.physical_face_id, accepted.person_id
+        FROM identity_claim accepted JOIN current_face_physical_member accepted_physical
+          ON accepted_physical.face_id = accepted.face_id WHERE accepted.state = 'accepted'
+      )
       SELECT ic.identity_claim_id, ic.face_id, ic.person_id, p.display_name,
         ic.calibrated_confidence::float8,
         nullif(ic.evidence_refs->>'best_score', '')::float8 AS source_score,
@@ -5223,12 +5228,9 @@ export const createCimmichRepository = (
         AND coalesce(ic.evidence_refs->>'assignment_decision', '') <> 'accepted_matched_digikam_sidecar_face'
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_physical_member accepted_physical
-          JOIN identity_claim accepted
-            ON accepted.face_id = accepted_physical.face_id
-            AND accepted.state = 'accepted'
+          FROM accepted_physical_people accepted
+          WHERE accepted.physical_face_id = candidate_physical.physical_face_id
             AND accepted.person_id = ic.person_id
-          WHERE accepted_physical.physical_face_id = candidate_physical.physical_face_id
         )
         AND (
           coalesce(nullif(ic.evidence_refs->>'best_score', '')::float8, ic.calibrated_confidence::float8, -1)
@@ -5281,16 +5283,19 @@ export const createCimmichRepository = (
           jsonb_object_agg(asset_id, accepted_count), '{}'::jsonb
         ) AS counts
         FROM accepted_asset_counts
+      ), accepted_physical_claims AS MATERIALIZED (
+        SELECT accepted_physical.physical_face_id, accepted.face_id,
+          accepted.identity_claim_id, accepted.person_id, accepted.created_at
+        FROM identity_claim accepted JOIN current_face_physical_member accepted_physical
+          ON accepted_physical.face_id = accepted.face_id
+        WHERE accepted.state = 'accepted'
       ), current_acceptance AS MATERIALIZED (
         SELECT DISTINCT ON (target.face_id)
           target.face_id, current.identity_claim_id, current.person_id
         FROM identity_claim target
         JOIN current_face_physical_member target_physical
           ON target_physical.face_id = target.face_id
-        JOIN current_face_physical_member current_physical
-          ON current_physical.physical_face_id = target_physical.physical_face_id
-        JOIN identity_claim current
-          ON current.face_id = current_physical.face_id AND current.state = 'accepted'
+        JOIN accepted_physical_claims current ON current.physical_face_id = target_physical.physical_face_id
         JOIN person accepted_person ON accepted_person.person_id = current.person_id
           AND accepted_person.status = 'active'
           AND cimmich_visibility_subject_rank(
@@ -5389,12 +5394,9 @@ export const createCimmichRepository = (
         )
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_physical_member accepted_physical
-          JOIN identity_claim accepted_same_person
-            ON accepted_same_person.face_id = accepted_physical.face_id
-            AND accepted_same_person.state = 'accepted'
+          FROM accepted_physical_claims accepted_same_person
+          WHERE accepted_same_person.physical_face_id = candidate_physical.physical_face_id
             AND accepted_same_person.person_id = claim.person_id
-          WHERE accepted_physical.physical_face_id = candidate_physical.physical_face_id
         )
       ORDER BY CASE
           WHEN nullif(claim.evidence_refs->>'margin', '')::float8 > 0 THEN 0
