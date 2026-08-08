@@ -94,9 +94,12 @@ test("Person candidate same-photo counts are projected once instead of rescannin
     source.indexOf("async bulkAcceptPersonCandidates"),
   );
 
-  assert.match(method, /WITH accepted_asset_counts AS NOT MATERIALIZED/);
+  assert.match(method, /WITH accepted_asset_counts AS MATERIALIZED/);
   assert.match(method, /GROUP BY accepted_face\.asset_id/);
-  assert.match(method, /LEFT JOIN accepted_asset_counts same_photo/);
+  assert.match(method, /accepted_asset_count_map AS MATERIALIZED/);
+  assert.match(method, /jsonb_object_agg\(asset_id, accepted_count\)/);
+  assert.match(method, /CROSS JOIN accepted_asset_count_map accepted_counts/);
+  assert.doesNotMatch(method, /LEFT JOIN accepted_asset_counts same_photo/);
   assert.doesNotMatch(method, /FROM current_face_identity same_photo_identity/);
 });
 
