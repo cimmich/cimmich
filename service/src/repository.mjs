@@ -5246,7 +5246,7 @@ export const createCimmichRepository = (
       await requireVisibleSubject(personId);
       const boundedLimit = cleanLimit(limit, 500, 5000);
       const rows = await sql`
-      WITH accepted_asset_counts AS NOT MATERIALIZED (
+      WITH accepted_asset_counts AS MATERIALIZED (
         SELECT accepted_face.asset_id, count(*)::int AS accepted_count
         FROM identity_claim accepted
         JOIN face_observation accepted_face
@@ -5254,6 +5254,11 @@ export const createCimmichRepository = (
         WHERE accepted.person_id = ${String(personId || "")}
           AND accepted.state = 'accepted'
         GROUP BY accepted_face.asset_id
+      ), accepted_asset_count_map AS MATERIALIZED (
+        SELECT coalesce(
+          jsonb_object_agg(asset_id, accepted_count), '{}'::jsonb
+        ) AS counts
+        FROM accepted_asset_counts
       ), current_acceptance AS MATERIALIZED (
         SELECT DISTINCT ON (current.face_id)
           current.face_id, current.identity_claim_id, current.person_id
@@ -5320,7 +5325,7 @@ export const createCimmichRepository = (
         current_person.display_name AS current_person_name,
         greatest(
           0,
-          coalesce(same_photo.accepted_count, 0) -
+          coalesce((accepted_counts.counts ->> face.asset_id)::int, 0) -
             CASE WHEN accepted.person_id = claim.person_id THEN 1 ELSE 0 END
         )::int AS same_photo_accepted_count
       FROM identity_claim claim
@@ -5337,10 +5342,9 @@ export const createCimmichRepository = (
         AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
       JOIN face_observation face ON face.face_id = claim.face_id AND face.state = 'valid'
       JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
+      CROSS JOIN accepted_asset_count_map accepted_counts
       LEFT JOIN current_acceptance accepted ON accepted.face_id = claim.face_id
       LEFT JOIN person current_person ON current_person.person_id = accepted.person_id
-      LEFT JOIN accepted_asset_counts same_photo
-        ON same_photo.asset_id = face.asset_id
       LEFT JOIN latest_face_review review ON review.face_id = claim.face_id
       WHERE claim.person_id = ${String(personId || "")}
         AND claim.state = 'candidate'
