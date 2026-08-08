@@ -120,6 +120,33 @@ test("Person candidate current assignments and owner review decisions are projec
   assert.doesNotMatch(method, /coalesce\(\(SELECT review\.reason_code/);
 });
 
+test("candidate reads resolve canonical Face geometry by indexed Face ID", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const methods = [
+    source.slice(
+      source.indexOf("async identityCandidates"),
+      source.indexOf("async personCandidates"),
+    ),
+    source.slice(
+      source.indexOf("async personCandidates"),
+      source.indexOf("async bulkAcceptPersonCandidates"),
+    ),
+  ];
+
+  for (const method of methods) {
+    assert.match(
+      method,
+      /JOIN face_observation (?:fo|face)\s+ON (?:fo|face)\.face_id = candidate_physical\.canonical_face_id/,
+    );
+    assert.doesNotMatch(
+      method,
+      /JOIN current_display_face (?:fo|face)\s+ON (?:fo|face)\.physical_face_id = candidate_physical\.physical_face_id/,
+    );
+  }
+});
+
 test("Person candidate reads honor a current owner Unknown decision", async () => {
   const { readFile } = await import("node:fs/promises");
   const [source, summarySource] = await Promise.all([
