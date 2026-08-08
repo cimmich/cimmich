@@ -147,6 +147,31 @@ test("candidate reads resolve canonical Face geometry by indexed Face ID", async
   }
 });
 
+test("candidate reads materialize accepted physical identities once", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const identityCandidates = source.slice(
+    source.indexOf("async identityCandidates"),
+    source.indexOf("async personCandidates"),
+  );
+  const personCandidates = source.slice(
+    source.indexOf("async personCandidates"),
+    source.indexOf("async bulkAcceptPersonCandidates"),
+  );
+
+  assert.match(identityCandidates, /accepted_physical_people AS MATERIALIZED/);
+  assert.match(personCandidates, /accepted_physical_claims AS MATERIALIZED/);
+  assert.doesNotMatch(
+    identityCandidates,
+    /FROM current_face_physical_member accepted_physical\s+JOIN identity_claim accepted/,
+  );
+  assert.doesNotMatch(
+    personCandidates,
+    /JOIN current_face_physical_member current_physical/,
+  );
+});
+
 test("Person candidate reads honor a current owner Unknown decision", async () => {
   const { readFile } = await import("node:fs/promises");
   const [source, summarySource] = await Promise.all([
