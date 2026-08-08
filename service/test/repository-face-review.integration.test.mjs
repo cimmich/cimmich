@@ -141,3 +141,126 @@ integrationTest(
     }
   },
 );
+
+integrationTest(
+  "grouped Person proposals materialise typed candidate evidence",
+  async () => {
+    const sql = postgres(databaseUrl, { max: 2, prepare: true });
+    try {
+      await sql`
+            INSERT INTO source_snapshot (
+              snapshot_id, input_schema_version, source_digest,
+              locator_root_token, started_at, completed_at,
+              observed_asset_count, state
+            ) VALUES (
+              'snapshot_possible_people_resolution_test', 'test.v1',
+              ${"8".repeat(64)}, 'possible-people-resolution-root',
+              now(), now(), 1, 'complete'
+            )
+          `;
+      await sql`
+            INSERT INTO asset (
+              asset_id, locator_token, media_kind, mime_type, width, height,
+              source_snapshot_id, state
+            ) VALUES (
+              'asset_possible_people_resolution_test', 'grouped-face.jpg',
+              'image', 'image/jpeg', 800, 600,
+              'snapshot_possible_people_resolution_test', 'active'
+            )
+          `;
+      await sql`
+            INSERT INTO person (
+              person_id, display_name, status, created_by_receipt_id,
+              subject_kind
+            ) VALUES (
+              'person_possible_people_resolution_test', 'Grouped Person',
+              'active', 'receipt_cimmich_possible_people_v1', 'person'
+            )
+          `;
+      await sql`
+            INSERT INTO face_observation (
+              face_id, asset_id, box_x, box_y, box_w, box_h,
+              detection_confidence, state, producer_receipt_id
+            ) VALUES (
+              'face_possible_people_resolution_test',
+              'asset_possible_people_resolution_test',
+              0.1, 0.1, 0.3, 0.3, 0.9, 'valid',
+              'receipt_cimmich_possible_people_v1'
+            )
+          `;
+      await sql`
+            INSERT INTO possible_person_run (
+              run_id, command_id, state, algorithm_version, seed_limit,
+              neighbour_limit, similarity_floor, total_seeds,
+              processed_seeds, cluster_count, completed_at,
+              classification_state, classification_version,
+              classified_cluster_count, classification_completed_at
+            ) VALUES (
+              'possible_run_11111111111111111111111111111111',
+              'possible-people.integration.refresh', 'completed',
+              'cimmich-possible-people-graph-v1', 100, 12, 0.55, 1, 1, 1,
+              now(), 'completed', 'cimmich-possible-people-known-person-v1',
+              1, now()
+            )
+          `;
+      await sql`
+            INSERT INTO face_cluster (
+              cluster_id, producer_receipt_id, status, member_count,
+              possible_person_run_id, cluster_digest,
+              representative_face_id, evidence, source_revision,
+              suggested_person_id, suggestion_evidence,
+              classification_version, classified_at
+            ) VALUES (
+              'cluster_possible_people_resolution_test',
+              'receipt_cimmich_possible_people_v1', 'open', 1,
+              'possible_run_11111111111111111111111111111111',
+              ${"7".repeat(64)}, 'face_possible_people_resolution_test',
+              '{}'::jsonb, 'test-revision',
+              'person_possible_people_resolution_test', '{}'::jsonb,
+              'cimmich-possible-people-known-person-v1', now()
+            )
+          `;
+      await sql`
+            INSERT INTO face_cluster_member (
+              cluster_id, face_id, membership_score, rank
+            ) VALUES (
+              'cluster_possible_people_resolution_test',
+              'face_possible_people_resolution_test', 0.91, 1
+            )
+          `;
+
+      const repository = createCimmichRepository(sql, new Map(), {
+        currentRank: () => 0,
+      });
+      const result = await repository.possiblePeopleResolve({
+        action: "existing_person",
+        actorId: "integration-test",
+        clusterId: "cluster_possible_people_resolution_test",
+        commandId: "possible-people.integration.resolve",
+        personId: "person_possible_people_resolution_test",
+        snapshotDigest: "7".repeat(64),
+      });
+
+      assert.equal(result.candidateCount, 1);
+      const [claim] = await sql`
+            SELECT evidence_refs
+            FROM identity_claim
+            WHERE face_id = 'face_possible_people_resolution_test'
+          `;
+      assert.equal(
+        claim.evidence_refs.cluster_id,
+        "cluster_possible_people_resolution_test",
+      );
+      assert.equal(
+        claim.evidence_refs.policy_version,
+        "cimmich-possible-people-graph-v1",
+      );
+      assert.equal(
+        claim.evidence_refs.run_id,
+        "possible_run_11111111111111111111111111111111",
+      );
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  },
+);

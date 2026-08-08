@@ -878,9 +878,9 @@ export const createPossiblePeopleStore = (
               'assignment_decision', 'cluster_propagation_candidate',
               'automatic_acceptance', 'false',
               'best_score', member.membership_score,
-              'cluster_id', ${cluster.cluster_id},
-              'policy_version', ${algorithmVersion},
-              'run_id', ${cluster.possible_person_run_id}
+              'cluster_id', ${cluster.cluster_id}::text,
+              'policy_version', ${algorithmVersion}::text,
+              'run_id', ${cluster.possible_person_run_id}::text
             ),
             ${receiptId}, 'sensitive-biometric'
           FROM face_cluster_member member

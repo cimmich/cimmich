@@ -38,6 +38,15 @@ test("known-Person classification is versioned, separated and never identity aut
   assert.match(possiblePeople, /possible_person_group_rejected/);
   assert.match(possiblePeople, /status = 'split'/);
   assert.match(possiblePeople, /possible_person_known_match_rejected/);
+  assert.match(possiblePeople, /'cluster_id', \$\{cluster\.cluster_id\}::text/);
+  assert.match(
+    possiblePeople,
+    /'policy_version', \$\{algorithmVersion\}::text/,
+  );
+  assert.match(
+    possiblePeople,
+    /'run_id', \$\{cluster\.possible_person_run_id\}::text/,
+  );
   assert.match(possiblePeople, /'automatic_acceptance', 'false'/);
   assert.match(
     possiblePeople,
