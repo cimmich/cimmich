@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createIdentityAuditDecisions } from "./identity-audit-decisions.mjs";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
@@ -167,10 +168,13 @@ const auditSql = async (
   // One definition of the visible prime reference gallery shared across both
   // transactions used by the untagged and accepted-contradiction audits.
   const primeReferenceGallery = (executor) => executor`
-      SELECT reference.person_id, reference.face_id,
+      SELECT DISTINCT ON (reference.person_id, physical.physical_face_id)
+        reference.person_id, reference.face_id,
         face.asset_id, reference.embedding,
         coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
       FROM source_pack_matching_gallery reference
+      JOIN current_face_physical_member physical
+        ON physical.face_id = reference.face_id
       JOIN current_person person
         ON person.person_id = reference.person_id
         AND person.status = 'active'
@@ -186,7 +190,9 @@ const auditSql = async (
           SELECT 1 FROM current_person_category category
           WHERE category.person_id = person.person_id
             AND category.slug IN ('sort', 'holding')
-        )`;
+        )
+      ORDER BY reference.person_id, physical.physical_face_id,
+        reference.face_id`;
   await sql.begin(async (tx) => {
     await tx`
       SELECT set_config('statement_timeout',
@@ -252,12 +258,14 @@ const auditSql = async (
         GROUP BY face_id
       ), accepted_people_by_asset AS MATERIALIZED (
         SELECT DISTINCT face.asset_id, claim.person_id
-        FROM current_face_identity claim
-        JOIN face_observation face
-          ON face.face_id = claim.face_id AND face.state = 'valid'
+        FROM current_physical_face_identity claim
+        JOIN current_matchable_physical_face face
+          ON face.physical_face_id = claim.physical_face_id
+          AND face.state = 'valid'
         WHERE claim.state = 'accepted'
       ), query_candidates AS MATERIALIZED (
-        SELECT face.face_id, face.asset_id, embedding.embedding,
+        SELECT face.face_id, face.physical_face_id, face.asset_id,
+          embedding.embedding,
           face.box_x::float8, face.box_y::float8,
           face.box_w::float8, face.box_h::float8,
           face.detection_confidence::float8,
@@ -265,7 +273,7 @@ const auditSql = async (
             (face.quality_measurements->>'quality_score')::float8, 0
           ) AS quality_score,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-        FROM face_observation face
+        FROM current_matchable_physical_face face
         JOIN source_pack pack ON pack.pack_id = ${packId}
         JOIN face_embedding embedding
           ON embedding.face_id = face.face_id
@@ -280,14 +288,23 @@ const auditSql = async (
         WHERE face.state = 'valid'
           AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
           AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
-          AND (${!incremental} OR face.face_id = ANY(${incrementalFaceIds}))
+          AND (
+            ${!incremental}
+            OR EXISTS (
+              SELECT 1
+              FROM current_face_physical_member changed
+              WHERE changed.face_id = ANY(${incrementalFaceIds})
+                AND changed.physical_face_id = face.physical_face_id
+            )
+          )
           AND NOT EXISTS (
-            SELECT 1 FROM current_face_identity accepted
-            WHERE accepted.face_id = face.face_id
+            SELECT 1 FROM current_physical_face_identity accepted
+            WHERE accepted.physical_face_id = face.physical_face_id
               AND accepted.state = 'accepted'
           )
       ), eligible_queries AS MATERIALIZED (
-        SELECT candidate.face_id, candidate.asset_id, candidate.embedding,
+        SELECT candidate.face_id, candidate.physical_face_id,
+          candidate.asset_id, candidate.embedding,
           candidate.detection_confidence, candidate.quality_score,
           candidate.context_ids
         FROM query_candidates candidate
@@ -358,7 +375,8 @@ const auditSql = async (
       ), queries AS MATERIALIZED (
         -- Bounded comparison frontier: deterministic quality-first ranking,
         -- mirroring the machineSuggestions frontier policy in repository.mjs.
-        SELECT eligible.face_id, eligible.asset_id, eligible.embedding,
+        SELECT eligible.face_id, eligible.physical_face_id,
+          eligible.asset_id, eligible.embedding,
           eligible.context_ids
         FROM eligible_queries eligible
         ORDER BY eligible.quality_score DESC,
@@ -642,9 +660,10 @@ const auditSql = async (
                 AND reference_context.face_id = gallery.face_id
             )
         ))::int AS comparable_faces
-      FROM current_face_identity claim
-      JOIN face_observation face
-        ON face.face_id = claim.face_id AND face.state = 'valid'
+      FROM current_physical_face_identity claim
+      JOIN current_matchable_physical_face face
+        ON face.physical_face_id = claim.physical_face_id
+        AND face.state = 'valid'
       JOIN source_pack pack ON pack.pack_id = ${packId}
       JOIN face_embedding embedding
         ON embedding.face_id = face.face_id
@@ -1174,7 +1193,7 @@ export const createIdentityAudit = (
     // hasMore true forever once the guarded rows run out ("load more" loops).
     const [count] = await sql`
       SELECT count(*)::int AS total
-      FROM identity_audit_item item
+      FROM current_physical_identity_audit_item item
       JOIN identity_audit_run item_run
         ON item_run.audit_run_id = item.audit_run_id
       JOIN face_observation face ON face.face_id = item.face_id
@@ -1206,23 +1225,27 @@ export const createIdentityAudit = (
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
+          FROM current_face_identity same_photo_identity
+          JOIN current_face_physical_member same_photo_member
+            ON same_photo_member.face_id = same_photo_identity.face_id
+          JOIN face_observation same_photo_face
             ON same_photo_face.face_id = same_photo_identity.face_id
             AND same_photo_face.state = 'valid'
           WHERE same_photo_identity.state = 'accepted'
             AND same_photo_identity.person_id = item.suggested_person_id
             AND same_photo_face.asset_id = item.asset_id
-            AND same_photo_face.face_id <> item.face_id
+            AND same_photo_member.physical_face_id <> item.physical_face_id
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
-            SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = item.face_id AND current.state = 'accepted'
+            SELECT 1 FROM current_physical_face_identity current
+            WHERE current.physical_face_id = item.physical_face_id
+              AND current.state = 'accepted'
           ))
           OR
           (item.audit_kind = 'accepted_contradiction' AND EXISTS (
-            SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = item.face_id
+            SELECT 1 FROM current_physical_face_identity current
+            WHERE current.physical_face_id = item.physical_face_id
               AND current.state = 'accepted'
               AND current.person_id = item.assigned_person_id
           ))
@@ -1255,7 +1278,7 @@ export const createIdentityAudit = (
         suggested_reference.score AS suggested_reference_score,
         suggested_support.reference_count AS suggested_reference_count,
         suggested_support.top3_average_score AS suggested_top3_average_score
-      FROM identity_audit_item item
+      FROM current_physical_identity_audit_item item
       JOIN identity_audit_run item_run
         ON item_run.audit_run_id = item.audit_run_id
       JOIN face_observation face ON face.face_id = item.face_id
@@ -1413,23 +1436,27 @@ export const createIdentityAudit = (
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
+          FROM current_face_identity same_photo_identity
+          JOIN current_face_physical_member same_photo_member
+            ON same_photo_member.face_id = same_photo_identity.face_id
+          JOIN face_observation same_photo_face
             ON same_photo_face.face_id = same_photo_identity.face_id
             AND same_photo_face.state = 'valid'
           WHERE same_photo_identity.state = 'accepted'
             AND same_photo_identity.person_id = item.suggested_person_id
             AND same_photo_face.asset_id = item.asset_id
-            AND same_photo_face.face_id <> item.face_id
+            AND same_photo_member.physical_face_id <> item.physical_face_id
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
-            SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = item.face_id AND current.state = 'accepted'
+            SELECT 1 FROM current_physical_face_identity current
+            WHERE current.physical_face_id = item.physical_face_id
+              AND current.state = 'accepted'
           ))
           OR
           (item.audit_kind = 'accepted_contradiction' AND EXISTS (
-            SELECT 1 FROM current_face_identity current
-            WHERE current.face_id = item.face_id
+            SELECT 1 FROM current_physical_face_identity current
+            WHERE current.physical_face_id = item.physical_face_id
               AND current.state = 'accepted'
               AND current.person_id = item.assigned_person_id
           ))
@@ -1484,6 +1511,7 @@ export const createIdentityAudit = (
         currentRevision: Number(row.current_revision),
         detectionConfidence: Number(row.detection_confidence),
         faceId: row.face_id,
+        physicalFaceId: row.physical_face_id,
         height: row.height,
         kind: row.audit_kind,
         margin: Number(row.margin),
@@ -1525,119 +1553,12 @@ export const createIdentityAudit = (
     sql,
   });
 
-  const dismiss = async ({ actorId, faceId, kind } = {}) => {
-    await reconcileInterruptedRun();
-    const actor = String(actorId || "")
-      .trim()
-      .slice(0, 120);
-    const exactFaceId = String(faceId || "").trim();
-    const auditKind = cleanKind(kind);
-    if (!actor || !exactFaceId) {
-      throw Object.assign(new Error("Identity audit decision is incomplete"), {
-        code: "IDENTITY_AUDIT_DECISION_INVALID",
-        statusCode: 400,
-      });
-    }
-    const rows = await sql`
-      UPDATE identity_audit_item item
-      SET review_state = 'dismissed', reviewed_at = now(),
-        reviewed_by = ${actor}
-      FROM identity_audit_run run
-      WHERE run.audit_run_id = item.audit_run_id
-        AND run.state = 'completed'
-        AND item.audit_run_id = (
-          SELECT latest.audit_run_id
-          FROM identity_audit_run latest
-          WHERE latest.state = 'completed'
-          ORDER BY latest.started_at DESC, latest.audit_run_id DESC
-          LIMIT 1
-        )
-        AND item.audit_kind = ${auditKind}
-        AND item.face_id = ${exactFaceId}
-        AND item.review_state = 'open'
-      RETURNING item.face_id
-    `;
-    return {
-      changed: rows.length > 0,
-      faceId: exactFaceId,
-      kind: auditKind,
-      schemaVersion: identityAuditSchemaVersion,
-      state: rows.length > 0 ? "dismissed" : "unchanged",
-    };
-  };
-
-  const dismissBatch = async ({ actorId, items: inputItems } = {}) => {
-    if (!Array.isArray(inputItems) || inputItems.length === 0) {
-      throw Object.assign(new Error("Identity audit decision is incomplete"), {
-        code: "IDENTITY_AUDIT_DECISION_INVALID",
-        statusCode: 400,
-      });
-    }
-    if (inputItems.length > 100) {
-      throw Object.assign(
-        new Error("Dismiss no more than 100 audit items at once"),
-        {
-          code: "IDENTITY_AUDIT_DECISION_INVALID",
-          statusCode: 400,
-        },
-      );
-    }
-    const actor = String(actorId || "")
-      .trim()
-      .slice(0, 120);
-    const cleanItems = inputItems.map((item) => ({
-      faceId: String(item?.faceId || "").trim(),
-      kind: cleanKind(item?.kind),
-    }));
-    if (!actor || cleanItems.some((item) => !item.faceId)) {
-      throw Object.assign(new Error("Identity audit decision is incomplete"), {
-        code: "IDENTITY_AUDIT_DECISION_INVALID",
-        statusCode: 400,
-      });
-    }
-    await reconcileInterruptedRun();
-    // The batch is one decision against one run: resolve the latest completed
-    // run once and apply every dismissal in a single transaction, so a run
-    // completing mid-batch cannot split the batch across two runs and a
-    // failure cannot leave partial dismissals behind.
-    const results = await sql.begin(async (tx) => {
-      const [run] = await tx`
-        SELECT audit_run_id FROM identity_audit_run
-        WHERE state = 'completed'
-        ORDER BY started_at DESC, audit_run_id DESC
-        LIMIT 1
-      `;
-      const outcomes = [];
-      for (const item of cleanItems) {
-        const rows = run
-          ? await tx`
-              UPDATE identity_audit_item
-              SET review_state = 'dismissed', reviewed_at = now(),
-                reviewed_by = ${actor}
-              WHERE audit_run_id = ${run.audit_run_id}
-                AND audit_kind = ${item.kind}
-                AND face_id = ${item.faceId}
-                AND review_state = 'open'
-              RETURNING face_id
-            `
-          : [];
-        outcomes.push({
-          changed: rows.length > 0,
-          faceId: item.faceId,
-          kind: item.kind,
-          schemaVersion: identityAuditSchemaVersion,
-          state: rows.length > 0 ? "dismissed" : "unchanged",
-        });
-      }
-      return outcomes;
-    });
-    return {
-      changed: results.some((result) => result.changed),
-      dismissedCount: results.filter((result) => result.changed).length,
-      items: results,
-      schemaVersion: identityAuditSchemaVersion,
-    };
-  };
+  const { dismiss, dismissBatch } = createIdentityAuditDecisions({
+    cleanKind,
+    reconcileInterruptedRun,
+    schemaVersion: identityAuditSchemaVersion,
+    sql,
+  });
 
   return { dismiss, dismissBatch, items, latest, leads, start };
 };

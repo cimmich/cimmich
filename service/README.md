@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 125. Schema 76 adds
+patch level 1. Current post-submission source is schema 127. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -185,6 +185,19 @@ retired with an append-only repair ledger, and explicit Possible people Refresh
 now rebuilds reconciliation before graph-v2 discovery. Opening review pages
 still performs no archive scan, and accepted identity truth is never rewritten
 by reconciliation.
+Schema 126 completes that evidence boundary for sidecars and owner review.
+Contained detector/XMP regions and overlapping same-Person XMP regions can
+converge on one physical Face; identity audits, reference galleries, review
+cards and dismissals consume that physical identity rather than raw observation
+IDs. Completing an XMP import refreshes the stored projection explicitly, while
+opening a review page still performs no biometric work.
+Schema 127 projects XMP Face rectangles from their declared
+`AppliedToDimensions` and EXIF orientation into the same top-left display frame
+used by Immich and Cimmich. Existing affected regions are corrected through a
+reversible geometry ledger; stale embeddings, candidates and audit items are
+invalidated before recognition is rerun. Sidecar recognition is also bounded
+to the supplied region, so an expanded fallback cannot borrow a neighbouring
+person's face.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

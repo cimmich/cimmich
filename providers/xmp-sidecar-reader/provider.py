@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - depends on the host environment
     _defused_fromstring = None
 
 
-SCHEMA_VERSION = "cimmich.xmp-sidecar-reader.v3"
+SCHEMA_VERSION = "cimmich.xmp-sidecar-reader.v4"
 MEDIA_EXTENSIONS = {
     ".arw", ".cr2", ".cr3", ".dng", ".heic", ".jpeg", ".jpg", ".nef",
     ".orf", ".png", ".rw2", ".tif", ".tiff", ".webp",
@@ -80,6 +80,94 @@ def region_key(name: str, box: dict[str, float]) -> str:
             sort_keys=True,
         )
     )
+
+
+def source_coordinate_frame(root: ET.Element) -> tuple[int, dict[str, int] | None]:
+    """Return the EXIF transform that maps XMP regions to displayed pixels.
+
+    MWG regions are expressed against ``AppliedToDimensions`` before the
+    image's TIFF orientation is applied. Cimmich and Immich display decoded,
+    EXIF-transposed pixels, so rotated sidecars must be projected into that
+    same top-left coordinate frame before their boxes are stored.
+    """
+    orientation = 1
+    for element in root.iter():
+        for key, value in element.attrib.items():
+            if (
+                local_name(key) == "Orientation"
+                and "ns.adobe.com/tiff" in key
+            ):
+                try:
+                    candidate = int(str(value).strip())
+                except (TypeError, ValueError):
+                    candidate = 1
+                if 1 <= candidate <= 8:
+                    orientation = candidate
+                break
+
+    dimensions = None
+    for element in root.iter():
+        if local_name(element.tag) != "AppliedToDimensions":
+            continue
+        for candidate in element.iter():
+            attrs = attributes(candidate)
+            try:
+                width = int(float(attrs["w"]))
+                height = int(float(attrs["h"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if width > 0 and height > 0:
+                dimensions = {"height": height, "width": width}
+                break
+        if dimensions is not None:
+            break
+
+    # Without AppliedToDimensions there is no source-frame assertion strong
+    # enough to justify moving stored evidence. Preserve the region unchanged.
+    return (orientation if dimensions is not None else 1), dimensions
+
+
+def displayed_box(
+    box: dict[str, float], orientation: int
+) -> dict[str, float]:
+    x, y, width, height = box["x"], box["y"], box["w"], box["h"]
+    if orientation == 1:
+        transformed = {"x": x, "y": y, "w": width, "h": height}
+    elif orientation == 2:
+        transformed = {"x": 1 - x - width, "y": y, "w": width, "h": height}
+    elif orientation == 3:
+        transformed = {
+            "x": 1 - x - width,
+            "y": 1 - y - height,
+            "w": width,
+            "h": height,
+        }
+    elif orientation == 4:
+        transformed = {"x": x, "y": 1 - y - height, "w": width, "h": height}
+    elif orientation == 5:
+        transformed = {"x": y, "y": x, "w": height, "h": width}
+    elif orientation == 6:
+        transformed = {"x": 1 - y - height, "y": x, "w": height, "h": width}
+    elif orientation == 7:
+        transformed = {
+            "x": 1 - y - height,
+            "y": 1 - x - width,
+            "w": height,
+            "h": width,
+        }
+    elif orientation == 8:
+        transformed = {"x": y, "y": 1 - x - width, "w": height, "h": width}
+    else:  # Defensive: source_coordinate_frame already bounds this value.
+        transformed = {"x": x, "y": y, "w": width, "h": height}
+    normalized = {key: fixed(value) for key, value in transformed.items()}
+    # Legacy region writers sometimes round a source edge to 1.000000x. The
+    # source-frame validator permits only that sub-pixel tolerance; after a
+    # mirror/rotation it appears as a tiny negative origin. Canonicalize that
+    # rounding residue to the display edge without moving a real region.
+    for key in ("x", "y"):
+        if -0.000001 <= normalized[key] < 0:
+            normalized[key] = 0.0
+    return normalized
 
 
 def iou(left: dict[str, float], right: dict[str, float]) -> float:
@@ -178,6 +266,7 @@ def parse_xml(packet: bytes) -> ET.Element:
 
 def parse_faces(packet: bytes) -> list[dict[str, object]]:
     root = parse_xml(packet)
+    orientation, dimensions = source_coordinate_frame(root)
     mwg = parse_mwg(root)
     microsoft = parse_microsoft(root)
     combined = list(mwg)
@@ -192,7 +281,19 @@ def parse_faces(packet: bytes) -> list[dict[str, object]]:
     unique: dict[str, dict[str, object]] = {}
     for region in combined:
         unique.setdefault(str(region["regionKey"]), region)
-    return sorted(unique.values(), key=lambda value: str(value["regionKey"]))
+    projected = []
+    for region in unique.values():
+        source_box = region["box"]
+        projected.append(
+            {
+                **region,
+                "box": displayed_box(source_box, orientation),
+                "exifOrientation": orientation,
+                "sourceBox": source_box,
+                "sourceDimensions": dimensions,
+            }
+        )
+    return sorted(projected, key=lambda value: str(value["regionKey"]))
 
 
 def sidecars(root: Path):

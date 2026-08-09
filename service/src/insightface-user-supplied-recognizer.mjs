@@ -136,6 +136,10 @@ export const createInsightFaceUserSuppliedRecognizer = ({
           assetToken: assetId,
           observationId: observation.observationId,
           schemaVersion: "cimmich.recognition-request.v1",
+          targetBinding:
+            observation.targetBinding === "bounded_sidecar_region"
+              ? "bounded_sidecar_region"
+              : "target_centric",
           targetBox: observation.targetBox,
         })),
       }),

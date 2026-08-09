@@ -1,13 +1,20 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import {
+  recordXmpCoordinateFrame,
+  xmpSidecarRepairReceiptId,
+} from "./xmp-sidecar-geometry-repair.mjs";
 
-export const xmpSidecarImportVersion = "cimmich.xmp-sidecar-import.v1";
-export const xmpSidecarReaderVersion = "cimmich.xmp-sidecar-reader.v3";
+export const xmpSidecarImportVersion = "cimmich.xmp-sidecar-import.v3";
+export const xmpSidecarReaderVersion = "cimmich.xmp-sidecar-reader.v4";
 export const xmpSidecarImportConfigDigest = createHash("sha256")
   .update(
     JSON.stringify({
-      duplicateIouFloor: 0.85,
+      duplicateAreaRatioCeiling: 4,
+      duplicateContainmentFloor: 0.85,
+      duplicateIouFloor: 0.5,
+      coordinateFrame: "mwg-applied-dimensions-to-exif-transposed-top-left",
       namePolicy: "exact-or-trailing-private-tier-1-2",
       reader: xmpSidecarReaderVersion,
       schemaVersion: xmpSidecarImportVersion,
@@ -15,7 +22,7 @@ export const xmpSidecarImportConfigDigest = createHash("sha256")
   )
   .digest("hex");
 
-const receiptId = "receipt_cimmich_xmp_sidecar_face_import_v1";
+const receiptId = xmpSidecarRepairReceiptId;
 const hex64 = /^[0-9a-f]{64}$/;
 const cleanText = (value, label, maximum = 500) => {
   const normalized = String(value || "")
@@ -105,6 +112,29 @@ const normalizeBox = (value) => {
   return box;
 };
 
+const normalizeSourceDimensions = (value) => {
+  if (value == null) return null;
+  exactKeys(value, ["height", "width"], "source dimensions");
+  const width = Number(value.width);
+  const height = Number(value.height);
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > 1_000_000 ||
+    height > 1_000_000
+  ) {
+    throw Object.assign(
+      new Error("XMP sidecar source dimensions are invalid"),
+      {
+        code: "XMP_SIDECAR_INPUT_INVALID",
+      },
+    );
+  }
+  return Object.freeze({ height, width });
+};
+
 const exactKeys = (value, keys, label) => {
   if (
     !value ||
@@ -148,18 +178,46 @@ const normalizeXmpSidecarPacket = (value) => {
     });
   }
   const faces = value.faces.map((face) => {
-    exactKeys(face, ["box", "rawName", "regionKey", "source"], "face");
+    exactKeys(
+      face,
+      [
+        "box",
+        "exifOrientation",
+        "rawName",
+        "regionKey",
+        "source",
+        "sourceBox",
+        "sourceDimensions",
+      ],
+      "face",
+    );
     if (!["mwg-rs", "microsoft-photo"].includes(face.source)) {
       throw Object.assign(new Error("XMP sidecar face source is invalid"), {
         code: "XMP_SIDECAR_INPUT_INVALID",
       });
     }
     const name = normalizeXmpPersonName(face.rawName);
+    const exifOrientation = Number(face.exifOrientation);
+    if (
+      !Number.isSafeInteger(exifOrientation) ||
+      exifOrientation < 1 ||
+      exifOrientation > 8
+    ) {
+      throw Object.assign(
+        new Error("XMP sidecar EXIF orientation is invalid"),
+        {
+          code: "XMP_SIDECAR_INPUT_INVALID",
+        },
+      );
+    }
     return Object.freeze({
       box: normalizeBox(face.box),
+      exifOrientation,
       ...name,
       regionKey: requiredDigest(face.regionKey, "region key"),
       source: face.source,
+      sourceBox: normalizeBox(face.sourceBox),
+      sourceDimensions: normalizeSourceDimensions(face.sourceDimensions),
     });
   });
   if (new Set(faces.map((face) => face.regionKey)).size !== faces.length) {
@@ -179,7 +237,7 @@ const normalizeXmpSidecarPacket = (value) => {
   });
 };
 
-const intersectionOverUnion = (left, right) => {
+const regionSimilarity = (left, right) => {
   const x1 = Math.max(Number(left.box_x), right.x);
   const y1 = Math.max(Number(left.box_y), right.y);
   const x2 = Math.min(
@@ -191,9 +249,26 @@ const intersectionOverUnion = (left, right) => {
     right.y + right.h,
   );
   const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-  const union =
-    Number(left.box_w) * Number(left.box_h) + right.w * right.h - intersection;
-  return union > 0 ? intersection / union : 0;
+  const leftArea = Number(left.box_w) * Number(left.box_h);
+  const rightArea = right.w * right.h;
+  const union = leftArea + rightArea - intersection;
+  const smallerArea = Math.min(leftArea, rightArea);
+  return Object.freeze({
+    areaRatio:
+      smallerArea > 0
+        ? Math.max(leftArea, rightArea) / smallerArea
+        : Number.POSITIVE_INFINITY,
+    containment: smallerArea > 0 ? intersection / smallerArea : 0,
+    iou: union > 0 ? intersection / union : 0,
+  });
+};
+
+const equivalentPhysicalRegion = (left, right) => {
+  const similarity = regionSimilarity(left, right);
+  return (
+    similarity.iou >= 0.5 ||
+    (similarity.containment >= 0.85 && similarity.areaRatio <= 4)
+  );
 };
 
 const resolveContent = async (sql, contentDigest) => {
@@ -244,11 +319,8 @@ const findExistingFace = async (sql, { assetId, box, personId }) => {
     WHERE face.asset_id = ${assetId} AND face.state = 'valid'
     ORDER BY face.face_id
   `;
-  return rows.filter((row) => intersectionOverUnion(row, box) >= 0.85);
+  return rows.filter((row) => equivalentPhysicalRegion(row, box));
 };
-
-const sameNumber = (left, right) =>
-  Math.abs(Number(left) - Number(right)) <= 0.000000001;
 
 const projectOutcome = ({
   content,
@@ -310,11 +382,7 @@ const validateEvidenceReplay = (row, outcome) => {
     row.identity_claim_id !== outcome.identityClaimId ||
     row.raw_name !== outcome.face.rawName ||
     row.normalized_name !== outcome.face.normalizedName ||
-    row.resolution_state !== outcome.resolutionState ||
-    !sameNumber(row.box_x, outcome.face.box.x) ||
-    !sameNumber(row.box_y, outcome.face.box.y) ||
-    !sameNumber(row.box_w, outcome.face.box.w) ||
-    !sameNumber(row.box_h, outcome.face.box.h)
+    row.resolution_state !== outcome.resolutionState
   ) {
     throw Object.assign(new Error("XMP evidence replay conflicts"), {
       code: "XMP_EVIDENCE_REPLAY_CONFLICT",
@@ -347,13 +415,21 @@ const commitOutcome = async (
   });
   if (current) {
     validateEvidenceReplay(current, outcome);
+    const corrected = await recordXmpCoordinateFrame(sql, {
+      current,
+      outcome,
+    });
     await insertSource(sql, {
       evidenceId: outcome.evidenceId,
       sidecarDigest,
       sourceId,
       sourceLocatorDigest,
     });
-    return { replayed: 1, [outcome.resolutionState]: 1 };
+    return {
+      geometryCorrected: corrected,
+      replayed: 1,
+      [outcome.resolutionState]: 1,
+    };
   }
   if (!outcome.resolutionState.startsWith("reused_")) {
     await sql`
@@ -366,6 +442,11 @@ const commitOutcome = async (
         ${outcome.face.box.x}, ${outcome.face.box.y},
         ${outcome.face.box.w}, ${outcome.face.box.h}, NULL,
         ${sql.json({
+          coordinateTransform:
+            outcome.face.exifOrientation === 1
+              ? "identity"
+              : "exif_transposed_top_left",
+          exifOrientation: outcome.face.exifOrientation,
           normalization: outcome.face.normalization,
           regionSource: outcome.face.source,
           sourceKind: "xmp_sidecar",
@@ -412,7 +493,10 @@ const commitOutcome = async (
     INSERT INTO xmp_sidecar_face_evidence (
       evidence_id, source_id, content_id, asset_id, face_id, person_id,
       identity_claim_id, region_key, raw_name, normalized_name,
-      box_x, box_y, box_w, box_h, resolution_state
+      box_x, box_y, box_w, box_h, resolution_state,
+      source_box_x, source_box_y, source_box_w, source_box_h,
+      exif_orientation, source_pixel_width, source_pixel_height,
+      coordinate_transform, producer_receipt_id, schema_version
     ) VALUES (
       ${outcome.evidenceId}, ${sourceId}, ${outcome.contentId},
       ${outcome.assetId}, ${outcome.faceId},
@@ -420,7 +504,18 @@ const commitOutcome = async (
       ${outcome.face.regionKey}, ${outcome.face.rawName},
       ${outcome.face.normalizedName}, ${outcome.face.box.x},
       ${outcome.face.box.y}, ${outcome.face.box.w}, ${outcome.face.box.h},
-      ${outcome.resolutionState}
+      ${outcome.resolutionState},
+      ${outcome.face.sourceBox.x}, ${outcome.face.sourceBox.y},
+      ${outcome.face.sourceBox.w}, ${outcome.face.sourceBox.h},
+      ${outcome.face.exifOrientation},
+      ${outcome.face.sourceDimensions?.width ?? null},
+      ${outcome.face.sourceDimensions?.height ?? null},
+      ${
+        outcome.face.exifOrientation === 1
+          ? "identity"
+          : "exif_transposed_top_left"
+      },
+      ${receiptId}, 2
     )
   `;
   await insertSource(sql, {
@@ -682,6 +777,9 @@ const completeXmpSidecarRun = async (sql, { providerSummary, runId }) =>
     result.items = items.length;
     result.scannedSidecars = Number(providerSummary?.scannedSidecars || 0);
     result.skippedSidecars = Number(providerSummary?.skippedSidecars || 0);
+    const [reconciliation] =
+      await transaction`SELECT cimmich_refresh_physical_face_reconciliation() AS result`;
+    result.physicalFaceReconciliation = reconciliation?.result || null;
     await transaction`
       UPDATE xmp_sidecar_import_run SET
         state = 'completed', result = ${transaction.json(result)},

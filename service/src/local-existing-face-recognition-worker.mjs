@@ -191,6 +191,10 @@ export const createLocalExistingFaceRecognitionWorker = ({
           manifest,
           observations: observations.map((face) => ({
             observationId: face.face_id,
+            targetBinding:
+              face.observation_origin === "xmp_sidecar_import"
+                ? "bounded_sidecar_region"
+                : "target_centric",
             targetBox: {
               coordinateSpace: "normalized",
               h: Number(face.box_h),

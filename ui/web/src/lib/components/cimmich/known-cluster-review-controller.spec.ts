@@ -4,7 +4,7 @@ import { createKnownClusterReviewController } from './known-cluster-review-contr
 describe('known cluster review controller', () => {
   it('acknowledges a committed move immediately and coalesces its queue reload', async () => {
     vi.useFakeTimers();
-    const context = { generation: 4, personId: 'person-benji', personName: 'Benji Hart' };
+    const context = { generation: 4, personId: 'person-cedar', personName: 'Cedar Quinn' };
     const loadCandidates = vi.fn(() => Promise.resolve([]));
     const removeCluster = vi.fn();
     const setCandidates = vi.fn();
@@ -23,7 +23,7 @@ describe('known cluster review controller', () => {
     controller.finish({ candidateCount: 24, clusterId: 'cluster-next', kind: 'review' });
     expect(removeCluster).toHaveBeenCalledTimes(2);
     expect(setMessage).toHaveBeenLastCalledWith(
-      '24 grouped Faces were moved into Benji Hart’s Checks. Nothing was confirmed.',
+      '24 grouped Faces were moved into Cedar Quinn’s Checks. Nothing was confirmed.',
     );
     expect(loadCandidates).not.toHaveBeenCalled();
 

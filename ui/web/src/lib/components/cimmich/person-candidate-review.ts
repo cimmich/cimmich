@@ -20,4 +20,10 @@ export const preparePersonCandidates = (candidates: CimmichIdentityCandidate[]) 
         finite(right.match_score) - finite(left.match_score) ||
         right.detection_confidence - left.detection_confidence ||
         left.identity_claim_id.localeCompare(right.identity_claim_id),
+    )
+    .filter(
+      (candidate, index, ranked) =>
+        ranked.findIndex(
+          (other) => (other.physical_face_id || other.face_id) === (candidate.physical_face_id || candidate.face_id),
+        ) === index,
     );

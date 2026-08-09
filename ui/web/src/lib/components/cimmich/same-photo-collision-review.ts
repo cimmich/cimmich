@@ -13,6 +13,8 @@ export type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
   samePhotoAcceptedCount?: number;
 };
 
+export const physicalReviewKey = (item: CimmichPersonReviewItem) => item.physicalFaceId || item.faceId;
+
 export type CimmichSamePhotoCollisionGroup = {
   assetId: string;
   items: CimmichPersonReviewItem[];
@@ -24,6 +26,9 @@ export const samePhotoCollisionReview = (
 ) => {
   const byAsset = new Map<string, CimmichPersonReviewItem[]>();
   for (const item of items) {
+    if ((byAsset.get(item.assetId) ?? []).some((current) => physicalReviewKey(current) === physicalReviewKey(item))) {
+      continue;
+    }
     byAsset.set(item.assetId, [...(byAsset.get(item.assetId) ?? []), item]);
   }
   const groups = [...byAsset.entries()]

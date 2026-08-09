@@ -23,8 +23,8 @@ const previews = Array.from({ length: 7 }, (_, index) => ({
 
 const item = {
   clusterId: 'cluster-one',
-  evidence: { photoCount: 1_927 },
-  faceCount: 3_166,
+  evidence: { photoCount: 1927 },
+  faceCount: 3166,
   match: {
     classificationVersion: 'known-v1',
     leadScore: 0.83,
@@ -45,8 +45,8 @@ describe('Known Person grouped proposals', () => {
   it('shows the clustered Face and moves through seven distinct evidence photos', async () => {
     const { getByLabelText, getByTestId, getByText } = render(CimmichKnownPersonClusters, {
       items: [item],
-      personId: 'person-benji',
-      personName: 'Benji Hart',
+      personId: 'person-cedar',
+      personName: 'Cedar Quinn',
     });
 
     expect(getByTestId('known-cluster-face-marker')).toHaveClass('border-dotted', 'rounded-full');
@@ -56,7 +56,7 @@ describe('Known Person grouped proposals', () => {
       '/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery',
     );
 
-    await fireEvent.click(getByLabelText('Next evidence photo for Benji Hart'));
+    await fireEvent.click(getByLabelText('Next evidence photo for Cedar Quinn'));
     expect(getByText('2 of 7')).toBeInTheDocument();
     expect(getByTestId('known-cluster-preview')).toHaveAttribute(
       'href',
@@ -70,8 +70,8 @@ describe('Known Person grouped proposals', () => {
     const { getByRole, getByText } = render(CimmichKnownPersonClusters, {
       items: [item],
       onChanged,
-      personId: 'person-benji',
-      personName: 'Benji Hart',
+      personId: 'person-cedar',
+      personName: 'Cedar Quinn',
     });
 
     await fireEvent.click(getByRole('button', { name: 'Ungroup…' }));

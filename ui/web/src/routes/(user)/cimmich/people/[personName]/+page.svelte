@@ -679,6 +679,7 @@
         currentRevision: candidate.current_revision,
         detectionConfidence: candidate.detection_confidence,
         faceId: candidate.face_id,
+        physicalFaceId: candidate.physical_face_id,
         filename: candidate.filename,
         height: candidate.height,
         kind:
@@ -702,12 +703,12 @@
   );
   const cimmichPersonReviewItems = $derived.by<CimmichPersonReviewItem[]>(() => {
     const merged = new SvelteMap<string, CimmichPersonReviewItem>(
-      cimmichIdentityAuditItems.map((item) => [item.faceId, item]),
+      cimmichIdentityAuditItems.map((item) => [item.physicalFaceId, item]),
     );
     for (const candidate of cimmichCandidateReviewItems) {
-      const audited = merged.get(candidate.faceId);
+      const audited = merged.get(candidate.physicalFaceId);
       merged.set(
-        candidate.faceId,
+        candidate.physicalFaceId,
         audited
           ? {
               ...audited,
