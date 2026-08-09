@@ -5,8 +5,10 @@ import { createFragmentAwareSql } from "./fixtures/fragment-aware-sql.mjs";
 
 test("Person candidate summary retains review claims from a retired passed SourcePack", async () => {
   let statement = "";
-  const sql = async (strings) => {
+  let boundValues = [];
+  const sql = async (strings, ...values) => {
     statement = strings.join("?");
+    boundValues = values;
     return [
       {
         asset_count: 3,
@@ -60,7 +62,42 @@ test("Person candidate summary retains review claims from a retired passed Sourc
   assert.match(statement, /claim\.state = 'candidate'/);
   assert.match(statement, /cimmich_face_match_eligible/);
   assert.match(statement, /face_review_unknown/);
+  assert.match(statement, /algorithm_version = \?/);
+  assert.ok(boundValues.includes("cimmich-possible-people-graph-v2"));
+  assert.match(statement, /accepted_physical_people AS MATERIALIZED/);
+  assert.match(statement, /decided_physical_faces AS MATERIALIZED/);
+  assert.match(
+    statement,
+    /face\.face_id = candidate_physical\.canonical_face_id/,
+  );
+  assert.match(
+    statement,
+    /accepted_same_person\.physical_face_id = candidate_physical\.physical_face_id/,
+  );
+  assert.match(
+    statement,
+    /count\(DISTINCT grouped_physical\.physical_face_id\)/,
+  );
+  assert.match(
+    statement,
+    /decided\.physical_face_id = grouped_physical\.physical_face_id/,
+  );
   assert.doesNotMatch(statement, /identity_audit/);
+});
+
+test("Person candidate summary cannot revive a retired Possible-people graph", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../src/person-candidate-summary.mjs", import.meta.url),
+      "utf8",
+    ),
+  );
+
+  assert.match(
+    source,
+    /state = 'completed' AND classification_state = 'completed'\s+AND algorithm_version = \$\{possiblePeopleContract\.algorithmVersion\}/,
+  );
+  assert.doesNotMatch(source, /WHERE decided\.face_id = member\.face_id/);
 });
 
 test("Person candidate detail and acceptance retain the same passed-pack review boundary", async () => {

@@ -1,10 +1,33 @@
+import { possiblePeopleContract } from "./possible-people.mjs";
+
 export const createPersonCandidateSummary = (sql, { presentationRank }) =>
   async function personCandidateSummary() {
     const rows = await sql`
       WITH latest_possible_run AS MATERIALIZED (
         SELECT run_id FROM possible_person_run
         WHERE state = 'completed' AND classification_state = 'completed'
+          AND algorithm_version = ${possiblePeopleContract.algorithmVersion}
         ORDER BY completed_at DESC, run_id DESC LIMIT 1
+      ), accepted_physical_people AS MATERIALIZED (
+        SELECT DISTINCT accepted_physical.physical_face_id, accepted.person_id
+        FROM identity_claim accepted
+        JOIN current_face_physical_member accepted_physical
+          ON accepted_physical.face_id = accepted.face_id
+        WHERE accepted.state = 'accepted'
+      ), decided_physical_faces AS MATERIALIZED (
+        SELECT DISTINCT decided_physical.physical_face_id
+        FROM identity_claim decided
+        JOIN current_face_physical_member decided_physical
+          ON decided_physical.face_id = decided.face_id
+        WHERE decided.state IN ('accepted','candidate')
+      ), latest_face_review AS MATERIALIZED (
+        SELECT DISTINCT ON (review.subject_id)
+          review.subject_id AS face_id, review.reason_code
+        FROM identity_claim target
+        JOIN decision review ON review.subject_id = target.face_id
+          AND review.subject_type = 'face_review'
+        WHERE target.state = 'candidate'
+        ORDER BY review.subject_id, review.created_at DESC, review.decision_id DESC
       ), face_suggestions AS MATERIALIZED (
         SELECT claim.person_id, person.display_name,
           count(*)::int AS suggestion_count,
@@ -25,24 +48,34 @@ export const createPersonCandidateSummary = (sql, { presentationRank }) =>
           AND person.status = 'active'
           AND person.subject_kind = 'person'
           AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
+        JOIN current_face_physical_member candidate_physical
+          ON candidate_physical.face_id = claim.face_id
         JOIN face_observation face
-          ON face.face_id = claim.face_id
+          ON face.face_id = candidate_physical.canonical_face_id
           AND face.state = 'valid'
         JOIN asset
           ON asset.asset_id = face.asset_id
           AND asset.state = 'active'
+        LEFT JOIN latest_face_review review ON review.face_id = claim.face_id
         WHERE claim.state = 'candidate'
           AND cimmich_face_match_eligible(
             face.detection_confidence, face.box_w, face.box_h
           )
-          AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
+          AND coalesce(review.reason_code, '') NOT IN (
+            'face_review_unknown', 'face_review_later', 'face_review_geometry'
+          )
           AND cimmich_person_candidate_reviewable(
             claim.origin, claim.evidence_refs, pack.pack_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM accepted_physical_people accepted_same_person
+            WHERE accepted_same_person.physical_face_id = candidate_physical.physical_face_id
+              AND accepted_same_person.person_id = claim.person_id
           )
         GROUP BY claim.person_id, person.display_name
       ), grouped_suggestions AS MATERIALIZED (
         SELECT cluster.suggested_person_id AS person_id, person.display_name,
-          count(DISTINCT face.face_id)::int AS suggestion_count,
+          count(DISTINCT grouped_physical.physical_face_id)::int AS suggestion_count,
           count(DISTINCT face.asset_id)::int AS asset_count,
           max((cluster.suggestion_evidence->>'leadScore')::float8)::float8 AS best_score,
           max((cluster.suggestion_evidence->>'margin')::float8)::float8 AS best_margin
@@ -53,12 +86,14 @@ export const createPersonCandidateSummary = (sql, { presentationRank }) =>
           AND person.status = 'active' AND person.subject_kind = 'person'
           AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank()}
         JOIN face_cluster_member member ON member.cluster_id = cluster.cluster_id
-        JOIN face_observation face ON face.face_id = member.face_id AND face.state = 'valid'
+        JOIN current_face_physical_member grouped_physical
+          ON grouped_physical.face_id = member.face_id
+        JOIN face_observation face
+          ON face.face_id = grouped_physical.canonical_face_id AND face.state = 'valid'
         JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
         WHERE NOT EXISTS (
-          SELECT 1 FROM identity_claim decided
-          WHERE decided.face_id = member.face_id
-            AND decided.state IN ('accepted','candidate')
+          SELECT 1 FROM decided_physical_faces decided
+          WHERE decided.physical_face_id = grouped_physical.physical_face_id
         )
         GROUP BY cluster.suggested_person_id, person.display_name
       ), combined AS (
