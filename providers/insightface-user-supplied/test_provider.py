@@ -97,6 +97,27 @@ class ProviderContractTest(unittest.TestCase):
         )
         self.assertIsNone(provider.select_target_face(boxes, (100, 100), (200, 200, 3)))
 
+    def test_bounded_sidecar_region_never_borrows_expanded_neighbor(self):
+        instance = provider.UserSuppliedInsightFaceProvider.__new__(
+            provider.UserSuppliedInsightFaceProvider
+        )
+        calls = []
+
+        def no_face(crop, expected_center, *, selection, route):
+            calls.append(route)
+            return None
+
+        instance._embed_crop = no_face
+        image = np.zeros((300, 200, 3), dtype=np.uint8)
+        self.assertIsNone(
+            instance.embed_target_centric_v2(
+                image,
+                (0.2, 0.5, 0.2, 0.2),
+                allow_expanded_fallback=False,
+            )
+        )
+        self.assertEqual(calls, ["tight_target"])
+
     def test_media_root_confinement_rejects_escape(self):
         provider_root = Path(__file__).resolve().parent
         with self.assertRaises(ValueError):

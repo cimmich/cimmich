@@ -125,8 +125,17 @@ def recognize(
     for request in requests:
         try:
             box = validate_box(request.get("targetBox"))
+            target_binding = request.get("targetBinding", "target_centric")
+            if target_binding not in {"target_centric", "bounded_sidecar_region"}:
+                raise ValueError("targetBinding is invalid")
             result = (
-                provider.embed_target_centric_v2(image, box)
+                provider.embed_target_centric_v2(
+                    image,
+                    box,
+                    allow_expanded_fallback=(
+                        target_binding != "bounded_sidecar_region"
+                    ),
+                )
                 if pipeline_version
                 == "target-centric-tight-crop+2.4x-source-fallback-v2"
                 else provider.embed(image, box)

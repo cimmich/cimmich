@@ -9,6 +9,7 @@ import {
   scanXmpSidecars,
   xmpSidecarImportConfigDigest,
 } from "../src/xmp-sidecar-import.mjs";
+import { recordXmpCoordinateFrame } from "../src/xmp-sidecar-geometry-repair.mjs";
 
 const providerPath = new URL(
   "../../providers/xmp-sidecar-reader/provider.py",
@@ -102,6 +103,14 @@ test("reader hashes paired bytes, emits no paths, and collapses MWG/Microsoft du
     assert.equal(values[0].kind, "asset");
     assert.equal(values[0].value.faces.length, 1);
     assert.equal(values[0].value.faces[0].rawName, "Known Person 1");
+    assert.deepEqual(values[0].value.faces[0].sourceBox, {
+      h: 0.4,
+      w: 0.2,
+      x: 0.4,
+      y: 0.3,
+    });
+    assert.equal(values[0].value.faces[0].exifOrientation, 1);
+    assert.equal(values[0].value.faces[0].sourceDimensions, null);
     assert.equal(values[0].value.byteLength, 18);
     assert.equal(values[0].value.contentDigest.length, 64);
     assert.equal(JSON.stringify(values).includes(root), false);
@@ -120,6 +129,72 @@ test("reader hashes paired bytes, emits no paths, and collapses MWG/Microsoft du
       scannedSidecars: 4,
       skippedSidecars: 1,
     });
+  } finally {
+    await rm(root, { recursive: true });
+  }
+});
+
+test("reader projects orientation-6 MWG regions into the EXIF-transposed display frame", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "cimmich-xmp-orientation-"));
+  try {
+    const media = path.join(root, "rotated.jpg");
+    await writeFile(media, "orientation six source bytes");
+    await writeFile(
+      `${media}.xmp`,
+      `<?xml version="1.0"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/"
+       xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+       xmlns:mwg-rs="http://www.metadataworkinggroup.com/schemas/regions/"
+       xmlns:stArea="http://ns.adobe.com/xmp/sType/Area#"
+       xmlns:stDim="http://ns.adobe.com/xap/1.0/sType/Dimensions#"
+       xmlns:tiff="http://ns.adobe.com/tiff/1.0/">
+       <rdf:RDF><rdf:Description tiff:Orientation="6">
+        <mwg-rs:AppliedToDimensions><rdf:Description
+          stDim:w="4272" stDim:h="2848" stDim:unit="pixel"/>
+        </mwg-rs:AppliedToDimensions>
+        <mwg-rs:RegionList><rdf:Bag><rdf:li><rdf:Description
+          mwg-rs:Name="Pete Marques 1" mwg-rs:Type="Face">
+          <mwg-rs:Area stArea:x="0.32596" stArea:y="0.651861"
+            stArea:w="0.218867" stArea:h="0.20611" stArea:unit="normalized"/>
+        </rdf:Description></rdf:li><rdf:li><rdf:Description
+          mwg-rs:Name="Edge Rounding" mwg-rs:Type="Face">
+          <mwg-rs:Area stArea:x="0.25" stArea:y="0.95000025"
+            stArea:w="0.2" stArea:h="0.1000005" stArea:unit="normalized"/>
+        </rdf:Description></rdf:li></rdf:Bag></mwg-rs:RegionList>
+       </rdf:Description></rdf:RDF>
+      </x:xmpmeta>`,
+    );
+    const values = [];
+    for await (const entry of scanXmpSidecars({
+      limitAssets: 1,
+      providerPath,
+      pythonPath: "/usr/bin/python3",
+      root,
+    })) {
+      values.push(entry);
+    }
+    const face = values[0].value.faces.find(
+      ({ rawName }) => rawName === "Pete Marques 1",
+    );
+    assert.equal(face.exifOrientation, 6);
+    assert.deepEqual(face.sourceDimensions, { height: 2848, width: 4272 });
+    assert.deepEqual(face.sourceBox, {
+      h: 0.20611,
+      w: 0.218867,
+      x: 0.2165265,
+      y: 0.548806,
+    });
+    assert.deepEqual(face.box, {
+      h: 0.218867,
+      w: 0.20611,
+      x: 0.245084,
+      y: 0.2165265,
+    });
+    assert.equal(
+      values[0].value.faces.find(({ rawName }) => rawName === "Edge Rounding")
+        .box.x,
+      0,
+    );
   } finally {
     await rm(root, { recursive: true });
   }
@@ -149,9 +224,12 @@ const packet = {
   faces: [
     {
       box: { h: 0.4, w: 0.2, x: 0.4, y: 0.3 },
+      exifOrientation: 1,
       rawName: "Known Person 1",
       regionKey: "b".repeat(64),
       source: "mwg-rs",
+      sourceBox: { h: 0.4, w: 0.2, x: 0.4, y: 0.3 },
+      sourceDimensions: null,
     },
   ],
   kind: "asset",
@@ -205,4 +283,104 @@ test("ambiguous names remain non-authoritative triage evidence", async () => {
   });
   assert.equal(result.ambiguous_name, 1);
   assert.equal(result.created_mapped || 0, 0);
+});
+
+test("orientation repair updates reused XMP evidence without moving its shared Face", async () => {
+  const queries = [];
+  const sql = async (strings) => {
+    const text = strings.join("?");
+    queries.push(text);
+    if (text.includes("FROM face_observation")) {
+      return [
+        {
+          box_h: 0.21,
+          box_w: 0.22,
+          box_x: 0.11,
+          box_y: 0.12,
+          face_id: "face_shared",
+          observation_origin: "xmp_sidecar_import",
+        },
+      ];
+    }
+    return [];
+  };
+  sql.json = (value) => value;
+  const corrected = await recordXmpCoordinateFrame(sql, {
+    current: {
+      box_h: 0.2,
+      box_w: 0.2,
+      box_x: 0.2,
+      box_y: 0.3,
+      evidence_id: "evidence_reused",
+      face_id: "face_shared",
+      resolution_state: "reused_mapped",
+      source_box_x: null,
+    },
+    outcome: {
+      face: {
+        box: { h: 0.2, w: 0.2, x: 0.5, y: 0.2 },
+        exifOrientation: 6,
+        sourceBox: { h: 0.2, w: 0.2, x: 0.2, y: 0.3 },
+        sourceDimensions: { height: 3000, width: 4000 },
+      },
+    },
+  });
+  assert.equal(corrected, 0);
+  assert.equal(
+    queries.some((text) => text.includes("UPDATE face_observation SET")),
+    false,
+  );
+  assert.equal(
+    queries.some((text) =>
+      text.includes("UPDATE xmp_sidecar_face_evidence SET"),
+    ),
+    true,
+  );
+});
+
+test("orientation repair moves the Face owned by created XMP evidence", async () => {
+  const queries = [];
+  const sql = async (strings) => {
+    const text = strings.join("?");
+    queries.push(text);
+    if (text.includes("FROM face_observation")) {
+      return [
+        {
+          box_h: 0.2,
+          box_w: 0.2,
+          box_x: 0.2,
+          box_y: 0.3,
+          face_id: "face_owned",
+          observation_origin: "xmp_sidecar_import",
+        },
+      ];
+    }
+    return [];
+  };
+  sql.json = (value) => value;
+  const corrected = await recordXmpCoordinateFrame(sql, {
+    current: {
+      box_h: 0.2,
+      box_w: 0.2,
+      box_x: 0.2,
+      box_y: 0.3,
+      evidence_id: "evidence_created",
+      face_id: "face_owned",
+      resolution_state: "created_mapped",
+      source_box_x: null,
+    },
+    outcome: {
+      face: {
+        box: { h: 0.2, w: 0.2, x: 0.5, y: 0.2 },
+        exifOrientation: 6,
+        sourceBox: { h: 0.2, w: 0.2, x: 0.2, y: 0.3 },
+        sourceDimensions: { height: 3000, width: 4000 },
+      },
+    },
+  });
+  assert.equal(corrected, 1);
+  assert.equal(
+    queries.some((text) => text.includes("UPDATE face_observation SET")),
+    true,
+  );
 });

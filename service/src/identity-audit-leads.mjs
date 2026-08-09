@@ -24,18 +24,19 @@ export const createIdentityAuditLeads = ({
     }
     const rows = await sql`
       WITH accepted_face_identity AS MATERIALIZED (
-        SELECT face_id, person_id
-        FROM current_face_identity
-        WHERE state = 'accepted'
+        SELECT DISTINCT member.physical_face_id, face.asset_id, identity.person_id
+        FROM current_face_identity identity
+        JOIN current_face_physical_member member ON member.face_id = identity.face_id
+        JOIN face_observation face ON face.face_id = identity.face_id
+          AND face.state = 'valid'
+        WHERE identity.state = 'accepted'
       ), accepted_people_by_asset AS MATERIALIZED (
-        SELECT DISTINCT face.asset_id, accepted.person_id
+        SELECT DISTINCT accepted.asset_id, accepted.person_id
         FROM accepted_face_identity accepted
-        JOIN face_observation face
-          ON face.face_id = accepted.face_id AND face.state = 'valid'
       )
       SELECT item.suggested_person_id, person.display_name,
-        count(*)::int AS suggestion_count
-      FROM identity_audit_item item
+        count(DISTINCT item.physical_face_id)::int AS suggestion_count
+      FROM current_physical_identity_audit_item item
       JOIN identity_audit_run item_run
         ON item_run.audit_run_id = item.audit_run_id
       JOIN face_observation face
@@ -51,7 +52,7 @@ export const createIdentityAuditLeads = ({
       JOIN current_person person
         ON person.person_id = item.suggested_person_id
       LEFT JOIN accepted_face_identity selected_identity
-        ON selected_identity.face_id = item.face_id
+        ON selected_identity.physical_face_id = item.physical_face_id
       LEFT JOIN accepted_people_by_asset same_photo_identity
         ON same_photo_identity.asset_id = item.asset_id
         AND same_photo_identity.person_id = item.suggested_person_id
@@ -70,7 +71,7 @@ export const createIdentityAuditLeads = ({
           face.detection_confidence, face.box_w, face.box_h
         )
         AND coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') <> 'face_review_unknown'
-        AND selected_identity.face_id IS NULL
+        AND selected_identity.physical_face_id IS NULL
         AND same_photo_identity.person_id IS NULL
       GROUP BY item.suggested_person_id, person.display_name
       ORDER BY suggestion_count DESC, lower(person.display_name),

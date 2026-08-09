@@ -378,6 +378,11 @@ try {
           WHERE observation.face_id = face.face_id
             AND pipeline.state = 'recognized'
             AND pipeline.recognizer_config_digest = ${configDigest}
+            AND NOT EXISTS (
+              SELECT 1 FROM xmp_sidecar_geometry_correction correction
+              WHERE correction.face_id = face.face_id
+                AND correction.corrected_at > pipeline.recognized_at
+            )
         )
     ), availability AS (
       SELECT count(*)::int AS faces_available,

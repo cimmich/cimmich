@@ -22,6 +22,7 @@ export type CimmichIdentityCandidate = {
   match_score?: number | null;
   origin?: 'cluster_propagation' | 'prime_match' | string;
   person_id: string;
+  physical_face_id: string;
   quality_measurements: Record<string, number | string>;
   same_photo_accepted_count?: number;
   sourceAssetId: string;

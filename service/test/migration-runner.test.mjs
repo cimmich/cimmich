@@ -1109,3 +1109,53 @@ test("schema 89 recovers only stale interrupted inventory ownership", async () =
   assert.match(source, /state = 'incomplete'/);
   assert.match(source, /interval '24 hours'/);
 });
+
+test("schema 126 makes physical Faces the review identity without rewriting accepted identity", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0126_physical_face_evidence_reconciliation_v2.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    source,
+    /CREATE OR REPLACE FUNCTION cimmich_refresh_physical_face_reconciliation/,
+  );
+  assert.match(source, /containment_ratio >= 0\.85 AND area_ratio <= 4/);
+  assert.match(
+    source,
+    /canonical\.accepted_person_ids = member\.accepted_person_ids/,
+  );
+  assert.match(source, /CREATE VIEW current_physical_identity_audit_item/);
+  assert.match(source, /PARTITION BY item\.audit_run_id, item\.audit_kind/);
+  assert.match(source, /claim\.state = 'candidate'/);
+  assert.doesNotMatch(
+    source,
+    /SET state = 'superseded'[\s\S]*claim\.state = 'accepted'/,
+  );
+});
+
+test("schema 127 records reversible XMP orientation repairs and recognition invalidation", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0127_xmp_orientation_geometry_repair_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /receipt_cimmich_xmp_sidecar_face_import_v3/);
+  assert.match(source, /ADD COLUMN source_box_x numeric/);
+  assert.match(source, /ADD COLUMN exif_orientation smallint/);
+  assert.match(source, /CREATE TABLE xmp_sidecar_geometry_correction/);
+  assert.match(
+    source,
+    /recognition_state IN \('pending','recognized','abstained'\)/,
+  );
+  assert.doesNotMatch(source, /UPDATE face_observation/);
+  assert.doesNotMatch(source, /UPDATE identity_claim/);
+});

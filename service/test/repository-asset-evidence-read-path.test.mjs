@@ -71,4 +71,12 @@ test("asset evidence returns persisted candidates without whole-gallery matching
     ),
     false,
   );
+  const faceRead = statements.find((statement) =>
+    statement.includes("FROM current_display_face fo"),
+  );
+  assert.match(faceRead, /FROM physical_face_member member/);
+  assert.doesNotMatch(
+    faceRead,
+    /FROM current_face_physical_member evidence_face/,
+  );
 });

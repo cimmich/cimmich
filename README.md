@@ -5,7 +5,7 @@
 > schema 120/patch 1. The immutable
 > [OpenAI Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
 > demo and evidence remain preserved and visible as the living project improves.
-> Current development source is schema 121; it does not rewrite the Preview 6
+> Current development source is schema 127; it does not rewrite the Preview 6
 > release or the Build Week artifact.
 
 > **Complete the picture.**

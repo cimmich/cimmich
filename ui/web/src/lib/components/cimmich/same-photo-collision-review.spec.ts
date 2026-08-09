@@ -8,6 +8,7 @@ const reviewItem = (faceId: string, assetId = 'asset-1'): CimmichPersonReviewIte
   captureTime: null,
   detectionConfidence: 0.9,
   faceId,
+  physicalFaceId: faceId,
   filename: 'photo.jpg',
   height: 1000,
   kind: 'untagged_match',
@@ -40,5 +41,12 @@ describe('samePhotoCollisionReview', () => {
   it('keeps a server-confirmed same-photo sibling without client retention', () => {
     const sibling = { ...reviewItem('face-2'), samePhotoAcceptedCount: 1 };
     expect(samePhotoCollisionReview([sibling]).groups[0]?.items).toEqual([sibling]);
+  });
+
+  it('never presents two evidence observations for one physical Face as competitors', () => {
+    const detector = reviewItem('face-detector');
+    const sidecar = { ...reviewItem('face-sidecar'), physicalFaceId: 'face-detector' };
+
+    expect(samePhotoCollisionReview([detector, sidecar]).groups).toEqual([]);
   });
 });

@@ -1,9 +1,9 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-07
+Updated: 2026-08-09
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 120/patch 1
-Current development source: migration-ledger schema 125/patch 1
+Current development source: migration-ledger schema 127/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release: `v1.1.0-community-preview.6` for exact Immich 3.1.0
@@ -217,7 +217,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 125; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 127; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -379,6 +379,17 @@ accepted People remains unmerged and excluded from matching. The migration
 records and retires only unconfirmed graph-v1 candidates, while graph-v2 and all
 candidate writes consult the physical-Face boundary. Reconciliation runs only
 inside an explicit Possible people Refresh, never from a page load.
+Schema 126 completes the physical-Face contract for XMP and review. Containment
+reconciles differently sized detector/sidecar regions, overlapping same-Person
+XMP observations may converge, and identity audit generation, reference
+galleries, review cards and dismissals operate once per physical Face. Accepted
+identity and source media remain unchanged.
+Schema 127 fixes rotated XMP geometry at the producer boundary. Regions backed
+by MWG `AppliedToDimensions` are transformed through EXIF orientation before
+storage; legacy coordinates are repaired through an append-only correction
+ledger, and their derived embeddings and review proposals are invalidated for
+bounded recomputation. Recognition for sidecar regions cannot expand into a
+neighbouring face.
 
 ## Historical Public Beta Patch 6 certification
 

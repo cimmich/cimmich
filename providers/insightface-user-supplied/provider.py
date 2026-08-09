@@ -378,7 +378,11 @@ class UserSuppliedInsightFaceProvider:
         return None
 
     def embed_target_centric_v2(
-        self, image: np.ndarray, box: tuple[float, float, float, float]
+        self,
+        image: np.ndarray,
+        box: tuple[float, float, float, float],
+        *,
+        allow_expanded_fallback: bool = True,
     ):
         image_height, image_width = image.shape[:2]
         x, y, width, height = box
@@ -408,6 +412,12 @@ class UserSuppliedInsightFaceProvider:
             )
             if result is not None:
                 return result
+
+        # A sidecar rectangle is trusted spatial evidence, not merely a search
+        # hint. If its tight region does not contain a detectable face, do not
+        # expand far enough to borrow a neighbouring person's face.
+        if not allow_expanded_fallback:
+            return None
 
         center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
         expanded_width = max(1.0, (x2 - x1) * 2.4)

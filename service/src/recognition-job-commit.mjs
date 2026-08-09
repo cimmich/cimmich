@@ -324,6 +324,19 @@ export const commitRecognitionJobResult = async (
       inserted += 1;
     }
 
+    if (pipeline?.run_kind === "existing_observation_set" && faceIds.length) {
+      await tx`
+        UPDATE xmp_sidecar_geometry_correction correction SET
+          recognition_state = CASE
+            WHEN correction.face_id = ANY(${embeddedFaceIds})
+              THEN 'recognized'
+            ELSE 'abstained'
+          END
+        WHERE correction.face_id = ANY(${faceIds})
+          AND correction.recognition_state = 'pending'
+      `;
+    }
+
     const ledger = createMediaJobLedger(tx);
     await ledger.checkpoint({
       jobId: id,

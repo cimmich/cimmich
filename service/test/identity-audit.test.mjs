@@ -45,7 +45,8 @@ test("incremental audit carries its completed base and scopes expensive work", a
     "utf8",
   );
   assert.match(source, /prior\.face_id <> ALL\(\$\{incrementalFaceIds\}\)/);
-  assert.match(source, /face\.face_id = ANY\(\$\{incrementalFaceIds\}\)/);
+  assert.match(source, /changed\.face_id = ANY\(\$\{incrementalFaceIds\}\)/);
+  assert.match(source, /changed\.physical_face_id = face\.physical_face_id/);
   assert.match(source, /item\.face_id = ANY\(\$\{exactFaceIds\}\)/);
   assert.match(source, /IDENTITY_AUDIT_INCREMENTAL_BASE_STALE/);
   assert.match(source, /result\.detector_config_digest/);
@@ -401,7 +402,7 @@ test("audit leads group all open untagged matches by known Person", async () => 
     ) {
       return [run];
     }
-    if (query.includes("count(*)::int AS suggestion_count")) {
+    if (query.includes("AS suggestion_count")) {
       leadsQuery = query;
       return [
         {
@@ -448,7 +449,7 @@ test("audit leads group all open untagged matches by known Person", async () => 
     leadsQuery,
     /same_photo_identity\.person_id = item\.suggested_person_id/,
   );
-  assert.match(leadsQuery, /selected_identity\.face_id IS NULL/);
+  assert.match(leadsQuery, /selected_identity\.physical_face_id IS NULL/);
   assert.match(leadsQuery, /same_photo_identity\.person_id IS NULL/);
   assert.match(leadsQuery, /ORDER BY suggestion_count DESC/);
 });

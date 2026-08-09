@@ -5262,7 +5262,6 @@ export const createCimmichRepository = (
         ...bridgeFields(bridge, row.asset_id),
       }));
     },
-
     async personCandidates({ limit = 500, personId }) {
       await requireVisibleSubject(personId);
       const boundedLimit = cleanLimit(limit, 500, 5000);
@@ -5317,7 +5316,8 @@ export const createCimmichRepository = (
         ORDER BY review.subject_id,
           review.created_at DESC, review.decision_id DESC
       )
-      SELECT claim.identity_claim_id, claim.face_id, claim.person_id, claim.origin,
+      SELECT claim.identity_claim_id, claim.face_id,
+        candidate_physical.physical_face_id, claim.person_id, claim.origin,
         claim.evidence_refs->>'cluster_id' AS cluster_id, person.display_name,
         claim.calibrated_confidence::float8,
         nullif(claim.evidence_refs->>'best_score', '')::float8 AS source_score,
@@ -6961,12 +6961,22 @@ export const createCimmichRepository = (
           review.decision_id AS review_decision_id,
           coalesce(gallery.buckets, ARRAY[]::text[]) AS buckets
         FROM current_display_face fo
+        CROSS JOIN LATERAL (
+          SELECT ARRAY(
+            SELECT member.face_id
+            FROM physical_face_member member
+            WHERE fo.reconciliation_state = 'active'
+              AND member.physical_face_id = fo.reconciliation_group_id
+            UNION ALL
+            SELECT fo.face_id
+            WHERE fo.reconciliation_state <> 'active'
+          ) AS face_ids
+        ) physical_members
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name
-          FROM current_face_physical_member evidence_face
-          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
+          FROM identity_claim ic
           JOIN person p ON p.person_id = ic.person_id
-          WHERE evidence_face.physical_face_id = fo.physical_face_id
+          WHERE ic.face_id = ANY(physical_members.face_ids)
             AND ic.state = 'accepted'
             AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
               <= ${presentationRank()}
@@ -6976,19 +6986,16 @@ export const createCimmichRepository = (
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name,
             coalesce(nullif(ic.evidence_refs->>'best_score', '')::numeric, ic.calibrated_confidence) AS calibrated_confidence
-          FROM current_face_physical_member evidence_face
-          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
+          FROM identity_claim ic
           JOIN person p ON p.person_id = ic.person_id
-          WHERE evidence_face.physical_face_id = fo.physical_face_id
+          WHERE ic.face_id = ANY(physical_members.face_ids)
             AND ic.state = 'candidate'
             AND NOT EXISTS (
               SELECT 1
-              FROM current_face_physical_member accepted_evidence_face
-              JOIN identity_claim accepted_same_person
-                ON accepted_same_person.face_id = accepted_evidence_face.face_id
+              FROM identity_claim accepted_same_person
+              WHERE accepted_same_person.face_id = ANY(physical_members.face_ids)
                 AND accepted_same_person.state = 'accepted'
                 AND accepted_same_person.person_id = ic.person_id
-              WHERE accepted_evidence_face.physical_face_id = fo.physical_face_id
             )
             AND cimmich_face_match_eligible(
               fo.detection_confidence, fo.box_w, fo.box_h
@@ -7007,12 +7014,7 @@ export const createCimmichRepository = (
                 WHERE same_photo_claim.person_id = ic.person_id
                   AND same_photo_claim.state = 'accepted'
                   AND same_photo_face.asset_id = fo.asset_id
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM current_face_physical_member same_physical
-                    WHERE same_physical.face_id = same_photo_face.face_id
-                      AND same_physical.physical_face_id = fo.physical_face_id
-                  )
+                  AND NOT (same_photo_face.face_id = ANY(physical_members.face_ids))
               )
             )
           ORDER BY coalesce(nullif(ic.evidence_refs->>'best_score', '')::numeric, ic.calibrated_confidence) DESC NULLS LAST,
@@ -7021,10 +7023,9 @@ export const createCimmichRepository = (
         ) candidate ON true
         LEFT JOIN LATERAL (
           SELECT ic.identity_claim_id, ic.person_id, p.display_name
-          FROM current_face_physical_member evidence_face
-          JOIN identity_claim ic ON ic.face_id = evidence_face.face_id
+          FROM identity_claim ic
           JOIN person p ON p.person_id = ic.person_id
-          WHERE evidence_face.physical_face_id = fo.physical_face_id
+          WHERE ic.face_id = ANY(physical_members.face_ids)
             AND ic.state = 'rejected'
             AND cimmich_visibility_subject_rank(p.subject_kind, p.person_id)
               <= ${presentationRank()}
@@ -7033,18 +7034,16 @@ export const createCimmichRepository = (
         ) rejected ON true
         LEFT JOIN LATERAL (
           SELECT decision_id, action, reason_code
-          FROM current_face_physical_member evidence_face
-          JOIN decision ON decision.subject_id = evidence_face.face_id
+          FROM decision
+          WHERE decision.subject_id = ANY(physical_members.face_ids)
             AND decision.subject_type = 'face_review'
-          WHERE evidence_face.physical_face_id = fo.physical_face_id
           ORDER BY created_at DESC, decision_id DESC
           LIMIT 1
         ) review ON true
         LEFT JOIN LATERAL (
           SELECT array_agg(g.bucket_kind || coalesce(':' || g.bucket_name, '') ORDER BY g.bucket_kind, g.bucket_name) AS buckets
-          FROM current_face_physical_member evidence_face
-          JOIN current_reference_gallery g ON g.face_id = evidence_face.face_id
-          WHERE evidence_face.physical_face_id = fo.physical_face_id
+          FROM current_reference_gallery g
+          WHERE g.face_id = ANY(physical_members.face_ids)
             AND g.membership_state = 'active'
         ) gallery ON true
         WHERE fo.asset_id = ${linked.assetId} AND fo.state = 'valid'

@@ -57,4 +57,15 @@ describe('Person candidate review presentation', () => {
     ]);
     expect(hasUsefulCandidateSeparation(candidates[0])).toBe(true);
   });
+
+  it('keeps only the strongest candidate observation for one physical Face', () => {
+    const weaker = candidate('sidecar', 0.71, 0.08);
+    const stronger = candidate('detector', 0.82, 0.17);
+    weaker.physical_face_id = 'physical-1';
+    stronger.physical_face_id = 'physical-1';
+
+    expect(preparePersonCandidates([weaker, stronger]).map(({ identity_claim_id }) => identity_claim_id)).toEqual([
+      'detector',
+    ]);
+  });
 });

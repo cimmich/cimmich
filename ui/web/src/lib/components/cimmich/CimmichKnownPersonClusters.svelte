@@ -115,7 +115,9 @@
   };
 
   const ungroup = async (item: CimmichKnownPersonClusterSuggestion) => {
-    if (busyClusterId) return;
+    if (busyClusterId) {
+      return;
+    }
     busyClusterId = item.clusterId;
     error = '';
     try {
@@ -169,7 +171,7 @@
         >
           <div class="relative aspect-square overflow-hidden bg-gray-200 dark:bg-gray-800">
             <a
-              class="block h-full w-full bg-no-repeat"
+              class="block size-full bg-no-repeat"
               href={`/photos/${preview.sourceAssetId}?cimmichFaceId=${encodeURIComponent(preview.faceId)}&cimmichOverlay=machinery`}
               style={cropStyle(preview)}
               aria-label={`Open evidence photo ${previewIndex + 1} for the possible ${personName} group`}

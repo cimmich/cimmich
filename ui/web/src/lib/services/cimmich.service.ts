@@ -1341,6 +1341,7 @@ export type CimmichDecisionResult = {
 export type CimmichIdentityCorrectionResult = CimmichDecisionResult & {
   commandId: string;
   faceId: string;
+  physicalFaceId: string;
   personId: string;
   replayed: boolean;
   undoneDecisionId?: string;
@@ -1823,6 +1824,7 @@ export type CimmichIdentityAuditItem = {
   currentRevision?: number;
   detectionConfidence: number;
   faceId: string;
+  physicalFaceId: string;
   filename: string;
   height: number;
   kind: 'accepted_contradiction' | 'untagged_match';
@@ -1838,7 +1840,6 @@ export type CimmichIdentityAuditItem = {
   };
   width: number;
 };
-
 export type CimmichIdentityAuditPage = {
   hasMore: boolean;
   items: CimmichIdentityAuditItem[];
@@ -1849,7 +1850,6 @@ export type CimmichIdentityAuditPage = {
   schemaVersion: 'cimmich.identity-audit.v2';
   total: number;
 };
-
 export type CimmichIdentityAuditDismissBatchResult = {
   changed: boolean;
   dismissedCount: number;
