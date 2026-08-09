@@ -198,7 +198,7 @@ integrationTest(
             ) VALUES (
               'possible_run_11111111111111111111111111111111',
               'possible-people.integration.refresh', 'completed',
-              'cimmich-possible-people-graph-v1', 100, 12, 0.55, 1, 1, 1,
+              'cimmich-possible-people-graph-v2', 100, 12, 0.55, 1, 1, 1,
               now(), 'completed', 'cimmich-possible-people-known-person-v1',
               1, now()
             )
@@ -253,7 +253,7 @@ integrationTest(
       );
       assert.equal(
         claim.evidence_refs.policy_version,
-        "cimmich-possible-people-graph-v1",
+        "cimmich-possible-people-graph-v2",
       );
       assert.equal(
         claim.evidence_refs.run_id,
