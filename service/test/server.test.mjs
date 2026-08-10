@@ -58,6 +58,138 @@ test("raw API rejects an untrusted Host even when Origin is absent", async () =>
   });
 });
 
+test("canonical owner gateway headers bind routes to the verified principal", async () => {
+  const calls = [];
+  const principalId = "22222222-2222-4222-8222-222222222222";
+  const origin = "http://owner.example.test";
+  const immichOnboarding = {
+    connect: async (input) => {
+      calls.push(input);
+      return { state: "connected" };
+    },
+    status: async () => ({ connection: { state: "not_configured" } }),
+  };
+  const immichOwnerSession = {
+    authorize: async (headers) => {
+      assert.equal(headers.cookie, "immich_access_token=owner");
+      return { principalId, state: "owner" };
+    },
+  };
+  await withServer(
+    { summary: async () => ({ assets: 1 }) },
+    async (root) => {
+      const auth = await fetch(`${root}/_internal/owner-session`, {
+        headers: { cookie: "immich_access_token=owner" },
+      });
+      assert.equal(auth.status, 204);
+      assert.equal(
+        auth.headers.get("x-cimmich-authenticated-principal"),
+        principalId,
+      );
+      assert.equal(auth.headers.get("x-cimmich-owner-binding-state"), "owner");
+
+      const missing = await fetch(`${root}/v1/summary`);
+      assert.equal(missing.status, 403);
+      assert.equal(
+        (await missing.json()).code,
+        "IMMICH_OWNER_SESSION_FORBIDDEN",
+      );
+
+      const summary = await fetch(`${root}/v1/summary`, {
+        headers: {
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-owner-binding-state": "owner",
+        },
+      });
+      assert.equal(summary.status, 200);
+
+      const missingOrigin = await fetch(
+        `${root}/v1/onboarding/immich/connect`,
+        {
+          body: JSON.stringify({
+            apiBaseUrl: "http://immich.test/api",
+            commandId: "onboarding.owner-binding.test",
+            credential: "synthetic-dedicated-key",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-authenticated-principal": principalId,
+            "x-cimmich-owner-binding-state": "owner",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(missingOrigin.status, 403);
+      assert.equal(
+        (await missingOrigin.json()).code,
+        "IMMICH_OWNER_ORIGIN_REQUIRED",
+      );
+
+      const connected = await fetch(`${root}/v1/onboarding/immich/connect`, {
+        body: JSON.stringify({
+          apiBaseUrl: "http://immich.test/api",
+          commandId: "onboarding.owner-binding.test",
+          credential: "synthetic-dedicated-key",
+        }),
+        headers: {
+          "content-type": "application/json",
+          origin,
+          "sec-fetch-site": "same-origin",
+          "x-cimmich-actor": "owner-browser",
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-owner-binding-state": "owner",
+        },
+        method: "POST",
+      });
+      assert.equal(connected.status, 200);
+    },
+    {
+      allowedOrigins: new Set([origin]),
+      immichOnboarding,
+      immichOwnerSession,
+      ownerGatewayRequired: true,
+      surfacePolicy: "canonical",
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].authenticatedPrincipalId, principalId);
+});
+
+test("bootstrap owner sessions can reach setup only", async () => {
+  const principalId = "33333333-3333-4333-8333-333333333333";
+  await withServer(
+    { summary: async () => ({ assets: 1 }) },
+    async (root) => {
+      const headers = {
+        "x-cimmich-authenticated-principal": principalId,
+        "x-cimmich-owner-binding-state": "bootstrap",
+      };
+      const setup = await fetch(`${root}/v1/onboarding/immich`, { headers });
+      assert.equal(setup.status, 200);
+      const ownerData = await fetch(`${root}/v1/summary`, { headers });
+      assert.equal(ownerData.status, 403);
+      assert.equal(
+        (await ownerData.json()).code,
+        "IMMICH_OWNER_SESSION_FORBIDDEN",
+      );
+    },
+    {
+      immichOnboarding: {
+        status: async () => ({ connection: { state: "not_configured" } }),
+      },
+      immichOwnerSession: {
+        authorize: async () => ({ principalId, state: "bootstrap" }),
+      },
+      ownerGatewayRequired: true,
+      surfacePolicy: "canonical",
+      visibility: {
+        requireProjection: () => {},
+        runRequest: (_request, _response, run) => run(),
+      },
+    },
+  );
+});
+
 test("decision history is visibility-registered and bounded before projection", async () => {
   const calls = [];
   const repository = {

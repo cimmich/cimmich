@@ -65,6 +65,66 @@ test("onboarding scope is closed, deterministic and provider-optional", () => {
   );
 });
 
+test("connection claims the durable owner only for the authenticated principal", async () => {
+  const principalId = "22222222-2222-4222-8222-222222222222";
+  const queries = [];
+  const sql = async (strings) => {
+    queries.push(strings.join("?"));
+    return [];
+  };
+  sql.begin = async (run) => run(sql);
+  sql.json = (value) => value;
+  const claims = [];
+  let refreshes = 0;
+  const ownerBinding = {
+    claim: async ({ executor, principalId: claimedPrincipalId }) => {
+      assert.equal(executor, sql);
+      claims.push(claimedPrincipalId);
+      return claimedPrincipalId;
+    },
+    refresh: async () => {
+      refreshes += 1;
+    },
+  };
+  const companion = {
+    connect: async ({ beforeStore, expectedPrincipalId }) => {
+      assert.equal(expectedPrincipalId, principalId);
+      await beforeStore(principalId);
+      return { principal: { userId: principalId }, state: "ready" };
+    },
+    listAssetFaces: async () => ({ items: [] }),
+    listPeople: async () => ({ items: [] }),
+    status: async () => ({ state: "not_configured" }),
+    verifyOnboardingPermissions: verifiedOnboardingPermissions,
+  };
+  const onboarding = createImmichOnboarding({
+    companion,
+    immichInventory: { synchronize: async () => ({}) },
+    ownerBinding,
+    sql,
+  });
+  const connected = await onboarding.connect({
+    actorId: "owner-browser",
+    apiBaseUrl: "http://immich.test/api",
+    apiKey: "synthetic-dedicated-key",
+    authenticatedPrincipalId: principalId,
+    commandId: "onboarding.owner-binding.unit",
+  });
+  assert.equal(connected.state, "connected");
+  assert.deepEqual(claims, [principalId]);
+  assert.equal(refreshes, 1);
+  assert.equal(
+    queries.some((query) => query.includes("pg_advisory_xact_lock")),
+    true,
+  );
+  assert.equal(
+    queries.some((query) =>
+      query.includes("INSERT INTO immich_companion_connection_command"),
+    ),
+    true,
+  );
+});
+
 test("distinct upstream People with one display name fail the name-reuse seam", () => {
   const collisions = duplicateImmichPersonNames([
     sourceFace(

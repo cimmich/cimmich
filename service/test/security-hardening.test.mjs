@@ -74,11 +74,15 @@ test("local runtime secrets, images and browser response headers are hardened", 
   for (const nginx of [gateway, publicDemoGateway]) {
     assert.match(
       nginx,
-      /location = \/_cimmich_immich_session \{[\s\S]*internal;[\s\S]*\/api\/users\/me;[\s\S]*proxy_set_header Cookie \$http_cookie;[\s\S]*proxy_set_header Authorization \$http_authorization;[\s\S]*proxy_set_header X-Api-Key \$http_x_api_key;/,
+      /location = \/_cimmich_owner_session \{[\s\S]*internal;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\/_internal\/owner-session;[\s\S]*proxy_set_header Cookie \$http_cookie;[\s\S]*proxy_set_header Authorization \$http_authorization;[\s\S]*proxy_set_header X-Api-Key \$http_x_api_key;/,
     );
     assert.match(
       nginx,
-      /location \/cimmich-api\/ \{[\s\S]*auth_request \/_cimmich_immich_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
+      /location \/cimmich-api\/ \{[\s\S]*auth_request \/_cimmich_owner_session;[\s\S]*auth_request_set \$cimmich_authenticated_principal[\s\S]*proxy_set_header Origin \$http_origin;[\s\S]*proxy_set_header X-Cimmich-Authenticated-Principal \$cimmich_authenticated_principal;/,
+    );
+    assert.match(
+      nginx,
+      /location \^~ \/cimmich-api\/_internal\/ \{[\s\S]*return 404;/,
     );
     assert.match(
       nginx,
@@ -105,6 +109,8 @@ test("local runtime secrets, images and browser response headers are hardened", 
     );
   }
   assert.match(companionUi, /USER node\s+CMD \["node", "build"\]/);
+  assert.match(companionCompose, /CIMMICH_OWNER_GATEWAY_REQUIRED: "true"/);
+  assert.match(companionCompose, /CIMMICH_IMMICH_WEB_ORIGIN:/);
   assert.ok(
     (companionCompose.match(/no-new-privileges:true/g) || []).length >= 2,
   );

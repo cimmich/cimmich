@@ -13,6 +13,11 @@ import {
 } from "./explore-routes.mjs";
 import { matchPossiblePeopleRoutes } from "./possible-people-routes.mjs";
 import {
+  enforceOwnerGatewayRequest,
+  handleOwnerSessionAuthRequest,
+} from "./owner-gateway-policy.mjs";
+import { sendBinary, sendMapTile } from "./response-writers.mjs";
+import {
   observeRequestTiming,
   safeRouteFamily,
 } from "./request-diagnostics.mjs";
@@ -46,45 +51,6 @@ const sendJson = (response, statusCode, body, origin = "") => {
       : {}),
   });
   response.end(`${JSON.stringify(projectedBody)}\n`);
-};
-
-const encodedFilename = (value) =>
-  encodeURIComponent(String(value || "document")).replace(
-    /[!'()*]/g,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-
-const sendBinary = (
-  response,
-  { bytes, disposition, filename, mimeType },
-  origin = "",
-) => {
-  response.writeHead(200, {
-    "cache-control": "no-store",
-    "content-disposition": `${disposition}; filename*=UTF-8''${encodedFilename(filename)}`,
-    "content-length": bytes.length,
-    "content-security-policy": "sandbox; default-src 'none'",
-    "content-type": mimeType,
-    "x-content-type-options": "nosniff",
-    ...(origin
-      ? { "access-control-allow-origin": origin, vary: "Origin" }
-      : {}),
-  });
-  response.end(bytes);
-};
-
-const sendMapTile = (response, { bytes, mimeType }, origin = "") => {
-  response.writeHead(200, {
-    "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
-    "content-length": bytes.length,
-    "content-security-policy": "default-src 'none'",
-    "content-type": mimeType,
-    "x-content-type-options": "nosniff",
-    ...(origin
-      ? { "access-control-allow-origin": origin, vary: "Origin" }
-      : {}),
-  });
-  response.end(bytes);
 };
 
 const readJsonBody = async (request, maximumBytes = 32_768) => {
@@ -200,9 +166,11 @@ export const createCimmichServer = ({
   immichCompanion,
   immichInventory,
   immichOnboarding,
+  immichOwnerSession,
   mediaOperator,
   memorySteward,
   optionalEgressEnabled = true,
+  ownerGatewayRequired = false,
   repository,
   satelliteTileFetch = globalThis.fetch,
   satelliteTileTimeoutMs = 8_000,
@@ -264,6 +232,24 @@ export const createCimmichServer = ({
 
     try {
       const url = new URL(request.url || "/", "http://cimmich.local");
+      if (
+        await handleOwnerSessionAuthRequest({
+          immichOwnerSession,
+          request,
+          response,
+          surfacePolicy,
+          url,
+        })
+      ) {
+        return;
+      }
+      enforceOwnerGatewayRequest({
+        allowedOrigin,
+        ownerGatewayRequired,
+        request,
+        surfacePolicy,
+        url,
+      });
       const guidedSurface =
         String(request.headers["x-cimmich-surface"] || "")
           .trim()
@@ -834,6 +820,8 @@ export const createCimmichServer = ({
             actorId: request.headers["x-cimmich-actor"],
             apiBaseUrl: body.apiBaseUrl,
             apiKey: body.credential,
+            authenticatedPrincipalId:
+              request.headers["x-cimmich-authenticated-principal"],
             commandId: body.commandId,
           }),
           allowedOrigin,

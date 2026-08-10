@@ -13,6 +13,10 @@ import {
 import { createImmichCompanionManager } from "./immich-companion-manager.mjs";
 import { createImmichInventorySynchronizer } from "./immich-inventory.mjs";
 import { createImmichOnboarding } from "./immich-onboarding.mjs";
+import {
+  createImmichOwnerBinding,
+  createImmichOwnerSessionAuthorizer,
+} from "./immich-owner-session.mjs";
 import { createGuidedAccess } from "./guided-access.mjs";
 import { createFaceMatchingOperator } from "./face-matching-operator.mjs";
 import { createEnhancedComponent } from "./enhanced-component.mjs";
@@ -66,6 +70,35 @@ const sql = postgres(databaseUrl, {
   ),
   prepare: true,
 });
+const ownerGatewayRequired =
+  process.env.CIMMICH_OWNER_GATEWAY_REQUIRED === "true";
+const immichWebOrigin = String(
+  process.env.CIMMICH_IMMICH_WEB_ORIGIN || "",
+).trim();
+let fallbackOwnerPrincipalId = "";
+if (immichWebOrigin) {
+  try {
+    const companionStatus = await immichCompanion.status();
+    if (companionStatus.state === "ready") {
+      fallbackOwnerPrincipalId = companionStatus.principal?.userId || "";
+    }
+  } catch {
+    // A migration-backed owner remains authoritative when Immich is briefly
+    // unavailable. Session authorization itself will stay fail-closed.
+  }
+}
+const immichOwnerBinding = immichWebOrigin
+  ? await createImmichOwnerBinding({
+      fallbackPrincipalId: fallbackOwnerPrincipalId,
+      sql,
+    })
+  : null;
+const immichOwnerSession = immichWebOrigin
+  ? createImmichOwnerSessionAuthorizer({
+      binding: immichOwnerBinding,
+      immichWebOrigin,
+    })
+  : null;
 // Derived projections have their own single-connection lane. A burst of Prime
 // or Body maintenance can no longer occupy every connection needed to record
 // the next owner decision or serve the current review card.
@@ -166,6 +199,7 @@ const immichInventory = createImmichInventorySynchronizer({
 const immichOnboarding = createImmichOnboarding({
   companion: immichCompanion,
   immichInventory,
+  ownerBinding: immichOwnerBinding,
   presentationRank: visibility.currentRank,
   resolveCimmichAssetId: ({ immichAssetId }) =>
     resolveCimmichAssetIdFromDisplayBridge(bridge, immichAssetId),
@@ -291,10 +325,12 @@ const serverDependencies = {
   immichCompanion,
   immichInventory,
   immichOnboarding,
+  immichOwnerSession,
   mediaOperator,
   memorySteward,
   repository,
   optionalEgressEnabled,
+  ownerGatewayRequired,
   visibility,
 };
 const server = createCimmichServer({

@@ -3,7 +3,7 @@
 Updated: 2026-08-11
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
-Current development source: migration-ledger schema 128/patch 1
+Current development source: migration-ledger schema 129/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
@@ -498,6 +498,12 @@ Schema 128 keeps generic labels inside Cimmich and records exact browser-driven
 folder-album checkpoints. Neither path writes archive sidecars or moves source
 media; duplicate titles must be resolved in the reviewed manifest and Undo
 removes only memberships proven to have been created by that operation.
+Schema 129 adds one durable Immich-owner binding. The gateway now delegates its
+session decision to a bounded Cimmich `/users/me` authorizer, rejects a valid
+secondary-user session or API key, limits first setup to a closed bootstrap
+surface, and requires the exact configured Origin for unsafe owner requests.
+The Community Preview 8 release remains schema 128; schema 129 is current local
+development source pending full lifecycle and live-runtime certification.
 
 ## Historical Public Beta Patch 6 certification
 

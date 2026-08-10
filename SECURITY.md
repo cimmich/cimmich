@@ -47,11 +47,14 @@ to loopback, and actor/device headers provide audit attribution rather than a
 remote authentication perimeter. Do not expose the API, database, or provider
 ports directly to a LAN or the public Internet. If a same-origin gateway makes
 the UI reachable beyond loopback, every API route except an intentionally
-minimal health check must validate the current Immich session before proxying
-the request; forwarding cookies or actor/device headers alone is not
-authentication. A remote or multi-user install must add a separately reviewed
-authenticated reverse proxy, TLS, network access controls, and backup
-protection; Cimmich does not claim those controls itself.
+minimal health check must validate that the current Immich session belongs to
+the exact principal durably bound during Cimmich setup before proxying the
+request. The shipped gateway delegates that decision to Cimmich's bounded
+`/api/users/me` authorizer; valid secondary-user sessions and API keys are
+refused. Unsafe owner requests also require the exact configured product Origin.
+Forwarding cookies or actor/device headers alone is not authentication. A
+remote install still requires TLS, network access controls, and backup
+protection appropriate to its environment.
 
 Treat backups, provider artifacts, configuration volumes, and Document-store
 exports as sensitive. Keep them mode-restricted and encrypted at rest where the
