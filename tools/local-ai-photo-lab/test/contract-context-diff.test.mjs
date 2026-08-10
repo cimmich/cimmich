@@ -25,6 +25,7 @@ import { buildSetSummary } from "../src/summary.mjs";
 
 const config = (endpoint = "http://127.0.0.1:11434") => ({
   contextPolicy: {
+    maximumTemporalGapSeconds: 600,
     minimumMargin: 0.05,
     minimumSimilarity: 0.72,
     requireBidirectionalAnchors: true,
@@ -48,6 +49,7 @@ const config = (endpoint = "http://127.0.0.1:11434") => ({
       device: "cpu",
       enabled: true,
       modelPath: "/e",
+      previewMaxInputPixels: 1000,
       pythonPath: "/py",
       scale: 2,
     },
@@ -315,9 +317,11 @@ test("photo-set contract binds ordered immutable source digests", async () => {
               {
                 box: { h: 0.2, w: 0.2, x: 0.3, y: 0.1 },
                 observationId: "existing-face",
+                subject: "Person A",
               },
             ],
           },
+          captureTime: "2026-08-11T00:00:00Z",
           path: first,
         },
         { acceptedSubjects: [], assetId: "two", path: second },
@@ -338,6 +342,8 @@ test("photo-set contract binds ordered immutable source digests", async () => {
     value.assets[0].baselineObservations.faces[0].observationId,
     "existing-face",
   );
+  assert.equal(value.assets[0].baselineObservations.faces[0].subject, "Person A");
+  assert.equal(value.assets[0].captureTime, "2026-08-11T00:00:00.000Z");
   const oversized = join(root, "oversized.bin");
   await writeFile(oversized, Buffer.alloc(1001));
   await assert.rejects(
@@ -384,6 +390,7 @@ test("context supports an unassigned middle body only from independent two-sided
     assets,
     contextKind: "sequence",
     policy: {
+      maximumTemporalGapSeconds: 600,
       minimumMargin: 0.05,
       minimumSimilarity: 0.72,
       requireBidirectionalAnchors: true,
@@ -398,6 +405,7 @@ test("context supports an unassigned middle body only from independent two-sided
     assets,
     contextKind: "sequence",
     policy: {
+      maximumTemporalGapSeconds: 600,
       minimumMargin: 0.05,
       minimumSimilarity: 0.72,
       requireBidirectionalAnchors: true,
@@ -407,6 +415,152 @@ test("context supports an unassigned middle body only from independent two-sided
   assert.deepEqual(duplicate.candidates[0].evidence.reasonCodes, [
     "DUPLICATE_SOURCE_EVIDENCE",
   ]);
+});
+
+test("context uses champion face geometry and close time for a head-occluded body without overriding identity", () => {
+  const championFace = (subject, x) => ({
+    box: { h: 0.1, w: 0.08, x, y: 0.22 },
+    observationId: `champion-${subject}`,
+    subject,
+  });
+  const anchor = (assetId, captureTime, reversed = false) => ({
+    acceptedSubjects: ["Person A", "Person B"],
+    assetId,
+    baselineObservations: {
+      bodies: [],
+      faces: [championFace("Person A", 0.18), championFace("Person B", 0.68)],
+    },
+    bodyAssignments: {},
+    captureTime,
+    sourceContentDigest: assetId,
+    operations: {
+      bodies: {
+        bodies: [
+          body(`${assetId}-a`, reversed ? [0, 1] : [1, 0], 0.1),
+          body(`${assetId}-b`, reversed ? [1, 0] : [0, 1], 0.6),
+        ],
+      },
+    },
+  });
+  const assets = [
+    anchor("left", "2026-08-11T00:00:00Z"),
+    {
+      acceptedSubjects: [],
+      assetId: "middle",
+      baselineObservations: { bodies: [], faces: [] },
+      bodyAssignments: {},
+      captureTime: "2026-08-11T00:00:05Z",
+      sourceContentDigest: "middle",
+      operations: {
+        bodies: { bodies: [body("middle-body", [0.5, 0.5], 0.35)] },
+      },
+    },
+    anchor("right", "2026-08-11T00:00:10Z", true),
+  ];
+  // Limit the two-sided accepted evidence to Person A. Person B remains useful
+  // for proving that geometry, rather than array position, chooses the anchors.
+  assets[2].acceptedSubjects = ["Person A"];
+  assets[2].baselineObservations.faces = [championFace("Person A", 0.18)];
+  const result = inferContext({
+    assets,
+    contextKind: "rapid_burst",
+    policy: {
+      maximumTemporalGapSeconds: 60,
+      minimumMargin: 0.05,
+      minimumSimilarity: 0.99,
+      requireBidirectionalAnchors: true,
+    },
+  });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].state, "possible");
+  assert.equal(result.candidates[0].subject, "Person A");
+  assert.equal(
+    result.candidates[0].evidence.leftAnchorAssociation,
+    "champion_face_geometry",
+  );
+  assert.deepEqual(result.candidates[0].evidence.reasonCodes, [
+    "BIDIRECTIONAL_ACCEPTED_SUPPORT",
+    "TEMPORAL_PROXIMITY_SUPPORTED",
+    "SINGLE_UNASSIGNED_BODY",
+    "BODY_APPEARANCE_INSUFFICIENT",
+  ]);
+
+  assets[1].captureTime = "2026-08-11T01:00:00Z";
+  const distant = inferContext({
+    assets,
+    contextKind: "sequence",
+    policy: {
+      maximumTemporalGapSeconds: 60,
+      minimumMargin: 0.05,
+      minimumSimilarity: 0.99,
+      requireBidirectionalAnchors: true,
+    },
+  });
+  assert.equal(distant.candidates[0].state, "abstained");
+});
+
+test("context permits at most one supported body per subject and abstains on body ties", () => {
+  const makeAssets = (features) => [
+    {
+      acceptedSubjects: ["Person A"],
+      assetId: "left",
+      bodyAssignments: {},
+      sourceContentDigest: "left",
+      operations: { bodies: { bodies: [body("left", [1, 0])] } },
+    },
+    {
+      acceptedSubjects: [],
+      assetId: "middle",
+      bodyAssignments: {},
+      sourceContentDigest: "middle",
+      operations: {
+        bodies: {
+          bodies: features.map((feature, index) => body(`middle-${index}`, feature)),
+        },
+      },
+    },
+    {
+      acceptedSubjects: ["Person A"],
+      assetId: "right",
+      bodyAssignments: {},
+      sourceContentDigest: "right",
+      operations: { bodies: { bodies: [body("right", [1, 0])] } },
+    },
+  ];
+  const policy = {
+    maximumTemporalGapSeconds: 600,
+    minimumMargin: 0.05,
+    minimumSimilarity: 0.72,
+    requireBidirectionalAnchors: true,
+  };
+  const separated = inferContext({
+    assets: makeAssets([
+      [1, 0],
+      [0.7, 0.7],
+    ]),
+    contextKind: "sequence",
+    policy,
+  });
+  assert.deepEqual(
+    separated.candidates.map(({ state }) => state),
+    ["supported", "abstained"],
+  );
+  assert.equal(
+    separated.candidates[0].evidence.reasonCodes.includes(
+      "BODY_COMPETITOR_SEPARATED",
+    ),
+    true,
+  );
+
+  const tied = inferContext({
+    assets: makeAssets([
+      [1, 0],
+      [0.999, 0.001],
+    ]),
+    contextKind: "sequence",
+    policy,
+  });
+  assert.equal(tied.candidates.every(({ state }) => state === "abstained"), true);
 });
 
 test("rerun diff matches observations by geometry", () => {
@@ -519,6 +673,7 @@ test("set summary stays compact and preserves review/candidate language", () => 
 
 test("context emits Presence when the middle body is unavailable and abstains on an appearance tie", () => {
   const policy = {
+    maximumTemporalGapSeconds: 600,
     minimumMargin: 0.05,
     minimumSimilarity: 0.72,
     requireBidirectionalAnchors: true,

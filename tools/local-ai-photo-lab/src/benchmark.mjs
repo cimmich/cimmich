@@ -171,34 +171,39 @@ export const evaluateBenchmarkCase = ({ expectations, result }) => {
         ),
       );
     }
-    if (expected.enhance) {
-      const enhance = asset.operations.enhance;
+    for (const [expectationKey, operationKey] of [
+      ["enhance", "enhance"],
+      ["enhancePreview", "enhancePreview"],
+    ]) {
+      const enhancementExpectation = expected[expectationKey];
+      if (!enhancementExpectation) continue;
+      const enhance = asset.operations[operationKey];
       assertions.push(
         assertion(
-          `${assetId}.enhance.width`,
-          enhance?.width === expected.enhance.width,
-          expected.enhance.width,
+          `${assetId}.${expectationKey}.width`,
+          enhance?.width === enhancementExpectation.width,
+          enhancementExpectation.width,
           enhance?.width,
         ),
         assertion(
-          `${assetId}.enhance.height`,
-          enhance?.height === expected.enhance.height,
-          expected.enhance.height,
+          `${assetId}.${expectationKey}.height`,
+          enhance?.height === enhancementExpectation.height,
+          enhancementExpectation.height,
           enhance?.height,
         ),
         assertion(
-          `${assetId}.enhance.artifact`,
+          `${assetId}.${expectationKey}.artifact`,
           Boolean(enhance?.artifact?.digest && enhance?.artifact?.path),
           true,
           Boolean(enhance?.artifact?.digest && enhance?.artifact?.path),
         ),
       );
       for (const [metric, range] of Object.entries(
-        expected.enhance.quality ?? {},
+        enhancementExpectation.quality ?? {},
       )) {
         assertions.push(
           ...rangeAssertions(
-            `${assetId}.enhance.quality.${metric}`,
+            `${assetId}.${expectationKey}.quality.${metric}`,
             enhance?.quality?.[metric],
             range,
           ),

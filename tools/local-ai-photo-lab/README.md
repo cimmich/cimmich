@@ -4,16 +4,27 @@ Standalone, local-only experimentation for one photo or an explicit photo set.
 This lab does not connect to Cimmich's API, database, viewer, queues, or X1
 runtime.
 
+The two primary product lanes are progressive local upscaling and cross-photo
+Context. Face, body, and Scene/Text reruns are supporting diagnostic tools. The
+existing Cimmich face/identity machinery is a protected champion: this lab may
+read its accepted observations as anchors, but cannot replace, retrain, delete,
+or write back to it.
+
 ## Operations
 
-- `faces` — rerun local face detection.
-- `bodies` — rerun local person/body detection.
+- `enhance-preview` — create a fast native-x4 progressive Real-ESRGAN result
+  from a bounded one-tile working image.
+- `enhance` — create the slower full-source x2 Best derivation.
 - `context` — evaluate ordered cross-photo body and Presence continuity from
   explicit accepted-subject anchors.
+- `faces` — rerun local face detection as review evidence.
+- `bodies` — rerun local person/body detection as review evidence and a Context
+  dependency.
 - `scene-text` — ask a loopback-only local vision model for visible scene,
   activity, object, text, people-count, and quality proposals.
-- `enhance` — create a non-destructive Real-ESRGAN derived image.
-- `full` — run every configured operation.
+- `full` — run faces, bodies, Context, Scene/Text, and Best enhancement. Quick
+  enhancement remains an explicit interactive operation rather than duplicating
+  Best work in a batch.
 
 Every run binds the exact source digest, provider/model/config digests, ordered
 set, operation list, and limits. Reruns append a new receipt and diff against the
@@ -30,11 +41,23 @@ previous compatible run. Existing observations are never overwritten.
     {
       "assetId": "frame-001",
       "path": "/absolute/local/path/frame-001.jpg",
-      "acceptedSubjects": ["Person A"]
+      "captureTime": "2026-08-11T10:00:00Z",
+      "acceptedSubjects": ["Person A"],
+      "baselineObservations": {
+        "bodies": [],
+        "faces": [
+          {
+            "observationId": "accepted-face-1",
+            "subject": "Person A",
+            "box": { "x": 0.3, "y": 0.1, "w": 0.1, "h": 0.15 }
+          }
+        ]
+      }
     },
     {
       "assetId": "frame-002",
       "path": "/absolute/local/path/frame-002.jpg",
+      "captureTime": "2026-08-11T10:00:05Z",
       "acceptedSubjects": [],
       "baselineObservations": {
         "faces": [],
@@ -49,16 +72,20 @@ previous compatible run. Existing observations are never overwritten.
     {
       "assetId": "frame-003",
       "path": "/absolute/local/path/frame-003.jpg",
+      "captureTime": "2026-08-11T10:00:10Z",
       "acceptedSubjects": ["Person A"]
     }
   ]
 }
 ```
 
-`acceptedSubjects` is existing human/imported truth for the test set, not model
-output. With exactly one accepted subject and one detected body, that body may
-act as an identity anchor. Multi-person anchors require an explicit
-`bodyAssignments` object mapping a subject label to a detected body index.
+`acceptedSubjects` and subject-labelled baseline faces are existing
+human/imported champion truth for the exact test set, not challenger model
+output. A champion face box can associate its accepted subject with a detected
+body by geometry, including in multi-person anchors. Explicit `bodyAssignments`
+remain available when the source already has a trusted mapping. With exactly
+one accepted subject and one detected body, the unambiguous pair may also act
+as an anchor.
 
 `baselineObservations` is optional. It represents the face/body boxes currently
 known for that exact source revision. When supplied, the report separates new
@@ -66,11 +93,13 @@ model candidates, geometry matches, and baseline observations not redetected.
 This is the standalone testing seam for “find missed faces/bodies” before any
 Cimmich persistence adapter exists.
 
-The current Context lane uses a deliberately modest local colour/spatial
-appearance descriptor as a test baseline, not a production body-ReID model.
-It requires independent source digests and accepted anchors on both sides by
-default, ranks competitors, and abstains below the configured similarity or
-margin. It never promotes a subject assignment automatically.
+The current Context lane combines protected champion anchors, source
+independence, bidirectional order, capture-time gaps, body geometry, and a
+deliberately modest local colour/spatial appearance descriptor. Appearance
+support must beat both competing subjects and competing bodies. Close-time
+evidence can produce only `possible`, and only when one subject and one
+unassigned target body make the scope unambiguous. It is not a production
+body-ReID model and never promotes a subject assignment automatically.
 
 ## Runtime configuration
 
@@ -165,6 +194,11 @@ structural similarity, edge-energy retention, and tile-seam risk. These are
 regression gates, not a claim that generated detail is historically true or
 identity preserving.
 
+Run the separate one-tile Quick gate with
+`benchmark/enhancement-quick-v1.json`. It proves the native-x4 progressive
+artifact, bounded 256-pixel working dimension, source immutability, and the
+same fidelity metrics without invoking Best.
+
 Create and benchmark the deterministic head-occlusion Context fixture:
 
 ```sh
@@ -182,11 +216,29 @@ node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
 The fixture receipt binds the public source, transform configuration, and all
 three derived image digests without persisting the source path.
 
+Build a read-only pilot from an existing private Cimmich projection and its
+local previews:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs archive-pilot \
+  --imports-root /absolute/private/import/current \
+  --thumb-root /absolute/private/thumb/root \
+  --output /absolute/private/new-pilot-directory \
+  --limit 12 \
+  --maximum-gap-seconds 600
+```
+
+The command never copies media or writes to the projection. It derives strict
+three-photo candidates where the middle has one champion body and no accepted
+identity while the adjacent photos share exactly one accepted subject. The
+path-free index binds source projection digests; private set files reference
+the read-only previews and must stay outside Git.
+
 ```sh
 node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs run \
   --config /absolute/local/config.json \
   --set /absolute/local/photo-set.json \
-  --operations faces,bodies,context,scene-text,enhance \
+  --operations context \
   --output /absolute/local/output
 ```
 
@@ -196,9 +248,12 @@ For one photo:
 node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs run \
   --config /absolute/local/config.json \
   --photo /absolute/local/photo.jpg \
-  --operations faces,bodies,scene-text,enhance \
+  --operations enhance-preview \
   --output /absolute/local/output
 ```
+
+Use `--operations enhance` for the separate full-source Best derivation, or
+select any supporting rerun lane explicitly.
 
 Outputs contain JSON receipts, a human-readable Markdown report, optional
 review overlays, and optional enhanced images. Reports identify inputs by asset
@@ -220,17 +275,18 @@ timeout. This favors stable local memory use over archive-scale throughput.
 
 - Results and Context assignments are proposals. Only a person can accept an
   identity; no candidate writes back to Cimmich in this branch.
-- Enhancement is a derived preview. The source stays read-only and the preview
-  must never replace it.
+- Quick and Best enhancements are disposable derived images. The source stays
+  read-only and neither derivative may replace it.
 - The current Context appearance descriptor is a proving baseline, not body
   identity. Clothing changes, uniforms, low light, and multiple similar people
   require abstention or review.
 - Model files are not bundled. Their code, model, and training-data licences
   must be resolved by the deployment owner before distribution.
-- Full-resolution x2 enhancement is compute-heavy; the labelled 1024×1536
-  portrait took roughly two minutes on the measured local CoreML runtime. A
-  viewer integration should use an explicit loading state and cache the derived
-  artifact rather than promise instantaneous zoom.
+- On the measured local CoreML runtime, Quick produced a 752×1024 real-archive
+  result in 2.9 seconds from a 528×720 preview; Best produced 1056×1440 in 26.9
+  seconds. A larger 1024×1536 source still took roughly two minutes for Best.
+  The viewer should show Quick progressively and cache Best rather than block
+  zoom on full-source work.
 
 See `INTEGRATION_CONTRACT.md` for the later Cimmich seam and
 `MERGE_READINESS.md` for the standalone branch gates.

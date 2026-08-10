@@ -628,10 +628,15 @@ export const runSceneText = async ({ asset, config }) => {
   }
 };
 
-export const runEnhance = async ({ asset, config, outputPath }) => {
+export const runEnhance = async ({
+  asset,
+  config,
+  operation = "enhance",
+  outputPath,
+}) => {
   if (!config.enabled)
     return {
-      operation: "enhance",
+      operation,
       state: "unavailable",
       reason: "provider_disabled",
     };
@@ -647,11 +652,15 @@ export const runEnhance = async ({ asset, config, outputPath }) => {
         "--output",
         outputPath,
         "--scale",
-        String(config.scale),
+        String(operation === "enhance-preview" ? 4 : config.scale),
         "--device",
         config.device,
         "--max-input-pixels",
         String(config.maxInputPixels),
+        "--preview-max-input-pixels",
+        String(
+          operation === "enhance-preview" ? config.previewMaxInputPixels : 0,
+        ),
       ],
       command: config.pythonPath,
       timeoutMs: config.timeoutMs,
@@ -659,12 +668,12 @@ export const runEnhance = async ({ asset, config, outputPath }) => {
     return {
       ...result,
       activationAuthority: "none",
-      operation: "enhance",
+      operation,
       output: undefined,
       state: "derived",
     };
   } catch (error) {
-    return providerFailure("enhance", error);
+    return providerFailure(operation, error);
   }
 };
 

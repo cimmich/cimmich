@@ -12,6 +12,7 @@ const tinyPng = Buffer.from(
 
 const configInput = {
   contextPolicy: {
+    maximumTemporalGapSeconds: 600,
     minimumMargin: 0.05,
     minimumSimilarity: 0.72,
     requireBidirectionalAnchors: true,
@@ -35,6 +36,7 @@ const configInput = {
       device: "cpu",
       enabled: true,
       modelPath: "/e",
+      previewMaxInputPixels: 1000,
       pythonPath: "/py",
       scale: 2,
     },
@@ -193,6 +195,25 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     "faces",
   ]);
 
+  const quickEnhance = await runPhotoLab({
+    configInput,
+    operationsInput: "enhance-preview",
+    outputRoot: join(root, "enhance-preview"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(quickEnhance.result.executedOperations, [
+    "enhance-preview",
+  ]);
+  assert.equal(
+    quickEnhance.result.assets[0].operations.enhancePreview.artifact.path,
+    "artifacts/left-enhanced-preview-x4.png",
+  );
+  assert.match(
+    await readFile(quickEnhance.reportPath, "utf8"),
+    /Quick enhancement: derived/,
+  );
+
   const contextOnly = await runPhotoLab({
     configInput,
     operationsInput: "context",
@@ -206,6 +227,19 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
   ]);
   assert.deepEqual(Object.keys(contextOnly.result.assets[0].operations), [
     "bodies",
+  ]);
+
+  const contextAndQuick = await runPhotoLab({
+    configInput,
+    operationsInput: "context,enhance-preview",
+    outputRoot: join(root, "context-and-quick"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(contextAndQuick.result.executedOperations, [
+    "bodies",
+    "context",
+    "enhance-preview",
   ]);
 
   const disagreementProviders = {

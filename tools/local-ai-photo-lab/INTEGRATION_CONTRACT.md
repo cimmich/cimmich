@@ -6,25 +6,30 @@ Cimmich API, queue, database, viewer, or X1 integration.
 ## Operator surface
 
 The photo viewer and multi-select toolbar may expose one **Local AI** action.
-It opens a scoped panel with independently selectable operations:
+Its primary surface is:
 
-- Find faces
-- Find bodies
-- Add scene and visible-text context
-- Check sequence context
-- Create x2 enhanced preview
+- **Upscale — Quick**: progressive local result for the current photo.
+- **Upscale — Best**: full-source cached derivation.
+- **Context**: explain and propose continuity across the selected ordered set.
+
+An **Advanced rerun** section contains Find faces, Find bodies, and Add scene /
+visible-text context. These are valuable scoped diagnostics, not the product
+hierarchy.
 
 The panel must show the exact scope (`1 photo` or `N selected photos`), model
 availability, expected derived-output behavior, and a cancellable progress
-state. “Check sequence context” is available only for an explicitly ordered
-set. Enhancement is labelled **preview**, never **replace original**.
+state. Context is available only for an explicitly ordered set. Both
+enhancement modes are labelled **derived**, never **replace original**.
 
 ## Request adapter
 
 The future adapter builds `cimmich.local-ai-photo-set.v1` from an explicit
 selection. Each asset receives a stable asset ID, a local read-only source
 path, accepted subject labels already known to Cimmich, optional explicit body
-assignments, and optional current face/body boxes as `baselineObservations`.
+assignments, capture time, and current champion face/body boxes as
+`baselineObservations`. Accepted champion faces carry their existing opaque
+subject ID so Context can associate a body anchor geometrically without
+rerunning or altering champion identity machinery.
 
 The adapter invokes only requested operations. `context` may add `bodies` as a
 declared dependency. No operation implies an archive-wide scan. Archive jobs
@@ -50,10 +55,13 @@ Future persistence must preserve that boundary.
 
 ## Identity rule
 
-Accepted identity flows into the lab as an anchor; it never flows out of the
-lab automatically. Context may say “candidate for Person A” only when the
-ordered evidence and configured margin support it. A human acceptance action
-is the sole authority that may change identity state in Cimmich.
+Accepted identity flows into the lab as a read-only champion anchor; it never
+flows out automatically. Challenger face detections cannot create Context
+identity anchors. Context may say “candidate for Person A” only when the
+ordered evidence and configured margins support it. A human acceptance action
+is the sole authority that may change identity state in Cimmich. Any future
+champion improvement must use a separate reviewed champion/challenger promotion
+process, not this request path.
 
 ## Concurrency and lifecycle
 
@@ -73,5 +81,8 @@ Integration is acceptable only when end-to-end tests prove:
 4. candidate review and explicit acceptance/rejection;
 5. cancellation with no orphan provider;
 6. stale-source rejection before persistence;
-7. derived-preview cache invalidation on source/model/config change; and
-8. no regression in the standalone doctor and all golden benchmarks.
+7. derived-preview cache invalidation on source/model/config change;
+8. no regression in the standalone doctor and all golden benchmarks;
+9. no writes to, deletion from, or replacement of champion face/identity rows;
+10. at most one supported body per subject per photo; and
+11. Quick and Best cache keys remain distinct.

@@ -6,6 +6,7 @@ import {
   digest,
   fileDigest,
   normalizeOperations,
+  operationNames,
   publicAsset,
   runSchema,
   setSchema,
@@ -194,12 +195,7 @@ export const runPhotoLab = async ({
     !requestedOperations.includes("bodies")
       ? [...requestedOperations, "bodies"].sort(
           (left, right) =>
-            ["faces", "bodies", "context", "scene-text", "enhance"].indexOf(
-              left,
-            ) -
-            ["faces", "bodies", "context", "scene-text", "enhance"].indexOf(
-              right,
-            ),
+            operationNames.indexOf(left) - operationNames.indexOf(right),
         )
       : requestedOperations;
   const facesConfig = {
@@ -325,6 +321,27 @@ export const runPhotoLab = async ({
           }),
         );
       }
+      if (executedOperations.includes("enhance-preview")) {
+        const outputPath = join(
+          artifactRoot,
+          `${name}-enhanced-preview-x4.png`,
+        );
+        const enhanced = await timed(() =>
+          providerImplementations.runEnhance({
+            asset: assetInput,
+            config: enhanceConfig,
+            operation: "enhance-preview",
+            outputPath,
+          }),
+        );
+        operations.enhancePreview =
+          enhanced.state === "derived"
+            ? {
+                ...enhanced,
+                artifact: await artifact(outputPath, reserved.runDir),
+              }
+            : enhanced;
+      }
       if (executedOperations.includes("enhance")) {
         const outputPath = join(
           artifactRoot,
@@ -334,6 +351,7 @@ export const runPhotoLab = async ({
           providerImplementations.runEnhance({
             asset: assetInput,
             config: enhanceConfig,
+            operation: "enhance",
             outputPath,
           }),
         );

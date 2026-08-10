@@ -10,8 +10,12 @@ export const operationNames = [
   "bodies",
   "context",
   "scene-text",
+  "enhance-preview",
   "enhance",
 ];
+export const fullOperationNames = operationNames.filter(
+  (operation) => operation !== "enhance-preview",
+);
 
 const typedError = (message, code = "LOCAL_AI_INPUT_INVALID") =>
   Object.assign(new Error(message), { code });
@@ -206,6 +210,7 @@ export const validateConfig = (input) => {
     "device",
     "enabled",
     "modelPath",
+    "previewMaxInputPixels",
     "pythonPath",
     "scale",
   ]);
@@ -219,13 +224,30 @@ export const validateConfig = (input) => {
     throw typedError("providers.enhance.device is unsupported");
   if (![2, 4].includes(enhance.scale))
     throw typedError("providers.enhance.scale must be 2 or 4");
+  enhance.previewMaxInputPixels = boundedInteger(
+    enhance.previewMaxInputPixels,
+    "providers.enhance.previewMaxInputPixels",
+    1,
+    limits.maxEnhanceInputPixels,
+  );
 
   exactObject(
     input.contextPolicy,
-    ["minimumMargin", "minimumSimilarity", "requireBidirectionalAnchors"],
+    [
+      "maximumTemporalGapSeconds",
+      "minimumMargin",
+      "minimumSimilarity",
+      "requireBidirectionalAnchors",
+    ],
     "config.contextPolicy",
   );
   const contextPolicy = {
+    maximumTemporalGapSeconds: boundedInteger(
+      input.contextPolicy.maximumTemporalGapSeconds,
+      "contextPolicy.maximumTemporalGapSeconds",
+      0,
+      86_400,
+    ),
     minimumMargin: boundedNumber(
       input.contextPolicy.minimumMargin,
       "contextPolicy.minimumMargin",
@@ -280,13 +302,17 @@ const normalizeBox = (value, label) => {
   return box;
 };
 
-const normalizeBaselineRows = (value, label, prefix) => {
+const normalizeBaselineRows = (value, label, prefix, allowSubject = false) => {
   if (!Array.isArray(value) || value.length > 64)
     throw typedError(`${label} must be an array with at most 64 rows`);
   return value.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
       throw typedError(`${label}[${index}] must be an object`);
-    const allowed = new Set(["box", "observationId"]);
+    const allowed = new Set([
+      "box",
+      "observationId",
+      ...(allowSubject ? ["subject"] : []),
+    ]);
     if (Object.keys(raw).some((key) => !allowed.has(key)) || !raw.box) {
       throw typedError(`${label}[${index}] has unsupported or missing fields`);
     }
@@ -299,6 +325,9 @@ const normalizeBaselineRows = (value, label, prefix) => {
             128,
           )
         : `${prefix}-${index + 1}`,
+      ...(raw.subject
+        ? { subject: requiredText(raw.subject, `${label}[${index}].subject`) }
+        : {}),
     };
   });
 };
@@ -316,6 +345,7 @@ const normalizeBaseline = (value, label) => {
       value.faces,
       `${label}.faces`,
       "baseline-face",
+      true,
     ),
   };
 };
@@ -352,6 +382,7 @@ export const validatePhotoSet = async (input, limits) => {
       "assetId",
       "baselineObservations",
       "bodyAssignments",
+      "captureTime",
       "path",
     ]);
     if (Object.keys(raw).some((key) => !allowed.has(key)))
@@ -382,6 +413,12 @@ export const validatePhotoSet = async (input, limits) => {
       raw.baselineObservations,
       `assets[${index}].baselineObservations`,
     );
+    const captureTime = raw.captureTime
+      ? new Date(requiredText(raw.captureTime, `assets[${index}].captureTime`))
+      : null;
+    if (captureTime && Number.isNaN(captureTime.valueOf())) {
+      throw typedError(`assets[${index}].captureTime must be an ISO timestamp`);
+    }
     if (
       Object.keys(bodyAssignments).some(
         (subject) => !acceptedSubjects.includes(subject),
@@ -391,6 +428,15 @@ export const validatePhotoSet = async (input, limits) => {
         `asset ${assetId} assigns a body to a subject that is not accepted`,
       );
     }
+    if (
+      baselineObservations?.faces.some(
+        ({ subject }) => subject && !acceptedSubjects.includes(subject),
+      )
+    ) {
+      throw typedError(
+        `asset ${assetId} has a face subject that is not accepted`,
+      );
+    }
     const sourceContentDigest = await fileDigest(path);
     assets.push({
       acceptedSubjects,
@@ -398,6 +444,7 @@ export const validatePhotoSet = async (input, limits) => {
       basename: basename(path),
       baselineObservations,
       bodyAssignments,
+      captureTime: captureTime?.toISOString() ?? null,
       path,
       sourceContentDigest,
       sourceSize: info.size,
@@ -416,7 +463,7 @@ export const normalizeOperations = (value) => {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  const expanded = requested.includes("full") ? operationNames : requested;
+  const expanded = requested.includes("full") ? fullOperationNames : requested;
   if (
     !expanded.length ||
     expanded.some((item) => !operationNames.includes(item))
@@ -434,6 +481,7 @@ export const publicAsset = ({
   baselineObservations,
   basename: name,
   bodyAssignments,
+  captureTime,
   sourceContentDigest,
   sourceSize,
 }) => ({
@@ -442,6 +490,7 @@ export const publicAsset = ({
   baselineObservations,
   basename: name,
   bodyAssignments,
+  captureTime,
   sourceContentDigest,
   sourceSize,
 });

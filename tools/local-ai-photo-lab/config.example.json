@@ -31,11 +31,13 @@
       "enabled": true,
       "pythonPath": "/absolute/path/to/python",
       "modelPath": "/absolute/path/to/realesrgan-x4-256.onnx",
+      "previewMaxInputPixels": 48000,
       "scale": 2,
       "device": "coreml"
     }
   },
   "contextPolicy": {
+    "maximumTemporalGapSeconds": 600,
     "minimumSimilarity": 0.72,
     "minimumMargin": 0.05,
     "requireBidirectionalAnchors": true

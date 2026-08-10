@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { resolve } from "node:path";
+import { buildArchivePilotFromFiles } from "../src/archive-pilot.mjs";
 import { runBenchmarkFromFiles } from "../src/benchmark.mjs";
 import { writeBodyExecutionProfile } from "../src/body-profile.mjs";
 import { runDoctorFromFile } from "../src/doctor.mjs";
@@ -12,15 +13,20 @@ import { runPhotoLabFromFiles } from "../src/runner.mjs";
 
 const usage = () => `Usage:
   local-ai-photo-lab.mjs benchmark --config PATH --manifest PATH --fixture-root PATH --output PATH
+  local-ai-photo-lab.mjs archive-pilot --imports-root PATH --thumb-root PATH --output PATH [--limit N] [--maximum-gap-seconds N]
   local-ai-photo-lab.mjs body-profile --source-manifest PATH --device cpu|gpu --output PATH
   local-ai-photo-lab.mjs doctor --config PATH
   local-ai-photo-lab.mjs run --config PATH (--photo PATH | --set PATH) --output PATH [--operations LIST]
 
-Operations: faces,bodies,context,scene-text,enhance or full`;
+Operations: faces,bodies,context,scene-text,enhance-preview,enhance or full`;
 
 const parse = (argv) => {
   const command = argv[0];
-  if (!["benchmark", "body-profile", "doctor", "run"].includes(command)) {
+  if (
+    !["archive-pilot", "benchmark", "body-profile", "doctor", "run"].includes(
+      command,
+    )
+  ) {
     throw Object.assign(new Error(usage()), { code: "LOCAL_AI_USAGE" });
   }
   const options = {};
@@ -40,12 +46,16 @@ const parse = (argv) => {
         "config",
         "device",
         "fixture-root",
+        "imports-root",
+        "limit",
         "manifest",
+        "maximum-gap-seconds",
         "operations",
         "output",
         "photo",
         "set",
         "source-manifest",
+        "thumb-root",
       ].includes(key) ||
       options[key] !== undefined
     ) {
@@ -55,6 +65,27 @@ const parse = (argv) => {
       );
     }
     options[key] = value;
+  }
+  if (command === "archive-pilot") {
+    const required = ["imports-root", "output", "thumb-root"];
+    const allowed = [...required, "limit", "maximum-gap-seconds"];
+    if (
+      required.some((key) => !options[key]) ||
+      Object.keys(options).some((key) => !allowed.includes(key))
+    ) {
+      throw Object.assign(new Error(usage()), { code: "LOCAL_AI_USAGE" });
+    }
+    return {
+      command,
+      importsRoot: resolve(options["imports-root"]),
+      limit: options.limit === undefined ? 12 : Number(options.limit),
+      maximumGapSeconds:
+        options["maximum-gap-seconds"] === undefined
+          ? 600
+          : Number(options["maximum-gap-seconds"]),
+      outputRoot: resolve(options.output),
+      thumbRoot: resolve(options["thumb-root"]),
+    };
   }
   if (command === "doctor") {
     if (
@@ -129,7 +160,22 @@ for (const [signal, exitCode] of [
 
 try {
   const input = parse(process.argv.slice(2));
-  if (input.command === "benchmark") {
+  if (input.command === "archive-pilot") {
+    const output = await buildArchivePilotFromFiles(input);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          candidateCount: output.receipt.candidateCount,
+          outputRoot: output.outputRoot,
+          selectedCount: output.receipt.selectedCount,
+          state: output.receipt.state,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    process.exitCode = output.receipt.state === "empty" ? 1 : 0;
+  } else if (input.command === "benchmark") {
     const output = await runBenchmarkFromFiles(input);
     process.stdout.write(
       `${JSON.stringify(

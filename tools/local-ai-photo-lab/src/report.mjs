@@ -45,6 +45,13 @@ export const renderReport = ({ result, diff }) => {
     lines.push(
       operationLine("Scene/Text", asset.operations.sceneText, "proposal"),
     );
+    lines.push(
+      operationLine(
+        "Quick enhancement",
+        asset.operations.enhancePreview,
+        "artifact",
+      ),
+    );
     lines.push(operationLine("Enhance", asset.operations.enhance, "artifact"));
     if (asset.operations.sceneText?.proposal) {
       const proposal = asset.operations.sceneText.proposal;
@@ -58,6 +65,10 @@ export const renderReport = ({ result, diff }) => {
     if (asset.operations.enhance?.artifact)
       lines.push(
         `- Derived enhancement: \`${asset.operations.enhance.artifact.path}\``,
+      );
+    if (asset.operations.enhancePreview?.artifact)
+      lines.push(
+        `- Progressive enhancement: \`${asset.operations.enhancePreview.artifact.path}\``,
       );
     if (asset.baselineComparison) {
       const faceComparison = asset.baselineComparison.faces;

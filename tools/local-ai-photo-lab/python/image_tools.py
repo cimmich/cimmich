@@ -243,9 +243,23 @@ def enhance(args: argparse.Namespace) -> None:
     source = Path(args.input).resolve(strict=True)
     model = Path(args.model).resolve(strict=True)
     output = Path(args.output).resolve()
-    image = open_rgb(source)
-    if image.width * image.height > args.max_input_pixels:
+    original = open_rgb(source)
+    if original.width * original.height > args.max_input_pixels:
         raise ValueError("enhance input pixel limit exceeded")
+    image = original
+    if args.preview_max_input_pixels > 0:
+        ratio = min(
+            1.0,
+            math.sqrt(args.preview_max_input_pixels / (image.width * image.height)),
+            256 / max(image.width, image.height),
+        )
+    else:
+        ratio = 1.0
+    if ratio < 1.0:
+        image = image.resize(
+            (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
+            Image.Resampling.LANCZOS,
+        )
     providers = ["CPUExecutionProvider"]
     if args.device == "coreml":
         if "CoreMLExecutionProvider" not in ort.get_available_providers():
@@ -299,6 +313,8 @@ def enhance(args: argparse.Namespace) -> None:
                         "modelDigest": file_digest(model),
                         "nativeScale": scale,
                         "overlap": overlap,
+                        "previewMaxInputPixels": args.preview_max_input_pixels,
+                        "previewMaximumDimension": 256 if args.preview_max_input_pixels > 0 else None,
                         "requestedScale": args.scale,
                         "tile": tile,
                     }
@@ -306,11 +322,17 @@ def enhance(args: argparse.Namespace) -> None:
                 "height": result.height,
                 "executionProviders": session.get_providers(),
                 "modelDigest": file_digest(model),
+                "mode": "progressive_preview" if args.preview_max_input_pixels > 0 else "best_full_source",
+                "originalHeight": original.height,
+                "originalWidth": original.width,
                 "output": str(output),
+                "processedHeight": image.height,
+                "processedWidth": image.width,
                 "provider": "realesrgan-onnx-local-photo-lab",
                 "quality": quality,
                 "scale": args.scale,
                 "schemaVersion": "cimmich.local-ai-enhance-result.v1",
+                "sourceScale": round(image.width / original.width, 6),
                 "width": result.width,
             },
             sort_keys=True,
@@ -357,6 +379,7 @@ def main() -> None:
     enhance_parser.add_argument("--scale", required=True, type=int, choices=[2, 4])
     enhance_parser.add_argument("--device", required=True, choices=["coreml", "cpu"])
     enhance_parser.add_argument("--max-input-pixels", required=True, type=int)
+    enhance_parser.add_argument("--preview-max-input-pixels", default=0, type=int)
     overlay_parser = sub.add_parser("overlay")
     overlay_parser.add_argument("--input", required=True)
     overlay_parser.add_argument("--data", required=True)
