@@ -19,6 +19,21 @@ const readCredential = (key: string) => {
   return match[1];
 };
 
+const readDemoAssetId = (assetId: string) => {
+  const stateRoot = process.env.CIMMICH_E2E_STATE_ROOT;
+  if (!stateRoot) {
+    throw new Error('Set CIMMICH_E2E_STATE_ROOT for the isolated fictional demo');
+  }
+  const source = JSON.parse(readFileSync(path.join(stateRoot, 'immich-map.json'), 'utf8')) as {
+    assets?: Array<{ assetId?: unknown; immichAssetId?: unknown }>;
+  };
+  const match = source.assets?.find((asset) => asset.assetId === assetId);
+  if (typeof match?.immichAssetId !== 'string') {
+    throw new TypeError(`The isolated demo is missing mapped asset ${assetId}`);
+  }
+  return match.immichAssetId;
+};
+
 const authenticate = async (page: Page) => {
   await page.goto('/cimmich/home', { waitUntil: 'networkidle' });
   if (!page.url().includes('/auth/login')) {
@@ -92,15 +107,9 @@ test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) 
     .click();
   await page.getByRole('button', { name: 'Personal', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Viewing mode: Personal' }).first()).toBeVisible();
-  await page.goto('/photos');
-  await page
-    .getByRole('link', { name: /Image taken on/u })
-    .first()
-    .click();
-  for (let index = 1; index < 16; index += 1) {
-    await page.getByRole('button', { name: 'View next asset' }).click();
-  }
-  await expect(page).toHaveURL(/\/photos\/809eb60f-aa46-44ea-aeb9-687b84e9b95c$/u);
+  const targetAssetId = readDemoAssetId('CHA-035');
+  await page.goto(`/photos/${targetAssetId}`);
+  await expect.poll(() => new URL(page.url()).pathname).toBe(`/photos/${targetAssetId}`);
   const peopleAction = page.getByTestId('cimmich-people-view');
   if ((await peopleAction.getAttribute('aria-pressed')) !== 'true') {
     await peopleAction.click();
