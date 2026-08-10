@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "cimmich.local-ai-photo-lab-config.v1",
+  "limits": {
+    "maxAssets": 100,
+    "maxInputBytes": 134217728,
+    "maxInputPixels": 12000000,
+    "maxEnhanceInputPixels": 4000000,
+    "providerTimeoutMs": 300000
+  },
+  "providers": {
+    "faces": {
+      "enabled": true,
+      "pythonPath": "/absolute/path/to/python",
+      "detectorModelPath": "/absolute/path/to/detector.onnx",
+      "device": "coreml",
+      "scoreThreshold": 0.2
+    },
+    "bodies": {
+      "enabled": true,
+      "pythonPath": "/absolute/path/to/python",
+      "providerScriptPath": "/absolute/path/to/providers/ultralytics-yolo-body/provider.py",
+      "manifestPath": "/absolute/path/to/body-manifest.json",
+      "modelPath": "/absolute/path/to/body-model.pt"
+    },
+    "sceneText": {
+      "enabled": true,
+      "endpoint": "http://127.0.0.1:11434",
+      "model": "local-vision-model"
+    },
+    "enhance": {
+      "enabled": true,
+      "pythonPath": "/absolute/path/to/python",
+      "modelPath": "/absolute/path/to/realesrgan-x4-256.onnx",
+      "scale": 2,
+      "device": "coreml"
+    }
+  },
+  "contextPolicy": {
+    "minimumSimilarity": 0.72,
+    "minimumMargin": 0.05,
+    "requireBidirectionalAnchors": true
+  }
+}
