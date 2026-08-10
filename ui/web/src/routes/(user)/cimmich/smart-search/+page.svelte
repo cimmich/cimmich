@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { replaceState } from '$app/navigation';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
@@ -26,8 +27,8 @@
   }
 
   let { data }: Props = $props();
-  let query = $state(data.initialQuery);
-  let submittedQuery = $state(data.initialQuery);
+  let query = $state(data.initialLens === 'photos' ? data.initialQuery : '');
+  let submittedQuery = $state(data.initialLens === 'photos' ? data.initialQuery : '');
   let result = $state<CimmichSmartSearchResult | null>(null);
   let error = $state<CimmichServiceError | null>(null);
   let isSearching = $state(false);
@@ -49,15 +50,17 @@
     } else {
       url.searchParams.delete('q');
     }
-    globalThis.history.replaceState(globalThis.history.state, '', url);
+    replaceState(url, globalThis.history.state);
   };
 
   const selectLens = (nextLens: 'documents' | 'photos') => {
-    if (nextLens === 'documents') {
-      documentLensQuery = '';
-    }
     lens = nextLens;
     syncRoute(nextLens, nextLens === 'documents' ? documentLensQuery : submittedQuery || query.trim());
+  };
+
+  const updateDocumentQuery = (nextQuery: string) => {
+    documentLensQuery = nextQuery;
+    syncRoute('documents', nextQuery);
   };
 
   const handleLensKeydown = (event: KeyboardEvent) => {
@@ -215,7 +218,11 @@
 
     {#if lens === 'documents'}
       <div class="mx-auto mt-10 max-w-6xl text-left">
-        <CimmichDocuments heading="All documents" initialQuery={documentLensQuery} />
+        <CimmichDocuments
+          heading="All documents"
+          initialQuery={documentLensQuery}
+          onQueryChange={updateDocumentQuery}
+        />
       </div>
     {:else}
       {#if error}
