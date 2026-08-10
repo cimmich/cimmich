@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "cimmich.local-ai-photo-lab-benchmark.v1",
+  "benchmarkId": "context-head-occlusion-v1",
+  "cases": [
+    {
+      "caseId": "accepted-body-accepted",
+      "contextKind": "sequence",
+      "operations": "faces,bodies,context",
+      "assets": [
+        {
+          "assetId": "left-anchor",
+          "fixturePath": "left.png",
+          "acceptedSubjects": ["Person A"]
+        },
+        {
+          "assetId": "middle-body",
+          "fixturePath": "middle-head-occluded.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "right-anchor",
+          "fixturePath": "right.png",
+          "acceptedSubjects": ["Person A"]
+        }
+      ],
+      "expectations": {
+        "assets": {
+          "left-anchor": {
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "middle-body": {
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "right-anchor": {
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          }
+        },
+        "contextCandidates": [
+          {
+            "assetId": "middle-body",
+            "kind": "body_candidate",
+            "state": "supported",
+            "subject": "Person A"
+          }
+        ],
+        "maximumUnexpectedContextCandidates": 0
+      }
+    }
+  ]
+}

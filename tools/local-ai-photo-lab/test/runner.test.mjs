@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -264,4 +264,29 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     "FACE_ONLY_WITH_NO_PERSON_SUPPORT",
   ]);
   assert.match(disagreement.result.summary.text, /Candidate review/);
+
+  const rejectedOutput = join(root, "rejected-before-output");
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "faces",
+      outputRoot: rejectedOutput,
+      providerImplementations: {
+        ...providerImplementations,
+        async probeImage() {
+          throw Object.assign(new Error("not an image"), {
+            code: "LOCAL_AI_SOURCE_UNREADABLE",
+          });
+        },
+      },
+      setInput: {
+        assets: [{ acceptedSubjects: [], assetId: "bad", path: paths[0] }],
+        contextKind: "none",
+        schemaVersion: "cimmich.local-ai-photo-set.v1",
+        setId: "bad",
+      },
+    }),
+    { code: "LOCAL_AI_SOURCE_UNREADABLE" },
+  );
+  assert.equal(await stat(rejectedOutput).catch(() => null), null);
 });

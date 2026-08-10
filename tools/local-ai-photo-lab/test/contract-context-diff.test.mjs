@@ -3,7 +3,9 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
+import { once } from "node:events";
 import test from "node:test";
+import { evaluateBenchmarkCase, runBenchmark } from "../src/benchmark.mjs";
 import {
   normalizeOperations,
   validateConfig,
@@ -11,7 +13,13 @@ import {
 } from "../src/contract.mjs";
 import { inferContext } from "../src/context.mjs";
 import { diffRunResults, iou } from "../src/diff.mjs";
+import { runDoctor } from "../src/doctor.mjs";
 import { runSceneText } from "../src/providers.mjs";
+import {
+  activeProcessCount,
+  terminateActiveProcesses,
+  trackedSpawn,
+} from "../src/processes.mjs";
 import { buildSetSummary } from "../src/summary.mjs";
 
 const config = (endpoint = "http://127.0.0.1:11434") => ({
@@ -75,6 +83,105 @@ test("config accepts loopback, rejects remote endpoints, and expands full", () =
     "scene-text",
     "enhance",
   ]);
+});
+
+test("doctor returns a path-free limited receipt when every provider is disabled", async () => {
+  const input = config();
+  for (const provider of Object.values(input.providers))
+    provider.enabled = false;
+  const result = await runDoctor({ configInput: input });
+  assert.equal(result.state, "limited");
+  assert.deepEqual(result.summary, {
+    failed: 0,
+    passed: 0,
+    skipped: 8,
+    warnings: 0,
+  });
+  assert.equal(JSON.stringify(result).includes("/py"), false);
+});
+
+test("tracked local provider processes terminate cleanly on cancellation", async () => {
+  const child = trackedSpawn(
+    process.execPath,
+    ["-e", "setInterval(() => undefined, 1000)"],
+    { stdio: "ignore" },
+  );
+  assert.equal(activeProcessCount(), 1);
+  assert.equal(terminateActiveProcesses(), 1);
+  await once(child, "close");
+  assert.equal(activeProcessCount(), 0);
+});
+
+test("benchmark evaluator scores bounded expectations and rejects fixture traversal", async () => {
+  const evaluation = evaluateBenchmarkCase({
+    expectations: {
+      assets: {
+        photo: {
+          bodies: { min: 1, max: 1 },
+          crossModelState: "clear",
+          faces: { min: 1, max: 1 },
+          maxFaceReview: 0,
+          peopleEstimate: { min: 1, max: 1 },
+          visibleTextIncludes: ["HELLO"],
+        },
+      },
+      maximumUnexpectedContextCandidates: 0,
+    },
+    result: {
+      assets: [
+        {
+          assetId: "photo",
+          crossModelChecks: { reasonCodes: [], state: "clear" },
+          operations: {
+            bodies: { bodies: [{}] },
+            faces: { faces: [{ quality: { reviewReasons: [] } }] },
+            sceneText: {
+              proposal: {
+                peopleCountEstimate: 1,
+                visibleText: ["HELLO"],
+              },
+            },
+          },
+        },
+      ],
+      context: null,
+      originalsUnchanged: true,
+      state: "completed",
+    },
+  });
+  assert.equal(evaluation.state, "passed");
+
+  const root = await mkdtemp(join(tmpdir(), "local-ai-benchmark-"));
+  const disabled = config();
+  for (const provider of Object.values(disabled.providers))
+    provider.enabled = false;
+  await assert.rejects(
+    runBenchmark({
+      configInput: disabled,
+      fixtureRoot: join(root, "fixtures"),
+      manifestInput: {
+        benchmarkId: "escape",
+        cases: [
+          {
+            assets: [
+              {
+                acceptedSubjects: [],
+                assetId: "escape",
+                fixturePath: "../outside.png",
+              },
+            ],
+            caseId: "escape",
+            contextKind: "none",
+            expectations: { assets: {} },
+            operations: "faces",
+          },
+        ],
+        schemaVersion: "cimmich.local-ai-photo-lab-benchmark.v1",
+      },
+      outputRoot: join(root, "output"),
+    }),
+    { code: "LOCAL_AI_BENCHMARK_FIXTURE_FORBIDDEN" },
+  );
 });
 
 test("photo-set contract binds ordered immutable source digests", async () => {

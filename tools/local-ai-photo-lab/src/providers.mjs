@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { digest, fileDigest } from "./contract.mjs";
+import { trackedSpawn } from "./processes.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pythonRoot = join(here, "..", "python");
@@ -19,7 +19,7 @@ const providerFailure = (operation, error) => ({
 
 const runProcess = ({ command, args = [], input, timeoutMs }) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = trackedSpawn(command, args, {
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -224,7 +224,7 @@ export const runBodiesBatch = async ({ assets, config }) => {
       state: "unavailable",
     }));
   }
-  const child = spawn(
+  const child = trackedSpawn(
     config.pythonPath,
     [
       config.providerScriptPath,

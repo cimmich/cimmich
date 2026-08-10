@@ -205,21 +205,6 @@ export const runPhotoLab = async ({
             ),
         )
       : requestedOperations;
-  const setKey = digest({
-    assetIds: photoSet.assets.map(({ assetId }) => assetId),
-    setId: photoSet.setId,
-  }).slice(0, 24);
-  const setRoot = join(outputRoot, "sets", setKey);
-  await mkdir(setRoot, { recursive: true });
-  const previous = await previousRun(setRoot);
-  const reserved = await acquireRunDirectory(
-    setRoot,
-    (previous?.index.latestRevision ?? 0) + 1,
-  );
-  const runId = `local_ai_${setKey}_${reserved.runName}`;
-  const artifactRoot = join(reserved.runDir, "artifacts");
-  await mkdir(artifactRoot);
-  const runtimeAssets = [];
   const facesConfig = {
     ...config.providers.faces,
     maxInputPixels: config.limits.maxInputPixels,
@@ -240,6 +225,34 @@ export const runPhotoLab = async ({
     maxInputPixels: config.limits.maxEnhanceInputPixels,
     timeoutMs: config.limits.providerTimeoutMs,
   };
+  const imageProbes = [];
+  for (const asset of photoSet.assets) {
+    imageProbes.push(
+      await providerImplementations.probeImage({
+        asset,
+        config: {
+          maxInputPixels: config.limits.maxInputPixels,
+          pythonPath: config.providers.faces.pythonPath,
+          timeoutMs: config.limits.providerTimeoutMs,
+        },
+      }),
+    );
+  }
+  const setKey = digest({
+    assetIds: photoSet.assets.map(({ assetId }) => assetId),
+    setId: photoSet.setId,
+  }).slice(0, 24);
+  const setRoot = join(outputRoot, "sets", setKey);
+  await mkdir(setRoot, { recursive: true });
+  const previous = await previousRun(setRoot);
+  const reserved = await acquireRunDirectory(
+    setRoot,
+    (previous?.index.latestRevision ?? 0) + 1,
+  );
+  const runId = `local_ai_${setKey}_${reserved.runName}`;
+  const artifactRoot = join(reserved.runDir, "artifacts");
+  await mkdir(artifactRoot);
+  const runtimeAssets = [];
   const bodyBatchResults =
     executedOperations.includes("bodies") &&
     photoSet.assets.length > 1 &&
@@ -253,14 +266,7 @@ export const runPhotoLab = async ({
   for (const [assetIndex, assetInput] of photoSet.assets.entries()) {
     const operations = {};
     const name = safeName(assetInput.assetId);
-    const image = await providerImplementations.probeImage({
-      asset: assetInput,
-      config: {
-        maxInputPixels: config.limits.maxInputPixels,
-        pythonPath: config.providers.faces.pythonPath,
-        timeoutMs: config.limits.providerTimeoutMs,
-      },
-    });
+    const image = imageProbes[assetIndex];
     if (executedOperations.includes("faces")) {
       operations.faces = await timed(() =>
         providerImplementations.runFaces({

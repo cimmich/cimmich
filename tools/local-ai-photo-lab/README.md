@@ -88,6 +88,48 @@ per-photo timings.
 
 ## Run
 
+Verify all configured runtimes, model artifacts, the body manifest/privacy
+boundary, accelerator providers, and loopback vision model before using media:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs doctor \
+  --config /absolute/local/config.json
+```
+
+The doctor receipt contains runtime versions and artifact digests without local
+filesystem paths.
+
+Run the labelled public benchmark against an explicit fixture root:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
+  --config /absolute/local/config.json \
+  --manifest tools/local-ai-photo-lab/benchmark/public-diverse-v1.json \
+  --fixture-root /absolute/path/to/cedar-house-v1/media \
+  --output /absolute/local/benchmark-output
+```
+
+The benchmark emits a machine-readable receipt and Markdown scorecard. Fixture
+paths are constrained beneath `--fixture-root`; scorecards retain only relative
+result paths.
+
+Create and benchmark the deterministic head-occlusion Context fixture:
+
+```sh
+tools/local-ai-photo-lab/python/make_head_occlusion_fixture.py \
+  --source /absolute/path/to/CHA-001-maya-kitchen.png \
+  --output /absolute/local/context-fixture
+
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
+  --config /absolute/local/config.json \
+  --manifest tools/local-ai-photo-lab/benchmark/context-head-occlusion-v1.json \
+  --fixture-root /absolute/local/context-fixture \
+  --output /absolute/local/benchmark-output
+```
+
+The fixture receipt binds the public source, transform configuration, and all
+three derived image digests without persisting the source path.
+
 ```sh
 node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs run \
   --config /absolute/local/config.json \
