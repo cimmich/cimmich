@@ -11,7 +11,41 @@ const batches = (items, size) => {
   return result;
 };
 
-export const scanUnnamed = async (companion, scope) => {
+export const unnamedScanAssetLimit = 250_000;
+export const unnamedTargetAssetLimit = 10_000;
+export const unnamedScanTimeoutMs = 120_000;
+
+const positiveLimit = (value, fallback) => {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+};
+
+export const scanUnnamed = async (
+  companion,
+  scope,
+  {
+    maxScannedAssets = unnamedScanAssetLimit,
+    maxTargetAssets = unnamedTargetAssetLimit,
+    now = Date.now,
+    timeoutMs = unnamedScanTimeoutMs,
+  } = {},
+) => {
+  const scanAssetLimit = positiveLimit(maxScannedAssets, unnamedScanAssetLimit);
+  const targetAssetLimit = positiveLimit(
+    maxTargetAssets,
+    unnamedTargetAssetLimit,
+  );
+  const durationLimitMs = positiveLimit(timeoutMs, unnamedScanTimeoutMs);
+  const startedAt = now();
+  const enforceDuration = () => {
+    if (now() - startedAt >= durationLimitMs) {
+      throw typedError(
+        "IMMICH_PERSON_RESOLUTION_SOURCE_TIMEOUT",
+        "Immich possible-person discovery exceeded its time bound",
+        504,
+      );
+    }
+  };
   const status = await verifiedCompanionStatus(companion, {
     failClosed: true,
   });
@@ -29,6 +63,7 @@ export const scanUnnamed = async (companion, scope) => {
   for (const visibility of scope.visibilities) {
     let cursor = "";
     do {
+      enforceDuration();
       const page = await companion.listAssets({
         cursor,
         includePeople: true,
@@ -36,7 +71,7 @@ export const scanUnnamed = async (companion, scope) => {
         visibility,
       });
       scannedAssetCount += page.items.length;
-      if (scannedAssetCount > 1_000_000) {
+      if (scannedAssetCount > scanAssetLimit) {
         throw typedError(
           "IMMICH_PERSON_RESOLUTION_SOURCE_TOO_LARGE",
           "Immich possible-person discovery exceeds the supported scan bound",
@@ -57,6 +92,13 @@ export const scanUnnamed = async (companion, scope) => {
         ) {
           continue;
         }
+        if (targetAssetIds.size >= targetAssetLimit) {
+          throw typedError(
+            "IMMICH_PERSON_RESOLUTION_TARGET_TOO_LARGE",
+            "Immich possible-person discovery exceeds the supported candidate bound",
+            413,
+          );
+        }
         targetAssetIds.add(asset.immichAssetId);
         assets.push(asset);
       }
@@ -66,6 +108,7 @@ export const scanUnnamed = async (companion, scope) => {
 
   const facesByAsset = new Map();
   for (const group of batches(assets, 8)) {
+    enforceDuration();
     const pages = await Promise.all(
       group.map((asset) =>
         companion.listAssetFaces({ assetId: asset.immichAssetId }),
@@ -83,5 +126,15 @@ export const scanUnnamed = async (companion, scope) => {
       );
     }
   }
-  return { assets, facesByAsset };
+  return {
+    assets,
+    facesByAsset,
+    scanSummary: {
+      scannedAssetCount,
+      scanAssetLimit,
+      targetAssetCount: assets.length,
+      targetAssetLimit,
+      timeoutMs: durationLimitMs,
+    },
+  };
 };

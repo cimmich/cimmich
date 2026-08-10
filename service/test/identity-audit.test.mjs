@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   carryForwardIdentityAuditDismissals,
   createIdentityAudit,
+  identityAuditIndependenceComparisonLimit,
   identityAuditQueryFrontierLimit,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
@@ -602,10 +603,11 @@ test("full audit bounds both comparison frontiers deterministically and reports 
     source.indexOf("eligible_queries AS MATERIALIZED") <
       source.indexOf("stronger.asset_id = candidate.asset_id"),
   );
-  // Truncation is observable, never silent, and the default bound sits far
-  // above realistic library sizes so default behavior is unchanged.
+  // Truncation is observable, never silent, and the default is a finite
+  // production frontier rather than a diagnostic-scale near-unbounded scan.
   assert.match(source, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
-  assert.ok(identityAuditQueryFrontierLimit >= 50_000);
+  assert.equal(identityAuditQueryFrontierLimit, 5_000);
+  assert.equal(identityAuditIndependenceComparisonLimit, 100);
 });
 
 test("independence verification honors the configured bound and concurrency", async () => {

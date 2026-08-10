@@ -11,19 +11,15 @@ export const identityAuditIndependenceScoreFloor = 0.75;
 // exact float equality (which failed whole audit runs on last-bit replays).
 export const identityAuditSimilarityEpsilon = 1e-6;
 // The full audit scores every eligible query Face against the whole prime
-// gallery in one statement, which is unbounded O(queries x gallery). The
-// query side is therefore capped the same way repository.mjs bounds
-// machineSuggestions: one deterministic ranked frontier. The default sits far
-// above any realistic library so it is behavior-preserving; when a library
-// does exceed it, the truncation is reported (never silent) via a structured
-// IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED warning.
-export const identityAuditQueryFrontierLimit = 50_000;
+// gallery in one statement, which is O(queries x gallery). Keep one
+// deterministic, production-sized query frontier. Larger libraries retain
+// their strongest eligible queries and emit a structured truncation warning.
+export const identityAuditQueryFrontierLimit = 5_000;
 // Independent-evidence verification runs two provider comparisons per
-// candidate. The historical behavior (no candidate bound, two concurrent
-// verification lanes) stays the default; both are configurable knobs now.
+// candidate. Bound the normal owner run to 100 strongest candidates (200
+// provider comparisons); controlled diagnostics may supply another limit.
 export const identityAuditIndependenceConcurrency = 2;
-export const identityAuditIndependenceComparisonLimit =
-  Number.POSITIVE_INFINITY;
+export const identityAuditIndependenceComparisonLimit = 100;
 // Both audit transactions run under these bounds. The reconcile sweep's
 // interrupt threshold must exceed the longest stretch a healthy run can go
 // without touching its own run row - one full audit transaction - or the
@@ -768,9 +764,8 @@ export const suppressSamePhotoDerivatives = async (
       AND item.suggested_reference_asset_id IS NOT NULL
     ORDER BY item.suggested_score DESC, item.margin DESC, item.face_id
   `;
-  // Both knobs default to the historical behavior (no bound, two lanes). A
-  // finite bound trims the already strongest-first candidate ranking, and the
-  // truncation is reported rather than silent.
+  // A finite bound trims the already strongest-first candidate ranking, and
+  // the truncation is reported rather than silent.
   const boundedComparisonLimit = cleanComparisonLimit(
     comparisonLimit,
     identityAuditIndependenceComparisonLimit,
