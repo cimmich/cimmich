@@ -23,7 +23,7 @@
   import { AssetMediaSize, getAssetInfo, searchAssets, type AssetResponseDto, type TagResponseDto } from '@immich/sdk';
   import { Icon, LoadingSpinner } from '@immich/ui';
   import { mdiCheck, mdiChevronDown, mdiClose, mdiImageMultipleOutline, mdiMagnify } from '@mdi/js';
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import {
     familyLabel,
@@ -43,6 +43,7 @@
 
   const viewport: Viewport = $state({ width: 0, height: 0 });
   const selectedIds = new SvelteSet<string>();
+  const selectedOptionCache = new SvelteMap<string, TagBrowserOption>();
   const assetCache = new SvelteMap<string, AssetResponseDto | null>();
   let source = $state<TagSource>(
     initialPath || page.url.searchParams.get('tagSource') === 'normal' ? 'normal' : 'cimmich',
@@ -72,7 +73,9 @@
   const allOptions = $derived(source === 'cimmich' ? cimmichOptions : normalOptions);
   const visibleOptions = $derived(filterTagOptions(allOptions, query, source === 'cimmich' ? activeFamily : 'all'));
   const selectedOptions = $derived(
-    [...selectedIds].map((id) => allOptions.find((option) => option.id === id)).filter(Boolean) as TagBrowserOption[],
+    [...selectedIds]
+      .map((id) => allOptions.find((option) => option.id === id) ?? selectedOptionCache.get(id))
+      .filter(Boolean) as TagBrowserOption[],
   );
   const resultLabel = $derived(
     selectedOptions.length === 0
@@ -219,17 +222,31 @@
     }
   };
 
+  const clearDirectorySearchTimeout = () => {
+    if (directoryQueryTimeout) {
+      globalThis.clearTimeout(directoryQueryTimeout);
+      directoryQueryTimeout = undefined;
+    }
+  };
+
   const queueDirectorySearch = () => {
     if (source !== 'cimmich') {
       return;
     }
-    if (directoryQueryTimeout) {
-      globalThis.clearTimeout(directoryQueryTimeout);
-    }
+    clearDirectorySearchTimeout();
     const searchQuery = query.trim();
     directoryQueryTimeout = globalThis.setTimeout(() => {
+      directoryQueryTimeout = undefined;
       void loadDirectory(searchQuery.length >= 2 ? searchQuery : '');
     }, 250);
+  };
+
+  const clearDirectorySearch = () => {
+    query = '';
+    clearDirectorySearchTimeout();
+    if (source === 'cimmich') {
+      void loadDirectory();
+    }
   };
 
   const fetchAssets = async (ids: string[], generation: number) => {
@@ -333,14 +350,17 @@
   const toggleOption = (option: TagBrowserOption) => {
     if (selectedIds.has(option.id)) {
       selectedIds.delete(option.id);
+      selectedOptionCache.delete(option.id);
     } else {
       selectedIds.add(option.id);
+      selectedOptionCache.set(option.id, option);
     }
     void refreshResults();
   };
 
   const clearSelection = () => {
     selectedIds.clear();
+    selectedOptionCache.clear();
     void refreshResults();
   };
 
@@ -350,6 +370,7 @@
     }
     source = next;
     query = '';
+    clearDirectorySearchTimeout();
     activeFamily = 'all';
     clearSelection();
     if (next === 'cimmich' && directoryError) {
@@ -403,11 +424,17 @@
         }
         const nextSourceCount = Math.min(targetCount, matchedCimmichIds.length);
         const nextIds = matchedCimmichIds.slice(loadedCimmichSourceCount, nextSourceCount);
-        resultAssets = [...resultAssets, ...(await fetchAssets(nextIds, generation))];
+        const nextAssets = await fetchAssets(nextIds, generation);
+        if (generation !== resultGeneration) {
+          return;
+        }
+        resultAssets = [...resultAssets, ...nextAssets];
         loadedCimmichSourceCount = nextSourceCount;
       }
     } catch (error_) {
-      resultError = error_ instanceof Error ? error_.message : 'Could not load more photos.';
+      if (generation === resultGeneration) {
+        resultError = error_ instanceof Error ? error_.message : 'Could not load more photos.';
+      }
     } finally {
       if (generation === resultGeneration) {
         resultsLoading = false;
@@ -425,10 +452,13 @@
       const initial = normalOptions.find((option) => option.label === initialPath);
       if (initial) {
         selectedIds.add(initial.id);
+        selectedOptionCache.set(initial.id, initial);
         void refreshResults();
       }
     }
   });
+
+  onDestroy(clearDirectorySearchTimeout);
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-4 px-4 pt-3 pb-6 sm:px-6 lg:px-8">
@@ -483,7 +513,7 @@
               type="button"
               class="absolute inset-y-0 inset-e-1 flex min-w-11 items-center justify-center text-gray-500"
               aria-label="Clear tag search"
-              onclick={() => (query = '')}><Icon icon={mdiClose} size="18" /></button
+              onclick={clearDirectorySearch}><Icon icon={mdiClose} size="18" /></button
             >
           {/if}
         </label>

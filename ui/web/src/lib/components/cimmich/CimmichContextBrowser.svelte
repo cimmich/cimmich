@@ -110,6 +110,7 @@
     contextFamilyFromDetailParams,
     contextFamilyKind,
     contextFamilyLabels,
+    contextRouteLoadSignature,
     contextRequestedEntityId,
     contextPlaceCountryLabel,
     contextGeographySubdivisionName,
@@ -165,6 +166,15 @@
       : null);
 
   let activeFamily = $state<CimmichContextFamily>(untrack(() => resolveRequestedFamily() ?? families[0]));
+  const routeLoadSignature = $derived(
+    contextRouteLoadSignature({
+      activeFamily,
+      allowedFamilies: families,
+      entityName: requestedEntityName,
+      searchParams: page.url.searchParams,
+      visibilityVersion: cimmichVisibilityManager.version,
+    }),
+  );
   let entities = $state<CimmichContextEntity[]>([]);
   let error = $state<CimmichServiceError | null>(null);
   let loaded = $state(false);
@@ -927,43 +937,20 @@
     void goto(getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName));
   };
 
-  // Changing tab re-renders the detail, which DESTROYS the tab rail's buttons —
-  // so the focused tab node no longer exists by the time navigation settles.
-  // `keepFocus: true` cannot restore an element that is gone, and focus falls to
-  // <body>: verified in the browser, where a keydown after clicking a tab arrives
-  // with target BODY. That breaks the tablist twice over — arrow keys work exactly
-  // once and then die, and a mouse user who clicks a tab is left with no focus at
-  // all. Re-focus the selected tab AFTER the new rail exists, and only when the
-  // interaction came from the rail, so unrelated navigation does not steal focus.
   let detailTabRail = $state<HTMLDivElement | undefined>();
-  // Deliberately NOT $state: this is a one-shot latch, and making it reactive
-  // would let the effect that clears it re-trigger itself.
   let pendingTabFocus = false;
 
-  // Waiting on goto()'s promise and a tick() is NOT enough — measured, it restored
-  // focus to nothing at all, because the rail has not been rebuilt by then. React
-  // instead to the rail node itself being replaced (the binding is $state, so this
-  // effect re-runs on every rebuild) and claim focus the moment the new selected
-  // tab exists.
   $effect(() => {
     const rail = detailTabRail;
     void activeDetailTab;
     if (!rail || !pendingTabFocus) {
       return;
     }
-    const active = document.activeElement;
-    // Restoring once is not enough: the rail rebuilds SEVERAL times as the newly
-    // selected panel loads, and each rebuild destroys the button we just focused.
-    // So stay armed, and reclaim only when nothing owns focus — never steal it
-    // from a real element. Once focus lands somewhere outside the rail the user
-    // has moved on, and the latch is dropped.
-    if (active && active !== document.body) {
-      if (!rail.contains(active)) {
-        pendingTabFocus = false;
-      }
-      return;
+    const tab = rail.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
+    tab?.focus();
+    if (document.activeElement === tab) {
+      pendingTabFocus = false;
     }
-    rail.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
   });
 
   const selectDetailTab = (tab: ContextDetailTab, restoreFocus = false) => {
@@ -2895,12 +2882,11 @@
   });
 
   $effect(() => {
-    const visibilityVersion = cimmichVisibilityManager.version;
-    const requestedFamily = resolveRequestedFamily();
-    const requestedName = requestedEntityName;
-    const requestedEntityId = contextRequestedEntityId(page.url.searchParams, requestedFamily ?? activeFamily);
-    if (visibilityVersion >= 0) {
+    if (routeLoadSignature) {
       untrack(() => {
+        const requestedFamily = resolveRequestedFamily();
+        const requestedName = requestedEntityName;
+        const requestedEntityId = contextRequestedEntityId(page.url.searchParams, requestedFamily ?? activeFamily);
         if (requestedFamily) {
           activeFamily = requestedFamily;
         }

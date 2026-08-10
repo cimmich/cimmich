@@ -80,6 +80,44 @@ describe('CimmichTagBrowser', () => {
     await waitFor(() => expect(getByRole('button', { name: 'Cimmich' })).toBeInTheDocument());
   });
 
+  it('reloads the complete Cimmich directory when server-backed search is cleared', async () => {
+    mocks.getPeople.mockImplementation((_limit: number, query = '') =>
+      Promise.resolve(
+        query
+          ? [person('person_1', 'Alex Example')]
+          : [person('person_1', 'Alex Example'), person('person_2', 'Blair Example')],
+      ),
+    );
+    const { findByText, getByRole, queryByText } = render(CimmichTagBrowser, { tags: [] });
+    await findByText('Blair Example');
+
+    await fireEvent.input(getByRole('searchbox', { name: 'Search Cimmich tags' }), {
+      target: { value: 'Alex' },
+    });
+    await waitFor(() => expect(mocks.getPeople).toHaveBeenLastCalledWith(500, 'Alex', { presentation: false }));
+    await waitFor(() => expect(queryByText('Blair Example')).not.toBeInTheDocument());
+
+    await fireEvent.click(getByRole('button', { name: 'Clear tag search' }));
+    await waitFor(() => expect(mocks.getPeople).toHaveBeenLastCalledWith(500, '', { presentation: false }));
+    expect(await findByText('Blair Example')).toBeInTheDocument();
+  });
+
+  it('keeps selected tags active while a server search replaces the visible directory subset', async () => {
+    mocks.getPeople.mockImplementation((_limit: number, query = '') =>
+      Promise.resolve(query ? [person('person_1', 'Alex Example')] : [person('person_2', 'Blair Example')]),
+    );
+    const { findByText, getByRole } = render(CimmichTagBrowser, { tags: [] });
+    await findByText('Blair Example');
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+
+    await fireEvent.input(getByRole('searchbox', { name: 'Search Cimmich tags' }), {
+      target: { value: 'Alex' },
+    });
+    await waitFor(() => expect(mocks.getPeople).toHaveBeenLastCalledWith(500, 'Alex', { presentation: false }));
+    expect(getByRole('button', { name: 'Remove Blair Example' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Photos tagged Blair Example' })).toBeInTheDocument();
+  });
+
   it('selects multiple Cimmich tags, renders their intersection, and follows the server cursor', async () => {
     mocks.getTagAssets
       .mockResolvedValueOnce({
@@ -94,7 +132,7 @@ describe('CimmichTagBrowser', () => {
         pageSize: 120,
         total: 2,
       });
-    const { findByText, getByRole, getByTestId } = render(CimmichTagBrowser, { tags: [] });
+    const { findByRole, findByText, getByRole, getByTestId } = render(CimmichTagBrowser, { tags: [] });
     await findByText('Alex Example');
 
     await fireEvent.click(getByRole('checkbox', { name: /Alex Example/ }));
@@ -103,8 +141,36 @@ describe('CimmichTagBrowser', () => {
     await waitFor(() => expect(mocks.getTagAssets).toHaveBeenCalledTimes(1));
     expect(await findByText('Photos with all 2 selected tags')).toBeInTheDocument();
     await waitFor(() => expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_a'));
-    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+    await fireEvent.click(await findByRole('button', { name: 'Load more' }));
     await waitFor(() => expect(mocks.getTagAssets).toHaveBeenLastCalledWith(expect.any(Array), 120, 'cursor_1'));
     await waitFor(() => expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_a,source_b'));
+  });
+
+  it('ignores an obsolete load-more failure after the selected tags change', async () => {
+    let rejectMore: (error: Error) => void = () => {};
+    const staleMore = new Promise<never>((_resolve, reject) => {
+      rejectMore = reject;
+    });
+    mocks.getTagAssets
+      .mockResolvedValueOnce({
+        items: [{ assetId: 'asset_a', sourceAssetId: 'source_a' }],
+        nextCursor: 'cursor_1',
+        pageSize: 120,
+        total: 2,
+      })
+      .mockReturnValueOnce(staleMore);
+    const { findByRole, findByText, getByRole, queryByText } = render(CimmichTagBrowser, { tags: [] });
+    await findByText('Alex Example');
+    await fireEvent.click(getByRole('checkbox', { name: /Alex Example/ }));
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+    await waitFor(() => expect(mocks.getTagAssets).toHaveBeenCalledOnce());
+    await fireEvent.click(await findByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(mocks.getTagAssets).toHaveBeenCalledTimes(2));
+
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+    await waitFor(() => expect(mocks.getPersonAssets).toHaveBeenCalledWith('person_1', 250));
+    rejectMore(new Error('obsolete page failure'));
+    await waitFor(() => expect(queryByText('obsolete page failure')).not.toBeInTheDocument());
+    expect(await findByText('Photos tagged Alex Example')).toBeInTheDocument();
   });
 });

@@ -345,21 +345,17 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(hero).toMatch(/<Map\b[\s\S]*?center=\{locatorCenter\}[\s\S]*?zoom=\{13\}/);
   });
 
-  it('returns focus to the selected tab, which the rail rebuild would otherwise drop', async () => {
+  it('moves keyboard focus to the newly selected tab without depending on a detail reload', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    // Changing tab re-renders the detail and destroys the rail's buttons, so the
-    // focused tab node stops existing and focus falls to <body>: arrow keys then
-    // work exactly once, and a click leaves focus nowhere. Restoration must survive
-    // SEVERAL rebuilds, so the latch stays armed and only reclaims focus when
-    // nothing owns it.
     expect(browser).toContain('bind:this={detailTabRail}');
     expect(browser).toContain('onclick={() => selectDetailTab(tab.value, true)}');
     expect(browser).toContain('selectDetailTab(next.value, true)');
-    expect(browser).toContain('rail.querySelector<HTMLButtonElement>(\'[role="tab"][aria-selected="true"]\')?.focus()');
-    expect(browser).toContain('if (active && active !== document.body) {');
-    // The old one-shot attempt focused a node that the pending navigation was
-    // about to throw away.
+    expect(browser).toContain(
+      'const tab = rail.querySelector<HTMLButtonElement>(\'[role="tab"][aria-selected="true"]\')',
+    );
+    expect(browser).toContain('if (document.activeElement === tab) {');
+    expect(browser).not.toContain('if (active && active !== document.body) {');
     expect(browser).not.toContain('void tabs?.[nextIndex]?.focus();');
   });
 

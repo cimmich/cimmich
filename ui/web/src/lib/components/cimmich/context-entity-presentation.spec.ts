@@ -8,6 +8,7 @@ import {
   contextFamilyHasNamedRoute,
   contextFamilyKind,
   contextFamilyLabels,
+  contextRouteLoadSignature,
   contextPlaceLocationLabel,
   contextPlaceCountryLabel,
   contextGeographySubdivisionName,
@@ -67,6 +68,28 @@ const entity = (
 });
 
 describe('Cimmich context entity presentation', () => {
+  it('keeps tab-only navigation out of the directory and detail load identity', () => {
+    const url = new URL('http://localhost/cimmich/places/Cedar?placeId=place_1');
+    const signature = () =>
+      contextRouteLoadSignature({
+        activeFamily: 'places',
+        allowedFamilies: ['places'],
+        entityName: 'Cedar',
+        searchParams: url.searchParams,
+        visibilityVersion: 4,
+      });
+    const initial = signature();
+    url.searchParams.set('tab', 'map');
+    expect(signature()).toBe(initial);
+    url.searchParams.set('tab', 'documents');
+    expect(signature()).toBe(initial);
+    url.searchParams.set('placeId', 'place_2');
+    expect(signature()).not.toBe(initial);
+    url.searchParams.set('placeId', 'place_1');
+    url.searchParams.set('geographyGroup', 'Australia');
+    expect(signature()).not.toBe(initial);
+  });
+
   it('never falls an existing-record edit through to create when its live selection changes', () => {
     expect(resolveContextEditorMutation('create', null)).toEqual({ kind: 'create' });
     expect(resolveContextEditorMutation('edit', { entityId: 'object_star_quilt', revision: 4 })).toEqual({

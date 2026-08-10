@@ -325,6 +325,36 @@ export const contextFamilyFromDetailParams = (
 export const contextRequestedEntityId = (searchParams: Pick<URLSearchParams, 'get'>, family: CimmichContextFamily) =>
   searchParams.get(contextFamilyIdParam[family]) ?? searchParams.get('entityId') ?? '';
 
+export const contextRouteLoadSignature = ({
+  activeFamily,
+  allowedFamilies,
+  entityName,
+  searchParams,
+  visibilityVersion,
+}: {
+  activeFamily: CimmichContextFamily;
+  allowedFamilies: readonly CimmichContextFamily[];
+  entityName: string;
+  searchParams: Pick<URLSearchParams, 'get'>;
+  visibilityVersion: number;
+}) => {
+  if (visibilityVersion < 0) {
+    return '';
+  }
+  const familyFromId = contextFamilyFromDetailParams(searchParams, allowedFamilies);
+  const familyFromQuery = allowedFamilies.includes(searchParams.get('family') as CimmichContextFamily)
+    ? (searchParams.get('family') as CimmichContextFamily)
+    : null;
+  const family = familyFromId ?? familyFromQuery ?? activeFamily;
+  return JSON.stringify([
+    visibilityVersion,
+    family,
+    entityName.trim(),
+    contextRequestedEntityId(searchParams, family),
+    family === 'places' ? (searchParams.get('geographyGroup')?.trim() ?? '') : '',
+  ]);
+};
+
 export const getContextDetailHref = (
   currentUrl: URL,
   family: CimmichContextFamily,
