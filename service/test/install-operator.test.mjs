@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -9,6 +16,7 @@ const root = resolve(import.meta.dirname, "../..");
 const installer = join(root, "tools/install.sh");
 const companion = join(root, "tools/companion.sh");
 const bundleBuilder = join(root, "tools/build_install_bundle.sh");
+const checksum = join(root, "tools/sha256.sh");
 const sourceShape = join(root, "tools/check_source_shape.mjs");
 
 test("source-shape debt is explicit and cannot grow", () => {
@@ -34,10 +42,10 @@ test("repository presents a conventional install and excludes dependency output"
   });
   assert.equal(tracked.status, 0, tracked.stderr);
   assert.doesNotMatch(tracked.stdout, /(^|\/)node_modules\//m);
-  assert.match(development, /two deliberately separate JavaScript workspaces/);
+  assert.match(development, /two deliberate JavaScript workspaces/i);
   assert.match(
     development,
-    /`ui\/packages\/sdk` is \*\*not\*\* `node_modules`/,
+    /`ui\/packages\/sdk` is \*\*not `node_modules`\*\*/,
   );
   assert.equal(JSON.parse(sdkManifest).name, "@immich/sdk");
   assert.ok(
@@ -51,7 +59,7 @@ test("repository presents a conventional install and excludes dependency output"
 });
 
 test("guided installer has a non-mutating help surface and valid portable shell", () => {
-  for (const path of [installer, companion, bundleBuilder]) {
+  for (const path of [installer, companion, bundleBuilder, checksum]) {
     const syntax = spawnSync("sh", ["-n", path], { encoding: "utf8" });
     assert.equal(syntax.status, 0, syntax.stderr);
   }
@@ -72,6 +80,50 @@ test("guided installer has a non-mutating help surface and valid portable shell"
   });
   assert.notEqual(unsupported.status, 0);
   assert.doesNotMatch(unsupported.stderr, /secret=value/);
+});
+
+test("checksum operator generates and verifies with shasum-only PATH", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cimmich-shasum-test-"));
+  try {
+    const isolatedBin = join(temporaryRoot, "bin");
+    const payloadRoot = join(temporaryRoot, "payload");
+    await mkdir(isolatedBin);
+    await mkdir(payloadRoot);
+    const shasumPath = spawnSync("sh", ["-c", "command -v shasum"], {
+      encoding: "utf8",
+    }).stdout.trim();
+    assert.ok(shasumPath, "shasum is required for the portability test");
+    await symlink("/bin/sh", join(isolatedBin, "sh"));
+    await symlink(shasumPath, join(isolatedBin, "shasum"));
+    await writeFile(join(payloadRoot, "one.txt"), "portable checksum\n");
+
+    const environment = { ...process.env, PATH: isolatedBin };
+    const check = spawnSync(checksum, ["check"], {
+      encoding: "utf8",
+      env: environment,
+    });
+    assert.equal(check.status, 0, check.stderr);
+    assert.equal(check.stdout.trim(), "shasum");
+
+    const generated = spawnSync(checksum, ["generate", "one.txt"], {
+      cwd: payloadRoot,
+      encoding: "utf8",
+      env: environment,
+    });
+    assert.equal(generated.status, 0, generated.stderr);
+    assert.match(generated.stdout, /^[0-9a-f]{64}  one\.txt\n$/u);
+    await writeFile(join(payloadRoot, "SHA256SUMS"), generated.stdout);
+
+    const verified = spawnSync(checksum, ["verify", "SHA256SUMS"], {
+      cwd: payloadRoot,
+      encoding: "utf8",
+      env: environment,
+    });
+    assert.equal(verified.status, 0, verified.stderr);
+    assert.match(verified.stdout, /one\.txt: OK/u);
+  } finally {
+    await rm(temporaryRoot, { force: true, recursive: true });
+  }
 });
 
 test("advanced startup rejects an unsupported Immich before any Compose or migration path", async () => {
@@ -132,6 +184,7 @@ test("guided install stops at signed-in preview and documentation separates both
     readme,
     publicDemoScript,
     bundleScript,
+    checksumScript,
     agentInstall,
     gateway,
     version,
@@ -143,6 +196,7 @@ test("guided install stops at signed-in preview and documentation separates both
     readFile(join(root, "README.md"), "utf8"),
     readFile(join(root, "tools/public_demo.sh"), "utf8"),
     readFile(bundleBuilder, "utf8"),
+    readFile(checksum, "utf8"),
     readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
     readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
     readFile(join(root, "CIMMICH_VERSION"), "utf8"),
@@ -180,12 +234,12 @@ test("guided install stops at signed-in preview and documentation separates both
     /immich-credential|refresh_immich_companion/,
   );
 
-  assert.match(install, /Guarded installer/);
-  assert.match(install, /Five-minute Docker Compose install/);
   assert.match(
     install,
-    /downloaded the named Cimmich tar or ZIP|Download the named Cimmich tar or ZIP/,
+    /checked-in installer is the supported end-to-end path/,
   );
+  assert.doesNotMatch(install, /Five-minute Docker Compose install/);
+  assert.match(install, /Download a \*\*named Cimmich release bundle\*\*/);
   assert.match(install, /Native Windows PowerShell is not supported/);
   assert.match(install, /dedicated read-only Immich API key/);
   assert.match(install, /## Updating/);
@@ -199,14 +253,22 @@ test("guided install stops at signed-in preview and documentation separates both
     /never ask for an API key, password or token in chat/i,
   );
   assert.match(agentInstall, /never use `sudo`/);
-  assert.match(install, /redacted JSON report/);
+  assert.match(install, /returns redacted JSON covering/);
   assert.match(install, /write-only field/);
-  assert.match(readme, /\[Install in five minutes\]\(INSTALL\.md\)/);
+  assert.match(readme, /\[Install Cimmich\]\(INSTALL\.md\)/);
   assert.match(readme, /## Install beside Immich/);
-  assert.match(readme, /docker compose up --detach --build --wait/);
+  assert.match(readme, /\.\/tools\/install\.sh --check/);
+  assert.doesNotMatch(readme, /docker compose up --detach --build --wait/);
   assert.doesNotMatch(readme, /ghcr\.io\/cimmich/);
   assert.match(readme, /DEVELOPMENT\.md/);
-  assert.match(readme, /preview the exact\s+scope before importing/);
+  assert.match(readme, /Reversible archive organisation/);
+  assert.match(readme, /People exploration with context/);
+  assert.match(
+    readme,
+    /Native Immich manual face assignments do not train or damage Immich's\s+recognition model/,
+  );
+  assert.match(readme, /complete the guided\s+library preview/);
+  assert.match(install, /Preview the exact library lanes/);
   assert.match(script, /Cimmich install check/);
   assert.match(script, /This computer is ready for the guided install/);
   assert.match(script, /Continue\? Enter y or n/);
@@ -248,6 +310,9 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(script, /command -v ss/);
   assert.match(script, /"installer":"blocked"[\s\S]*"portIssues"/);
   assert.match(script, /Docker storage may be elsewhere/);
+  assert.match(script, /"\$CHECKSUM" check/);
+  assert.match(checksumScript, /sha256sum/);
+  assert.match(checksumScript, /shasum -a 256/);
   assert.match(compose, /cimmich-immich-preflight:/);
   assert.match(compose, /wget -q -T 10/);
   assert.match(compose, /actual="\$\$major\.\$\$minor\.\$\$patch"/);
@@ -285,13 +350,13 @@ test("guided install stops at signed-in preview and documentation separates both
     companionScript,
     /CIMMICH_LOCAL_MEDIA_PROVIDER=opencv-yunet-sface-cpu/,
   );
-  assert.match(install, /Optional local Face recognition/);
+  assert.match(install, /Optional local face provider/);
   assert.match(
     install,
-    /preflight stops before Cimmich database startup unless Immich is reachable\s+and exactly 3\.1\.0/i,
+    /installer verifies exact Immich 3\.1\.0 before it creates Cimmich state/i,
   );
   assert.match(install, /face-provider install-recommended/);
-  assert.match(install, /checksum-pinned OpenCV YuNet and SFace/);
+  assert.match(install, /checksum-pinned OpenCV YuNet\s+and SFace/);
   assert.match(
     script,
     /complete_private_password_after_resume[\s\S]*print_install_success/,

@@ -4,6 +4,26 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.8 — Photo privacy and portable operations
+
+- Standard and Personal now exclude higher-ranked photos before inherited
+  Folder/gallery thumbnails, Timeline buckets, direct photo/video renderers,
+  preloads and viewer actions mount. A direct protected URL shows a bounded
+  hidden-photo state with only Back and the viewing-mode control available.
+- Private remains active while moving between Cimmich and ordinary Folder,
+  Timeline or viewer routes. Explicit Exit Private, device lock and background
+  lock retain their existing behavior.
+- Photo presentation checks are bounded to 500 unique source IDs, batched,
+  serialised, cached by viewing-mode version and fail closed on lookup errors.
+- Backup, restore, portable export and portable restore use one checked-in
+  SHA-256 operator that supports either GNU `sha256sum` or macOS `shasum`; the
+  installer preflights the complete lifecycle dependency.
+- Public documentation now leads with the product, one supported lifecycle,
+  practical privacy, inspectable governance and rights-cleared Cedar House
+  captures while retaining Preview 7's Labels, folder albums and People
+  filters.
+- Schema remains 128/patch 1 and compatibility remains exact Immich 3.1.0.
+
 ## v1.1.0-community-preview.7 — Faster review and archive organisation
 
 - People and Person share URL-backed filters for exact privacy, Cimmich-owned

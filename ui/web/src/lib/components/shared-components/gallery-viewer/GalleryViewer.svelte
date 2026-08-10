@@ -8,6 +8,8 @@
   import Portal from '$lib/elements/Portal.svelte';
   import type { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
+  import { cimmichAssetPresentationManager } from '$lib/managers/cimmich-asset-presentation-manager';
+  import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import type { TimelineAsset, Viewport } from '$lib/managers/timeline-manager/types';
   import AssetDeleteConfirmModal from '$lib/modals/AssetDeleteConfirmModal.svelte';
@@ -65,10 +67,43 @@
     allowDeletion = true,
   }: Props = $props();
 
-  const navigationAssets = $derived(viewerAssets ?? assets);
+  let presentationGeneration = 0;
+  let presentationError = $state(false);
+  let presentationReady = $state(false);
+  let presentableIds = $state<Set<string>>(new Set());
+
+  $effect(() => {
+    const visibilityVersion = cimmichVisibilityManager.version;
+    const requestedIds = [...assets, ...(viewerAssets ?? [])].map(({ id }) => id);
+    const generation = ++presentationGeneration;
+    presentationError = false;
+    presentationReady = false;
+    void cimmichAssetPresentationManager
+      .presentableIds(requestedIds, visibilityVersion)
+      .then((nextIds) => {
+        if (generation !== presentationGeneration) {
+          return;
+        }
+        presentableIds = nextIds;
+        presentationReady = true;
+      })
+      .catch(() => {
+        if (generation !== presentationGeneration) {
+          return;
+        }
+        presentableIds = new Set();
+        presentationError = true;
+        presentationReady = true;
+      });
+  });
+
+  const displayAssets = $derived(presentationReady ? assets.filter(({ id }) => presentableIds.has(id)) : []);
+  const navigationAssets = $derived(
+    presentationReady ? (viewerAssets ?? assets).filter(({ id }) => presentableIds.has(id)) : [],
+  );
 
   const geometry = $derived(
-    getJustifiedLayoutFromAssets(assets, {
+    getJustifiedLayoutFromAssets(displayAssets, {
       spacing: 2,
       heightTolerance: 0.5,
       rowHeight: Math.floor(viewport.width) < 850 ? 100 : 235,
@@ -119,7 +154,7 @@
   });
 
   const selectAllAssets = () => {
-    assetInteraction.selectAssets(assets.map((a) => toTimelineAsset(a)));
+    assetInteraction.selectAssets(displayAssets.map((a) => toTimelineAsset(a)));
   };
 
   const handleSelectAssets = (asset: TimelineAsset) => {
@@ -162,14 +197,14 @@
       return;
     }
 
-    let start = assets.findIndex((a) => a.id === startAsset.id);
-    let end = assets.findIndex((a) => a.id === endAsset.id);
+    let start = displayAssets.findIndex((a) => a.id === startAsset.id);
+    let end = displayAssets.findIndex((a) => a.id === endAsset.id);
 
     if (start > end) {
       [start, end] = [end, start];
     }
 
-    assetInteraction.setAssetSelectionCandidates(assets.slice(start, end + 1).map((a) => toTimelineAsset(a)));
+    assetInteraction.setAssetSelectionCandidates(displayAssets.slice(start, end + 1).map((a) => toTimelineAsset(a)));
   };
 
   const onSelectStart = (event: Event) => {
@@ -293,7 +328,7 @@
           assets.findIndex((currentAsset) => currentAsset.id === action.asset.id),
           1,
         );
-        if (assets.length === 0) {
+        if (displayAssets.length === 0) {
           return await goto(Route.photos());
         }
         if (nextAsset) {
@@ -338,13 +373,23 @@
 
 <svelte:document onselectstart={onSelectStart} use:shortcuts={shortcutList} onscroll={() => updateSlidingWindow()} />
 
-{#if assets.length > 0}
+{#if presentationError}
+  <div
+    class="mx-auto max-w-xl rounded-xl border border-red-300 bg-red-50 p-4 text-center text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100"
+    role="alert"
+  >
+    Photos are hidden because Cimmich could not verify the active privacy view. Retry the page or use the viewing-mode
+    control.
+  </div>
+{/if}
+
+{#if displayAssets.length > 0}
   <div
     style:position="relative"
     style:height={geometry.containerHeight + 'px'}
     style:width={geometry.containerWidth + 'px'}
   >
-    {#each assets as asset, index (asset.id + '-' + index)}
+    {#each displayAssets as asset, index (asset.id + '-' + index)}
       {#if isInOrNearViewport(index)}
         {@const currentAsset = toTimelineAsset(asset)}
         <div class="absolute" style:overflow="clip" style={getStyle(index)}>

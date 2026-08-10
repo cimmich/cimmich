@@ -53,14 +53,14 @@ describe('AssetViewerNavBar component', () => {
     expect(getByLabelText('go_back')).toBeInTheDocument();
   });
 
-  it('marks a plain Immich viewer as unfiltered', () => {
-    const preferences = preferencesFactory.build({ cast: { gCastEnabled: false } });
-    authManager.setPreferences(preferences);
+  it('keeps the privacy control available in a plain photo viewer', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/asset-viewer/AssetViewerNavBar.svelte'),
+      'utf8',
+    );
 
-    const asset = assetFactory.build({ isTrashed: false });
-    const { getByLabelText } = renderWithTooltips(AssetViewerNavBar, { asset, ...additionalProps });
-
-    expect(getByLabelText('Immich view. All photos are visible.')).toBeInTheDocument();
+    expect(source).toContain('<CimmichViewingMode variant="overlay" />');
+    expect(source).not.toContain('Immich view. All photos are visible.');
   });
 
   it('keeps viewing mode and this-photo visibility as distinct Cimmich controls', () => {
@@ -72,8 +72,7 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('<CimmichViewingMode variant="overlay" />');
     expect(source).toContain('<span class="hidden md:inline">This </span>photo');
     expect(source).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />');
-    expect(source).toContain('{:else}\n      <Tooltip');
-    expect(source).toContain('Tooltip text="Immich view · All photos are visible"');
+    expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');
     expect(source).not.toContain('Immich view · All photos visible</span>');
     expect(source).not.toContain('Immich · All visible</span>');
   });

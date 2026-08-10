@@ -11,6 +11,8 @@
   import { AssetAction, ProjectionType } from '$lib/constants';
   import { activityManager } from '$lib/managers/activity-manager.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
+  import { cimmichAssetPresentationManager } from '$lib/managers/cimmich-asset-presentation-manager';
+  import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { editManager, EditToolType } from '$lib/managers/edit/edit-manager.svelte';
   import { eventManager } from '$lib/managers/event-manager.svelte';
@@ -113,6 +115,42 @@
 
   let isPlayingOriginalVideo = $state($alwaysLoadOriginalVideo);
   let slideshowStartAssetId = $state<string>();
+  let presentationGeneration = 0;
+  let presentationError = $state(false);
+  let presentationReady = $state(false);
+  let presentableAssetIds = $state<Set<string>>(new Set());
+
+  $effect(() => {
+    const visibilityVersion = cimmichVisibilityManager.version;
+    const requestedIds = [asset.id, ...(stack?.assets.map(({ id }) => id) ?? [])];
+    const generation = ++presentationGeneration;
+    presentationError = false;
+    presentationReady = false;
+    preloadManager.destroy();
+    void cimmichAssetPresentationManager
+      .presentableIds(requestedIds, visibilityVersion)
+      .then((nextIds) => {
+        if (generation !== presentationGeneration) {
+          return;
+        }
+        presentableAssetIds = nextIds;
+        presentationReady = true;
+      })
+      .catch(() => {
+        if (generation !== presentationGeneration) {
+          return;
+        }
+        presentableAssetIds = new Set();
+        presentationError = true;
+        presentationReady = true;
+      });
+  });
+
+  const presentationAllowed = $derived(presentationReady && presentableAssetIds.has(asset.id));
+  const presentedStackAssets = $derived.by((): AssetResponseDto[] => {
+    const currentStack: StackResponseDto | null = stack;
+    return currentStack ? currentStack.assets.filter(({ id }) => presentableAssetIds.has(id)) : [];
+  });
 
   const setPlayOriginalVideo = (value: boolean) => {
     isPlayingOriginalVideo = value;
@@ -366,7 +404,7 @@
     }
   });
   $effect(() => {
-    if (album && isShared && asset.id) {
+    if (presentationAllowed && album && isShared && asset.id) {
       handlePromiseError(activityManager.init(album.id, asset.id));
     }
   });
@@ -394,12 +432,22 @@
   $effect(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     asset;
+    if (!presentationAllowed) {
+      ocrManager.clear();
+      faceManager.clear();
+      return;
+    }
     untrack(() => handlePromiseError(refresh()));
   });
 
   let lastCursor = $state<AssetCursor>();
 
   $effect(() => {
+    if (!presentationAllowed) {
+      preloadManager.destroy();
+      lastCursor = undefined;
+      return;
+    }
     if (cursor.current.id === lastCursor?.current.id) {
       return;
     }
@@ -507,6 +555,7 @@
         {onRemoveFromAlbum}
         {isPlayingOriginalVideo}
         {setPlayOriginalVideo}
+        photoPresentable={presentationAllowed}
       />
     </div>
   {/if}
@@ -524,7 +573,7 @@
     </div>
   {/if}
 
-  {#if $slideshowState === SlideshowState.None && showNavigation && !assetViewerManager.isShowEditor && !assetViewerManager.isFaceEditMode && previousAsset}
+  {#if presentationAllowed && $slideshowState === SlideshowState.None && showNavigation && !assetViewerManager.isShowEditor && !assetViewerManager.isFaceEditMode && previousAsset}
     <div class="col-span-1 col-start-1 row-span-full row-start-1 my-auto justify-self-start">
       <PreviousAssetAction onPreviousAsset={() => navigateAsset('previous')} />
     </div>
@@ -532,7 +581,22 @@
 
   <!-- Asset Viewer -->
   <div data-viewer-content class="relative z-[-1] col-span-4 col-start-1 row-span-full row-start-1">
-    {#if viewerKind === 'StackVideoViewer'}
+    {#if !presentationReady}
+      <div class="grid size-full place-items-center bg-black text-sm text-white/70" role="status">
+        Checking photo privacy…
+      </div>
+    {:else if !presentationAllowed}
+      <div class="grid size-full place-items-center bg-black px-6 text-center text-white">
+        <div class="max-w-md rounded-2xl border border-white/20 bg-white/10 p-6 backdrop-blur-sm">
+          <p class="text-lg font-semibold">Photo hidden in this viewing mode</p>
+          <p class="mt-2 text-sm text-white/75">
+            {presentationError
+              ? 'Cimmich could not verify that this photo is safe to show, so it remains hidden.'
+              : 'Use the privacy control above to switch viewing mode if you are allowed to see it.'}
+          </p>
+        </div>
+      </div>
+    {:else if viewerKind === 'StackVideoViewer'}
       <VideoViewer
         asset={previewStackedAsset!}
         cacheKey={previewStackedAsset!.thumbhash}
@@ -579,11 +643,11 @@
       />
     {/if}
 
-    {#if assetViewerManager.isShowCimmichOverlay && viewerKind === 'PhotoViewer'}
+    {#if presentationAllowed && assetViewerManager.isShowCimmichOverlay && viewerKind === 'PhotoViewer'}
       <CimmichPhotoOverlay {asset} />
     {/if}
 
-    {#if showActivityStatus}
+    {#if presentationAllowed && showActivityStatus}
       <div class="absolute inset-e-0 bottom-0 me-8 mb-20">
         <ActivityStatus
           disabled={!album?.isActivityEnabled}
@@ -595,24 +659,24 @@
       </div>
     {/if}
 
-    {#if showOcrButton}
+    {#if presentationAllowed && showOcrButton}
       <div class="absolute inset-e-0 bottom-0 me-6 mb-6 drop-shadow-[0_0_1px_rgba(0,0,0,0.4)]">
         <OcrButton />
       </div>
     {/if}
 
-    {#if $slideshowState !== SlideshowState.None}
+    {#if presentationAllowed && $slideshowState !== SlideshowState.None}
       <SlideshowMetadataOverlay {asset} />
     {/if}
   </div>
 
-  {#if $slideshowState === SlideshowState.None && showNavigation && !assetViewerManager.isShowEditor && !assetViewerManager.isFaceEditMode && nextAsset}
+  {#if presentationAllowed && $slideshowState === SlideshowState.None && showNavigation && !assetViewerManager.isShowEditor && !assetViewerManager.isFaceEditMode && nextAsset}
     <div class="col-span-1 col-start-4 row-span-full row-start-1 my-auto justify-self-end">
       <NextAssetAction onNextAsset={() => navigateAsset('next')} />
     </div>
   {/if}
 
-  {#if showDetailPanel || assetViewerManager.isShowEditor}
+  {#if presentationAllowed && (showDetailPanel || assetViewerManager.isShowEditor)}
     <div
       transition:fly={{ duration: 150 }}
       id="detail-panel"
@@ -630,8 +694,8 @@
     </div>
   {/if}
 
-  {#if stack && withStacked && !assetViewerManager.isShowEditor}
-    {@const stackedAssets = stack.assets}
+  {#if presentationAllowed && presentedStackAssets.length > 0 && withStacked && !assetViewerManager.isShowEditor}
+    {@const stackedAssets = presentedStackAssets}
     <div id="stack-slideshow" class="absolute bottom-0 col-span-4 col-start-1 w-fit max-w-full">
       <div class="no-wrap horizontal-scrollbar relative flex flex-row overflow-x-auto overflow-y-hidden">
         {#each stackedAssets as stackedAsset (stackedAsset.id)}
@@ -666,7 +730,7 @@
     </div>
   {/if}
 
-  {#if isShared && album && assetViewerManager.isShowActivityPanel && authManager.authenticated}
+  {#if presentationAllowed && isShared && album && assetViewerManager.isShowActivityPanel && authManager.authenticated}
     <div
       transition:fly={{ duration: 150 }}
       id="activity-panel"

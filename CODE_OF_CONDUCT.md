@@ -14,7 +14,18 @@ careful with other people's private archives.
 - Harassment, discrimination, threats, sexualised attention and deliberate
   privacy violations are not accepted.
 
-Report conduct concerns privately through the repository owner's contact route
-or private advisory form. Maintainers may edit or remove material, close or
-lock discussions, and restrict participation when needed to protect the
-community or archive owners.
+## Reporting conduct concerns
+
+Use GitHub's **Report content** or [report abuse](https://support.github.com/contact/report-abuse)
+route for harassment, threats, doxxing or other platform abuse. Do not publish
+sensitive evidence in a repository issue or discussion.
+
+The private vulnerability form is only for security vulnerabilities; it is not
+a general conduct inbox. Until the project publishes a dedicated private
+conduct address, it cannot promise confidential maintainer intake for a
+non-security report. Maintainers may still remove material, close or lock a
+discussion, and restrict participation based on the public record and GitHub's
+moderation actions.
+
+When a report concerns private archive material, preserve the minimum evidence
+needed and do not repost the material while seeking help.

@@ -538,6 +538,46 @@ test("map asset filtering keeps visibility ahead of a bounded exact source-ID pr
   ]);
 });
 
+test("shared photo presentation filtering keeps visibility ahead of media rendering", async () => {
+  const calls = [];
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  const repository = {
+    filterPresentableAssetSourceIds: async (input) => {
+      calls.push(["filter", input]);
+      return {
+        assets: [],
+        schemaVersion: "cimmich.presentable-assets.v1",
+        sourceAssetIds: [],
+      };
+    },
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const sourceAssetIds = ["11111111-1111-4111-8111-111111111111"];
+      const response = await fetch(`${root}/v1/visibility/assets/presentable`, {
+        body: JSON.stringify({ sourceAssetIds }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        assets: [],
+        schemaVersion: "cimmich.presentable-assets.v1",
+        sourceAssetIds: [],
+      });
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "map_assets"],
+    ["filter", { sourceAssetIds: ["11111111-1111-4111-8111-111111111111"] }],
+  ]);
+});
+
 test("satellite map tiles are same-origin, bounded and cacheable", async () => {
   const calls = [];
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);

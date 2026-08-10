@@ -8,8 +8,8 @@ working tree.
 
 - the exact candidate commit and tree recorded in `docs/RELEASE_READINESS.md`;
 - one release directory whose name ends in that candidate's short commit;
-- `cimmich-v1.1.0-community-preview.7.tar.gz`,
-  `cimmich-v1.1.0-community-preview.7.zip` and `SHA256SUMS` from that directory;
+- `cimmich-v1.1.0-community-preview.8.tar.gz`,
+  `cimmich-v1.1.0-community-preview.8.zip` and `SHA256SUMS` from that directory;
 - a final independent PASS that names those exact hashes; and
 - owner approval to publish.
 
@@ -20,8 +20,8 @@ not a publication source. Never choose a bundle by filename alone.
 
 1. Confirm `git status --short` is empty and `git rev-parse HEAD` matches the
    certified candidate.
-2. Replay `sha256sum -c SHA256SUMS` inside the candidate-suffixed release
-   directory.
+2. Replay `tools/sha256.sh verify SHA256SUMS` inside the candidate-suffixed
+   release directory using the platform's available checksum implementation.
 3. Extract both archives into separate clean temporary directories.
 4. Confirm Git, tar and ZIP have identical tracked paths, bytes and executable
    modes, with no AppleDouble members.
@@ -39,11 +39,11 @@ Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
 The candidate is developed on a reviewed branch. Publication should advance
 `main` through the normal reviewed merge route, then create the annotated tag
-`v1.1.0-community-preview.7` at the exact merged candidate commit. If the merge
+`v1.1.0-community-preview.8` at the exact merged candidate commit. If the merge
 changes the commit or tree, certification does not carry forward: rebuild and
 reverify before tagging.
 
-Create a full GitHub release titled **Cimmich v1.1.0 — Community Preview 7** from
+Create a full GitHub release titled **Cimmich v1.1.0 — Community Preview 8** from
 that tag. Attach the two named bundles and `SHA256SUMS`; do not substitute
 GitHub's automatic source archives for the beginner install bundles.
 

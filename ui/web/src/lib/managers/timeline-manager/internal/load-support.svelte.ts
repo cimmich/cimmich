@@ -1,5 +1,10 @@
 import { getTimeBucket } from '@immich/sdk';
 import { authManager } from '$lib/managers/auth-manager.svelte';
+import {
+  cimmichAssetPresentationManager,
+  filterTimeBucketAssets,
+} from '$lib/managers/cimmich-asset-presentation-manager';
+import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
 import { toISOYearMonthUTC } from '$lib/utils/timeline-util';
 import { TimelineManager } from '../timeline-manager.svelte';
 import type { TimelineMonth } from '../timeline-month.svelte';
@@ -29,6 +34,15 @@ export async function loadFromTimeBuckets(
     return;
   }
 
+  const presentableIds = await cimmichAssetPresentationManager.presentableIds(
+    bucketResponse.id,
+    cimmichVisibilityManager.version,
+  );
+  if (signal.aborted) {
+    return;
+  }
+  const presentedBucketResponse = filterTimeBucketAssets(bucketResponse, presentableIds);
+
   if (options.timelineAlbumId) {
     const albumAssets = await getTimeBucket(
       {
@@ -46,7 +60,7 @@ export async function loadFromTimeBuckets(
     }
   }
 
-  const unprocessedAssets = timelineMonth.addAssets(bucketResponse, true);
+  const unprocessedAssets = timelineMonth.addAssets(presentedBucketResponse, true);
   if (unprocessedAssets.length > 0) {
     console.error(
       `Warning: getTimeBucket API returning assets not in requested month: ${timelineMonth.yearMonth.month}, ${JSON.stringify(

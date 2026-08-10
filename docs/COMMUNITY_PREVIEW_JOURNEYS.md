@@ -1,7 +1,7 @@
 # Community Preview user journeys
 
-Updated: 2026-08-10
-Candidate: `v1.1.0-community-preview.7`
+Updated: 2026-08-11
+Candidate: `v1.1.0-community-preview.8`
 Compatibility target: exact Immich 3.1.0
 
 This is the user-facing acceptance map for the bounded Community Preview. A
@@ -38,7 +38,8 @@ recovery path agree in the signed-in product and in the named automated proof.
 - **Motion:** required understanding does not depend on animation, and motion
   is reduced when the operating system requests it.
 - **Viewing truth:** Standard, Personal and Private affect counts, covers,
-  previews and search consistently; a Guided client cannot raise that ceiling.
+  previews, inherited Folder/Timeline media, the direct viewer and search
+  consistently; a Guided client cannot raise that ceiling.
 - **Failures:** permission rejection, no GPS, no tags, zero search results,
   unreachable API, interrupted import, stale commands and destructive-action
   rejection each leave a next step instead of a dead end.

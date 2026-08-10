@@ -1,155 +1,194 @@
 # Cimmich
 
-> [!NOTE]
-> **Current release: Community Preview 7** — exact Immich 3.1.0, Cimmich
-> schema 128/patch 1. The immutable
-> [OpenAI Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
-> demo and evidence remain preserved and visible as the living project improves.
-> Community Preview 6 and the Build Week artifact remain immutable history.
+<p align="center">
+  <img src="docs/assets/cimmich-logo.png" alt="Cimmich astronaut inside a four-colour focus frame" width="200">
+</p>
 
 > **Complete the picture.**
 
-<p align="center">
-  <img src="docs/assets/cimmich-logo.png" alt="Cimmich astronaut inside a four-colour focus frame" width="220">
-</p>
-
 **Cimmich is an open-source, local-first memory companion for Immich.** It adds
-People, Pets, Places, Things, Events and Documents around an existing library,
-while keeping the archive owner—not a model—in charge of identity.
+People, Pets, Places, Things, Events and Documents around the library you
+already own—without writing to the Immich database or modifying original
+media.
 
-[Install in five minutes](INSTALL.md) · [Try fictional data](#try-the-fictional-demo) ·
-[See current limitations](#current-limitations) · [Build Week evidence](docs/BUILD_WEEK_EVIDENCE.md) ·
-[Privacy boundary](docs/PRIVACY_BOUNDARY.md) · [Contribute](CONTRIBUTING.md)
+Photo libraries are good at storing files and grouping visible faces. They are
+less good at preserving the overlapping context that makes a photograph
+meaningful: the person you know was present without a visible face, the place
+and event it belongs to, or the document that explains it. Cimmich adds that
+owner-controlled context beside Immich.
+
+[See the walkthrough](docs/WALKTHROUGH.md) · [Install Cimmich](INSTALL.md) ·
+[Try fictional data](demo/cedar-house-v1/README.md) · [Understand privacy](PRIVACY.md) ·
+[Contribute](CONTRIBUTING.md)
 
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
-> endorsed by Immich or OpenAI. It never directly writes the Immich database or
-> source media.
+> endorsed by Immich or OpenAI.
 
-## What it adds
+> [!NOTE]
+> **Community Preview 8** supports exact Immich 3.1.0 on tested macOS and Linux
+> Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
+> not an arbitrary snapshot of `main`.
 
-- **Complete people records.** Face, Head, Body and Presence are separate kinds
-  of evidence, so a known appearance does not have to pretend to be a face.
+![Cimmich Home showing the fictional Cedar House memory library](docs/assets/screenshots/home.webp)
+
+## What Cimmich adds
+
+- **People beyond face recognition.** Face, Head, Body and Presence remain
+  separate kinds of evidence, so knowing someone is in a photograph does not
+  require pretending that a usable face is visible.
 - **A connected memory library.** People, Pets, Places, Things, Events and
-  Documents have photo-first directories, relationships and real counts.
-- **Overlapping context.** A photo can truthfully belong to a trip, recurring
+  Documents have visual directories, relationships and counts.
+- **Overlapping context.** One photograph can belong to a trip, recurring
   activity, client engagement and life period at the same time.
-- **Intersection search.** Select several Cimmich tags and see only photos with
-  all of them, without a hidden 5,000-result ceiling.
-- **Archive organisation without source writes.** Apply Cimmich-owned labels,
-  preview folder-to-album manifests, resolve title collisions and retain exact
-  Undo checkpoints without changing archive sidecars or moving source media.
-- **People exploration with context.** Filter People and a Person's photos by
-  exact privacy tier, tags and labels, Places, Events and Things while keeping
-  active filters in the URL and protected results behind the viewing-mode
-  boundary.
-- **Owner-controlled review.** Matching can suggest; the owner accepts,
-  corrects, merges, rejects or undoes every consequential identity decision.
-- **Cumulative presentation modes.** Standard, Personal and optional
-  password-gated Private modes control what is comfortable to show on a shared
-  screen. They are presentation filters, not encryption or account security.
+- **Intersection search.** Select several Cimmich tags to see only photographs
+  carrying all of them, without a hidden 5,000-result ceiling.
+- **Reversible archive organisation.** Apply Cimmich-owned Labels and preview
+  folder-derived album manifests before creating collision-safe albums, without
+  moving source media or writing sidecars.
+- **People exploration with context.** Filter People and a Person's photographs
+  by exact privacy tier, Tags and Labels, Places, Events and Things.
+- **Owner-controlled review.** Matching may suggest; the archive owner accepts,
+  corrects, rejects, merges or undoes every consequential identity decision.
+- **Presentation modes.** Standard, Personal and optional password-gated
+  Private modes control what is comfortable to show on a shared screen.
 
-### The identity boundary, precisely
+**Cimmich keeps Face, Head, Body and Presence evidence in its own system.
+Native Immich manual face assignments do not train or damage Immich's
+recognition model.** The distinction is about recording different kinds of
+owner knowledge and controlling which evidence Cimmich's optional matching may
+use.
 
-**Cimmich stores Face, Head, Body and Presence evidence separately from
-Immich. Native Immich manual face assignments do not train or damage Immich’s
-recognition model.** Cimmich’s distinction is about recording different kinds
-of owner knowledge and governing which evidence its own optional matching uses.
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/person-evidence.webp" alt="A fictional Cimmich Person page showing separate identity and appearance evidence categories">
+      <br><strong>Evidence without invented certainty.</strong> Identity shows
+      separate Face and appearance categories; an empty Core set is honest too.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/tags-intersection.webp" alt="Cimmich showing photographs that match two selected tags">
+      <br><strong>Combine what you already know.</strong> Intersect people,
+      places, events and other tags across the library.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/event.webp" alt="The fictional Bluewater Weekend event in Cimmich">
+      <br><strong>Memories can overlap.</strong> Build trips, activities and life
+      periods from existing photographs and folders.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/documents.webp" alt="An annotated product capture of a fictional invitation connected to an event and person in Cimmich">
+      <br><strong>Keep the record with the memory.</strong> Link invitations,
+      receipts and other documents to the people and events they belong to.
+    </td>
+  </tr>
+</table>
 
-No AI model is required. Optional local Face, Body, pose, OCR, object or vision
-providers can add observations, but providers never gain identity authority.
+The screenshots use the fictional, rights-cleared Cedar House demonstration
+archive. The invitation image is an annotated product capture; the others show
+the named interface directly. They demonstrate product behavior, not biometric
+accuracy or demographic fairness. [Take the full product tour](docs/WALKTHROUGH.md).
+
+## Is the Community Preview for you?
+
+| A reasonable fit today | Not yet a supported fit |
+| :--- | :--- |
+| You already run exact Immich 3.1.0 | You need compatibility with another Immich version |
+| You can run the checked-in installer and inspect its Compose file | You need a one-click native Windows installer |
+| You can keep a separate Cimmich backup | You need stable APIs and schemas across releases |
+| You want a local, single-owner companion | You need Internet-facing or multi-user deployment |
+| You want inspectable suggestions and manual decisions | You need automatic identity acceptance or certified biometric accuracy |
 
 ## Install beside Immich
 
-Requirements: Docker Compose v2, a working exact Immich 3.1.0 installation,
-`curl`, `openssl`, and several gigabytes of free Docker storage.
+Download the named Cimmich bundle and `SHA256SUMS` from the
+[latest release](https://github.com/cimmich/cimmich/releases/latest), verify it,
+then extract the bundle:
 
 ```sh
-cp .env.example .env
-# Put a new `openssl rand -hex 32` value in CIMMICH_DB_PASSWORD.
-# Confirm the two credential-free Immich URLs; do not put an API key in .env.
-docker compose config --quiet
-docker compose up --detach --build --wait
+./tools/install.sh --check
+./tools/install.sh
 ```
 
-Open <http://127.0.0.1:3413>, sign in through Immich, add a dedicated read-only
-Immich API key in Cimmich’s write-only Settings field, then preview the exact
-scope before importing.
+Open <http://127.0.0.1:3413>, sign in through Immich, and complete the guided
+library preview. Cimmich asks for a dedicated read-only Immich API key only in
+its signed-in Settings screen—never in `.env` or an AI conversation.
 
-Compose builds the API and UI from the exact checked-in Dockerfiles. No Cimmich
-registry account or private package access is required. Advanced operators may
-override both image names with immutable digests from a registry they trust.
+Read [INSTALL.md](INSTALL.md) before starting. It covers checksum verification,
+host addressing, first-run expectations, backups, updates, diagnostics and
+confirmation-gated Cimmich-only removal.
 
-Read [INSTALL.md](INSTALL.md) for download verification, the guarded installer,
-backups, updates, local builds and the redacted `cimmich doctor` report.
+## Privacy and control
 
-## Try the fictional demo
-
-The isolated Cedar House demo creates its own loopback-only Immich and Cimmich
-stack. It does not discover or operate on another installation.
-
-1. Download the complete
-   [Cedar House V1 archive](https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz).
-2. Verify its documented SHA-256 in
-   [the demo guide](demo/cedar-house-v1/README.md), then extract it.
-3. Start the isolated project:
-
-```sh
-export CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$PWD/cedar-house-v1"
-./tools/public_demo.sh up
-./tools/public_demo.sh status
-```
-
-The fictional packs carry rights, attribution, prompts, provenance and checksum
-manifests. They demonstrate product behavior—not biometric accuracy, fairness
-or suitability for another person’s archive.
-
-## Privacy and trust
+Cimmich is designed to be additive and removable:
 
 - Cimmich has its own PostgreSQL database, configuration, documents and backups.
-- Original media remains owned and served by Immich.
-- Product ports bind to loopback by default; the owner API stays behind the
-  authenticated same-origin gateway.
-- Optional outbound address search and map imagery are off by default.
-- Generated credentials are mode `0600`; diagnostics exclude credentials,
-  paths, filenames, media and private identities.
-- Third-party infrastructure images are digest-pinned. Cimmich product images
-  are versioned, attested and published from immutable GitHub workflow actions.
+- Immich continues to own and serve original media.
+- Cimmich does not directly write the Immich database or source-media bytes.
+- Product ports bind to loopback by default.
+- Core organisation works without a model or model-provider API key.
+- Optional local providers produce observations, not identity decisions.
+- Optional hosted clients may disclose what the operator chooses to send them;
+  Cimmich cannot make third-party software private.
+- Private mode filters presentation inside an authenticated session. It is not
+  encryption, an ACL or protection from the host administrator.
 
-See [SECURITY.md](SECURITY.md), [PRIVACY.md](PRIVACY.md) and the
-[release-readiness proof](docs/RELEASE_READINESS.md).
+Read the plain-language [privacy guide](PRIVACY.md), the technical
+[privacy boundary](docs/PRIVACY_BOUNDARY.md), and [SECURITY.md](SECURITY.md).
 
-## Build Week and prior work
+## Documentation
 
-Cimmich was built for **OpenAI Build Week — Apps for Your Life** with Codex
-powered by GPT-5.6 Sol. The exact submission remains available as:
-
-- the immutable [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week);
-- the [demo video](https://youtu.be/CfR_r0n4deQ);
-- the [privacy-cleared evidence index](docs/BUILD_WEEK_EVIDENCE.md); and
-- the [competition boundary and prior-work disclosure](docs/BUILD_WEEK.md).
-
-Cimmich began from an Immich-derived private research seed before the event.
-Those earlier archive-processing, matching, search and experimental UI efforts
-are disclosed and are not claimed as Build Week work.
+| I want to… | Start here |
+| :--- | :--- |
+| See what the product does | [Product walkthrough](docs/WALKTHROUGH.md) |
+| Install, update, back up or remove it | [Installation and operations](INSTALL.md) |
+| Understand data and network behavior | [Privacy guide](PRIVACY.md) |
+| Resolve a common question | [FAQ](docs/FAQ.md) |
+| Understand the repository | [Development guide](DEVELOPMENT.md) |
+| Propose a change | [Contributing guide](CONTRIBUTING.md) |
+| Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md) |
+| Inspect release and journey evidence | [Documentation index](docs/README.md) |
 
 ## Current limitations
 
 - Community Preview, not a general-availability release.
-- Exact Immich 3.1.0 only; other versions are added one tested release at a time.
-- macOS and Linux are the supported guided-install hosts; native Windows is not.
+- Exact Immich 3.1.0 only; each additional version needs its own compatibility
+  proof.
+- Tested guided-install hosts are macOS and Linux. Native Windows PowerShell is
+  not supported.
+- Internet-facing and multi-user deployment are not supported.
 - No biometric-accuracy or demographic-fairness claim is made.
-- Private mode is a presentation filter, not encryption.
-- Some large inherited and preview-era files remain; CI freezes their ceilings
-  and each touched domain must shrink rather than grow.
 
 ## Develop and contribute
 
-The service uses npm and Node 22; the Immich-derived UI workspace uses pnpm.
-`ui/packages/sdk` is checked-in source, not `node_modules`. See
-[DEVELOPMENT.md](DEVELOPMENT.md) for exact commands and architecture, then read
-[CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Cimmich contains two deliberate JavaScript workspaces: a Node 22/npm service
+and an Immich-derived Node 24/pnpm UI. `ui/packages/sdk` is checked-in generated
+source—not `node_modules`.
 
-Licensing and upstream attribution are recorded in [LICENSE](LICENSE),
-[NOTICE.md](NOTICE.md), [ATTRIBUTION.md](ATTRIBUTION.md) and
-[UPSTREAM_BASELINE](UPSTREAM_BASELINE).
+Read [DEVELOPMENT.md](DEVELOPMENT.md) before installing dependencies. Small,
+reviewable documentation, test and defect fixes are welcome under the
+[contribution guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
+
+## Project history
+
+Cimmich began as a bounded **OpenAI Build Week — Apps for Your Life** project.
+The exact submission remains preserved as the
+[v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
+with its [prior-work disclosure](docs/BUILD_WEEK.md) and
+[privacy-cleared evidence index](docs/BUILD_WEEK_EVIDENCE.md). Living product
+development continues on `main` without rewriting that historical release.
+
+Product direction, acceptance and release authority are held by Benji.
+Living Cimmich development uses substantial AI assistance coordinated and
+accepted under Benji's product and release authority. The exact Build Week
+tooling and inherited Immich-derived web foundation are separately attributed. See
+[GOVERNANCE.md](GOVERNANCE.md) for the decision, acceptance and attribution
+model.
+
+## Licence and lineage
+
+Cimmich is distributed under the [GNU AGPL v3](LICENSE). It contains and adapts
+Immich web source under preserved upstream terms. See [NOTICE.md](NOTICE.md) and
+[the UI lineage record](ui/CIMMICH_FORK.md).

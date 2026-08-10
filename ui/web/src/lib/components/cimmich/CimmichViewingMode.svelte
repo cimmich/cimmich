@@ -11,7 +11,6 @@
   } from '$lib/services/cimmich.service';
   import { isViewingModeStatus } from '$lib/managers/cimmich-visibility-intent';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
-  import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
   import { Icon } from '@immich/ui';
   import { mdiShieldAlertOutline } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
@@ -133,10 +132,6 @@
   };
 
   const switchToImmich = async () => {
-    if (status?.privateAuthorized) {
-      loadGeneration += 1;
-      status = await lockCimmichPrivateMode('background');
-    }
     await goto('/photos');
   };
 
@@ -152,9 +147,6 @@
     globalThis.removeEventListener('cimmich:visibility-changed', handleExternalVisibilityChange);
     if (refreshTimer) {
       globalThis.window.clearInterval(refreshTimer);
-    }
-    if (status?.privateAuthorized && !isCimmichViewingSurface(new URL(globalThis.location.href))) {
-      void lockCimmichPrivateMode('background');
     }
   });
 </script>

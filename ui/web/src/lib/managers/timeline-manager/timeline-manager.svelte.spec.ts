@@ -9,6 +9,16 @@ import { assetFactory, timelineAssetFactory, toResponseDto } from '@test-data/fa
 import { TimelineManager } from './timeline-manager.svelte';
 import type { TimelineAsset } from './types';
 
+vi.mock('$lib/managers/cimmich-asset-presentation-manager', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/managers/cimmich-asset-presentation-manager')>();
+  return {
+    ...actual,
+    cimmichAssetPresentationManager: {
+      presentableIds: vi.fn((ids: string[]) => Promise.resolve(new Set(ids))),
+    },
+  };
+});
+
 async function getAssets(timelineManager: TimelineManager) {
   const assets = [];
   for await (const asset of timelineManager.assetsIterator()) {
