@@ -1,12 +1,5 @@
-import { authenticate } from '$lib/utils/auth';
+import { redirect } from '@sveltejs/kit';
+import { Route } from '$lib/route';
 import type { PageLoad } from './$types';
 
-export const load = (async ({ url }) => {
-  await authenticate(url);
-
-  return {
-    meta: {
-      title: 'Legacy archive overview unavailable',
-    },
-  };
-}) satisfies PageLoad;
+export const load = (() => redirect(307, Route.cimmichHome())) satisfies PageLoad;

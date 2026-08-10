@@ -26,7 +26,7 @@
       <h1 class="mt-5 text-2xl font-semibold">{capability} is not enabled</h1>
       <p class="mx-auto mt-3 max-w-lg text-sm/6 text-gray-600 dark:text-gray-300">
         This installation does not expose a validated capability for this workspace. Nothing has been inferred or
-        changed. Available Cimmich features remain on the five main sections.
+        changed. Use Cimmich Home to open the supported tools.
       </p>
       <a
         class="mt-7 inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"

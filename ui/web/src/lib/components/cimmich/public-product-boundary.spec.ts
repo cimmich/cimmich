@@ -142,6 +142,8 @@ describe('public Cimmich product boundary', () => {
     const unavailable = await read('./CimmichUnavailableCapability.svelte');
     expect(unavailable).toContain('does not expose a validated capability');
     expect(unavailable).toMatch(/Nothing has been inferred or\s+changed/);
+    expect(unavailable).toContain('Use Cimmich Home to open the supported tools.');
+    expect(unavailable).not.toContain('five main sections');
     expect(unavailable).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
   });
 });
