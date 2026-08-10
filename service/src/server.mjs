@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { integrationSettingsPack } from "./integration-settings.mjs";
 import { createReviewRoutes } from "./review-routes.mjs";
 import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
+import { createAssetVisibilityRoutes } from "./asset-visibility-routes.mjs";
 import { createBulkAlbumOperationRoutes } from "./bulk-album-operation-routes.mjs";
 import {
   attachProjectionSnapshotInvalidation,
@@ -212,6 +213,12 @@ export const createCimmichServer = ({
   const requireProjection = (surfaceKey) =>
     visibility?.requireProjection?.(surfaceKey);
   const extensionRoutes = [
+    createAssetVisibilityRoutes(
+      repository,
+      requireProjection,
+      readJsonBody,
+      sendJson,
+    ),
     createAssetLabelRoutes(
       repository,
       requireProjection,
@@ -1053,33 +1060,6 @@ export const createCimmichServer = ({
           });
         }
         sendJson(response, 200, await immichCompanion.status(), allowedOrigin);
-        return;
-      }
-      if (
-        request.method === "POST" &&
-        url.pathname === "/v1/map/visible-assets"
-      ) {
-        requireProjection("map_assets");
-        const body = await readJsonBody(request);
-        if (
-          !body ||
-          typeof body !== "object" ||
-          Array.isArray(body) ||
-          Object.keys(body).sort().join(",") !== "sourceAssetIds"
-        ) {
-          throw Object.assign(new Error("Map visibility input is invalid"), {
-            code: "MAP_ASSET_IDS_INVALID",
-            statusCode: 400,
-          });
-        }
-        sendJson(
-          response,
-          200,
-          await repository.filterVisibleMapAssetSourceIds({
-            sourceAssetIds: body.sourceAssetIds,
-          }),
-          allowedOrigin,
-        );
         return;
       }
       const satelliteTileMatch = url.pathname.match(

@@ -50,7 +50,7 @@ companion_counts() {
 
 rewrite_backup_checksums() {
   backup_root=$1
-  (cd "$backup_root" && sha256sum cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
+  (cd "$backup_root" && "$ROOT/tools/sha256.sh" generate cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
 }
 
 assert_restore_rejected_preserves_state() {

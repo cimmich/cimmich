@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-10
+Updated: 2026-08-11
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
 Current development source: migration-ledger schema 128/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release: `v1.1.0-community-preview.7` for exact Immich 3.1.0
+Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -27,6 +27,60 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 8 photo-presentation and portable-lifecycle gate — 2026-08-11
+
+Preview 8 corrects the owner-discovered boundary where Preview 7 could filter
+Cimmich detail metadata while an inherited Folder or direct-viewer path still
+rendered the protected photo itself. It also closes the macOS lifecycle gap
+where the bundle download used `shasum` but backup/restore hard-coded
+unpreflighted `sha256sum`.
+
+The candidate requires:
+
+- shared fail-closed presentation admission before Folder/gallery, Timeline and
+  direct-viewer media or actions mount;
+- immediate removal when the viewing rank drops and Private continuity across
+  ordinary authenticated product routes;
+- bounded server and client batching, serialisation, mode-versioned caching and
+  failure hiding;
+- one checksum operator used for ordinary and portable backup verification,
+  with installer preflight for `sha256sum` or `shasum`;
+- a complete companion backup/restore/portable lifecycle under a PATH that
+  exposes `shasum` but no `sha256sum`; and
+- public documentation and screenshots audited against the exact candidate,
+  preserving all Preview 7 organisation and People-filter capabilities.
+
+The candidate gates closed locally with:
+
+- publication/privacy scan: pass across 1,864 tracked files, with all 191 local
+  documentation links and anchors across 69 Markdown files resolving;
+- service: 904 passed, 3 intentionally skipped and 0 failed, with syntax,
+  formatting and lint clean;
+- web: 1,059 passed, 2 intentionally skipped and 0 failed across 148 test
+  files, with formatting, lint, Svelte (0 errors, 0 warnings), TypeScript and
+  the production build clean;
+- source-shape enforcement: pass across 1,011 checked files;
+- migration runner, complete synthetic lifecycle and latency guard: pass at
+  schema 128/patch 1;
+- pinned OpenCV 4.11 detection and recognition: one releasable-fixture
+  detection, observation and embedding, zero identity claims and exact replay;
+- companion backup, portable restore, fresh import/replay, seven adversarial
+  restore rejections, disable and residue-free removal: pass under an isolated
+  macOS-style PATH exposing `shasum` but no `sha256sum`;
+- Cedar House public-demo import and five-browser-journey proof, interruption
+  recovery, adversarial restore rejection, stop/restart/down preservation,
+  portable schema-128 restore, secret-boundary checks and residue-free destroy:
+  pass against all 51 rights-cleared assets;
+- root Compose render, guarded non-mutating installer check and zero known
+  production web or service dependency vulnerabilities: pass; and
+- signed-in X1 photo-presentation walkthrough: Private revealed the protected
+  photo in Folder and direct viewer, Personal and Standard hid it in Folder,
+  Timeline and direct viewer, an in-place rank drop removed mounted media
+  immediately, and Private persisted across ordinary routes.
+
+Exact clean-tree commit/tree identity, bundles, checksums and hosted proof are
+recorded only after the reviewed merge produces the immutable tag target.
 
 ## Community Preview 7 archive-review and organisation gate — 2026-08-10
 

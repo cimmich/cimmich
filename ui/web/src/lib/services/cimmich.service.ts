@@ -2943,7 +2943,7 @@ export const createCimmichPerson = (commandId: string, selector: CimmichPersonCr
     method: 'POST',
   });
 
-const visibilityRequest = async <T>(
+export const visibilityRequest = async <T>(
   path: string,
   init?: RequestInit,
   surface: CimmichVisibilitySurface = 'interactive',

@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 COMPANION="$ROOT/tools/companion.sh"
+CHECKSUM="$ROOT/tools/sha256.sh"
 STATE_ROOT=${CIMMICH_COMPANION_STATE_ROOT:-"${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"}
 PROJECT=${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 DEFAULT_IMMICH_ORIGIN=${CIMMICH_INSTALL_IMMICH_ORIGIN:-http://host.docker.internal:2283}
@@ -89,9 +90,13 @@ check_requirements() {
     fail "run this command from an intact extracted Cimmich release folder"
   test -x "$COMPANION" ||
     fail "tools/companion.sh is missing or not executable; extract the complete Cimmich release bundle again"
+  test -x "$CHECKSUM" ||
+    fail "tools/sha256.sh is missing or not executable; extract the complete Cimmich release bundle again"
   require_command docker
   require_command curl
   require_command openssl
+  checksum_tool=$("$CHECKSUM" check) ||
+    fail "sha256sum or shasum is required for Cimmich backup and restore"
   docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
   docker info >/dev/null 2>&1 || fail "Docker is installed but is not running"
   if test "$verbose" = true; then
@@ -102,6 +107,7 @@ check_requirements() {
     ok "Docker engine running"
     ok "curl available"
     ok "openssl available"
+    ok "$checksum_tool available for backup and restore"
   fi
 }
 

@@ -2,200 +2,210 @@
 
 ## What is Cimmich?
 
-Cimmich is an open-source, local-first companion for Immich. It adds a separate
-memory and evidence layer for People, Pets, Places, Things, Events, Documents,
-search, viewing modes and owner-controlled matching. Immich remains the photo
+Cimmich is an open-source, local-first memory companion for Immich. It adds a
+separate layer for People, Pets, Places, Things, Events, Documents, search,
+viewing modes and owner-controlled identity evidence. Immich remains the photo
 management system.
-
-## What does Community Preview mean?
-
-The preview is for technically comfortable Immich users who are willing to
-start with the synthetic demo, keep a Cimmich backup and report reproducible
-problems. Workflows and schemas may still change. The candidate supports exact
-Immich 3.1.0 on guided macOS/Linux installs; native Windows and other Immich
-versions are not claimed.
-
-The immutable `v1.0.0-build-week` release remains the exact competition
-submission; later beta patches do not rewrite it.
 
 ## Is Cimmich part of Immich?
 
 No. Cimmich is an unofficial independent project and is not affiliated with or
-endorsed by Immich or OpenAI. “Immich” is used to describe compatibility with
-the base product.
+endorsed by Immich or OpenAI. “Immich” describes the supported base product and
+compatibility target.
 
-## Does Cimmich replace or fork my Immich installation?
+## Does Cimmich replace or modify my Immich installation?
 
-No. Cimmich runs beside a supported Immich installation. It keeps its own
-database, credentials, migrations, documents and backups. It does not directly
-write the Immich database or modify original media.
+No. It runs beside Immich with its own database, credentials, migrations,
+documents and backups. It does not directly write the Immich database or
+modify original media.
 
-## Why separate Face, Head, Body and Presence?
+## What does Community Preview mean?
 
-They represent different kinds of truth. A clear Face may be useful matching
-evidence. A visible Head without a usable face, a located Body, or a person the
-owner knows was Present can complete the memory without contaminating the face
-reference set.
+The preview is for technically comfortable Immich users who can inspect Docker
+Compose, use the checked-in installer, maintain a Cimmich backup and report
+reproducible problems. Workflows and schemas may still change.
+
+The current named release supports exact Immich 3.1.0 on tested macOS and Linux
+Docker hosts. Native Windows PowerShell, other Immich versions, Internet-facing
+deployment and multi-user operation are not currently supported.
+
+## Which version should I install?
+
+Install [Community Preview 8](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.8)
+and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
+development and may be ahead of the supported release.
+
+## Why does Cimmich look like Immich?
+
+The web shell is derived from Immich so the existing photo viewer, account and
+navigation remain familiar. Cimmich adds its own named routes and runs a
+separate service, database, document store and lifecycle. The inherited source
+and licence are recorded in [the UI lineage record](../ui/CIMMICH_FORK.md).
+
+Open Cimmich at <http://127.0.0.1:3413> after installation. Opening the normal
+Immich address takes you to Immich itself.
+
+## Can I try it without my own photographs?
+
+Yes. The isolated Cedar House demo runs its own loopback-only Immich and Cimmich
+stack using fictional, rights-cleared media. Follow the
+[demo guide](../demo/cedar-house-v1/README.md).
+
+The demo proves product behavior and lifecycle controls. It does not prove
+biometric accuracy, demographic fairness or real-person consistency.
+
+## Do I need an AI model?
+
+No. Core organisation uses human-owned and inherited library context. Optional
+local evidence providers and optional Guided clients are separately configured.
+No model weights are bundled with Cimmich.
 
 ## Does Cimmich identify people automatically?
 
-No. Enhanced can rank possible matches from compatible, owner-confirmed
-evidence, but the archive owner remains the identity authority. Cimmich can
-abstain, and no released SourcePack or model can accept an identity
-automatically.
+No. Optional matching can rank candidates from compatible, owner-confirmed
+evidence, but only the archive owner can accept who it belongs to. Cimmich can
+decline to suggest anyone, and no released model can accept an identity.
 
-When Cimmich suggests the wrong Person, choosing `Not <name>` opens a
-replacement picker. Merely opening that picker does not dismiss, accept or
-reassign the face; the owner must select a Person and apply the change.
+## Why separate Face, Head, Body and Presence?
 
-## Can Cimmich match Pets?
+They represent different truth. A clear Face may support matching. A visible
+Head, a Body appearance or the owner's knowledge that someone was Present can
+complete the memory without contaminating the face reference set.
 
-The Community Preview can ingest proposals from separately configured,
-same-species Pet providers. PetFace-style face/head evidence and MiewID-style
-whole-animal evidence remain distinct vector spaces. Cimmich may abstain and
-place a detector observation in Unknown Pets. Only an owner assignment creates
-Pet identity evidence; rejecting an item rejects that detector observation,
-not the source photo or Pet.
+## Can Cimmich handle Pets?
 
-## Do I need an AI model to use Cimmich?
+Yes. Pets have their own profiles, media, documents and optional provider
+evidence. Different Pet evidence types and vector spaces remain separate. Only
+an owner assignment creates Pet identity evidence; Cimmich may abstain and
+hold an observation as Unknown.
 
-No. Core works with human-owned and inherited library truth. Enhanced,
-evidence providers and Guided clients are optional and separately configured.
-No model weights are bundled with Cimmich.
+## What are Enhanced and Guided?
 
-## What is Enhanced?
+**Enhanced** is Cimmich's optional matching component, off by default. Once the
+owner configures compatible local evidence, it can use approved examples to
+rank candidates. The owner still accepts, corrects or rejects them.
 
-Enhanced is Cimmich's included, owner-disabled matching component. Once the
-owner deliberately configures compatible local evidence, it can build governed
-references and rank possible matches. The public release proves the workflow
-and control boundaries; it does not claim representative biometric accuracy or
-fairness.
+**Guided** is an optional authenticated machine-readable interface. Software
+chosen by the operator can discover only the operations and viewing level it
+was granted. Cimmich stores no model-provider API key and does not make provider
+requests itself.
 
-## What is Guided?
+## Does local-first mean nothing can ever leave my computer?
 
-Guided is an optional, separately authenticated machine-readable interface. A
-client chosen by the operator can discover only the catalogued operations,
-grant and viewing ceiling available to it. Cimmich stores no OpenAI or other
-model-provider key and does not make provider requests itself.
+Core Cimmich and its supported local operators do not require a hosted model.
+If you enable map services or connect external software through Guided, data
+may leave according to that service or client's behavior and the access you
+grant it. Local Cimmich cannot make third-party software private.
 
-## Does local-first mean nothing can leave my computer?
+Read [the privacy guide](../PRIVACY.md) before enabling optional outbound paths.
 
-Core and the supported local operators do not require a hosted model. If an
-operator connects hosted software through Guided, information retrieved by
-that client may leave the computer according to the client's behavior and the
-operator's grant. Local Cimmich cannot make a hosted client private.
+## Is Private mode encryption?
 
-## Is Private mode encryption or access control?
+No. Standard, Personal and Private are presentation filters inside an
+authenticated session. Private mode may add a local screen password, but it is
+not encryption, an ACL, a vault or protection from the host administrator.
 
-No. Standard, Personal and Private are cumulative presentation modes inside an
-authenticated session. Private may have an additional local view lock, but it
-is not encryption, an ACL, a vault or protection from the host administrator.
+Think “what is comfortable to show on this screen,” not “who can access the
+host.” Immich continues to own account access.
 
-Think of it as deciding what is on screen, not who may sign in. It answers
-"someone is scrolling my photos beside me" and "the TV is running a slideshow".
-Immich provides the access security, and switching to Immich shows everything
-by design.
+## Why can an Immich user reset the Private-view password?
 
-## How do I set or change the Private password?
+Because Private mode is a presentation filter, not a second account system. An
+already authenticated Immich user can reset or disable it so a forgotten value
+does not become an unrecoverable data lockout. Any reset ends the open Private
+session.
 
-**Settings → Private view password**, then one button to set it, reset it or
-turn it off. A reset never asks for the previous password: the caller has
-already signed in to Immich, and because this only filters presentation, a
-forgotten value must not become a permanent lockout. Any change immediately
-ends an open Private session. Headless and recovery paths are in
-[Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md).
+## How do I install Cimmich?
 
-## Can I try Cimmich without using my own photographs?
-
-Yes. Follow [Try Cimmich](../README.md#try-cimmich-with-fictional-data) to launch an isolated,
-loopback-only Immich 3.1.0 and Cimmich demonstration using the fictional Cedar
-House archive. The optional six-image Space Trip extension demonstrates a
-Guided album-organisation journey. Both packs include licensing, attribution,
-provenance and checksums.
-
-## What does the synthetic demo prove?
-
-It proves installation, product behavior, viewing modes, evidence semantics,
-Guided operations and lifecycle handling. It does not prove biometric
-accuracy, demographic fairness or real-person consistency.
-
-## Which Immich version is supported?
-
-The current Community Preview 7 release is proved against exact Immich 3.1.0.
-Later Immich versions need their own compatibility proof before being claimed
-as supported.
-
-## How do I install Cimmich beside my library?
-
-Experienced Docker users can follow the conventional
-[Compose quick start](../INSTALL.md#docker-compose-quick-start). For guarded
-backup, restore and removal operations, use the
-[guided installer](../INSTALL.md#guided-installer) on macOS or Linux. From the
-Community Preview release page you are reading, download its named Cimmich
-install bundle, verify it with that release's `SHA256SUMS`, extract it, start
-Docker, then either inspect and run `compose.yaml` or use:
+Download and verify the named release bundle, then follow
+[INSTALL.md](../INSTALL.md). The supported end-to-end path is the checked-in
+installer:
 
 ```sh
 ./tools/install.sh --check
 ./tools/install.sh
 ```
 
-The check explains prerequisites without changing the computer. Installation
-creates Cimmich's separate Docker project but does not ask for an Immich API key
-or import any library state. The signed-in setup screen handles the dedicated
-read-only key and exact preview later. Native Windows PowerShell is not
-currently supported.
+It creates the private runtime state used by backup, restore, diagnostics and
+removal. The root Compose file remains inspectable, but running it directly is
+not a second complete lifecycle. The guide explains host addressing, the
+first-run preview, backup, updates, diagnostics and removal.
 
-## How long does installation take?
+## Why do I sign in and also create an API key?
 
-The guided check is immediate. A cold first build commonly takes 4–10 minutes
-while pinned images and locked web dependencies are prepared. Hardware,
-network and Docker cache state can change that time.
+They do different jobs. Your normal Immich session authenticates the browser.
+The dedicated read-only key lets the Cimmich service read library inventory and
+original assets for the features you choose.
+
+Create the key in Immich **Account Settings → API Keys** with current-user read,
+asset read/download, Face read and Person read only. Enter it only in Cimmich's
+write-only Settings field. Cimmich verifies the key before import, and you can
+revoke it later from Immich. See the
+[exact steps](../INSTALL.md#4-create-the-dedicated-immich-api-key).
+
+## How long does the first start take?
+
+A cold source build commonly takes 4–10 minutes while locked dependencies and
+container layers are prepared. Hardware, network and Docker cache state vary.
+Use `./tools/install.sh --status` or `./tools/companion.sh doctor` rather than
+repeatedly recreating the stack. No CPU or memory minimum has been certified;
+the [install guide](../INSTALL.md#resource-expectations) states the current
+resource boundary without inventing one.
 
 ## Can I remove Cimmich without harming Immich?
 
-Yes, when using the supported exact-project operators. Normal stop, restart and
-down operations preserve Cimmich state. Confirmed reset, destroy or remove
-commands target only the named Cimmich project. Read [INSTALL.md](../INSTALL.md)
-before any destructive lifecycle command and back up first.
+Yes, when using the installer-created exact-project operator. `disable` and
+`up` preserve Cimmich state. Confirmed removal targets only Cimmich's project,
+volumes and dedicated state directory.
+
+Back up first. Removal deletes Cimmich-owned context, decisions and documents;
+it does not remove Immich or original media.
 
 ## How do backup and restore work?
 
-Cimmich backs up its own database, documents and configuration. Restore is
-confirmation-gated and preflights manifests, checksums, project identity,
-database readability, schema compatibility and semantic counts before
-replacement. It does not back up or restore Immich media.
+A normal backup covers Cimmich's database, documents, configuration and
+provider state for the same installation. Restore verifies checksums, project
+identity, schema compatibility and semantic counts before replacement.
 
-For another machine or Immich installation, `portable-export` carries only the
-Cimmich database and Documents store with a verified manifest.
-`portable-restore` preserves the target installation's credentials and provider
-artifacts. Cimmich then reconnects moved files by exact content hash rather than
-requiring the old path or Immich UUID. See [archive mobility](ARCHIVE_MOBILITY.md).
+Portable export carries the Cimmich database and Documents store to another
+installation while excluding original media, Immich credentials and provider
+artifacts. Exact media content can reconnect after inventory even when paths or
+Immich UUIDs changed. See [archive mobility](ARCHIVE_MOBILITY.md).
 
-## What parts existed before OpenAI Build Week?
+## What existed before OpenAI Build Week?
 
-The original problem, archive-processing and local/cloud-model experiments,
-identity/matching research, semantic-search exploration and an experimental
-Immich-derived UI seed predated Build Week. The Cimmich service, data model,
-product experience, operators, Guided interface, synthetic demonstrations and
-proof program are mapped in the dated
-[Build Week changelog](BUILD_WEEK_CHANGELOG.md) and
-[evidence index](BUILD_WEEK_EVIDENCE.md).
+The underlying archive problem, identity and matching research, semantic-search
+exploration and an experimental Immich-derived UI seed predated the event. The
+Build Week work and prior-work boundary are recorded in the
+[Build Week account](BUILD_WEEK.md) and
+[evidence index](BUILD_WEEK_EVIDENCE.md). The exact submission remains
+preserved as `v1.0.0-build-week`; later product work does not rewrite it.
 
-## How is the project licensed?
+## How was Cimmich built?
 
-Cimmich source is AGPL-3.0-only with preserved upstream and third-party
-notices. Cedar House and Space Trip are independently licensed demonstration
-packages; their licence, notice, attribution, manifest and provenance files
-must travel with them.
+Benji holds product direction, acceptance and release authority. The product
+problem, privacy and identity boundaries, compatibility target, acceptance
+gates and release decisions are human-owned. Living Cimmich development uses
+substantial AI assistance coordinated and accepted under that authority; the
+historical Build Week tooling and inherited Immich-derived web foundation are
+separately attributed. See [project governance](../GOVERNANCE.md).
 
-## Where should I report a bug or request a feature?
+## How is Cimmich licensed?
+
+Cimmich source is AGPL-3.0-only with preserved upstream and third-party notices.
+The repository contains an adapted Immich web foundation. See
+[NOTICE.md](../NOTICE.md) and [the UI lineage record](../ui/CIMMICH_FORK.md).
+
+Cedar House and Space Trip carry their own licence, attribution, provenance and
+checksum material, which must travel with the packs.
+
+## Where do I report a bug or request a feature?
 
 Use the repository's GitHub issue forms and include a minimal synthetic
-reproduction. Never attach real photos, face/body embeddings, credentials,
-database dumps, host paths or private library details.
+reproduction. Never attach real photographs, embeddings, credentials, database
+dumps, host paths or private library details.
 
 ## How do I report a security issue?
 
 Do not open a public issue. Follow [SECURITY.md](../SECURITY.md) and use GitHub's
-private vulnerability-reporting route once the repository is public.
+private vulnerability-reporting route.

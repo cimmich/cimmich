@@ -1666,16 +1666,16 @@ export const createCimmichRepository = (
     whenMaintenanceIdle() {
       return waitForMaintenanceIdle(maintenanceSql);
     },
-    async filterVisibleMapAssetSourceIds({ sourceAssetIds }) {
+    async filterPresentableAssetSourceIds({ sourceAssetIds }) {
       if (
         !Array.isArray(sourceAssetIds) ||
         sourceAssetIds.length < 1 ||
         sourceAssetIds.length > 500
       ) {
         throw typedError(
-          "Map visibility filtering requires between 1 and 500 source asset IDs",
+          "Photo presentation filtering requires between 1 and 500 source asset IDs",
           400,
-          "MAP_ASSET_IDS_INVALID",
+          "PRESENTATION_ASSET_IDS_INVALID",
         );
       }
       const normalized = sourceAssetIds.map((value) =>
@@ -1691,9 +1691,9 @@ export const createCimmichRepository = (
         new Set(normalized).size !== normalized.length
       ) {
         throw typedError(
-          "Map source asset IDs must be unique UUIDs",
+          "Photo presentation source asset IDs must be unique UUIDs",
           400,
-          "MAP_ASSET_IDS_INVALID",
+          "PRESENTATION_ASSET_IDS_INVALID",
         );
       }
       const rows = await sql`
@@ -1712,9 +1712,23 @@ export const createCimmichRepository = (
           assetId: row.asset_id,
           sourceAssetId: row.source_asset_id,
         })),
-        schemaVersion: "cimmich.visible-map-assets.v2",
+        schemaVersion: "cimmich.presentable-assets.v1",
         sourceAssetIds: rows.map((row) => row.source_asset_id),
       };
+    },
+    async filterVisibleMapAssetSourceIds(input) {
+      try {
+        const result = await repository.filterPresentableAssetSourceIds(input);
+        return {
+          ...result,
+          schemaVersion: "cimmich.visible-map-assets.v2",
+        };
+      } catch (error) {
+        if (error?.code === "PRESENTATION_ASSET_IDS_INVALID") {
+          error.code = "MAP_ASSET_IDS_INVALID";
+        }
+        throw error;
+      }
     },
     async health() {
       const [row] = await sql`

@@ -2,6 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+CHECKSUM="$ROOT/tools/sha256.sh"
 COMPOSE_FILE="$ROOT/compose.yaml"
 PROJECT=${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 STATE_ROOT=${CIMMICH_COMPANION_STATE_ROOT:-}
@@ -16,8 +17,8 @@ ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
-API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.7}
-UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.7}
+API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.8}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.8}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -649,7 +650,7 @@ validate_backup() {
     fail "backup checksum manifest is invalid"
   test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" -eq 5 ||
     fail "backup checksum manifest is invalid"
-  (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) ||
+  (cd "$backup_path" && "$CHECKSUM" verify SHA256SUMS >/dev/null) ||
     fail "backup checksum verification failed"
   manifest_fields=$(docker run --rm -v "$backup_path:/backup:ro" "$NODE_IMAGE" node -e '
     const fs = require("node:fs");
@@ -690,7 +691,7 @@ validate_portable_export() {
     fail "portable export checksum manifest is invalid"
   test "$(wc -l < "$backup_path/SHA256SUMS" | tr -d ' ')" -eq 3 ||
     fail "portable export checksum manifest is invalid"
-  (cd "$backup_path" && sha256sum -c SHA256SUMS >/dev/null) ||
+  (cd "$backup_path" && "$CHECKSUM" verify SHA256SUMS >/dev/null) ||
     fail "portable export checksum verification failed"
   manifest_fields=$(docker run --rm -v "$backup_path:/portable:ro" "$NODE_IMAGE" node -e '
     const fs = require("node:fs");
@@ -771,7 +772,7 @@ backup() {
     fail "companion semantic counts changed during backup"
   printf '{"health":%s,"project":"%s","semanticCounts":"%s"}\n' \
     "$health" "$PROJECT" "$backup_counts_before" > "$backup_staging/manifest.json"
-  (cd "$backup_staging" && sha256sum cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
+  (cd "$backup_staging" && "$CHECKSUM" generate cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
   chmod 600 "$backup_staging"/*
   validate_backup "$backup_staging"
   mv "$backup_staging" "$backup_destination"
@@ -818,7 +819,7 @@ portable_export() {
     fail "companion semantic counts changed during portable export"
   printf '{"excludes":["credentials","media","provider-artifacts"],"format":"cimmich.portable-export.v1","health":%s,"project":"%s","semanticCounts":"%s"}\n' \
     "$health" "$PROJECT" "$portable_counts_before" > "$portable_staging/manifest.json"
-  (cd "$portable_staging" && sha256sum cimmich.dump documents.tgz manifest.json > SHA256SUMS)
+  (cd "$portable_staging" && "$CHECKSUM" generate cimmich.dump documents.tgz manifest.json > SHA256SUMS)
   chmod 600 "$portable_staging"/*
   validate_portable_export "$portable_staging"
   mv "$portable_staging" "$portable_destination"
