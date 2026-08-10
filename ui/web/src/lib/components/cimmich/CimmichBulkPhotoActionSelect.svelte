@@ -13,9 +13,10 @@
   >Action
   <select class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15" {value} {onchange}>
     <optgroup label="Tags and albums"
-      ><option value="tag-add">Add tag</option><option value="tag-remove">Remove tag</option><option value="album-add"
-        >Add to album</option
-      ></optgroup
+      ><option value="label-add">Add Cimmich label</option><option value="label-remove">Remove Cimmich label</option
+      ><option value="tag-add">Add Normal tag</option><option value="tag-remove">Remove Normal tag</option><option
+        value="album-add">Add to album</option
+      ><option value="folders-to-albums">Create albums from folders</option></optgroup
     >
     <optgroup label="Immich library"
       ><option value="favorite">Favourite</option><option value="unfavorite">Remove favourite</option><option

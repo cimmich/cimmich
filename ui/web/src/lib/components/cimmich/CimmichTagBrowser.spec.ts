@@ -5,6 +5,7 @@ import CimmichTagBrowser from './CimmichTagBrowser.svelte';
 
 const mocks = vi.hoisted(() => ({
   getAssetInfo: vi.fn(),
+  getAssetLabels: vi.fn(),
   getContextEntities: vi.fn(),
   getPeople: vi.fn(),
   getPersonAssets: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('@immich/sdk', async (importOriginal) => ({
 vi.mock('$lib/services/cimmich.service', async (importOriginal) => ({
   ...(await importOriginal()),
   getCimmichContextEntities: mocks.getContextEntities,
+  getCimmichAssetLabels: mocks.getAssetLabels,
   getCimmichPeople: mocks.getPeople,
   getCimmichPersonAssetsPage: mocks.getPersonAssets,
   getCimmichPets: mocks.getPets,
@@ -57,6 +59,7 @@ describe('CimmichTagBrowser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getPeople.mockResolvedValue([person('person_1', 'Alex Example'), person('person_2', 'Blair Example')]);
+    mocks.getAssetLabels.mockResolvedValue([]);
     mocks.getPets.mockResolvedValue([]);
     mocks.getContextEntities.mockResolvedValue([]);
     mocks.getPersonAssets.mockResolvedValue({ items: [], nextCursor: null, summary: { total: 0 } });

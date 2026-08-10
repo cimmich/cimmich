@@ -134,6 +134,7 @@ test("guided install stops at signed-in preview and documentation separates both
     bundleScript,
     agentInstall,
     gateway,
+    version,
   ] = await Promise.all([
     readFile(installer, "utf8"),
     readFile(companion, "utf8"),
@@ -144,6 +145,7 @@ test("guided install stops at signed-in preview and documentation separates both
     readFile(bundleBuilder, "utf8"),
     readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
     readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
+    readFile(join(root, "CIMMICH_VERSION"), "utf8"),
   ]);
 
   assert.doesNotMatch(script, /["']?\$COMPANION["']? sync/);
@@ -252,8 +254,8 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(compose, /test "\$\$actual" = 3\.1\.0/);
   assert.match(compose, /context: \./);
   assert.doesNotMatch(compose, /ghcr\.io\/cimmich/);
-  assert.match(compose, /cimmich-api:v1\.1\.0-community-preview\.6/);
-  assert.match(compose, /cimmich-ui:v1\.1\.0-community-preview\.6/);
+  assert.ok(compose.includes(`cimmich-api:${version.trim()}`));
+  assert.ok(compose.includes(`cimmich-ui:${version.trim()}`));
   assert.match(
     compose,
     /\.\/tools\/cimmich_gateway\.conf\.template:\/template\/default\.conf\.template:ro/,

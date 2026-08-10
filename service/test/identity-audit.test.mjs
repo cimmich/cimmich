@@ -369,10 +369,16 @@ test("audit item counts share the row query's guarded predicate", async () => {
     /item\.audit_kind <> 'untagged_match'[\s\S]*cimmich_face_match_eligible/,
     /same_photo_identity\.person_id = item\.suggested_person_id/,
     /same_photo_face\.asset_id = item\.asset_id/,
+    /FROM identity_claim same_photo_identity/,
+    /JOIN identity_claim current_identity/,
+    /current_identity\.state = 'accepted'/,
+    /current_member\.physical_face_id = item\.physical_face_id/,
   ]) {
     assert.match(countQuery, guard);
     assert.match(itemQuery, guard);
   }
+  assert.doesNotMatch(countQuery, /current_physical_face_identity current/);
+  assert.doesNotMatch(itemQuery, /current_physical_face_identity current/);
 });
 
 test("audit leads group all open untagged matches by known Person", async () => {

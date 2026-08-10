@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 
 const schemaVersion = "cimmich.tag-assets.v1";
-const families = new Set(["people", "pets", "places", "things", "events"]);
+const families = new Set([
+  "people",
+  "pets",
+  "places",
+  "things",
+  "events",
+  "labels",
+]);
 
 const typedError = (message, statusCode, code) =>
   Object.assign(new Error(message), { code, statusCode });
@@ -181,10 +188,20 @@ export const createTagAssetSearch = (sql, { bridge, presentationRank }) =>
         FROM context_scope scope
         JOIN current_context_asset association
           ON association.entity_id = scope.entity_id
+      ), label_memberships AS MATERIALIZED (
+        SELECT selected.tag_key, membership.asset_id
+        FROM selected_tags selected
+        JOIN current_asset_label_membership membership
+          ON membership.label_id = selected.entity_id
+        JOIN asset_label label ON label.label_id = membership.label_id
+          AND label.status = 'active'
+        WHERE selected.family = 'labels'
       ), memberships AS MATERIALIZED (
         SELECT * FROM person_memberships
         UNION
         SELECT * FROM context_memberships
+        UNION
+        SELECT * FROM label_memberships
       ), matching_assets AS MATERIALIZED (
         SELECT membership.asset_id
         FROM memberships membership

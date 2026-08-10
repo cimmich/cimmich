@@ -16,6 +16,8 @@ const repositoryWithTransaction = (handler, options = {}) => {
 
 test("bulk candidate accept returns after the durable write while Prime maintenance continues", async () => {
   let candidateLockScoped = false;
+  let candidateSelectionQueries = 0;
+  let acceptedPhysicalQueries = 0;
   let maintenanceStarted = false;
   let releaseMaintenance;
   const maintenanceGate = new Promise((resolve) => {
@@ -27,16 +29,23 @@ test("bulk candidate accept returns after the durable write while Prime maintena
       return [{ display_name: "Someone", person_id: "person-batch" }];
     }
     if (query.includes("JOIN source_pack pack")) {
+      candidateSelectionQueries += 1;
       candidateLockScoped = query.includes("FOR UPDATE OF claim");
-      return [
-        {
-          evidence_refs: {},
-          face_id: "face-batch",
-          identity_claim_id: values[0],
-          person_id: "person-batch",
-          state: "candidate",
-        },
-      ];
+      return values[0].map((claimId) => ({
+        evidence_refs: {},
+        face_id: `face-${claimId}`,
+        identity_claim_id: claimId,
+        person_id: "person-batch",
+        physical_face_id: `physical-${claimId}`,
+        state: "candidate",
+      }));
+    }
+    if (
+      query.includes("JOIN identity_claim accepted") &&
+      query.includes("physical.physical_face_id = ANY")
+    ) {
+      acceptedPhysicalQueries += 1;
+      return [];
     }
     if (
       query.includes("WHERE face_id =") &&
@@ -45,14 +54,7 @@ test("bulk candidate accept returns after the durable write while Prime maintena
       return [];
     }
     if (query.includes("SET state = 'accepted'")) {
-      return [
-        {
-          face_id: "face-batch",
-          identity_claim_id: "claim-batch",
-          person_id: "person-batch",
-          state: "accepted",
-        },
-      ];
+      return values[0].map((claimId) => ({ identity_claim_id: claimId }));
     }
     if (query.includes("slug = 'holding'")) {
       maintenanceStarted = true;
@@ -67,7 +69,7 @@ test("bulk candidate accept returns after the durable write while Prime maintena
   const response = repository
     .bulkAcceptPersonCandidates({
       actorId: "local-operator",
-      claimIds: ["claim-batch"],
+      claimIds: ["claim-a", "claim-b"],
       personId: "person-batch",
     })
     .then((result) => {
@@ -82,8 +84,10 @@ test("bulk candidate accept returns after the durable write while Prime maintena
 
   assert.equal(maintenanceStarted, true);
   assert.equal(candidateLockScoped, true);
+  assert.equal(candidateSelectionQueries, 1);
+  assert.equal(acceptedPhysicalQueries, 1);
   assert.equal(returnedBeforeMaintenance, true);
-  assert.equal(result.acceptedCount, 1);
+  assert.equal(result.acceptedCount, 2);
   assert.equal(result.maintenancePending, true);
 });
 

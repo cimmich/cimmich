@@ -2,7 +2,18 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { integrationSettingsPack } from "./integration-settings.mjs";
 import { createReviewRoutes } from "./review-routes.mjs";
+import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
+import { createBulkAlbumOperationRoutes } from "./bulk-album-operation-routes.mjs";
+import {
+  attachProjectionSnapshotInvalidation,
+  exploreFacetResponse,
+  personAssetRequestFromUrl,
+} from "./explore-routes.mjs";
 import { matchPossiblePeopleRoutes } from "./possible-people-routes.mjs";
+import {
+  observeRequestTiming,
+  safeRouteFamily,
+} from "./request-diagnostics.mjs";
 
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
@@ -16,19 +27,6 @@ const requestHostname = (authority) => {
     return parsed.hostname.toLowerCase();
   } catch {
     return "";
-  }
-};
-
-const safeRouteFamily = (requestUrl) => {
-  try {
-    const parts = new URL(requestUrl || "/", "http://cimmich.local").pathname
-      .split("/")
-      .filter(Boolean);
-    return parts[0] === "v1"
-      ? `v1.${String(parts[1] || "root").replace(/[^a-z0-9_-]/gi, "")}`
-      : String(parts[0] || "root").replace(/[^a-z0-9_-]/gi, "");
-  } catch {
-    return "invalid";
   }
 };
 
@@ -213,17 +211,22 @@ export const createCimmichServer = ({
   }
   const requireProjection = (surfaceKey) =>
     visibility?.requireProjection?.(surfaceKey);
-  const reviewRoutes = createReviewRoutes(
-    repository,
-    requireProjection,
-    readJsonBody,
-    sendJson,
-  );
+  const extensionRoutes = [
+    createAssetLabelRoutes(
+      repository,
+      requireProjection,
+      readJsonBody,
+      sendJson,
+    ),
+    createBulkAlbumOperationRoutes(repository, readJsonBody, sendJson),
+    createReviewRoutes(repository, requireProjection, readJsonBody, sendJson),
+  ];
 
   const handleRequest = async (request, response) => {
     const requestId = randomUUID();
     const startedAt = performance.now();
     response.setHeader("x-cimmich-request-id", requestId);
+    observeRequestTiming({ request, response, requestId, startedAt });
     const hostname = requestHostname(request.headers.host);
     if (!hostname || !allowedHosts.has(hostname)) {
       sendJson(response, 421, { error: "Host is not allowed" });
@@ -248,16 +251,7 @@ export const createCimmichServer = ({
       response.end();
       return;
     }
-    if (request.method !== "GET") {
-      // Any successful mutation may change what the People grid shows; the
-      // hot snapshot is dropped wholesale rather than tracking which of the
-      // many write paths affect it.
-      response.on("finish", () => {
-        if (response.statusCode < 400) {
-          repository.clearPeopleHotSnapshot?.();
-        }
-      });
-    }
+    attachProjectionSnapshotInvalidation({ repository, request, response });
 
     try {
       const url = new URL(request.url || "/", "http://cimmich.local");
@@ -1489,6 +1483,17 @@ export const createCimmichServer = ({
           },
           allowedOrigin,
         );
+        return;
+      }
+      const exploreResponse = await exploreFacetResponse({
+        readJsonBody,
+        repository,
+        request,
+        requireProjection,
+        url,
+      });
+      if (exploreResponse) {
+        sendJson(response, 200, exploreResponse, allowedOrigin);
         return;
       }
       if (
@@ -3139,21 +3144,15 @@ export const createCimmichServer = ({
       }
       if (request.method === "GET" && personAssetsMatch) {
         requireProjection("person_assets");
-        const pageSize = url.searchParams.has("pageSize")
-          ? url.searchParams.get("pageSize")
-          : null;
-        const cursor = url.searchParams.get("cursor") || "";
-        const result = await repository.personAssets({
-          associationType: url.searchParams.get("associationType"),
-          cursor,
-          limit: url.searchParams.get("limit"),
-          pageSize,
-          personId: decodeURIComponent(personAssetsMatch[1]),
-        });
+        const { input, paginated } = personAssetRequestFromUrl(
+          personAssetsMatch[1],
+          url.searchParams,
+        );
+        const result = await repository.personAssets(input);
         sendJson(
           response,
           200,
-          pageSize !== null || cursor ? result : { items: result },
+          paginated ? result : { items: result },
           allowedOrigin,
         );
         return;
@@ -3503,8 +3502,10 @@ export const createCimmichServer = ({
         );
         return;
       }
-      if (await reviewRoutes(request, response, url, allowedOrigin)) {
-        return;
+      for (const route of extensionRoutes) {
+        if (await route(request, response, url, allowedOrigin)) {
+          return;
+        }
       }
       const machineSuggestionAcceptMatch = url.pathname.match(
         /^\/v1\/review\/machine-suggestions\/([^/]+)\/accept$/,

@@ -1,24 +1,29 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
     attachCimmichContextAssets,
+    changeCimmichAssetLabelMembership,
+    createCimmichAssetLabel,
+    createCimmichAssetLabelCommandId,
     createCimmichContextCommandId,
     createCimmichVisibilityCommandId,
     getCimmichContextEntities,
+    getCimmichAssetLabels,
     getCimmichPeople,
     getCimmichPersonAssetsPage,
     getCimmichVisibleMapAssetBindings,
     setCimmichVisibilityObjects,
     undoCimmichContextDecision,
+    undoCimmichAssetLabelDecision,
     undoCimmichVisibilityDecision,
+    type CimmichAssetLabel,
     type CimmichContextEntity,
     type CimmichPerson,
     type CimmichVisibilityTier,
   } from '$lib/services/cimmich.service';
-  import { getAssetMediaUrl } from '$lib/utils';
   import {
     addAssetsToAlbum,
-    AssetMediaSize,
     AssetVisibility,
     bulkTagAssets,
     getAllAlbums,
@@ -35,17 +40,16 @@
   import { Icon } from '@immich/ui';
   import {
     mdiAlertCircleOutline,
-    mdiCheckCircleOutline,
     mdiFilterOutline,
     mdiFolderMultipleOutline,
     mdiImageMultipleOutline,
-    mdiPlayCircleOutline,
     mdiRefresh,
-    mdiUndoVariant,
   } from '@mdi/js';
   import { SvelteSet } from 'svelte/reactivity';
   import { applyBulkPhotoRotation, undoBulkPhotoRotation } from './bulk-photo-corrections';
-  import CimmichBulkPhotoActionSelect from './CimmichBulkPhotoActionSelect.svelte';
+  import CimmichBulkPhotoActionPanel from './CimmichBulkPhotoActionPanel.svelte';
+  import CimmichBulkPhotoPreview from './CimmichBulkPhotoPreview.svelte';
+  import CimmichBulkPhotoStatus from './CimmichBulkPhotoStatus.svelte';
   import {
     BULK_PHOTO_SORTER_BATCH_SIZE,
     BULK_PHOTO_SORTER_PAGE_SIZE,
@@ -55,6 +59,7 @@
     bulkPhotoSorterActionNeedsTarget,
     bulkPhotoSorterChangedAssets,
     bulkPhotoSorterFilterFingerprint,
+    bulkPhotoSorterMappedIds,
     bulkPhotoSorterSameSnapshot,
     chunkBulkPhotoSorterItems,
     createBulkPhotoSorterOperationId,
@@ -65,10 +70,13 @@
     type BulkPhotoSorterOperationReceipt,
     type BulkPhotoSorterUndoReceipt,
   } from './bulk-photo-sorter';
-  let filters = $state(emptyBulkPhotoSorterFilters());
-  let action = $state<BulkPhotoSorterActionKind>('tag-add');
+  const initialFilters = emptyBulkPhotoSorterFilters();
+  initialFilters.folder = page.url.searchParams.get('folder') ?? '';
+  let filters = $state(initialFilters);
+  let action = $state<BulkPhotoSorterActionKind>('label-add');
   let targetId = $state('');
   let albums = $state<AlbumResponseDto[]>([]);
+  let labels = $state<CimmichAssetLabel[]>([]);
   let people = $state<CimmichPerson[]>([]);
   let tags = $state<TagResponseDto[]>([]);
   let places = $state<CimmichContextEntity[]>([]);
@@ -78,6 +86,8 @@
   let optionsError = $state('');
   let personOptionQuery = $state('');
   let targetOptionQuery = $state('');
+  let newLabelName = $state('');
+  let creatingLabel = $state(false);
   let previewAssets = $state<AssetResponseDto[]>([]);
   let previewTotal = $state<number | null>(null);
   let previewHasMore = $state(false);
@@ -94,18 +104,24 @@
   const previewIsCurrent = $derived(previewTotal !== null && previewFingerprint === filterFingerprint);
   const needsTarget = $derived(bulkPhotoSorterActionNeedsTarget(action));
   const canApply = $derived(
-    previewIsCurrent && previewTotal !== null && previewTotal > 0 && (!needsTarget || targetId) && !receipt?.undo,
+    previewIsCurrent &&
+      previewTotal !== null &&
+      previewTotal > 0 &&
+      (!needsTarget || Boolean(targetId)) &&
+      !receipt?.undo,
   );
   const targetOptions = $derived(
     action === 'album-add'
       ? albums.map(({ id, albumName }) => ({ id, label: albumName }))
-      : action === 'tag-add' || action === 'tag-remove'
-        ? tags.map(({ id, name }) => ({ id, label: name }))
-        : action === 'place-attach'
-          ? places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }))
-          : action === 'event-attach'
-            ? events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }))
-            : [],
+      : action === 'label-add' || action === 'label-remove'
+        ? labels.map(({ labelId, displayName }) => ({ id: labelId, label: displayName }))
+        : action === 'tag-add' || action === 'tag-remove'
+          ? tags.map(({ id, name }) => ({ id, label: name }))
+          : action === 'place-attach'
+            ? places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }))
+            : action === 'event-attach'
+              ? events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }))
+              : [],
   );
   const targetLabel = $derived(targetOptions.find(({ id }) => id === targetId)?.label ?? '');
 
@@ -128,12 +144,13 @@
     optionsLoading = true;
     optionsError = '';
     try {
-      const [albumItems, peopleResult, tagItems, placeItems, eventItems] = await Promise.all([
+      const [albumItems, peopleResult, tagItems, placeItems, eventItems, labelItems] = await Promise.all([
         getAllAlbums({ isOwned: true }),
         getCimmichPeople(500, '', { presentation: false }),
         getAllTags(),
         getCimmichContextEntities('places', { limit: 500 }),
         getCimmichContextEntities('events', { limit: 500 }),
+        getCimmichAssetLabels(),
       ]);
       albums = [...albumItems].sort((left, right) => left.albumName.localeCompare(right.albumName));
       people = peopleResult
@@ -142,6 +159,7 @@
       tags = [...tagItems].sort((left, right) => left.name.localeCompare(right.name));
       places = [...placeItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
       events = [...eventItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
+      labels = [...labelItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
     } catch (error_) {
       optionsError = `${asErrorMessage(error_)} You can still use filters and actions that do not need these lists.`;
     } finally {
@@ -183,6 +201,27 @@
       optionsError = asErrorMessage(error_);
     } finally {
       optionSearching = false;
+    }
+  };
+
+  const createLabel = async () => {
+    const displayName = newLabelName.trim();
+    if (!displayName) {
+      return;
+    }
+    creatingLabel = true;
+    optionsError = '';
+    try {
+      const result = await createCimmichAssetLabel(displayName, createCimmichAssetLabelCommandId('organise-create'));
+      labels = [...labels.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName),
+      );
+      targetId = result.label.labelId;
+      newLabelName = '';
+    } catch (error_) {
+      optionsError = asErrorMessage(error_);
+    } finally {
+      creatingLabel = false;
     }
   };
 
@@ -367,10 +406,7 @@
   const mappedCimmichAssets = async (assets: AssetResponseDto[]) => {
     progress = 'Resolving photos in Cimmich…';
     const bindings = await getCimmichVisibleMapAssetBindings(assets.map(({ id }) => id));
-    return assets.flatMap(({ id }) => {
-      const assetId = bindings.get(id);
-      return assetId ? [assetId] : [];
-    });
+    return bulkPhotoSorterMappedIds(assets, bindings);
   };
 
   const applyVisibilityAction = async (
@@ -428,6 +464,35 @@
       updateProgress(Math.min(applied, mappedIds.length), mappedIds.length);
     }
     return { applied, assetIds: undoReceipt.assetIds, decisionIds };
+  };
+
+  const applyLabelAction = async (
+    assets: AssetResponseDto[],
+    undoReceipt: BulkPhotoSorterUndoReceipt,
+    persistUndo: () => void,
+  ) => {
+    const mappedIds = await mappedCimmichAssets(assets);
+    const membershipAction = action === 'label-add' ? 'attach' : 'detach';
+    let applied = 0;
+    for (const batch of chunkBulkPhotoSorterItems(mappedIds)) {
+      const result = await changeCimmichAssetLabelMembership(
+        targetId,
+        membershipAction,
+        batch,
+        createCimmichAssetLabelCommandId(`organise-${membershipAction}`),
+      );
+      if (result.changedAssetIds.length > 0) {
+        undoReceipt.assetIds.push(...result.changedAssetIds);
+        undoReceipt.labelDecisions.push({
+          assetIds: [...result.changedAssetIds],
+          decisionId: result.decisionId,
+        });
+        persistUndo();
+      }
+      applied += result.changedAssetIds.length;
+      updateProgress(applied, mappedIds.length);
+    }
+    return { applied, assetIds: undoReceipt.assetIds };
   };
 
   const apply = async () => {
@@ -489,6 +554,7 @@
         assetIds: [],
         assetCorrectionDecisionIds: [],
         contextDecisionIds: [],
+        labelDecisions: [],
         label,
         targetId,
         visibilityDecisionIds: [],
@@ -511,6 +577,10 @@
             assetIds: [...partialUndo.assetIds],
             assetCorrectionDecisionIds: [...partialUndo.assetCorrectionDecisionIds],
             contextDecisionIds: [...partialUndo.contextDecisionIds],
+            labelDecisions: partialUndo.labelDecisions.map((item) => ({
+              assetIds: [...item.assetIds],
+              decisionId: item.decisionId,
+            })),
             visibilityDecisionIds: [...partialUndo.visibilityDecisionIds],
           },
           version: 1,
@@ -534,36 +604,59 @@
 
       let completedReceipt: BulkPhotoSorterOperationReceipt;
 
-      if (action === 'album-add') {
-        const result = await applyAlbumAction(snapshot, partialUndo, persistPartialUndo);
-        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
-      } else if (action.startsWith('visibility-')) {
-        const result = await applyVisibilityAction(snapshot, partialUndo, persistPartialUndo);
-        completedReceipt = createReceipt({
-          applied: result.applied,
-          undo: result.decisionIds.length > 0 ? partialUndo : null,
-        });
-      } else if (action === 'place-attach' || action === 'event-attach') {
-        const result = await applyContextAction(snapshot, partialUndo, persistPartialUndo);
-        completedReceipt = createReceipt({
-          applied: result.applied,
-          undo: result.decisionIds.length > 0 ? partialUndo : null,
-        });
-      } else if (action === 'rotate-left' || action === 'rotate-right') {
-        const result = await applyBulkPhotoRotation(
-          snapshot.map(({ id }) => id),
-          action === 'rotate-left' ? 'left' : 'right',
-          (assetIds, decisionIds) => {
-            partialUndo!.assetIds.push(...assetIds);
-            partialUndo!.assetCorrectionDecisionIds.push(...decisionIds);
-            persistPartialUndo();
-          },
-          updateProgress,
-        );
-        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
-      } else {
-        const result = await applyNativeAction(snapshot, partialUndo, persistPartialUndo);
-        completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+      switch (action) {
+        case 'album-add': {
+          const result = await applyAlbumAction(snapshot, partialUndo, persistPartialUndo);
+          completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+          break;
+        }
+        case 'visibility-personal':
+        case 'visibility-private':
+        case 'visibility-standard': {
+          const result = await applyVisibilityAction(snapshot, partialUndo, persistPartialUndo);
+          completedReceipt = createReceipt({
+            applied: result.applied,
+            undo: result.decisionIds.length > 0 ? partialUndo : null,
+          });
+          break;
+        }
+        case 'event-attach':
+        case 'place-attach': {
+          const result = await applyContextAction(snapshot, partialUndo, persistPartialUndo);
+          completedReceipt = createReceipt({
+            applied: result.applied,
+            undo: result.decisionIds.length > 0 ? partialUndo : null,
+          });
+          break;
+        }
+        case 'label-add':
+        case 'label-remove': {
+          const result = await applyLabelAction(snapshot, partialUndo, persistPartialUndo);
+          completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+          break;
+        }
+        case 'rotate-left':
+        case 'rotate-right': {
+          const result = await applyBulkPhotoRotation(
+            snapshot.map(({ id }) => id),
+            action === 'rotate-left' ? 'left' : 'right',
+            (assetIds, decisionIds) => {
+              partialUndo!.assetIds.push(...assetIds);
+              partialUndo!.assetCorrectionDecisionIds.push(...decisionIds);
+              persistPartialUndo();
+            },
+            updateProgress,
+          );
+          completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+          break;
+        }
+        case 'folders-to-albums': {
+          throw new Error('Use the folder manifest controls below to create albums.');
+        }
+        default: {
+          const result = await applyNativeAction(snapshot, partialUndo, persistPartialUndo);
+          completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+        }
       }
       storeReceipt(completedReceipt);
       progress = completedReceipt.applied
@@ -576,6 +669,7 @@
         (partialUndo.assetIds.length > 0 ||
           partialUndo.assetCorrectionDecisionIds.length > 0 ||
           partialUndo.contextDecisionIds.length > 0 ||
+          partialUndo.labelDecisions.length > 0 ||
           partialUndo.visibilityDecisionIds.length > 0),
       );
       error = `${asErrorMessage(error_)}${hasUndoWork ? ' You can undo the completed part below.' : ' Nothing has changed.'}`;
@@ -609,6 +703,10 @@
       assetIds: [...undoReceipt.assetIds],
       assetCorrectionDecisionIds: [...(undoReceipt.assetCorrectionDecisionIds ?? [])],
       contextDecisionIds: [...undoReceipt.contextDecisionIds],
+      labelDecisions: [...(undoReceipt.labelDecisions ?? [])].map((item) => ({
+        assetIds: [...item.assetIds],
+        decisionId: item.decisionId,
+      })),
       visibilityDecisionIds: [...undoReceipt.visibilityDecisionIds],
     };
     const persistRemaining = () =>
@@ -619,6 +717,10 @@
           assetIds: [...remaining.assetIds],
           assetCorrectionDecisionIds: [...remaining.assetCorrectionDecisionIds],
           contextDecisionIds: [...remaining.contextDecisionIds],
+          labelDecisions: remaining.labelDecisions.map((item) => ({
+            assetIds: [...item.assetIds],
+            decisionId: item.decisionId,
+          })),
           visibilityDecisionIds: [...remaining.visibilityDecisionIds],
         },
       });
@@ -696,6 +798,18 @@
           });
           break;
         }
+        case 'label-add':
+        case 'label-remove': {
+          while (remaining.labelDecisions.length > 0) {
+            const item = remaining.labelDecisions.at(-1)!;
+            await undoCimmichAssetLabelDecision(item.decisionId, createCimmichAssetLabelCommandId('organise-undo'));
+            remaining.labelDecisions.pop();
+            const undoneIds = new Set(item.assetIds);
+            remaining.assetIds = remaining.assetIds.filter((assetId) => !undoneIds.has(assetId));
+            persistRemaining();
+          }
+          break;
+        }
         default: {
           if (remaining.action.startsWith('visibility-')) {
             while (remaining.visibilityDecisionIds.length > 0) {
@@ -730,6 +844,7 @@
     filters = emptyBulkPhotoSorterFilters();
     personOptionQuery = '';
     targetOptionQuery = '';
+    newLabelName = '';
     previewAssets = [];
     previewTotal = null;
     previewHasMore = false;
@@ -737,12 +852,6 @@
     error = '';
     progress = '';
     void loadOptions();
-  };
-
-  const selectAction = (event: Event) => {
-    action = (event.currentTarget as HTMLSelectElement).value as BulkPhotoSorterActionKind;
-    targetId = '';
-    targetOptionQuery = '';
   };
 
   const dismissReceipt = () => {
@@ -754,9 +863,6 @@
     }
     storeReceipt(null);
   };
-
-  const previewUrl = (asset: AssetResponseDto) =>
-    getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Thumbnail, cacheKey: asset.thumbhash });
 </script>
 
 <div class="mx-auto w-full max-w-[1500px] px-4 pb-24 sm:px-6 lg:px-10">
@@ -936,149 +1042,33 @@
   </section>
 
   {#if previewTotal !== null}
-    <section
-      class="mt-6 rounded-3xl border border-black/10 bg-white p-5 shadow-sm sm:p-7 dark:border-white/10 dark:bg-immich-dark-gray"
-    >
-      <div class="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 class="text-xl font-semibold text-immich-primary dark:text-immich-dark-primary">
-            2. Inspect the preview
-          </h2>
-          <p class="mt-2 text-sm text-immich-fg/65 dark:text-immich-dark-fg/65">
-            Showing {previewAssets.length.toLocaleString()} of
-            <strong>{previewTotal.toLocaleString()}{previewHasMore ? '+' : ''}</strong> matching items. The exact total is
-            calculated before final confirmation.
-          </p>
-        </div>
-        {#if previewIsCurrent}<span
-            class="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300"
-            ><Icon icon={mdiCheckCircleOutline} size="18" /> Preview current</span
-          >{/if}
-      </div>
-      {#if previewAssets.length}
-        <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-          {#each previewAssets as asset (asset.id)}
-            <article class="min-w-0 overflow-hidden rounded-2xl bg-black/5 dark:bg-white/5">
-              <img
-                class="aspect-square w-full object-cover"
-                src={previewUrl(asset)}
-                alt={asset.originalFileName}
-                loading="lazy"
-              />
-              <div class="p-2">
-                <p class="truncate text-xs font-semibold" title={asset.originalFileName}>{asset.originalFileName}</p>
-                <p class="mt-1 truncate text-[11px] opacity-60">
-                  {asset.fileCreatedAt.slice(0, 10)}
-                </p>
-              </div>
-            </article>
-          {/each}
-        </div>
-      {:else}<div class="mt-5 rounded-2xl bg-black/5 px-4 py-8 text-center text-sm opacity-70 dark:bg-white/5">
-          No photos match these filters.
-        </div>{/if}
-    </section>
+    <CimmichBulkPhotoPreview
+      assets={previewAssets}
+      current={previewIsCurrent}
+      hasMore={previewHasMore}
+      total={previewTotal}
+    />
   {/if}
 
-  <section
-    class="mt-6 rounded-3xl border border-black/10 bg-white p-5 shadow-sm sm:p-7 dark:border-white/10 dark:bg-immich-dark-gray"
-  >
-    <h2 class="text-xl font-semibold text-immich-primary dark:text-immich-dark-primary">3. Choose one action</h2>
-    <p class="mt-2 text-sm text-immich-fg/65 dark:text-immich-dark-fg/65">
-      One action per run keeps the receipt and Undo exact.
-    </p>
-    {#if receipt?.undo}<p
-        class="mt-4 rounded-2xl border border-amber-400/35 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:bg-amber-950/25 dark:text-amber-100"
-      >
-        A saved Undo receipt is still active. Undo it or keep those changes before applying another action.
-      </p>{/if}
-    <div class="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-      <CimmichBulkPhotoActionSelect value={action} onchange={selectAction} />
-      {#if needsTarget}
-        <div class="grid gap-1.5 text-sm font-medium">
-          <span>Destination</span>
-          {#if action === 'place-attach' || action === 'event-attach'}<div class="flex gap-2">
-              <input
-                class="min-w-0 flex-1 rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
-                bind:value={targetOptionQuery}
-                placeholder={`Search all ${action === 'place-attach' ? 'places' : 'events'}`}
-              />
-              <button
-                class="rounded-xl border border-black/15 px-3 py-2 text-xs font-semibold hover:bg-black/5 disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/5"
-                type="button"
-                onclick={searchContextOptions}
-                disabled={optionSearching}>Search</button
-              >
-            </div>{/if}
-          <select
-            class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
-            bind:value={targetId}
-            disabled={optionsLoading || optionSearching}
-            aria-label="Destination"
-          >
-            <option value="">Choose…</option>{#each targetOptions as option (option.id)}<option value={option.id}
-                >{option.label}</option
-              >{/each}
-          </select>
-        </div>
-      {:else}<div class="hidden sm:block"></div>{/if}
-      <button
-        class="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
-        type="button"
-        onclick={apply}
-        disabled={!canApply || busy || undoing}
-      >
-        <Icon icon={mdiPlayCircleOutline} size="19" />
-        {busy ? 'Applying…' : 'Review and apply'}
-      </button>
-    </div>
-    <p class="mt-4 text-xs/5 text-immich-fg/55 dark:text-immich-dark-fg/55">
-      “Add to album” organises photos without moving files on disk. Physical folder moves and automatic rules are
-      deliberately not part of this first release.
-    </p>
-  </section>
+  <CimmichBulkPhotoActionPanel
+    bind:action
+    bind:newLabelName
+    bind:targetId
+    bind:targetOptionQuery
+    {busy}
+    {canApply}
+    {creatingLabel}
+    hasUndo={Boolean(receipt?.undo)}
+    {needsTarget}
+    onapply={apply}
+    oncreateLabel={createLabel}
+    onsearchContext={searchContextOptions}
+    {optionsLoading}
+    {optionSearching}
+    rootPath={filters.folder}
+    {targetOptions}
+    {undoing}
+  />
 
-  <div class="mt-6" aria-live="polite">
-    {#if progress}<p class="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-medium">
-        {progress}
-      </p>{/if}
-    {#if error}<p
-        class="mt-3 flex gap-2 rounded-2xl border border-red-400/30 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950/25 dark:text-red-200"
-      >
-        <Icon icon={mdiAlertCircleOutline} size="20" />
-        {error}
-      </p>{/if}
-  </div>
-
-  {#if receipt}
-    <section class="mt-6 rounded-3xl border border-emerald-500/25 bg-emerald-50/60 p-5 sm:p-7 dark:bg-emerald-950/15">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p class="text-sm font-semibold tracking-[0.14em] text-emerald-700 uppercase dark:text-emerald-300">
-            {receipt.partial ? 'Partial receipt' : 'Operation receipt'}
-          </p>
-          <h2 class="mt-2 text-xl font-semibold">{receipt.label}</h2>
-          <p class="mt-2 text-sm opacity-75">
-            Selected {receipt.selected.toLocaleString()} · changed {receipt.applied.toLocaleString()} · unchanged or unavailable
-            {receipt.skipped.toLocaleString()} · {new Date(receipt.completedAt).toLocaleTimeString()} · saved on this device
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-          {#if receipt.undo}<button
-              class="inline-flex items-center gap-2 rounded-full border border-emerald-700/30 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-200"
-              type="button"
-              onclick={undo}
-              disabled={busy || undoing}
-              ><Icon icon={mdiUndoVariant} size="19" /> {undoing ? 'Undoing…' : 'Undo'}</button
-            >{/if}
-          <button
-            class="rounded-full px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-200"
-            type="button"
-            onclick={dismissReceipt}
-            disabled={busy || undoing}>{receipt.undo ? 'Keep changes' : 'Dismiss receipt'}</button
-          >
-        </div>
-      </div>
-    </section>
-  {/if}
+  <CimmichBulkPhotoStatus {busy} {error} ondismiss={dismissReceipt} onundo={undo} {progress} {receipt} {undoing} />
 </div>

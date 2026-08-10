@@ -121,7 +121,7 @@ accuracy, demographic fairness or real-person consistency.
 
 ## Which Immich version is supported?
 
-The current Community Preview 6 release is proved against exact Immich 3.1.0.
+The current Community Preview 7 release is proved against exact Immich 3.1.0.
 Later Immich versions need their own compatibility proof before being claimed
 as supported.
 

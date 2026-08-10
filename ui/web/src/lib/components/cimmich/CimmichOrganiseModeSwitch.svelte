@@ -38,6 +38,11 @@
   ];
 
   const isActive = (path: string) => page.url.pathname.startsWith(path);
+  const bulkHref = $derived(
+    page.url.pathname.startsWith(Route.folders()) && page.url.searchParams.get('path')
+      ? `${Route.cimmichOrganiseBulk()}?folder=${encodeURIComponent(page.url.searchParams.get('path')!)}`
+      : Route.cimmichOrganiseBulk(),
+  );
 </script>
 
 <nav class="organise-switch" aria-label="Organise by">
@@ -56,7 +61,7 @@
       </a>
     {/each}
   </div>
-  <a class="organise-switch__bulk" href={Route.cimmichOrganiseBulk()} title="Open Bulk organise">
+  <a class="organise-switch__bulk" href={bulkHref} title="Open Bulk organise">
     <Icon icon={mdiShieldCheckOutline} size="18" />
     <span>Bulk</span>
   </a>

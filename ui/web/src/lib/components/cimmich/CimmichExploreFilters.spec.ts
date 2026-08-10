@@ -1,0 +1,80 @@
+import '@testing-library/jest-dom';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
+import type {
+  CimmichExploreFacetResult,
+  CimmichExploreFilters as CimmichExploreFilterState,
+} from '$lib/services/cimmich.service';
+import CimmichExploreFilters from './CimmichExploreFilters.svelte';
+
+const filters: CimmichExploreFilterState = {
+  eventIds: [],
+  labelIds: [],
+  placeIds: [],
+  privacyTiers: [],
+  thingIds: [],
+};
+
+const result = (privateCount: number, labels: CimmichExploreFacetResult['facets']['labels'] = []) =>
+  ({
+    availableAssets: privateCount > 0 ? 37_893 : 32_267,
+    facets: {
+      events: [],
+      labels,
+      places: [],
+      privacy: [
+        { count: 32_267, displayName: 'Standard', id: 'standard' },
+        { count: 0, displayName: 'Personal', id: 'personal' },
+        { count: privateCount, displayName: 'Private', id: 'private' },
+      ],
+      things: [],
+    },
+    filters,
+    people: [],
+    schemaVersion: 'cimmich.explore-facets.v1',
+    scope: { kind: 'people', personId: '' },
+    totalAssets: privateCount > 0 ? 37_893 : 32_267,
+  }) satisfies CimmichExploreFacetResult;
+
+beforeEach(() => {
+  cimmichVisibilityManager.recordVisibilityStatus({ viewingMode: 'standard' });
+});
+
+describe('Cimmich Explore protected discovery', () => {
+  it('offers a deliberate Private transition instead of claiming protected photos are zero', async () => {
+    const onchange = vi.fn();
+    const requestedModes: string[] = [];
+    const listener = (event: Event) => requestedModes.push((event as CustomEvent<{ mode: string }>).detail.mode);
+    globalThis.addEventListener('cimmich:request-viewing-mode', listener);
+    const { getByRole, getByText } = render(CimmichExploreFilters, {
+      filters,
+      initiallyExpanded: true,
+      onchange,
+      result: result(0),
+    });
+
+    expect(getByRole('button', { name: 'Private Enter to inspect' })).toBeVisible();
+    expect(getByText('Enter Private for protected tags & labels')).toBeVisible();
+    await fireEvent.click(getByRole('button', { name: 'Private Enter to inspect' }));
+    expect(requestedModes).toEqual(['private']);
+    expect(onchange).not.toHaveBeenCalled();
+
+    cimmichVisibilityManager.recordVisibilityStatus({ viewingMode: 'private' });
+    await waitFor(() => expect(onchange).toHaveBeenCalledWith({ ...filters, privacyTiers: ['private'] }));
+    globalThis.removeEventListener('cimmich:request-viewing-mode', listener);
+  });
+
+  it('names first-class Labels as tags and labels when Private content is visible', () => {
+    cimmichVisibilityManager.recordVisibilityStatus({ viewingMode: 'private' });
+    const { getByRole } = render(CimmichExploreFilters, {
+      filters,
+      initiallyExpanded: true,
+      onchange: vi.fn(),
+      result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+    });
+
+    expect(getByRole('combobox', { name: 'Add tag or label filter' })).toHaveTextContent('Restricted (5,626)');
+    expect(getByRole('button', { name: 'Private 5,626' })).toBeVisible();
+  });
+});

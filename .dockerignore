@@ -1,0 +1,9 @@
+.git
+.DS_Store
+**/.DS_Store
+**/node_modules
+**/coverage
+**/.svelte-kit
+**/build
+**/test-results
+**/playwright-report

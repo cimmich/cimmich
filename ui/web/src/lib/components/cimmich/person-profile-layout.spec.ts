@@ -7,6 +7,11 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/identity-audit-correction-controller.svelte.ts', 'utf8'),
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/person-workspace-navigation.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
+    readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
   ]);
   return sources.join('\n');
 };
@@ -95,11 +100,23 @@ describe('Person profile layout', () => {
     expect(source).toContain('Supporting matcher reference');
     expect(source).toContain('face.matching_reference_tier');
     expect(source).toContain('Awaiting confirmation');
+    expect(source).toContain('const cimmichAwaitingCountHint');
+    expect(source).toContain('Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)');
+    expect(source).toContain('{waitingHint.toLocaleString()} waiting');
     expect(source).toContain("title: isNewMatch ? 'New matches' : 'Possible mistags'");
     expect(source).toContain('const cimmichCandidateReviewItems');
     expect(source).toContain('const cimmichPersonReviewItems');
     expect(source).toContain('const cimmichSamePhotoCollisionGroups');
     expect(source).toContain('Multiple matches in one photo');
+    expect(source).toContain('Closest known People');
+    expect(source).toContain('A collage or reflection can genuinely contain');
+    expect(source).toContain('correction.preload(groups.flatMap');
+    expect(source).toContain('getCimmichFaceMatchesBatch(');
+    expect(source).toContain("schemaVersion: 'cimmich.face-owner-review-comparisons-batch.v1'");
+    expect(source).toContain('Nothing changes until you press the inline action.');
+    expect(source).toContain('correction.toggleComparison(item, match.person_id)');
+    expect(source).toContain('Apply this manual correction to this Face?');
+    expect(source).toContain('correction.closeComparison(item)');
     expect(source).toContain('bulk confirmation is');
     expect(source).toContain('samePhotoAcceptedCount');
     expect(source).toContain("'Correct…'");
@@ -107,7 +124,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('Not a face');
     expect(source).toContain('Resize box now');
     expect(source).toContain('cimmichIdentityCollisionAssetIds');
-    expect(source).toContain('retainCimmichCollisionAsset(item)');
+    expect(source).toContain('retainedCollisionAssetIds(');
     expect(source).toContain('candidateClaimId: candidate.identity_claim_id');
     expect(source).toContain('candidateEvidence');
     expect(source).toContain('fitIdentityReviewCrop(item)');
@@ -128,20 +145,31 @@ describe('Person profile layout', () => {
     expect(source).toContain("'Show 50 more'");
     expect(source).toContain('Show 20 more');
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
-    expect(source).toContain('getCimmichPersonAssetsPage(personId, 120)');
+    expect(source).toContain('cimmichExplore.getAssetsPage(personId)');
     expect(source).toContain('refreshCimmichIdentityAfterReview');
     expect(source).toContain('cimmichIdentityAuditProgress.completed');
     expect(source).toContain('Route.viewCimmichPersonAsset');
     expect(source).toContain("overlay: 'people'");
-    expect(source).toContain('getCimmichFaceMatches(item.faceId, 5)');
     expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
     expect(source).toContain('`Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`');
     expect(source).toContain('cimmichIdentityAuditCorrection.decision(item).label');
+    expect(source).toMatch(
+      /cimmichIdentityAuditCorrection\.decision\(item\)\.targetPersonId ===[\s\n]+cimmichPerson\.person_id[\s\S]+\? 'bg-immich-primary'[\s\n]+: 'bg-amber-600'/,
+    );
     expect(source).toContain('onclick={() => void changeCimmichAuditPerson(item)}');
     expect(source).toContain('aria-label={`Choose a different person for ${item.filename}`}');
     expect(source).toContain("item.kind === 'untagged_match'");
     expect(source).toContain("[item.faceId]: ''");
     expect(source).toContain("{#if item.kind === 'accepted_contradiction'}");
+    expect(source).toContain('aria-label={`Preview ${filename} with context`}');
+    expect(source).toContain('size="full"');
+    expect(source).toContain('data-testid="cimmich-large-photo-preview-canvas"');
+    expect(source).toContain('data-testid="cimmich-preview-people-tags"');
+    expect(source).toContain('Drag, scroll, or use the arrow keys to move around the photo.');
+    expect(source).toContain('AssetMediaSize.Fullsize');
+    expect(source).toContain('getCimmichAssetEvidence(sourceAssetId)');
+    expect(source).not.toContain('Open full photo and machinery');
+    expect(source).not.toContain('max-h-[75vh]');
     expect(source).not.toContain('onclick={() => void dismissCimmichAuditMatch(item)}');
     expect(source).toContain('aria-label="Likely identity matches"');
     expect(source).toContain('placeholder="Type a name"');
@@ -209,12 +237,39 @@ describe('Person profile layout', () => {
     expect(projectionStart).toBeGreaterThan(-1);
     expect(projectionEnd).toBeGreaterThan(projectionStart);
     expect(projection).not.toContain('getCimmichMachineSuggestions');
+    expect(projection).not.toContain('await Promise.all([');
+    expect(projection).not.toContain('getCimmichPeople(500)');
     expect(projection.indexOf('cimmichAssets = assetsPage.items')).toBeLessThan(
-      projection.indexOf('await Promise.all(['),
+      projection.indexOf('loadPersonSecondaryProjections'),
     );
+    expect(projection).toContain('void openCimmichIdentity(generation)');
     expect(source).toMatch(
       /const openCimmichIdentity = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
     );
+  });
+
+  it('keeps rapid review decisions independent and coalesces their projection refresh', async () => {
+    const source = await readPersonProfile();
+    const finishStart = source.indexOf('const finishCimmichAuditDecision');
+    const finishEnd = source.indexOf('const confirmCimmichAuditPerson', finishStart);
+    const finish = source.slice(finishStart, finishEnd);
+
+    expect(source).toContain('cimmichIdentityAuditSavingFaceIds');
+    expect(source).toContain('beginCimmichIdentityAuditFaceSave(item.faceId)');
+    expect(source).toContain('scheduleCimmichIdentityReviewRefresh');
+    expect(source).toContain('}, 1200);');
+    expect(finish).not.toContain('void Promise.all([');
+    expect(source).toContain('getCimmichIdentityFacesPage(cimmichPerson.person_id, 1)');
+  });
+
+  it('retains the Person workspace and exact viewer return state', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toContain('readPersonWorkspaceCache<CachedPersonWorkspace>');
+    expect(source).toContain('writePersonWorkspaceCache<CachedPersonWorkspace>');
+    expect(source).toContain("url.searchParams.set('returnScroll'");
+    expect(source).toContain("url.searchParams.set('identityFilter', identityFilter)");
+    expect(source).toContain('onOpen={storeCimmichReturnScroll}');
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {

@@ -266,5 +266,22 @@ export const createReviewRoutes =
       );
       return true;
     }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/faces/matches:batch"
+    ) {
+      requireProjection("asset_evidence");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        200,
+        await repository.faceReviewComparisonsBatch({
+          faceIds: body.faceIds,
+          limitPerFace: body.limitPerFace,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
     return false;
   };

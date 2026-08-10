@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 127. Schema 76 adds
+patch level 1. Current post-submission source is schema 128. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -198,6 +198,11 @@ reversible geometry ledger; stale embeddings, candidates and audit items are
 invalidated before recognition is rerun. Sidecar recognition is also bounded
 to the supplied region, so an expanded fallback cannot borrow a neighbouring
 person's face.
+Schema 128 adds Cimmich-owned generic asset labels and a durable recovery ledger
+for folder-to-album manifests. Label membership is append-only, idempotent and
+undoable without touching Immich tag tables or source sidecars. Album writes
+remain user-session Immich operations; Cimmich checkpoints only the exact
+memberships and newly created albums needed for bounded resume and Undo.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

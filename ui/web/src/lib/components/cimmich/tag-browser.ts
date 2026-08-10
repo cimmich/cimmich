@@ -1,6 +1,6 @@
 import type { TagResponseDto } from '@immich/sdk';
 
-export type CimmichTagFamily = 'events' | 'people' | 'pets' | 'places' | 'things';
+export type CimmichTagFamily = 'events' | 'labels' | 'people' | 'pets' | 'places' | 'things';
 
 export type TagBrowserOption = {
   aliases: string[];
@@ -16,6 +16,7 @@ export type TagBrowserOption = {
 export const familyLabel = (family: TagBrowserOption['family']) =>
   ({
     events: 'Events',
+    labels: 'Labels',
     normal: 'Normal tag',
     people: 'People',
     pets: 'Pets',

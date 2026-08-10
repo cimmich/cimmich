@@ -23,7 +23,10 @@ export type BulkPhotoSorterActionKind =
   | 'archive'
   | 'event-attach'
   | 'favorite'
+  | 'folders-to-albums'
   | 'place-attach'
+  | 'label-add'
+  | 'label-remove'
   | 'rotate-left'
   | 'rotate-right'
   | 'tag-add'
@@ -39,6 +42,7 @@ export type BulkPhotoSorterUndoReceipt = {
   assetCorrectionDecisionIds: string[];
   assetIds: string[];
   contextDecisionIds: string[];
+  labelDecisions: Array<{ assetIds: string[]; decisionId: string }>;
   label: string;
   targetId: string;
   visibilityDecisionIds: string[];
@@ -63,7 +67,10 @@ const bulkPhotoSorterActionKinds = new Set<BulkPhotoSorterActionKind>([
   'archive',
   'event-attach',
   'favorite',
+  'folders-to-albums',
   'place-attach',
+  'label-add',
+  'label-remove',
   'rotate-left',
   'rotate-right',
   'tag-add',
@@ -78,6 +85,16 @@ const bulkPhotoSorterActionKinds = new Set<BulkPhotoSorterActionKind>([
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
+const isLabelDecisions = (value: unknown): value is BulkPhotoSorterUndoReceipt['labelDecisions'] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).decisionId === 'string' &&
+      isStringArray((item as Record<string, unknown>).assetIds),
+  );
+
 const isUndoReceipt = (value: unknown): value is BulkPhotoSorterUndoReceipt => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -88,6 +105,7 @@ const isUndoReceipt = (value: unknown): value is BulkPhotoSorterUndoReceipt => {
     isStringArray(item.assetIds) &&
     isStringArray(item.assetCorrectionDecisionIds ?? []) &&
     isStringArray(item.contextDecisionIds) &&
+    isLabelDecisions(item.labelDecisions ?? []) &&
     typeof item.label === 'string' &&
     typeof item.targetId === 'string' &&
     isStringArray(item.visibilityDecisionIds)
@@ -160,6 +178,11 @@ export const bulkPhotoSorterSameSnapshot = (left: string[], right: string[]) => 
   }
   return right.every((id) => leftIds.has(id));
 };
+
+export const bulkPhotoSorterMappedIds = (
+  assets: Pick<AssetResponseDto, 'id'>[],
+  bindings: ReadonlyMap<string, string>,
+) => [...new Set(assets.flatMap(({ id }) => (bindings.get(id) ? [bindings.get(id)!] : [])))];
 
 export const createBulkPhotoSorterOperationId = () => {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
@@ -268,7 +291,7 @@ export const bulkPhotoSorterChangedAssets = (
 };
 
 export const bulkPhotoSorterActionNeedsTarget = (action: BulkPhotoSorterActionKind) =>
-  ['album-add', 'event-attach', 'place-attach', 'tag-add', 'tag-remove'].includes(action);
+  ['album-add', 'event-attach', 'place-attach', 'label-add', 'label-remove', 'tag-add', 'tag-remove'].includes(action);
 
 export const bulkPhotoSorterActionLabel = (action: BulkPhotoSorterActionKind) =>
   ({
@@ -276,6 +299,9 @@ export const bulkPhotoSorterActionLabel = (action: BulkPhotoSorterActionKind) =>
     archive: 'Archive',
     'event-attach': 'Attach to Event',
     favorite: 'Favourite',
+    'folders-to-albums': 'Create albums from folders',
+    'label-add': 'Add Cimmich label',
+    'label-remove': 'Remove Cimmich label',
     'place-attach': 'Attach to Place',
     'rotate-left': 'Rotate left',
     'rotate-right': 'Rotate right',

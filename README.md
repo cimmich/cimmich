@@ -1,12 +1,11 @@
 # Cimmich
 
 > [!NOTE]
-> **Current release: Community Preview 6** — exact Immich 3.1.0, Cimmich
-> schema 120/patch 1. The immutable
+> **Current release: Community Preview 7** — exact Immich 3.1.0, Cimmich
+> schema 128/patch 1. The immutable
 > [OpenAI Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
 > demo and evidence remain preserved and visible as the living project improves.
-> Current development source is schema 127; it does not rewrite the Preview 6
-> release or the Build Week artifact.
+> Community Preview 6 and the Build Week artifact remain immutable history.
 
 > **Complete the picture.**
 
@@ -37,6 +36,13 @@ while keeping the archive owner—not a model—in charge of identity.
   activity, client engagement and life period at the same time.
 - **Intersection search.** Select several Cimmich tags and see only photos with
   all of them, without a hidden 5,000-result ceiling.
+- **Archive organisation without source writes.** Apply Cimmich-owned labels,
+  preview folder-to-album manifests, resolve title collisions and retain exact
+  Undo checkpoints without changing archive sidecars or moving source media.
+- **People exploration with context.** Filter People and a Person's photos by
+  exact privacy tier, tags and labels, Places, Events and Things while keeping
+  active filters in the URL and protected results behind the viewing-mode
+  boundary.
 - **Owner-controlled review.** Matching can suggest; the owner accepts,
   corrects, merges, rejects or undoes every consequential identity decision.
 - **Cumulative presentation modes.** Standard, Personal and optional

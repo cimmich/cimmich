@@ -3,6 +3,8 @@ import { shouldApplyViewingModeResponse } from './cimmich-visibility-intent';
 class CimmichVisibilityManager {
   version = $state(0);
   undoDecisions = $state<Record<string, string>>({});
+  viewingMode = $state<'personal' | 'private' | 'standard'>('standard');
+  visibilityStatusKnown = $state(false);
   latestViewingModeIntentSequence = 0;
 
   beginViewingModeIntent(intentSequence: number) {
@@ -24,6 +26,11 @@ class CimmichVisibilityManager {
       ...this.undoDecisions,
       [`${objectScope}:${objectId}`]: decisionId,
     };
+  }
+
+  recordVisibilityStatus(status: { viewingMode: 'personal' | 'private' | 'standard' }) {
+    this.viewingMode = status.viewingMode;
+    this.visibilityStatusKnown = true;
   }
 
   notify() {

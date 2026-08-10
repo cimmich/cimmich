@@ -12,6 +12,7 @@
   import type { Viewport } from '$lib/managers/timeline-manager/types';
   import {
     getCimmichContextEntities,
+    getCimmichAssetLabels,
     getCimmichPeople,
     getCimmichPersonAssetsPage,
     getCimmichPets,
@@ -182,6 +183,19 @@
             })),
           possiblyMore: events.length === 500,
         })),
+        getCimmichAssetLabels(searchQuery, 250).then((labels) => ({
+          family: 'labels' as const,
+          options: labels.map((label) => ({
+            aliases: [],
+            assetCount: label.assetCount,
+            coverAssetId: null,
+            entityId: label.labelId,
+            family: 'labels' as const,
+            id: `labels:${label.labelId}`,
+            label: label.displayName,
+          })),
+          possiblyMore: labels.length === 250,
+        })),
       ]);
       if (generation !== directoryGeneration) {
         return;
@@ -189,7 +203,7 @@
       const loaded = batches.flatMap((batch) => (batch.status === 'fulfilled' ? [batch.value] : []));
       const failedFamilies = batches.flatMap((batch, index) =>
         batch.status === 'rejected'
-          ? [(['people', 'pets', 'places', 'things', 'events'] as CimmichTagFamily[])[index]!]
+          ? [(['people', 'pets', 'places', 'things', 'events', 'labels'] as CimmichTagFamily[])[index]!]
           : [],
       );
       cimmichOptions = sortOptions(loaded.flatMap((batch) => batch.options));
@@ -476,7 +490,7 @@
 
         {#if source === 'cimmich'}
           <div class="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Cimmich tag type">
-            {#each ['all', 'people', 'pets', 'places', 'things', 'events'] as family (family)}
+            {#each ['all', 'labels', 'people', 'pets', 'places', 'things', 'events'] as family (family)}
               <button
                 type="button"
                 class:tag-filter-active={activeFamily === family}

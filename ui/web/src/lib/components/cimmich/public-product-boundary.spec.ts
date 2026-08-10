@@ -45,11 +45,12 @@ describe('public Cimmich product boundary', () => {
 
   it('projects explicit context relations back onto Person connections', async () => {
     const person = await read(['../../../routes/(user)/cimmich', 'people', '[personName]', '+page.svelte'].join('/'));
+    const secondary = await read('../cimmich/person-secondary-projections.ts');
     const service = await read('../../services/cimmich.service.ts');
 
     expect(service).toContain('/v1/people/${encodeURIComponent(personId)}/connections');
-    expect(person).toContain('getCimmichPersonConnections(row.person_id)');
-    expect(person).toContain('cimmichDirectContextConnections = directConnections;');
+    expect(secondary).toContain('getCimmichPersonConnections(personId)');
+    expect(person).toContain('onConnections: (connections) => (cimmichDirectContextConnections = connections)');
     expect(person).toContain('connection.coverAssetId');
     expect(person).toContain("connection.metaLabel || 'Connected'");
   });

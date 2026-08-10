@@ -88,6 +88,15 @@ describe('CimmichViewingModeControl', () => {
     await waitFor(() => expect(onUnlock).toHaveBeenCalledWith('1'));
   });
 
+  it('opens the existing Private unlock flow when Explore requests protected content', async () => {
+    const { getByLabelText, onSelectMode } = renderControl({ mode: 'standard' });
+
+    globalThis.dispatchEvent(new CustomEvent('cimmich:request-viewing-mode', { detail: { mode: 'private' } }));
+
+    await waitFor(() => expect(getByLabelText('Private password')).toBeVisible());
+    expect(onSelectMode).not.toHaveBeenCalledWith('private');
+  });
+
   it('traps initial focus in the dialog and restores it to the trigger on Escape', async () => {
     const { getByRole } = renderControl();
     const trigger = getByRole('button', { name: 'Viewing mode: Personal' });

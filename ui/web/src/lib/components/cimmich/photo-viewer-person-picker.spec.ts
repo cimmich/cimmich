@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
 const readPhotoOverlay = () => readFile('src/lib/components/cimmich/CimmichPhotoOverlay.svelte', 'utf8');
-const readCimmichService = () => readFile('src/lib/services/cimmich.service.ts', 'utf8');
+const readCimmichService = async () => {
+  const files = await Promise.all([
+    readFile('src/lib/services/cimmich.service.ts', 'utf8'),
+    readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
+  ]);
+  return files.join('\n');
+};
 const readCimmichEvidenceService = () => readFile('src/lib/services/cimmich-evidence.service.ts', 'utf8');
 
 describe('photo viewer Person picker', () => {

@@ -10,6 +10,8 @@ describe('People suggestions layout', () => {
     expect(source).toContain('getCimmichPersonCandidateSummary()');
     expect(source).toContain('new Map((cimmichCandidateSummary?.items ?? [])');
     expect(source).toContain('personMachineSuggestionCount(person.person_id)');
+    expect(source).toContain("viewMode === 'candidates' ? personMachineSuggestionCount(person.person_id) : undefined");
+    expect(source).toContain('identityReviewCount:');
     expect(source).toContain('comparePeopleByReviewCount(a, b, cimmichCandidateCounts, peopleSort)');
     expect(source).toContain("viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'");
     expect(source).toContain('matched faces from a saved evaluated reference');

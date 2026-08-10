@@ -1512,6 +1512,54 @@ test("Face matches route exposes owner-review comparisons rather than governed s
   assert.deepEqual(calls, [{ faceId: "face/one", limit: "5" }]);
 });
 
+test("Face match batch route compares competing regions without identity authority", async () => {
+  const calls = [];
+  const result = {
+    automaticIdentityAuthority: "none",
+    bulkAutomationAuthority: "none",
+    items: [
+      {
+        faceId: "face-one",
+        matches: [{ display_name: "Aga", person_id: "aga", similarity: 0.6 }],
+      },
+      {
+        faceId: "face-two",
+        matches: [
+          { display_name: "Pete", person_id: "pete", similarity: 0.55 },
+        ],
+      },
+    ],
+    limitPerFace: 5,
+    recommendationAuthority: "none",
+    requestedCount: 2,
+    reviewOnly: true,
+    schemaVersion: "cimmich.face-owner-review-comparisons-batch.v1",
+  };
+  await withServer(
+    {
+      faceReviewComparisonsBatch: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(`${root}/v1/faces/matches:batch`, {
+        body: JSON.stringify({
+          faceIds: ["face-one", "face-two"],
+          limitPerFace: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [
+    { faceIds: ["face-one", "face-two"], limitPerFace: 5 },
+  ]);
+});
+
 test("Detailed observation routes bind geometry, rejection and scoped Undo behind visibility", async () => {
   const calls = [];
   const projections = [];
@@ -2263,6 +2311,60 @@ test("People collection lets list consumers opt out of presentation media", asyn
   );
   assert.deepEqual(calls, [
     ["people", { includePresentation: false, limit: "20", query: null }],
+  ]);
+});
+
+test("Explore facets preserve exact typed filters and visibility scope", async () => {
+  const calls = [];
+  const projection = {
+    facets: { events: [], labels: [], places: [], privacy: [], things: [] },
+    people: [],
+    schemaVersion: "cimmich.explore-facets.v1",
+    totalAssets: 0,
+  };
+  await withServer(
+    {
+      exploreFacets: async (input) => {
+        calls.push(["explore", input]);
+        return projection;
+      },
+    },
+    async (root) => {
+      const response = await fetch(`${root}/v1/explore/facets`, {
+        body: JSON.stringify({
+          filters: {
+            eventIds: ["event-one"],
+            labelIds: ["label-one"],
+            privacyTiers: ["private"],
+          },
+          scope: { kind: "person", personId: "person-one" },
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), projection);
+    },
+    {
+      visibility: {
+        requireProjection: (surface) => calls.push(["visibility", surface]),
+        runRequest: (_request, _response, run) => run(),
+      },
+    },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "person_assets"],
+    [
+      "explore",
+      {
+        filters: {
+          eventIds: ["event-one"],
+          labelIds: ["label-one"],
+          privacyTiers: ["private"],
+        },
+        scope: { kind: "person", personId: "person-one" },
+      },
+    ],
   ]);
 });
 
@@ -4496,11 +4598,15 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
   ]);
 });
 
-test("successful non-GET requests clear the People hot snapshot; reads and failures keep it", async () => {
-  let clears = 0;
+test("mutations clear People and Explore snapshots; reads and failures keep them", async () => {
+  let peopleClears = 0;
+  let exploreClears = 0;
   const repository = {
     clearPeopleHotSnapshot: () => {
-      clears += 1;
+      peopleClears += 1;
+    },
+    clearExploreFacetSnapshot: () => {
+      exploreClears += 1;
     },
     createPerson: async (input) => {
       if (!input.newPersonName) {
@@ -4511,6 +4617,14 @@ test("successful non-GET requests clear the People hot snapshot; reads and failu
       return { personId: "person-new" };
     },
     people: async () => [],
+    exploreFacets: async () => ({
+      facets: { events: [], labels: [], places: [], privacy: [], things: [] },
+      filters: {},
+      people: [],
+      schemaVersion: "cimmich.explore-facets.v1",
+      scope: { kind: "people" },
+      totalAssets: 0,
+    }),
   };
   const visibility = {
     requireProjection: () => {},
@@ -4521,7 +4635,17 @@ test("successful non-GET requests clear the People hot snapshot; reads and failu
     async (root) => {
       const read = await fetch(`${root}/v1/people`);
       assert.equal(read.status, 200);
-      assert.equal(clears, 0);
+      assert.equal(peopleClears, 0);
+      assert.equal(exploreClears, 0);
+
+      const exploreRead = await fetch(`${root}/v1/explore/facets`, {
+        body: JSON.stringify({ scope: { kind: "people" } }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(exploreRead.status, 200);
+      assert.equal(peopleClears, 0);
+      assert.equal(exploreClears, 0);
 
       const failed = await fetch(`${root}/v1/people`, {
         body: JSON.stringify({ commandId: "cmd-1" }),
@@ -4529,7 +4653,8 @@ test("successful non-GET requests clear the People hot snapshot; reads and failu
         method: "POST",
       });
       assert.equal(failed.status, 400);
-      assert.equal(clears, 0);
+      assert.equal(peopleClears, 0);
+      assert.equal(exploreClears, 0);
 
       const created = await fetch(`${root}/v1/people`, {
         body: JSON.stringify({ commandId: "cmd-2", newPersonName: "Ann" }),
@@ -4538,10 +4663,11 @@ test("successful non-GET requests clear the People hot snapshot; reads and failu
       });
       assert.equal(created.status, 201);
       // The finish event fires after the response is fully flushed.
-      for (let attempt = 0; attempt < 100 && clears === 0; attempt += 1) {
+      for (let attempt = 0; attempt < 100 && peopleClears === 0; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
-      assert.equal(clears, 1);
+      assert.equal(peopleClears, 1);
+      assert.equal(exploreClears, 1);
     },
     { visibility },
   );

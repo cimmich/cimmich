@@ -4,6 +4,28 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.7 — Faster review and archive organisation
+
+- People and Person share URL-backed filters for exact privacy, Cimmich-owned
+  tags and labels, Places, Events and Things. Protected results remain behind
+  the existing viewing-mode boundary and are discoverable from Standard
+  without exposing their contents.
+- Bulk Organise can apply first-class Cimmich labels without writing source
+  sidecars, and can turn media-bearing folders into a reviewed album manifest
+  with editable names, collision blocking, idempotent batching and exact Undo.
+- Person review retains known waiting counts across navigation, loads expensive
+  Identity work only when needed and keeps filter changes scoped to facets and
+  assets rather than rebuilding the complete workspace.
+- Face review keeps legitimate repeated appearances in collages, compares each
+  physical region with ranked known People, supports inline manual correction
+  and offers a large pannable context preview without mounting the full photo
+  viewer.
+- Read paths use bounded projections, short rebuildable caches, request
+  coalescing and operation-specific diagnostics. Review writes remain ordered,
+  owner-controlled and separately auditable.
+- Schema 128/patch 1, exact Immich 3.1.0, the source-readonly boundary and the
+  immutable Build Week release remain explicit.
+
 ## v1.1.0-community-preview.6 — Self-contained public installation
 
 - The ordinary Compose and guarded-installer paths now build the API and UI

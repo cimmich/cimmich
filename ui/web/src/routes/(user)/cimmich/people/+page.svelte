@@ -1,8 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
   import CimmichPossiblePeople from '$lib/components/cimmich/CimmichPossiblePeople.svelte';
+  import CimmichExploreFilters from '$lib/components/cimmich/CimmichExploreFilters.svelte';
   import CimmichSectionHeader from '$lib/components/cimmich/CimmichSectionHeader.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
+  import {
+    cimmichExploreFilterCount,
+    cimmichExploreFilterKey,
+    cimmichExploreFiltersFromUrl,
+    cimmichExploreFiltersUrl,
+    withCimmichExploreFilters,
+  } from '$lib/components/cimmich/explore-filters';
   import {
     chooseInitialPeopleView,
     comparePeople,
@@ -19,9 +27,12 @@
   import {
     decideCimmichIdentityCandidate,
     getCimmichIdentityCandidates,
+    getCimmichExploreFacets,
     getCimmichPersonCandidateSummary,
     getCimmichPeople,
     type CimmichIdentityCandidate,
+    type CimmichExploreFacetResult,
+    type CimmichExploreFilters as CimmichExploreFilterState,
     type CimmichPerson,
     type CimmichPersonCandidateSummary,
   } from '$lib/services/cimmich.service';
@@ -63,6 +74,11 @@
   let cimmichLoaded = $state(false);
   let cimmichLoadGeneration = 0;
   let cimmichMessage = $state('');
+  let exploreError = $state('');
+  let exploreFilters = $state<CimmichExploreFilterState>(cimmichExploreFiltersFromUrl(page.url));
+  let exploreGeneration = 0;
+  let exploreLoading = $state(false);
+  let exploreResult = $state<CimmichExploreFacetResult | null>(null);
   let cimmichPeople = $state<CimmichPerson[]>([]);
   let cimmichSavingClaimId = $state('');
   let ignoredPossiblePeopleCount = $state(0);
@@ -140,10 +156,21 @@
   const cimmichCandidateCount = $derived(cimmichCandidateSummary?.totalPeople ?? 0);
   const faceBackedCount = $derived(cimmichFaceBackedCount);
   const needsFaceCount = $derived(cimmichNeedsFaceCount);
+  const exploreActive = $derived(cimmichExploreFilterCount(exploreFilters) > 0);
+  const exploreApplies = $derived(exploreActive && viewMode === 'faces');
+  const explorePeopleCounts = $derived(
+    new Map((exploreResult?.people ?? []).map((item) => [item.personId, item.assetCount])),
+  );
 
   const visibleCimmichPeople = $derived.by(() => {
     const query = peopleQuery.trim().toLowerCase();
     return cimmichPeople
+      .map((person) =>
+        exploreApplies && exploreResult
+          ? { ...person, asset_count: explorePeopleCounts.get(person.person_id) ?? 0 }
+          : person,
+      )
+      .filter((person) => !exploreApplies || !exploreResult || explorePeopleCounts.has(person.person_id))
       .filter((person) => relatedPersonIds.size === 0 || relatedPersonIds.has(person.person_id))
       .filter((person) =>
         viewMode === 'faces'
@@ -341,6 +368,39 @@
     }
   };
 
+  const loadExploreFacets = async () => {
+    const generation = ++exploreGeneration;
+    exploreLoading = true;
+    exploreError = '';
+    try {
+      const result = await getCimmichExploreFacets(exploreFilters);
+      if (generation === exploreGeneration) {
+        exploreResult = result;
+      }
+    } catch (error) {
+      if (generation === exploreGeneration) {
+        exploreError = error instanceof Error ? error.message : 'Unable to filter People';
+      }
+    } finally {
+      if (generation === exploreGeneration) {
+        exploreLoading = false;
+      }
+    }
+  };
+
+  const setExploreFilters = (filters: CimmichExploreFilterState) => {
+    exploreFilters = filters;
+    globalThis.history.pushState(
+      globalThis.history.state,
+      '',
+      cimmichExploreFiltersUrl(new URL(globalThis.location.href), filters),
+    );
+  };
+
+  const restoreExploreFiltersFromHistory = () => {
+    exploreFilters = cimmichExploreFiltersFromUrl(new URL(globalThis.location.href));
+  };
+
   const runCimmichDecision = async (candidate: CimmichIdentityCandidate, action: 'accept' | 'reject') => {
     cimmichSavingClaimId = candidate.identity_claim_id;
     cimmichError = '';
@@ -362,7 +422,15 @@
     void cimmichVisibilityManager.version;
     void loadCimmichReview();
   });
+
+  $effect(() => {
+    void cimmichVisibilityManager.version;
+    void cimmichExploreFilterKey(exploreFilters);
+    void loadExploreFacets();
+  });
 </script>
+
+<svelte:window onpopstate={restoreExploreFiltersFromHistory} />
 
 <UserPageLayout>
   <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-5 text-immich-fg dark:text-immich-dark-fg">
@@ -438,7 +506,7 @@
                 />
               {/snippet}
             </Tooltip>
-            <Tooltip text="Filter people">
+            <Tooltip text="Filter names and photo count">
               {#snippet child({ props })}
                 <ContextMenuButton
                   {...props}
@@ -446,7 +514,7 @@
                   icon={mdiFilterVariant}
                   items={peopleFilterActions}
                   position="top-right"
-                  aria-label="Filter people"
+                  aria-label="Filter names and photo count"
                 />
               {/snippet}
             </Tooltip>
@@ -469,6 +537,17 @@
         {/if}
       {/snippet}
     </CimmichSectionHeader>
+
+    {#if viewMode === 'faces'}
+      <CimmichExploreFilters
+        error={exploreError}
+        filters={exploreFilters}
+        initiallyExpanded
+        loading={exploreLoading}
+        onchange={setExploreFilters}
+        result={exploreResult}
+      />
+    {/if}
 
     {#if relatedPersonIds.size > 0}
       <div
@@ -603,7 +682,15 @@
           {#each visibleCimmichPeople as person (person.person_id)}
             <a
               class="group flex min-w-0 flex-col items-center gap-3 text-center"
-              href={Route.cimmichPerson({ name: person.display_name, personId: person.person_id })}
+              href={withCimmichExploreFilters(
+                Route.cimmichPerson({
+                  identityReviewCount:
+                    viewMode === 'candidates' ? personMachineSuggestionCount(person.person_id) : undefined,
+                  name: person.display_name,
+                  personId: person.person_id,
+                }),
+                exploreFilters,
+              )}
             >
               <span
                 class={[
