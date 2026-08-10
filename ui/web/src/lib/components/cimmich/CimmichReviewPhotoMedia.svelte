@@ -191,9 +191,14 @@
       (target.y + target.h / 2) * previewViewport.scrollHeight - previewViewport.clientHeight / 2;
   };
 
-  const loadPreviewPeople = async () => {
-    if (previewEvidence || previewLoading) {
+  const loadPreviewPeople = async (force = false) => {
+    if ((!force && previewEvidence) || previewLoading) {
       return;
+    }
+    if (force) {
+      previewEvidence = undefined;
+      previewManualTags = [];
+      previewManualPresences = [];
     }
     const generation = ++previewLoadGeneration;
     previewLoading = true;
@@ -418,12 +423,14 @@
           {/if}
 
           {#if previewLoadError}
-            <p
-              class="pointer-events-none absolute top-4 left-4 rounded-md bg-black/78 px-3 py-2 text-xs text-white/80"
-              role="status"
-            >
-              {previewLoadError}
-            </p>
+            <div class="absolute top-4 left-4 z-30 rounded-md bg-black/78 px-3 py-2 text-xs text-white/80" role="alert">
+              <p>{previewLoadError}</p>
+              <button
+                class="mt-2 min-h-10 rounded-full px-3 font-semibold ring-1 ring-white/70"
+                type="button"
+                onclick={() => void loadPreviewPeople(true)}>Try again</button
+              >
+            </div>
           {/if}
           <span class="sr-only" aria-live="polite">{previewLoading ? 'Loading saved People tags' : ''}</span>
         </div>

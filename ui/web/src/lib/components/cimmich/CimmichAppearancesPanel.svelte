@@ -68,46 +68,41 @@
     });
   });
 
-  $effect(() => {
-    void cimmichVisibilityManager.version;
+  const loadEvidence = async (requestedAsset = asset) => {
     const generation = ++loadGeneration;
     evidence = undefined;
     bundle = undefined;
     matchedFilename = '';
     loadError = '';
-    if (!asset) {
+    if (!requestedAsset) {
       isLoading = false;
       return;
     }
 
-    const assetId = asset.id;
+    const assetId = requestedAsset.id;
     isLoading = true;
-    loadError = '';
-
-    void getCimmichEvidenceForAsset(asset)
-      .then((result) => {
-        if (generation !== loadGeneration || asset?.id !== assetId) {
-          return;
-        }
-
-        evidence = result.evidence;
-        bundle = result.bundle;
-        matchedFilename = result.matchedFilename ?? '';
-      })
-      .catch((error) => {
-        if (generation !== loadGeneration || asset?.id !== assetId) {
-          return;
-        }
-
-        evidence = undefined;
-        matchedFilename = '';
+    try {
+      const result = await getCimmichEvidenceForAsset(requestedAsset);
+      if (generation !== loadGeneration || asset?.id !== assetId) {
+        return;
+      }
+      evidence = result.evidence;
+      bundle = result.bundle;
+      matchedFilename = result.matchedFilename ?? '';
+    } catch (error) {
+      if (generation === loadGeneration && asset?.id === assetId) {
         loadError = error instanceof Error ? error.message : 'Unable to load Cimmich evidence';
-      })
-      .finally(() => {
-        if (generation === loadGeneration && asset?.id === assetId) {
-          isLoading = false;
-        }
-      });
+      }
+    } finally {
+      if (generation === loadGeneration && asset?.id === assetId) {
+        isLoading = false;
+      }
+    }
+  };
+
+  $effect(() => {
+    void cimmichVisibilityManager.version;
+    void loadEvidence(asset);
   });
 
   const titleCase = (value: string) => value.replaceAll('_', ' ').replaceAll(/\b\w/g, (letter) => letter.toUpperCase());
@@ -158,7 +153,14 @@
   {#if isLoading}
     <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">Loading Cimmich evidence...</p>
   {:else if loadError}
-    <p class="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-200">{loadError}</p>
+    <div class="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-200" role="alert">
+      <p>{loadError}</p>
+      <button
+        class="mt-3 min-h-11 rounded-full px-4 font-semibold ring-1 ring-current"
+        type="button"
+        onclick={() => void loadEvidence()}>Try again</button
+      >
+    </div>
   {:else if !evidence}
     <div class="mt-4 rounded-md bg-white/70 p-3 text-sm dark:bg-black/20">
       <p class="font-medium">No Cimmich evidence found</p>
