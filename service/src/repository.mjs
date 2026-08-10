@@ -812,9 +812,14 @@ const primeMaintenanceLane = (sql) => {
   if (!lane) {
     lane = createCoalescingMaintenanceLane({
       concurrency: 1,
+      maxAttempts: 3,
       name: "prime_projection",
       onEvent: maintenanceEvent,
-      worker: (personId) => refreshPrimeAfterCommand(sql, personId),
+      worker: async (personId) => {
+        if (await refreshPrimeAfterCommand(sql, personId)) {
+          throw new Error("Prime projection rebuild did not complete");
+        }
+      },
     });
     primeMaintenanceLanes.set(sql, lane);
   }

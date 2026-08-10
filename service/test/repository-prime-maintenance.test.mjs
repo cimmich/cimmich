@@ -60,3 +60,28 @@ test("interactive identity commands schedule derived work on the maintenance poo
   assert.match(reassignment, /deferBodyLinksAfterCommand\(maintenanceSql/);
   assert.doesNotMatch(reassignment, /await refreshBodyLinksAfterCommand/);
 });
+
+test("deferred Prime maintenance retries a failed repository rebuild", async (t) => {
+  t.mock.method(console, "error", () => {});
+  let attempts = 0;
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("retired_buckets")) {
+      return [];
+    }
+    if (statement.includes("slug = 'holding'")) {
+      attempts += 1;
+      if (attempts === 1) throw new Error("temporary repository failure");
+      return [{ holding: true }];
+    }
+    throw new Error(
+      `Unexpected Prime maintenance query: ${statement.slice(0, 80)}`,
+    );
+  };
+
+  assert.equal(deferPrimeAfterCommand(sql, "person-retry"), true);
+  for (let turn = 0; turn < 20 && attempts < 2; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(attempts, 2);
+});
