@@ -104,6 +104,16 @@
     type ManualPhotoTagSubject,
   } from './manual-photo-tag';
   import { isRenderableBodyPoseOverlay } from './body-pose-presentation';
+  import {
+    adjustObservationBoxWithKeyboard,
+    observationArrowKey,
+    observationBoxesMatch,
+    observationBoxFromPointerDrag,
+    observationBoxHandles as faceBoxHandles,
+    observationBoxRegion as observationRegion,
+    type ObservationBoxEditMode,
+    type ObservationBoxPointerDrag,
+  } from './observation-box-geometry';
   import { Icon, Tooltip } from '@immich/ui';
   import {
     mdiAccountMultipleOutline,
@@ -128,28 +138,9 @@
   type OverlayView = 'context' | 'machinery' | 'off' | 'people';
   type FaceBox = CimmichFaceOverlay['bbox'];
   type BodyBox = CimmichBodyOverlay['bbox'];
-  type FaceBoxDragMode = 'e' | 'move' | 'n' | 'ne' | 'nw' | 's' | 'se' | 'sw' | 'w';
   type BodyIdentityMode = 'face_match' | 'implied' | 'unlinked' | 'user_tag';
   type FaceBucketDraft = 'face_only' | 'head' | 'lq' | 'prime' | 'secondary';
   type FaceEvidenceKindDraft = 'body' | 'face' | 'head';
-  type FaceBoxDragState = {
-    faceId: string;
-    image: { height: number; width: number };
-    mode: FaceBoxDragMode;
-    pointerId: number;
-    startBox: FaceBox;
-    startClientX: number;
-    startClientY: number;
-  };
-  type BodyBoxDragState = {
-    bodyId: string;
-    image: { height: number; width: number };
-    mode: FaceBoxDragMode;
-    pointerId: number;
-    startBox: BodyBox;
-    startClientX: number;
-    startClientY: number;
-  };
 
   let { asset }: Props = $props();
   let evidence = $state<CimmichPhotoEvidence>();
@@ -265,9 +256,9 @@
   let identityCorrectionUndoDecisionId = $state('');
   let isFaceActionSaving = $state(false);
   let faceBoxDrafts = $state<Record<string, FaceBox>>({});
-  let faceBoxDragState = $state<FaceBoxDragState>();
+  let faceBoxDragState = $state<ObservationBoxPointerDrag & { faceId: string }>();
   let bodyBoxDrafts = $state<Record<string, BodyBox>>({});
-  let bodyBoxDragState = $state<BodyBoxDragState>();
+  let bodyBoxDragState = $state<ObservationBoxPointerDrag & { bodyId: string }>();
   let hoveredFaceId = $state('');
   let hoveredBodyId = $state('');
   let candidateAcceptingFaceId = $state('');
@@ -1469,17 +1460,6 @@
     `cimmich-body-label--${bodyIdentityMode(body).replaceAll('_', '-')}`,
     body.id === selectedBodyId ? 'cimmich-body-label--selected' : '',
   ];
-  const faceBoxHandles: Array<{ label: string; mode: FaceBoxDragMode }> = [
-    { label: 'Resize top left', mode: 'nw' },
-    { label: 'Resize top', mode: 'n' },
-    { label: 'Resize top right', mode: 'ne' },
-    { label: 'Resize left', mode: 'w' },
-    { label: 'Resize right', mode: 'e' },
-    { label: 'Resize bottom left', mode: 'sw' },
-    { label: 'Resize bottom', mode: 's' },
-    { label: 'Resize bottom right', mode: 'se' },
-  ];
-
   const bucketLabel = (bucket: string) => bucket.replace(/^face_/, '').replaceAll('_', ' ');
   const faceBucketFromOverlay = (face: CimmichFaceOverlay): FaceBucketDraft => {
     const bucket = face.bucket.replace(/^face_/, '');
@@ -1671,74 +1651,75 @@
     isDraggingBulkPanel = false;
   };
 
-  const clampFaceBox = (box: FaceBox, image: { height: number; width: number }) => {
-    const minSize = 24;
-    let x1 = Math.round(Math.max(0, Math.min(box.x1, image.width - minSize)));
-    let y1 = Math.round(Math.max(0, Math.min(box.y1, image.height - minSize)));
-    let x2 = Math.round(Math.max(minSize, Math.min(box.x2, image.width)));
-    let y2 = Math.round(Math.max(minSize, Math.min(box.y2, image.height)));
-
-    if (x2 - x1 < minSize) {
-      if (box.x1 === x1) {
-        x2 = Math.min(image.width, x1 + minSize);
-      } else {
-        x1 = Math.max(0, x2 - minSize);
-      }
+  const handleFaceBoxKeydown = (event: KeyboardEvent, face: CimmichFaceOverlay, mode: ObservationBoxEditMode) => {
+    const image = face.image || (imageMetrics && { width: imageMetrics.imageWidth, height: imageMetrics.imageHeight });
+    if (face.id !== selectedFaceId || isFaceActionSaving || !image) {
+      return;
     }
-    if (y2 - y1 < minSize) {
-      if (box.y1 === y1) {
-        y2 = Math.min(image.height, y1 + minSize);
-      } else {
-        y1 = Math.max(0, y2 - minSize);
-      }
+    if (event.key === 'Escape' && faceBoxDrafts[face.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      faceBoxDrafts = Object.fromEntries(Object.entries(faceBoxDrafts).filter(([faceId]) => faceId !== face.id));
+      faceActionMessage = 'Face position change cancelled.';
+      return;
     }
-    return { x1, y1, x2, y2 };
+    if (event.key === 'Enter' && faceBoxDrafts[face.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      void saveFaceBox(face.id, faceBoxDrafts[face.id], image);
+      return;
+    }
+    const key = observationArrowKey(event.key);
+    if (!key) {
+      return;
+    }
+    const current = faceBox(face);
+    const next = adjustObservationBoxWithKeyboard(current, image, mode, key, event.shiftKey);
+    if (observationBoxesMatch(current, next)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    faceBoxDrafts = { ...faceBoxDrafts, [face.id]: next };
+    faceActionError = '';
+    faceActionMessage = 'Face position adjusted. Press Enter to save or Escape to cancel.';
   };
 
-  const boxFromDrag = (
-    drag: {
-      image: { height: number; width: number };
-      mode: FaceBoxDragMode;
-      startBox: FaceBox | BodyBox;
-      startClientX: number;
-      startClientY: number;
-    },
-    event: PointerEvent,
-  ) => {
-    if (!imageMetrics) {
-      return drag.startBox;
+  const handleBodyBoxKeydown = (event: KeyboardEvent, body: CimmichBodyOverlay, mode: ObservationBoxEditMode) => {
+    const image = body.image || (imageMetrics && { width: imageMetrics.imageWidth, height: imageMetrics.imageHeight });
+    if (body.id !== selectedBodyId || isObservationActionSaving || !image) {
+      return;
     }
-    const deltaX = ((event.clientX - drag.startClientX) / imageMetrics.width) * imageMetrics.imageWidth;
-    const deltaY = ((event.clientY - drag.startClientY) / imageMetrics.height) * imageMetrics.imageHeight;
-    const box = { ...drag.startBox };
-    if (drag.mode === 'move') {
-      const width = box.x2 - box.x1;
-      const height = box.y2 - box.y1;
-      const x1 = Math.max(0, Math.min(drag.image.width - width, drag.startBox.x1 + deltaX));
-      const y1 = Math.max(0, Math.min(drag.image.height - height, drag.startBox.y1 + deltaY));
-      return {
-        x1: Math.round(x1),
-        y1: Math.round(y1),
-        x2: Math.round(x1 + width),
-        y2: Math.round(y1 + height),
-      };
+    if (event.key === 'Escape' && bodyBoxDrafts[body.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      bodyBoxDrafts = Object.fromEntries(Object.entries(bodyBoxDrafts).filter(([bodyId]) => bodyId !== body.id));
+      observationActionMessage = 'Body position change cancelled.';
+      return;
     }
-    if (drag.mode.includes('w')) {
-      box.x1 = drag.startBox.x1 + deltaX;
+    if (event.key === 'Enter' && bodyBoxDrafts[body.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      void saveBodyBox(body.id, bodyBoxDrafts[body.id], image);
+      return;
     }
-    if (drag.mode.includes('e')) {
-      box.x2 = drag.startBox.x2 + deltaX;
+    const key = observationArrowKey(event.key);
+    if (!key) {
+      return;
     }
-    if (drag.mode.includes('n')) {
-      box.y1 = drag.startBox.y1 + deltaY;
+    const current = bodyBox(body);
+    const next = adjustObservationBoxWithKeyboard(current, image, mode, key, event.shiftKey);
+    if (observationBoxesMatch(current, next)) {
+      return;
     }
-    if (drag.mode.includes('s')) {
-      box.y2 = drag.startBox.y2 + deltaY;
-    }
-    return clampFaceBox(box, drag.image);
+    event.preventDefault();
+    event.stopPropagation();
+    bodyBoxDrafts = { ...bodyBoxDrafts, [body.id]: next };
+    observationActionError = '';
+    observationActionMessage = 'Body position adjusted. Press Enter to save or Escape to cancel.';
   };
 
-  const startFaceBoxDrag = (event: PointerEvent, face: CimmichFaceOverlay, mode: FaceBoxDragMode) => {
+  const startFaceBoxDrag = (event: PointerEvent, face: CimmichFaceOverlay, mode: ObservationBoxEditMode) => {
     if (!imageMetrics) {
       return;
     }
@@ -1765,16 +1746,11 @@
       return;
     }
     event.preventDefault();
-    const nextBox = boxFromDrag(faceBoxDragState, event);
+    const nextBox = imageMetrics
+      ? observationBoxFromPointerDrag(faceBoxDragState, event, imageMetrics)
+      : faceBoxDragState.startBox;
     faceBoxDrafts = { ...faceBoxDrafts, [faceBoxDragState.faceId]: nextBox };
   };
-
-  const observationRegion = (box: FaceBox | BodyBox, image: { height: number; width: number }) => ({
-    h: (box.y2 - box.y1) / image.height,
-    w: (box.x2 - box.x1) / image.width,
-    x: box.x1 / image.width,
-    y: box.y1 / image.height,
-  });
 
   const saveFaceBox = async (faceId: string, box: FaceBox, image: { height: number; width: number }) => {
     if (!evidence) {
@@ -1843,7 +1819,7 @@
     void saveFaceBox(drag.faceId, box, drag.image);
   };
 
-  const startBodyBoxDrag = (event: PointerEvent, body: CimmichBodyOverlay, mode: FaceBoxDragMode) => {
+  const startBodyBoxDrag = (event: PointerEvent, body: CimmichBodyOverlay, mode: ObservationBoxEditMode) => {
     if (!imageMetrics || !isCimmichEvidence) {
       return;
     }
@@ -1870,7 +1846,9 @@
       return;
     }
     event.preventDefault();
-    const nextBox = boxFromDrag(bodyBoxDragState, event);
+    const nextBox = imageMetrics
+      ? observationBoxFromPointerDrag(bodyBoxDragState, event, imageMetrics)
+      : bodyBoxDragState.startBox;
     bodyBoxDrafts = { ...bodyBoxDrafts, [bodyBoxDragState.bodyId]: nextBox };
   };
 
@@ -4031,6 +4009,9 @@
       style={spatialOverlayStyle}
       data-testid="cimmich-machinery-overlay-layer"
     >
+      <p id="cimmich-observation-keyboard-help" class="sr-only">
+        Arrow keys move a selected box or focused resize edge. Shift moves farther. Enter saves; Escape cancels.
+      </p>
       {#if isBodiesVisible && visibleSpatialBodyOverlays.length > 0}
         {#each visibleBodyOverlayUrls as overlayUrl (overlayUrl)}
           <img
@@ -4088,7 +4069,12 @@
             style={`${bodyBoxStyle(body)} ${bodyColorStyle(body)}`}
             data-testid="cimmich-machine-body"
             data-body-id={body.id}
-            title={body.id === selectedBodyId ? 'Drag to move this Body' : bodyLabelTitle(body)}
+            title={body.id === selectedBodyId ? 'Drag or use arrow keys to move this Body' : bodyLabelTitle(body)}
+            aria-label={bodyLabelTitle(body)}
+            aria-describedby={body.id === selectedBodyId ? 'cimmich-observation-keyboard-help' : undefined}
+            aria-keyshortcuts={body.id === selectedBodyId
+              ? 'ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape'
+              : undefined}
             type="button"
             onmouseenter={() => (hoveredBodyId = body.id)}
             onmouseleave={() => (hoveredBodyId = '')}
@@ -4103,6 +4089,7 @@
               event.stopPropagation();
               setSelectedBody(body);
             }}
+            onkeydown={(event) => handleBodyBoxKeydown(event, body, 'move')}
           ></button>
           {#if body.id === selectedBodyId}
             <div class="cimmich-observation-handles" style={bodyBoxStyle(body)} aria-label="Resize Body">
@@ -4111,7 +4098,10 @@
                   class={`cimmich-face-box-handle cimmich-face-box-handle--${handle.mode}`}
                   type="button"
                   aria-label={handle.label.replace('Resize', 'Resize Body')}
+                  aria-describedby="cimmich-observation-keyboard-help"
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
                   onpointerdown={(event) => startBodyBoxDrag(event, body, handle.mode)}
+                  onkeydown={(event) => handleBodyBoxKeydown(event, body, handle.mode)}
                 ></button>
               {/each}
             </div>
@@ -4134,6 +4124,11 @@
             data-context-person={faceMatchesPersonContext(face) ? 'true' : undefined}
             style={`${faceBoxStyle(face)} ${machineFaceColorStyle(face, linkedBody)}`}
             title={faceLabelTitle(face, linkedBody)}
+            aria-label={faceLabelTitle(face, linkedBody)}
+            aria-describedby={face.id === selectedFaceId ? 'cimmich-observation-keyboard-help' : undefined}
+            aria-keyshortcuts={face.id === selectedFaceId
+              ? 'ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape'
+              : undefined}
             type="button"
             onmouseenter={() => (hoveredFaceId = face.id)}
             onmouseleave={() => (hoveredFaceId = '')}
@@ -4148,6 +4143,7 @@
               event.stopPropagation();
               setSelectedFace(face, { editName: face.status !== 'named' });
             }}
+            onkeydown={(event) => handleFaceBoxKeydown(event, face, 'move')}
           ></button>
           <div
             class={[
@@ -4222,7 +4218,10 @@
                   class={`cimmich-face-box-handle cimmich-face-box-handle--${handle.mode}`}
                   type="button"
                   aria-label={handle.label.replace('Resize', 'Resize Face')}
+                  aria-describedby="cimmich-observation-keyboard-help"
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
                   onpointerdown={(event) => startFaceBoxDrag(event, face, handle.mode)}
+                  onkeydown={(event) => handleFaceBoxKeydown(event, face, handle.mode)}
                 ></button>
               {/each}
             </div>
