@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../../", import.meta.url);
 
-test("CI executes the five browser journeys against a disposable fictional demo", async () => {
+test("CI executes the six browser journeys against a disposable fictional demo", async () => {
   const [workflow, runner, browserSpec] = await Promise.all([
     readFile(new URL(".github/workflows/ci.yml", root), "utf8"),
     readFile(new URL("tools/run_browser_acceptance.sh", root), "utf8"),
@@ -30,5 +30,5 @@ test("CI executes the five browser journeys against a disposable fictional demo"
   );
   assert.doesNotMatch(workflow, /playwright test --list/u);
   assert.match(runner, /pnpm --dir "\$ROOT\/ui\/web" run test:browser/u);
-  assert.equal(browserSpec.match(/^test\('/gmu)?.length, 5);
+  assert.equal(browserSpec.match(/^test\('/gmu)?.length, 6);
 });

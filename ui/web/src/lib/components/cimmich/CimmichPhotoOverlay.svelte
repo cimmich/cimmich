@@ -4,6 +4,7 @@
   import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { AssetResponseDto } from '@immich/sdk';
   import CimmichFaceReviewQueueActions from './CimmichFaceReviewQueueActions.svelte';
+  import CimmichPeopleEditActions from './CimmichPeopleEditActions.svelte';
   import { cimmichFaceReviewMessage } from '$lib/services/cimmich-deferred-face-review';
   import { Route } from '$lib/route';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
@@ -79,6 +80,7 @@
     isNamedBody,
     isNamedFace,
     matchesCimmichPersonPhotoContext,
+    placeBulkFacePanel,
     placeFaceDetailsPanel,
     placeManualTagPanel,
     photoContextKindLabel,
@@ -126,7 +128,6 @@
     mdiPawOutline,
     mdiPencilOutline,
     mdiTagOutline,
-    mdiTargetAccount,
     mdiTrashCanOutline,
   } from '@mdi/js';
 
@@ -1383,13 +1384,16 @@
       .filter(({ point }) => Boolean(point))
       .map(({ index, point }) => ({ ...bodyPoint(point!), key: index }));
 
-  const bulkPanelDefaultLeft = $derived.by(() => Math.max(12, overlayWidth - Math.min(448, overlayWidth - 24) - 12));
-  const bulkPanelStyle = $derived.by(() => {
-    const width = Math.min(448, Math.max(320, overlayWidth - 24));
-    const left = Math.min(Math.max(12, bulkPanelX ?? bulkPanelDefaultLeft), Math.max(12, overlayWidth - width - 12));
-    const top = Math.min(Math.max(76, bulkPanelY), Math.max(76, overlayHeight - 220));
-    return `left: ${left}px; top: ${top}px; width: ${width}px; max-height: calc(100% - ${top + 12}px);`;
-  });
+  const bulkPanelPlacement = $derived(
+    placeBulkFacePanel({
+      overlay: { height: overlayHeight, width: overlayWidth },
+      requestedLeft: bulkPanelX,
+      requestedTop: bulkPanelY,
+    }),
+  );
+  const bulkPanelStyle = $derived(
+    `left: ${bulkPanelPlacement.left}px; top: ${bulkPanelPlacement.top}px; width: ${bulkPanelPlacement.width}px; max-height: ${bulkPanelPlacement.maxHeight}px;`,
+  );
 
   const faceDetailsStyle = (face: CimmichFaceOverlay) => {
     if (!imageMetrics) {
@@ -1636,15 +1640,13 @@
     }
     event.preventDefault();
     const overlayRect = overlayElement.getBoundingClientRect();
-    const width = Math.min(448, Math.max(320, overlayWidth - 24));
-    bulkPanelX = Math.min(
-      Math.max(12, event.clientX - overlayRect.left - bulkPanelDragOffsetX),
-      Math.max(12, overlayWidth - width - 12),
-    );
-    bulkPanelY = Math.min(
-      Math.max(76, event.clientY - overlayRect.top - bulkPanelDragOffsetY),
-      Math.max(76, overlayHeight - 220),
-    );
+    const placement = placeBulkFacePanel({
+      overlay: { height: overlayHeight, width: overlayWidth },
+      requestedLeft: event.clientX - overlayRect.left - bulkPanelDragOffsetX,
+      requestedTop: event.clientY - overlayRect.top - bulkPanelDragOffsetY,
+    });
+    bulkPanelX = placement.left;
+    bulkPanelY = placement.top;
   };
 
   const stopBulkPanelDrag = () => {
@@ -2742,6 +2744,19 @@
     selectOverlayView(isPeopleSurfaceActive ? 'off' : 'people');
   };
 
+  const toggleBulkFacePanel = () => {
+    assetViewerManager.closeDetailPanel();
+    isBulkFacePanelOpen = !isBulkFacePanelOpen;
+    if (!isBulkFacePanelOpen) {
+      return;
+    }
+    overlayView = 'machinery';
+    isFacesVisible = true;
+    selectedFaceId = selectedBodyId = '';
+    isEditingFaceName = isTaggingMode = false;
+    cancelManualTagDraft();
+    closePresencePicker();
+  };
   const toggleContextView = () => {
     if (isContextSurfaceActive) {
       selectOverlayView('off');
@@ -3746,28 +3761,13 @@
               </button>
             {/snippet}
           </Tooltip>
-          <Tooltip text={overlayView === 'machinery' ? 'Finish editing' : 'Edit people tags'}>
-            {#snippet child({ props })}
-              <button
-                {...props}
-                class={[
-                  'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
-                  overlayView === 'machinery'
-                    ? 'border-white bg-white text-black shadow-sm'
-                    : 'border-white/25 bg-black/25 text-white hover:border-white/45 hover:bg-white/10',
-                ]}
-                type="button"
-                aria-label={overlayView === 'machinery' ? 'Finish editing people tags' : 'Edit people tags'}
-                aria-pressed={overlayView === 'machinery'}
-                onclick={() => selectOverlayView(overlayView === 'machinery' ? 'people' : 'machinery')}
-                data-testid="cimmich-detailed-view"
-              >
-                <Icon icon={mdiTargetAccount} size="18" />
-                <span class="hidden text-sm font-medium sm:inline">{overlayView === 'machinery' ? 'Done' : 'Edit'}</span
-                >
-              </button>
-            {/snippet}
-          </Tooltip>
+          <CimmichPeopleEditActions
+            bulkFaceCount={bulkFaces.length}
+            bulkOpen={isBulkFacePanelOpen}
+            detailed={overlayView === 'machinery'}
+            onToggleBulk={toggleBulkFacePanel}
+            onToggleDetailed={() => selectOverlayView(overlayView === 'machinery' ? 'people' : 'machinery')}
+          />
         {:else if isContextSurfaceActive}
           <span class="mx-1 h-6 w-px bg-white/20" aria-hidden="true"></span>
           <button

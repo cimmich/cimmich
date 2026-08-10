@@ -65,6 +65,7 @@ describe('public Cimmich product boundary', () => {
 
   it('keeps the photo workflow task-led and leaves evidence in the existing Info panel', async () => {
     const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
+    const editActions = await read('../cimmich/CimmichPeopleEditActions.svelte');
     const detailPanel = await read('../asset-viewer/DetailPanel.svelte');
     expect(overlay).toContain('aria-label="People"');
     expect(overlay).toContain('aria-label="Context"');
@@ -73,7 +74,9 @@ describe('public Cimmich product boundary', () => {
     expect(overlay).toContain('data-testid="cimmich-add-tag-action"');
     expect(overlay).toContain('data-testid="cimmich-add-presence-action"');
     expect(overlay).toContain('geometry: null');
-    expect(overlay).toContain('data-testid="cimmich-detailed-view"');
+    expect(overlay).toContain('<CimmichPeopleEditActions');
+    expect(editActions).toContain('data-testid="cimmich-detailed-view"');
+    expect(editActions).toContain("bulkOpen ? 'Close all Face tags' : 'Edit all Face tags'");
     expect(overlay).toContain('attachCimmichContextAssets');
     expect(overlay).toContain('detachCimmichContextAssets');
     expect(overlay).toContain('undoCimmichContextDecision');

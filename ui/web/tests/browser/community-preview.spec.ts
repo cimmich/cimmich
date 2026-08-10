@@ -82,3 +82,43 @@ test('photo viewer advances and returns without losing the timeline', async ({ p
   await page.getByRole('button', { name: 'Go back' }).click();
   await expect(page).toHaveURL(/\/photos/u);
 });
+
+test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/cimmich/home');
+  await page
+    .getByRole('button', { name: /Viewing mode:/u })
+    .first()
+    .click();
+  await page.getByRole('button', { name: 'Personal', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Viewing mode: Personal' }).first()).toBeVisible();
+  await page.goto('/photos');
+  await page
+    .getByRole('link', { name: /Image taken on/u })
+    .first()
+    .click();
+  for (let index = 1; index < 16; index += 1) {
+    await page.getByRole('button', { name: 'View next asset' }).click();
+  }
+  await expect(page).toHaveURL(/\/photos\/809eb60f-aa46-44ea-aeb9-687b84e9b95c$/u);
+  const peopleAction = page.getByTestId('cimmich-people-view');
+  if ((await peopleAction.getAttribute('aria-pressed')) !== 'true') {
+    await peopleAction.click();
+  }
+
+  const bulkAction = page.getByRole('button', { name: 'Edit all Face tags' });
+  await expect(bulkAction).toBeVisible();
+  await bulkAction.click();
+  const panel = page.getByTestId('cimmich-face-bulk-panel');
+  await expect(panel).toBeVisible();
+  const bounds = await panel.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+
+  await page.goto('/cimmich/home');
+  await page.getByRole('button', { name: 'Viewing mode: Personal' }).first().click();
+  await page.getByRole('button', { name: 'Standard', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Viewing mode: Standard' }).first()).toBeVisible();
+});

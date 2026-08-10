@@ -8,6 +8,7 @@ import {
   isNamedFace,
   isCimmichViewingSurface,
   matchesCimmichPersonPhotoContext,
+  placeBulkFacePanel,
   placeFaceDetailsPanel,
   placeManualTagPanel,
   projectFaceEditorPersonDraft,
@@ -221,6 +222,27 @@ describe('photo viewer presentation context', () => {
     expect(placement.width).toBeCloseTo(236.61);
     expect(placement.left + placement.width).toBeLessThanOrEqual(248.61);
     expect(placement.top + placement.maxHeight).toBeLessThanOrEqual(708);
+  });
+
+  it('keeps the bulk Face panel inside a 320px reflow viewport', () => {
+    const placement = placeBulkFacePanel({
+      overlay: { height: 640, width: 320 },
+      requestedLeft: 400,
+      requestedTop: 144,
+    });
+
+    expect(placement).toEqual({ left: 12, maxHeight: 484, top: 144, width: 296 });
+    expect(placement.left + placement.width).toBeLessThanOrEqual(308);
+  });
+
+  it('clamps a dragged bulk Face panel back into a wide viewer', () => {
+    const placement = placeBulkFacePanel({
+      overlay: { height: 720, width: 1280 },
+      requestedLeft: 1200,
+      requestedTop: 900,
+    });
+
+    expect(placement).toEqual({ left: 820, maxHeight: 208, top: 500, width: 448 });
   });
 
   it('keeps the compact evidence panel near the selected face when it already fits', () => {
