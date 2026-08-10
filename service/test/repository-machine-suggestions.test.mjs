@@ -914,9 +914,14 @@ test("candidate evidence keeps the request-bound visibility rank across async wo
 });
 
 test("identity-changing commands invalidate the shared machine-suggestion snapshot", async () => {
-  const source = await import("node:fs/promises").then(({ readFile }) =>
+  const { readFile } = await import("node:fs/promises");
+  const [source, bulkAcceptanceSource] = await Promise.all([
     readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
-  );
+    readFile(
+      new URL("../src/bulk-person-candidate-accept.mjs", import.meta.url),
+      "utf8",
+    ),
+  ]);
   const methodBody = (name, nextName) =>
     source.slice(
       source.indexOf(`async ${name}`),
@@ -925,7 +930,6 @@ test("identity-changing commands invalidate the shared machine-suggestion snapsh
   for (const [name, nextName] of [
     ["mergePeople", "unmergePeople"],
     ["unmergePeople", "identityCandidates"],
-    ["bulkAcceptPersonCandidates", "personAssets"],
     ["movePersonFace", "dismissMachineSuggestion"],
     ["setFaceReviewDisposition", "rejectAcceptedIdentity"],
   ]) {
@@ -935,9 +939,14 @@ test("identity-changing commands invalidate the shared machine-suggestion snapsh
       name,
     );
   }
+  assert.match(
+    bulkAcceptanceSource,
+    /invalidateMachineSuggestions\(\)/,
+    "bulkAcceptPersonCandidates",
+  );
 });
 
-test("deferred review survives matcher churn and same-photo candidates stay reviewable", async () => {
+test("deferred review survives matcher churn while same-photo candidates stay visible", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
   );
@@ -953,7 +962,7 @@ test("deferred review survives matcher churn and same-photo candidates stay revi
   );
   const personCandidates = source.slice(
     source.indexOf("async personCandidates"),
-    source.indexOf("async bulkAcceptPersonCandidates"),
+    source.indexOf("bulkAcceptPersonCandidates,"),
   );
 
   assert.match(machine, /face_review_later/);
@@ -970,6 +979,7 @@ test("deferred review survives matcher churn and same-photo candidates stay revi
   assert.match(personCandidates, /face\.current_revision/);
   assert.match(personCandidates, /face\.current_decision_id/);
   assert.doesNotMatch(personCandidates, /samePhotoAcceptedCandidateFloor/);
+  assert.doesNotMatch(personCandidates, /same_photo_candidate_winners/);
 });
 
 test("lead click-through is filtered at query level and matches any suggested rank", async () => {

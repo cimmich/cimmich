@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import CimmichExploreFilters from '$lib/components/cimmich/CimmichExploreFilters.svelte';
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
@@ -9,9 +11,11 @@
   import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
   import CimmichKnownPersonClusters from '$lib/components/cimmich/CimmichKnownPersonClusters.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
+  import CimmichIdentityWaitingBadges from '$lib/components/cimmich/CimmichIdentityWaitingBadges.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
+  import { CimmichPersonExploreController } from '$lib/components/cimmich/person-explore-controller.svelte';
   import {
     restoreIdentityMoveUndo,
     storeIdentityMoveUndo,
@@ -26,9 +30,25 @@
     CimmichPresentationFrame,
   } from '$lib/components/cimmich/person-page-types';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
+  import { loadCimmichPeopleConnections } from '$lib/components/cimmich/person-connections';
+  import { loadPersonDetailsProjection } from '$lib/components/cimmich/person-details-projection';
+  import { loadPersonSecondaryProjections } from '$lib/components/cimmich/person-secondary-projections';
+  import {
+    readPersonWorkspaceCache,
+    writePersonWorkspaceCache,
+    type CachedPersonWorkspace,
+  } from '$lib/components/cimmich/person-workspace-cache';
+  import {
+    storePersonWorkspaceReturnScroll,
+    syncPersonWorkspaceUrl,
+    type CimmichIdentityFilter,
+    type CimmichPersonMode,
+  } from '$lib/components/cimmich/person-workspace-navigation';
   import {
     personAwaitingCounts,
+    personCandidateReviewItems,
     personIdentityAuditGroups,
+    retainedCollisionAssetIds,
     samePhotoCollisionReview,
     type CimmichPersonReviewItem,
   } from '$lib/components/cimmich/same-photo-collision-review';
@@ -71,7 +91,6 @@
     dismissCimmichIdentityAuditItem,
     dismissCimmichIdentityAuditItemsBatch,
     getCimmichFaceMatches,
-    getCimmichContextEntity,
     getCimmichHoldingMatchesBatch,
     getCimmichIdentityFacesPage,
     getCimmichIdentityCorrectionDiscovery,
@@ -80,18 +99,12 @@
     getCimmichMergePreview,
     getCimmichMachineSuggestions,
     getCimmichPeople,
-    getCimmichPersonDetailsDisplay,
-    getCimmichPersonDetailsDisplayDefaults,
-    getCimmichPersonAssetsPage,
     getCimmichPersonByName,
     getCimmichPersonConnections,
     getCimmichPersonCandidates,
     getCimmichPersonProfile,
     getCimmichPersonPresentation,
-    getCimmichPersonProfileDisplay,
-    getCimmichPersonProfileDisplayDefaults,
     getCimmichPersonSetup,
-    getCimmichVisibilityObject,
     mergeCimmichPeople,
     markCimmichFaceNotFace,
     moveCimmichIdentityFace,
@@ -132,7 +145,7 @@
     type CimmichPersonSetup,
     type CimmichVisibilityObject,
   } from '$lib/services/cimmich.service';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import {
     getCimmichKnownPersonClusterSuggestions,
     type CimmichKnownPersonClusterSuggestion,
@@ -183,19 +196,6 @@
   }
 
   type CountRow = { count: number; label: string };
-  type CimmichIdentityFilter =
-    | 'all'
-    | 'body'
-    | 'candidates'
-    | 'head'
-    | 'lq'
-    | 'needs_qc'
-    | 'presentation'
-    | 'presence'
-    | 'prime'
-    | 'references'
-    | 'secondary';
-  type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
   type CimmichMoveMode = 'existing' | 'new';
   type PhotoFilter = 'all' | 'body' | 'face' | 'needs';
   type PersonTab = 'identity' | 'maintenance' | 'photos' | 'places' | 'signals' | 'story' | 'with';
@@ -219,6 +219,11 @@
   let cimmichSelectedPhotoIds = $state<string[]>([]);
   let cimmichAssetsLoadingMore = $state(false);
   let cimmichAssetsNextCursor = $state<string | null>(null);
+  const cimmichExplore = new CimmichPersonExploreController(page.url, (assetsPage) => {
+    cimmichAssets = assetsPage.items;
+    cimmichAssetsNextCursor = assetsPage.nextCursor;
+    cimmichSelectedPhotoIds = [];
+  });
   let cimmichCandidates = $state<CimmichIdentityCandidate[]>([]);
   let cimmichIdentityError = $state('');
   let cimmichIdentityAuditEvidenceExpanded = $state<string[]>([]);
@@ -228,6 +233,7 @@
   let cimmichIdentityAuditLoadingKind = $state<CimmichIdentityAuditItem['kind'] | ''>('');
   let cimmichIdentityAuditProgress = $state({ completed: 0, total: 0 });
   let cimmichIdentityAuditSavingId = $state('');
+  let cimmichIdentityAuditSavingFaceIds = $state<string[]>([]);
   let cimmichIdentityAuditSelection = $state<string[]>([]);
   const cimmichPhotoReview = new CimmichPhotoReviewController((message) => toastManager.danger(message));
   let cimmichIdentityAuditTotals = $state<Record<CimmichIdentityAuditItem['kind'], number>>({
@@ -250,7 +256,7 @@
   });
   let cimmichHoldingMatches = $state<Record<string, CimmichFaceMatch | CimmichFaceOwnerReviewMatch | undefined>>({});
   let cimmichHoldingMatchesLoading = $state<Record<string, boolean>>({});
-  let cimmichIdentityFilter = $state<CimmichIdentityFilter>('all');
+  let cimmichIdentityFilter = $state<CimmichIdentityFilter>(data.identityFilter as CimmichIdentityFilter);
   let cimmichIdentityLoaded = $state(false);
   let cimmichIdentityLoading = $state(false);
   let cimmichIdentityNextCursor = $state<string | null>(null);
@@ -281,12 +287,21 @@
   let cimmichPresentationDrag = $state<CimmichPresentationDrag>();
   let cimmichPresentationSaving = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichLoadError = $state('');
-  let cimmichMode = $state<CimmichPersonMode>('photos');
+  let cimmichMode = $state<CimmichPersonMode>(data.mode as CimmichPersonMode);
   let cimmichPerson = $state<CimmichPerson>();
   let cimmichPhotoSelectionPersonId = '';
   let cimmichTabsCanScrollRight = $state(false);
   let cimmichTabsScroller = $state<HTMLDivElement>();
   let personProjectionGeneration = 0;
+  let cimmichReturnScrollRestored = false;
+  let cimmichReviewRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const cimmichWorkspaceCacheKey = () => `${data.personId || data.personName}:${cimmichVisibilityManager.version}`;
+  const syncCimmichWorkspaceUrl = () => syncPersonWorkspaceUrl(cimmichMode, cimmichIdentityFilter);
+  const selectCimmichMode = (mode: CimmichPersonMode) => {
+    cimmichMode = mode;
+    syncCimmichWorkspaceUrl();
+  };
+  const storeCimmichReturnScroll = () => storePersonWorkspaceReturnScroll(cimmichMode, cimmichIdentityFilter);
   const cimmichKnownClusterReview = createKnownClusterReviewController({
     current: () =>
       cimmichPerson
@@ -303,7 +318,12 @@
     setError: (message) => (cimmichIdentityError = message),
     setMessage: (message) => (cimmichIdentityMessage = message),
   });
-  onDestroy(() => cimmichKnownClusterReview.dispose());
+  onDestroy(() => {
+    cimmichKnownClusterReview.dispose();
+    if (cimmichReviewRefreshTimer) {
+      clearTimeout(cimmichReviewRefreshTimer);
+    }
+  });
   let cimmichProfile = $state<CimmichPersonProfileProjection>();
   let cimmichProfileDefaults = $state<CimmichPersonProfileDisplayDefaults>();
   let cimmichProfileDisplay = $state<CimmichPersonProfileDisplay>();
@@ -570,137 +590,9 @@
       cimmichConnectionSavingId = '';
     }
   };
-  const loadCimmichPeopleConnections = async (
-    personId: string,
-    assets: CimmichPersonAsset[],
-    people: CimmichPerson[],
-  ) => {
-    const contextCounts = new SvelteMap<string, number>();
-    for (const asset of assets) {
-      for (const context of asset.contexts) {
-        contextCounts.set(context.entityId, (contextCounts.get(context.entityId) ?? 0) + 1);
-      }
-    }
-    // Uncapped, this fired one request per unique context tag across the
-    // person's assets — hundreds on a well-tagged archive person. Rank by
-    // shared-asset count so the strongest connections win the budget.
-    const contexts = [
-      ...new SvelteMap(
-        assets.flatMap((asset) => asset.contexts).map((context) => [context.entityId, context]),
-      ).values(),
-    ]
-      .sort((a, b) => (contextCounts.get(b.entityId) ?? 0) - (contextCounts.get(a.entityId) ?? 0))
-      .slice(0, 32);
-    const details: (Awaited<ReturnType<typeof getCimmichContextEntity>> | null)[] = Array.from(
-      { length: contexts.length },
-      () => null,
-    );
-    let nextContextIndex = 0;
-    const contextWorker = async () => {
-      while (nextContextIndex < contexts.length) {
-        const index = nextContextIndex++;
-        const context = contexts[index];
-        details[index] = await getCimmichContextEntity(
-          context.entityKind === 'event' ? 'events' : context.entityKind === 'object' ? 'objects' : 'places',
-          context.entityId,
-        ).catch(() => null);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(8, contexts.length) }, () => contextWorker()));
-    const linked = new SvelteMap<string, CimmichPersonConnection & { contextIds: Set<string> }>();
-    for (const detail of details) {
-      if (!detail) {
-        continue;
-      }
-      for (const relation of detail.relations) {
-        if (relation.targetKind !== 'person' || relation.targetId === personId) {
-          continue;
-        }
-        const person = people.find((row) => row.person_id === relation.targetId);
-        if (!person?.sourceAssetId) {
-          continue;
-        }
-        const existing = linked.get(person.person_id);
-        if (existing) {
-          existing.contextIds.add(detail.entity.entityId);
-          existing.photoCount = existing.contextIds.size;
-          continue;
-        }
-        linked.set(person.person_id, {
-          contextIds: new Set([detail.entity.entityId]),
-          displayName: person.display_name,
-          entityId: person.person_id,
-          entityKind: 'person',
-          metaLabel:
-            person.categories
-              .filter((category) => category.category_kind === 'relationship')
-              .sort((left, right) => left.sort_order - right.sort_order)
-              .map((category) => category.name)
-              .join(' · ') || 'Connected person',
-          photoCount: 1,
-          sourceAssetId: person.sourceAssetId,
-          typeKind: relation.relationKind,
-        });
-      }
-    }
-    return [...linked.values()].sort((left, right) => left.displayName.localeCompare(right.displayName));
-  };
   const visibleCimmichCandidates = $derived(preparePersonCandidates(cimmichCandidates));
   const cimmichIdentityAuditFaceIds = $derived(new Set(cimmichIdentityAuditItems.map(({ faceId }) => faceId)));
-  const cimmichCandidateReviewItems = $derived<CimmichPersonReviewItem[]>(
-    visibleCimmichCandidates.map((candidate) => {
-      const matchScore = candidate.source_score ?? candidate.calibrated_confidence ?? candidate.match_score ?? null;
-      const margin = candidate.source_margin;
-      const currentPerson =
-        candidate.current_person_id && candidate.current_person_name
-          ? {
-              displayName: candidate.current_person_name,
-              personId: candidate.current_person_id,
-              reference: null,
-              score: 1,
-            }
-          : null;
-      return {
-        assetId: candidate.asset_id,
-        assignedPerson: currentPerson,
-        box: { h: candidate.box_h, w: candidate.box_w, x: candidate.box_x, y: candidate.box_y },
-        candidateClaimId: candidate.identity_claim_id,
-        candidateEvidence: {
-          detectorConfidence: candidate.detection_confidence,
-          margin,
-          matchScore,
-          // A sole-candidate lead carries margin = score + 1 (matcherPolicyMargin
-          // with no runner-up), so a real second-best score only exists when the
-          // margin does not exceed the winning score.
-          secondBestScore: matchScore !== null && margin !== null && margin <= matchScore ? matchScore - margin : null,
-        },
-        captureTime: candidate.capture_time,
-        currentDecisionId: candidate.current_decision_id,
-        currentRevision: candidate.current_revision,
-        detectionConfidence: candidate.detection_confidence,
-        faceId: candidate.face_id,
-        physicalFaceId: candidate.physical_face_id,
-        filename: candidate.filename,
-        height: candidate.height,
-        kind:
-          currentPerson && currentPerson.personId !== candidate.person_id
-            ? ('accepted_contradiction' as const)
-            : ('untagged_match' as const),
-        margin: margin ?? 0,
-        mediaKind: candidate.media_kind,
-        qualityMeasurements: candidate.quality_measurements,
-        samePhotoAcceptedCount: candidate.same_photo_accepted_count ?? 0,
-        sourceAssetId: candidate.sourceAssetId,
-        suggestedPerson: {
-          displayName: candidate.display_name,
-          personId: candidate.person_id,
-          reference: null,
-          score: matchScore ?? 0,
-        },
-        width: candidate.width,
-      };
-    }),
-  );
+  const cimmichCandidateReviewItems = $derived(personCandidateReviewItems(visibleCimmichCandidates));
   const cimmichPersonReviewItems = $derived.by<CimmichPersonReviewItem[]>(() => {
     const merged = new SvelteMap<string, CimmichPersonReviewItem>(
       cimmichIdentityAuditItems.map((item) => [item.physicalFaceId, item]),
@@ -751,6 +643,11 @@
       total: base.total + cimmichKnownClusterPhotoCount,
     };
   });
+  const cimmichAwaitingCountHint = $derived(
+    !cimmichIdentityLoaded && cimmichAwaitingCounts.total === 0
+      ? Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)
+      : 0,
+  );
   const cimmichIdentityAuditGroups = $derived(
     personIdentityAuditGroups({
       auditTotals: cimmichIdentityAuditTotals,
@@ -920,6 +817,7 @@
   };
   const selectCimmichIdentityWorkspace = (filter: CimmichIdentityFilter) => {
     cimmichIdentityFilter = filter;
+    syncCimmichWorkspaceUrl();
     if (filter !== 'presentation') {
       cimmichPresentationPickerSlot = '';
     }
@@ -1749,14 +1647,8 @@
     cimmichMachineSuggestionConfirm = false;
   };
 
-  const resetCimmichAssetsPagination = async (personId: string, generation = personProjectionGeneration) => {
-    const page = await getCimmichPersonAssetsPage(personId, 120);
-    if (generation !== personProjectionGeneration) {
-      return;
-    }
-    cimmichAssets = page.items;
-    cimmichAssetsNextCursor = page.nextCursor;
-  };
+  const resetAssetsPagination = (personId: string, generation = personProjectionGeneration) =>
+    cimmichExplore.resetAssets(personId, () => generation === personProjectionGeneration);
 
   const cimmichPhotoSelected = (assetId: string) => cimmichSelectedPhotoIds.includes(assetId);
 
@@ -1780,11 +1672,8 @@
     }
   };
 
-  const refreshCimmichPersonMedia = async () => {
-    if (cimmichPerson) {
-      await resetCimmichAssetsPagination(cimmichPerson.person_id);
-    }
-  };
+  const refreshCimmichPersonMedia = () =>
+    cimmichPerson ? resetAssetsPagination(cimmichPerson.person_id) : Promise.resolve();
 
   const loadMoreCimmichAssets = async () => {
     if (!cimmichPerson || !cimmichAssetsNextCursor || cimmichAssetsLoadingMore) {
@@ -1796,7 +1685,7 @@
     cimmichAssetsLoadingMore = true;
     cimmichLoadError = '';
     try {
-      const page = await getCimmichPersonAssetsPage(personId, 120, cursor);
+      const page = await cimmichExplore.getAssetsPage(personId, cursor);
       if (generation !== personProjectionGeneration) {
         return;
       }
@@ -1805,7 +1694,7 @@
       cimmichAssetsNextCursor = page.nextCursor;
     } catch (error) {
       if (error instanceof CimmichServiceError && error.code === 'PERSON_PAGE_CURSOR_INVALID') {
-        await resetCimmichAssetsPagination(personId);
+        await resetAssetsPagination(personId);
         cimmichLoadError = 'Viewing mode changed. Photos restarted from the first page.';
       } else {
         cimmichLoadError = error instanceof Error ? error.message : 'Unable to load more photos';
@@ -1874,7 +1763,7 @@
       const [machineSuggestions, candidates, assetsPage, people] = await Promise.all([
         getCimmichMachineSuggestions(80, personId),
         getCimmichPersonCandidates(personId),
-        getCimmichPersonAssetsPage(personId, 120),
+        cimmichExplore.getAssetsPage(personId),
         getCimmichPeople(500),
       ]);
       if (generation !== personProjectionGeneration) {
@@ -1899,8 +1788,6 @@
       await openCimmichIdentity(generation);
       cimmichIdentityFilter = 'candidates';
     } catch (error) {
-      // Keep the selection so the operator can retry; a silent stop here left
-      // no trace that the batch never saved.
       cimmichMachineSuggestionConfirm = false;
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to confirm the selected suggestions';
     } finally {
@@ -1910,26 +1797,71 @@
     }
   };
 
-  const retainCimmichCollisionAsset = (item: CimmichPersonReviewItem) => {
-    if (
-      cimmichSamePhotoCollisionGroups.some(
-        ({ assetId, items }) => assetId === item.assetId && items.some(({ faceId }) => faceId === item.faceId),
-      ) &&
-      !cimmichIdentityCollisionAssetIds.includes(item.assetId)
-    ) {
-      cimmichIdentityCollisionAssetIds = [...cimmichIdentityCollisionAssetIds, item.assetId];
+  const scheduleCimmichIdentityReviewRefresh = () => {
+    if (cimmichReviewRefreshTimer) {
+      clearTimeout(cimmichReviewRefreshTimer);
     }
+    cimmichReviewRefreshTimer = setTimeout(() => {
+      cimmichReviewRefreshTimer = undefined;
+      if (!cimmichPerson) {
+        return;
+      }
+      void Promise.all([
+        refreshCimmichIdentityAfterReview(),
+        loadCimmichIdentityAuditQueues(cimmichPerson.person_id),
+      ]).catch((error) => {
+        cimmichIdentityError =
+          error instanceof Error ? error.message : 'Saved the decisions, but could not refresh the review queue';
+      });
+    }, 1200);
+  };
+
+  const cimmichIdentityAuditFaceSaving = (faceId: string) => cimmichIdentityAuditSavingFaceIds.includes(faceId);
+  const cimmichIdentityAuditBusyForFace = (faceId: string) =>
+    Boolean(cimmichIdentityAuditSavingId) || cimmichIdentityAuditFaceSaving(faceId);
+  const toggleCimmichIdentityAuditCorrection = (item: CimmichPersonReviewItem) => {
+    cimmichIdentityAuditCorrection.toggle(item);
+    if (cimmichIdentityAuditCorrection.faceId !== item.faceId || cimmichSetupPeople.length > 0) {
+      return;
+    }
+    const generation = personProjectionGeneration;
+    void getCimmichPeople(500)
+      .then((people) => {
+        if (generation === personProjectionGeneration) {
+          cimmichSetupPeople = people;
+        }
+      })
+      .catch((error) => {
+        if (generation === personProjectionGeneration) {
+          cimmichIdentityError = error instanceof Error ? error.message : 'Unable to load People choices';
+        }
+      });
+  };
+  const beginCimmichIdentityAuditFaceSave = (faceId: string) => {
+    if (cimmichIdentityAuditSavingId || cimmichIdentityAuditFaceSaving(faceId)) {
+      return false;
+    }
+    cimmichIdentityAuditSavingFaceIds = [...cimmichIdentityAuditSavingFaceIds, faceId];
+    return true;
+  };
+  const finishCimmichIdentityAuditFaceSave = (faceId: string) => {
+    cimmichIdentityAuditSavingFaceIds = cimmichIdentityAuditSavingFaceIds.filter((id) => id !== faceId);
   };
 
   const finishCimmichAuditDecision = (item: CimmichPersonReviewItem) => {
     if (!cimmichPerson) {
       return;
     }
-    retainCimmichCollisionAsset(item);
+    cimmichIdentityCollisionAssetIds = retainedCollisionAssetIds(
+      cimmichIdentityCollisionAssetIds,
+      cimmichSamePhotoCollisionGroups,
+      item,
+    );
     const wasAuditItem = cimmichIdentityAuditItems.some(
       ({ faceId, kind }) => faceId === item.faceId && kind === item.kind,
     );
     cimmichIdentityAuditItems = cimmichIdentityAuditItems.filter(({ faceId }) => faceId !== item.faceId);
+    cimmichIdentityFaces = cimmichIdentityFaces.filter(({ face_id }) => face_id !== item.faceId);
     if (wasAuditItem) {
       cimmichIdentityAuditTotals = {
         ...cimmichIdentityAuditTotals,
@@ -1943,22 +1875,15 @@
     }
     cimmichIdentityAuditSelection = cimmichIdentityAuditSelection.filter((faceId) => faceId !== item.faceId);
     cimmichIdentityAuditCorrection.finish(item);
-    void Promise.all([
-      refreshCimmichIdentityAfterReview(),
-      loadCimmichIdentityAuditQueues(cimmichPerson.person_id),
-    ]).catch((error) => {
-      cimmichIdentityError =
-        error instanceof Error ? error.message : 'Saved the decision, but could not refresh the review queue';
-    });
+    scheduleCimmichIdentityReviewRefresh();
   };
 
   const confirmCimmichAuditPerson = async (item: CimmichPersonReviewItem) => {
-    if (!cimmichPerson || cimmichIdentityAuditSavingId) {
+    if (!cimmichPerson || !beginCimmichIdentityAuditFaceSave(item.faceId)) {
       return;
     }
     const personId = cimmichPerson.person_id;
     const personName = cimmichPerson.display_name;
-    cimmichIdentityAuditSavingId = `confirm:${item.faceId}`;
     cimmichIdentityError = '';
     cimmichIdentityMessage = '';
     try {
@@ -1972,12 +1897,12 @@
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this identity decision';
     } finally {
-      cimmichIdentityAuditSavingId = '';
+      finishCimmichIdentityAuditFaceSave(item.faceId);
     }
   };
 
   const changeCimmichAuditPerson = async (item: CimmichPersonReviewItem) => {
-    if (!cimmichPerson || cimmichIdentityAuditSavingId) {
+    if (!cimmichPerson) {
       return;
     }
     const { targetPersonId, target } = cimmichIdentityAuditCorrection.decision(item);
@@ -1985,7 +1910,9 @@
       cimmichIdentityError = 'Choose one of the closest People before changing this identity.';
       return;
     }
-    cimmichIdentityAuditSavingId = `change:${item.faceId}`;
+    if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
+      return;
+    }
     cimmichIdentityError = '';
     cimmichIdentityMessage = '';
     try {
@@ -2011,15 +1938,14 @@
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to change this identity';
     } finally {
-      cimmichIdentityAuditSavingId = '';
+      finishCimmichIdentityAuditFaceSave(item.faceId);
     }
   };
 
   const deferCimmichAuditBoxFix = async (item: CimmichPersonReviewItem) => {
-    if (cimmichIdentityAuditSavingId) {
+    if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
       return;
     }
-    cimmichIdentityAuditSavingId = `fix-box:${item.faceId}`;
     cimmichIdentityError = '';
     cimmichIdentityMessage = '';
     try {
@@ -2034,19 +1960,18 @@
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this Face for a box fix';
     } finally {
-      cimmichIdentityAuditSavingId = '';
+      finishCimmichIdentityAuditFaceSave(item.faceId);
     }
   };
 
   const markCimmichAuditFaceNotFace = async (item: CimmichPersonReviewItem) => {
-    if (cimmichIdentityAuditSavingId) {
-      return;
-    }
     if (typeof item.currentRevision !== 'number') {
       cimmichIdentityError = 'Reload this review before marking the region as not a Face.';
       return;
     }
-    cimmichIdentityAuditSavingId = `not-face:${item.faceId}`;
+    if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
+      return;
+    }
     cimmichIdentityError = '';
     cimmichIdentityMessage = '';
     try {
@@ -2060,7 +1985,7 @@
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to mark this region as not a Face';
     } finally {
-      cimmichIdentityAuditSavingId = '';
+      finishCimmichIdentityAuditFaceSave(item.faceId);
     }
   };
 
@@ -2071,7 +1996,12 @@
     const selectedItems = cimmichPersonReviewItems.filter(
       (item) => item.kind === kind && cimmichIdentityAuditSelection.includes(item.faceId),
     );
-    if (!cimmichPerson || selectedItems.length === 0 || cimmichIdentityAuditSavingId) {
+    if (
+      !cimmichPerson ||
+      selectedItems.length === 0 ||
+      cimmichIdentityAuditSavingId ||
+      cimmichIdentityAuditSavingFaceIds.length > 0
+    ) {
       return;
     }
     if (cimmichIdentityAuditConfirmAction !== action) {
@@ -2181,15 +2111,13 @@
     }
     const generation = personProjectionGeneration;
     const [page, row] = await Promise.all([
-      getCimmichIdentityFacesPage(cimmichPerson.person_id, 120),
+      getCimmichIdentityFacesPage(cimmichPerson.person_id, 1),
       getCimmichPersonByName(data.personName, data.personId),
     ]);
     if (generation !== personProjectionGeneration) {
       return;
     }
-    cimmichIdentityFaces = page.items;
     cimmichIdentityFaceSummary = page.summary;
-    cimmichIdentityNextCursor = page.nextCursor;
     cimmichIdentityLoaded = true;
     if (row) {
       cimmichPerson = row;
@@ -2290,7 +2218,7 @@
   };
 
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
-    cimmichMode = 'identity';
+    selectCimmichMode('identity');
     if (!cimmichPerson || cimmichIdentityLoaded || cimmichIdentityLoading) {
       return;
     }
@@ -2308,7 +2236,9 @@
         knownClusterSuggestions,
       ] = await Promise.all([
         getCimmichIdentityFacesPage(personId, 120),
-        getCimmichPersonAssetsPage(personId, 120),
+        cimmichAssets.length > 0
+          ? Promise.resolve({ items: cimmichAssets, nextCursor: cimmichAssetsNextCursor })
+          : cimmichExplore.getAssetsPage(personId),
         getCimmichPersonCandidates(personId),
         getCimmichPersonPresentation(personId),
         getCimmichIdentityAuditItems('untagged_match', 0, 50, personId),
@@ -2350,7 +2280,10 @@
       cimmichPresentation = presentation;
       syncCimmichPresentationFrames(presentation);
       cimmichIdentitySectionLimits = {};
-      cimmichIdentityFilter = 'prime';
+      if (cimmichIdentityFilter === 'all') {
+        cimmichIdentityFilter = 'prime';
+        syncCimmichWorkspaceUrl();
+      }
       if (cimmichPerson.needs_holding) {
         cimmichHoldingMatches = {};
         void loadCimmichHoldingMatches(cimmichIdentityFaces);
@@ -2369,6 +2302,7 @@
   const openCimmichDisplay = async () => {
     await openCimmichIdentity();
     cimmichIdentityFilter = 'presentation';
+    syncCimmichWorkspaceUrl();
     cimmichPresentationPickerSlot = '';
     requestAnimationFrame(() =>
       document.querySelector('#cimmich-identity-workspace')?.scrollIntoView({
@@ -2386,7 +2320,7 @@
     const [setup, people, assetsPage] = await Promise.all([
       getCimmichPersonSetup(personId),
       getCimmichPeople(500),
-      getCimmichPersonAssetsPage(personId, 120),
+      cimmichExplore.getAssetsPage(personId),
     ]);
     cimmichSetup = setup;
     cimmichSetupPeople = people;
@@ -2407,6 +2341,7 @@
     cimmichIdentityAuditCorrection.reset();
     cimmichIdentityCollisionAssetIds = [];
     cimmichIdentityAuditSavingId = '';
+    cimmichIdentityAuditSavingFaceIds = [];
     cimmichMachineSuggestionSelection = [];
     cimmichMachineSuggestionConfirm = false;
     cimmichMachineSuggestionSaving = false;
@@ -2422,7 +2357,7 @@
   };
 
   const openCimmichSetup = async () => {
-    cimmichMode = 'setup';
+    selectCimmichMode('setup');
     cimmichSetupError = '';
     cimmichSetupMergePersonId = '';
     cimmichSetupMergeQuery = '';
@@ -2443,7 +2378,52 @@
   };
 
   const openCimmichDetails = () => {
-    cimmichMode = 'details';
+    selectCimmichMode('details');
+    if (!cimmichPerson || cimmichProfile) {
+      return;
+    }
+    const generation = personProjectionGeneration;
+    void loadPersonDetailsProjection(cimmichPerson.person_id)
+      .then(([profile, defaults, display, detailsDefaults, detailsDisplay]) => {
+        if (generation !== personProjectionGeneration) {
+          return;
+        }
+        cimmichProfile = profile;
+        cimmichProfileDefaults = defaults;
+        cimmichProfileDisplay = display;
+        cimmichDetailsDefaults = detailsDefaults;
+        cimmichDetailsDisplay = detailsDisplay;
+        cimmichProfileError = '';
+      })
+      .catch((error) => {
+        if (generation === personProjectionGeneration) {
+          cimmichProfileError = error instanceof Error ? error.message : 'Unable to load profile details';
+        }
+      });
+  };
+
+  const openCimmichConnections = async () => {
+    selectCimmichMode('connections');
+    if (!cimmichPerson || cimmichPeopleConnections.length > 0) {
+      return;
+    }
+    const generation = personProjectionGeneration;
+    try {
+      const setupPeople = cimmichSetupPeople.length > 0 ? cimmichSetupPeople : await getCimmichPeople(500);
+      if (generation !== personProjectionGeneration) {
+        return;
+      }
+      cimmichSetupPeople = setupPeople;
+      cimmichPeopleConnections = await loadCimmichPeopleConnections(
+        cimmichPerson.person_id,
+        cimmichAssets,
+        setupPeople,
+      );
+    } catch (error) {
+      if (generation === personProjectionGeneration) {
+        cimmichConnectionError = error instanceof Error ? error.message : 'Unable to load connections';
+      }
+    }
   };
 
   const addSetupAlias = async () => {
@@ -2924,83 +2904,27 @@
       }
       cimmichPerson = row;
       cimmichIdentityMoveUndo = restoreIdentityMoveUndo(row.person_id);
-      const assetsPromise = getCimmichPersonAssetsPage(row.person_id, 120);
-      const directConnectionsPromise = getCimmichPersonConnections(row.person_id);
-      const peoplePromise = getCimmichPeople(500);
-      const correctionsPromise = getCimmichIdentityCorrectionDiscovery({ personId: row.person_id }, { limit: 12 });
-      const presentationPromise =
-        row.subject_kind === 'person'
-          ? getCimmichPersonPresentation(row.person_id).catch(() => undefined)
-          : Promise.resolve(undefined);
-      const visibilityPromise =
-        row.subject_kind === 'person'
-          ? getCimmichVisibilityObject('person', row.person_id)
-          : Promise.resolve(undefined);
-      const profilePromise =
-        row.subject_kind === 'person'
-          ? Promise.all([
-              getCimmichPersonProfile(row.person_id),
-              getCimmichPersonProfileDisplayDefaults(),
-              getCimmichPersonProfileDisplay(row.person_id),
-              getCimmichPersonDetailsDisplayDefaults(),
-              getCimmichPersonDetailsDisplay(row.person_id),
-            ]).catch((error) => {
-              if (generation === personProjectionGeneration) {
-                cimmichProfileError = error instanceof Error ? error.message : 'Unable to load profile details';
-              }
-              return null;
-            })
-          : Promise.resolve(null);
-      const assetsPage = await assetsPromise;
-      if (generation !== personProjectionGeneration) {
-        return;
-      }
-      cimmichAssets = assetsPage.items;
-      cimmichAssetsNextCursor = assetsPage.nextCursor;
       cimmichLoadError = '';
-      const [profileProjection, corrections, personVisibility, setupPeople, presentation, directConnections] =
-        await Promise.all([
-          profilePromise,
-          correctionsPromise,
-          visibilityPromise,
-          peoplePromise,
-          presentationPromise,
-          directConnectionsPromise,
-        ]);
-      if (generation !== personProjectionGeneration) {
-        return;
-      }
-      cimmichSetupPeople = setupPeople;
-      cimmichDirectContextConnections = directConnections;
-      cimmichIdentityCorrections = corrections.items;
-      cimmichIdentityUndoDecisionId = corrections.items.find((item) => item.undo.eligible)?.undo.decisionId ?? '';
-      cimmichPersonVisibility = personVisibility;
-      if (presentation) {
-        cimmichPresentation = presentation;
-        syncCimmichPresentationFrames(presentation);
-      }
-      if (profileProjection) {
-        const [profile, defaults, display, detailsDefaults, detailsDisplay] = profileProjection;
-        cimmichProfile = profile;
-        cimmichProfileDefaults = defaults;
-        cimmichProfileDisplay = display;
-        cimmichDetailsDefaults = detailsDefaults;
-        cimmichDetailsDisplay = detailsDisplay;
-        cimmichProfileError = '';
-      }
-      // Connections fan out one request per ranked context; let the dossier
-      // paint from the state above and fill the graph in when it resolves.
-      const peopleConnections = await loadCimmichPeopleConnections(row.person_id, assetsPage.items, setupPeople);
-      if (generation !== personProjectionGeneration) {
-        return;
-      }
-      cimmichPeopleConnections = peopleConnections;
       if (row.needs_holding || cimmichMode === 'identity') {
-        await openCimmichIdentity(generation);
+        void openCimmichIdentity(generation);
       }
-      if (generation === personProjectionGeneration) {
-        cimmichLoadError = '';
-      }
+
+      loadPersonSecondaryProjections({
+        includePresentation: cimmichMode !== 'identity',
+        isCurrent: () => generation === personProjectionGeneration,
+        onConnections: (connections) => (cimmichDirectContextConnections = connections),
+        onCorrections: (corrections) => {
+          cimmichIdentityCorrections = corrections.items;
+          cimmichIdentityUndoDecisionId = corrections.items.find((item) => item.undo.eligible)?.undo.decisionId ?? '';
+        },
+        onPresentation: (presentation) => {
+          cimmichPresentation = presentation;
+          syncCimmichPresentationFrames(presentation);
+        },
+        onVisibility: (visibility) => (cimmichPersonVisibility = visibility),
+        personId: row.person_id,
+        subjectKind: row.subject_kind,
+      });
     } catch (error) {
       if (generation === personProjectionGeneration) {
         cimmichLoadError = error instanceof Error ? error.message : 'Unable to load person';
@@ -3012,6 +2936,29 @@
     void cimmichVisibilityManager.version;
     const generation = ++personProjectionGeneration;
     cimmichKnownClusterReview.cancelPending();
+    const cached = readPersonWorkspaceCache<CachedPersonWorkspace>(cimmichWorkspaceCacheKey());
+    const expectedExploreKey = untrack(() => cimmichExplore.key);
+    if (cached?.exploreFilterKey === expectedExploreKey) {
+      cimmichPerson = cached.person;
+      cimmichAssets = cached.assets;
+      cimmichAssetsNextCursor = cached.assetsNextCursor;
+      cimmichCandidates = cached.candidates;
+      cimmichIdentityCorrections = cached.corrections;
+      cimmichIdentityAuditItems = cached.identityAuditItems;
+      cimmichIdentityAuditTotals = cached.identityAuditTotals;
+      cimmichIdentityFaces = cached.identityFaces;
+      cimmichIdentityFaceSummary = cached.identityFaceSummary;
+      cimmichIdentityNextCursor = cached.identityNextCursor;
+      cimmichIdentityLoaded = cached.identityLoaded;
+      cimmichExplore.restoreCachedResult(cached.exploreFilterKey, cached.exploreResult);
+      cimmichKnownClusterSuggestions = cached.knownClusterSuggestions;
+      cimmichMachineSuggestions = cached.machineSuggestions;
+      cimmichPresentation = cached.presentation;
+      cimmichSetupPeople = cached.setupPeople;
+      cimmichIdentityLoading = false;
+      cimmichLoadError = '';
+      return;
+    }
     cimmichPerson = undefined;
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
@@ -3021,6 +2968,7 @@
     cimmichConnectionUndoDecisionId = '';
     cimmichAssets = [];
     cimmichAssetsNextCursor = null;
+    cimmichExplore.resetCachedResult();
     cimmichIdentityLoaded = false;
     cimmichIdentityLoading = false;
     cimmichIdentityFaces = [];
@@ -3031,6 +2979,7 @@
     cimmichMachineSuggestions = [];
     cimmichMachineSuggestionSelection = [];
     cimmichMachineSuggestionConfirm = false;
+    cimmichIdentityAuditSavingFaceIds = [];
     cimmichHoldingMatches = {};
     cimmichHoldingMatchesLoading = {};
     cimmichIdentityUndoDecisionId = '';
@@ -3043,6 +2992,54 @@
     cimmichDetailsDisplay = undefined;
     cimmichLoadError = '';
     void loadPersonProjection(generation);
+  });
+
+  $effect(() => {
+    const personId = cimmichPerson?.person_id;
+    const filterKey = cimmichExplore.key;
+    if (personId && filterKey !== cimmichExplore.loadedKey) {
+      void cimmichExplore.load(personId);
+    }
+  });
+
+  $effect(() => {
+    if (!cimmichPerson) {
+      return;
+    }
+    writePersonWorkspaceCache<CachedPersonWorkspace>(cimmichWorkspaceCacheKey(), {
+      assets: cimmichAssets,
+      assetsNextCursor: cimmichAssetsNextCursor,
+      candidates: cimmichCandidates,
+      corrections: cimmichIdentityCorrections,
+      exploreFilterKey: cimmichExplore.key,
+      exploreResult: cimmichExplore.result,
+      identityAuditItems: cimmichIdentityAuditItems,
+      identityAuditTotals: cimmichIdentityAuditTotals,
+      identityFaces: cimmichIdentityFaces,
+      identityFaceSummary: cimmichIdentityFaceSummary,
+      identityNextCursor: cimmichIdentityNextCursor,
+      identityLoaded: cimmichIdentityLoaded,
+      knownClusterSuggestions: cimmichKnownClusterSuggestions,
+      machineSuggestions: cimmichMachineSuggestions,
+      person: cimmichPerson,
+      presentation: cimmichPresentation,
+      setupPeople: cimmichSetupPeople,
+    });
+  });
+
+  $effect(() => {
+    if (cimmichReturnScrollRestored || !cimmichPerson || data.returnScroll <= 0) {
+      return;
+    }
+    cimmichReturnScrollRestored = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        globalThis.scrollTo({ behavior: 'auto', top: data.returnScroll });
+        const url = new URL(globalThis.location.href);
+        url.searchParams.delete('returnScroll');
+        globalThis.history.replaceState(globalThis.history.state, '', url);
+      });
+    });
   });
 
   $effect(() => {
@@ -3061,7 +3058,7 @@
   });
 </script>
 
-<svelte:window onresize={updateCimmichTabsOverflow} />
+<svelte:window onpopstate={cimmichExplore.restoreFromLocation} onresize={updateCimmichTabsOverflow} />
 
 <UserPageLayout>
   <div class="mx-auto flex w-full max-w-7xl flex-col gap-3 p-4 text-immich-fg sm:p-5 dark:text-immich-dark-fg">
@@ -3240,7 +3237,7 @@
                 role="tab"
                 aria-selected={cimmichMode === 'photos'}
                 tabindex={cimmichMode === 'photos' ? 0 : -1}
-                onclick={() => (cimmichMode = 'photos')}
+                onclick={() => selectCimmichMode('photos')}
               >
                 Photos
                 <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray"
@@ -3266,7 +3263,7 @@
                   role="tab"
                   aria-selected={cimmichMode === 'connections'}
                   tabindex={cimmichMode === 'connections' ? 0 : -1}
-                  onclick={() => (cimmichMode = 'connections')}
+                  onclick={() => void openCimmichConnections()}
                 >
                   Connections
                   {#if cimmichPeopleConnections.length + cimmichPersonConnections.length > 0}
@@ -3286,20 +3283,11 @@
                 onclick={() => void openCimmichIdentity()}
               >
                 Identity
-                {#if cimmichAwaitingCounts.newMatches > 0}
-                  <span
-                    class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-                  >
-                    {cimmichAwaitingCounts.newMatches.toLocaleString()} new
-                  </span>
-                {/if}
-                {#if cimmichAwaitingCounts.possibleMistags > 0}
-                  <span
-                    class="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800 dark:bg-red-950 dark:text-red-200"
-                  >
-                    {cimmichAwaitingCounts.possibleMistags.toLocaleString()} mistags
-                  </span>
-                {/if}
+                <CimmichIdentityWaitingBadges
+                  newMatches={cimmichAwaitingCounts.newMatches}
+                  possibleMistags={cimmichAwaitingCounts.possibleMistags}
+                  waitingHint={cimmichAwaitingCountHint}
+                />
               </button>
               <button
                 class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
@@ -3308,7 +3296,7 @@
                 role="tab"
                 aria-selected={cimmichMode === 'documents'}
                 tabindex={cimmichMode === 'documents' ? 0 : -1}
-                onclick={() => (cimmichMode = 'documents')}
+                onclick={() => selectCimmichMode('documents')}
               >
                 Documents
               </button>
@@ -3401,6 +3389,13 @@
 
       {#if cimmichMode === 'photos'}
         <section id="cimmich-identity-workspace" class="grid scroll-mt-4 gap-4">
+          <CimmichExploreFilters
+            error={cimmichExplore.error}
+            filters={cimmichExplore.filters}
+            loading={cimmichExplore.loading}
+            onchange={cimmichExplore.setFilters}
+            result={cimmichExplore.result}
+          />
           {#if cimmichPhotoSelectionMode}
             <div
               class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-immich-dark-gray"
@@ -3991,7 +3986,7 @@
                           ]}
                         >
                           <CimmichReviewPhotoMedia
-                            busy={Boolean(cimmichIdentityAuditSavingId || cimmichPhotoReview.savingId)}
+                            busy={Boolean(cimmichIdentityAuditBusyForFace(item.faceId) || cimmichPhotoReview.savingId)}
                             contextLabel={cimmichPhotoReview.label(item)}
                             filename={item.filename}
                             href={item.sourceAssetId
@@ -4004,6 +3999,7 @@
                                 })
                               : undefined}
                             image={item}
+                            onOpen={storeCimmichReturnScroll}
                             onRotate={(direction) => void cimmichPhotoReview.rotate(item.assetId, direction)}
                             onToggle={(event) => toggleCimmichAuditSelection(item.faceId, event)}
                             onUndo={photoContext?.rotationDecisionId
@@ -4053,6 +4049,7 @@
                                   >
                                     <a
                                       href={Route.viewAsset({ id: item.suggestedPerson.reference.sourceAssetId })}
+                                      onclick={storeCimmichReturnScroll}
                                       class="block aspect-square rounded-md bg-gray-200 bg-cover"
                                       style={cimmichAuditCropStyle(item.suggestedPerson.reference)}
                                       aria-label={`Open confirmed reference for ${item.suggestedPerson.displayName}`}
@@ -4097,13 +4094,19 @@
                               {#if item.kind === 'accepted_contradiction'}
                                 <div class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
                                   <button
-                                    class="min-h-10 min-w-0 rounded-md bg-amber-600 p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
+                                    class={[
+                                      'min-h-10 min-w-0 rounded-md p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40',
+                                      cimmichIdentityAuditCorrection.decision(item).targetPersonId ===
+                                      cimmichPerson.person_id
+                                        ? 'bg-immich-primary'
+                                        : 'bg-amber-600',
+                                    ]}
                                     type="button"
-                                    disabled={Boolean(cimmichIdentityAuditSavingId) ||
+                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId) ||
                                       !cimmichIdentityAuditCorrection.decision(item).target}
                                     onclick={() => void changeCimmichAuditPerson(item)}
                                   >
-                                    {cimmichIdentityAuditSavingId === `change:${item.faceId}`
+                                    {cimmichIdentityAuditFaceSaving(item.faceId)
                                       ? 'Saving…'
                                       : cimmichIdentityAuditCorrection.decision(item).label}
                                   </button>
@@ -4112,17 +4115,17 @@
                                     type="button"
                                     aria-label={`Choose a different person for ${item.filename}`}
                                     aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
-                                    disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                    onclick={() => cimmichIdentityAuditCorrection.toggle(item)}>…</button
+                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                    onclick={() => toggleCimmichIdentityAuditCorrection(item)}>…</button
                                   >
                                 </div>
                                 <button
                                   class="col-span-2 min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
                                   type="button"
-                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                  disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
                                   onclick={() => void confirmCimmichAuditPerson(item)}
                                 >
-                                  {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
+                                  {cimmichIdentityAuditFaceSaving(item.faceId)
                                     ? 'Saving…'
                                     : `Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`}
                                 </button>
@@ -4130,29 +4133,32 @@
                                 <button
                                   class="col-span-2 min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
                                   type="button"
-                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                  disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
                                   onclick={() => void confirmCimmichAuditPerson(item)}
                                 >
-                                  {cimmichIdentityAuditSavingId === `confirm:${item.faceId}`
+                                  {cimmichIdentityAuditFaceSaving(item.faceId)
                                     ? 'Saving…'
                                     : `Confirm ${cimmichPerson.display_name}`}
                                 </button>
                                 <CimmichUnknownPersonAction
-                                  busy={Boolean(cimmichIdentityAuditSavingId)}
+                                  busy={cimmichIdentityAuditBusyForFace(item.faceId)}
                                   faceId={item.faceId}
                                   onChanged={() => {
                                     cimmichIdentityMessage = 'Marked as unknown. Identity suggestions are paused.';
                                     finishCimmichAuditDecision(item);
                                   }}
                                   onError={(message) => (cimmichIdentityError = message)}
-                                  onSaving={(saving) => (cimmichIdentityAuditSavingId = saving ? item.faceId : '')}
+                                  onSaving={(saving) =>
+                                    saving
+                                      ? beginCimmichIdentityAuditFaceSave(item.faceId)
+                                      : finishCimmichIdentityAuditFaceSave(item.faceId)}
                                 />
                                 <button
                                   class="min-h-10 rounded-md border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
                                   type="button"
                                   aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
-                                  disabled={Boolean(cimmichIdentityAuditSavingId)}
-                                  onclick={() => cimmichIdentityAuditCorrection.toggle(item)}
+                                  disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                  onclick={() => toggleCimmichIdentityAuditCorrection(item)}
                                 >
                                   {cimmichIdentityAuditCorrection.faceId === item.faceId
                                     ? 'Close change'
@@ -4169,7 +4175,7 @@
                                       aria-label="Likely identity matches"
                                       class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
                                       value={cimmichIdentityAuditCorrection.decision(item).targetPersonId}
-                                      disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                      disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
                                       onchange={(event) =>
                                         cimmichIdentityAuditCorrection.setTarget(item, event.currentTarget.value)}
                                     >
@@ -4187,7 +4193,7 @@
                                       class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white"
                                       value={cimmichIdentityAuditCorrection.query(item)}
                                       placeholder="Type a name"
-                                      disabled={Boolean(cimmichIdentityAuditSavingId)}
+                                      disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
                                       oninput={(event) =>
                                         cimmichIdentityAuditCorrection.setQuery(item, event.currentTarget.value)}
                                     />
@@ -4218,7 +4224,7 @@
                                     <button
                                       class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                                       type="button"
-                                      onclick={() => cimmichIdentityAuditCorrection.toggle(item)}
+                                      onclick={() => toggleCimmichIdentityAuditCorrection(item)}
                                     >
                                       {item.kind === 'accepted_contradiction' ? 'Close' : 'Cancel'}
                                     </button>
@@ -4326,6 +4332,7 @@
                             height: suggestion.height,
                             width: suggestion.width,
                           }}
+                          onOpen={storeCimmichReturnScroll}
                           onRotate={(direction) => void cimmichPhotoReview.rotate(suggestion.asset_id, direction)}
                           onUndo={photoContext?.rotationDecisionId
                             ? () =>
@@ -5677,6 +5684,7 @@
               {#if asset}
                 <a
                   href={Route.viewAsset(asset.asset)}
+                  onclick={storeCimmichReturnScroll}
                   class="group relative aspect-square overflow-hidden bg-gray-200 dark:bg-gray-800"
                 >
                   <img

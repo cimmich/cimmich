@@ -673,6 +673,8 @@ done
 docker exec -e CIMMICH_VISIBILITY_PHASE=readback "$SERVICE_CONTAINER" \
   node acceptance/visibility-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/media-job-journey.mjs
+docker exec "$SERVICE_CONTAINER" \
+  node acceptance/asset-label-bulk-album-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/immich-companion-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/immich-inventory-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/archive-mobility-journey.mjs

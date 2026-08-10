@@ -7,7 +7,8 @@ describe('People overview layout', () => {
   it('uses one category filter state with All as the reset state', async () => {
     const source = await readPeopleOverview();
 
-    expect(source).toContain('aria-label="Filter people"');
+    expect(source).toContain('aria-label="Filter names and photo count"');
+    expect(source).toContain('initiallyExpanded');
     expect(source).toContain("category.id === 'all' ? 'All categories'");
     expect(source).not.toContain('pinnedPeopleCategories');
     expect(source).not.toContain('togglePinnedPeopleCategory');

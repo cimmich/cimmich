@@ -5,6 +5,7 @@ import {
   buildBulkPhotoSorterSearch,
   bulkPhotoSorterChangedAssets,
   bulkPhotoSorterFilterFingerprint,
+  bulkPhotoSorterMappedIds,
   bulkPhotoSorterSameSnapshot,
   chunkBulkPhotoSorterItems,
   createBulkPhotoSorterOperationId,
@@ -72,6 +73,18 @@ describe('bulk photo sorter', () => {
     expect(bulkPhotoSorterSameSnapshot(['asset-a', 'asset-a'], ['asset-a', 'asset-a'])).toBe(false);
   });
 
+  it('deduplicates multiple visible media records that resolve to one Cimmich object', () => {
+    const bindings = new Map([
+      ['source-a', 'asset-a'],
+      ['source-b', 'asset-a'],
+      ['source-c', 'asset-c'],
+    ]);
+    expect(bulkPhotoSorterMappedIds([{ id: 'source-a' }, { id: 'source-b' }, { id: 'source-c' }], bindings)).toEqual([
+      'asset-a',
+      'asset-c',
+    ]);
+  });
+
   it('creates a namespaced operation ID', () => {
     expect(createBulkPhotoSorterOperationId()).toMatch(/^organise\.[A-Za-z0-9.-]+$/);
   });
@@ -96,6 +109,7 @@ describe('bulk photo sorter', () => {
         assetIds: ['asset-1'],
         assetCorrectionDecisionIds: [],
         contextDecisionIds: [],
+        labelDecisions: [],
         label: 'Favourite',
         targetId: '',
         visibilityDecisionIds: [],

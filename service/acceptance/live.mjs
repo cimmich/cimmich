@@ -42,6 +42,24 @@ assert.ok(currentIdentityComparison);
 assert.equal(currentIdentityComparison.current_identity, true);
 assert.equal(closestMatches.reviewOnly, true);
 
+const closestMatchesBatch = await getJson("/v1/faces/matches:batch", {
+  body: JSON.stringify({
+    faceIds: ["face_identity_fixture", "face_candidate_high_fixture"],
+    limitPerFace: 5,
+  }),
+  headers: { "content-type": "application/json" },
+  method: "POST",
+});
+assert.deepEqual(
+  closestMatchesBatch.items.map(({ faceId }) => faceId),
+  ["face_identity_fixture", "face_candidate_high_fixture"],
+);
+assert.equal(closestMatchesBatch.requestedCount, 2);
+assert.equal(closestMatchesBatch.reviewOnly, true);
+assert.equal(closestMatchesBatch.automaticIdentityAuthority, "none");
+assert.equal(closestMatchesBatch.bulkAutomationAuthority, "none");
+assert.equal(closestMatchesBatch.recommendationAuthority, "none");
+
 const candidatePeopleBefore = await getJson("/v1/people?limit=500");
 const candidatePersonBefore = candidatePeopleBefore.items.find(
   (person) => person.person_id === "person_candidate_fixture",

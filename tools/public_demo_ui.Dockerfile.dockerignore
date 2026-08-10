@@ -19,5 +19,7 @@ ui/**/node_modules/
 ui/web/.svelte-kit/
 ui/web/build/
 ui/web/coverage/
+ui/web/test-results/
+ui/web/playwright-report/
 **/.env
 **/.env.*

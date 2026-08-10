@@ -4,6 +4,7 @@
   import Portal from '$lib/elements/Portal.svelte';
   import { Icon } from '@immich/ui';
   import { mdiArrowTopRight, mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
+  import { onMount } from 'svelte';
 
   export type CimmichViewingMode = 'personal' | 'private' | 'standard';
 
@@ -139,6 +140,19 @@
       busy = false;
     }
   };
+
+  onMount(() => {
+    const requestViewingMode = (event: Event) => {
+      const requested = (event as CustomEvent<{ mode?: CimmichViewingMode }>).detail?.mode;
+      if (!requested || !['standard', 'personal', 'private'].includes(requested)) {
+        return;
+      }
+      isOpen = true;
+      void selectMode(requested);
+    };
+    globalThis.addEventListener('cimmich:request-viewing-mode', requestViewingMode);
+    return () => globalThis.removeEventListener('cimmich:request-viewing-mode', requestViewingMode);
+  });
 </script>
 
 {#snippet viewingModePanel(portaled = false)}

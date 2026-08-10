@@ -30,6 +30,9 @@
   let loadGeneration = 0;
 
   const notifyVisibilityChange = () => {
+    if (status) {
+      cimmichVisibilityManager.recordVisibilityStatus(status);
+    }
     cimmichVisibilityManager.notify();
     globalThis.dispatchEvent(new CustomEvent('cimmich:visibility-changed', { detail: status }));
   };
@@ -45,6 +48,7 @@
         return;
       }
       status = next;
+      cimmichVisibilityManager.recordVisibilityStatus(next);
       if (
         previous &&
         (previous.viewingMode !== next.viewingMode || previous.privateAuthorized !== next.privateAuthorized)
@@ -124,6 +128,7 @@
     const next = (event as CustomEvent<unknown>).detail;
     if (isViewingModeStatus(next)) {
       status = next;
+      cimmichVisibilityManager.recordVisibilityStatus(next);
     }
   };
 

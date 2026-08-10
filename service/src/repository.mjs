@@ -23,6 +23,7 @@ import {
 } from "./low-quality-policy.mjs";
 import { createMediaJobLedger } from "./media-job-ledger.mjs";
 import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.mjs";
+import { createCoalescingMaintenanceLane } from "./coalescing-maintenance-lane.mjs";
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
@@ -37,9 +38,11 @@ import { createDocumentStore } from "./documents.mjs";
 import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
 import { createIdentityAudit } from "./identity-audit.mjs";
 import { createFaceMatches } from "./face-match-repository.mjs";
+import { runFaceReviewComparisonBatch } from "./face-review-comparison-batch.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
+import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -51,6 +54,12 @@ import { matcherPolicyMargin } from "./source-pack-evaluator.mjs";
 import { createTagAssetSearch } from "./tag-asset-search.mjs";
 import { attachAssetCorrections } from "./asset-correction-repository.mjs";
 import { createArchiveIntegrityStore } from "./archive-integrity.mjs";
+import { createAssetLabelStore } from "./asset-labels.mjs";
+import { createBulkAlbumOperationStore } from "./bulk-album-operations.mjs";
+import {
+  createExploreFacetStore,
+  normalizeExploreFilters,
+} from "./explore-facets.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
 import {
   readAcceptedPhysicalFaceClaims,
@@ -199,12 +208,11 @@ const decodePersonPageCursor = (value, { kind, personId, visibleRank }) => {
       payload.captureTime === null ||
       (typeof payload.captureTime === "string" &&
         Number.isFinite(Date.parse(payload.captureTime)));
-    const keyValid =
-      kind === "assets"
-        ? typeof payload.assetId === "string" && payload.assetId.length > 0
-        : typeof payload.faceId === "string" &&
-          payload.faceId.length > 0 &&
-          (payload.quality === null || Number.isFinite(payload.quality));
+    const keyValid = kind.startsWith("assets")
+      ? typeof payload.assetId === "string" && payload.assetId.length > 0
+      : typeof payload.faceId === "string" &&
+        payload.faceId.length > 0 &&
+        (payload.quality === null || Number.isFinite(payload.quality));
     if (!captureTimeValid || !keyValid) {
       throw new Error("cursor key invalid");
     }
@@ -780,34 +788,42 @@ const refreshPrimeAfterCommand = async (sql, personId) => {
 };
 
 // Head classification is an operator-facing correction, while Prime curation
-// is a derived convenience projection. Start that maintenance immediately but
-// do not hold the correction response open for a full gallery rebuild.
-// Rebuilds for one Person chain behind each other instead of firing and
-// forgetting: two rapid corrections must not run concurrent rebuilds of the
-// same gallery. The chain's catch is what actually protects the queue — a
-// rejected queued rebuild is logged and the next queued rebuild still runs
-// (refreshPrimeAfterCommand resolves on its own failures, so the old
-// fire-and-forget catch could never fire).
-const deferredPrimeMaintenance = new Map();
+// is a derived convenience projection. The shared lane is globally bounded,
+// ordered by priority and coalesced by Person: queued bursts become one rebuild
+// and a correction arriving during a rebuild requests at most one follow-up.
+// The authoritative transaction therefore never waits for gallery curation.
+const maintenanceEvent = (event) => {
+  if (event.kind === "failed") {
+    console.error(
+      JSON.stringify({ code: "CIMMICH_MAINTENANCE_FAILED", ...event }),
+    );
+    return;
+  }
+  if (event.kind === "completed" && event.durationMs >= 500) {
+    console.info(
+      JSON.stringify({ code: "CIMMICH_MAINTENANCE_SLOW", ...event }),
+    );
+  }
+};
+
+const primeMaintenanceLanes = new WeakMap();
+const primeMaintenanceLane = (sql) => {
+  let lane = primeMaintenanceLanes.get(sql);
+  if (!lane) {
+    lane = createCoalescingMaintenanceLane({
+      concurrency: 1,
+      name: "prime_projection",
+      onEvent: maintenanceEvent,
+      worker: (personId) => refreshPrimeAfterCommand(sql, personId),
+    });
+    primeMaintenanceLanes.set(sql, lane);
+  }
+  return lane;
+};
+
 export const deferPrimeAfterCommand = (sql, personId) => {
   if (!personId) return false;
-  const id = String(personId);
-  const previous = deferredPrimeMaintenance.get(id) || Promise.resolve();
-  const chained = previous
-    .then(() => refreshPrimeAfterCommand(sql, personId))
-    .catch((error) => {
-      console.error("Cimmich deferred Prime maintenance failed", {
-        error: error instanceof Error ? error.message : String(error),
-        personId,
-      });
-    })
-    .finally(() => {
-      if (deferredPrimeMaintenance.get(id) === chained) {
-        deferredPrimeMaintenance.delete(id);
-      }
-    });
-  deferredPrimeMaintenance.set(id, chained);
-  return true;
+  return primeMaintenanceLane(sql).schedule(personId, { priority: 20 });
 };
 
 const refreshPrimeForPeople = async (sql, personIds) => {
@@ -818,6 +834,11 @@ const refreshPrimeForPeople = async (sql, personIds) => {
   }
   return maintenancePending;
 };
+
+const deferPrimeForPeople = (sql, personIds) =>
+  [...new Set(personIds.filter(Boolean))]
+    .map((personId) => deferPrimeAfterCommand(sql, personId))
+    .some(Boolean);
 
 const refreshBodyLinksAfterCommand = async (sql, assetId) => {
   if (!assetId) return { maintenancePending: false };
@@ -837,6 +858,32 @@ const refreshBodyLinksAfterCommand = async (sql, assetId) => {
     return { maintenancePending: true };
   }
 };
+
+const bodyLinkMaintenanceLanes = new WeakMap();
+const bodyLinkMaintenanceLane = (sql) => {
+  let lane = bodyLinkMaintenanceLanes.get(sql);
+  if (!lane) {
+    lane = createCoalescingMaintenanceLane({
+      concurrency: 1,
+      name: "body_link_projection",
+      onEvent: maintenanceEvent,
+      worker: (assetId) => refreshBodyLinksAfterCommand(sql, assetId),
+    });
+    bodyLinkMaintenanceLanes.set(sql, lane);
+  }
+  return lane;
+};
+
+export const deferBodyLinksAfterCommand = (sql, assetId) => {
+  if (!assetId) return false;
+  return bodyLinkMaintenanceLane(sql).schedule(assetId, { priority: 10 });
+};
+
+export const waitForMaintenanceIdle = (sql) =>
+  Promise.all([
+    primeMaintenanceLane(sql).whenIdle(),
+    bodyLinkMaintenanceLane(sql).whenIdle(),
+  ]);
 
 const boxOverlap = (left, right) => {
   const x1 = Math.max(Number(left.box_x), Number(right.box_x));
@@ -1002,6 +1049,7 @@ export const createCimmichRepository = (
   visibility = null,
   options = {},
 ) => {
+  const maintenanceSql = options.maintenanceSql || sql;
   const mediaJobs = createMediaJobLedger(sql);
   const matchingProvider = normalizeMatchingProvider(options.matchingProvider);
   const machineReviewConfigured = matchingProvider !== null;
@@ -1225,8 +1273,23 @@ export const createCimmichRepository = (
   const archiveIntegrity = createArchiveIntegrityStore(sql, {
     presentationRank,
   });
+  const assetLabels = createAssetLabelStore(sql, { presentationRank });
+  const bulkAlbumOperations = createBulkAlbumOperationStore(sql);
+  const exploreFacets = createExploreFacetStore(sql, {
+    presentationRank,
+    requireVisibleSubject,
+  });
   const machineSuggestionSnapshot = createMachineSuggestionSnapshot();
   const invalidateMachineSuggestions = machineSuggestionSnapshot.invalidate;
+  const bulkAcceptPersonCandidates = createBulkPersonCandidateAcceptor({
+    cleanActor,
+    deferPrimeAfterCommand: (_interactiveSql, personId) =>
+      deferPrimeAfterCommand(maintenanceSql, personId),
+    ensureUserCommandReceipt,
+    invalidateMachineSuggestions,
+    sql,
+    userCommandReceiptId,
+  });
   // Private in-process snapshot of the unfiltered People projection - the
   // whole-grid read the live People page issues on every visit. It is served
   // hot, refreshed in the background once stale, and cleared by the server
@@ -1600,6 +1663,9 @@ export const createCimmichRepository = (
     }
   };
   const repository = {
+    whenMaintenanceIdle() {
+      return waitForMaintenanceIdle(maintenanceSql);
+    },
     async filterVisibleMapAssetSourceIds({ sourceAssetIds }) {
       if (
         !Array.isArray(sourceAssetIds) ||
@@ -5422,220 +5488,7 @@ export const createCimmichRepository = (
 
     personCandidateSummary,
 
-    async bulkAcceptPersonCandidates({ actorId, claimIds, personId }) {
-      const actor = cleanActor(actorId);
-      if (!actor)
-        throw Object.assign(new Error("Missing Cimmich actor"), {
-          statusCode: 400,
-        });
-      if (!Array.isArray(claimIds)) {
-        throw Object.assign(new Error("claimIds must be an array"), {
-          statusCode: 400,
-        });
-      }
-      const selectedIds = [
-        ...new Set(
-          claimIds.map((value) => String(value || "").trim()).filter(Boolean),
-        ),
-      ];
-      if (selectedIds.length === 0) {
-        throw Object.assign(new Error("Select at least one candidate"), {
-          statusCode: 400,
-        });
-      }
-      if (selectedIds.length > 100) {
-        throw Object.assign(
-          new Error("Accept no more than 100 candidates at once"),
-          { statusCode: 400 },
-        );
-      }
-
-      const result = await sql
-        .begin(async (tx) => {
-          const [target] = await tx`
-        SELECT person_id, display_name
-        FROM person
-        WHERE person_id = ${String(personId || "")}
-          AND status = 'active' AND subject_kind = 'person'
-        FOR UPDATE
-      `;
-          if (!target)
-            throw Object.assign(new Error("Active Person not found"), {
-              statusCode: 404,
-            });
-          await ensureUserCommandReceipt(tx);
-
-          const claims = [];
-          const faceIds = new Set();
-          for (const claimId of selectedIds) {
-            const [claim] = await tx`
-          SELECT claim.identity_claim_id, claim.face_id, claim.person_id,
-            claim.state, claim.evidence_refs, physical.physical_face_id
-          FROM identity_claim claim
-          JOIN current_face_physical_member physical
-            ON physical.face_id = claim.face_id
-          LEFT JOIN source_pack pack
-            ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
-            AND pack.state IN ('active', 'retired')
-            AND pack.evaluation_status = 'passed'
-            AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
-              claim.evidence_refs->>'policy_version'
-          JOIN face_observation face ON face.face_id = claim.face_id
-            AND face.state = 'valid'
-            AND cimmich_face_match_eligible(
-              face.detection_confidence, face.box_w, face.box_h
-            )
-          WHERE claim.identity_claim_id = ${claimId}
-            AND cimmich_person_candidate_reviewable(
-              claim.origin, claim.evidence_refs, pack.pack_id
-            )
-          FOR UPDATE OF claim
-        `;
-            if (
-              !claim ||
-              claim.person_id !== target.person_id ||
-              claim.state !== "candidate"
-            ) {
-              throw Object.assign(
-                new Error(
-                  "Candidate selection is stale; refresh and try again",
-                ),
-                {
-                  details: { claimId },
-                  statusCode: 409,
-                },
-              );
-            }
-            if (faceIds.has(claim.physical_face_id)) {
-              throw Object.assign(
-                new Error(
-                  "Selection contains more than one candidate for the same face",
-                ),
-                {
-                  details: { faceId: claim.face_id },
-                  statusCode: 409,
-                },
-              );
-            }
-            faceIds.add(claim.physical_face_id);
-            claims.push(claim);
-          }
-
-          const affectedPersonIds = new Set([target.person_id]);
-          const accepted = [];
-          for (const claim of claims) {
-            const currentClaims = await readAcceptedPhysicalFaceClaims(
-              tx,
-              claim.physical_face_id,
-            );
-            const current = currentClaims[0] || null;
-            if (current?.person_id === target.person_id) {
-              throw Object.assign(
-                new Error(
-                  "Candidate selection is stale; this face is already accepted for the Person",
-                ),
-                {
-                  details: {
-                    claimId: claim.identity_claim_id,
-                    faceId: claim.face_id,
-                  },
-                  statusCode: 409,
-                },
-              );
-            }
-
-            const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-            await tx`
-          INSERT INTO decision (
-            decision_id, subject_type, subject_id, action, actor_kind, actor_id,
-            reason_code, note, producer_receipt_id, privacy_class
-          ) VALUES (
-            ${decisionId}, 'identity_claim', ${claim.identity_claim_id}, 'accept', 'user', ${actor},
-            'person_candidate_bulk_accept', ${`Accepted from ranked candidates for ${target.display_name}`},
-            ${userCommandReceiptId}, 'sensitive-biometric'
-          )
-        `;
-
-            if (currentClaims.length > 0) {
-              currentClaims.forEach((acceptedClaim) =>
-                affectedPersonIds.add(acceptedClaim.person_id),
-              );
-              await retireAcceptedPhysicalFaceEvidence(tx, {
-                claims: currentClaims,
-                reasonCode: "candidate_bulk_reassignment",
-                reasonText:
-                  "Removed after accepting a candidate for another Person",
-                userCommandReceiptId,
-              });
-            }
-
-            await supersedeOtherPhysicalFaceCandidates(tx, {
-              decisionId,
-              exceptClaimId: claim.identity_claim_id,
-              physicalFaceId: claim.physical_face_id,
-            });
-
-            const [updated] = await tx`
-          UPDATE identity_claim
-          SET state = 'accepted', decision_id = ${decisionId},
-            supersedes_claim_id = coalesce(${current?.identity_claim_id || null}, supersedes_claim_id)
-          WHERE identity_claim_id = ${claim.identity_claim_id} AND state = 'candidate'
-          RETURNING identity_claim_id, face_id, person_id, state
-        `;
-            if (!updated) {
-              throw Object.assign(
-                new Error(
-                  "Candidate selection changed while accepting; refresh and try again",
-                ),
-                {
-                  details: { claimId: claim.identity_claim_id },
-                  statusCode: 409,
-                },
-              );
-            }
-            accepted.push({
-              claimId: updated.identity_claim_id,
-              decisionId,
-              faceId: updated.face_id,
-              previousPersonId: current?.person_id || null,
-            });
-          }
-
-          return {
-            accepted,
-            affectedPersonIds: [...affectedPersonIds],
-            changed: true,
-            personId: target.person_id,
-          };
-        })
-        .catch((error) => {
-          // A concurrent accept outside this selection can win a face after the
-          // per-claim locks are taken; the unique accepted-per-face index then
-          // rejects this batch. That is a stale selection, not a server fault.
-          if (error?.code !== "23505") throw error;
-          throw Object.assign(
-            new Error("Candidate selection is stale; refresh and try again"),
-            { statusCode: 409 },
-          );
-        });
-
-      // The identity transaction is durable. Queue derived Prime rebuilds so a
-      // 50-item review returns before the interactive request budget expires.
-      // A committed Save must never surface as a false timeout.
-      const maintenancePending = result.affectedPersonIds
-        .map((affectedPersonId) =>
-          deferPrimeAfterCommand(sql, affectedPersonId),
-        )
-        .some(Boolean);
-      invalidateMachineSuggestions();
-      return {
-        accepted: result.accepted,
-        acceptedCount: result.accepted.length,
-        changed: result.changed,
-        maintenancePending,
-        personId: result.personId,
-      };
-    },
+    bulkAcceptPersonCandidates,
 
     async bulkRejectPersonCandidates({ actorId, claimIds, personId }) {
       const actor = cleanActor(actorId);
@@ -6168,6 +6021,7 @@ export const createCimmichRepository = (
     async personAssets({
       associationType = "all",
       cursor = "",
+      exploreFilters = {},
       limit = 1000,
       pageSize = null,
       personId,
@@ -6179,8 +6033,15 @@ export const createCimmichRepository = (
         : cleanLimit(limit, 1000, 5000);
       const id = String(personId || "");
       const assetAssociation = cleanPersonAssetAssociationType(associationType);
+      const filters = normalizeExploreFilters(exploreFilters);
+      const filterKey = createHash("sha256")
+        .update(JSON.stringify(filters))
+        .digest("hex")
+        .slice(0, 16);
       const cursorKind =
-        assetAssociation === "all" ? "assets" : `assets:${assetAssociation}`;
+        assetAssociation === "all"
+          ? `assets:${filterKey}`
+          : `assets:${assetAssociation}:${filterKey}`;
       const visibleRank = presentationRank();
       const decodedCursor = decodePersonPageCursor(cursor, {
         kind: cursorKind,
@@ -6455,6 +6316,17 @@ export const createCimmichRepository = (
           )
       ), projected_assets AS MATERIALIZED (
         SELECT a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time,
+          coalesce(visibility.visibility_tier, 'standard') AS privacy_tier,
+          coalesce((
+            SELECT jsonb_agg(jsonb_build_object(
+              'labelId', label.label_id,
+              'displayName', label.display_name
+            ) ORDER BY lower(label.display_name), label.label_id)
+            FROM current_asset_label_membership membership
+            JOIN asset_label label ON label.label_id = membership.label_id
+              AND label.status = 'active'
+            WHERE membership.asset_id = a.asset_id
+          ), '[]'::jsonb) AS labels,
           (
             bool_or(association.association_type = 'face')
             OR same_photo_face.asset_id IS NOT NULL
@@ -6489,13 +6361,16 @@ export const createCimmichRepository = (
           ), '[]'::jsonb) AS contexts
         FROM associations association
         JOIN asset a ON a.asset_id = association.asset_id
+        LEFT JOIN cimmich_visibility_object visibility
+          ON visibility.object_scope = 'asset'
+          AND visibility.object_id = a.asset_id
         LEFT JOIN same_photo_usable_face_assets same_photo_face
           ON same_photo_face.asset_id = a.asset_id
         WHERE association.person_id = ${id}
           AND a.state = 'active'
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
         GROUP BY a.asset_id, a.media_kind, a.mime_type, a.width, a.height,
-          a.capture_time, same_photo_face.asset_id
+          a.capture_time, visibility.visibility_tier, same_photo_face.asset_id
       ), filtered_assets AS (
         SELECT projected_assets.*,
           (count(*) OVER ())::int AS total_count,
@@ -6511,20 +6386,70 @@ export const createCimmichRepository = (
           (count(*) FILTER (WHERE has_presence) OVER ())::int AS presence_count
         FROM projected_assets
         WHERE
-          ${assetAssociation === "all"}
-          OR (
-            ${assetAssociation === "body"}
-            AND (
-              (has_body AND NOT has_face AND NOT has_head)
-              OR (
-                has_body_candidate
-                AND NOT has_face
-                AND NOT has_head
-                AND NOT has_body
+          (
+            ${assetAssociation === "all"}
+            OR (
+              ${assetAssociation === "body"}
+              AND (
+                (has_body AND NOT has_face AND NOT has_head)
+                OR (
+                  has_body_candidate
+                  AND NOT has_face
+                  AND NOT has_head
+                  AND NOT has_body
+                )
               )
             )
+            OR (${assetAssociation === "presence"} AND has_presence)
           )
-          OR (${assetAssociation === "presence"} AND has_presence)
+          AND (
+            cardinality(${filters.privacyTiers}::text[]) = 0
+            OR privacy_tier = ANY(${filters.privacyTiers}::text[])
+          )
+          AND (
+            cardinality(${filters.labelIds}::text[]) = 0
+            OR EXISTS (
+              SELECT 1 FROM current_asset_label_membership membership
+              WHERE membership.asset_id = projected_assets.asset_id
+                AND membership.label_id = ANY(${filters.labelIds}::text[])
+            )
+          )
+          AND (
+            cardinality(${filters.placeIds}::text[]) = 0
+            OR EXISTS (
+              SELECT 1 FROM current_context_asset link
+              JOIN context_entity entity ON entity.entity_id = link.entity_id
+              WHERE link.asset_id = projected_assets.asset_id
+                AND entity.entity_kind = 'place' AND entity.status = 'active'
+                AND entity.entity_id = ANY(${filters.placeIds}::text[])
+                AND cimmich_visibility_context_entity_rank(entity.entity_id)
+                  <= ${visibleRank}
+            )
+          )
+          AND (
+            cardinality(${filters.eventIds}::text[]) = 0
+            OR EXISTS (
+              SELECT 1 FROM current_context_asset link
+              JOIN context_entity entity ON entity.entity_id = link.entity_id
+              WHERE link.asset_id = projected_assets.asset_id
+                AND entity.entity_kind = 'event' AND entity.status = 'active'
+                AND entity.entity_id = ANY(${filters.eventIds}::text[])
+                AND cimmich_visibility_context_entity_rank(entity.entity_id)
+                  <= ${visibleRank}
+            )
+          )
+          AND (
+            cardinality(${filters.thingIds}::text[]) = 0
+            OR EXISTS (
+              SELECT 1 FROM current_context_asset link
+              JOIN context_entity entity ON entity.entity_id = link.entity_id
+              WHERE link.asset_id = projected_assets.asset_id
+                AND entity.entity_kind = 'object' AND entity.status = 'active'
+                AND entity.entity_id = ANY(${filters.thingIds}::text[])
+                AND cimmich_visibility_context_entity_rank(entity.entity_id)
+                  <= ${visibleRank}
+            )
+          )
       )
       SELECT *
       FROM filtered_assets
@@ -6578,6 +6503,7 @@ export const createCimmichRepository = (
               : []),
           ],
           contexts: Array.isArray(row.contexts) ? row.contexts : [],
+          labels: Array.isArray(row.labels) ? row.labels : [],
           ...bridgeFields(bridge, row.asset_id),
         }),
       );
@@ -6643,7 +6569,7 @@ export const createCimmichRepository = (
             AND query_asset.state = 'active'
           LEFT JOIN LATERAL (
             SELECT identity.person_id
-            FROM current_face_identity identity
+            FROM identity_claim identity
             JOIN current_person person ON person.person_id = identity.person_id
               AND person.status = 'active' AND person.subject_kind = 'person'
               AND NOT EXISTS (
@@ -6666,6 +6592,11 @@ export const createCimmichRepository = (
           FROM query_face
           JOIN face_embedding candidate ON candidate.face_id = query_face.face_id
             AND candidate.state = 'active'
+        ), query_contexts AS MATERIALIZED (
+          SELECT member.context_id
+          FROM query_face
+          JOIN current_capture_context_member member
+            ON member.asset_id = query_face.asset_id
         ), space_reference_counts AS MATERIALIZED (
           SELECT candidate.embedding_id,
             count(DISTINCT identity.person_id)::int AS accepted_person_count
@@ -6685,7 +6616,7 @@ export const createCimmichRepository = (
           JOIN asset reference_asset
             ON reference_asset.asset_id = reference_face.asset_id
             AND reference_asset.state = 'active'
-          JOIN current_face_identity identity
+          JOIN identity_claim identity
             ON identity.face_id = reference.face_id
             AND identity.state = 'accepted'
           JOIN current_person person ON person.person_id = identity.person_id
@@ -6700,11 +6631,10 @@ export const createCimmichRepository = (
             )
             AND NOT EXISTS (
               SELECT 1
-              FROM current_face_capture_context reference_context
-              JOIN current_face_capture_context query_context
-                ON query_context.face_id = query_face.face_id
-                AND query_context.context_id = reference_context.context_id
-              WHERE reference_context.face_id = reference.face_id
+              FROM current_capture_context_member reference_context
+              JOIN query_contexts query_context
+                ON query_context.context_id = reference_context.context_id
+              WHERE reference_context.asset_id = reference_face.asset_id
             )
           GROUP BY candidate.embedding_id
         ), query AS MATERIALIZED (
@@ -6738,7 +6668,7 @@ export const createCimmichRepository = (
           JOIN asset reference_asset
             ON reference_asset.asset_id = reference_face.asset_id
             AND reference_asset.state = 'active'
-          JOIN current_face_identity identity
+          JOIN identity_claim identity
             ON identity.face_id = reference.face_id
             AND identity.state = 'accepted'
           JOIN current_person person ON person.person_id = identity.person_id
@@ -6753,11 +6683,10 @@ export const createCimmichRepository = (
             )
             AND NOT EXISTS (
               SELECT 1
-              FROM current_face_capture_context reference_context
-              JOIN current_face_capture_context query_context
-                ON query_context.face_id = query.face_id
-                AND query_context.context_id = reference_context.context_id
-              WHERE reference_context.face_id = reference.face_id
+              FROM current_capture_context_member reference_context
+              JOIN query_contexts query_context
+                ON query_context.context_id = reference_context.context_id
+              WHERE reference_context.asset_id = reference_face.asset_id
             )
         ), best_per_person AS MATERIALIZED (
           SELECT DISTINCT ON (person_id) person_id, display_name,
@@ -6817,6 +6746,13 @@ export const createCimmichRepository = (
         reviewOnly: true,
         schemaVersion: "cimmich.face-owner-review-comparisons.v1",
       };
+    },
+
+    faceReviewComparisonsBatch(input) {
+      return runFaceReviewComparisonBatch({
+        ...input,
+        loadComparisons: (request) => repository.faceReviewComparisons(request),
+      });
     },
 
     async faceMatchesBatch({ faceIds, limitPerFace = 1, personId }) {
@@ -7114,11 +7050,45 @@ export const createCimmichRepository = (
           AND cimmich_visibility_subject_rank(
             person.subject_kind, person.person_id
           ) <= ${presentationRank()}
-          AND EXISTS (
-            SELECT 1 FROM person_assets association
-            WHERE association.person_id = person.person_id
-              AND association.authority_state = 'accepted'
-              AND cimmich_visibility_asset_rank(association.asset_id) <= ${presentationRank()}
+          -- Do not expand the whole-library person_assets union for a
+          -- request-local picker. Probe each accepted association ledger by
+          -- Person instead; all four paths have selective Person indexes and
+          -- preserve the person_assets visibility contract.
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM identity_claim claim
+              JOIN face_observation face ON face.face_id = claim.face_id
+              WHERE claim.person_id = person.person_id
+                AND claim.state = 'accepted'
+                AND face.state = 'valid'
+                AND cimmich_visibility_asset_rank(face.asset_id) <= ${presentationRank()}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM current_body_tag accepted_body
+              JOIN body_observation body ON body.body_id = accepted_body.body_id
+              WHERE accepted_body.person_id = person.person_id
+                AND accepted_body.state = 'accepted'
+                AND body.state = 'valid'
+                AND cimmich_visibility_asset_rank(body.asset_id) <= ${presentationRank()}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM current_presence_tag accepted_presence
+              WHERE accepted_presence.person_id = person.person_id
+                AND accepted_presence.state = 'accepted'
+                AND cimmich_visibility_asset_rank(accepted_presence.asset_id) <= ${presentationRank()}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM current_manual_head_tag accepted_head
+              JOIN manual_head_observation head ON head.head_id = accepted_head.head_id
+              WHERE accepted_head.subject_id = person.person_id
+                AND accepted_head.state = 'accepted'
+                AND head.state = 'valid'
+                AND cimmich_visibility_asset_rank(head.asset_id) <= ${presentationRank()}
+            )
           )
         ORDER BY display_name, person_id
       `,
@@ -7662,9 +7632,7 @@ export const createCimmichRepository = (
         applyFaceBucketChange(tx, { actor, bucketKind, faceId, personId }),
       );
       const maintenancePending = result.changed
-        ? bucketKind === "head"
-          ? deferPrimeAfterCommand(sql, personId)
-          : await refreshPrimeAfterCommand(sql, personId)
+        ? deferPrimeAfterCommand(maintenanceSql, personId)
         : false;
       if (result.changed) {
         invalidateMachineSuggestions();
@@ -8746,7 +8714,7 @@ export const createCimmichRepository = (
       }
       const maintenancePending =
         result.changed && result.state === "accepted"
-          ? await refreshPrimeAfterCommand(sql, result.personId)
+          ? deferPrimeAfterCommand(maintenanceSql, result.personId)
           : false;
       invalidateMachineSuggestions();
       return { ...result, maintenancePending };
@@ -9061,7 +9029,7 @@ export const createCimmichRepository = (
       });
       const maintenancePending =
         result.changed && !result.replayed
-          ? await refreshPrimeAfterCommand(sql, result.personId)
+          ? deferPrimeAfterCommand(maintenanceSql, result.personId)
           : false;
       invalidateMachineSuggestions();
       return { ...result, maintenancePending };
@@ -9446,7 +9414,7 @@ export const createCimmichRepository = (
       });
       const maintenancePending = result.replayed
         ? false
-        : await refreshPrimeAfterCommand(sql, result.personId);
+        : deferPrimeAfterCommand(maintenanceSql, result.personId);
       invalidateMachineSuggestions();
       return { ...result, maintenancePending };
     },
@@ -9733,7 +9701,7 @@ export const createCimmichRepository = (
         });
 
       const maintenancePending = result.changed
-        ? await refreshPrimeForPeople(sql, [
+        ? deferPrimeForPeople(maintenanceSql, [
             result.previousPersonId,
             result.personId,
           ])
@@ -10189,20 +10157,19 @@ export const createCimmichRepository = (
         });
 
       const primeMaintenancePending = result.changed
-        ? await refreshPrimeForPeople(sql, [
+        ? deferPrimeForPeople(maintenanceSql, [
             result.previousPersonId,
             result.personId,
           ])
         : false;
-      const bodyLinkage = result.changed
-        ? await refreshBodyLinksAfterCommand(sql, result.assetId)
-        : { maintenancePending: false };
+      const bodyLinkagePending = result.changed
+        ? deferBodyLinksAfterCommand(maintenanceSql, result.assetId)
+        : false;
       invalidateMachineSuggestions();
       return {
         ...result,
-        bodyLinkage,
-        maintenancePending:
-          primeMaintenancePending || bodyLinkage.maintenancePending,
+        bodyLinkage: { maintenancePending: bodyLinkagePending },
+        maintenancePending: primeMaintenancePending || bodyLinkagePending,
       };
     },
 
@@ -10296,6 +10263,9 @@ export const createCimmichRepository = (
   };
   Object.assign(repository, observationCorrections);
   Object.assign(repository, archiveIntegrity);
+  Object.assign(repository, assetLabels);
+  Object.assign(repository, bulkAlbumOperations);
+  Object.assign(repository, exploreFacets);
   attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {
     petMatchImport: petMatching.importBatch,

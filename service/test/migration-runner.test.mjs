@@ -1159,3 +1159,17 @@ test("schema 127 records reversible XMP orientation repairs and recognition inva
   assert.doesNotMatch(source, /UPDATE face_observation/);
   assert.doesNotMatch(source, /UPDATE identity_claim/);
 });
+
+test("schema 128 keeps generic labels and folder-album recovery Cimmich-owned", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0128_asset_label_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /CREATE TABLE asset_label \(/);
+  assert.match(migration, /CREATE VIEW current_asset_label_membership AS/);
+  assert.match(migration, /CREATE TABLE bulk_album_operation \(/);
+  assert.match(migration, /CREATE TABLE bulk_album_operation_checkpoint \(/);
+  assert.doesNotMatch(migration, /UPDATE\s+(immich|tag_asset)|\.xmp/i);
+});

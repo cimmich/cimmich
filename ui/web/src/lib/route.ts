@@ -115,8 +115,20 @@ export const Route = {
   cimmichPet: ({ name, petId }: { name: string; petId?: string }) =>
     `/cimmich/pets/${encodeURIComponent(name)}` + asQueryString(petId ? { petId } : undefined),
   cimmichPeople: () => '/cimmich/people',
-  cimmichPerson: ({ name, personId }: { name: string; personId?: string }) =>
-    `/cimmich/people/${encodeURIComponent(name)}` + asQueryString(personId ? { personId } : undefined),
+  cimmichPerson: ({
+    identityReviewCount,
+    name,
+    personId,
+  }: {
+    identityReviewCount?: number;
+    name: string;
+    personId?: string;
+  }) =>
+    `/cimmich/people/${encodeURIComponent(name)}` +
+    asQueryString({
+      identityReviewCount: identityReviewCount && identityReviewCount > 0 ? Math.floor(identityReviewCount) : undefined,
+      personId,
+    }),
   cimmichPlaces: () => '/cimmich/places',
   cimmichThings: () => '/cimmich/things',
   cimmichSmartSearch: () => '/cimmich/smart-search',

@@ -68,4 +68,16 @@ describe('Person candidate review presentation', () => {
       'detector',
     ]);
   });
+
+  it('keeps distinct same-Person regions visible for collision review', () => {
+    const aga = candidate('aga', 0.57, 0.36);
+    const pete = candidate('pete', 0.54, 0.27);
+    aga.asset_id = 'asset-b45';
+    pete.asset_id = 'asset-b45';
+
+    expect(preparePersonCandidates([pete, aga]).map(({ identity_claim_id }) => identity_claim_id)).toEqual([
+      'aga',
+      'pete',
+    ]);
+  });
 });

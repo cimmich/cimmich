@@ -43,6 +43,17 @@ describe('Route', () => {
     });
   });
 
+  describe(Route.cimmichPerson.name, () => {
+    it('carries a known review count into the Person workspace without forcing Identity to load', () => {
+      expect(Route.cimmichPerson({ identityReviewCount: 12, name: 'Rupert BP', personId: 'person-1' })).toBe(
+        '/cimmich/people/Rupert%20BP?identityReviewCount=12&personId=person-1',
+      );
+      expect(Route.cimmichPerson({ identityReviewCount: 0, name: 'Rupert BP', personId: 'person-1' })).toBe(
+        '/cimmich/people/Rupert%20BP?personId=person-1',
+      );
+    });
+  });
+
   describe(Route.viewCimmichFaceAsset.name, () => {
     it('opens a Face directly without inventing a Person context', () => {
       expect(Route.viewCimmichFaceAsset({ faceId: 'face-1', id: 'asset-1' })).toBe(

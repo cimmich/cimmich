@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CimmichServiceError,
+  type CimmichExploreFilters,
   type CimmichImmichOnboardingScope,
   adoptCimmichLegacyPetDocument,
   attachCimmichManualSubjectTag,
@@ -8,6 +9,7 @@ import {
   attachCimmichContextRelations,
   attachCimmichDocumentLinks,
   attachCimmichPetDocuments,
+  bulkAcceptCimmichPersonCandidates,
   bulkRejectCimmichPersonCandidates,
   correctCimmichBodyGeometry,
   correctCimmichFaceGeometry,
@@ -34,11 +36,13 @@ import {
   getCimmichDocument,
   getCimmichDocumentContent,
   getCimmichEnhancedComponentStatus,
+  getCimmichExploreFacets,
   getCimmichDocuments,
   getCimmichDeferredFaceReviews,
   getCimmichIdentityFacesPage,
   getCimmichIdentityCorrectionDiscovery,
   getCimmichIdentityCorrectionHistory,
+  getCimmichAssetEvidence,
   getCimmichLegacyPetDocumentLinks,
   getCimmichManualPresences,
   getCimmichManualSubjectTags,
@@ -95,6 +99,31 @@ import {
   dismissCimmichIdentityAuditItemsBatch,
 } from './cimmich.service';
 
+describe('Cimmich asset evidence request coalescing', () => {
+  it('shares one in-flight read for simultaneous photo-detail consumers', async () => {
+    let completeFetch!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          completeFetch = resolve;
+        }),
+    );
+
+    const first = getCimmichAssetEvidence('asset-1');
+    const second = getCimmichAssetEvidence('asset-1');
+
+    expect(first).toBe(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    completeFetch(Response.json({ sourceAssetId: 'asset-1' }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { sourceAssetId: 'asset-1' },
+      { sourceAssetId: 'asset-1' },
+    ]);
+    fetchMock.mockRestore();
+  });
+});
+
 describe('Cimmich long-running discovery client contract', () => {
   it('does not apply the ordinary 12-second request bound to possible-Person discovery', async () => {
     vi.useFakeTimers();
@@ -125,6 +154,46 @@ describe('Cimmich long-running discovery client contract', () => {
       const request = previewCimmichImmichPersonClusters(scope);
       await vi.advanceTimersByTimeAsync(13_000);
       await expect(request).resolves.toEqual(preview);
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('Cimmich durable bulk review client contract', () => {
+  it.each([
+    ['accept', bulkAcceptCimmichPersonCandidates],
+    ['reject', bulkRejectCimmichPersonCandidates],
+  ] as const)('keeps the client attached beyond the ordinary timeout during bulk %s', async (_action, write) => {
+    vi.useFakeTimers();
+    const response = {
+      accepted: [],
+      acceptedCount: 0,
+      changed: true,
+      personId: 'person-1',
+      rejected: [],
+      rejectedCount: 0,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((resolve, reject) => {
+          const completion = globalThis.setTimeout(() => resolve(Response.json(response)), 13_000);
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              globalThis.clearTimeout(completion);
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    try {
+      const request = write('person-1', ['claim-1']);
+      await vi.advanceTimersByTimeAsync(13_000);
+      await expect(request).resolves.toEqual(response);
     } finally {
       fetchMock.mockRestore();
       vi.useRealTimers();
@@ -965,6 +1034,47 @@ describe('Cimmich Person projection page client contract', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://127.0.0.1:3101/v1/people/person%2F1/assets?pageSize=120&cursor=opaque%2B%2F%3D&associationType=body',
     );
+    fetchMock.mockRestore();
+  });
+
+  it('carries exact Explore filters through Person pages and the shared facet projection', async () => {
+    const page = {
+      items: [],
+      nextCursor: null,
+      pageSize: 120,
+      schemaVersion: 'cimmich.person-projection-page.v1',
+      summary: { body: 0, bodyCandidate: 0, presence: 0, total: 0 },
+    } as const;
+    const facets = {
+      availableAssets: 10,
+      facets: { events: [], labels: [], places: [], privacy: [], things: [] },
+      filters: { eventIds: [], labelIds: ['label-one'], placeIds: [], privacyTiers: ['private'], thingIds: [] },
+      people: [],
+      schemaVersion: 'cimmich.explore-facets.v1',
+      scope: { kind: 'person', personId: 'person-one' },
+      totalAssets: 4,
+    } as const;
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(page))
+      .mockResolvedValueOnce(Response.json(facets));
+    const filters: CimmichExploreFilters = {
+      eventIds: [],
+      labelIds: ['label-one'],
+      placeIds: [],
+      privacyTiers: ['private'],
+      thingIds: [],
+    };
+    await expect(getCimmichPersonAssetsPage('person-one', 120, undefined, undefined, filters)).resolves.toEqual(page);
+    await expect(getCimmichExploreFacets(filters, 'person-one')).resolves.toEqual(facets);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:3101/v1/people/person-one/assets?pageSize=120&privacy=private&label=label-one',
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://127.0.0.1:3101/v1/explore/facets');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      filters,
+      scope: { kind: 'person', personId: 'person-one' },
+    });
     fetchMock.mockRestore();
   });
 

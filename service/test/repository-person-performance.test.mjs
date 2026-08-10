@@ -66,6 +66,8 @@ test("Person candidate summary retains review claims from a retired passed Sourc
   assert.ok(boundValues.includes("cimmich-possible-people-graph-v2"));
   assert.match(statement, /accepted_physical_people AS MATERIALIZED/);
   assert.match(statement, /decided_physical_faces AS MATERIALIZED/);
+  assert.match(statement, /face_suggestions AS MATERIALIZED/);
+  assert.match(statement, /GROUP BY claim\.person_id, person\.display_name/);
   assert.match(
     statement,
     /face\.face_id = candidate_physical\.canonical_face_id/,
@@ -101,18 +103,20 @@ test("Person candidate summary cannot revive a retired Possible-people graph", a
 });
 
 test("Person candidate detail and acceptance retain the same passed-pack review boundary", async () => {
-  const source = await import("node:fs/promises").then(({ readFile }) =>
+  const { readFile } = await import("node:fs/promises");
+  const [source, acceptanceSource] = await Promise.all([
     readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
-  );
+    readFile(
+      new URL("../src/bulk-person-candidate-accept.mjs", import.meta.url),
+      "utf8",
+    ),
+  ]);
   const slices = [
     source.slice(
       source.indexOf("async personCandidates"),
-      source.indexOf("async bulkAcceptPersonCandidates"),
+      source.indexOf("bulkAcceptPersonCandidates,"),
     ),
-    source.slice(
-      source.indexOf("async bulkAcceptPersonCandidates"),
-      source.indexOf("async personAssets"),
-    ),
+    acceptanceSource,
   ];
   for (const method of slices) {
     assert.match(method, /JOIN source_pack pack/);
@@ -128,7 +132,7 @@ test("Person candidate same-photo counts are projected once instead of rescannin
   );
   const method = source.slice(
     source.indexOf("async personCandidates"),
-    source.indexOf("async bulkAcceptPersonCandidates"),
+    source.indexOf("bulkAcceptPersonCandidates,"),
   );
 
   assert.match(method, /WITH accepted_asset_counts AS MATERIALIZED/);
@@ -146,7 +150,7 @@ test("Person candidate current assignments and owner review decisions are projec
   );
   const method = source.slice(
     source.indexOf("async personCandidates"),
-    source.indexOf("async bulkAcceptPersonCandidates"),
+    source.indexOf("bulkAcceptPersonCandidates,"),
   );
 
   assert.match(method, /current_acceptance AS MATERIALIZED/);
@@ -168,7 +172,7 @@ test("candidate reads resolve canonical Face geometry by indexed Face ID", async
     ),
     source.slice(
       source.indexOf("async personCandidates"),
-      source.indexOf("async bulkAcceptPersonCandidates"),
+      source.indexOf("bulkAcceptPersonCandidates,"),
     ),
   ];
 
@@ -194,7 +198,7 @@ test("candidate reads materialize accepted physical identities once", async () =
   );
   const personCandidates = source.slice(
     source.indexOf("async personCandidates"),
-    source.indexOf("async bulkAcceptPersonCandidates"),
+    source.indexOf("bulkAcceptPersonCandidates,"),
   );
 
   assert.match(identityCandidates, /accepted_physical_people AS MATERIALIZED/);
@@ -225,7 +229,7 @@ test("Person candidate reads honor a current owner Unknown decision", async () =
     ),
     source.slice(
       source.indexOf("async personCandidates"),
-      source.indexOf("async bulkAcceptPersonCandidates"),
+      source.indexOf("bulkAcceptPersonCandidates,"),
     ),
     summarySource,
   ];
@@ -1158,8 +1162,12 @@ test("owner Face review comparisons are visible same-space evidence without Sour
   assert.match(statement, /reference\.face_id <> query\.face_id/);
   assert.match(statement, /reference_face\.asset_id <> query\.asset_id/);
   assert.match(statement, /cimmich_face_match_eligible\(/);
-  assert.match(statement, /current_face_capture_context/);
+  assert.match(statement, /query_contexts AS MATERIALIZED/);
+  assert.match(statement, /current_capture_context_member/);
+  assert.doesNotMatch(statement, /current_face_capture_context/);
   assert.match(statement, /identity\.state = 'accepted'/);
+  assert.match(statement, /JOIN identity_claim identity/);
+  assert.doesNotMatch(statement, /current_face_identity/);
   assert.match(statement, /no_independent_compatible_reference_face/);
   assert.match(statement, /visible_people AS MATERIALIZED/);
   assert.match(

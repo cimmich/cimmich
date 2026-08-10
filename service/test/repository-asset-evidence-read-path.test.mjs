@@ -79,4 +79,12 @@ test("asset evidence returns persisted candidates without whole-gallery matching
     faceRead,
     /FROM current_face_physical_member evidence_face/,
   );
+  const knownPeopleRead = statements.find((statement) =>
+    statement.includes("SELECT person.person_id, person.display_name"),
+  );
+  assert.doesNotMatch(knownPeopleRead, /FROM person_assets association/);
+  assert.match(knownPeopleRead, /FROM identity_claim claim/);
+  assert.match(knownPeopleRead, /FROM current_body_tag accepted_body/);
+  assert.match(knownPeopleRead, /FROM current_presence_tag accepted_presence/);
+  assert.match(knownPeopleRead, /FROM current_manual_head_tag accepted_head/);
 });

@@ -27,8 +27,8 @@ describe('Cimmich visibility projection boundary', () => {
     expect(source('src/lib/components/cimmich/CimmichPhotoOverlay.svelte')).toContain(
       'getCimmichIdentityCorrectionDiscovery({ sourceAssetId: assetId }',
     );
-    expect(source('src/routes/(user)/cimmich/people/[personName]/+page.svelte')).toContain(
-      '{ personId: row.person_id }',
+    expect(source('src/lib/components/cimmich/person-secondary-projections.ts')).toContain(
+      'getCimmichIdentityCorrectionDiscovery({ personId }, { limit: 12 })',
     );
   });
 

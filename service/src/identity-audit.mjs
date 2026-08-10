@@ -1225,7 +1225,7 @@ export const createIdentityAudit = (
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_identity same_photo_identity
+          FROM identity_claim same_photo_identity
           JOIN current_face_physical_member same_photo_member
             ON same_photo_member.face_id = same_photo_identity.face_id
           JOIN face_observation same_photo_face
@@ -1238,16 +1238,38 @@ export const createIdentityAudit = (
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
-            SELECT 1 FROM current_physical_face_identity current
-            WHERE current.physical_face_id = item.physical_face_id
-              AND current.state = 'accepted'
+            SELECT 1
+            FROM (
+              SELECT item.face_id
+              UNION ALL
+              SELECT current_member.face_id
+              FROM physical_face_member current_member
+              JOIN physical_face current_group
+                ON current_group.physical_face_id = current_member.physical_face_id
+                AND current_group.state = 'active'
+              WHERE current_member.physical_face_id = item.physical_face_id
+            ) current_scope
+            JOIN identity_claim current_identity
+              ON current_identity.face_id = current_scope.face_id
+              AND current_identity.state = 'accepted'
           ))
           OR
           (item.audit_kind = 'accepted_contradiction' AND EXISTS (
-            SELECT 1 FROM current_physical_face_identity current
-            WHERE current.physical_face_id = item.physical_face_id
-              AND current.state = 'accepted'
-              AND current.person_id = item.assigned_person_id
+            SELECT 1
+            FROM (
+              SELECT item.face_id
+              UNION ALL
+              SELECT current_member.face_id
+              FROM physical_face_member current_member
+              JOIN physical_face current_group
+                ON current_group.physical_face_id = current_member.physical_face_id
+                AND current_group.state = 'active'
+              WHERE current_member.physical_face_id = item.physical_face_id
+            ) current_scope
+            JOIN identity_claim current_identity
+              ON current_identity.face_id = current_scope.face_id
+              AND current_identity.state = 'accepted'
+              AND current_identity.person_id = item.assigned_person_id
           ))
         )
     `;
@@ -1436,7 +1458,7 @@ export const createIdentityAudit = (
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
         AND NOT EXISTS (
           SELECT 1
-          FROM current_face_identity same_photo_identity
+          FROM identity_claim same_photo_identity
           JOIN current_face_physical_member same_photo_member
             ON same_photo_member.face_id = same_photo_identity.face_id
           JOIN face_observation same_photo_face
@@ -1449,16 +1471,38 @@ export const createIdentityAudit = (
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
-            SELECT 1 FROM current_physical_face_identity current
-            WHERE current.physical_face_id = item.physical_face_id
-              AND current.state = 'accepted'
+            SELECT 1
+            FROM (
+              SELECT item.face_id
+              UNION ALL
+              SELECT current_member.face_id
+              FROM physical_face_member current_member
+              JOIN physical_face current_group
+                ON current_group.physical_face_id = current_member.physical_face_id
+                AND current_group.state = 'active'
+              WHERE current_member.physical_face_id = item.physical_face_id
+            ) current_scope
+            JOIN identity_claim current_identity
+              ON current_identity.face_id = current_scope.face_id
+              AND current_identity.state = 'accepted'
           ))
           OR
           (item.audit_kind = 'accepted_contradiction' AND EXISTS (
-            SELECT 1 FROM current_physical_face_identity current
-            WHERE current.physical_face_id = item.physical_face_id
-              AND current.state = 'accepted'
-              AND current.person_id = item.assigned_person_id
+            SELECT 1
+            FROM (
+              SELECT item.face_id
+              UNION ALL
+              SELECT current_member.face_id
+              FROM physical_face_member current_member
+              JOIN physical_face current_group
+                ON current_group.physical_face_id = current_member.physical_face_id
+                AND current_group.state = 'active'
+              WHERE current_member.physical_face_id = item.physical_face_id
+            ) current_scope
+            JOIN identity_claim current_identity
+              ON current_identity.face_id = current_scope.face_id
+              AND current_identity.state = 'accepted'
+              AND current_identity.person_id = item.assigned_person_id
           ))
         )
       ORDER BY item.suggested_score DESC, item.margin DESC, item.face_id

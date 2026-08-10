@@ -59,7 +59,23 @@ const immichCompanion = await createImmichCompanionManager({
   apiKey: process.env.IMMICH_API_KEY || "",
   credentialFile: runtimeConfig.immichCredentialFile,
 });
-const sql = postgres(databaseUrl, { max: 5, prepare: true });
+const sql = postgres(databaseUrl, {
+  max: Math.max(
+    2,
+    Number(process.env.CIMMICH_DATABASE_INTERACTIVE_CONNECTIONS || "5"),
+  ),
+  prepare: true,
+});
+// Derived projections have their own single-connection lane. A burst of Prime
+// or Body maintenance can no longer occupy every connection needed to record
+// the next owner decision or serve the current review card.
+const maintenanceSql = postgres(databaseUrl, {
+  max: Math.max(
+    1,
+    Number(process.env.CIMMICH_DATABASE_MAINTENANCE_CONNECTIONS || "1"),
+  ),
+  prepare: true,
+});
 const legacyBridge = await loadDisplayBridge(
   process.env.CIMMICH_DISPLAY_BRIDGE_PATH || "",
 ).catch((error) => {
@@ -178,6 +194,7 @@ const repository = createCimmichRepository(sql, bridge, visibility, {
   immichCompanion,
   immichSourceId: process.env.CIMMICH_IMMICH_SOURCE_ID || "immich-primary",
   matchingProvider: matchingProviderRuntime.matchingProvider,
+  maintenanceSql,
 });
 const guidedAccess = createGuidedAccess({
   accessToken: runtimeConfig.guidedAccessToken,
@@ -302,6 +319,7 @@ const shutdown = async (exitCode = 0) => {
   );
   await localMediaProvider.recognizer?.close?.().catch(() => {});
   await sql.end({ timeout: 5 }).catch(() => {});
+  await maintenanceSql.end({ timeout: 5 }).catch(() => {});
 };
 
 process.on("SIGINT", () => void shutdown());

@@ -1,10 +1,23 @@
 import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
+import { createCimmichExploreClient } from './cimmich-explore.service';
+import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+import { coalesceCimmichRequest } from './cimmich-request-coalescer';
+import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
 
 export * from './cimmich-asset-correction.service';
+export * from './cimmich-asset-label.service';
+export * from './cimmich-bulk-album-operation.service';
 export * from './cimmich-deferred-face-review';
+export type { CimmichExploreFacet, CimmichExploreFacetResult, CimmichExploreFilters } from './cimmich-explore.service';
+
+export type {
+  CimmichFaceMatch,
+  CimmichFaceOwnerReviewMatch,
+  CimmichFaceOwnerReviewMatchBatch,
+} from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 export type CimmichSummary = {
   accepted_presence: number;
@@ -1150,7 +1163,7 @@ export type CimmichPersonAssetPage = CimmichPersonProjectionPage<CimmichPersonAs
   };
 };
 
-export type CimmichTagAssetFamily = 'people' | 'pets' | 'places' | 'things' | 'events';
+export type CimmichTagAssetFamily = 'people' | 'pets' | 'places' | 'things' | 'events' | 'labels';
 
 export type CimmichTagAssetResult = {
   items: Array<{ captureTime: string | null; sourceAssetId: string }>;
@@ -1205,12 +1218,14 @@ export type CimmichPersonAsset = {
     entityKind: 'event' | 'object' | 'place';
     typeKind: CimmichContextTypeKind;
   }>;
+  labels?: Array<{ displayName: string; labelId: string }>;
   filename: string;
   height: number;
   has_linked_body: boolean;
   media_kind: 'image' | 'video';
   mime_type: string;
   presence_evidence: boolean;
+  privacy_tier?: CimmichVisibilityTier;
   sourceAssetId: string;
   width: number;
 };
@@ -1665,24 +1680,6 @@ export type CimmichFaceIdentityBatchResult = {
   changed: boolean;
   failureCount: number;
   failures: Array<{ code: string | null; error: string; faceId: string; statusCode: number }>;
-};
-
-export type CimmichFaceMatch = {
-  display_name: string;
-  person_id: string;
-  prime_score: number;
-  rank: number;
-  reference_face_id?: string;
-  secondary_score?: number | null;
-};
-
-export type CimmichFaceOwnerReviewMatch = Omit<CimmichFaceMatch, 'prime_score'> & {
-  accepted_example_count: number;
-  current_identity: boolean;
-  prime_score: number | null;
-  score_kind: 'cosine_similarity' | null;
-  similarity: number | null;
-  unavailable_reason: 'no_independent_compatible_reference_face' | null;
 };
 
 export type CimmichHoldingMatchBatch = {
@@ -2583,16 +2580,11 @@ export const request = async <T>(path: string, init?: RequestInit, timeoutMs = d
     return body;
   } catch (error) {
     if (controller.signal.aborted && !init?.signal?.aborted) {
-      throw new CimmichServiceError('Cimmich service did not respond in time', {
-        code: 'CIMMICH_TIMEOUT',
-        status: 0,
-      });
+      const method = String(init?.method || 'GET').toUpperCase();
+      throw new CimmichServiceError(...cimmichTimeoutDiagnostic(path, method, timeoutMs));
     }
     if (error instanceof TypeError) {
-      throw new CimmichServiceError('Cimmich service is unavailable', {
-        code: 'CIMMICH_UNAVAILABLE',
-        status: 0,
-      });
+      throw new CimmichServiceError(...cimmichUnavailableDiagnostic());
     }
     throw error;
   } finally {
@@ -2600,6 +2592,9 @@ export const request = async <T>(path: string, init?: RequestInit, timeoutMs = d
     init?.signal?.removeEventListener('abort', abortFromCaller);
   }
 };
+const cimmichExploreClient = createCimmichExploreClient(request, coalesceCimmichRequest);
+export const getCimmichExploreFacets = cimmichExploreClient.getExploreFacets;
+export const getCimmichPersonAssetsPage = cimmichExploreClient.getPersonAssetsPage;
 export const getCimmichSummary = () => request<CimmichSummary>('/v1/summary');
 export const getCimmichIntegrationStatus = () => request<CimmichIntegrationStatus>('/v1/integrations/status');
 export const getCimmichEnhancedComponentStatus = () => request<CimmichEnhancedComponentStatus>('/v1/operator/enhanced');
@@ -3716,16 +3711,6 @@ export const getCimmichPersonAssets = async (personId: string, limit = 5000) => 
   return result.items;
 };
 
-export const getCimmichPersonAssetsPage = (
-  personId: string,
-  pageSize = 120,
-  cursor?: string,
-  associationType?: CimmichPersonAssetAssociationFilter,
-) =>
-  request<CimmichPersonAssetPage>(
-    `/v1/people/${encodeURIComponent(personId)}/assets?pageSize=${Math.max(1, Math.min(250, pageSize))}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${associationType ? `&associationType=${encodeURIComponent(associationType)}` : ''}`,
-  );
-
 export const getCimmichTagAssets = (
   tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>,
   pageSize = 120,
@@ -3745,30 +3730,30 @@ export const getCimmichPersonCandidates = async (personId: string, limit = 5000)
 
 export const getCimmichPersonCandidateSummary = () =>
   request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary');
-
+const writeCimmichPersonCandidates = <T>(personId: string, claimIds: string[], action: 'accept' | 'reject') =>
+  request<T>(
+    `/v1/people/${encodeURIComponent(personId)}/candidates/bulk-${action}`,
+    {
+      body: JSON.stringify({ claimIds }),
+      headers: { 'x-cimmich-actor': 'local-operator' },
+      method: 'POST',
+    },
+    60_000,
+  );
 export const bulkAcceptCimmichPersonCandidates = (personId: string, claimIds: string[]) =>
-  request<{
+  writeCimmichPersonCandidates<{
     accepted: Array<{ claimId: string; decisionId: string; faceId: string; previousPersonId: string | null }>;
     acceptedCount: number;
     changed: boolean;
     personId: string;
-  }>(`/v1/people/${encodeURIComponent(personId)}/candidates/bulk-accept`, {
-    body: JSON.stringify({ claimIds }),
-    headers: { 'x-cimmich-actor': 'local-operator' },
-    method: 'POST',
-  });
-
+  }>(personId, claimIds, 'accept');
 export const bulkRejectCimmichPersonCandidates = (personId: string, claimIds: string[]) =>
-  request<{
+  writeCimmichPersonCandidates<{
     changed: boolean;
     personId: string;
     rejected: Array<{ claimId: string; decisionId: string; faceId: string }>;
     rejectedCount: number;
-  }>(`/v1/people/${encodeURIComponent(personId)}/candidates/bulk-reject`, {
-    body: JSON.stringify({ claimIds }),
-    headers: { 'x-cimmich-actor': 'local-operator' },
-    method: 'POST',
-  });
+  }>(personId, claimIds, 'reject');
 
 export const getCimmichPersonSetup = (personId: string) =>
   request<CimmichPersonSetup>(`/v1/people/${encodeURIComponent(personId)}/setup`);
@@ -3986,7 +3971,9 @@ export const getCimmichIdentityFacesPage = (
   );
 
 export const getCimmichAssetEvidence = (sourceAssetId: string) =>
-  request<CimmichAssetEvidence>(`/v1/assets/evidence?sourceAssetId=${encodeURIComponent(sourceAssetId)}`);
+  coalesceCimmichRequest(`asset-evidence:${sourceAssetId}`, () =>
+    request<CimmichAssetEvidence>(`/v1/assets/evidence?sourceAssetId=${encodeURIComponent(sourceAssetId)}`),
+  );
 
 export const createCimmichManualPhotoContextCommandId = (kind: string) =>
   `manual-photo-context-${kind}-${createCimmichUuid()}`;
@@ -4187,13 +4174,9 @@ export const undoCimmichManualSubjectTag = (decisionId: string, commandId: strin
     method: 'POST',
   });
 
-export const getCimmichFaceMatches = async (faceId: string, limit = 5) => {
-  const boundedLimit = Math.max(1, Math.min(12, limit));
-  const result = await request<{ items: CimmichFaceOwnerReviewMatch[] }>(
-    `/v1/faces/${encodeURIComponent(faceId)}/matches?limit=${boundedLimit}`,
-  );
-  return result.items.slice(0, boundedLimit);
-};
+const faceReviewComparisonClient = createFaceReviewComparisonClient(request);
+export const getCimmichFaceMatches = faceReviewComparisonClient.getFaceMatches;
+export const getCimmichFaceMatchesBatch = faceReviewComparisonClient.getFaceMatchesBatch;
 
 export const getCimmichHoldingMatchesBatch = (personId: string, faceIds: string[], limitPerFace = 1) =>
   request<CimmichHoldingMatchBatch>(`/v1/people/${encodeURIComponent(personId)}/identity/matches:batch`, {

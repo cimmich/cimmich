@@ -1,4 +1,4 @@
-import type { CimmichIdentityAuditItem } from '$lib/services/cimmich.service';
+import type { CimmichIdentityAuditItem, CimmichIdentityCandidate } from '$lib/services/cimmich.service';
 
 export type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
   candidateClaimId?: string;
@@ -19,6 +19,69 @@ export type CimmichSamePhotoCollisionGroup = {
   assetId: string;
   items: CimmichPersonReviewItem[];
 };
+
+export const retainedCollisionAssetIds = (
+  current: string[],
+  groups: CimmichSamePhotoCollisionGroup[],
+  item: CimmichPersonReviewItem,
+) =>
+  groups.some(({ assetId, items }) => assetId === item.assetId && items.some(({ faceId }) => faceId === item.faceId)) &&
+  !current.includes(item.assetId)
+    ? [...current, item.assetId]
+    : current;
+
+export const personCandidateReviewItems = (candidates: CimmichIdentityCandidate[]): CimmichPersonReviewItem[] =>
+  candidates.map((candidate) => {
+    const matchScore = candidate.source_score ?? candidate.calibrated_confidence ?? candidate.match_score ?? null;
+    const margin = candidate.source_margin;
+    const currentPerson =
+      candidate.current_person_id && candidate.current_person_name
+        ? {
+            displayName: candidate.current_person_name,
+            personId: candidate.current_person_id,
+            reference: null,
+            score: 1,
+          }
+        : null;
+    return {
+      assetId: candidate.asset_id,
+      assignedPerson: currentPerson,
+      box: { h: candidate.box_h, w: candidate.box_w, x: candidate.box_x, y: candidate.box_y },
+      candidateClaimId: candidate.identity_claim_id,
+      candidateEvidence: {
+        detectorConfidence: candidate.detection_confidence,
+        margin,
+        matchScore,
+        // A sole-candidate lead carries margin = score + 1, so a real
+        // second-best score exists only when margin does not exceed the winner.
+        secondBestScore: matchScore !== null && margin !== null && margin <= matchScore ? matchScore - margin : null,
+      },
+      captureTime: candidate.capture_time,
+      currentDecisionId: candidate.current_decision_id,
+      currentRevision: candidate.current_revision,
+      detectionConfidence: candidate.detection_confidence,
+      faceId: candidate.face_id,
+      physicalFaceId: candidate.physical_face_id,
+      filename: candidate.filename,
+      height: candidate.height,
+      kind:
+        currentPerson && currentPerson.personId !== candidate.person_id
+          ? ('accepted_contradiction' as const)
+          : ('untagged_match' as const),
+      margin: margin ?? 0,
+      mediaKind: candidate.media_kind,
+      qualityMeasurements: candidate.quality_measurements,
+      samePhotoAcceptedCount: candidate.same_photo_accepted_count ?? 0,
+      sourceAssetId: candidate.sourceAssetId,
+      suggestedPerson: {
+        displayName: candidate.display_name,
+        personId: candidate.person_id,
+        reference: null,
+        score: matchScore ?? 0,
+      },
+      width: candidate.width,
+    };
+  });
 
 export const samePhotoCollisionReview = (
   items: CimmichPersonReviewItem[],

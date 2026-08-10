@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferPrimeAfterCommand } from "../src/repository.mjs";
 
-test("deferred Prime maintenance serializes rebuilds per Person", async () => {
+test("deferred Prime maintenance coalesces queued rebuilds per Person", async () => {
   let runs = 0;
   let active = 0;
   let maxActive = 0;
@@ -29,13 +29,34 @@ test("deferred Prime maintenance serializes rebuilds per Person", async () => {
   assert.equal(deferPrimeAfterCommand(sql, "person-serialized"), true);
   assert.equal(deferPrimeAfterCommand(sql, "person-serialized"), true);
   await new Promise((resolve) => setImmediate(resolve));
-  // The second rebuild for the same Person queues behind the first instead of
-  // racing it.
+  // The second request is absorbed by the queued job instead of duplicating
+  // the same full gallery rebuild before any work has started.
   assert.equal(runs, 1);
   releaseFirst();
-  for (let attempt = 0; attempt < 20 && runs < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 20 && active > 0; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  assert.equal(runs, 2);
+  assert.equal(runs, 1);
   assert.equal(maxActive, 1);
+});
+
+test("interactive identity commands schedule derived work on the maintenance pool", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+  );
+  const reassignment = source.slice(
+    source.indexOf("async reassignFaceIdentity"),
+    source.indexOf("async bulkReassignFaceIdentities"),
+  );
+  const move = source.slice(
+    source.indexOf("async movePersonFace"),
+    source.indexOf("async dismissMachineSuggestion"),
+  );
+
+  for (const method of [reassignment, move]) {
+    assert.match(method, /deferPrimeForPeople\(maintenanceSql/);
+    assert.doesNotMatch(method, /await refreshPrimeForPeople/);
+  }
+  assert.match(reassignment, /deferBodyLinksAfterCommand\(maintenanceSql/);
+  assert.doesNotMatch(reassignment, /await refreshBodyLinksAfterCommand/);
 });

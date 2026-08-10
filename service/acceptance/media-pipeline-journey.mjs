@@ -468,7 +468,8 @@ try {
     personId: "person_pipeline_reference",
   });
   assert.equal(promoted.changed, true);
-  assert.equal(promoted.maintenancePending, false);
+  assert.equal(promoted.maintenancePending, true);
+  await repository.whenMaintenanceIdle();
   const promoteReplay = await repository.setFaceBucket({
     actorId: "synthetic-reviewer",
     bucketKind: "prime",

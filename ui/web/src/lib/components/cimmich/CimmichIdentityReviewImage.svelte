@@ -8,18 +8,21 @@
 
   interface Props {
     alt: string;
+    fullContext?: boolean;
     item: IdentityReviewCropSource;
     rotationQuarterTurns?: number;
     src: string;
     targetAspect?: number;
   }
 
-  let { alt, item, rotationQuarterTurns = 0, src, targetAspect = 4 / 3 }: Props = $props();
+  let { alt, fullContext = false, item, rotationQuarterTurns = 0, src, targetAspect = 4 / 3 }: Props = $props();
   const turns = $derived(((Math.trunc(rotationQuarterTurns) % 4) + 4) % 4);
   const rotated = $derived(rotateIdentityReviewSource(item, turns));
   const crop = $derived(fitIdentityReviewCrop(rotated, targetAspect));
   const viewBox = $derived(
-    `${crop.x * rotated.width} ${crop.y * rotated.height} ${crop.w * rotated.width} ${crop.h * rotated.height}`,
+    fullContext
+      ? `0 0 ${rotated.width} ${rotated.height}`
+      : `${crop.x * rotated.width} ${crop.y * rotated.height} ${crop.w * rotated.width} ${crop.h * rotated.height}`,
   );
   const transform = $derived(identityReviewSvgTransform(item.width, item.height, turns));
   const outline = $derived({

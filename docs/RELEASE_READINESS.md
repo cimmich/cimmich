@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-09
+Updated: 2026-08-10
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview release: migration-ledger schema 120/patch 1
-Current development source: migration-ledger schema 127/patch 1
+Current Community Preview release: migration-ledger schema 128/patch 1
+Current development source: migration-ledger schema 128/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release: `v1.1.0-community-preview.6` for exact Immich 3.1.0
+Current release: `v1.1.0-community-preview.7` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -27,6 +27,56 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 7 archive-review and organisation gate — 2026-08-10
+
+Preview 7 promotes the schema-127 physical-Face review line and the schema-128
+archive-organisation line that were already exercised against the private X1
+archive. It does not publish private archive data, identities, paths, model
+weights or runtime configuration.
+
+The candidate adds:
+
+- bounded physical-Face review, same-photo comparison evidence, manual inline
+  correction and a large pannable context preview;
+- lazy Person identity loading with waiting-count continuity, scoped asset and
+  facet refreshes, short rebuildable caches and request coalescing;
+- Cimmich-owned generic labels that never require source-side XMP writes;
+- a reviewed, collision-safe folder-to-album manifest with idempotent batches,
+  exact checkpoints and operation-scoped Undo; and
+- shared People/Person Explore filters for exact privacy, tags/labels, Places,
+  Events and Things, including an explicit Standard-to-protected transition.
+
+Publication requires the complete current service/web/provider/migration,
+synthetic, stock-Immich, public-demo, installer, publication-scan,
+source-shape, extracted-bundle and Docker build gates. Exact commit, tree,
+bundle checksums and hosted proof belong in the external release receipt after
+the reviewed merge produces the immutable tag target.
+
+The clean-tree candidate gates closed locally with:
+
+- publication/privacy scan: pass across 1,844 tracked files;
+- service: 902 passed, 3 intentionally skipped, 0 failed, with syntax,
+  formatting and lint clean;
+- web: 1,053 passed, 2 intentionally skipped, 0 failed, with formatting, lint,
+  Svelte (0 errors, 0 warnings), TypeScript and the production build clean;
+- provider contracts: 39 passed, 0 failed, plus pinned OpenCV 4.11 detection
+  and recognition against a releasable fixture;
+- migration runner: schema 128/patch 1 fresh, schema-75 upgrade, concurrent,
+  checksum, resume, legacy-restore, locator-preservation and new-write
+  enforcement acceptance;
+- complete synthetic lifecycle and the repository latency guard: pass;
+- actual stock Immich 3.1.0 provider lifecycle, independent database restore,
+  disable and removal with Immich remaining healthy: pass;
+- companion fresh import/replay, seven adversarial restore rejections,
+  backup/portable restore, disable and residue-free removal: pass;
+- public-demo five-browser-journey proof, interruption recovery, adversarial
+  restore rejection, stop/restart/down preservation, portable schema-128
+  restore, secret-boundary checks and residue-free destroy: pass;
+- root Compose render, guarded non-mutating installer check, source-shape
+  enforcement and zero known production dependency vulnerabilities: pass; and
+- Docker build contexts now exclude generated coverage, Playwright results and
+  reports, so lifecycle rebuilds cannot invalidate the pinned dependency layer.
 
 ## Community Preview 6 self-contained-install close — 2026-08-07
 
@@ -217,7 +267,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 127; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 128; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -390,6 +440,10 @@ storage; legacy coordinates are repaired through an append-only correction
 ledger, and their derived embeddings and review proposals are invalidated for
 bounded recomputation. Recognition for sidecar regions cannot expand into a
 neighbouring face.
+Schema 128 keeps generic labels inside Cimmich and records exact browser-driven
+folder-album checkpoints. Neither path writes archive sidecars or moves source
+media; duplicate titles must be resolved in the reviewed manifest and Undo
+removes only memberships proven to have been created by that operation.
 
 ## Historical Public Beta Patch 6 certification
 
