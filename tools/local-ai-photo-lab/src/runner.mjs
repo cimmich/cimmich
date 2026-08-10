@@ -17,6 +17,7 @@ import { diffObservations, diffRunResults } from "./diff.mjs";
 import * as defaultProviders from "./providers.mjs";
 import { renderReport } from "./report.mjs";
 import { buildSetSummary } from "./summary.mjs";
+import { registerCancellationHandler } from "./processes.mjs";
 
 const readJson = async (path, label) => {
   try {
@@ -250,204 +251,246 @@ export const runPhotoLab = async ({
     (previous?.index.latestRevision ?? 0) + 1,
   );
   const runId = `local_ai_${setKey}_${reserved.runName}`;
-  const artifactRoot = join(reserved.runDir, "artifacts");
-  await mkdir(artifactRoot);
-  const runtimeAssets = [];
-  const bodyBatchResults =
-    executedOperations.includes("bodies") &&
-    photoSet.assets.length > 1 &&
-    providerImplementations.runBodiesBatch
-      ? await providerImplementations.runBodiesBatch({
-          assets: photoSet.assets,
-          config: bodiesConfig,
-        })
-      : null;
-
-  for (const [assetIndex, assetInput] of photoSet.assets.entries()) {
-    const operations = {};
-    const name = safeName(assetInput.assetId);
-    const image = imageProbes[assetIndex];
-    if (executedOperations.includes("faces")) {
-      operations.faces = await timed(() =>
-        providerImplementations.runFaces({
-          asset: assetInput,
-          config: facesConfig,
-        }),
-      );
-    }
-    if (executedOperations.includes("bodies")) {
-      operations.bodies = bodyBatchResults
-        ? bodyBatchResults[assetIndex]
-        : await timed(() =>
-            providerImplementations.runBodies({
-              asset: assetInput,
-              config: bodiesConfig,
-            }),
-          );
-    }
-    if (executedOperations.includes("scene-text")) {
-      operations.sceneText = await timed(() =>
-        providerImplementations.runSceneText({
-          asset: assetInput,
-          config: sceneTextConfig,
-        }),
-      );
-    }
-    if (executedOperations.includes("enhance")) {
-      const outputPath = join(
-        artifactRoot,
-        `${name}-enhanced-x${config.providers.enhance.scale}.png`,
-      );
-      const enhanced = await timed(() =>
-        providerImplementations.runEnhance({
-          asset: assetInput,
-          config: enhanceConfig,
-          outputPath,
-        }),
-      );
-      operations.enhance =
-        enhanced.state === "derived"
-          ? {
-              ...enhanced,
-              artifact: await artifact(outputPath, reserved.runDir),
-            }
-          : enhanced;
-    }
-    const artifacts = {};
-    const faces = operations.faces?.faces ?? [];
-    const bodies = operations.bodies?.bodies ?? [];
-    if (faces.length || bodies.length) {
-      const dataPath = join(reserved.runDir, `.${name}-overlay-input.json`);
-      const outputPath = join(artifactRoot, `${name}-review-overlay.png`);
-      await atomicJson(dataPath, { bodies, faces });
-      const overlay = await providerImplementations.renderOverlay({
-        asset: assetInput,
-        bodies,
-        config: {
-          pythonPath: config.providers.enhance.pythonPath,
-          timeoutMs: config.limits.providerTimeoutMs,
-        },
-        dataPath,
-        faces,
-        outputPath,
-      });
-      await unlink(dataPath).catch(() => undefined);
-      if (!overlay?.state || overlay.state !== "failed")
-        artifacts.overlay = await artifact(outputPath, reserved.runDir);
-      else artifacts.overlayFailure = sanitizeFailure(overlay);
-    }
-    runtimeAssets.push({
-      ...publicAsset(assetInput),
-      artifacts,
-      crossModelChecks: crossModelChecks(operations),
-      image,
-      operations,
-    });
-  }
-
-  const context = requestedOperations.includes("context")
-    ? inferContext({
-        assets: runtimeAssets,
-        contextKind: photoSet.contextKind,
-        policy: config.contextPolicy,
-      })
-    : null;
-  const originalsUnchanged = (
-    await Promise.all(
-      photoSet.assets.map(
-        async (asset) =>
-          (await fileDigest(asset.path)) === asset.sourceContentDigest,
-      ),
-    )
-  ).every(Boolean);
-  const assets = runtimeAssets.map((asset) => {
-    const operations = Object.fromEntries(
-      Object.entries(asset.operations).map(([key, operation]) => [
-        key,
-        sanitizeFailure(sanitizeBodies(operation)),
-      ]),
-    );
-    const baselineComparison = asset.baselineObservations
-      ? {
-          bodies: operations.bodies
-            ? diffObservations(
-                asset.baselineObservations.bodies,
-                operations.bodies.bodies,
-              )
-            : null,
-          faces: operations.faces
-            ? diffObservations(
-                asset.baselineObservations.faces,
-                operations.faces.faces,
-              )
-            : null,
-        }
-      : null;
-    return { ...asset, baselineComparison, operations };
-  });
-  const summary = buildSetSummary({
-    assets,
-    context,
-    contextKind: photoSet.contextKind,
-  });
-  const providerStates = assets.flatMap((asset) =>
-    Object.values(asset.operations).map((operation) => operation.state),
-  );
-  const state = !originalsUnchanged
-    ? "failed"
-    : providerStates.some(
-          (value) => value === "failed" || value === "unavailable",
-        )
-      ? "partial"
-      : "completed";
-  const createdAt = new Date().toISOString();
-  let result = {
-    assets,
-    context,
-    createdAt,
+  const statePath = join(reserved.runDir, "run-state.json");
+  const startedAt = new Date().toISOString();
+  const lifecycle = {
     executedOperations,
-    originalsUnchanged,
-    providerBoundary: {
-      activationAuthority: "none",
-      network: "local-only",
-      sourceMedia: "read-only",
-    },
+    pid: process.pid,
     requestedOperations,
     revision: reserved.revision,
     runId,
-    schemaVersion: runSchema,
-    set: {
-      contextKind: photoSet.contextKind,
-      schemaVersion: setSchema,
-      setId: photoSet.setId,
-      setKey,
-    },
-    state,
-    summary,
-  };
-  result = { ...result, receiptDigest: digest(result) };
-  const diff = diffRunResults(previous?.result ?? null, result);
-  await atomicJson(join(reserved.runDir, "result.json"), result);
-  await atomicJson(join(reserved.runDir, "diff.json"), diff);
-  await atomicText(
-    join(reserved.runDir, "report.md"),
-    renderReport({ diff, result }),
-  );
-  const relativeResult = join("runs", reserved.runName, "result.json");
-  await atomicJson(join(setRoot, "index.json"), {
-    latestResult: relativeResult,
-    latestRevision: reserved.revision,
-    latestRunId: runId,
-    schemaVersion: "cimmich.local-ai-photo-lab-index.v1",
+    schemaVersion: "cimmich.local-ai-photo-lab-run-state.v1",
     setKey,
-  });
-  return {
-    diffPath: join(reserved.runDir, "diff.json"),
-    reportPath: join(reserved.runDir, "report.md"),
-    result,
-    resultPath: join(reserved.runDir, "result.json"),
-    runDir: reserved.runDir,
+    startedAt,
+    state: "running",
   };
+  await atomicJson(statePath, lifecycle);
+  const unregisterCancellation = registerCancellationHandler(
+    async ({ signal }) =>
+      atomicJson(statePath, {
+        ...lifecycle,
+        cancelledAt: new Date().toISOString(),
+        signal,
+        state: "cancelled",
+      }),
+  );
+  const artifactRoot = join(reserved.runDir, "artifacts");
+  try {
+    await mkdir(artifactRoot);
+    const runtimeAssets = [];
+    const bodyBatchResults =
+      executedOperations.includes("bodies") &&
+      photoSet.assets.length > 1 &&
+      providerImplementations.runBodiesBatch
+        ? await providerImplementations.runBodiesBatch({
+            assets: photoSet.assets,
+            config: bodiesConfig,
+          })
+        : null;
+
+    for (const [assetIndex, assetInput] of photoSet.assets.entries()) {
+      const operations = {};
+      const name = safeName(assetInput.assetId);
+      const image = imageProbes[assetIndex];
+      if (executedOperations.includes("faces")) {
+        operations.faces = await timed(() =>
+          providerImplementations.runFaces({
+            asset: assetInput,
+            config: facesConfig,
+          }),
+        );
+      }
+      if (executedOperations.includes("bodies")) {
+        operations.bodies = bodyBatchResults
+          ? bodyBatchResults[assetIndex]
+          : await timed(() =>
+              providerImplementations.runBodies({
+                asset: assetInput,
+                config: bodiesConfig,
+              }),
+            );
+      }
+      if (executedOperations.includes("scene-text")) {
+        operations.sceneText = await timed(() =>
+          providerImplementations.runSceneText({
+            asset: assetInput,
+            config: sceneTextConfig,
+          }),
+        );
+      }
+      if (executedOperations.includes("enhance")) {
+        const outputPath = join(
+          artifactRoot,
+          `${name}-enhanced-x${config.providers.enhance.scale}.png`,
+        );
+        const enhanced = await timed(() =>
+          providerImplementations.runEnhance({
+            asset: assetInput,
+            config: enhanceConfig,
+            outputPath,
+          }),
+        );
+        operations.enhance =
+          enhanced.state === "derived"
+            ? {
+                ...enhanced,
+                artifact: await artifact(outputPath, reserved.runDir),
+              }
+            : enhanced;
+      }
+      const artifacts = {};
+      const faces = operations.faces?.faces ?? [];
+      const bodies = operations.bodies?.bodies ?? [];
+      if (faces.length || bodies.length) {
+        const dataPath = join(reserved.runDir, `.${name}-overlay-input.json`);
+        const outputPath = join(artifactRoot, `${name}-review-overlay.png`);
+        await atomicJson(dataPath, { bodies, faces });
+        const overlay = await providerImplementations.renderOverlay({
+          asset: assetInput,
+          bodies,
+          config: {
+            pythonPath: config.providers.enhance.pythonPath,
+            timeoutMs: config.limits.providerTimeoutMs,
+          },
+          dataPath,
+          faces,
+          outputPath,
+        });
+        await unlink(dataPath).catch(() => undefined);
+        if (!overlay?.state || overlay.state !== "failed")
+          artifacts.overlay = await artifact(outputPath, reserved.runDir);
+        else artifacts.overlayFailure = sanitizeFailure(overlay);
+      }
+      runtimeAssets.push({
+        ...publicAsset(assetInput),
+        artifacts,
+        crossModelChecks: crossModelChecks(operations),
+        image,
+        operations,
+      });
+    }
+
+    const context = requestedOperations.includes("context")
+      ? inferContext({
+          assets: runtimeAssets,
+          contextKind: photoSet.contextKind,
+          policy: config.contextPolicy,
+        })
+      : null;
+    const originalsUnchanged = (
+      await Promise.all(
+        photoSet.assets.map(
+          async (asset) =>
+            (await fileDigest(asset.path)) === asset.sourceContentDigest,
+        ),
+      )
+    ).every(Boolean);
+    const assets = runtimeAssets.map((asset) => {
+      const operations = Object.fromEntries(
+        Object.entries(asset.operations).map(([key, operation]) => [
+          key,
+          sanitizeFailure(sanitizeBodies(operation)),
+        ]),
+      );
+      const baselineComparison = asset.baselineObservations
+        ? {
+            bodies: operations.bodies
+              ? diffObservations(
+                  asset.baselineObservations.bodies,
+                  operations.bodies.bodies,
+                )
+              : null,
+            faces: operations.faces
+              ? diffObservations(
+                  asset.baselineObservations.faces,
+                  operations.faces.faces,
+                )
+              : null,
+          }
+        : null;
+      return { ...asset, baselineComparison, operations };
+    });
+    const summary = buildSetSummary({
+      assets,
+      context,
+      contextKind: photoSet.contextKind,
+    });
+    const providerStates = assets.flatMap((asset) =>
+      Object.values(asset.operations).map((operation) => operation.state),
+    );
+    const state = !originalsUnchanged
+      ? "failed"
+      : providerStates.some(
+            (value) => value === "failed" || value === "unavailable",
+          )
+        ? "partial"
+        : "completed";
+    const createdAt = new Date().toISOString();
+    let result = {
+      assets,
+      context,
+      createdAt,
+      executedOperations,
+      originalsUnchanged,
+      providerBoundary: {
+        activationAuthority: "none",
+        network: "local-only",
+        sourceMedia: "read-only",
+      },
+      requestedOperations,
+      revision: reserved.revision,
+      runId,
+      schemaVersion: runSchema,
+      set: {
+        contextKind: photoSet.contextKind,
+        schemaVersion: setSchema,
+        setId: photoSet.setId,
+        setKey,
+      },
+      state,
+      summary,
+    };
+    result = { ...result, receiptDigest: digest(result) };
+    const diff = diffRunResults(previous?.result ?? null, result);
+    await atomicJson(join(reserved.runDir, "result.json"), result);
+    await atomicJson(join(reserved.runDir, "diff.json"), diff);
+    await atomicText(
+      join(reserved.runDir, "report.md"),
+      renderReport({ diff, result }),
+    );
+    const relativeResult = join("runs", reserved.runName, "result.json");
+    await atomicJson(join(setRoot, "index.json"), {
+      latestResult: relativeResult,
+      latestRevision: reserved.revision,
+      latestRunId: runId,
+      schemaVersion: "cimmich.local-ai-photo-lab-index.v1",
+      setKey,
+    });
+    await atomicJson(statePath, {
+      ...lifecycle,
+      completedAt: new Date().toISOString(),
+      resultState: result.state,
+      state: "complete",
+    });
+    unregisterCancellation();
+    return {
+      diffPath: join(reserved.runDir, "diff.json"),
+      reportPath: join(reserved.runDir, "report.md"),
+      result,
+      resultPath: join(reserved.runDir, "result.json"),
+      runDir: reserved.runDir,
+      statePath,
+    };
+  } catch (error) {
+    unregisterCancellation();
+    await atomicJson(statePath, {
+      ...lifecycle,
+      errorCode: error?.code ?? "LOCAL_AI_LAB_FAILED",
+      failedAt: new Date().toISOString(),
+      state: "failed",
+    }).catch(() => undefined);
+    throw error;
+  }
 };
 
 export const runPhotoLabFromFiles = async ({

@@ -77,6 +77,12 @@ margin. It never promotes a subject assignment automatically.
 Runtime paths remain outside Git. Create a local JSON file using
 `config.example.json` as the shape, then supply it with `--config`.
 
+The example face threshold is `0.4`. On the labelled six-photo calibration
+set it removed the no-person false proposals while retaining all six faces in
+the crowded case; the weakest retained genuine proposal scored `0.492`.
+Thresholds remain part of the bound runtime config, so future model changes
+must rerun the benchmark instead of inheriting this value blindly.
+
 The Scene/Text endpoint must be loopback (`127.0.0.1`, `::1`, or `localhost`).
 No provider may upload source media. Provider failures are represented as typed
 unavailable/failed operation results so other requested lanes can still finish.
@@ -85,6 +91,21 @@ For multi-photo sets, the body detector uses its resident local protocol: the
 model loads once, then each bounded source is framed through the same process.
 Receipts distinguish `resident-set` from `one-shot` execution and retain
 per-photo timings.
+
+If the source body manifest requests an accelerator that `doctor` cannot
+confirm, derive a non-overwriting local execution profile and point the local
+config at it:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs body-profile \
+  --source-manifest /absolute/local/body-manifest.json \
+  --device cpu \
+  --output /absolute/local/body-cpu-manifest.json
+```
+
+This changes only the execution device and recomputes the manifest digest. It
+does not alter the source manifest or model artifact. The output path must not
+already exist.
 
 ## Run
 
@@ -112,6 +133,21 @@ node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
 The benchmark emits a machine-readable receipt and Markdown scorecard. Fixture
 paths are constrained beneath `--fixture-root`; scorecards retain only relative
 result paths.
+
+Run the derived-preview enhancement gate against the same public fixture root:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
+  --config /absolute/local/config.json \
+  --manifest tools/local-ai-photo-lab/benchmark/enhancement-preview-v1.json \
+  --fixture-root /absolute/path/to/cedar-house-v1/media \
+  --output /absolute/local/benchmark-output
+```
+
+It checks output dimensions and digest binding plus downsample fidelity,
+structural similarity, edge-energy retention, and tile-seam risk. These are
+regression gates, not a claim that generated detail is historically true or
+identity preserving.
 
 Create and benchmark the deterministic head-occlusion Context fixture:
 
@@ -153,3 +189,32 @@ review overlays, and optional enhanced images. Reports identify inputs by asset
 ID, basename, and digest; absolute source paths and raw biometric vectors are
 not persisted. A set-summary proposal combines literal Scene/Text evidence and
 cross-photo Context candidates while preserving candidate language.
+
+Each reserved revision also has `run-state.json`. A normal run transitions
+from `running` to `complete`; provider exceptions record `failed`; SIGINT or
+SIGTERM records `cancelled` after terminating tracked local providers. A rerun
+never overwrites the interrupted revision and advances to the next number.
+
+Execution is intentionally bounded and serial: one resident body process per
+set, one face/VLM/enhancement operation at a time, bounded provider output, a
+configured input byte/pixel cap, and a configured timeout. This favors stable
+local memory use over archive-scale throughput.
+
+## Safety and limits
+
+- Results and Context assignments are proposals. Only a person can accept an
+  identity; no candidate writes back to Cimmich in this branch.
+- Enhancement is a derived preview. The source stays read-only and the preview
+  must never replace it.
+- The current Context appearance descriptor is a proving baseline, not body
+  identity. Clothing changes, uniforms, low light, and multiple similar people
+  require abstention or review.
+- Model files are not bundled. Their code, model, and training-data licences
+  must be resolved by the deployment owner before distribution.
+- Full-resolution x2 enhancement is compute-heavy; the labelled 1024×1536
+  portrait took roughly two minutes on the measured local CoreML runtime. A
+  viewer integration should use an explicit loading state and cache the derived
+  artifact rather than promise instantaneous zoom.
+
+See `INTEGRATION_CONTRACT.md` for the later Cimmich seam and
+`MERGE_READINESS.md` for the standalone branch gates.

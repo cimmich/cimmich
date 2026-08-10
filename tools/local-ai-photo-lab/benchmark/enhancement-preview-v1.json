@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "cimmich.local-ai-photo-lab-benchmark.v1",
+  "benchmarkId": "enhancement-preview-v1",
+  "cases": [
+    {
+      "caseId": "portrait-x2-derived-preview",
+      "contextKind": "none",
+      "operations": "enhance",
+      "assets": [
+        {
+          "assetId": "clear-portrait",
+          "fixturePath": "CHA-001-maya-kitchen.png",
+          "acceptedSubjects": []
+        }
+      ],
+      "expectations": {
+        "assets": {
+          "clear-portrait": {
+            "image": { "width": 1024, "height": 1536 },
+            "operationStates": { "enhance": "derived" },
+            "enhance": {
+              "width": 2048,
+              "height": 3072,
+              "quality": {
+                "downsampleMae": { "min": 0, "max": 0.02 },
+                "downsampleSsim": { "min": 0.99, "max": 1 },
+                "edgeEnergyRatio": { "min": 0.9, "max": 1.1 },
+                "maximumSeamRatio": { "min": 0, "max": 1.5 }
+              }
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "crossModelState": "clear"
+          }
+        },
+        "contextCandidates": [],
+        "maximumUnexpectedContextCandidates": 0
+      }
+    }
+  ]
+}

@@ -2,12 +2,17 @@
 
 import { resolve } from "node:path";
 import { runBenchmarkFromFiles } from "../src/benchmark.mjs";
+import { writeBodyExecutionProfile } from "../src/body-profile.mjs";
 import { runDoctorFromFile } from "../src/doctor.mjs";
-import { terminateActiveProcesses } from "../src/processes.mjs";
+import {
+  notifyCancellation,
+  terminateActiveProcesses,
+} from "../src/processes.mjs";
 import { runPhotoLabFromFiles } from "../src/runner.mjs";
 
 const usage = () => `Usage:
   local-ai-photo-lab.mjs benchmark --config PATH --manifest PATH --fixture-root PATH --output PATH
+  local-ai-photo-lab.mjs body-profile --source-manifest PATH --device cpu|gpu --output PATH
   local-ai-photo-lab.mjs doctor --config PATH
   local-ai-photo-lab.mjs run --config PATH (--photo PATH | --set PATH) --output PATH [--operations LIST]
 
@@ -15,7 +20,7 @@ Operations: faces,bodies,context,scene-text,enhance or full`;
 
 const parse = (argv) => {
   const command = argv[0];
-  if (!["benchmark", "doctor", "run"].includes(command)) {
+  if (!["benchmark", "body-profile", "doctor", "run"].includes(command)) {
     throw Object.assign(new Error(usage()), { code: "LOCAL_AI_USAGE" });
   }
   const options = {};
@@ -33,12 +38,14 @@ const parse = (argv) => {
     if (
       ![
         "config",
+        "device",
         "fixture-root",
         "manifest",
         "operations",
         "output",
         "photo",
         "set",
+        "source-manifest",
       ].includes(key) ||
       options[key] !== undefined
     ) {
@@ -57,6 +64,21 @@ const parse = (argv) => {
       throw Object.assign(new Error(usage()), { code: "LOCAL_AI_USAGE" });
     }
     return { command, configPath: resolve(options.config) };
+  }
+  if (command === "body-profile") {
+    const expected = ["device", "output", "source-manifest"];
+    if (
+      expected.some((key) => !options[key]) ||
+      Object.keys(options).some((key) => !expected.includes(key))
+    ) {
+      throw Object.assign(new Error(usage()), { code: "LOCAL_AI_USAGE" });
+    }
+    return {
+      command,
+      device: options.device,
+      outputPath: resolve(options.output),
+      sourceManifestPath: resolve(options["source-manifest"]),
+    };
   }
   if (command === "benchmark") {
     const expected = ["config", "fixture-root", "manifest", "output"];
@@ -95,10 +117,11 @@ for (const [signal, exitCode] of [
   ["SIGINT", 130],
   ["SIGTERM", 143],
 ]) {
-  process.once(signal, () => {
+  process.once(signal, async () => {
     const terminatedProviders = terminateActiveProcesses("SIGTERM");
+    const recordedRuns = await notifyCancellation({ signal });
     process.stderr.write(
-      `${JSON.stringify({ cancelled: true, signal, terminatedProviders })}\n`,
+      `${JSON.stringify({ cancelled: true, recordedRuns, signal, terminatedProviders })}\n`,
     );
     process.exit(exitCode);
   });
@@ -121,6 +144,9 @@ try {
       )}\n`,
     );
     process.exitCode = output.receipt.state === "failed" ? 1 : 0;
+  } else if (input.command === "body-profile") {
+    const result = await writeBodyExecutionProfile(input);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else if (input.command === "doctor") {
     const result = await runDoctorFromFile(input);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

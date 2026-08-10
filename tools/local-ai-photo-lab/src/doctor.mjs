@@ -14,6 +14,38 @@ const skipped = (checkId, reason = "provider_disabled") => ({
   state: "skipped",
 });
 
+const terminateProcess = (child) => {
+  child.kill("SIGTERM");
+  const escalation = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+  }, 1000);
+  escalation.unref();
+};
+
+const boundedResponseJson = async (response) => {
+  const maximumBytes = 1024 * 1024;
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
+    throw Object.assign(new Error("doctor response is oversized"), {
+      code: "LOCAL_AI_DOCTOR_OUTPUT_OVERSIZED",
+    });
+  }
+  const text = await response.text();
+  if (Buffer.byteLength(text) > maximumBytes) {
+    throw Object.assign(new Error("doctor response is oversized"), {
+      code: "LOCAL_AI_DOCTOR_OUTPUT_OVERSIZED",
+    });
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw Object.assign(new Error("doctor response returned invalid JSON"), {
+      code: "LOCAL_AI_DOCTOR_OUTPUT_INVALID",
+    });
+  }
+};
+
 const runJson = ({ args, command, timeoutMs }) =>
   new Promise((resolve, reject) => {
     const child = trackedSpawn(command, args, {
@@ -22,21 +54,43 @@ const runJson = ({ args, command, timeoutMs }) =>
     });
     const stdout = [];
     const stderr = [];
+    let outputBytes = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
     const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(
+      terminateProcess(child);
+      fail(
         Object.assign(new Error("doctor process timed out"), {
           code: "LOCAL_AI_DOCTOR_TIMEOUT",
         }),
       );
     }, timeoutMs);
-    child.stdout.on("data", (chunk) => stdout.push(chunk));
-    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    const collect = (target) => (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > 1024 * 1024) {
+        terminateProcess(child);
+        fail(
+          Object.assign(new Error("doctor process output is oversized"), {
+            code: "LOCAL_AI_DOCTOR_OUTPUT_OVERSIZED",
+          }),
+        );
+        return;
+      }
+      target.push(chunk);
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
     child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+      fail(error);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       if (code !== 0) {
         reject(
@@ -112,9 +166,17 @@ const bodyManifestCheck = async ({ config, modelDigest, runtime }) => {
         },
       );
     }
+    const { detectorConfigDigest, ...manifestCore } = manifest;
+    if (detectorConfigDigest !== digest(manifestCore)) {
+      throw Object.assign(
+        new Error("body manifest digest does not match its contents"),
+        { code: "LOCAL_AI_BODY_MANIFEST_DIGEST_MISMATCH" },
+      );
+    }
     if (
       manifest.execution?.network !== "forbidden" ||
-      manifest.privacy?.externalUpload !== "none"
+      manifest.privacy?.externalUpload !== "none" ||
+      manifest.privacy?.sourceMedia !== "local-read-only"
     ) {
       throw Object.assign(
         new Error("body manifest privacy boundary is invalid"),
@@ -158,7 +220,7 @@ const sceneCheck = async ({ config, timeoutMs }) => {
         },
       );
     }
-    const tags = await response.json();
+    const tags = await boundedResponseJson(response);
     const installed = tags.models?.find(
       (candidate) =>
         candidate.name === config.model || candidate.model === config.model,

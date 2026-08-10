@@ -169,6 +169,74 @@ def tile_positions(length: int, tile: int, overlap: int) -> list[int]:
     return positions
 
 
+def enhancement_quality(
+    source: Image.Image,
+    enhanced: Image.Image,
+    xs: list[int],
+    ys: list[int],
+    overlap: int,
+    native_scale: int,
+) -> dict:
+    original = np.asarray(source, dtype=np.float32) / 255.0
+    reconstructed = np.asarray(
+        enhanced.resize(source.size, Image.Resampling.LANCZOS), dtype=np.float32
+    ) / 255.0
+    mae = float(np.mean(np.abs(original - reconstructed)))
+    x_mean = float(original.mean())
+    y_mean = float(reconstructed.mean())
+    x_variance = float(original.var())
+    y_variance = float(reconstructed.var())
+    covariance = float(np.mean((original - x_mean) * (reconstructed - y_mean)))
+    c1 = 0.01**2
+    c2 = 0.03**2
+    ssim = ((2 * x_mean * y_mean + c1) * (2 * covariance + c2)) / (
+        (x_mean**2 + y_mean**2 + c1) * (x_variance + y_variance + c2)
+    )
+    original_edge = float(
+        np.mean(np.abs(np.diff(original, axis=0)))
+        + np.mean(np.abs(np.diff(original, axis=1)))
+    )
+    reconstructed_edge = float(
+        np.mean(np.abs(np.diff(reconstructed, axis=0)))
+        + np.mean(np.abs(np.diff(reconstructed, axis=1)))
+    )
+    output = np.asarray(enhanced, dtype=np.float32) / 255.0
+    output_scale = enhanced.width / source.width
+    seam_values: list[float] = []
+    for axis, positions, maximum in (
+        (1, xs[1:], enhanced.width),
+        (0, ys[1:], enhanced.height),
+    ):
+        for position in positions:
+            boundary = int(round((position + overlap / 2) * output_scale))
+            if boundary < 2 or boundary >= maximum - 2:
+                continue
+            if axis == 1:
+                seam = float(np.mean(np.abs(output[:, boundary] - output[:, boundary - 1])))
+                nearby = [
+                    float(np.mean(np.abs(output[:, index] - output[:, index - 1])))
+                    for index in range(boundary - 4, boundary + 5)
+                    if 1 <= index < maximum and index != boundary
+                ]
+            else:
+                seam = float(np.mean(np.abs(output[boundary] - output[boundary - 1])))
+                nearby = [
+                    float(np.mean(np.abs(output[index] - output[index - 1])))
+                    for index in range(boundary - 4, boundary + 5)
+                    if 1 <= index < maximum and index != boundary
+                ]
+            baseline = float(np.median(nearby)) if nearby else 0.0
+            seam_values.append(seam / max(baseline, 1e-6))
+    return {
+        "downsampleMae": round(mae, 6),
+        "downsampleSsim": round(max(-1.0, min(1.0, ssim)), 6),
+        "edgeEnergyRatio": round(reconstructed_edge / max(original_edge, 1e-6), 6),
+        "maximumSeamRatio": round(max(seam_values, default=0.0), 6),
+        "metricVersion": "derived-preview-fidelity-v1",
+        "nativeScale": native_scale,
+    }
+
+
 def enhance(args: argparse.Namespace) -> None:
     import onnxruntime as ort
 
@@ -218,6 +286,7 @@ def enhance(args: argparse.Namespace) -> None:
     result = result.crop((0, 0, image.width * scale, image.height * scale))
     if args.scale == 2:
         result = result.resize((image.width * 2, image.height * 2), Image.Resampling.LANCZOS)
+    quality = enhancement_quality(image, result, xs, ys, overlap, scale)
     output.parent.mkdir(parents=True, exist_ok=True)
     result.save(output, format="PNG", optimize=False)
     print(
@@ -238,6 +307,7 @@ def enhance(args: argparse.Namespace) -> None:
                 "modelDigest": file_digest(model),
                 "output": str(output),
                 "provider": "realesrgan-onnx-local-photo-lab",
+                "quality": quality,
                 "scale": args.scale,
                 "schemaVersion": "cimmich.local-ai-enhance-result.v1",
                 "width": result.width,

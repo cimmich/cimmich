@@ -13,7 +13,7 @@
       "pythonPath": "/absolute/path/to/python",
       "detectorModelPath": "/absolute/path/to/detector.onnx",
       "device": "coreml",
-      "scoreThreshold": 0.2
+      "scoreThreshold": 0.4
     },
     "bodies": {
       "enabled": true,

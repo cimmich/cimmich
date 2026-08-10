@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import test from "node:test";
 import { evaluateBenchmarkCase, runBenchmark } from "../src/benchmark.mjs";
+import { deriveBodyExecutionProfile } from "../src/body-profile.mjs";
 import {
   normalizeOperations,
   validateConfig,
@@ -14,7 +15,7 @@ import {
 import { inferContext } from "../src/context.mjs";
 import { diffRunResults, iou } from "../src/diff.mjs";
 import { runDoctor } from "../src/doctor.mjs";
-import { runSceneText } from "../src/providers.mjs";
+import { runProcess, runSceneText } from "../src/providers.mjs";
 import {
   activeProcessCount,
   terminateActiveProcesses,
@@ -85,6 +86,21 @@ test("config accepts loopback, rejects remote endpoints, and expands full", () =
   ]);
 });
 
+test("body execution profiles make fallback device truth explicit and rebind the digest", () => {
+  const source = {
+    detector: { artifactDigest: "a".repeat(64) },
+    detectorConfigDigest: "b".repeat(64),
+    execution: { device: "gpu", network: "forbidden" },
+    privacy: { externalUpload: "none" },
+    schemaVersion: "cimmich.body-detector.v1",
+  };
+  const profile = deriveBodyExecutionProfile(source, "cpu");
+  assert.equal(profile.execution.device, "cpu");
+  assert.match(profile.detectorConfigDigest, /^[0-9a-f]{64}$/);
+  assert.notEqual(profile.detectorConfigDigest, source.detectorConfigDigest);
+  assert.equal(source.execution.device, "gpu");
+});
+
 test("doctor returns a path-free limited receipt when every provider is disabled", async () => {
   const input = config();
   for (const provider of Object.values(input.providers))
@@ -100,6 +116,25 @@ test("doctor returns a path-free limited receipt when every provider is disabled
   assert.equal(JSON.stringify(result).includes("/py"), false);
 });
 
+test("doctor rejects oversized loopback model inventory responses", async (context) => {
+  const server = createServer((_request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(`{"padding":"${"x".repeat(1024 * 1024)}"}`);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+  const input = config(`http://127.0.0.1:${server.address().port}`);
+  for (const [name, provider] of Object.entries(input.providers))
+    provider.enabled = name === "sceneText";
+  const result = await runDoctor({ configInput: input });
+  assert.equal(result.state, "failed");
+  assert.equal(
+    result.checks.find(({ checkId }) => checkId === "scene-text-loopback")
+      .errorCode,
+    "LOCAL_AI_DOCTOR_OUTPUT_OVERSIZED",
+  );
+});
+
 test("tracked local provider processes terminate cleanly on cancellation", async () => {
   const child = trackedSpawn(
     process.execPath,
@@ -112,6 +147,34 @@ test("tracked local provider processes terminate cleanly on cancellation", async
   assert.equal(activeProcessCount(), 0);
 });
 
+test("provider subprocess output is bounded before JSON parsing", async () => {
+  await assert.rejects(
+    runProcess({
+      args: ["-e", "process.stdout.write('x'.repeat(4096))"],
+      command: process.execPath,
+      maxOutputBytes: 1024,
+      timeoutMs: 1000,
+    }),
+    { code: "LOCAL_AI_PROVIDER_OUTPUT_OVERSIZED" },
+  );
+});
+
+test("timed-out provider subprocesses escalate and leave no tracked child", async () => {
+  await assert.rejects(
+    runProcess({
+      args: [
+        "-e",
+        "process.on('SIGTERM',()=>{}); setInterval(() => undefined, 1000)",
+      ],
+      command: process.execPath,
+      timeoutMs: 20,
+    }),
+    { code: "LOCAL_AI_PROVIDER_TIMEOUT" },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  assert.equal(activeProcessCount(), 0);
+});
+
 test("benchmark evaluator scores bounded expectations and rejects fixture traversal", async () => {
   const evaluation = evaluateBenchmarkCase({
     expectations: {
@@ -119,6 +182,11 @@ test("benchmark evaluator scores bounded expectations and rejects fixture traver
         photo: {
           bodies: { min: 1, max: 1 },
           crossModelState: "clear",
+          enhance: {
+            height: 20,
+            quality: { downsampleSsim: { min: 0.9, max: 1 } },
+            width: 20,
+          },
           faces: { min: 1, max: 1 },
           maxFaceReview: 0,
           peopleEstimate: { min: 1, max: 1 },
@@ -134,6 +202,13 @@ test("benchmark evaluator scores bounded expectations and rejects fixture traver
           crossModelChecks: { reasonCodes: [], state: "clear" },
           operations: {
             bodies: { bodies: [{}] },
+            enhance: {
+              artifact: { digest: "digest", path: "artifacts/preview.png" },
+              height: 20,
+              quality: { downsampleSsim: 0.99 },
+              state: "derived",
+              width: 20,
+            },
             faces: { faces: [{ quality: { reviewReasons: [] } }] },
             sceneText: {
               proposal: {
@@ -182,6 +257,44 @@ test("benchmark evaluator scores bounded expectations and rejects fixture traver
     }),
     { code: "LOCAL_AI_BENCHMARK_FIXTURE_FORBIDDEN" },
   );
+  assert.equal(await stat(join(root, "output")).catch(() => null), null);
+
+  const fixtures = join(root, "fixtures");
+  const outside = join(root, "outside.png");
+  await mkdir(fixtures);
+  await writeFile(outside, "not needed because confinement runs first");
+  await symlink(outside, join(fixtures, "linked.png"));
+  await assert.rejects(
+    runBenchmark({
+      configInput: disabled,
+      fixtureRoot: fixtures,
+      manifestInput: {
+        benchmarkId: "symlink-escape",
+        cases: [
+          {
+            assets: [
+              {
+                acceptedSubjects: [],
+                assetId: "escape",
+                fixturePath: "linked.png",
+              },
+            ],
+            caseId: "escape",
+            contextKind: "none",
+            expectations: { assets: {} },
+            operations: "faces",
+          },
+        ],
+        schemaVersion: "cimmich.local-ai-photo-lab-benchmark.v1",
+      },
+      outputRoot: join(root, "symlink-output"),
+    }),
+    { code: "LOCAL_AI_BENCHMARK_FIXTURE_FORBIDDEN" },
+  );
+  assert.equal(
+    await stat(join(root, "symlink-output")).catch(() => null),
+    null,
+  );
 });
 
 test("photo-set contract binds ordered immutable source digests", async () => {
@@ -224,6 +337,22 @@ test("photo-set contract binds ordered immutable source digests", async () => {
   assert.equal(
     value.assets[0].baselineObservations.faces[0].observationId,
     "existing-face",
+  );
+  const oversized = join(root, "oversized.bin");
+  await writeFile(oversized, Buffer.alloc(1001));
+  await assert.rejects(
+    validatePhotoSet(
+      {
+        assets: [
+          { acceptedSubjects: [], assetId: "oversized", path: oversized },
+        ],
+        contextKind: "none",
+        schemaVersion: "cimmich.local-ai-photo-set.v1",
+        setId: "oversized",
+      },
+      validateConfig(config()).limits,
+    ),
+    { code: "LOCAL_AI_INPUT_INVALID" },
   );
 });
 

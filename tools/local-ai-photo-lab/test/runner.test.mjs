@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -158,6 +158,10 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     1,
   );
   assert.equal(first.result.originalsUnchanged, true);
+  assert.equal(
+    JSON.parse(await readFile(first.statePath, "utf8")).state,
+    "complete",
+  );
   const persisted = await readFile(first.resultPath, "utf8");
   assert.equal(persisted.includes(root), false);
   assert.equal(persisted.includes("appearanceFeature"), false);
@@ -289,4 +293,37 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     { code: "LOCAL_AI_SOURCE_UNREADABLE" },
   );
   assert.equal(await stat(rejectedOutput).catch(() => null), null);
+
+  const failedOutput = join(root, "failed-after-reservation");
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "faces",
+      outputRoot: failedOutput,
+      providerImplementations: {
+        ...providerImplementations,
+        async runFaces() {
+          throw Object.assign(new Error("provider exploded"), {
+            code: "LOCAL_AI_TEST_PROVIDER_FAILED",
+          });
+        },
+      },
+      setInput: {
+        assets: [{ acceptedSubjects: [], assetId: "failed", path: paths[0] }],
+        contextKind: "none",
+        schemaVersion: "cimmich.local-ai-photo-set.v1",
+        setId: "failed",
+      },
+    }),
+    { code: "LOCAL_AI_TEST_PROVIDER_FAILED" },
+  );
+  const [failedSet] = await readdir(join(failedOutput, "sets"));
+  const failedState = JSON.parse(
+    await readFile(
+      join(failedOutput, "sets", failedSet, "runs", "0001", "run-state.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(failedState.state, "failed");
+  assert.equal(failedState.errorCode, "LOCAL_AI_TEST_PROVIDER_FAILED");
 });

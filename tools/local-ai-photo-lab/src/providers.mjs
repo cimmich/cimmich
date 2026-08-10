@@ -17,7 +17,24 @@ const providerFailure = (operation, error) => ({
   state: "failed",
 });
 
-const runProcess = ({ command, args = [], input, timeoutMs }) =>
+const processOutputLimit = 16 * 1024 * 1024;
+
+const terminateProcess = (child) => {
+  child.kill("SIGTERM");
+  const escalation = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+  }, 1000);
+  escalation.unref();
+};
+
+export const runProcess = ({
+  command,
+  args = [],
+  input,
+  maxOutputBytes = processOutputLimit,
+  timeoutMs,
+}) =>
   new Promise((resolve, reject) => {
     const child = trackedSpawn(command, args, {
       shell: false,
@@ -25,21 +42,43 @@ const runProcess = ({ command, args = [], input, timeoutMs }) =>
     });
     const stdout = [];
     const stderr = [];
+    let outputBytes = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
     const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(
+      terminateProcess(child);
+      fail(
         Object.assign(new Error("provider timed out"), {
           code: "LOCAL_AI_PROVIDER_TIMEOUT",
         }),
       );
     }, timeoutMs);
-    child.stdout.on("data", (chunk) => stdout.push(chunk));
-    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    const collect = (target) => (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > maxOutputBytes) {
+        terminateProcess(child);
+        fail(
+          Object.assign(new Error("provider output exceeded its limit"), {
+            code: "LOCAL_AI_PROVIDER_OUTPUT_OVERSIZED",
+          }),
+        );
+        return;
+      }
+      target.push(chunk);
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
     child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
+      fail(error);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       const output = Buffer.concat(stdout).toString("utf8").trim();
       if (code !== 0) {
@@ -356,7 +395,26 @@ const checkedFetch = async (url, init, timeoutMs) => {
       new Error(`local model returned HTTP ${response.status}`),
       { code: "LOCAL_AI_LOCAL_MODEL_FAILED" },
     );
-  return response.json();
+  const contentLength = Number(response.headers.get("content-length"));
+  const maximumBytes = 4 * 1024 * 1024;
+  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
+    throw Object.assign(new Error("local model response is oversized"), {
+      code: "LOCAL_AI_PROVIDER_OUTPUT_OVERSIZED",
+    });
+  }
+  const text = await response.text();
+  if (Buffer.byteLength(text) > maximumBytes) {
+    throw Object.assign(new Error("local model response is oversized"), {
+      code: "LOCAL_AI_PROVIDER_OUTPUT_OVERSIZED",
+    });
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw Object.assign(new Error("local model returned invalid JSON"), {
+      code: "LOCAL_AI_PROVIDER_OUTPUT_INVALID",
+    });
+  }
 };
 
 const boundedStrings = (value, label, maximumItems) => {
