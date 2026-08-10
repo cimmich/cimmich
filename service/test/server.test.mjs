@@ -582,7 +582,7 @@ test("satellite map tiles are same-origin, bounded and cacheable", async () => {
   const calls = [];
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
   const satelliteTileFetch = async (url, options) => {
-    calls.push([url, Boolean(options?.signal)]);
+    calls.push([url, Boolean(options?.signal), options?.redirect]);
     return new Response(bytes, {
       headers: { "content-type": "image/jpeg" },
       status: 200,
@@ -610,8 +610,80 @@ test("satellite map tiles are same-origin, bounded and cacheable", async () => {
     [
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/153563/242651",
       true,
+      "error",
     ],
   ]);
+});
+
+test("satellite map tiles remain timeout-bound while reading the response body", async () => {
+  let requestSignal;
+  const satelliteTileFetch = async (_url, options) => {
+    requestSignal = options.signal;
+    let bodyController;
+    const body = new ReadableStream({
+      start(controller) {
+        bodyController = controller;
+        controller.enqueue(new Uint8Array([0xff, 0xd8]));
+      },
+    });
+    requestSignal.addEventListener(
+      "abort",
+      () => bodyController.error(new Error("provider body stalled")),
+      { once: true },
+    );
+    return new Response(body, {
+      headers: { "content-type": "image/jpeg" },
+      status: 200,
+    });
+  };
+
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/map/satellite/1/0/0`);
+      assert.equal(response.status, 502);
+      assert.equal((await response.json()).code, "SATELLITE_TILE_UNAVAILABLE");
+    },
+    { satelliteTileFetch, satelliteTileTimeoutMs: 20 },
+  );
+  assert.equal(requestSignal.aborted, true);
+});
+
+test("satellite map tiles cancel an oversized chunked response before allocation", async () => {
+  let cancelled = false;
+  let chunk = 0;
+  const satelliteTileFetch = async (_url, options) => {
+    assert.equal(options.redirect, "error");
+    return new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+        pull(controller) {
+          chunk += 1;
+          controller.enqueue(new Uint8Array(chunk <= 2 ? 1024 * 1024 : 1));
+        },
+      }),
+      {
+        headers: { "content-type": "image/png" },
+        status: 200,
+      },
+    );
+  };
+
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/map/satellite/1/0/0`);
+      assert.equal(response.status, 502);
+      assert.equal(
+        (await response.json()).code,
+        "SATELLITE_TILE_PAYLOAD_INVALID",
+      );
+    },
+    { satelliteTileFetch },
+  );
+  assert.equal(cancelled, true);
 });
 
 test("zero-egress mode refuses address and satellite provider requests", async () => {

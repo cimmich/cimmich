@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { readBoundedResponseBytes } from "./bounded-response.mjs";
 import { integrationSettingsPack } from "./integration-settings.mjs";
 import { createReviewRoutes } from "./review-routes.mjs";
 import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
@@ -204,6 +205,7 @@ export const createCimmichServer = ({
   optionalEgressEnabled = true,
   repository,
   satelliteTileFetch = globalThis.fetch,
+  satelliteTileTimeoutMs = 8_000,
   surfacePolicy = "combined",
   visibility,
 }) => {
@@ -1096,43 +1098,58 @@ export const createCimmichServer = ({
           );
         }
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8_000);
+        const timeout = setTimeout(
+          () => controller.abort(),
+          satelliteTileTimeoutMs,
+        );
         let tileResponse;
+        let bytes;
+        let mimeType;
         try {
           tileResponse = await satelliteTileFetch(
             `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${tileX}`,
-            { signal: controller.signal },
+            { redirect: "error", signal: controller.signal },
           );
-        } finally {
-          clearTimeout(timeout);
-        }
-        if (!tileResponse?.ok) {
+          if (!tileResponse?.ok) {
+            throw Object.assign(new Error("Satellite tile is unavailable"), {
+              code: "SATELLITE_TILE_UNAVAILABLE",
+              statusCode: 502,
+            });
+          }
+          mimeType = String(tileResponse.headers?.get?.("content-type") || "")
+            .split(";")[0]
+            .trim()
+            .toLowerCase();
+          if (
+            !new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)
+          ) {
+            throw Object.assign(
+              new Error("Satellite tile format is unsupported"),
+              {
+                code: "SATELLITE_TILE_FORMAT_INVALID",
+                statusCode: 502,
+              },
+            );
+          }
+          bytes = await readBoundedResponseBytes(
+            tileResponse,
+            2 * 1024 * 1024,
+            {
+              code: "SATELLITE_TILE_PAYLOAD_INVALID",
+              message: "Satellite tile payload is invalid",
+              statusCode: 502,
+            },
+          );
+        } catch (error) {
+          if (String(error?.code || "").startsWith("SATELLITE_TILE_")) {
+            throw error;
+          }
           throw Object.assign(new Error("Satellite tile is unavailable"), {
             code: "SATELLITE_TILE_UNAVAILABLE",
             statusCode: 502,
           });
-        }
-        const mimeType = String(
-          tileResponse.headers?.get?.("content-type") || "",
-        )
-          .split(";")[0]
-          .trim()
-          .toLowerCase();
-        if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)) {
-          throw Object.assign(
-            new Error("Satellite tile format is unsupported"),
-            {
-              code: "SATELLITE_TILE_FORMAT_INVALID",
-              statusCode: 502,
-            },
-          );
-        }
-        const bytes = Buffer.from(await tileResponse.arrayBuffer());
-        if (bytes.length === 0 || bytes.length > 2 * 1024 * 1024) {
-          throw Object.assign(new Error("Satellite tile payload is invalid"), {
-            code: "SATELLITE_TILE_PAYLOAD_INVALID",
-            statusCode: 502,
-          });
+        } finally {
+          clearTimeout(timeout);
         }
         sendMapTile(response, { bytes, mimeType }, allowedOrigin);
         return;

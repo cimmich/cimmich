@@ -355,6 +355,7 @@ export const createImmichCompanion = ({
     try {
       response = await fetchImpl(`${normalizedApiBaseUrl}${path}`, {
         method: normalizedMethod,
+        redirect: "error",
         signal: controller.signal,
         headers: {
           accept: "application/json",
@@ -437,6 +438,7 @@ export const createImmichCompanion = ({
       response = await fetchImpl(
         `${normalizedApiBaseUrl}/assets/${encodeURIComponent(assetId)}/original`,
         {
+          redirect: "error",
           signal: controller.signal,
           headers: {
             accept: "image/*,application/octet-stream;q=0.5",
@@ -515,6 +517,7 @@ export const createImmichCompanion = ({
       response = await fetchImpl(
         `${normalizedApiBaseUrl}/assets/${encodeURIComponent(assetId)}/original`,
         {
+          redirect: "error",
           signal: controller.signal,
           headers: {
             accept: "application/octet-stream,*/*;q=0.5",
