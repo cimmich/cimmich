@@ -304,6 +304,7 @@ def enhance(args: argparse.Namespace) -> None:
                     }
                 ),
                 "height": result.height,
+                "executionProviders": session.get_providers(),
                 "modelDigest": file_digest(model),
                 "output": str(output),
                 "provider": "realesrgan-onnx-local-photo-lab",

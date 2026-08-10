@@ -44,6 +44,18 @@ export const evaluateBenchmarkCase = ({ expectations, result }) => {
     if (!asset) continue;
     const faces = asset.operations.faces?.faces ?? [];
     const bodies = asset.operations.bodies?.bodies ?? [];
+    for (const [operation, mode] of Object.entries(
+      expectations.executionModes ?? {},
+    )) {
+      assertions.push(
+        assertion(
+          `${assetId}.${operation}.executionMode`,
+          asset.operations[operation]?.provider?.executionMode === mode,
+          mode,
+          asset.operations[operation]?.provider?.executionMode,
+        ),
+      );
+    }
     for (const [operation, state] of Object.entries(
       expected.operationStates ?? {},
     )) {
@@ -95,6 +107,19 @@ export const evaluateBenchmarkCase = ({ expectations, result }) => {
           review <= expected.maxFaceReview,
           expected.maxFaceReview,
           review,
+        ),
+      );
+    }
+    if (expected.maximumUnreviewedFaces !== undefined) {
+      const unreviewed = faces.filter(
+        (face) => !face.quality?.reviewReasons?.length,
+      ).length;
+      assertions.push(
+        assertion(
+          `${assetId}.maximumUnreviewedFaces`,
+          unreviewed <= expected.maximumUnreviewedFaces,
+          expected.maximumUnreviewedFaces,
+          unreviewed,
         ),
       );
     }

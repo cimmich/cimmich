@@ -39,6 +39,10 @@
         }
       ],
       "expectations": {
+        "executionModes": {
+          "faces": "resident-set",
+          "bodies": "resident-set"
+        },
         "assets": {
           "clear-portrait": {
             "image": { "width": 1024, "height": 1536 },
@@ -85,16 +89,15 @@
           "silhouettes": {
             "image": { "width": 1704, "height": 923 },
             "operationStates": {
-              "faces": "faces_detected",
+              "faces": "no_face",
               "bodies": "bodies_detected",
               "sceneText": "proposed"
             },
-            "faces": { "min": 1, "max": 1 },
+            "faces": { "min": 0, "max": 0 },
             "bodies": { "min": 5, "max": 5 },
             "peopleEstimate": { "min": 5, "max": 5 },
-            "maxFaceReview": 1,
-            "crossModelState": "review",
-            "reasonCodesIncludes": ["ALL_FACE_CANDIDATES_REQUIRE_REVIEW"],
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
             "visibleText": { "min": 0, "max": 0 }
           },
           "backs-turned": {

@@ -121,6 +121,13 @@ export const probeImage = async ({ asset, config }) =>
     timeoutMs: config.timeoutMs,
   });
 
+const faceResultMatchesAsset = (result, asset) =>
+  result?.schemaVersion === "cimmich.local-ai-face-scan.v1" &&
+  result.assetToken === digest({ assetId: asset.assetId }) &&
+  result.sourceContentDigest === asset.sourceContentDigest &&
+  Array.isArray(result.faces) &&
+  (result.state === "faces_detected" || result.state === "no_face");
+
 export const runFaces = async ({ asset, config }) => {
   if (!config.enabled)
     return {
@@ -129,7 +136,7 @@ export const runFaces = async ({ asset, config }) => {
       reason: "provider_disabled",
     };
   try {
-    return await runProcess({
+    const result = await runProcess({
       args: [join(pythonRoot, "faces.py")],
       command: config.pythonPath,
       input: {
@@ -143,8 +150,76 @@ export const runFaces = async ({ asset, config }) => {
       },
       timeoutMs: config.timeoutMs,
     });
+    if (!faceResultMatchesAsset(result, asset)) {
+      throw Object.assign(new Error("face result binding is invalid"), {
+        code: "LOCAL_AI_PROVIDER_OUTPUT_INVALID",
+      });
+    }
+    return {
+      ...result,
+      provider: { ...result.provider, executionMode: "one-shot" },
+    };
   } catch (error) {
     return providerFailure("faces", error);
+  }
+};
+
+export const runFacesBatch = async ({ assets, config }) => {
+  if (!config.enabled) {
+    return assets.map(() => ({
+      operation: "faces",
+      reason: "provider_disabled",
+      state: "unavailable",
+    }));
+  }
+  try {
+    const processStarted = Date.now();
+    const response = await runProcess({
+      args: [join(pythonRoot, "faces.py"), "--batch"],
+      command: config.pythonPath,
+      input: {
+        assets: assets.map((asset) => ({
+          assetToken: digest({ assetId: asset.assetId }),
+          imagePath: asset.path,
+          sourceContentDigest: asset.sourceContentDigest,
+        })),
+        device: config.device,
+        maxInputPixels: config.maxInputPixels,
+        modelPath: config.detectorModelPath,
+        scoreThreshold: config.scoreThreshold,
+      },
+      timeoutMs: config.timeoutMs,
+    });
+    if (
+      response.schemaVersion !== "cimmich.local-ai-face-scan-batch.v1" ||
+      !Array.isArray(response.results) ||
+      response.results.length !== assets.length ||
+      !Number.isInteger(response.durationMs) ||
+      response.durationMs < 0 ||
+      !Number.isInteger(response.initializationMs) ||
+      response.initializationMs < 0 ||
+      response.results.some(
+        (result, index) => !faceResultMatchesAsset(result, assets[index]),
+      )
+    ) {
+      throw Object.assign(new Error("face batch result is invalid"), {
+        code: "LOCAL_AI_PROVIDER_OUTPUT_INVALID",
+      });
+    }
+    const setProcessDurationMs = Date.now() - processStarted;
+    return response.results.map((result) => ({
+      ...result,
+      provider: {
+        ...result.provider,
+        executionMode: "resident-set",
+        setAssetCount: assets.length,
+        setInitializationMs: response.initializationMs,
+        setProcessDurationMs,
+        setProviderDurationMs: response.durationMs,
+      },
+    }));
+  } catch (error) {
+    return assets.map(() => providerFailure("faces", error));
   }
 };
 

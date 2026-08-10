@@ -265,6 +265,7 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
   });
   assert.deepEqual(disagreement.result.assets[0].crossModelChecks.reasonCodes, [
     "ALL_FACE_CANDIDATES_REQUIRE_REVIEW",
+    "FACE_WITHOUT_BODY_SUPPORT",
     "FACE_ONLY_WITH_NO_PERSON_SUPPORT",
   ]);
   assert.match(disagreement.result.summary.text, /Candidate review/);
@@ -326,4 +327,54 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
   );
   assert.equal(failedState.state, "failed");
   assert.equal(failedState.errorCode, "LOCAL_AI_TEST_PROVIDER_FAILED");
+});
+
+test("runner loads the face provider once for a multi-photo set", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-face-batch-"));
+  const paths = [join(root, "one.png"), join(root, "two.png")];
+  await Promise.all(paths.map((path) => writeFile(path, tinyPng)));
+  let batchCalls = 0;
+  let oneShotCalls = 0;
+  const providers = {
+    ...providerImplementations,
+    async runFaces() {
+      oneShotCalls += 1;
+      return { faces: [], operation: "faces", state: "no_face" };
+    },
+    async runFacesBatch({ assets }) {
+      batchCalls += 1;
+      return assets.map(() => ({
+        durationMs: 1,
+        faces: [],
+        operation: "faces",
+        provider: { executionMode: "resident-set" },
+        state: "no_face",
+      }));
+    },
+  };
+  const result = await runPhotoLab({
+    configInput,
+    operationsInput: "faces",
+    outputRoot: join(root, "output"),
+    providerImplementations: providers,
+    setInput: {
+      assets: paths.map((path, index) => ({
+        acceptedSubjects: [],
+        assetId: `asset-${index}`,
+        path,
+      })),
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "face-batch",
+    },
+  });
+  assert.equal(result.result.state, "completed");
+  assert.equal(batchCalls, 1);
+  assert.equal(oneShotCalls, 0);
+  assert.deepEqual(
+    result.result.assets.map(
+      (asset) => asset.operations.faces.provider.executionMode,
+    ),
+    ["resident-set", "resident-set"],
+  );
 });

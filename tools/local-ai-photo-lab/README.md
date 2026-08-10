@@ -77,9 +77,12 @@ margin. It never promotes a subject assignment automatically.
 Runtime paths remain outside Git. Create a local JSON file using
 `config.example.json` as the shape, then supply it with `--config`.
 
-The example face threshold is `0.4`. On the labelled six-photo calibration
-set it removed the no-person false proposals while retaining all six faces in
-the crowded case; the weakest retained genuine proposal scored `0.492`.
+The example face threshold is `0.45`. Across the labelled public calibration
+and holdout sets it removed back-of-head/silhouette proposals while retaining
+the genuine rainy partial face at `0.463` and all six crowded-case faces; the
+weakest crowded genuine proposal scored `0.492`. Proposals below `0.6` remain
+explicit review candidates, which also contains the measured animal-face false
+positive at `0.515`.
 Thresholds remain part of the bound runtime config, so future model changes
 must rerun the benchmark instead of inheriting this value blindly.
 
@@ -87,10 +90,12 @@ The Scene/Text endpoint must be loopback (`127.0.0.1`, `::1`, or `localhost`).
 No provider may upload source media. Provider failures are represented as typed
 unavailable/failed operation results so other requested lanes can still finish.
 
-For multi-photo sets, the body detector uses its resident local protocol: the
-model loads once, then each bounded source is framed through the same process.
-Receipts distinguish `resident-set` from `one-shot` execution and retain
-per-photo timings.
+For multi-photo sets, both face and body detectors load their model once and
+process each bounded source through that resident set runtime. Receipts
+distinguish `resident-set` from `one-shot` execution and retain per-photo
+timings. Face receipts also record the actual ONNX execution providers plus
+shared initialization, provider, and process durations so the faster path does
+not hide model-startup cost.
 
 If the source body manifest requests an accelerator that `doctor` cannot
 confirm, derive a non-overwriting local execution profile and point the local
@@ -133,6 +138,17 @@ node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
 The benchmark emits a machine-readable receipt and Markdown scorecard. Fixture
 paths are constrained beneath `--fixture-root`; scorecards retain only relative
 result paths.
+
+Run the broader face/body holdout, including profiles, motion, pets, backs,
+partial faces, groups, and additional negative controls:
+
+```sh
+node tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs benchmark \
+  --config /absolute/local/config.json \
+  --manifest tools/local-ai-photo-lab/benchmark/public-holdout-v2.json \
+  --fixture-root /absolute/path/to/cedar-house-v1/media \
+  --output /absolute/local/benchmark-output
+```
 
 Run the derived-preview enhancement gate against the same public fixture root:
 
@@ -195,10 +211,10 @@ from `running` to `complete`; provider exceptions record `failed`; SIGINT or
 SIGTERM records `cancelled` after terminating tracked local providers. A rerun
 never overwrites the interrupted revision and advances to the next number.
 
-Execution is intentionally bounded and serial: one resident body process per
-set, one face/VLM/enhancement operation at a time, bounded provider output, a
-configured input byte/pixel cap, and a configured timeout. This favors stable
-local memory use over archive-scale throughput.
+Execution is intentionally bounded and serial: one resident face process and
+one resident body process per set, one VLM/enhancement operation at a time,
+bounded provider output, a configured input byte/pixel cap, and a configured
+timeout. This favors stable local memory use over archive-scale throughput.
 
 ## Safety and limits
 

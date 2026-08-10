@@ -58,10 +58,10 @@ is the sole authority that may change identity state in Cimmich.
 ## Concurrency and lifecycle
 
 One scoped request runs serially. The future queue may serialize enhancement
-and local VLM work globally and may reuse a resident body process, but it must
-retain per-request cancellation, timeouts, output bounds, append-only revision
-receipts, and exact model/config digests. UI retries create a new revision; they
-do not mutate an interrupted one.
+and local VLM work globally and should preserve the one-load resident face/body
+set paths, but it must retain per-request cancellation, timeouts, output bounds,
+append-only revision receipts, and exact model/config digests. UI retries create
+a new revision; they do not mutate an interrupted one.
 
 ## Integration acceptance
 

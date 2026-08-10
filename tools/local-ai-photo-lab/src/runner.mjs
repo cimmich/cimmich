@@ -96,13 +96,9 @@ const crossModelChecks = (operations) => {
   ) {
     reasonCodes.push("ALL_FACE_CANDIDATES_REQUIRE_REVIEW");
   }
-  if (
-    faces.length > 0 &&
-    operations.bodies &&
-    bodies.length === 0 &&
-    people === 0
-  ) {
-    reasonCodes.push("FACE_ONLY_WITH_NO_PERSON_SUPPORT");
+  if (faces.length > 0 && operations.bodies && bodies.length === 0) {
+    reasonCodes.push("FACE_WITHOUT_BODY_SUPPORT");
+    if (people === 0) reasonCodes.push("FACE_ONLY_WITH_NO_PERSON_SUPPORT");
   }
   if (Number.isInteger(people) && Math.abs(bodies.length - people) >= 2) {
     reasonCodes.push("BODY_COUNT_DISAGREES_WITH_SCENE");
@@ -278,6 +274,15 @@ export const runPhotoLab = async ({
   try {
     await mkdir(artifactRoot);
     const runtimeAssets = [];
+    const faceBatchResults =
+      executedOperations.includes("faces") &&
+      photoSet.assets.length > 1 &&
+      providerImplementations.runFacesBatch
+        ? await providerImplementations.runFacesBatch({
+            assets: photoSet.assets,
+            config: facesConfig,
+          })
+        : null;
     const bodyBatchResults =
       executedOperations.includes("bodies") &&
       photoSet.assets.length > 1 &&
@@ -293,12 +298,14 @@ export const runPhotoLab = async ({
       const name = safeName(assetInput.assetId);
       const image = imageProbes[assetIndex];
       if (executedOperations.includes("faces")) {
-        operations.faces = await timed(() =>
-          providerImplementations.runFaces({
-            asset: assetInput,
-            config: facesConfig,
-          }),
-        );
+        operations.faces = faceBatchResults
+          ? faceBatchResults[assetIndex]
+          : await timed(() =>
+              providerImplementations.runFaces({
+                asset: assetInput,
+                config: facesConfig,
+              }),
+            );
       }
       if (executedOperations.includes("bodies")) {
         operations.bodies = bodyBatchResults
