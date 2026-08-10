@@ -43,6 +43,7 @@
   } from '@mdi/js';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import Combobox, { type ComboBoxOption } from '../shared-components/Combobox.svelte';
+  import { currentCimmichUndoReceiptContext } from './cimmich-undo-receipt-context.svelte';
   import {
     CIMMICH_ENTITY_MEDIA_ACTION_GROUPS,
     cimmichEntityMediaActionIcon,
@@ -58,6 +59,7 @@
     type CimmichEntityMediaScope,
     type CimmichEntityMediaSubject,
   } from './entity-media-actions';
+  import { sameCimmichUndoReceiptContext, type CimmichUndoReceiptContext } from './persisted-undo-receipt';
 
   interface Props {
     currentScope?: CimmichEntityMediaScope | null;
@@ -103,6 +105,7 @@
   let error = $state('');
   let progress = $state('');
   let receipt = $state<CimmichEntityMediaActionReceipt | null>(null);
+  let receiptContext: CimmichUndoReceiptContext | null = null;
   let receiptLoaded = false;
   type OptionKind = 'album' | 'event' | 'object' | 'person' | 'pet' | 'place' | 'tag';
   const loadedOptionKinds = new SvelteSet<OptionKind>();
@@ -223,14 +226,18 @@
     caught instanceof Error ? caught.message : 'The action could not be completed.';
 
   const storeReceipt = (next: CimmichEntityMediaActionReceipt | null) => {
-    receipt = next;
-    saveCimmichEntityMediaActionReceipt(globalThis.localStorage, next);
+    const context = currentCimmichUndoReceiptContext();
+    receiptContext = context;
+    receipt = context ? next : null;
+    saveCimmichEntityMediaActionReceipt(globalThis.localStorage, next, context);
   };
 
   $effect(() => {
-    if (!receiptLoaded) {
+    const context = currentCimmichUndoReceiptContext();
+    if (!receiptLoaded || !sameCimmichUndoReceiptContext(receiptContext, context)) {
       receiptLoaded = true;
-      receipt = loadCimmichEntityMediaActionReceipt(globalThis.localStorage);
+      receiptContext = context;
+      receipt = loadCimmichEntityMediaActionReceipt(globalThis.localStorage, context);
     }
   });
 

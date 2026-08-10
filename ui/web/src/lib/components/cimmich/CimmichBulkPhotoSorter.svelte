@@ -47,6 +47,7 @@
   } from '@mdi/js';
   import { SvelteSet } from 'svelte/reactivity';
   import { applyBulkPhotoRotation, undoBulkPhotoRotation } from './bulk-photo-corrections';
+  import { currentCimmichUndoReceiptContext } from './cimmich-undo-receipt-context.svelte';
   import CimmichBulkPhotoActionPanel from './CimmichBulkPhotoActionPanel.svelte';
   import CimmichBulkPhotoPreview from './CimmichBulkPhotoPreview.svelte';
   import CimmichBulkPhotoStatus from './CimmichBulkPhotoStatus.svelte';
@@ -70,6 +71,7 @@
     type BulkPhotoSorterOperationReceipt,
     type BulkPhotoSorterUndoReceipt,
   } from './bulk-photo-sorter';
+  import { sameCimmichUndoReceiptContext, type CimmichUndoReceiptContext } from './persisted-undo-receipt';
   const initialFilters = emptyBulkPhotoSorterFilters();
   initialFilters.folder = page.url.searchParams.get('folder') ?? '';
   let filters = $state(initialFilters);
@@ -98,6 +100,7 @@
   let progress = $state('');
   let error = $state('');
   let receipt = $state<BulkPhotoSorterOperationReceipt | null>(null);
+  let receiptContext: CimmichUndoReceiptContext | null = null;
   let receiptStorageLoaded = false;
 
   const filterFingerprint = $derived(bulkPhotoSorterFilterFingerprint(filters));
@@ -129,14 +132,18 @@
     caught instanceof Error ? caught.message : 'The operation could not be completed.';
 
   const storeReceipt = (next: BulkPhotoSorterOperationReceipt | null) => {
-    receipt = next;
-    saveBulkPhotoSorterReceipt(globalThis.localStorage, next);
+    const context = currentCimmichUndoReceiptContext();
+    receiptContext = context;
+    receipt = context ? next : null;
+    saveBulkPhotoSorterReceipt(globalThis.localStorage, next, context);
   };
 
   $effect(() => {
-    if (!receiptStorageLoaded) {
+    const context = currentCimmichUndoReceiptContext();
+    if (!receiptStorageLoaded || !sameCimmichUndoReceiptContext(receiptContext, context)) {
       receiptStorageLoaded = true;
-      receipt = loadBulkPhotoSorterReceipt(globalThis.localStorage);
+      receiptContext = context;
+      receipt = loadBulkPhotoSorterReceipt(globalThis.localStorage, context);
     }
   });
 

@@ -1,9 +1,15 @@
 import { AssetOrder, AssetTypeEnum, AssetVisibility, type AssetResponseDto, type MetadataSearchDto } from '@immich/sdk';
+import { CIMMICH_BULK_PHOTO_SORTER_RECEIPT_KEY } from './cimmich-undo-receipt-context.svelte';
+import {
+  loadPersistedUndoReceipt,
+  savePersistedUndoReceipt,
+  type CimmichUndoReceiptContext,
+} from './persisted-undo-receipt';
 
 export const BULK_PHOTO_SORTER_BATCH_SIZE = 100;
 export const BULK_PHOTO_SORTER_PAGE_SIZE = 500;
 export const BULK_PHOTO_SORTER_PREVIEW_SIZE = 24;
-export const BULK_PHOTO_SORTER_RECEIPT_KEY = 'cimmich.bulk-photo-sorter.receipt.v1';
+export const BULK_PHOTO_SORTER_RECEIPT_KEY = CIMMICH_BULK_PHOTO_SORTER_RECEIPT_KEY;
 
 export type BulkPhotoSorterFilters = {
   albumId: string;
@@ -136,37 +142,17 @@ const isOperationReceipt = (value: unknown): value is BulkPhotoSorterOperationRe
 
 export const loadBulkPhotoSorterReceipt = (
   storage: BulkPhotoSorterReceiptStorage,
-): BulkPhotoSorterOperationReceipt | null => {
-  try {
-    const serialized = storage.getItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
-    if (!serialized) {
-      return null;
-    }
-    const parsed: unknown = JSON.parse(serialized);
-    if (isOperationReceipt(parsed)) {
-      return parsed;
-    }
-    storage.removeItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
-  } catch {
-    // A blocked or corrupt browser store must not prevent Organise from loading.
-  }
-  return null;
-};
+  context: CimmichUndoReceiptContext | null,
+  now?: number,
+): BulkPhotoSorterOperationReceipt | null =>
+  loadPersistedUndoReceipt(storage, BULK_PHOTO_SORTER_RECEIPT_KEY, context, isOperationReceipt, now);
 
 export const saveBulkPhotoSorterReceipt = (
   storage: BulkPhotoSorterReceiptStorage,
   receipt: BulkPhotoSorterOperationReceipt | null,
-) => {
-  try {
-    if (receipt) {
-      storage.setItem(BULK_PHOTO_SORTER_RECEIPT_KEY, JSON.stringify(receipt));
-    } else {
-      storage.removeItem(BULK_PHOTO_SORTER_RECEIPT_KEY);
-    }
-  } catch {
-    // The receipt remains usable in this page even when storage is unavailable.
-  }
-};
+  context: CimmichUndoReceiptContext | null,
+  now?: number,
+) => savePersistedUndoReceipt(storage, BULK_PHOTO_SORTER_RECEIPT_KEY, receipt, context, now);
 
 export const bulkPhotoSorterSameSnapshot = (left: string[], right: string[]) => {
   if (left.length !== right.length) {

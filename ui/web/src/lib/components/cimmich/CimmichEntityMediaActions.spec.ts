@@ -3,7 +3,7 @@ import { fireEvent, waitFor } from '@testing-library/svelte';
 import type { CimmichContextEntity } from '$lib/services/cimmich.service';
 import { renderWithTooltips } from '$tests/helpers';
 import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
-import { ENTITY_MEDIA_ACTION_RECEIPT_KEY } from './entity-media-actions';
+import { saveCimmichEntityMediaActionReceipt } from './entity-media-actions';
 
 const mocks = vi.hoisted(() => {
   const values = new Map<string, string>();
@@ -77,6 +77,15 @@ vi.mock('@immich/sdk', async (importOriginal) => ({
   removeAssetFromAlbum: mocks.removeAlbum,
   untagAssets: mocks.untag,
   updateAssets: mocks.updateAssets,
+}));
+
+vi.mock('./cimmich-undo-receipt-context.svelte', () => ({
+  CIMMICH_ENTITY_MEDIA_ACTION_RECEIPT_KEY: 'cimmich.entity-media-action.receipt.v1',
+  currentCimmichUndoReceiptContext: () => ({
+    ownerId: 'owner-test',
+    sessionId: 'session-test',
+    viewingMode: 'standard',
+  }),
 }));
 
 const items = [
@@ -254,9 +263,9 @@ describe('CimmichEntityMediaActions', () => {
   });
 
   it('keeps a saved Undo visible after selection mode closes', async () => {
-    mocks.values.set(
-      ENTITY_MEDIA_ACTION_RECEIPT_KEY,
-      JSON.stringify({
+    saveCimmichEntityMediaActionReceipt(
+      globalThis.localStorage,
+      {
         action: 'visibility-private',
         albumId: '',
         assetIds: ['asset-1'],
@@ -270,7 +279,8 @@ describe('CimmichEntityMediaActions', () => {
         targetId: '',
         version: 1,
         visibilityDecisionIds: ['visibility-decision'],
-      }),
+      },
+      { ownerId: 'owner-test', sessionId: 'session-test', viewingMode: 'standard' },
     );
 
     const { getByRole, getByText, queryByRole } = renderWithTooltips(CimmichEntityMediaActions, {

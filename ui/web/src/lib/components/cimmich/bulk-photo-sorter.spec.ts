@@ -26,6 +26,7 @@ const asset = (overrides: Partial<AssetResponseDto> = {}) =>
   }) as AssetResponseDto;
 
 describe('bulk photo sorter', () => {
+  const context = { ownerId: 'owner-1', sessionId: 'session-1', viewingMode: 'standard' as const };
   it('builds a metadata query from the supported selectors', () => {
     const query = buildBulkPhotoSorterSearch({
       ...emptyBulkPhotoSorterFilters(),
@@ -117,11 +118,11 @@ describe('bulk photo sorter', () => {
       version: 1,
     };
 
-    saveBulkPhotoSorterReceipt(storage, receipt);
-    expect(loadBulkPhotoSorterReceipt(storage)).toEqual(receipt);
+    saveBulkPhotoSorterReceipt(storage, receipt, context, 1000);
+    expect(loadBulkPhotoSorterReceipt(storage, context, 1001)).toEqual(receipt);
 
     values.set(BULK_PHOTO_SORTER_RECEIPT_KEY, '{"version":1,"undo":"unsafe"}');
-    expect(loadBulkPhotoSorterReceipt(storage)).toBeNull();
+    expect(loadBulkPhotoSorterReceipt(storage, context)).toBeNull();
     expect(values.has(BULK_PHOTO_SORTER_RECEIPT_KEY)).toBe(false);
   });
 

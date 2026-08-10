@@ -16,9 +16,15 @@ import {
   mdiTagOutline,
 } from '@mdi/js';
 import type { CimmichContextFamily, CimmichVisibilityTier } from '$lib/services/cimmich.service';
+import { CIMMICH_ENTITY_MEDIA_ACTION_RECEIPT_KEY } from './cimmich-undo-receipt-context.svelte';
+import {
+  loadPersistedUndoReceipt,
+  savePersistedUndoReceipt,
+  type CimmichUndoReceiptContext,
+} from './persisted-undo-receipt';
 
 export const ENTITY_MEDIA_SELECTION_LIMIT = 100;
-export const ENTITY_MEDIA_ACTION_RECEIPT_KEY = 'cimmich.entity-media-action.receipt.v1';
+export const ENTITY_MEDIA_ACTION_RECEIPT_KEY = CIMMICH_ENTITY_MEDIA_ACTION_RECEIPT_KEY;
 
 export type CimmichEntityMediaItem = {
   assetId: string;
@@ -200,37 +206,17 @@ export const isCimmichEntityMediaActionReceipt = (value: unknown): value is Cimm
 
 export const loadCimmichEntityMediaActionReceipt = (
   storage: Pick<Storage, 'getItem' | 'removeItem'>,
-): CimmichEntityMediaActionReceipt | null => {
-  try {
-    const serialized = storage.getItem(ENTITY_MEDIA_ACTION_RECEIPT_KEY);
-    if (!serialized) {
-      return null;
-    }
-    const parsed: unknown = JSON.parse(serialized);
-    if (isCimmichEntityMediaActionReceipt(parsed)) {
-      return parsed;
-    }
-    storage.removeItem(ENTITY_MEDIA_ACTION_RECEIPT_KEY);
-  } catch {
-    storage.removeItem(ENTITY_MEDIA_ACTION_RECEIPT_KEY);
-  }
-  return null;
-};
+  context: CimmichUndoReceiptContext | null,
+  now?: number,
+): CimmichEntityMediaActionReceipt | null =>
+  loadPersistedUndoReceipt(storage, ENTITY_MEDIA_ACTION_RECEIPT_KEY, context, isCimmichEntityMediaActionReceipt, now);
 
 export const saveCimmichEntityMediaActionReceipt = (
   storage: Pick<Storage, 'removeItem' | 'setItem'>,
   receipt: CimmichEntityMediaActionReceipt | null,
-) => {
-  try {
-    if (receipt) {
-      storage.setItem(ENTITY_MEDIA_ACTION_RECEIPT_KEY, JSON.stringify(receipt));
-    } else {
-      storage.removeItem(ENTITY_MEDIA_ACTION_RECEIPT_KEY);
-    }
-  } catch {
-    // The in-memory receipt remains available when browser storage is blocked.
-  }
-};
+  context: CimmichUndoReceiptContext | null,
+  now?: number,
+) => savePersistedUndoReceipt(storage, ENTITY_MEDIA_ACTION_RECEIPT_KEY, receipt, context, now);
 
 export const cimmichEntityMediaActionNeedsTarget = (action: CimmichEntityMediaActionKind) =>
   [
