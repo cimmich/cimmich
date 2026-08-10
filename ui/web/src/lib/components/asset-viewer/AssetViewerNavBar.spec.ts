@@ -9,6 +9,31 @@ import { preferencesFactory } from '@test-data/factories/preferences-factory';
 import { userAdminFactory } from '@test-data/factories/user-factory';
 import AssetViewerNavBar from './AssetViewerNavBar.svelte';
 
+vi.mock(import('$lib/managers/feature-flags-manager.svelte'), () => ({
+  featureFlagsManager: {
+    init: vi.fn(),
+    loadFeatureFlags: vi.fn(),
+    value: { smartSearch: true, trash: true },
+  } as never,
+}));
+
+vi.mock('$lib/services/cimmich.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$lib/services/cimmich.service')>()),
+  getCimmichVisibilityStatus: vi.fn().mockResolvedValue({
+    capabilities: { album: true, asset: true, collection: true, document: true, entityProfile: true },
+    forcedStandard: false,
+    inactivitySeconds: 300,
+    maxPrivateSessionSeconds: 3600,
+    principalBound: true,
+    principalId: 'test-owner',
+    privateAuthorized: false,
+    privateConfigured: false,
+    schemaVersion: 'cimmich.visibility.v1',
+    surface: 'interactive',
+    viewingMode: 'Standard',
+  }),
+}));
+
 describe('AssetViewerNavBar component', () => {
   const additionalProps = {
     preAction: () => {},
@@ -25,15 +50,6 @@ describe('AssetViewerNavBar component', () => {
       };
     });
     vi.stubGlobal('ResizeObserver', getResizeObserverMock());
-    vi.mock(import('$lib/managers/feature-flags-manager.svelte'), function () {
-      return {
-        featureFlagsManager: {
-          init: vi.fn(),
-          loadFeatureFlags: vi.fn(),
-          value: { smartSearch: true, trash: true },
-        } as never,
-      };
-    });
   });
 
   afterEach(() => {

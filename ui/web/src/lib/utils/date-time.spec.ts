@@ -2,6 +2,10 @@ import { DateTime } from 'luxon';
 import { writable } from 'svelte/store';
 import { asLocalDateISO, getAlbumDateRange, getShortDateRange } from './date-time';
 
+vi.mock('$lib/stores/preferences.store', () => ({
+  locale: writable('en'),
+}));
+
 describe('asLocalDateISO', () => {
   it('keeps the local calendar date and omits the time for date-only APIs', () => {
     const sydneyMorning = DateTime.fromISO('2026-07-21T09:40:16.679+10:00', { setZone: true });
@@ -50,10 +54,6 @@ describe('getShortDateRange', () => {
 describe('getAlbumDate', () => {
   beforeAll(() => {
     process.env.TZ = 'UTC';
-
-    vitest.mock('$lib/stores/preferences.store', () => ({
-      locale: writable('en'),
-    }));
   });
 
   it('should work with only a start date', () => {
