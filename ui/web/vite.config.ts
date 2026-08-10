@@ -6,6 +6,53 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig, loadEnv, type ProxyOptions, type UserConfig } from 'vite';
 import path from 'node:path';
 
+const criticalCimmichCoverageThresholds = {
+  'src/lib/components/cimmich/bulk-photo-sorter.ts': { branches: 60, functions: 70, lines: 70, statements: 70 },
+  'src/lib/components/cimmich/cimmich-undo-receipt-context.svelte.ts': {
+    branches: 80,
+    functions: 100,
+    lines: 95,
+    statements: 95,
+  },
+  'src/lib/components/cimmich/entity-media-actions.ts': {
+    branches: 85,
+    functions: 90,
+    lines: 90,
+    statements: 90,
+  },
+  'src/lib/components/cimmich/observation-box-geometry.ts': {
+    branches: 80,
+    functions: 55,
+    lines: 85,
+    statements: 85,
+  },
+  'src/lib/components/cimmich/persisted-undo-receipt.ts': {
+    branches: 95,
+    functions: 100,
+    lines: 90,
+    statements: 90,
+  },
+  'src/lib/components/cimmich/person-workspace-cache.ts': {
+    branches: 75,
+    functions: 100,
+    lines: 90,
+    statements: 90,
+  },
+  'src/lib/components/cimmich/photo-viewer-presentation.ts': {
+    branches: 80,
+    functions: 90,
+    lines: 95,
+    statements: 95,
+  },
+  'src/lib/managers/cimmich-visibility-intent.ts': { branches: 80, functions: 100, lines: 80, statements: 80 },
+  'src/lib/managers/cimmich-visibility-manager.svelte.ts': {
+    branches: 100,
+    functions: 100,
+    lines: 100,
+    statements: 100,
+  },
+};
+
 export default defineConfig(({ mode }) => {
   const localEnv = loadEnv(mode, process.cwd(), '');
   const upstream = {
@@ -67,6 +114,12 @@ export default defineConfig(({ mode }) => {
       setupFiles: ['./src/test-data/setup.ts'],
       sequence: {
         hooks: 'list',
+      },
+      coverage: {
+        provider: 'v8',
+        include: Object.keys(criticalCimmichCoverageThresholds),
+        reporter: ['text-summary', 'json-summary'],
+        thresholds: criticalCimmichCoverageThresholds,
       },
       env: {
         TZ: 'UTC',

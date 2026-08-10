@@ -73,9 +73,14 @@ pnpm run format
 pnpm run lint
 pnpm run check:typescript
 pnpm run check:svelte
-pnpm run test -- --run
+pnpm run test:cov -- --run
 pnpm run build
 ```
+
+The required Web coverage gate is deliberately risk-shaped: it measures the
+privacy/session, persisted Undo, bounded-workspace, geometry and photo-viewer
+presentation modules named in `ui/web/vite.config.ts`. It is not a global
+percentage and must not be weakened or auto-updated to make a change pass.
 
 From the repository root, relevant changes may also require:
 

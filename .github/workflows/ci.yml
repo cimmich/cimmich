@@ -172,7 +172,7 @@ jobs:
 
       - name: Run web tests
         working-directory: ui/web
-        run: pnpm run test -- --run
+        run: pnpm run test:cov -- --run
 
       - name: Build production web
         working-directory: ui/web

@@ -135,9 +135,15 @@ pnpm run format
 pnpm run lint
 pnpm run check:svelte
 pnpm run check:typescript
-pnpm run test -- --run
+pnpm run test:cov -- --run
 pnpm run build
 ```
+
+`test:cov` enforces explicit per-module floors for Cimmich's critical
+privacy/session, persisted Undo, cache-bounding, geometry and viewer
+presentation paths. The scope and floors live in `ui/web/vite.config.ts`;
+expand them with behavioral proof rather than replacing them with a global
+vanity percentage or automatic threshold updates.
 
 Run the smallest affected test while iterating, then finish with the relevant
 workspace gate. Do not use a broad green suite to hide a missing focused test.

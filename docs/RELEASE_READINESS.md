@@ -20,6 +20,8 @@ Release evidence must be produced from one clean immutable commit and include:
 - privacy/publication scan and reconciled public documentation;
 - named tar/ZIP bundles plus `SHA256SUMS`, with installer preflight from both;
 - service, web, Svelte, TypeScript, formatting, lint and production build;
+- measured Web coverage floors for the named privacy/session, mutation,
+  bounded-cache, geometry and viewer-presentation paths;
 - migration, synthetic, stock-Immich and public-demo lifecycle acceptance;
 - schema-75 Patch-6 forward-upgrade and portable restore proof;
 - signed-in desktop/mobile walkthroughs of every top-level Cimmich section;
