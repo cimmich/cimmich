@@ -56,6 +56,13 @@ Forwarding cookies or actor/device headers alone is not authentication. A
 remote install still requires TLS, network access controls, and backup
 protection appropriate to its environment.
 
+The shipped same-origin gateway listens on unprivileged container port 8080
+as the nginx user. Its root filesystem is read-only, all Linux capabilities
+are dropped, privilege escalation is disabled, and nginx's bounded runtime
+state is confined to a 16 MiB `noexec,nosuid,nodev` temporary filesystem.
+These controls limit container impact; they do not make an unsupported public
+or directly LAN-exposed installation safe.
+
 Treat backups, provider artifacts, configuration volumes, and Document-store
 exports as sensitive. Keep them mode-restricted and encrypted at rest where the
 host or backup destination is shared. Restore only through the checksummed

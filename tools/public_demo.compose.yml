@@ -198,12 +198,18 @@ services:
       immich-server:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 5s
       timeout: 3s
       retries: 60
     ports:
-      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}:80
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}:8080
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     networks:
       - demo-internal
 
