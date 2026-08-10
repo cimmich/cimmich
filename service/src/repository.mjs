@@ -39,6 +39,7 @@ import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
 import { createIdentityAudit } from "./identity-audit.mjs";
 import { createFaceMatches } from "./face-match-repository.mjs";
 import { runFaceReviewComparisonBatch } from "./face-review-comparison-batch.mjs";
+import { loadFaceReviewComparisonBatch } from "./face-review-comparison-repository.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
@@ -6770,7 +6771,11 @@ export const createCimmichRepository = (
     faceReviewComparisonsBatch(input) {
       return runFaceReviewComparisonBatch({
         ...input,
-        loadComparisons: (request) => repository.faceReviewComparisons(request),
+        loadBatch: (request) =>
+          loadFaceReviewComparisonBatch(sql, {
+            ...request,
+            visibleRank: presentationRank(),
+          }),
       });
     },
 
