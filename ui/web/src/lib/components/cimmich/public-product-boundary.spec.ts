@@ -6,6 +6,7 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), 'utf8');
 describe('public Cimmich product boundary', () => {
   it('does not advertise legacy proof labs or private fixture copy from Home', async () => {
     const home = await read('../../../routes/(user)/cimmich/+page.svelte');
+    const coverEditor = await read('./CimmichHomeCoverEditor.svelte');
     expect(home).not.toMatch(/Trips lab|Activities lab|Quality control|Legacy overview/);
     expect(home).not.toContain('>Maintenance<');
     expect(home).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
@@ -16,6 +17,15 @@ describe('public Cimmich product boundary', () => {
     expect(home).not.toContain('Cimmich owns the library experience.');
     expect(home).not.toContain('Immich 3.1.0 remains the media foundation underneath.');
     expect(home).not.toContain('Models & Guided');
+    expect(home).toContain('<CimmichHomeCoverEditor');
+    expect(home).toContain("onSave={(preference) => saveCoverPreference('hero', preference)}");
+    expect(coverEditor).toContain('Change ${label} cover');
+    expect(coverEditor).toContain("label: 'Set photo'");
+    expect(coverEditor).toContain("label: 'Group'");
+    expect(coverEditor).toContain("label: 'Random from…'");
+    expect(coverEditor).toContain('selectedIds.length >= 2 && selectedIds.length <= 6');
+    expect(coverEditor).toContain("label: 'Favourites'");
+    expect(coverEditor).toContain("label: 'Visible library'");
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {

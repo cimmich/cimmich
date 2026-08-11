@@ -1,4 +1,16 @@
 <script lang="ts">
+  import CimmichHomeCoverEditor from '$lib/components/cimmich/CimmichHomeCoverEditor.svelte';
+  import { filterVisibleCimmichAssets } from '$lib/components/cimmich/asset-picker-visibility';
+  import {
+    chooseCimmichHomeRandomAssetId,
+    loadCimmichHomeCoverPreferences,
+    normalizeCimmichHomeCoverPreference,
+    resolveCimmichHomeCoverAssetIds,
+    saveCimmichHomeCoverPreference,
+    type CimmichHomeCoverPreference,
+    type CimmichHomeCoverPreferences,
+    type CimmichHomeCoverSlot,
+  } from '$lib/components/cimmich/home-cover-preferences';
   import {
     chooseCimmichHomeFeature,
     chooseCimmichHomeDistinctMedia,
@@ -12,6 +24,7 @@
   import { Route } from '$lib/route';
   import {
     getCimmichContextEntities,
+    getCimmichAssetEvidence,
     getCimmichDocuments,
     getCimmichImmichOnboardingStatus,
     getCimmichPeople,
@@ -25,7 +38,7 @@
     type CimmichSummary,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize } from '@immich/sdk';
+  import { AssetMediaSize, AssetTypeEnum, searchRandom } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiAccountOutline,
@@ -43,7 +56,7 @@
     href: string;
     icon: string;
     id: 'documents' | 'events' | 'objects' | 'people' | 'pets' | 'places';
-    mediaId: string | null;
+    mediaIds: string[];
     mediaStyle: string | null;
     name: string;
     preview: string;
@@ -60,6 +73,9 @@
   let places = $state<CimmichContextEntity[]>([]);
   let summary = $state<CimmichSummary>();
   let loadGeneration = 0;
+  let coverGeneration = 0;
+  let coverPreferences = $state<CimmichHomeCoverPreferences>({});
+  let randomCoverAssetIds = $state<Partial<Record<CimmichHomeCoverSlot, string | null>>>({});
 
   const namedPeople = $derived(people.filter((person) => person.subject_kind === 'person'));
   const firstRunPending = $derived(
@@ -69,18 +85,26 @@
   const heroAssetIds = $derived(collectCimmichHomeHeroAssets(events, places, objects, people));
   const assetUrl = (sourceAssetId: string, size = AssetMediaSize.Preview) =>
     getAssetMediaUrl({ id: sourceAssetId, size });
-  const portalMediaIds = $derived(
-    chooseCimmichHomeDistinctMedia(
-      [
-        namedPeople.map((person) => person.sourceAssetId),
-        petProfiles.map((pet) => pet.cover?.sourceAssetId),
-        places.map((place) => place.coverAssetId),
-        objects.map((object) => object.coverAssetId),
-        events.flatMap((event) => [...(event.previewAssetIds ?? []), event.coverAssetId]),
-        documents.map((document) => (document.source.kind === 'immich_asset' ? document.source.assetId : null)),
-      ],
-      heroAssetIds.slice(0, 3),
-    ),
+  const portalCandidateGroups = $derived([
+    namedPeople.map((person) => person.sourceAssetId),
+    petProfiles.map((pet) => pet.cover?.sourceAssetId),
+    places.map((place) => place.coverAssetId),
+    objects.map((object) => object.coverAssetId),
+    events.flatMap((event) => [...(event.previewAssetIds ?? []), event.coverAssetId]),
+    documents.map((document) => (document.source.kind === 'immich_asset' ? document.source.assetId : null)),
+  ]);
+  const portalMediaIds = $derived(chooseCimmichHomeDistinctMedia(portalCandidateGroups, heroAssetIds.slice(0, 3)));
+  const coverCandidateIds = $derived<Record<CimmichHomeCoverSlot, string[]>>({
+    documents: [...new Set(portalCandidateGroups[5].filter(Boolean) as string[])],
+    events: [...new Set(portalCandidateGroups[4].filter(Boolean) as string[])],
+    hero: heroAssetIds,
+    objects: [...new Set(portalCandidateGroups[3].filter(Boolean) as string[])],
+    people: [...new Set(portalCandidateGroups[0].filter(Boolean) as string[])],
+    pets: [...new Set(portalCandidateGroups[1].filter(Boolean) as string[])],
+    places: [...new Set(portalCandidateGroups[2].filter(Boolean) as string[])],
+  });
+  const resolvedHeroAssetIds = $derived(
+    resolveCimmichHomeCoverAssetIds(heroAssetIds.slice(0, 3), coverPreferences.hero, randomCoverAssetIds.hero),
   );
   const peopleCardPerson = $derived(
     namedPeople.find((person) => person.sourceAssetId === portalMediaIds[0] && cimmichHomeFaceFocus(person)) ??
@@ -95,10 +119,15 @@
       preview: cimmichHomePreviewNames(namedPeople.map((person) => person.display_name)),
       href: Route.cimmichPeople(),
       icon: mdiAccountOutline,
-      mediaId: peopleCardFocus?.sourceAssetId ?? portalMediaIds[0] ?? heroAssetIds[0] ?? null,
-      mediaStyle: peopleCardFocus
-        ? `background-image: url("${assetUrl(peopleCardFocus.sourceAssetId)}"); background-size: ${peopleCardFocus.backgroundSize}; background-position: ${peopleCardFocus.backgroundPosition};`
-        : null,
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        [peopleCardFocus?.sourceAssetId ?? portalMediaIds[0] ?? heroAssetIds[0]].filter(Boolean) as string[],
+        coverPreferences.people,
+        randomCoverAssetIds.people,
+      ),
+      mediaStyle:
+        !coverPreferences.people && peopleCardFocus
+          ? `background-image: url("${assetUrl(peopleCardFocus.sourceAssetId)}"); background-size: ${peopleCardFocus.backgroundSize}; background-position: ${peopleCardFocus.backgroundPosition};`
+          : null,
     },
     {
       id: 'pets',
@@ -107,7 +136,11 @@
       preview: cimmichHomePreviewNames(petProfiles.map((pet) => pet.displayName)),
       href: Route.cimmichPets(),
       icon: mdiPawOutline,
-      mediaId: portalMediaIds[1],
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        portalMediaIds[1] ? [portalMediaIds[1]] : [],
+        coverPreferences.pets,
+        randomCoverAssetIds.pets,
+      ),
       mediaStyle: null,
     },
     {
@@ -117,7 +150,11 @@
       preview: cimmichHomePreviewNames(places.map((place) => place.displayName)),
       href: Route.cimmichPlaces(),
       icon: mdiMapOutline,
-      mediaId: portalMediaIds[2],
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        portalMediaIds[2] ? [portalMediaIds[2]] : [],
+        coverPreferences.places,
+        randomCoverAssetIds.places,
+      ),
       mediaStyle: null,
     },
     {
@@ -127,7 +164,11 @@
       preview: cimmichHomePreviewNames(objects.map((object) => object.displayName)),
       href: Route.cimmichThings(),
       icon: mdiPackageVariantClosed,
-      mediaId: portalMediaIds[3],
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        portalMediaIds[3] ? [portalMediaIds[3]] : [],
+        coverPreferences.objects,
+        randomCoverAssetIds.objects,
+      ),
       mediaStyle: null,
     },
     {
@@ -137,7 +178,11 @@
       preview: cimmichHomePreviewNames(events.map((event) => event.displayName)),
       href: Route.cimmichEvents(),
       icon: mdiCalendarBlankOutline,
-      mediaId: portalMediaIds[4],
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        portalMediaIds[4] ? [portalMediaIds[4]] : [],
+        coverPreferences.events,
+        randomCoverAssetIds.events,
+      ),
       mediaStyle: null,
     },
     {
@@ -147,7 +192,11 @@
       preview: cimmichHomePreviewNames(documents.map((document) => document.displayTitle)),
       href: Route.cimmichDocuments(),
       icon: mdiFileDocumentOutline,
-      mediaId: portalMediaIds[5],
+      mediaIds: resolveCimmichHomeCoverAssetIds(
+        portalMediaIds[5] ? [portalMediaIds[5]] : [],
+        coverPreferences.documents,
+        randomCoverAssetIds.documents,
+      ),
       mediaStyle: null,
     },
   ]);
@@ -156,10 +205,117 @@
     featuredEvent ? cimmichHomeEntityHref('events', featuredEvent.entityId) : Route.cimmichEvents(),
   );
 
+  const coverGridClass = (count: number) =>
+    count <= 2
+      ? 'grid-cols-2'
+      : count <= 3
+        ? 'grid-cols-3'
+        : count === 4
+          ? 'grid-cols-2 grid-rows-2'
+          : 'grid-cols-3 grid-rows-2';
+
+  const browserStorage = () => {
+    try {
+      return globalThis.localStorage;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const refreshRandomCovers = async (
+    preferences: CimmichHomeCoverPreferences,
+    candidates: Record<CimmichHomeCoverSlot, string[]>,
+  ) => {
+    const generation = ++coverGeneration;
+    const randomEntries = Object.entries(preferences).filter(
+      (entry): entry is [CimmichHomeCoverSlot, CimmichHomeCoverPreference] => entry[1]?.mode === 'random',
+    );
+    const needsFavorites = randomEntries.some(([, preference]) => preference.randomScope === 'favorites');
+    const needsLibrary = randomEntries.some(([, preference]) => preference.randomScope === 'library');
+    const loadPool = async (favorite: boolean) => {
+      const assets = await searchRandom({
+        randomSearchDto: { isFavorite: favorite || undefined, isOffline: false, size: 12, type: AssetTypeEnum.Image },
+      });
+      return filterVisibleCimmichAssets(
+        assets.filter((asset) => !asset.isTrashed && !asset.isOffline),
+        getCimmichAssetEvidence,
+      );
+    };
+    try {
+      const [favorites, library] = await Promise.all([
+        needsFavorites ? loadPool(true) : Promise.resolve([]),
+        needsLibrary ? loadPool(false) : Promise.resolve([]),
+      ]);
+      if (generation !== coverGeneration) {
+        return;
+      }
+      const next: Partial<Record<CimmichHomeCoverSlot, string | null>> = {};
+      for (const [slot, preference] of randomEntries) {
+        const pool =
+          preference.randomScope === 'favorites'
+            ? favorites.map((asset) => asset.id)
+            : preference.randomScope === 'library'
+              ? library.map((asset) => asset.id)
+              : candidates[slot];
+        next[slot] = chooseCimmichHomeRandomAssetId(pool);
+      }
+      randomCoverAssetIds = next;
+    } catch {
+      if (generation === coverGeneration) {
+        randomCoverAssetIds = {};
+      }
+    }
+  };
+
+  const loadSavedCovers = async (generation: number) => {
+    const stored = loadCimmichHomeCoverPreferences(browserStorage(), cimmichVisibilityManager.viewingMode);
+    const manualAssetIds = [
+      ...new Set(
+        Object.values(stored).flatMap((preference) =>
+          preference?.mode === 'single' || preference?.mode === 'group' ? preference.assetIds : [],
+        ),
+      ),
+    ];
+    const visibleManualAssets = await filterVisibleCimmichAssets(
+      manualAssetIds.map((id) => ({ id })),
+      getCimmichAssetEvidence,
+    );
+    const visibleManualIds = new Set(visibleManualAssets.map((asset) => asset.id));
+    const validatedEntries = Object.entries(stored).map(([slot, preference]) => {
+      if (!preference || preference.mode === 'random') {
+        return [slot, preference] as const;
+      }
+      const normalized = normalizeCimmichHomeCoverPreference({
+        ...preference,
+        assetIds: preference.assetIds.filter((id) => visibleManualIds.has(id)),
+      });
+      return [slot, normalized ?? undefined] as const;
+    });
+    if (generation !== loadGeneration) {
+      return;
+    }
+    const next = Object.fromEntries(validatedEntries.filter((entry) => entry[1])) as CimmichHomeCoverPreferences;
+    coverPreferences = next;
+    await refreshRandomCovers(next, coverCandidateIds);
+  };
+
+  const saveCoverPreference = (slot: CimmichHomeCoverSlot, preference: CimmichHomeCoverPreference) => {
+    const next = saveCimmichHomeCoverPreference(
+      browserStorage(),
+      cimmichVisibilityManager.viewingMode,
+      slot,
+      preference,
+    );
+    coverPreferences = next;
+    void refreshRandomCovers(next, coverCandidateIds);
+  };
+
   const loadHome = () => {
     const generation = ++loadGeneration;
     loaded = false;
     loadError = '';
+    coverPreferences = {};
+    randomCoverAssetIds = {};
     void Promise.all([
       getCimmichSummary(),
       getCimmichPeople(500),
@@ -183,6 +339,7 @@
           events = nextEvents;
           documents = nextDocuments.items;
           onboardingStatus = nextOnboarding;
+          void loadSavedCovers(generation);
         },
       )
       .catch((error) => {
@@ -263,18 +420,26 @@
         class="relative min-h-104 overflow-hidden rounded-4xl bg-[#101715] text-white shadow-sm sm:min-h-112"
         aria-labelledby="cimmich-home-feature-heading"
       >
-        {#if heroAssetIds.length > 0}
-          <div class="absolute inset-0 grid grid-cols-1 sm:grid-cols-[minmax(0,1.55fr)_minmax(9rem,0.55fr)]">
-            <img class="size-full object-cover" src={assetUrl(heroAssetIds[0])} alt="" />
-            <div class="hidden grid-rows-2 gap-1 p-1 pl-0 sm:grid">
-              {#if heroAssetIds[1]}
-                <img class="size-full min-h-0 object-cover" src={assetUrl(heroAssetIds[1])} alt="" />
-              {/if}
-              {#if heroAssetIds[2]}
-                <img class="size-full min-h-0 object-cover" src={assetUrl(heroAssetIds[2])} alt="" />
-              {/if}
+        {#if resolvedHeroAssetIds.length > 0}
+          {#if coverPreferences.hero?.mode === 'group'}
+            <div class={`absolute inset-0 grid gap-1 ${coverGridClass(resolvedHeroAssetIds.length)}`}>
+              {#each resolvedHeroAssetIds as id (id)}
+                <img class="size-full min-h-0 object-cover" src={assetUrl(id)} alt="" />
+              {/each}
             </div>
-          </div>
+          {:else}
+            <div class="absolute inset-0 grid grid-cols-1 sm:grid-cols-[minmax(0,1.55fr)_minmax(9rem,0.55fr)]">
+              <img class="size-full object-cover" src={assetUrl(resolvedHeroAssetIds[0])} alt="" />
+              <div class="hidden grid-rows-2 gap-1 p-1 pl-0 sm:grid">
+                {#if resolvedHeroAssetIds[1]}
+                  <img class="size-full min-h-0 object-cover" src={assetUrl(resolvedHeroAssetIds[1])} alt="" />
+                {/if}
+                {#if resolvedHeroAssetIds[2]}
+                  <img class="size-full min-h-0 object-cover" src={assetUrl(resolvedHeroAssetIds[2])} alt="" />
+                {/if}
+              </div>
+            </div>
+          {/if}
           <div class="absolute inset-0 bg-linear-to-t from-black via-black/35 to-black/5"></div>
           <div class="absolute inset-0 bg-linear-to-r from-black/55 via-transparent to-transparent"></div>
         {:else}
@@ -282,6 +447,14 @@
             class="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(79,222,154,0.19),transparent_36%),radial-gradient(circle_at_82%_82%,rgba(124,105,239,0.22),transparent_42%)]"
           ></div>
         {/if}
+
+        <CimmichHomeCoverEditor
+          slot="hero"
+          label="featured story"
+          candidateAssetIds={coverCandidateIds.hero}
+          preference={coverPreferences.hero}
+          onSave={(preference) => saveCoverPreference('hero', preference)}
+        />
 
         <div class="relative flex min-h-104 flex-col justify-between p-6 sm:min-h-112 sm:p-9">
           <div class="flex items-start gap-3">
@@ -331,12 +504,22 @@
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {#each portalCards as portal (portal.id)}
-          <a
+          <div
             class="group relative min-h-48 overflow-hidden rounded-3xl border border-gray-200 bg-[#171b20] text-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-immich-dark-gray"
-            href={portal.href}
           >
-            {#if portal.mediaId}
-              {#if portal.mediaStyle}
+            <a class="absolute inset-0 z-10" href={portal.href} aria-label={`Open ${portal.name}`}></a>
+            {#if portal.mediaIds.length > 1}
+              <div class={`absolute inset-0 grid gap-0.5 ${coverGridClass(portal.mediaIds.length)}`}>
+                {#each portal.mediaIds as id (id)}
+                  <img
+                    class="size-full min-h-0 object-cover transition duration-500 group-hover:scale-[1.025]"
+                    src={assetUrl(id)}
+                    alt=""
+                  />
+                {/each}
+              </div>
+            {:else if portal.mediaIds[0]}
+              {#if portal.mediaStyle && !coverPreferences[portal.id]}
                 <div
                   class="absolute inset-0 size-full bg-cover bg-center bg-no-repeat transition duration-500 group-hover:scale-[1.025]"
                   style={portal.mediaStyle}
@@ -344,7 +527,7 @@
               {:else}
                 <img
                   class="absolute inset-0 size-full object-cover transition duration-500 group-hover:scale-[1.025]"
-                  src={assetUrl(portal.mediaId)}
+                  src={assetUrl(portal.mediaIds[0])}
                   alt=""
                 />
               {/if}
@@ -354,7 +537,14 @@
               ></div>
             {/if}
             <div class="absolute inset-0 bg-linear-to-t from-black/95 via-black/35 to-black/5"></div>
-            <div class="relative flex min-h-48 flex-col justify-between p-4">
+            <CimmichHomeCoverEditor
+              slot={portal.id}
+              label={portal.name}
+              candidateAssetIds={coverCandidateIds[portal.id]}
+              preference={coverPreferences[portal.id]}
+              onSave={(preference) => saveCoverPreference(portal.id, preference)}
+            />
+            <div class="pointer-events-none relative z-10 flex min-h-48 flex-col justify-between p-4">
               <span
                 class="flex size-9 items-center justify-center rounded-xl border border-white/20 bg-black/30 backdrop-blur-md"
               >
@@ -373,7 +563,7 @@
                 </div>
               </div>
             </div>
-          </a>
+          </div>
         {/each}
       </div>
     </section>
