@@ -298,10 +298,14 @@ export const runBodies = async ({ asset, config }) => {
         assetToken,
         imagePath: asset.path,
         inputRevision: digest({
+          presentationRotationQuarterTurns:
+            asset.presentationRotationQuarterTurns,
           sourceContentDigest: asset.sourceContentDigest,
         }),
         manifestPath: config.manifestPath,
         modelPath: config.modelPath,
+        presentationRotationQuarterTurns:
+          asset.presentationRotationQuarterTurns,
         schemaVersion: "cimmich.ultralytics-yolo-body-request.v1",
         sourceContentDigest: asset.sourceContentDigest,
       },
@@ -410,8 +414,12 @@ export const runBodiesBatch = async ({ assets, config }) => {
         JSON.stringify({
           assetToken: digest({ assetId: asset.assetId }),
           inputRevision: digest({
+            presentationRotationQuarterTurns:
+              asset.presentationRotationQuarterTurns,
             sourceContentDigest: asset.sourceContentDigest,
           }),
+          presentationRotationQuarterTurns:
+            asset.presentationRotationQuarterTurns,
           schemaVersion: "cimmich.ultralytics-yolo-body-resident-request.v1",
           sourceContentDigest: asset.sourceContentDigest,
         }),
@@ -710,6 +718,8 @@ export const renderOverlay = async ({
         dataPath,
         "--output",
         outputPath,
+        "--rotate-quarter-turns",
+        String(asset.presentationRotationQuarterTurns),
       ],
       command: config.pythonPath,
       timeoutMs: config.timeoutMs,

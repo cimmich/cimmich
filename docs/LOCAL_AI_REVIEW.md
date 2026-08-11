@@ -130,6 +130,9 @@ geometry review from silently acquiring cross-photo identity-support behavior.
 On Linux/amd64, `compose.local-ai-body.yaml` builds the exact optional CPU
 runtime and points the API at `body/yolo11n.pt` plus
 `body/yolo11n-cpu.json` in the existing read-only Local AI model volume. The
+accepted X1 manifest uses the measured 1024px/four-thread profile. Saved Cimmich
+quarter-turns are applied for inference and review presentation while model
+boxes remain in source coordinates for exact comparison. The
 checkpoint and manifest remain deployment-owned and are not copied into the
 image or release source. The provider enforces the manifest's declared CPU
 thread budget; choose that budget from measured host acceptance rather than

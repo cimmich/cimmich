@@ -9,15 +9,26 @@ checkpoint. The Cedar House validation artifact remains local-only because its
 download/provenance record is incomplete even though its filename matches an
 Ultralytics model.
 
-The first measured profiles are intentionally separate: a high-compute 1024px detector for best human-count agreement and a 640px profile for lower latency. Pose/keypoint enrichment is a distinct replaceable stage; this detector does not pretend a detection-only checkpoint produced pose evidence.
+The accepted X1 profile is the 1024px detector for small and crowded people.
+On the representative private slice it completed 11 photos in about 0.61 seconds
+after warm-up at four CPU threads, retained more true people than 640px, and
+kept the empty landscape negative empty. Pose/keypoint enrichment is a distinct
+replaceable stage; this detector does not pretend a detection-only checkpoint
+produced pose evidence.
 
-Provider V2 reproduces the calibrated threshold law: inference retains person
+When Cimmich has a saved quarter-turn correction, inference uses that corrected
+presentation while returned boxes remain in immutable source coordinates. The
+review overlay then applies the same presentation turn. This preserves exact
+comparison with saved Face/Body geometry without asking the detector to reason
+over a sideways photo.
+
+Provider V3 retains V2's calibrated threshold law: inference keeps person
 candidates from the fixed 0.05 raw-confidence floor with a maximum of 100 raw
 detections, then applies the manifest's accepted score threshold after NMS.
 Passing the accepted threshold into inference changes NMS behavior on crowded
 images and is forbidden by the provider tests. The manifest provider version
-binds this execution semantic; every threshold still requires its own config
-digest and evaluation.
+binds this execution semantic plus correction-aware presentation; every
+threshold still requires its own config digest and evaluation.
 
 The Linux/amd64 private deployment may build the optional CPU runtime through
 `compose.local-ai-body.yaml`. This adds pinned Ultralytics, Torch and

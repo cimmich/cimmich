@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -177,6 +184,7 @@ test("Local AI completes a bounded derived run and re-verifies the source before
     .update(artifactBytes)
     .digest("hex");
   let fingerprintDigest = sourceDigest;
+  let observedSet;
   try {
     const enhanceModel = join(root, "enhance.onnx");
     await writeFile(enhanceModel, "private-test-model");
@@ -186,6 +194,9 @@ test("Local AI completes a bounded derived run and re-verifies the source before
       child.stderr = new PassThrough();
       child.kill = () => true;
       setImmediate(async () => {
+        observedSet = JSON.parse(
+          await readFile(args[args.indexOf("--set") + 1], "utf8"),
+        );
         child.stderr.write(
           'CIMMICH_LOCAL_AI_PROGRESS {"completedUnits":1,"operation":"quick","schemaVersion":"cimmich.local-ai-progress.v1","stage":"sharpening","totalUnits":3}\n',
         );
@@ -247,6 +258,7 @@ test("Local AI completes a bounded derived run and re-verifies the source before
           bodies: [],
           capture_time: null,
           faces: [],
+          rotation_quarter_turns: 3,
         }),
         filterPresentableAssetSourceIds: async ({ sourceAssetIds }) => ({
           sourceAssetIds,
@@ -279,6 +291,7 @@ test("Local AI completes a bounded derived run and re-verifies the source before
     });
     assert.deepEqual(completed.artifactTokens, [`${assetId}:quick`]);
     assert.equal(completed.result.originalsUnchanged, true);
+    assert.equal(observedSet.assets[0].presentationRotationQuarterTurns, 3);
     const artifact = await service.artifact({
       jobId: started.jobId,
       token: `${assetId}:quick`,

@@ -63,7 +63,7 @@
       id: 'bodies' as const,
       available: selectionAllowed && (status?.capabilities.bodies ?? false),
       title: 'Look for missed Bodies',
-      detail: 'Requires a separately configured local Body model.',
+      detail: 'Runs the high-detail local detector and compares it with saved Body boxes.',
     },
     {
       id: 'scene-text' as const,
@@ -101,6 +101,12 @@
     const assets = job?.result?.assets ?? [];
     const detected = assets.reduce((sum, asset) => sum + (asset.operations?.faces?.faces?.length ?? 0), 0);
     const added = assets.reduce((sum, asset) => sum + (asset.baselineComparison?.faces?.added?.length ?? 0), 0);
+    return { added, detected };
+  });
+  const bodySummary = $derived.by(() => {
+    const assets = job?.result?.assets ?? [];
+    const detected = assets.reduce((sum, asset) => sum + (asset.operations?.bodies?.bodies?.length ?? 0), 0);
+    const added = assets.reduce((sum, asset) => sum + (asset.baselineComparison?.bodies?.added?.length ?? 0), 0);
     return { added, detected };
   });
 
@@ -300,6 +306,9 @@
           {/if}
           {#if job.operation === 'faces' && finished && job.result}
             <span>{faceSummary.detected} detected · {faceSummary.added} not in the saved Face boxes</span>
+          {/if}
+          {#if job.operation === 'bodies' && finished && job.result}
+            <span>{bodySummary.detected} detected · {bodySummary.added} not in the saved Body boxes</span>
           {/if}
           {#if job.result?.summary?.text && job.operation === 'context'}
             <p>{job.result.summary.text}</p>

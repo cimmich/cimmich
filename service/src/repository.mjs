@@ -6728,10 +6728,15 @@ export const createCimmichRepository = (
     async assetEvidence({ sourceAssetId }) {
       const linked = await resolveVisibleAssetDisplay(sourceAssetId);
       const [asset] = await sql`
-      SELECT asset_id, capture_time, height, media_kind, mime_type, width
+      SELECT asset.asset_id, asset.capture_time, asset.height, asset.media_kind,
+        asset.mime_type, asset.width,
+        coalesce(rotation.rotation_quarter_turns, 0)::int AS rotation_quarter_turns
       FROM asset
-      WHERE asset_id = ${linked.assetId} AND state = 'active'
-        AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
+      LEFT JOIN current_asset_correction rotation
+        ON rotation.asset_id = asset.asset_id
+        AND rotation.correction_kind = 'rotation'
+      WHERE asset.asset_id = ${linked.assetId} AND asset.state = 'active'
+        AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
     `;
       if (!asset)
         throw Object.assign(new Error("Cimmich asset not found"), {

@@ -781,6 +781,8 @@ def overlay(args: argparse.Namespace) -> None:
             draw.rectangle(points, outline=color, width=4)
             label = f"{kind[:-1].title()} {index + 1}"
             draw.text((points[0] + 4, max(0, points[1] - 14)), label, fill=color, font=font, stroke_width=2, stroke_fill="black")
+    if args.rotate_quarter_turns:
+        image = image.rotate(-90 * args.rotate_quarter_turns, expand=True)
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output, format="PNG")
@@ -806,6 +808,9 @@ def main() -> None:
     overlay_parser.add_argument("--input", required=True)
     overlay_parser.add_argument("--data", required=True)
     overlay_parser.add_argument("--output", required=True)
+    overlay_parser.add_argument(
+        "--rotate-quarter-turns", required=True, type=int, choices=range(4)
+    )
     args = parser.parse_args()
     if args.command == "probe":
         probe()

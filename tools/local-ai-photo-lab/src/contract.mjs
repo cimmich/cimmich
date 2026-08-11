@@ -385,6 +385,7 @@ export const validatePhotoSet = async (input, limits) => {
       "bodyAssignments",
       "captureTime",
       "path",
+      "presentationRotationQuarterTurns",
     ]);
     if (Object.keys(raw).some((key) => !allowed.has(key)))
       throw typedError(`assets[${index}] has unsupported fields`);
@@ -420,6 +421,18 @@ export const validatePhotoSet = async (input, limits) => {
     if (captureTime && Number.isNaN(captureTime.valueOf())) {
       throw typedError(`assets[${index}].captureTime must be an ISO timestamp`);
     }
+    const presentationRotationQuarterTurns = Number(
+      raw.presentationRotationQuarterTurns ?? 0,
+    );
+    if (
+      !Number.isInteger(presentationRotationQuarterTurns) ||
+      presentationRotationQuarterTurns < 0 ||
+      presentationRotationQuarterTurns > 3
+    ) {
+      throw typedError(
+        `assets[${index}].presentationRotationQuarterTurns must be 0-3`,
+      );
+    }
     if (
       Object.keys(bodyAssignments).some(
         (subject) => !acceptedSubjects.includes(subject),
@@ -447,6 +460,7 @@ export const validatePhotoSet = async (input, limits) => {
       bodyAssignments,
       captureTime: captureTime?.toISOString() ?? null,
       path,
+      presentationRotationQuarterTurns,
       sourceContentDigest,
       sourceSize: info.size,
     });
@@ -483,6 +497,7 @@ export const publicAsset = ({
   basename: name,
   bodyAssignments,
   captureTime,
+  presentationRotationQuarterTurns,
   sourceContentDigest,
   sourceSize,
 }) => ({
@@ -492,6 +507,7 @@ export const publicAsset = ({
   basename: name,
   bodyAssignments,
   captureTime,
+  presentationRotationQuarterTurns,
   sourceContentDigest,
   sourceSize,
 });

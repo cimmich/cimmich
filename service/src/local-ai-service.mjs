@@ -504,6 +504,9 @@ export const createLocalAiService = async ({
           },
           captureTime: evidence.capture_time,
           path: inputPath,
+          presentationRotationQuarterTurns: Number(
+            evidence.rotation_quarter_turns || 0,
+          ),
         });
         job.progress = {
           completedAssets: index + 1,

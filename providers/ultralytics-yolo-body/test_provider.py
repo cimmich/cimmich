@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import provider
+import numpy as np
 
 
 class Tensor:
@@ -92,7 +93,7 @@ class ProviderTest(unittest.TestCase):
                     "resizeMode": "letterbox",
                 },
                 "privacy": {"externalUpload": "none", "sourceMedia": "local-read-only"},
-                "provider": {"providerId": "ultralytics-yolo-body", "versionId": "v2"},
+                "provider": {"providerId": "ultralytics-yolo-body", "versionId": "v3"},
                 "resources": {"maxMemoryMiB": 1024, "maxRuntimeMs": 60000},
                 "schemaVersion": "cimmich.body-detector.v1",
             }
@@ -105,6 +106,7 @@ class ProviderTest(unittest.TestCase):
                 "inputRevision": "b" * 64,
                 "manifestPath": str(manifest_path),
                 "modelPath": str(model),
+                "presentationRotationQuarterTurns": 0,
                 "schemaVersion": provider.REQUEST_SCHEMA,
                 "sourceContentDigest": hashlib.sha256(b"image").hexdigest(),
             }
@@ -134,12 +136,32 @@ class ProviderTest(unittest.TestCase):
             "inputRevision": "b" * 64,
             "manifestPath": "/tmp/manifest",
             "modelPath": "/tmp/model",
+            "presentationRotationQuarterTurns": 0,
             "schemaVersion": provider.REQUEST_SCHEMA,
             "sourceContentDigest": "c" * 64,
         }
         provider.load_request(json.dumps(base).encode())
         with self.assertRaises(provider.ProviderError):
             provider.load_request(json.dumps({**base, "name": "private"}).encode())
+
+    def test_corrected_presentation_boxes_map_back_to_source_coordinates(self):
+        presented = {"x": 0.2, "y": 0.1, "w": 0.3, "h": 0.4}
+        self.assertEqual(
+            provider.source_box(presented, 1),
+            {"x": 0.1, "y": 0.5, "w": 0.4, "h": 0.3},
+        )
+        self.assertEqual(
+            provider.source_box(presented, 2),
+            {"x": 0.5, "y": 0.5, "w": 0.3, "h": 0.4},
+        )
+        self.assertEqual(
+            provider.source_box(presented, 3),
+            {"x": 0.5, "y": 0.2, "w": 0.4, "h": 0.3},
+        )
+        with self.assertRaises(provider.ProviderError):
+            provider.validate_quarter_turns(4)
+        image = np.zeros((20, 40, 3), dtype=np.uint8)
+        self.assertEqual(provider.presentation_image(image, 1).shape, (40, 20, 3))
 
 
 if __name__ == "__main__":

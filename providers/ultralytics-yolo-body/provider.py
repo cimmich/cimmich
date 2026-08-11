@@ -78,6 +78,7 @@ def load_request(raw: bytes) -> dict:
             "inputRevision",
             "manifestPath",
             "modelPath",
+            "presentationRotationQuarterTurns",
             "schemaVersion",
             "sourceContentDigest",
         },
@@ -90,6 +91,13 @@ def load_request(raw: bytes) -> dict:
     for field in ("imagePath", "manifestPath", "modelPath"):
         if not isinstance(value[field], str) or not value[field] or "\x00" in value[field]:
             raise ProviderError(f"{field} is invalid")
+    validate_quarter_turns(value["presentationRotationQuarterTurns"])
+    return value
+
+
+def validate_quarter_turns(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 3:
+        raise ProviderError("presentation rotation is invalid")
     return value
 
 
@@ -147,11 +155,46 @@ def round6(value: float) -> float:
     return round(max(0.0, min(1.0, float(value))), 6)
 
 
+def source_box(box: dict, quarter_turns: int) -> dict:
+    """Map a box from the corrected presentation back to source coordinates."""
+    x, y, width, height = box["x"], box["y"], box["w"], box["h"]
+    if quarter_turns == 1:
+        return {"x": y, "y": 1 - x - width, "w": height, "h": width}
+    if quarter_turns == 2:
+        return {"x": 1 - x - width, "y": 1 - y - height, "w": width, "h": height}
+    if quarter_turns == 3:
+        return {"x": 1 - y - height, "y": x, "w": height, "h": width}
+    return box
+
+
+def presentation_image(image_input: Any, quarter_turns: int) -> Any:
+    if quarter_turns == 0:
+        return image_input
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        if isinstance(image_input, (str, Path)):
+            with Image.open(image_input) as opened:
+                image = np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
+        else:
+            image = np.asarray(image_input)
+        return np.rot90(image, k=-quarter_turns).copy()
+    except (OSError, ValueError) as error:
+        raise ProviderError(
+            "source media is not a readable image",
+            "ULTRALYTICS_BODY_SOURCE_UNREADABLE",
+        ) from error
+
+
 def project_result(request: dict, manifest: dict, model: Any, image_input: Any) -> dict:
+    quarter_turns = validate_quarter_turns(
+        request["presentationRotationQuarterTurns"]
+    )
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
     results = model.predict(
-        image_input,
+        presentation_image(image_input, quarter_turns),
         classes=[0],
         conf=RAW_CONFIDENCE_FLOOR,
         device=runtime_device,
@@ -175,14 +218,18 @@ def project_result(request: dict, manifest: dict, model: Any, image_input: Any) 
             if float(confidence) < manifest["detector"]["scoreThreshold"]:
                 continue
             x1, y1, x2, y2 = coords
+            box = source_box(
+                {
+                    "h": (y2 - y1) / height,
+                    "w": (x2 - x1) / width,
+                    "x": x1 / width,
+                    "y": y1 / height,
+                },
+                quarter_turns,
+            )
             bodies.append(
                 {
-                    "box": {
-                        "h": round6((y2 - y1) / height),
-                        "w": round6((x2 - x1) / width),
-                        "x": round6(x1 / width),
-                        "y": round6(y1 / height),
-                    },
+                    "box": {key: round6(box[key]) for key in ("h", "w", "x", "y")},
                     "confidence": round6(confidence),
                 }
             )
@@ -223,6 +270,7 @@ def load_resident_request(value: Any) -> dict:
         {
             "assetToken",
             "inputRevision",
+            "presentationRotationQuarterTurns",
             "schemaVersion",
             "sourceContentDigest",
         },
@@ -232,6 +280,7 @@ def load_resident_request(value: Any) -> dict:
         raise ProviderError("resident request schema is invalid")
     for field in ("assetToken", "inputRevision", "sourceContentDigest"):
         digest_string(value[field], field)
+    validate_quarter_turns(value["presentationRotationQuarterTurns"])
     return value
 
 

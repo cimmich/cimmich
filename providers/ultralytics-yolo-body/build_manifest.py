@@ -65,7 +65,7 @@ def build(args: argparse.Namespace) -> dict:
         },
         "provider": {
             "providerId": "ultralytics-yolo-body",
-            "versionId": "v2",
+            "versionId": "v3",
         },
         "resources": {
             "maxMemoryMiB": args.max_memory_mib,
