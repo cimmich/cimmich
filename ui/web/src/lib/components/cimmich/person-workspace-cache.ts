@@ -11,10 +11,12 @@ import type {
   CimmichPersonPresentation,
 } from '$lib/services/cimmich.service';
 import type { CimmichKnownPersonClusterSuggestion } from '$lib/services/possible-people.service';
+import type { CimmichPersonAppearanceAssets } from './person-identity-workspace';
 
 export type CachedPersonWorkspace = {
   assets: CimmichPersonAsset[];
   assetsNextCursor: string | null;
+  appearanceAssets: CimmichPersonAppearanceAssets;
   candidates: CimmichIdentityCandidate[];
   corrections: CimmichIdentityCorrectionDiscovery['items'];
   exploreFilterKey: string;

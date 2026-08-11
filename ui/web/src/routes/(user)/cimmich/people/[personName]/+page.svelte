@@ -17,6 +17,11 @@
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { CimmichPersonExploreController } from '$lib/components/cimmich/person-explore-controller.svelte';
   import {
+    cimmichIdentityAdvancedFilters,
+    emptyPersonAppearanceAssets,
+    loadPersonAppearanceAssets,
+  } from '$lib/components/cimmich/person-identity-workspace';
+  import {
     restoreIdentityMoveUndo,
     storeIdentityMoveUndo,
     type CimmichIdentityMoveUndo,
@@ -215,6 +220,7 @@
   let cimmichPhotoSize = $state<PersonPhotoSize>('medium');
   let cimmichPhotoSort = $state<PersonPhotoSort>('newest');
   let cimmichAssets = $state<CimmichPersonAsset[]>([]);
+  let cimmichAppearanceAssets = $state(emptyPersonAppearanceAssets());
   let cimmichPhotoSelectionMode = $state(false);
   let cimmichSelectedPhotoIds = $state<string[]>([]);
   let cimmichAssetsLoadingMore = $state(false);
@@ -434,18 +440,6 @@
     { id: 'all', label: 'Identity observations', description: 'Faces currently accepted as this person' },
     { id: 'references', label: 'Face evidence', description: 'Core and supporting identity evidence' },
     { id: 'needs_qc', label: 'Needs attention', description: 'Quality flags in the loaded observations' },
-  ];
-  const cimmichIdentityAdvancedFilters: Array<{
-    id: CimmichIdentityFilter;
-    label: string;
-    description: string;
-  }> = [
-    { id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' },
-    { id: 'secondary', label: 'Supporting', description: 'Remaining usable Face evidence' },
-    { id: 'lq', label: 'Low quality', description: 'Condition-routed Face evidence' },
-    { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
-    { id: 'body', label: 'Body', description: 'Body-only until a Face or Head is confirmed' },
-    { id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' },
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
 
@@ -712,19 +706,11 @@
   });
   const cimmichMainBucket = (face: CimmichIdentityFace) => face.main_evidence_tier;
   const cimmichMatchingBucket = (face: CimmichIdentityFace) => face.matching_reference_tier;
-  const cimmichBodyAssets = $derived(
-    cimmichAssets.filter(
-      ({ association_types }) => association_types.includes('body') || association_types.includes('body_candidate'),
-    ),
-  );
-  const cimmichPresenceAssets = $derived(
-    cimmichAssets.filter(({ association_types }) => association_types.includes('presence')),
-  );
   const cimmichSelectedAppearanceAssets = $derived(
     cimmichIdentityFilter === 'body'
-      ? cimmichBodyAssets
+      ? cimmichAppearanceAssets.body
       : cimmichIdentityFilter === 'presence'
-        ? cimmichPresenceAssets
+        ? cimmichAppearanceAssets.presence
         : [],
   );
   const cimmichPresentationSelectionCount = $derived(
@@ -751,8 +737,8 @@
       label: 'Appearance',
       filters: [
         { id: 'head', label: 'Head', count: cimmichIdentityFaceSummary.head.toLocaleString() },
-        { id: 'body', label: 'Body', count: cimmichBodyAssets.length.toLocaleString() },
-        { id: 'presence', label: 'Presence', count: cimmichPresenceAssets.length.toLocaleString() },
+        { id: 'body', label: 'Body', count: cimmichAppearanceAssets.bodyTotal.toLocaleString() },
+        { id: 'presence', label: 'Presence', count: cimmichAppearanceAssets.presenceTotal.toLocaleString() },
       ],
     },
     {
@@ -2110,14 +2096,16 @@
       return;
     }
     const generation = personProjectionGeneration;
-    const [page, row] = await Promise.all([
+    const [page, row, appearanceAssets] = await Promise.all([
       getCimmichIdentityFacesPage(cimmichPerson.person_id, 1),
       getCimmichPersonByName(data.personName, data.personId),
+      loadPersonAppearanceAssets(cimmichPerson.person_id),
     ]);
     if (generation !== personProjectionGeneration) {
       return;
     }
     cimmichIdentityFaceSummary = page.summary;
+    cimmichAppearanceAssets = appearanceAssets;
     cimmichIdentityLoaded = true;
     if (row) {
       cimmichPerson = row;
@@ -2129,15 +2117,17 @@
       return;
     }
     const generation = personProjectionGeneration;
-    const [page, row, corrections] = await Promise.all([
+    const [page, row, corrections, appearanceAssets] = await Promise.all([
       getCimmichIdentityFacesPage(cimmichPerson.person_id, 24),
       getCimmichPersonByName(data.personName, data.personId),
       getCimmichIdentityCorrectionDiscovery({ personId: cimmichPerson.person_id }, { limit: 12 }),
+      loadPersonAppearanceAssets(cimmichPerson.person_id),
     ]);
     if (generation !== personProjectionGeneration) {
       return;
     }
     cimmichIdentityFaces = page.items;
+    cimmichAppearanceAssets = appearanceAssets;
     cimmichIdentityFaceSummary = page.summary;
     cimmichIdentityNextCursor = page.nextCursor;
     cimmichIdentityLoaded = true;
@@ -2229,6 +2219,7 @@
       const [
         facesPage,
         assetsPage,
+        appearanceAssets,
         candidates,
         presentation,
         untaggedAudit,
@@ -2239,6 +2230,7 @@
         cimmichAssets.length > 0
           ? Promise.resolve({ items: cimmichAssets, nextCursor: cimmichAssetsNextCursor })
           : cimmichExplore.getAssetsPage(personId),
+        loadPersonAppearanceAssets(personId),
         getCimmichPersonCandidates(personId),
         getCimmichPersonPresentation(personId),
         getCimmichIdentityAuditItems('untagged_match', 0, 50, personId),
@@ -2251,6 +2243,7 @@
         return;
       }
       cimmichIdentityFaces = facesPage.items;
+      cimmichAppearanceAssets = appearanceAssets;
       cimmichIdentityFaceSummary = facesPage.summary;
       cimmichIdentityNextCursor = facesPage.nextCursor;
       cimmichIdentityLoaded = true;
@@ -2941,6 +2934,7 @@
     if (cached?.exploreFilterKey === expectedExploreKey) {
       cimmichPerson = cached.person;
       cimmichAssets = cached.assets;
+      cimmichAppearanceAssets = cached.appearanceAssets;
       cimmichAssetsNextCursor = cached.assetsNextCursor;
       cimmichCandidates = cached.candidates;
       cimmichIdentityCorrections = cached.corrections;
@@ -2967,6 +2961,7 @@
     cimmichConnectionSavingId = '';
     cimmichConnectionUndoDecisionId = '';
     cimmichAssets = [];
+    cimmichAppearanceAssets = emptyPersonAppearanceAssets();
     cimmichAssetsNextCursor = null;
     cimmichExplore.resetCachedResult();
     cimmichIdentityLoaded = false;
@@ -3009,6 +3004,7 @@
     writePersonWorkspaceCache<CachedPersonWorkspace>(cimmichWorkspaceCacheKey(), {
       assets: cimmichAssets,
       assetsNextCursor: cimmichAssetsNextCursor,
+      appearanceAssets: cimmichAppearanceAssets,
       candidates: cimmichCandidates,
       corrections: cimmichIdentityCorrections,
       exploreFilterKey: cimmichExplore.key,

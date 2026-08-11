@@ -8,6 +8,7 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/identity-audit-correction-controller.svelte.ts', 'utf8'),
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-workspace-navigation.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
@@ -146,6 +147,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('Show 20 more');
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
     expect(source).toContain('cimmichExplore.getAssetsPage(personId)');
+    expect(source).toContain('loadPersonAppearanceAssets(personId)');
+    expect(source).toContain('cimmichAppearanceAssets.bodyTotal.toLocaleString()');
     expect(source).toContain('refreshCimmichIdentityAfterReview');
     expect(source).toContain('cimmichIdentityAuditProgress.completed');
     expect(source).toContain('Route.viewCimmichPersonAsset');
@@ -197,16 +200,18 @@ describe('Person profile layout', () => {
     expect(source).toContain(
       "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
     );
-    expect(source).toContain("{ id: 'body', label: 'Body', count: cimmichBodyAssets.length.toLocaleString() }");
     expect(source).toContain(
-      "{ id: 'presence', label: 'Presence', count: cimmichPresenceAssets.length.toLocaleString() }",
+      "{ id: 'body', label: 'Body', count: cimmichAppearanceAssets.bodyTotal.toLocaleString() }",
+    );
+    expect(source).toContain(
+      "{ id: 'presence', label: 'Presence', count: cimmichAppearanceAssets.presenceTotal.toLocaleString() }",
     );
     expect(source).toContain("association_types.includes('body_candidate')");
     expect(source).toContain('Body placement needed');
     expect(source).toContain('It moves to Face or Head only when that stronger evidence is confirmed for this person.');
     expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
     expect(source).toContain('No Face-derived Head references');
-    expect(source).toContain("association_types.includes('body') || association_types.includes('body_candidate')");
+    expect(source).toContain("const hasBody = asset.association_types.includes('body')");
     expect(source).toContain('Review face');
     expect(source).not.toContain("id: 'face_only', label: 'Not used'");
     expect(source).not.toContain('<h2 class="text-xl font-semibold">Matching</h2>');
