@@ -10,15 +10,12 @@ describe('public Cimmich product boundary', () => {
     expect(home).not.toContain('>Maintenance<');
     expect(home).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
     expect(home).toContain('href={Route.cimmichSetup()}');
-    expect(home).toContain('href={Route.cimmichMaintenance()}');
-    expect(home).toMatch(/>\s*Models & Guided\s*</);
     expect(home).toContain("name: 'Documents'");
-    expect(home).toContain('Counts and previews follow the Viewing mode below.');
-    expect(home).toContain(
-      'Cimmich owns the library experience. Immich 3.1.0 remains the media foundation underneath.',
-    );
-    expect(home).toContain('Your originals and Immich database stay untouched,');
-    expect(home).toContain('every core organising tool works without optional models.');
+    expect(home).toContain('Counts and previews follow your current viewing mode.');
+    expect(home).not.toContain('Cimmich controls');
+    expect(home).not.toContain('Cimmich owns the library experience.');
+    expect(home).not.toContain('Immich 3.1.0 remains the media foundation underneath.');
+    expect(home).not.toContain('Models & Guided');
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {

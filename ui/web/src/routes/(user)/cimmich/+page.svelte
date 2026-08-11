@@ -1,5 +1,4 @@
 <script lang="ts">
-  import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
   import {
     chooseCimmichHomeFeature,
     chooseCimmichHomeDistinctMedia,
@@ -32,10 +31,8 @@
     mdiAccountOutline,
     mdiArrowRight,
     mdiCalendarBlankOutline,
-    mdiCogOutline,
     mdiDatabaseImportOutline,
     mdiFileDocumentOutline,
-    mdiMagnify,
     mdiMapOutline,
     mdiPackageVariantClosed,
     mdiPawOutline,
@@ -212,10 +209,6 @@
     class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 text-immich-fg sm:px-6 lg:py-8 dark:text-immich-dark-fg"
   >
     <h1 class="sr-only">Cimmich home</h1>
-    <p class="rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-      <strong>Cimmich owns the library experience. Immich 3.1.0 remains the media foundation underneath.</strong>
-      Your originals and Immich database stay untouched, and every core organising tool works without optional models.
-    </p>
     {#if loadError}
       <div
         class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
@@ -333,7 +326,7 @@
     <section id="your-world" aria-labelledby="your-world-heading" class="scroll-mt-24">
       <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="your-world-heading" class="text-2xl font-semibold tracking-tight">Your world</h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400">Counts and previews follow the Viewing mode below.</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400">Counts and previews follow your current viewing mode.</p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -384,48 +377,5 @@
         {/each}
       </div>
     </section>
-
-    <aside
-      class="grid gap-3 rounded-3xl border border-gray-200 bg-white p-3 shadow-sm sm:grid-cols-[auto_minmax(16rem,1fr)_auto] sm:items-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-      aria-label="Cimmich controls"
-    >
-      <div class="flex min-h-11 items-center justify-center gap-3 px-1 sm:justify-start">
-        <span class="text-sm font-semibold whitespace-nowrap">Viewing mode</span>
-        <CimmichViewingMode variant="dashboard" restorePreference={false} />
-      </div>
-
-      <form class="relative min-w-0" action={Route.cimmichSmartSearch()} method="get" role="search">
-        <label>
-          <span class="sr-only">Search your Cimmich library</span>
-          <Icon
-            class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-gray-500 dark:text-gray-400"
-            icon={mdiMagnify}
-            size="20"
-          />
-          <input
-            class="min-h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-20 pl-11 text-sm transition outline-none placeholder:text-gray-500 focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10 dark:border-immich-dark-gray dark:bg-gray-900 dark:placeholder:text-gray-400 dark:focus:border-immich-dark-primary dark:focus:bg-gray-950"
-            name="q"
-            placeholder="Search people, places and stories…"
-            minlength="2"
-            maxlength="500"
-            autocomplete="off"
-          />
-        </label>
-        <button
-          class="absolute top-0 right-0 min-h-11 rounded-2xl bg-primary px-3 text-xs font-semibold text-white transition hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          type="submit"
-        >
-          Search
-        </button>
-      </form>
-
-      <a
-        class="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-immich-fg focus-visible:outline-2 focus-visible:outline-primary sm:justify-end dark:text-gray-300 dark:hover:bg-immich-dark-gray dark:hover:text-immich-dark-fg"
-        href={Route.cimmichMaintenance()}
-      >
-        <Icon icon={mdiCogOutline} size="20" />
-        Models & Guided
-      </a>
-    </aside>
   </div>
 </UserPageLayout>
