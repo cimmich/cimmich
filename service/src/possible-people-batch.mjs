@@ -2,6 +2,10 @@ import {
   dropPossiblePeopleCandidateScope,
   preparePossiblePeopleCandidateScope,
 } from "./possible-people-seed.mjs";
+import {
+  releaseReservedConnection,
+  withReservedTransaction,
+} from "./postgres-reserved.mjs";
 
 const batchSize = 250;
 const batchStatementTimeoutMs = 10 * 60 * 1_000;
@@ -11,7 +15,7 @@ const similarityFloor = 0.55;
 
 const processBatch = async (sql, run, start) => {
   const end = Math.min(Number(run.total_seeds), start + batchSize - 1);
-  await sql.begin(async (tx) => {
+  await withReservedTransaction(sql, async (tx) => {
     await tx`
       SELECT set_config(
         'statement_timeout', ${String(batchStatementTimeoutMs)}, true
@@ -122,7 +126,7 @@ export const processPossiblePeopleBatches = async ({
     await Promise.all(
       extraConnections.map(async (connection) => {
         await dropPossiblePeopleCandidateScope(connection).catch(() => {});
-        await connection.release().catch(() => {});
+        await releaseReservedConnection(connection);
       }),
     );
   }

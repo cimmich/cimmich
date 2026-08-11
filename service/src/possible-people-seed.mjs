@@ -1,3 +1,5 @@
+import { withReservedTransaction } from "./postgres-reserved.mjs";
+
 const seedLimit = 100_000;
 const seedStatementTimeoutMs = 10 * 60 * 1_000;
 
@@ -56,7 +58,7 @@ export const preparePossiblePeopleCandidateScope = async ({
   space,
   presentationRank,
 }) =>
-  sql.begin(async (tx) => {
+  withReservedTransaction(sql, async (tx) => {
     await tx`
       SELECT set_config(
         'statement_timeout', ${String(seedStatementTimeoutMs)}, true
@@ -91,7 +93,7 @@ export const seedPossiblePeopleRun = async ({
   `;
   if (!space) return null;
 
-  await sql.begin(async (tx) => {
+  await withReservedTransaction(sql, async (tx) => {
     await tx`
       SELECT set_config(
         'statement_timeout', ${String(seedStatementTimeoutMs)}, true

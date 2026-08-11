@@ -13,6 +13,10 @@ import {
   seedPossiblePeopleRun,
 } from "./possible-people-seed.mjs";
 import { PossiblePeopleUnionFind } from "./possible-people-union-find.mjs";
+import {
+  releaseReservedConnection,
+  withReservedTransaction,
+} from "./postgres-reserved.mjs";
 
 const receiptId = "receipt_cimmich_possible_people_v1";
 const algorithmVersion = "cimmich-possible-people-graph-v2";
@@ -355,7 +359,7 @@ export const createPossiblePeopleStore = (
           workSql = await sql.reserve();
           reserved = true;
         }
-        const claimed = await workSql.begin(async (tx) => {
+        const claimed = await withReservedTransaction(workSql, async (tx) => {
           const [run] = await tx`
             SELECT state FROM possible_person_run
             WHERE run_id = ${runId} FOR UPDATE
@@ -413,7 +417,7 @@ export const createPossiblePeopleStore = (
         `.catch(() => {});
       } finally {
         await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
-        if (reserved) await workSql.release().catch(() => {});
+        if (reserved) await releaseReservedConnection(workSql);
         worker = null;
       }
     })();

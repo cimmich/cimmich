@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { processPossiblePeopleBatches } from "../src/possible-people-batch.mjs";
+import {
+  releaseReservedConnection,
+  withReservedTransaction,
+} from "../src/postgres-reserved.mjs";
 
 const readSource = () =>
   readFile(new URL("../src/possible-people-seed.mjs", import.meta.url), "utf8");
@@ -90,7 +94,7 @@ test("Possible people dispatches four bounded batches and releases temporary sco
   let completedBatches = 0;
   let maxActiveBatches = 0;
   let releasedConnections = 0;
-  const createConnection = () => {
+  const createConnection = ({ reserved = false } = {}) => {
     const connection = async (strings) => {
       const query = strings.join("?");
       if (query.includes("INSERT INTO possible_person_edge")) {
@@ -102,15 +106,16 @@ test("Possible people dispatches four bounded batches and releases temporary sco
       }
       return [];
     };
-    connection.begin = async (callback) => callback(connection);
-    connection.release = async () => {
-      releasedConnections += 1;
-    };
+    if (!reserved) connection.begin = async (callback) => callback(connection);
+    if (reserved)
+      connection.release = () => {
+        releasedConnections += 1;
+      };
     return connection;
   };
-  const coordinatorSql = createConnection();
+  const coordinatorSql = createConnection({ reserved: true });
   const sql = createConnection();
-  sql.reserve = async () => createConnection();
+  sql.reserve = async () => createConnection({ reserved: true });
 
   await processPossiblePeopleBatches({
     coordinatorSql,
@@ -134,4 +139,39 @@ test("Possible people dispatches four bounded batches and releases temporary sco
   assert.equal(completedBatches, 4);
   assert.equal(maxActiveBatches, 4);
   assert.equal(releasedConnections, 3);
+});
+
+test("reserved PostgreSQL connections transact manually and release synchronously", async () => {
+  const statements = [];
+  const connection = async (strings) => {
+    statements.push(strings.join("?"));
+    return [];
+  };
+  connection.release = () => {};
+
+  const result = await withReservedTransaction(connection, async (tx) => {
+    await tx`SELECT 1`;
+    return "committed";
+  });
+  await releaseReservedConnection(connection);
+
+  assert.equal(result, "committed");
+  assert.deepEqual(statements, ["BEGIN", "SELECT 1", "COMMIT"]);
+});
+
+test("reserved PostgreSQL transactions roll back and preserve the original error", async () => {
+  const statements = [];
+  const connection = async (strings) => {
+    statements.push(strings.join("?"));
+    return [];
+  };
+  const failure = new Error("expected failure");
+
+  await assert.rejects(
+    withReservedTransaction(connection, async () => {
+      throw failure;
+    }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(statements, ["BEGIN", "ROLLBACK"]);
 });
