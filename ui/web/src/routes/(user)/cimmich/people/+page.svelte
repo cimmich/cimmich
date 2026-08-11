@@ -542,7 +542,6 @@
       <CimmichExploreFilters
         error={exploreError}
         filters={exploreFilters}
-        initiallyExpanded
         loading={exploreLoading}
         onchange={setExploreFilters}
         result={exploreResult}

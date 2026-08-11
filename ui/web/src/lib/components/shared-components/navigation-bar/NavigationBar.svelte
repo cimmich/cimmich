@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { clickOutside } from '$lib/actions/click-outside';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
+  import { cimmichModeSwitch } from '$lib/components/cimmich/navigation-mode-switch';
   import NotificationPanel from '$lib/components/shared-components/navigation-bar/NotificationPanel.svelte';
   import SearchBar from '$lib/components/shared-components/search-bar/SearchBar.svelte';
   import SkipLink from '$lib/elements/SkipLink.svelte';
@@ -36,6 +37,8 @@
   let shouldShowNotificationPanel = $state(false);
   let innerWidth: number = $state(0);
   const hasUnreadNotifications = $derived(notificationManager.notifications.length > 0);
+  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname));
+  const showInlineBrand = $derived(mediaQueryManager.isFullSidebar && sidebarStore.isOpen);
 
   onMount(async () => {
     try {
@@ -53,9 +56,9 @@
 <nav id="dashboard-navbar" class="h-(--navbar-height) w-dvw text-sm max-md:h-(--navbar-height-md)">
   <SkipLink text={$t('skip_to_content')} />
   <div
-    class="grid h-full grid-cols-[--spacing(32)_auto] items-center py-2 sidebar:grid-cols-[--spacing(64)_auto] {noBorder
-      ? ''
-      : 'border-b'}"
+    class="grid h-full items-center py-2 transition-[grid-template-columns] duration-200 {noBorder ? '' : 'border-b'}"
+    class:grid-cols-[--spacing(32)_auto]={!showInlineBrand}
+    class:grid-cols-[--spacing(64)_auto]={showInlineBrand}
   >
     <div class="mx-4 flex flex-row items-center gap-1">
       <IconButton
@@ -75,10 +78,20 @@
             event.stopPropagation();
           }
         }}
-        class="sidebar:hidden"
       />
-      <a data-sveltekit-preload-data="hover" href={Route.photos()}>
-        <Logo variant={mediaQueryManager.isFullSidebar ? 'inline' : 'icon'} class="max-md:h-12" />
+      <a
+        data-sveltekit-preload-data="hover"
+        href={modeSwitch.href}
+        class="flex min-w-0 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
+        aria-label={modeSwitch.label}
+        title={modeSwitch.label}
+      >
+        {#if modeSwitch.cimmich}
+          <img class="size-10 shrink-0 rounded-full object-cover" src="/cimmich-logo.png" alt="" />
+          {#if showInlineBrand}<span class="truncate text-lg font-semibold tracking-tight">Cimmich</span>{/if}
+        {:else}
+          <Logo variant={showInlineBrand ? 'inline' : 'icon'} class="max-md:h-12" />
+        {/if}
       </a>
     </div>
     <div class="flex min-w-0 justify-between gap-2 pe-2 sm:gap-4 sm:pe-6 lg:gap-8">

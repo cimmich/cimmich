@@ -6,6 +6,8 @@
   import { useActions, type ActionArray } from '$lib/actions/use-actions';
   import NavigationBar from '$lib/components/shared-components/navigation-bar/NavigationBar.svelte';
   import UserSidebar from '$lib/components/shared-components/side-bar/UserSidebar.svelte';
+  import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
+  import { sidebarStore } from '$lib/stores/sidebar.svelte';
   import type { HeaderButtonActionItem } from '$lib/types';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
   import { Button, ContextMenuButton, HStack, isMenuItemType, type MenuItemType } from '@immich/ui';
@@ -53,10 +55,12 @@
 </header>
 <div
   tabindex="-1"
-  class="relative z-0 grid grid-cols-[--spacing(0)_auto] overflow-hidden sidebar:grid-cols-[--spacing(64)_auto]
+  class="relative z-0 grid overflow-hidden transition-[grid-template-columns] duration-200
     {hideNavbar ? 'h-dvh' : 'h-[calc(100dvh-var(--navbar-height))] max-md:h-[calc(100dvh-var(--navbar-height-md))]'}
     {hideNavbar ? 'pt-(--navbar-height)' : ''}
     {hideNavbar ? 'max-md:pt-(--navbar-height-md)' : ''}"
+  class:grid-cols-[--spacing(0)_auto]={!sidebarStore.isOpen || !mediaQueryManager.isFullSidebar}
+  class:grid-cols-[--spacing(64)_auto]={sidebarStore.isOpen && mediaQueryManager.isFullSidebar}
 >
   {#if sidebar}
     {@render sidebar()}
