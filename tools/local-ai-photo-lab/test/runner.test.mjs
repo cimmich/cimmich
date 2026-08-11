@@ -38,6 +38,7 @@ const configInput = {
       enabled: true,
       modelPath: "/e",
       pythonPath: "/py",
+      runtimePath: "/runtime",
     },
     faces: {
       detectorModelPath: "/f",
@@ -407,5 +408,17 @@ test("runner loads the face provider once for a multi-photo set", async () => {
       (asset) => asset.operations.faces.provider.executionMode,
     ),
     ["resident-set", "resident-set"],
+  );
+});
+
+test("Vulkan Best keeps its optional shader cache in disposable tmpfs", async () => {
+  const source = await readFile(
+    new URL("../python/image_tools.py", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /"HOME": "\/tmp"/);
+  assert.match(
+    source,
+    /"XDG_CACHE_HOME": "\/tmp\/cimmich-local-ai-vulkan-cache"/,
   );
 });

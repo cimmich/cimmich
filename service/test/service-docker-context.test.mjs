@@ -61,6 +61,15 @@ test("public-demo API build context admits the reference adapter but no weights 
   assert.match(dockerfile, /COPY providers\/opencv-sface/);
   assert.match(dockerfile, /COPY providers\/perceptual-dhash/);
   assert.match(dockerfile, /COPY service\/enhanced \.\/enhanced/);
+  assert.match(dockerfile, /python:3\.11-slim-trixie@sha256:/);
+  assert.match(
+    dockerfile,
+    /COPY --from=python-runtime \/usr\/local \/usr\/local/,
+  );
+  assert.match(dockerfile, /node:22-trixie-slim@sha256:/);
+  assert.match(dockerfile, /mesa-vulkan-drivers/);
+  assert.match(dockerfile, /realesrgan-ncnn-vulkan/);
+  assert.doesNotMatch(dockerfile, /COPY .*realesrgan-x4plus\.(?:bin|param)/);
   assert.match(ignore, /^\*\*$/m);
   assert.ok(ignore.split("\n").includes("!providers/opencv-sface/*.py"));
   assert.ok(ignore.split("\n").includes("!providers/perceptual-dhash/*.py"));

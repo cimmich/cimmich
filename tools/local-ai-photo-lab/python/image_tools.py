@@ -4,10 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
+import re
+import signal
+import subprocess
 import sys
 
 import numpy as np
@@ -281,6 +286,251 @@ def enhancement_quality(
     }
 
 
+def parent_death_signal() -> None:
+    """Ensure a Linux accelerator child cannot outlive this provider wrapper."""
+    if sys.platform != "linux":
+        return
+    try:
+        libc = ctypes.CDLL(None)
+        libc.prctl(1, signal.SIGTERM)
+    except Exception:
+        # The explicit signal-forwarding handler below remains the portable path.
+        return
+
+
+def enhance_vulkan(
+    args: argparse.Namespace,
+    original: Image.Image,
+    output: Path,
+) -> None:
+    runtime = Path(args.runtime).resolve(strict=True)
+    model = Path(args.model).resolve(strict=True)
+    if model.name != "realesrgan-x4plus.bin":
+        raise ValueError("Vulkan Best requires the pinned x4plus model")
+    model_parameter = model.with_suffix(".param").resolve(strict=True)
+    if not os.access(runtime, os.X_OK):
+        raise ValueError("Vulkan Best runtime is not executable")
+
+    tile = 256
+    native_scale = 4
+    requested_scale = 2
+    xs = list(range(0, original.width, tile))
+    ys = list(range(0, original.height, tile))
+    total_tiles = len(xs) * len(ys)
+    total_units = total_tiles + 3
+    output.parent.mkdir(parents=True, exist_ok=True)
+    token = f"{os.getpid()}-{canonical_digest(str(output))[:12]}"
+    normalized_input = output.with_name(f".{output.name}.{token}.input.png")
+    native_output = output.with_name(f".{output.name}.{token}.native-x4.png")
+    process: subprocess.Popen[str] | None = None
+    previous_handlers: dict[int, object] = {}
+
+    def forward_signal(signum: int, _frame: object) -> None:
+        if process is not None and process.poll() is None:
+            process.send_signal(signum)
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        raise SystemExit(128 + signum)
+
+    try:
+        original.save(normalized_input, format="PNG", optimize=False)
+        emit_progress(
+            completed_units=0,
+            completed_tiles=0,
+            operation="best",
+            stage="upscaling",
+            total_tiles=total_tiles,
+            total_units=total_units,
+        )
+        process = subprocess.Popen(
+            [
+                str(runtime),
+                "-i",
+                str(normalized_input),
+                "-o",
+                str(native_output),
+                "-m",
+                str(model.parent),
+                "-n",
+                "realesrgan-x4plus",
+                "-s",
+                str(native_scale),
+                "-t",
+                str(tile),
+                "-g",
+                "0",
+                "-v",
+            ],
+            env={
+                # The API container is read-only. Keep the driver's optional
+                # shader cache inside its disposable tmpfs instead of letting
+                # it probe /home/node and emit a misleading failure warning.
+                "HOME": "/tmp",
+                "LANG": os.environ.get("LANG", "C.UTF-8"),
+                "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+                "XDG_CACHE_HOME": "/tmp/cimmich-local-ai-vulkan-cache",
+            },
+            preexec_fn=parent_death_signal if sys.platform == "linux" else None,
+            start_new_session=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, forward_signal)
+
+        diagnostic_bytes = 0
+        diagnostics: list[str] = []
+        completed_tiles = 0
+        assert process.stderr is not None
+        for raw_line in process.stderr:
+            line = raw_line.strip()
+            encoded = line.encode("utf8", errors="replace")
+            if diagnostic_bytes + len(encoded) <= 64 * 1024:
+                diagnostics.append(line)
+                diagnostic_bytes += len(encoded)
+            match = re.fullmatch(r"(\d{1,3}(?:\.\d+)?)%", line)
+            if not match:
+                continue
+            percent = min(100.0, max(0.0, float(match.group(1))))
+            next_completed = min(
+                total_tiles - 1,
+                int(percent * total_tiles / 100),
+            )
+            if next_completed <= completed_tiles:
+                continue
+            completed_tiles = next_completed
+            emit_progress(
+                completed_units=completed_tiles,
+                completed_tiles=completed_tiles,
+                operation="best",
+                stage="upscaling",
+                total_tiles=total_tiles,
+                total_units=total_units,
+            )
+        return_code = process.wait()
+        diagnostic_text = "\n".join(diagnostics)
+        if (
+            return_code != 0
+            or re.search(r"(?:\bfailed\b|find_blob_index_by_name)", diagnostic_text, re.I)
+            or not native_output.is_file()
+        ):
+            raise ValueError("Vulkan Best provider failed")
+
+        emit_progress(
+            completed_units=total_tiles,
+            completed_tiles=total_tiles,
+            operation="best",
+            stage="resampling",
+            total_tiles=total_tiles,
+            total_units=total_units,
+        )
+        previous_pixel_limit = Image.MAX_IMAGE_PIXELS
+        Image.MAX_IMAGE_PIXELS = args.max_input_pixels * native_scale * native_scale
+        try:
+            with Image.open(native_output) as native:
+                if native.size != (
+                    original.width * native_scale,
+                    original.height * native_scale,
+                ):
+                    raise ValueError("Vulkan Best output dimensions are invalid")
+                result = native.convert("RGB").resize(
+                    (
+                        original.width * requested_scale,
+                        original.height * requested_scale,
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+        finally:
+            Image.MAX_IMAGE_PIXELS = previous_pixel_limit
+
+        emit_progress(
+            completed_units=total_tiles + 1,
+            completed_tiles=total_tiles,
+            operation="best",
+            stage="checking-result",
+            total_tiles=total_tiles,
+            total_units=total_units,
+        )
+        quality = enhancement_quality(original, result, xs, ys, 0, native_scale)
+        if (
+            quality["downsampleSsim"] < 0.9
+            or quality["maximumSeamRatio"] > 5.0
+        ):
+            raise ValueError("Vulkan Best output failed its fidelity gate")
+        emit_progress(
+            completed_units=total_tiles + 2,
+            completed_tiles=total_tiles,
+            operation="best",
+            stage="encoding",
+            total_tiles=total_tiles,
+            total_units=total_units,
+        )
+        result.save(output, format="PNG", optimize=False)
+        emit_progress(
+            completed_units=total_units,
+            completed_tiles=total_tiles,
+            operation="best",
+            stage="complete",
+            total_tiles=total_tiles,
+            total_units=total_units,
+        )
+        model_digest = file_digest(model)
+        parameter_digest = file_digest(model_parameter)
+        runtime_digest = file_digest(runtime)
+        print(
+            json.dumps(
+                {
+                    "artifactDigest": file_digest(output),
+                    "configDigest": canonical_digest(
+                        {
+                            "device": "vulkan",
+                            "method": "realesrgan-x4-ncnn-vulkan-to-x2-v1",
+                            "modelDigest": model_digest,
+                            "modelParameterDigest": parameter_digest,
+                            "nativeScale": native_scale,
+                            "requestedScale": requested_scale,
+                            "runtimeDigest": runtime_digest,
+                            "tile": tile,
+                        }
+                    ),
+                    "executionProviders": ["ncnn-vulkan"],
+                    "height": result.height,
+                    "mode": "best_full_source",
+                    "modelDigest": model_digest,
+                    "originalHeight": original.height,
+                    "originalWidth": original.width,
+                    "output": str(output),
+                    "processedHeight": original.height,
+                    "processedWidth": original.width,
+                    "provider": "realesrgan-ncnn-vulkan-local-photo-lab",
+                    "quality": quality,
+                    "runtimeDigest": runtime_digest,
+                    "scale": requested_scale,
+                    "schemaVersion": "cimmich.local-ai-enhance-result.v1",
+                    "sourceScale": 1,
+                    "width": result.width,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    finally:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+        normalized_input.unlink(missing_ok=True)
+        native_output.unlink(missing_ok=True)
+
+
 def enhance(args: argparse.Namespace) -> None:
     source = Path(args.input).resolve(strict=True)
     output = Path(args.output).resolve()
@@ -352,6 +602,12 @@ def enhance(args: argparse.Namespace) -> None:
                 separators=(",", ":"),
             )
         )
+        return
+
+    if args.device == "vulkan":
+        if not args.model or not args.runtime:
+            raise ValueError("Vulkan Best requires model and runtime paths")
+        enhance_vulkan(args, original, output)
         return
 
     import onnxruntime as ort
@@ -541,8 +797,11 @@ def main() -> None:
     enhance_parser.add_argument("--method", required=True, choices=["quick", "best"])
     enhance_parser.add_argument("--model")
     enhance_parser.add_argument("--output", required=True)
-    enhance_parser.add_argument("--device", required=True, choices=["coreml", "cpu"])
+    enhance_parser.add_argument(
+        "--device", required=True, choices=["coreml", "cpu", "vulkan"]
+    )
     enhance_parser.add_argument("--max-input-pixels", required=True, type=int)
+    enhance_parser.add_argument("--runtime")
     overlay_parser = sub.add_parser("overlay")
     overlay_parser.add_argument("--input", required=True)
     overlay_parser.add_argument("--data", required=True)

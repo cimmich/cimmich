@@ -51,6 +51,7 @@ const config = (endpoint = "http://127.0.0.1:11434") => ({
       enabled: true,
       modelPath: "/e",
       pythonPath: "/py",
+      runtimePath: "/runtime",
     },
     faces: {
       detectorModelPath: "/f",
@@ -85,6 +86,11 @@ test("config accepts loopback, rejects remote endpoints, and expands full", () =
     "scene-text",
     "enhance",
   ]);
+  const vulkan = config();
+  vulkan.providers.enhance.device = "vulkan";
+  assert.equal(validateConfig(vulkan).providers.enhance.device, "vulkan");
+  delete vulkan.providers.enhance.runtimePath;
+  assert.throws(() => validateConfig(vulkan), /exact contract fields/);
 });
 
 test("body execution profiles make fallback device truth explicit and rebind the digest", () => {

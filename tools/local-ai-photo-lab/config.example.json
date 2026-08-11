@@ -32,6 +32,7 @@
       "enabled": true,
       "pythonPath": "/absolute/path/to/python",
       "modelPath": "/absolute/path/to/realesrgan-x4-256.onnx",
+      "runtimePath": "/usr/local/bin/realesrgan-ncnn-vulkan",
       "device": "coreml"
     }
   },

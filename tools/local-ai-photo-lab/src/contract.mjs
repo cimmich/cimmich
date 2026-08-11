@@ -218,6 +218,7 @@ export const validateConfig = (input) => {
     "enabled",
     "modelPath",
     "pythonPath",
+    "runtimePath",
   ]);
   enhance.pythonPath = resolve(
     requiredText(enhance.pythonPath, "providers.enhance.pythonPath", 4096),
@@ -225,7 +226,10 @@ export const validateConfig = (input) => {
   enhance.modelPath = resolve(
     requiredText(enhance.modelPath, "providers.enhance.modelPath", 4096),
   );
-  if (!["coreml", "cpu"].includes(enhance.device))
+  enhance.runtimePath = resolve(
+    requiredText(enhance.runtimePath, "providers.enhance.runtimePath", 4096),
+  );
+  if (!["coreml", "cpu", "vulkan"].includes(enhance.device))
     throw typedError("providers.enhance.device is unsupported");
 
   exactObject(

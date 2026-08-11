@@ -168,6 +168,14 @@ test("local runtime secrets, images and browser response headers are hardened", 
   assert.match(publicDemoApi, /cap_drop: \[ALL\]/);
 });
 
+test("Vulkan deployment grants only read/write access to the render node", async () => {
+  const compose = await source("compose.local-ai-vulkan.yaml");
+  assert.match(compose, /source: \$\{CIMMICH_LOCAL_AI_RENDER_DEVICE/);
+  assert.match(compose, /target: \/dev\/dri\/renderD128/);
+  assert.match(compose, /permissions: rw/);
+  assert.doesNotMatch(compose, /permissions: rwm/);
+});
+
 test("backup restore validates hostile input before replacing owner state", async () => {
   const [companion, companionAcceptance, publicDemo] = await Promise.all([
     source("tools/companion.sh"),

@@ -51,9 +51,10 @@ report `passed`, formatting must be clean, Python must parse, `git diff
 - Generated enhancement detail is not certified as historical or identity
   truth and is preview-only.
 - Model/licensing readiness is deployment-owned because weights are external.
-- Performance is suitable for scoped photo/set testing, not yet archive-wide
-  orchestration. The measured full-resolution enhancement path needs a loading
-  UI and caching.
+- Performance is suitable for scoped photo/set testing, not archive-wide
+  orchestration. CPU/CoreML and optional Vulkan timings are deployment-owned;
+  an accelerator claim requires a real-device full-photo benchmark and the
+  same fidelity/seam gates as the portable path.
 
 These limits are explicit product constraints, not hidden fallbacks. Changing
 any of them requires a new benchmark wave and integration review.

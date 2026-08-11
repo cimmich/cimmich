@@ -87,67 +87,87 @@ const exactJobInput = (input, maximumAssets) => {
   return { operation, sourceAssetIds };
 };
 
-const providerConfig = ({ enabled, environment, modelPaths }) => ({
-  contextPolicy: {
-    maximumTemporalGapSeconds: 600,
-    minimumMargin: 0.08,
-    minimumSimilarity: 0.72,
-    requireBidirectionalAnchors: true,
-  },
-  limits: {
-    enhanceProviderTimeoutMs: 30 * 60 * 1000,
-    maxAssets: 12,
-    maxEnhanceInputPixels: 16_000_000,
-    maxInputBytes: 128 * 1024 * 1024,
-    maxInputPixels: 100_000_000,
-    providerTimeoutMs: 10 * 60 * 1000,
-  },
-  providers: {
-    bodies: {
-      enabled:
-        enabled &&
-        environment.CIMMICH_LOCAL_AI_BODY_ENABLED === "true" &&
-        Boolean(modelPaths.bodyModel && modelPaths.bodyManifest),
-      manifestPath:
-        modelPaths.bodyManifest || "/local-ai-models/body-disabled.json",
-      modelPath: modelPaths.bodyModel || "/local-ai-models/body-disabled.onnx",
-      providerScriptPath:
-        environment.CIMMICH_LOCAL_AI_BODY_PROVIDER_SCRIPT ||
-        "/app/providers/ultralytics-yolo-body/provider.py",
-      pythonPath:
-        environment.CIMMICH_LOCAL_AI_BODY_PYTHON_PATH || "/usr/bin/python3",
+const providerConfig = ({ enabled, environment, modelPaths }) => {
+  const enhanceDevice = environment.CIMMICH_LOCAL_AI_ENHANCE_DEVICE || "cpu";
+  return {
+    contextPolicy: {
+      maximumTemporalGapSeconds: 600,
+      minimumMargin: 0.08,
+      minimumSimilarity: 0.72,
+      requireBidirectionalAnchors: true,
     },
-    enhance: {
-      device: "cpu",
-      enabled: enabled && Boolean(modelPaths.enhance),
-      modelPath: modelPaths.enhance || "/local-ai-models/enhance-disabled.onnx",
-      pythonPath: "/usr/bin/python3",
+    limits: {
+      enhanceProviderTimeoutMs: 30 * 60 * 1000,
+      maxAssets: 12,
+      maxEnhanceInputPixels: 16_000_000,
+      maxInputBytes: 128 * 1024 * 1024,
+      maxInputPixels: 100_000_000,
+      providerTimeoutMs: 10 * 60 * 1000,
     },
-    faces: {
-      detectorModelPath:
-        modelPaths.face || "/local-ai-models/face-disabled.onnx",
-      device: "cpu",
-      enabled: enabled && Boolean(modelPaths.face),
-      pythonPath: "/usr/bin/python3",
-      scoreThreshold: 0.5,
+    providers: {
+      bodies: {
+        enabled:
+          enabled &&
+          environment.CIMMICH_LOCAL_AI_BODY_ENABLED === "true" &&
+          Boolean(modelPaths.bodyModel && modelPaths.bodyManifest),
+        manifestPath:
+          modelPaths.bodyManifest || "/local-ai-models/body-disabled.json",
+        modelPath:
+          modelPaths.bodyModel || "/local-ai-models/body-disabled.onnx",
+        providerScriptPath:
+          environment.CIMMICH_LOCAL_AI_BODY_PROVIDER_SCRIPT ||
+          "/app/providers/ultralytics-yolo-body/provider.py",
+        pythonPath:
+          environment.CIMMICH_LOCAL_AI_BODY_PYTHON_PATH || "/usr/bin/python3",
+      },
+      enhance: {
+        device: enhanceDevice,
+        enabled:
+          enabled &&
+          Boolean(modelPaths.enhance) &&
+          (enhanceDevice !== "vulkan" ||
+            Boolean(modelPaths.enhanceParameter && modelPaths.enhanceRuntime)),
+        modelPath:
+          modelPaths.enhance || "/local-ai-models/enhance-disabled.onnx",
+        pythonPath: "/usr/bin/python3",
+        runtimePath:
+          modelPaths.enhanceRuntime ||
+          environment.CIMMICH_LOCAL_AI_ENHANCE_VULKAN_RUNTIME_PATH ||
+          "/usr/local/bin/realesrgan-ncnn-vulkan",
+      },
+      faces: {
+        detectorModelPath:
+          modelPaths.face || "/local-ai-models/face-disabled.onnx",
+        device: "cpu",
+        enabled: enabled && Boolean(modelPaths.face),
+        pythonPath: "/usr/bin/python3",
+        scoreThreshold: 0.5,
+      },
+      sceneText: {
+        enabled:
+          enabled && environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED === "true",
+        endpoint:
+          environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENDPOINT ||
+          "http://127.0.0.1:11434",
+        model: environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL || "disabled",
+      },
     },
-    sceneText: {
-      enabled:
-        enabled && environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED === "true",
-      endpoint:
-        environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENDPOINT ||
-        "http://127.0.0.1:11434",
-      model: environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL || "disabled",
-    },
-  },
-  schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
-});
+    schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
+  };
+};
 
 const existingFile = async (value) => {
   const path = String(value || "").trim();
   if (!path || !isAbsolute(path)) return "";
   const info = await stat(path).catch(() => null);
   return info?.isFile() ? resolve(path) : "";
+};
+
+const existingExecutable = async (value) => {
+  const path = String(value || "").trim();
+  if (!path || !isAbsolute(path)) return "";
+  const info = await stat(path).catch(() => null);
+  return info?.isFile() && (info.mode & 0o111) !== 0 ? resolve(path) : "";
 };
 
 const publicCapabilities = (config, enabled) => {
@@ -364,14 +384,31 @@ export const createLocalAiService = async ({
         "../../tools/local-ai-photo-lab/bin/local-ai-photo-lab.mjs",
       ),
   );
+  const enhanceDevice = environment.CIMMICH_LOCAL_AI_ENHANCE_DEVICE || "cpu";
+  const requestedVulkanModelPath =
+    environment.CIMMICH_LOCAL_AI_ENHANCE_VULKAN_MODEL_PATH ||
+    "/local-ai-models/realesrgan-ncnn-vulkan/realesrgan-x4plus.bin";
+  const requestedVulkanRuntimePath =
+    environment.CIMMICH_LOCAL_AI_ENHANCE_VULKAN_RUNTIME_PATH ||
+    "/usr/local/bin/realesrgan-ncnn-vulkan";
   const modelPaths = {
     bodyManifest: await existingFile(
       environment.CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH,
     ),
     bodyModel: await existingFile(environment.CIMMICH_LOCAL_AI_BODY_MODEL_PATH),
     enhance: await existingFile(
-      environment.CIMMICH_LOCAL_AI_ENHANCE_MODEL_PATH,
+      enhanceDevice === "vulkan"
+        ? requestedVulkanModelPath
+        : environment.CIMMICH_LOCAL_AI_ENHANCE_MODEL_PATH,
     ),
+    enhanceParameter:
+      enhanceDevice === "vulkan" && requestedVulkanModelPath.endsWith(".bin")
+        ? await existingFile(`${requestedVulkanModelPath.slice(0, -4)}.param`)
+        : "",
+    enhanceRuntime:
+      enhanceDevice === "vulkan"
+        ? await existingExecutable(requestedVulkanRuntimePath)
+        : "",
     face: await existingFile(environment.CIMMICH_LOCAL_AI_FACE_MODEL_PATH),
   };
   const config = providerConfig({ enabled, environment, modelPaths });

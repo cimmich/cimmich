@@ -284,11 +284,16 @@ timeout. This favors stable local memory use over archive-scale throughput.
 - Model files are not bundled. Their code, model, and training-data licences
   must be resolved by the deployment owner before distribution.
 - Quick and Best now target the same x2 dimensions. Quick uses deterministic
-  resampling and conservative sharpening; Best uses the native-x4 model on the
-  full source, downsamples each completed tile directly into the x2 canvas,
-  and emits live progress. Runtime depends strongly on source dimensions and
-  CPU/GPU support, so product acceptance records measured times for the active
-  deployment rather than promising a universal duration.
+  resampling and conservative sharpening. The ONNX CPU/CoreML Best provider
+  downsamples each completed native-x4 tile directly into the x2 canvas. The
+  optional Linux/amd64 ncnn Vulkan provider instead validates a complete native
+  x4 artifact before one x2 Lanczos reduction, and fails closed on runtime,
+  dimension, fidelity, or seam errors. Both providers emit live progress.
+  The verified X1 container uses Mesa 25 or newer for its Radeon 780M; Mesa 22
+  may enumerate that GPU but submit invalid command streams and is unsupported.
+  Runtime depends strongly on source dimensions and hardware, so product
+  acceptance records measured deployment times rather than promising a
+  universal duration.
 
 See `INTEGRATION_CONTRACT.md` for the later Cimmich seam and
 `MERGE_READINESS.md` for the standalone branch gates.

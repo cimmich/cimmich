@@ -12,7 +12,7 @@ The owner can request:
 - **Upscale · Quick** — a full-source 2x Lanczos resize with conservative
   sharpening; it is the fast, non-generative option;
 - **Upscale · Best** — a full-source 2x Real-ESRGAN reconstruction, processed
-  in overlapping tiles with live progress;
+  in bounded tiles with live progress;
 - **Look for missed Faces** — a fresh detector pass compared with Cimmich's
   saved Face boxes;
 - **Look for missed Bodies** — available only with a separately configured
@@ -87,6 +87,31 @@ default to
 `/local-ai-models/enhance-x4.onnx`. Model weights are not bundled, fetched or
 redistributed by Cimmich. The operator is responsible for source, licence,
 integrity and suitability.
+
+Best defaults to the portable ONNX CPU provider. A Linux/amd64 deployment with
+a supported Vulkan GPU can select the guarded accelerator path with:
+
+- `CIMMICH_LOCAL_AI_ENHANCE_DEVICE=vulkan`;
+- `CIMMICH_LOCAL_AI_ENHANCE_VULKAN_MODEL_PATH` pointing to
+  `realesrgan-x4plus.bin` beside its matching `.param` file; and
+- the `compose.local-ai-vulkan.yaml` override, with the host render node and
+  render-group ID supplied when they differ from `/dev/dri/renderD128` and
+  `990`.
+
+The image contains a digest-pinned upstream Real-ESRGAN ncnn Vulkan runtime and
+its licence, but no model weights. The Linux image also pins a Trixie-generation
+Mesa 25 userspace: the X1 Radeon 780M acceptance run proved that Bookworm's
+Mesa 22 can enumerate the device while producing kernel-rejected command
+streams. Host Vulkan libraries are not mounted into the container. Best remains
+unavailable unless the runtime is executable and both external model files are
+present. The numerical providers retain a separately pinned Python 3.11 runtime
+so the newer GPU userspace does not silently change their wheel ABI. The Vulkan
+provider runs the model only at its native x4 scale, then
+performs one Lanczos reduction to the product's x2 artifact. It rejects a
+zero-exit runtime if diagnostics,
+dimensions, structural fidelity, or seam checks fail. The base Compose file
+does not map a GPU and remains CPU-portable; hardware access is an explicit
+deployment property, not a silent fallback.
 
 Body/Context stays unavailable unless both
 `CIMMICH_LOCAL_AI_BODY_MODEL_PATH` and

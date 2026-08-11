@@ -673,6 +673,8 @@ export const runEnhance = async ({
         config.device,
         "--max-input-pixels",
         String(config.maxInputPixels),
+        "--runtime",
+        config.runtimePath,
       ],
       command: config.pythonPath,
       timeoutMs: config.timeoutMs,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -90,6 +90,40 @@ test("Local AI rejects unknown fields and unconfigured model capabilities", asyn
       }),
       (error) => error.code === "LOCAL_AI_INPUT_INVALID",
     );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Vulkan Best is ready only with its executable and both model artifacts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
+  try {
+    const model = join(root, "realesrgan-x4plus.bin");
+    const parameter = join(root, "realesrgan-x4plus.param");
+    const runtime = join(root, "realesrgan-ncnn-vulkan");
+    await writeFile(model, "model");
+    await writeFile(parameter, "parameter");
+    await writeFile(runtime, "runtime");
+    const environment = {
+      CIMMICH_LOCAL_AI_ENABLED: "true",
+      CIMMICH_LOCAL_AI_ENHANCE_DEVICE: "vulkan",
+      CIMMICH_LOCAL_AI_ENHANCE_VULKAN_MODEL_PATH: model,
+      CIMMICH_LOCAL_AI_ENHANCE_VULKAN_RUNTIME_PATH: runtime,
+      CIMMICH_LOCAL_AI_ROOT: root,
+    };
+    const unavailable = await createLocalAiService({
+      environment,
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(unavailable.status().capabilities.best, false);
+    await chmod(runtime, 0o500);
+    const ready = await createLocalAiService({
+      environment,
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(ready.status().capabilities.best, true);
   } finally {
     await rm(root, { force: true, recursive: true });
   }

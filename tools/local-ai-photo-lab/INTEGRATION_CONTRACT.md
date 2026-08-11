@@ -11,7 +11,9 @@ Its primary surface is:
 - **Upscale — Quick**: deterministic full-source x2 resize and conservative
   sharpening for the current photo.
 - **Upscale — Best**: learned full-source x2 cached derivation with structured
-  tile progress.
+  tile progress. A deployment may select CPU/CoreML ONNX or guarded Linux
+  Vulkan execution, but the receipt must expose the actual provider and bind
+  the runtime/model/config digests.
 - **Context**: explain and propose continuity across the selected ordered set.
 
 An **Advanced rerun** section contains Find faces, Find bodies, and Add scene /
@@ -88,3 +90,8 @@ Integration is acceptable only when end-to-end tests prove:
 9. no writes to, deletion from, or replacement of champion face/identity rows;
 10. at most one supported body per subject per photo; and
 11. Quick and Best cache keys remain distinct.
+
+An accelerated Best path must additionally prove that the selected device is
+actually reachable, reject missing or mismatched runtime/model artifacts, run
+the x4 model at native scale before producing x2, preserve the accepted
+fidelity/seam envelope, and terminate its accelerator child on cancellation.

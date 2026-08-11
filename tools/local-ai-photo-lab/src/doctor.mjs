@@ -251,6 +251,12 @@ export const runDoctor = async ({ configInput }) => {
   const started = Date.now();
   const config = validateConfig(configInput);
   const timeoutMs = Math.min(config.limits.providerTimeoutMs, 30_000);
+  const vulkanEnhance = config.providers.enhance.device === "vulkan";
+  const enhanceModelParameterPath = config.providers.enhance.modelPath.endsWith(
+    ".bin",
+  )
+    ? `${config.providers.enhance.modelPath.slice(0, -4)}.param`
+    : `${config.providers.enhance.modelPath}.param`;
   const [
     faceRuntime,
     bodyRuntime,
@@ -276,7 +282,9 @@ export const runDoctor = async ({ configInput }) => {
     }),
     pythonCheck({
       checkId: "enhance-runtime",
-      code: "import json,onnxruntime,PIL; print(json.dumps({'onnxruntime':onnxruntime.__version__,'pillow':PIL.__version__,'providers':onnxruntime.get_available_providers()}))",
+      code: vulkanEnhance
+        ? `import json,subprocess; r=subprocess.run([${JSON.stringify(config.providers.enhance.runtimePath)},'-h'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10); assert r.returncode == 0; print(json.dumps({'device':'vulkan','runtime':'realesrgan-ncnn-vulkan'}))`
+        : "import json,onnxruntime,PIL; print(json.dumps({'onnxruntime':onnxruntime.__version__,'pillow':PIL.__version__,'providers':onnxruntime.get_available_providers()}))",
       enabled: config.providers.enhance.enabled,
       pythonPath: config.providers.enhance.pythonPath,
       timeoutMs,
@@ -298,7 +306,13 @@ export const runDoctor = async ({ configInput }) => {
     artifactCheck({
       checkId: "enhance-artifacts",
       enabled: config.providers.enhance.enabled,
-      paths: { model: config.providers.enhance.modelPath },
+      paths: vulkanEnhance
+        ? {
+            model: config.providers.enhance.modelPath,
+            modelParameter: enhanceModelParameterPath,
+            runtime: config.providers.enhance.runtimePath,
+          }
+        : { model: config.providers.enhance.modelPath },
     }),
     sceneCheck({ config: config.providers.sceneText, timeoutMs }),
   ]);
