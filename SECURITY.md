@@ -72,6 +72,16 @@ uses a read-only root filesystem, drops all capabilities and disables privilege
 escalation; downloaded models are checksum-pinned and written only to its
 dedicated volume.
 
+Optional Local AI jobs remain on the canonical owner listener and are absent
+from Guided. They verify current photo visibility before each read, run one
+child at a time with a four-job queue, and do not forward API keys, database
+credentials or the parent environment to providers. Temporary originals are
+deleted after the run. Derived artifacts are digest-checked and the current
+source fingerprint is re-verified before download. Cancellation has a bounded
+forced-stop path, and the derived store is capped to 12 runs or 4 GiB. Model
+weights are user-supplied and mounted read-only; Cimmich does not infer their
+licence or trustworthiness. See [Local AI review](docs/LOCAL_AI_REVIEW.md).
+
 Treat backups, provider artifacts, configuration volumes, and Document-store
 exports as sensitive. Keep them mode-restricted and encrypted at rest where the
 host or backup destination is shared. Restore only through the checksummed

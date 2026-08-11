@@ -6,6 +6,7 @@ import { createReviewRoutes } from "./review-routes.mjs";
 import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
 import { createAssetVisibilityRoutes } from "./asset-visibility-routes.mjs";
 import { createBulkAlbumOperationRoutes } from "./bulk-album-operation-routes.mjs";
+import { createLocalAiRoutes } from "./local-ai-routes.mjs";
 import {
   attachProjectionSnapshotInvalidation,
   exploreFacetResponse,
@@ -167,6 +168,7 @@ export const createCimmichServer = ({
   immichInventory,
   immichOnboarding,
   immichOwnerSession,
+  localAi,
   mediaOperator,
   memorySteward,
   optionalEgressEnabled = true,
@@ -197,6 +199,9 @@ export const createCimmichServer = ({
     ),
     createBulkAlbumOperationRoutes(repository, readJsonBody, sendJson),
     createReviewRoutes(repository, requireProjection, readJsonBody, sendJson),
+    ...(surfacePolicy === "guided"
+      ? []
+      : [createLocalAiRoutes(localAi, readJsonBody, sendJson, sendBinary)]),
   ];
 
   const handleRequest = async (request, response) => {

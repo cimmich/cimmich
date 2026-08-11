@@ -58,6 +58,90 @@ test("raw API rejects an untrusted Host even when Origin is absent", async () =>
   });
 });
 
+test("canonical Local AI routes expose bounded jobs and verified binary review artifacts", async () => {
+  const calls = [];
+  const jobId = "95e571ab-79a1-4f45-8416-2a3f22ca7f7a";
+  const token = "2af22c3c-e009-42a4-98e8-bb0f790bb25f:quick";
+  const job = {
+    artifactTokens: [token],
+    jobId,
+    operation: "quick",
+    schemaVersion: "cimmich.local-ai-jobs.v1",
+    state: "completed",
+  };
+  const localAi = {
+    artifact: async (input) => {
+      calls.push(["artifact", input]);
+      return {
+        bytes: Buffer.from("derived-review"),
+        disposition: "inline",
+        filename: "quick.png",
+        mimeType: "image/png",
+      };
+    },
+    cancel: (id) => {
+      calls.push(["cancel", id]);
+      return job;
+    },
+    get: (id) => {
+      calls.push(["get", id]);
+      return job;
+    },
+    start: async (input) => {
+      calls.push(["start", input]);
+      return job;
+    },
+    status: () => ({
+      capabilities: { best: true, faces: true, quick: true },
+      enabled: true,
+      schemaVersion: "cimmich.local-ai-jobs.v1",
+      state: "ready",
+    }),
+  };
+  await withServer(
+    {},
+    async (root) => {
+      const status = await fetch(`${root}/v1/local-ai`);
+      assert.equal(status.status, 200);
+      assert.equal((await status.json()).state, "ready");
+
+      const started = await fetch(`${root}/v1/local-ai/jobs`, {
+        body: JSON.stringify({
+          operation: "quick",
+          sourceAssetIds: [token.split(":")[0]],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(started.status, 202);
+
+      assert.equal(
+        (await fetch(`${root}/v1/local-ai/jobs/${jobId}`)).status,
+        200,
+      );
+      assert.equal(
+        (await fetch(`${root}/v1/local-ai/jobs/${jobId}`, { method: "DELETE" }))
+          .status,
+        200,
+      );
+
+      const artifact = await fetch(
+        `${root}/v1/local-ai/jobs/${jobId}/artifacts/${encodeURIComponent(token)}`,
+      );
+      assert.equal(artifact.status, 200);
+      assert.equal(artifact.headers.get("content-type"), "image/png");
+      assert.equal(await artifact.text(), "derived-review");
+    },
+    { localAi, surfacePolicy: "canonical" },
+  );
+  assert.deepEqual(calls, [
+    ["start", { operation: "quick", sourceAssetIds: [token.split(":")[0]] }],
+    ["get", jobId],
+    ["cancel", jobId],
+    ["artifact", { jobId, token }],
+  ]);
+});
+
 test("canonical owner gateway headers bind routes to the verified principal", async () => {
   const calls = [];
   const principalId = "22222222-2222-4222-8222-222222222222";

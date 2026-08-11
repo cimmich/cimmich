@@ -14,6 +14,7 @@
   import UnstackAction from '$lib/components/asset-viewer/actions/UnstackAction.svelte';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import CimmichAssetVisibility from '$lib/components/cimmich/CimmichAssetVisibility.svelte';
+  import CimmichLocalAiAction from '$lib/components/cimmich/CimmichLocalAiAction.svelte';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
   import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
   import { page } from '$app/state';
@@ -128,6 +129,9 @@
           <span class="text-xs font-semibold"><span class="hidden md:inline">This </span>photo</span>
           <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />
         </div>
+        {#if isOwner && asset.type === AssetTypeEnum.Image}
+          <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
+        {/if}
       {/if}
       <ActionButton action={Cast} />
       <ActionButton action={Actions.Share} />

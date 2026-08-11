@@ -11,16 +11,17 @@ Cimmich treats the user’s Immich library and any configured external-library r
 
 ## Reviewed production filesystem writers
 
-| Surface | Writes only to |
-| --- | --- |
-| `service/src/documents.mjs` | Cimmich-managed document object storage and its temporary files |
-| `service/src/immich-companion-manager.mjs` | Cimmich’s local companion credential file |
-| `service/bin/bootstrap-public-demo*.mjs` | disposable public-demo state, bridge and receipt files |
-| `service/bin/refresh-public-demo-immich-companion.mjs` | the disposable demo companion credential |
-| `service/bin/prepare-public-demo-external-library.mjs` | a newly created demo external-library target populated from fixtures |
-| `service/bin/configure-local-face-provider.mjs` | Cimmich’s governed local model directory |
-| `service/bin/document-lifecycle.mjs` | Cimmich document backup, restore, quarantine and managed-store paths |
-| evaluation/compile/validation CLIs | an explicit operator-selected output/report path |
+| Surface                                                | Writes only to                                                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `service/src/documents.mjs`                            | Cimmich-managed document object storage and its temporary files                                                      |
+| `service/src/immich-companion-manager.mjs`             | Cimmich’s local companion credential file                                                                            |
+| `service/src/local-ai-service.mjs`                     | Bounded Cimmich-owned Local AI work and derived-artifact storage; temporary source copies are deleted after each run |
+| `service/bin/bootstrap-public-demo*.mjs`               | disposable public-demo state, bridge and receipt files                                                               |
+| `service/bin/refresh-public-demo-immich-companion.mjs` | the disposable demo companion credential                                                                             |
+| `service/bin/prepare-public-demo-external-library.mjs` | a newly created demo external-library target populated from fixtures                                                 |
+| `service/bin/configure-local-face-provider.mjs`        | Cimmich’s governed local model directory                                                                             |
+| `service/bin/document-lifecycle.mjs`                   | Cimmich document backup, restore, quarantine and managed-store paths                                                 |
+| evaluation/compile/validation CLIs                     | an explicit operator-selected output/report path                                                                     |
 
 This contract does not claim that a disk, filesystem, backup tool or Immich itself cannot change source bytes. It claims that shipped Cimmich runtime and CLI paths do not do so, and the exact-candidate lifecycle check separately hashes the exercised source set before and after use.
 

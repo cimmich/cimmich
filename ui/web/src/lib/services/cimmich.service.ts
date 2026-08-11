@@ -11,6 +11,7 @@ import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmic
 export * from './cimmich-asset-correction.service';
 export * from './cimmich-asset-label.service';
 export * from './cimmich-bulk-album-operation.service';
+export * from './cimmich-local-ai.service';
 export * from './cimmich-deferred-face-review';
 export type { CimmichExploreFacet, CimmichExploreFacetResult, CimmichExploreFilters } from './cimmich-explore.service';
 
@@ -2581,6 +2582,8 @@ export const request = async <T>(path: string, init?: RequestInit, timeoutMs = d
     init?.signal?.removeEventListener('abort', abortFromCaller);
   }
 };
+
+export const cimmichRequestContext = () => ({ apiRoot, headers: visibilityHeaders() });
 const cimmichExploreClient = createCimmichExploreClient(request, coalesceCimmichRequest);
 export const getCimmichExploreFacets = cimmichExploreClient.getExploreFacets;
 export const getCimmichPersonAssetsPage = cimmichExploreClient.getPersonAssetsPage;

@@ -33,6 +33,8 @@ COPY providers/opencv-sface /app/providers/opencv-sface
 COPY providers/insightface-user-supplied /app/providers/insightface-user-supplied
 COPY providers/perceptual-dhash /app/providers/perceptual-dhash
 COPY providers/xmp-sidecar-reader /app/providers/xmp-sidecar-reader
+COPY providers/ultralytics-yolo-body /app/providers/ultralytics-yolo-body
+COPY tools/local-ai-photo-lab /app/tools/local-ai-photo-lab
 COPY migrations /app/migrations
 
 ENV HOST=0.0.0.0

@@ -44,6 +44,7 @@
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import Combobox, { type ComboBoxOption } from '../shared-components/Combobox.svelte';
   import { currentCimmichUndoReceiptContext } from './cimmich-undo-receipt-context.svelte';
+  import CimmichLocalAiAction from './CimmichLocalAiAction.svelte';
   import {
     CIMMICH_ENTITY_MEDIA_ACTION_GROUPS,
     cimmichEntityMediaActionIcon,
@@ -665,6 +666,12 @@
         <div class="entity-media-toolbar" role="toolbar" aria-label="Selected photo actions">
           <strong class="entity-media-count">{selectedCount.toLocaleString()} selected</strong>
           <div class="entity-media-selection-tools">
+            {#if selectedCount > 0}
+              <CimmichLocalAiAction
+                sourceAssetIds={items.map(({ sourceAssetId }) => sourceAssetId)}
+                variant="toolbar"
+              />
+            {/if}
             {#if onSelectShown}
               <Tooltip text="Select shown">
                 {#snippet child({ props })}

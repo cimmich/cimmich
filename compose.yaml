@@ -55,11 +55,12 @@ services:
       - /bin/sh
       - -c
       - >-
-        chown -R 1000:1000 /config /documents &&
-        chmod 700 /config /documents
+        chown -R 1000:1000 /config /documents /local-ai &&
+        chmod 700 /config /documents /local-ai
     volumes:
       - cimmich-config:/config
       - cimmich-documents:/documents
+      - cimmich-local-ai:/local-ai
     restart: "no"
     network_mode: none
     security_opt:
@@ -107,6 +108,13 @@ services:
       CIMMICH_LOCAL_MEDIA_PROVIDER: ${CIMMICH_LOCAL_MEDIA_PROVIDER:-}
       CIMMICH_MATCHING_PROVIDER_MANIFEST_PATH: ${CIMMICH_MATCHING_PROVIDER_MANIFEST_PATH:-}
       CIMMICH_LOCAL_PYTHON_PATH: /usr/bin/python3
+      CIMMICH_LOCAL_AI_ENABLED: ${CIMMICH_LOCAL_AI_ENABLED:-false}
+      CIMMICH_LOCAL_AI_ROOT: /local-ai
+      CIMMICH_LOCAL_AI_FACE_MODEL_PATH: ${CIMMICH_LOCAL_AI_FACE_MODEL_PATH:-/local-ai-models/face-detector.onnx}
+      CIMMICH_LOCAL_AI_ENHANCE_MODEL_PATH: ${CIMMICH_LOCAL_AI_ENHANCE_MODEL_PATH:-/local-ai-models/enhance-x4.onnx}
+      CIMMICH_LOCAL_AI_BODY_MODEL_PATH: ${CIMMICH_LOCAL_AI_BODY_MODEL_PATH:-}
+      CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH: ${CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH:-}
+      CIMMICH_LOCAL_AI_BODY_ENABLED: ${CIMMICH_LOCAL_AI_BODY_ENABLED:-false}
       CIMMICH_INSIGHTFACE_PROVIDER_MANIFEST_PATH: /face-provider/provider-manifest.json
       CIMMICH_INSIGHTFACE_DETECTOR_MODEL_PATH: /face-provider/detector.onnx
       CIMMICH_INSIGHTFACE_RECOGNIZER_MODEL_PATH: /face-provider/recognizer.onnx
@@ -136,6 +144,8 @@ services:
       - cimmich-config:/config
       - cimmich-documents:/documents
       - cimmich-face-provider:/face-provider:ro
+      - cimmich-local-ai:/local-ai
+      - cimmich-local-ai-models:/local-ai-models:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
@@ -239,3 +249,7 @@ volumes:
     name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-config
   cimmich-face-provider:
     name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-face-provider
+  cimmich-local-ai:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-local-ai
+  cimmich-local-ai-models:
+    name: ${CIMMICH_COMPANION_PROJECT:-cimmich-companion}-local-ai-models

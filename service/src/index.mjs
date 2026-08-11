@@ -33,6 +33,7 @@ import { createCimmichRepository } from "./repository.mjs";
 import { createCimmichServer } from "./server.mjs";
 import { createVisibilityService } from "./visibility.mjs";
 import { loadRuntimeConfig } from "./runtime-config.mjs";
+import { createLocalAiService } from "./local-ai-service.mjs";
 import { loadMigrations, loadSchemaPatches } from "./migration-runner.mjs";
 import {
   createCurrentImmichAssetReader,
@@ -315,6 +316,11 @@ const faceMatchingOperator = createFaceMatchingOperator({
 const memorySteward = createMemorySteward({
   repository,
 });
+const localAi = await createLocalAiService({
+  environment: process.env,
+  immichCompanion,
+  repository,
+});
 const serverDependencies = {
   addressGeocoder,
   allowedHosts,
@@ -326,6 +332,7 @@ const serverDependencies = {
   immichInventory,
   immichOnboarding,
   immichOwnerSession,
+  localAi,
   mediaOperator,
   memorySteward,
   repository,
@@ -354,6 +361,7 @@ const shutdown = async (exitCode = 0) => {
     ),
   );
   await localMediaProvider.recognizer?.close?.().catch(() => {});
+  await localAi.close().catch(() => {});
   await sql.end({ timeout: 5 }).catch(() => {});
   await maintenanceSql.end({ timeout: 5 }).catch(() => {});
 };
