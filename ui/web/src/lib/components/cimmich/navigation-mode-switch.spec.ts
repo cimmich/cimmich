@@ -8,6 +8,6 @@ describe('Cimmich navigation mode switch', () => {
 
   it.each(['/photos', '/people/person-1', '/cimmich-api/health'])('keeps %s in Immich mode', (path) => {
     expect(isCimmichPath(path)).toBe(false);
-    expect(cimmichModeSwitch(path)).toEqual({ cimmich: false, href: '/cimmich/home', label: 'Switch to Cimmich' });
+    expect(cimmichModeSwitch(path)).toEqual({ cimmich: false, href: '/cimmich', label: 'Switch to Cimmich' });
   });
 });

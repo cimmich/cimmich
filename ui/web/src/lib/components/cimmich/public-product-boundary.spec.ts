@@ -5,7 +5,7 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), 'utf8');
 
 describe('public Cimmich product boundary', () => {
   it('does not advertise legacy proof labs or private fixture copy from Home', async () => {
-    const home = await read(['../../../routes/(user)/cimmich', 'home', '+page.svelte'].join('/'));
+    const home = await read('../../../routes/(user)/cimmich/+page.svelte');
     expect(home).not.toMatch(/Trips lab|Activities lab|Quality control|Legacy overview/);
     expect(home).not.toContain('>Maintenance<');
     expect(home).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
@@ -14,7 +14,9 @@ describe('public Cimmich product boundary', () => {
     expect(home).toMatch(/>\s*Models & Guided\s*</);
     expect(home).toContain("name: 'Documents'");
     expect(home).toContain('Counts and previews follow the Viewing mode below.');
-    expect(home).toContain('Cimmich is a local companion for Immich 3.1.0, not a replacement gallery.');
+    expect(home).toContain(
+      'Cimmich owns the library experience. Immich 3.1.0 remains the media foundation underneath.',
+    );
     expect(home).toContain('Your originals and Immich database stay untouched,');
     expect(home).toContain('every core organising tool works without optional models.');
   });

@@ -99,7 +99,7 @@ export const Route = {
 
   // cimmich
   cimmich: () => '/cimmich',
-  cimmichHome: () => '/cimmich/home',
+  cimmichHome: () => '/cimmich',
   cimmichSteward: () => '/cimmich/steward',
   cimmichPhotoReview: () => '/cimmich/steward/photos',
   cimmichActivities: () => '/cimmich/activities',

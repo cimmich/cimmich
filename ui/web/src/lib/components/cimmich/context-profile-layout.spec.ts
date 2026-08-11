@@ -356,12 +356,13 @@ describe('Place, Thing and Event profile information architecture', () => {
   });
 
   it('makes Documents a first-class sidebar destination with URL-stable detail', async () => {
-    const sidebar = await read('src/lib/components/shared-components/side-bar/UserSidebar.svelte');
+    const sidebar = await read('src/lib/components/shared-components/side-bar/CimmichSidebar.svelte');
     const route = await read('src/routes/(user)/cimmich/documents/+page.svelte');
     const server = await read('src/routes/(user)/cimmich/documents/+page.ts');
 
-    expect(sidebar).toContain("{ title: 'Documents', href: Route.cimmichDocuments()");
-    expect(sidebar.indexOf("title: 'Documents'")).toBeLessThan(sidebar.indexOf("title: 'Smart Search'"));
+    expect(sidebar).toContain('title="Documents"');
+    expect(sidebar).toContain('href={Route.cimmichDocuments()}');
+    expect(sidebar.indexOf('title="Documents"')).toBeLessThan(sidebar.indexOf('title="Smart Search"'));
     expect(route).toContain("page.url.searchParams.get('documentId')");
     expect(route).toContain('initialDocumentId={requestedDocumentId}');
     expect(route).toContain('onDocumentChange={selectDocument}');

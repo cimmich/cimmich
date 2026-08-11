@@ -213,7 +213,7 @@
   >
     <h1 class="sr-only">Cimmich home</h1>
     <p class="rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-700 dark:bg-gray-900 dark:text-gray-300">
-      <strong>Cimmich is a local companion for Immich 3.1.0, not a replacement gallery.</strong>
+      <strong>Cimmich owns the library experience. Immich 3.1.0 remains the media foundation underneath.</strong>
       Your originals and Immich database stay untouched, and every core organising tool works without optional models.
     </p>
     {#if loadError}

@@ -32,7 +32,7 @@ describe('human-first Organise information architecture', () => {
       read('src/routes/(user)/folders/[[photos=photos]]/[[assetId=id]]/+page.svelte'),
       read('src/routes/(user)/tags/[[photos=photos]]/[[assetId=id]]/+page.svelte'),
       read('src/routes/(user)/albums/+page.svelte'),
-      read('src/lib/components/shared-components/side-bar/UserSidebar.svelte'),
+      read('src/lib/components/shared-components/side-bar/CimmichSidebar.svelte'),
     ]);
 
     for (const mode of [photos, folders, tags, albums]) {
@@ -45,7 +45,7 @@ describe('human-first Organise information architecture', () => {
     expect(folders).toContain('href={Route.libraries()}');
     expect(tags).toContain('<CimmichTagBrowser {tags} initialPath={data.path} />');
     expect(await read('src/lib/components/cimmich/tag-browser.ts')).toContain('label: tag.value');
-    expect(sidebar).toContain('isActive: () => isOrganiseContext()');
+    expect(sidebar).toContain('href={Route.cimmichOrganise()}');
     expect(photos).toContain('Future photo dates need review');
     expect(photos).toContain('getCimmichSummary');
     expect(photos).toContain('choose Change date');
