@@ -105,3 +105,18 @@ test("public-demo UI clean builds its local SDK through an explicit allowlist", 
   assert.doesNotMatch(ignore, /!.*\.env/);
   assert.doesNotMatch(ignore, /!.*private/i);
 });
+
+test("companion UI dependency installation is cached ahead of ordinary source", async () => {
+  const dockerfile = await readFile(
+    new URL("../../tools/cimmich_ui.Dockerfile", import.meta.url),
+    "utf8",
+  );
+  const metadata = dockerfile.indexOf("COPY ui/web/package.json");
+  const install = dockerfile.indexOf(
+    "pnpm --filter @immich/sdk --filter immich-web install",
+  );
+  const source = dockerfile.indexOf("COPY ui/web ./web");
+  assert.ok(metadata >= 0);
+  assert.ok(metadata < install);
+  assert.ok(install < source);
+});

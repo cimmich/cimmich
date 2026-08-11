@@ -10,11 +10,16 @@ WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@11.6.0 --activate
 
 COPY ui/package.json ui/pnpm-lock.yaml ui/pnpm-workspace.yaml ./
+COPY ui/packages/sdk/package.json ./packages/sdk/package.json
+COPY ui/web/package.json ./web/package.json
+
+RUN pnpm --filter @immich/sdk --filter immich-web install --frozen-lockfile --force
+
 COPY ui/packages ./packages
 COPY ui/i18n ./i18n
 COPY ui/web ./web
 
-RUN pnpm --filter @immich/sdk --filter immich-web install --frozen-lockfile --force && \
+RUN \
     mkdir -p /workspace/web/node_modules/@immich && \
     ln -sfn ../../../packages/sdk /workspace/web/node_modules/@immich/sdk && \
     pnpm --filter @immich/sdk build
