@@ -18,3 +18,11 @@ Passing the accepted threshold into inference changes NMS behavior on crowded
 images and is forbidden by the provider tests. The manifest provider version
 binds this execution semantic; every threshold still requires its own config
 digest and evaluation.
+
+The Linux/amd64 private deployment may build the optional CPU runtime through
+`compose.local-ai-body.yaml`. This adds pinned Ultralytics, Torch and
+Torchvision packages to that API image only; it still adds no model weight.
+The provider applies the manifest's `execution.threads` value to PyTorch's
+intra-op pool and caps the inter-op pool at four. A deployment should benchmark
+the available thread counts while preserving headroom for the interactive
+photo service.

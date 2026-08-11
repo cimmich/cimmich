@@ -170,7 +170,7 @@ const existingExecutable = async (value) => {
   return info?.isFile() && (info.mode & 0o111) !== 0 ? resolve(path) : "";
 };
 
-const publicCapabilities = (config, enabled) => {
+const publicCapabilities = (config, enabled, environment) => {
   const faces = enabled && config.providers.faces.enabled;
   const enhance = enabled && config.providers.enhance.enabled;
   const bodies = enabled && config.providers.bodies.enabled;
@@ -178,7 +178,7 @@ const publicCapabilities = (config, enabled) => {
   return {
     best: enhance,
     bodies,
-    context: bodies,
+    context: bodies && environment.CIMMICH_LOCAL_AI_CONTEXT_ENABLED === "true",
     faces,
     quick: enabled,
     sceneText,
@@ -412,7 +412,7 @@ export const createLocalAiService = async ({
     face: await existingFile(environment.CIMMICH_LOCAL_AI_FACE_MODEL_PATH),
   };
   const config = providerConfig({ enabled, environment, modelPaths });
-  const capabilities = publicCapabilities(config, enabled);
+  const capabilities = publicCapabilities(config, enabled, environment);
   const jobs = new Map();
   let activeJob = null;
   const queue = [];

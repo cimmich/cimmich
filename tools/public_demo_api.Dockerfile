@@ -9,6 +9,7 @@ FROM python:3.11-slim-trixie@sha256:90744cff8f32887f075c47d747a173ff333e9e988016
 FROM node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada7517793cbfb0c2a29c AS runtime
 
 ARG TARGETARCH
+ARG CIMMICH_WITH_ULTRALYTICS_BODY=false
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl libgomp1 libvulkan1 mesa-vulkan-drivers postgresql-client \
   && rm -rf /var/lib/apt/lists/*
@@ -43,14 +44,22 @@ COPY --from=postgres-client /usr/lib/postgresql/17/bin/psql /usr/local/bin/psql
 COPY providers/opencv-sface/requirements.txt /tmp/cimmich-opencv-requirements.txt
 COPY providers/insightface-user-supplied/requirements.txt /tmp/cimmich-insightface-requirements.txt
 COPY providers/perceptual-dhash/requirements.txt /tmp/cimmich-dhash-requirements.txt
+COPY providers/ultralytics-yolo-body/requirements-linux-cpu.txt /tmp/cimmich-ultralytics-body-requirements.txt
 RUN python3 -m pip install --break-system-packages --no-cache-dir \
   -r /tmp/cimmich-opencv-requirements.txt \
   -r /tmp/cimmich-insightface-requirements.txt \
   -r /tmp/cimmich-dhash-requirements.txt \
+  && if [ "$CIMMICH_WITH_ULTRALYTICS_BODY" = "true" ]; then \
+    python3 -m pip install --break-system-packages --no-cache-dir \
+      -r /tmp/cimmich-ultralytics-body-requirements.txt; \
+  elif [ "$CIMMICH_WITH_ULTRALYTICS_BODY" != "false" ]; then \
+    echo "CIMMICH_WITH_ULTRALYTICS_BODY must be true or false" >&2; \
+    exit 1; \
+  fi \
   && python3 -m pip uninstall --break-system-packages --yes opencv-python \
   && python3 -m pip install --break-system-packages --no-cache-dir \
     --force-reinstall --no-deps opencv-python-headless==4.11.0.86 \
-  && rm /tmp/cimmich-opencv-requirements.txt /tmp/cimmich-insightface-requirements.txt /tmp/cimmich-dhash-requirements.txt
+  && rm /tmp/cimmich-opencv-requirements.txt /tmp/cimmich-insightface-requirements.txt /tmp/cimmich-dhash-requirements.txt /tmp/cimmich-ultralytics-body-requirements.txt
 
 WORKDIR /app/service
 COPY service/package.json service/package-lock.json ./

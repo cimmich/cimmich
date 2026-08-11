@@ -7,8 +7,10 @@ import argparse
 import hashlib
 from io import BytesIO
 import json
+import os
 import struct
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ MAX_RESIDENT_METADATA_BYTES = 64 * 1024
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
+MAX_RUNTIME_THREADS = 16
 
 
 class ProviderError(Exception):
@@ -111,7 +114,33 @@ def load_manifest(path: Path, model_path: Path) -> dict:
         raise ProviderError("provider privacy boundary is invalid")
     if manifest.get("detector", {}).get("artifactDigest") != file_digest(model_path):
         raise ProviderError("model checkpoint does not match the manifest")
+    threads = manifest.get("execution", {}).get("threads")
+    if (
+        not isinstance(threads, int)
+        or isinstance(threads, bool)
+        or not 1 <= threads <= MAX_RUNTIME_THREADS
+    ):
+        raise ProviderError("provider thread budget is invalid")
     return manifest
+
+
+def configure_runtime(manifest: dict, torch_module: Any = None) -> Any:
+    runtime_cache = str(Path(tempfile.gettempdir()) / "cimmich-ultralytics")
+    os.environ.setdefault("YOLO_CONFIG_DIR", runtime_cache)
+    os.environ.setdefault("MPLCONFIGDIR", runtime_cache)
+    if torch_module is None:
+        import torch as torch_module
+
+    threads = manifest["execution"]["threads"]
+    torch_module.set_num_threads(threads)
+    try:
+        torch_module.set_num_interop_threads(min(threads, 4))
+    except RuntimeError:
+        # PyTorch permits the inter-op pool to be configured only before work
+        # starts. The resident provider sets it during boot; a reused in-process
+        # test/runtime may already have initialized it.
+        pass
+    return torch_module
 
 
 def round6(value: float) -> float:
@@ -169,7 +198,7 @@ def project_result(request: dict, manifest: dict, model: Any, image_input: Any) 
     }
 
 
-def execute(request: dict, model_factory=None) -> dict:
+def execute(request: dict, model_factory=None, torch_module: Any = None) -> dict:
     image_path = Path(request["imagePath"]).resolve()
     model_path = Path(request["modelPath"]).resolve()
     manifest = load_manifest(Path(request["manifestPath"]).resolve(), model_path)
@@ -178,9 +207,12 @@ def execute(request: dict, model_factory=None) -> dict:
     if file_digest(image_path) != request["sourceContentDigest"]:
         raise ProviderError("source image digest changed")
     if model_factory is None:
+        configure_runtime(manifest, torch_module=torch_module)
         from ultralytics import YOLO
 
         model_factory = YOLO
+    elif torch_module is not None:
+        configure_runtime(manifest, torch_module=torch_module)
     model = model_factory(str(model_path))
     return project_result(request, manifest, model, str(image_path))
 
@@ -257,6 +289,7 @@ def write_resident_result(value: dict) -> None:
 
 def serve(manifest_path: Path, model_path: Path) -> int:
     manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
+    configure_runtime(manifest)
     from ultralytics import YOLO
 
     model = YOLO(str(model_path.resolve()))

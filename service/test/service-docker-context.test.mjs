@@ -28,6 +28,7 @@ test("service Dockerfile build context is an explicit backend allowlist", async 
     "!providers/perceptual-dhash/*.json",
     "!providers/perceptual-dhash/requirements.txt",
     "!providers/ultralytics-yolo-body/*.py",
+    "!providers/ultralytics-yolo-body/requirements-linux-cpu.txt",
     "!tools/local-ai-photo-lab/bin/**",
     "!tools/local-ai-photo-lab/src/**",
     "!tools/local-ai-photo-lab/python/**",
@@ -60,6 +61,8 @@ test("public-demo API build context admits the reference adapter but no weights 
   );
   assert.match(dockerfile, /COPY providers\/opencv-sface/);
   assert.match(dockerfile, /COPY providers\/perceptual-dhash/);
+  assert.match(dockerfile, /CIMMICH_WITH_ULTRALYTICS_BODY/);
+  assert.match(dockerfile, /requirements-linux-cpu\.txt/);
   assert.match(dockerfile, /COPY service\/enhanced \.\/enhanced/);
   assert.match(dockerfile, /python:3\.11-slim-trixie@sha256:/);
   assert.match(
@@ -76,6 +79,11 @@ test("public-demo API build context admits the reference adapter but no weights 
   assert.ok(ignore.split("\n").includes("!service/enhanced/**"));
   assert.ok(
     ignore.split("\n").includes("!providers/ultralytics-yolo-body/*.py"),
+  );
+  assert.ok(
+    ignore
+      .split("\n")
+      .includes("!providers/ultralytics-yolo-body/requirements-linux-cpu.txt"),
   );
   assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/bin/**"));
   assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/src/**"));

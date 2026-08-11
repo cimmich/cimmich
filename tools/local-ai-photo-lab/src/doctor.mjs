@@ -195,6 +195,7 @@ const bodyManifestCheck = async ({ config, modelDigest, runtime }) => {
         device: manifest.execution.device,
         network: manifest.execution.network,
         providerId: manifest.provider?.providerId,
+        threads: manifest.execution.threads,
       },
       reason: acceleratorUnconfirmed
         ? "REQUESTED_GPU_NOT_CONFIRMED"

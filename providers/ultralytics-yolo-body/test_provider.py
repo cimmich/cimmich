@@ -43,7 +43,26 @@ class Model:
         ]
 
 
+class TorchRuntime:
+    threads = None
+    interop_threads = None
+
+    @classmethod
+    def set_num_threads(cls, value):
+        cls.threads = value
+
+    @classmethod
+    def set_num_interop_threads(cls, value):
+        cls.interop_threads = value
+
+
 class ProviderTest(unittest.TestCase):
+    def test_runtime_enforces_the_manifest_thread_budget(self):
+        manifest = {"execution": {"threads": 6}}
+        provider.configure_runtime(manifest, torch_module=TorchRuntime)
+        self.assertEqual(TorchRuntime.threads, 6)
+        self.assertEqual(TorchRuntime.interop_threads, 4)
+
     def test_result_is_minimized_and_deterministic(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -98,6 +117,15 @@ class ProviderTest(unittest.TestCase):
             self.assertEqual(Model.calls[-1]["conf"], provider.RAW_CONFIDENCE_FLOOR)
             self.assertEqual(Model.calls[-1]["classes"], [0])
             self.assertEqual(Model.calls[-1]["max_det"], provider.MAX_RAW_DETECTIONS)
+
+            core["execution"]["threads"] = 0
+            invalid_manifest = {
+                **core,
+                "detectorConfigDigest": provider.canonical_digest(core),
+            }
+            manifest_path.write_text(json.dumps(invalid_manifest))
+            with self.assertRaises(provider.ProviderError):
+                provider.load_manifest(manifest_path, model)
 
     def test_request_rejects_extra_fields_and_source_drift(self):
         base = {

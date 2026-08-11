@@ -113,7 +113,7 @@ dimensions, structural fidelity, or seam checks fail. The base Compose file
 does not map a GPU and remains CPU-portable; hardware access is an explicit
 deployment property, not a silent fallback.
 
-Body/Context stays unavailable unless both
+Body stays unavailable unless both
 `CIMMICH_LOCAL_AI_BODY_MODEL_PATH` and
 `CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH` resolve to local files and the separately
 supplied provider runtime is compatible, and
@@ -121,6 +121,19 @@ supplied provider runtime is compatible, and
 unavailable unless explicitly enabled against a loopback endpoint. This
 document does not certify those optional models, biometric accuracy,
 demographic fairness or archive-wide performance.
+
+Context has a second gate. A configured Body provider does not make Context
+ready unless `CIMMICH_LOCAL_AI_CONTEXT_ENABLED=true` is also deliberately set
+after a representative body-continuity validation. This prevents ordinary body
+geometry review from silently acquiring cross-photo identity-support behavior.
+
+On Linux/amd64, `compose.local-ai-body.yaml` builds the exact optional CPU
+runtime and points the API at `body/yolo11n.pt` plus
+`body/yolo11n-cpu.json` in the existing read-only Local AI model volume. The
+checkpoint and manifest remain deployment-owned and are not copied into the
+image or release source. The provider enforces the manifest's declared CPU
+thread budget; choose that budget from measured host acceptance rather than
+assuming one thread or all host CPUs is best.
 
 ## API surface
 

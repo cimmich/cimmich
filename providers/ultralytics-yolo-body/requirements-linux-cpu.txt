@@ -1,0 +1,6 @@
+# Optional Linux CPU runtime for the private/local body provider. The checkpoint
+# remains operator supplied and is never part of the image or build context.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+torchvision==0.23.0+cpu
+ultralytics==8.4.92

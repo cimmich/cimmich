@@ -67,6 +67,45 @@ test("Local AI reports only present models and checks current visibility before 
   }
 });
 
+test("Body activation does not implicitly activate unvalidated Context", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
+  try {
+    const bodyModel = join(root, "body.pt");
+    const bodyManifest = join(root, "body.json");
+    await writeFile(bodyModel, "private-body-model");
+    await writeFile(bodyManifest, "{}");
+    const baseEnvironment = {
+      CIMMICH_LOCAL_AI_BODY_ENABLED: "true",
+      CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH: bodyManifest,
+      CIMMICH_LOCAL_AI_BODY_MODEL_PATH: bodyModel,
+      CIMMICH_LOCAL_AI_ENABLED: "true",
+      CIMMICH_LOCAL_AI_ROOT: root,
+    };
+    const bodyOnly = await createLocalAiService({
+      environment: baseEnvironment,
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(bodyOnly.status().capabilities.bodies, true);
+    assert.equal(bodyOnly.status().capabilities.context, false);
+
+    const explicitlyValidatedContext = await createLocalAiService({
+      environment: {
+        ...baseEnvironment,
+        CIMMICH_LOCAL_AI_CONTEXT_ENABLED: "true",
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(
+      explicitlyValidatedContext.status().capabilities.context,
+      true,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("Local AI rejects unknown fields and unconfigured model capabilities", async () => {
   const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
   try {
