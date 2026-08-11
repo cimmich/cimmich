@@ -24,6 +24,29 @@ describe('photo viewer Person picker', () => {
     expect(source).toContain("page.url.searchParams.get('cimmichOverlay') === 'people'");
   });
 
+  it('keeps typed existing-Person selection separate from explicit Person creation', async () => {
+    const source = await readPhotoOverlay();
+
+    expect(source).toContain('searchManualPhotoTagPeople(manualTagSubjects, normalizedFaceNameDraft, 8)');
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('role="listbox"');
+    expect(source).toContain('Existing People matching the typed name');
+    expect(source).toContain('Create a new Person named “{normalizedFaceNameDraft}” instead');
+    expect(source).toContain(
+      "faceActionError = 'Choose an existing Person, or explicitly choose to create a new one.'",
+    );
+    expect(source).toContain("faceEvidenceKindDraft !== 'body' && !faceDraftHasIdentityTarget");
+  });
+
+  it('shows marginal detector evidence without hiding the machine candidate', async () => {
+    const source = await readPhotoOverlay();
+
+    expect(source).toContain('candidatePresentationLabel(face, bestCandidate)');
+    expect(source).toContain('Face signal ${Math.round(detection * 100)}%');
+    expect(source).toContain('Match ${candidateSimilarityLabel(candidate.rawScore)}');
+    expect(source).not.toContain('detection >= 0.4 ? bestCandidate');
+  });
+
   it('defensively limits a larger API response to the requested shortlist', async () => {
     const source = await readCimmichService();
 

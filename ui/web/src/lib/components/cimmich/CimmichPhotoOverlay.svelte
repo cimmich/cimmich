@@ -102,6 +102,7 @@
     manualPhotoTagSubjectLabel,
     resizeManualPhotoTagGeometryForType,
     resolveManualPhotoTagPersonConflict,
+    searchManualPhotoTagPeople,
     type ManualPhotoTagGeometry,
     type ManualPhotoTagSubject,
   } from './manual-photo-tag';
@@ -261,6 +262,7 @@
   let isBodyIdentitySaving = $state(false);
   let faceNameDraft = $state('');
   let faceSelectedPersonId = $state('');
+  let isCreatingFacePerson = $state(false);
   let faceActionMessage = $state('');
   let faceActionError = $state('');
   let identityCorrectionUndoDecisionId = $state('');
@@ -1474,6 +1476,19 @@
     linkedBody ? `${facePeopleTagLabel(face)} · face + body` : `Face · ${facePeopleTagLabel(face)}`;
   const bestFaceCandidate = (face: CimmichFaceOverlay) => faceMatchUi.governed(face.candidateMatches)[0];
   const candidateSimilarityLabel = (score: number) => `${Math.round(score * 100)}%`;
+  const faceDetectionSignal = (face: CimmichFaceOverlay) => {
+    const score = Number(face.detScore);
+    return Number.isFinite(score) ? score : undefined;
+  };
+  const candidatePresentationLabel = (
+    face: CimmichFaceOverlay,
+    candidate: { personName: string; rawScore: number },
+  ) => {
+    const detection = faceDetectionSignal(face);
+    const faceSignal =
+      detection !== undefined && detection < 0.4 ? ` · Face signal ${Math.round(detection * 100)}%` : '';
+    return `${candidate.personName}?${faceSignal} · Match ${candidateSimilarityLabel(candidate.rawScore)}`;
+  };
   const machineBodyLabel = (body: CimmichBodyOverlay) => {
     const mode = bodyPeopleTagMode(body);
     if (mode === 'body-only') {
@@ -1717,10 +1732,18 @@
       ) ||
       '',
   );
+  const facePersonSearchResults = $derived(searchManualPhotoTagPeople(manualTagSubjects, normalizedFaceNameDraft, 8));
   const faceDraftCreatesPerson = $derived(
     Boolean(
-      normalizedFaceNameDraft && !faceDraftKnownPersonName && !isManualTagSubjectsLoading && !manualTagSubjectsError,
+      isCreatingFacePerson &&
+      normalizedFaceNameDraft &&
+      !faceDraftKnownPersonName &&
+      !isManualTagSubjectsLoading &&
+      !manualTagSubjectsError,
     ),
+  );
+  const faceDraftHasIdentityTarget = $derived(
+    Boolean(faceSelectedPersonId || faceDraftKnownPersonName || faceDraftCreatesPerson),
   );
   const faceDraftNameChanged = $derived(
     Boolean(
@@ -2047,6 +2070,7 @@
       candidateName: faceCandidateDisplayName(face),
     });
     faceSelectedPersonId = face.name ? face.personIdentityKey || '' : '';
+    isCreatingFacePerson = false;
     faceActionMessage = '';
     faceActionError = '';
     clearIdentityConfirmId = '';
@@ -2121,6 +2145,7 @@
       faceSelectedPersonId = personPhotoContext.personId;
     }
     isEditingFaceName = true;
+    isCreatingFacePerson = false;
     faceActionError = '';
     void loadManualTagSubjects();
   };
@@ -2198,6 +2223,10 @@
   const saveSelectedFaceCorrection = async () => {
     if (faceEvidenceKindDraft === 'body') {
       await reclassifySelectedFaceAsBody();
+      return;
+    }
+    if (!faceDraftHasIdentityTarget) {
+      faceActionError = 'Choose an existing Person, or explicitly choose to create a new one.';
       return;
     }
     await runFaceAction('rename');
@@ -4313,9 +4342,7 @@
                 setSelectedFace(face, { editName: face.status !== 'named' });
               }}
             >
-              {bestCandidate
-                ? `${bestCandidate.personName} · ${candidateSimilarityLabel(bestCandidate.rawScore)}`
-                : machineFaceLabel(face, linkedBody)}
+              {bestCandidate ? candidatePresentationLabel(face, bestCandidate) : machineFaceLabel(face, linkedBody)}
             </button>
             {#if bestCandidate}
               <button
@@ -4336,7 +4363,7 @@
               <div class="cimmich-machine-candidate-list" aria-label="Candidate matches">
                 {#each faceMatchUi.governed(face.candidateMatches) as candidate (candidate.personId)}
                   <span>
-                    <span>{candidate.personName} · {candidateSimilarityLabel(candidate.rawScore)}</span>
+                    <span>{candidatePresentationLabel(face, candidate)}</span>
                     <button
                       type="button"
                       aria-label={`Accept ${candidate.personName} for this Face`}
@@ -5559,21 +5586,81 @@
               class="w-full rounded-sm border border-white/20 bg-white/10 p-2 text-sm text-white outline-none focus:border-white/60"
               placeholder="Type a name or choose a match"
               type="text"
-              oninput={() => (faceSelectedPersonId = '')}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="cimmich-face-person-results"
+              aria-expanded={Boolean(normalizedFaceNameDraft && !faceDraftKnownPersonName && !isCreatingFacePerson)}
+              oninput={() => {
+                faceSelectedPersonId = '';
+                isCreatingFacePerson = false;
+              }}
             />
           </label>
           {#if isManualTagSubjectsLoading}
             <p class="text-white/50">Checking People…</p>
           {:else if manualTagSubjectsError}
             <p class="text-red-200" role="alert">People are unavailable. Close and try again.</p>
+          {:else if normalizedFaceNameDraft && !faceDraftKnownPersonName && !isCreatingFacePerson}
+            <div
+              id="cimmich-face-person-results"
+              class="overflow-hidden rounded-sm border border-white/15 bg-black/35"
+              role="listbox"
+              aria-label="Existing People matching the typed name"
+            >
+              <p
+                class="border-b border-white/10 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/45 uppercase"
+              >
+                Existing People
+              </p>
+              {#if facePersonSearchResults.length > 0}
+                {#each facePersonSearchResults as person (person.id)}
+                  <button
+                    class="flex min-h-11 w-full items-center border-b border-white/10 px-2 py-1.5 text-left last:border-b-0 hover:bg-white/10"
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    onclick={() => {
+                      faceNameDraft = person.name;
+                      faceSelectedPersonId = person.id;
+                      isCreatingFacePerson = false;
+                      faceActionError = '';
+                    }}
+                  >
+                    {person.name}
+                  </button>
+                {/each}
+              {:else}
+                <p class="p-2 text-white/50">No existing Person matches “{normalizedFaceNameDraft}”.</p>
+              {/if}
+            </div>
+            <button
+              class="justify-self-start rounded-sm border border-white/20 px-2 py-1 text-white/70"
+              type="button"
+              onclick={() => {
+                isCreatingFacePerson = true;
+                faceSelectedPersonId = '';
+                faceActionError = '';
+              }}
+            >
+              Create a new Person named “{normalizedFaceNameDraft}” instead
+            </button>
           {:else if showFaceDraftIdentityCue}
             <p class={faceDraftCreatesPerson ? 'text-emerald-200' : 'text-white/55'}>
               {#if faceDraftCreatesPerson}
-                New Person · Create “{normalizedFaceNameDraft}”
+                New Person · Create “{normalizedFaceNameDraft}” only when you save
               {:else}
                 Existing Person · {faceDraftKnownPersonName}
               {/if}
             </p>
+            {#if faceDraftCreatesPerson}
+              <button
+                class="justify-self-start rounded-sm border border-white/20 px-2 py-1 text-white/70"
+                type="button"
+                onclick={() => (isCreatingFacePerson = false)}
+              >
+                Back to existing People
+              </button>
+            {/if}
           {/if}
           {#if isCimmichEvidence && faceEvidenceKindDraft === 'face'}
             <div class="overflow-hidden rounded-sm border border-white/15 bg-black/35">
@@ -5688,6 +5775,7 @@
                 !faceDraftHasChanges ||
                 isManualTagSubjectsLoading ||
                 Boolean(manualTagSubjectsError) ||
+                (faceEvidenceKindDraft !== 'body' && !faceDraftHasIdentityTarget) ||
                 (faceEvidenceKindDraft === 'body' && !faceDraftReclassificationPerson)}
               type="submit"
             >
