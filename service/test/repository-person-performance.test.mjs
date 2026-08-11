@@ -667,8 +667,7 @@ test("Person assets resolve scoped associations without expanding person_assets"
   assert.match(statement, /'body_hint_face'::text/);
   assert.match(statement, /effective_gallery_permission/);
   assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
-  assert.match(statement, /detected_identity\.state = 'accepted'/);
-  assert.doesNotMatch(
+  assert.match(
     statement,
     /detected_identity\.state IN \('accepted', 'superseded'\)/,
   );
