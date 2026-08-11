@@ -192,7 +192,7 @@ describe('Person profile layout', () => {
     );
     expect(source).toContain("{ id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' }");
     expect(source).toContain(
-      "{ id: 'body', label: 'Body', description: 'Body-only evidence without a usable Face or Head' }",
+      "{ id: 'body', label: 'Body', description: 'Body-only until a Face or Head is confirmed' }",
     );
     expect(source).toContain(
       "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
@@ -203,6 +203,7 @@ describe('Person profile layout', () => {
     );
     expect(source).toContain("association_types.includes('body_candidate')");
     expect(source).toContain('Body placement needed');
+    expect(source).toContain('It moves to Face or Head only when that stronger evidence is confirmed for this person.');
     expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
     expect(source).toContain('No Face-derived Head references');
     expect(source).toContain("association_types.includes('body') || association_types.includes('body_candidate')");

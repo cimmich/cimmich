@@ -5949,7 +5949,7 @@ export const createCimmichRepository = (
         JOIN current_face_identity detected_identity
           ON detected_identity.person_id = imported_identity.person_id
           AND detected_identity.face_id <> imported_identity.face_id
-          AND detected_identity.state IN ('accepted', 'superseded')
+          AND detected_identity.state = 'accepted'
           AND detected_identity.origin <> 'trusted_import'
         JOIN face_observation detected
           ON detected.face_id = detected_identity.face_id

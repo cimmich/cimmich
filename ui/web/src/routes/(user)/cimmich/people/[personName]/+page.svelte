@@ -444,7 +444,7 @@
     { id: 'secondary', label: 'Supporting', description: 'Remaining usable Face evidence' },
     { id: 'lq', label: 'Low quality', description: 'Condition-routed Face evidence' },
     { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
-    { id: 'body', label: 'Body', description: 'Body-only evidence without a usable Face or Head' },
+    { id: 'body', label: 'Body', description: 'Body-only until a Face or Head is confirmed' },
     { id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' },
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
@@ -3743,7 +3743,7 @@
                 <div class="flex max-w-xl flex-wrap items-center justify-end gap-2">
                   <p class="text-left text-xs text-gray-500 sm:text-right dark:text-gray-400">
                     {cimmichIdentityFilter === 'body'
-                      ? 'Body-only evidence is used when no usable Face or Head represents this person.'
+                      ? 'Current Body-only evidence is shown here. It moves to Face or Head only when that stronger evidence is confirmed for this person.'
                       : cimmichIdentityFilter === 'presence'
                         ? 'Presence records that the person is known to appear without usable Face, Head, or Body geometry.'
                         : cimmichIdentityFilter === 'presentation'
@@ -4636,7 +4636,7 @@
               <CimmichStatePanel
                 title={cimmichIdentityFilter === 'body' ? 'No Body evidence' : 'No Presence evidence'}
                 description={cimmichIdentityFilter === 'body'
-                  ? 'Body-only tags for this person will appear here.'
+                  ? 'Body-intent photos without confirmed Face or Head evidence for this person will appear here.'
                   : 'Whole-photo Presence tags for this person will appear here.'}
               />
             {/if}
