@@ -490,7 +490,12 @@ const finalizeRun = async (sql, run) => {
 
 export const createPossiblePeopleStore = (
   sql,
-  { createPerson, presentationRank = () => 0 } = {},
+  {
+    createPerson,
+    presentationRank = () => 0,
+    reconcilePhysicalFaces = () =>
+      sql`SELECT cimmich_refresh_physical_face_reconciliation()`,
+  } = {},
 ) => {
   let worker = null;
   let classificationWorker = null;
@@ -503,6 +508,7 @@ export const createPossiblePeopleStore = (
     if (worker) return worker;
     worker = (async () => {
       try {
+        await reconcilePhysicalFaces();
         await seedRun(sql, runId, presentationRank);
         while (true) {
           const [run] =
@@ -645,7 +651,6 @@ export const createPossiblePeopleStore = (
           WHERE run_id = ${active.run_id}
         `;
       }
-      await tx`SELECT cimmich_refresh_physical_face_reconciliation()`;
       const runId = `possible_run_${randomUUID().replaceAll("-", "")}`;
       await tx`
         INSERT INTO possible_person_run (
