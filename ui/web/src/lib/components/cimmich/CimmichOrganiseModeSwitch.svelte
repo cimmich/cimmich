@@ -4,7 +4,9 @@
   import { Icon } from '@immich/ui';
   import {
     mdiCalendarBlankOutline,
+    mdiClockOutline,
     mdiFolderMultipleOutline,
+    mdiHeartOutline,
     mdiImageAlbum,
     mdiShieldCheckOutline,
     mdiTagMultipleOutline,
@@ -14,8 +16,20 @@
     {
       href: Route.photos({ organise: 1 }),
       icon: mdiCalendarBlankOutline,
-      label: 'Timeline',
+      label: 'Photos',
       path: Route.photos(),
+    },
+    {
+      href: Route.recentlyAdded({ organise: 1 }),
+      icon: mdiClockOutline,
+      label: 'Recent',
+      path: Route.recentlyAdded(),
+    },
+    {
+      href: Route.favorites({ organise: 1 }),
+      icon: mdiHeartOutline,
+      label: 'Favourites',
+      path: Route.favorites(),
     },
     {
       href: Route.folders({ organise: 1 }),
@@ -40,13 +54,13 @@
   const isActive = (path: string) => page.url.pathname.startsWith(path);
   const bulkHref = $derived(
     page.url.pathname.startsWith(Route.folders()) && page.url.searchParams.get('path')
-      ? `${Route.cimmichOrganiseBulk()}?folder=${encodeURIComponent(page.url.searchParams.get('path')!)}`
-      : Route.cimmichOrganiseBulk(),
+      ? `${Route.cimmichLibraryBulk()}?folder=${encodeURIComponent(page.url.searchParams.get('path')!)}`
+      : Route.cimmichLibraryBulk(),
   );
 </script>
 
-<nav class="organise-switch" aria-label="Organise by">
-  <span class="organise-switch__label">Organise by</span>
+<nav class="organise-switch" aria-label="Library views">
+  <span class="organise-switch__label">Library</span>
   <div class="organise-switch__modes">
     {#each modes as mode (mode.label)}
       <a
@@ -54,14 +68,14 @@
         class="organise-switch__mode"
         href={mode.href}
         aria-current={isActive(mode.path) ? 'page' : undefined}
-        title={`Organise by ${mode.label}`}
+        title={`Open ${mode.label}`}
       >
         <Icon icon={mode.icon} size="18" />
         <span>{mode.label}</span>
       </a>
     {/each}
   </div>
-  <a class="organise-switch__bulk" href={bulkHref} title="Open Bulk organise">
+  <a class="organise-switch__bulk" href={bulkHref} title="Open Bulk tools">
     <Icon icon={mdiShieldCheckOutline} size="18" />
     <span>Bulk</span>
   </a>

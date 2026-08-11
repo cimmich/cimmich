@@ -11,7 +11,9 @@ describe('Cimmich navigation shell contract', () => {
       readFile('src/lib/components/shared-components/side-bar/ImmichSidebar.svelte', 'utf8'),
     ]);
 
-    expect(navigation).toContain('cimmichModeSwitch(page.url.pathname)');
+    expect(navigation).toContain('cimmichModeSwitch(page.url.pathname, libraryContext)');
+    expect(navigation).toContain('<CimmichTopSearch />');
+    expect(navigation).toContain('modeSwitch.cimmich ? Route.cimmichSmartSearch() : Route.search()');
     expect(navigation).toContain('src="/cimmich-logo.png"');
     expect(navigation).toContain("<Logo variant={showInlineBrand ? 'inline' : 'icon'}");
     expect(navigation).toContain('aria-label={modeSwitch.label}');
@@ -22,12 +24,17 @@ describe('Cimmich navigation shell contract', () => {
       'class:grid-cols-[--spacing(64)_auto]={sidebarStore.isOpen && mediaQueryManager.isFullSidebar}',
     );
     expect(people).not.toContain('initiallyExpanded');
-    expect(shell).toContain('isCimmichPath(page.url.pathname)');
+    expect(shell).toContain("isCimmichMode(page.url.pathname, page.url.searchParams.has('organise'))");
     expect(shell).toContain('<CimmichSidebar />');
     expect(shell).toContain('<ImmichSidebar />');
     expect(cimmichSidebar).toContain('title="Home"');
     expect(cimmichSidebar).toContain('href={Route.cimmichHome()}');
-    expect(cimmichSidebar).toContain('title="Smart Search"');
+    expect(cimmichSidebar).toContain('title="Library"');
+    expect(cimmichSidebar).toContain('href={Route.cimmichLibrary()}');
+    expect(cimmichSidebar).toContain('title="Review"');
+    expect(cimmichSidebar).toContain('title="Archive Health"');
+    expect(cimmichSidebar).toContain('title="Settings"');
+    expect(cimmichSidebar).not.toContain('title="Smart Search"');
     expect(cimmichSidebar).not.toContain('bind:expanded');
     expect(immichSidebar).not.toContain('Cimmich');
     expect(immichSidebar).not.toContain('Route.cimmich');

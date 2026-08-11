@@ -5,5 +5,5 @@ import type { PageLoad } from './$types';
 
 export const load = (async ({ url }) => {
   await authenticate(url);
-  redirect(307, Route.photos({ organise: 1 }));
+  redirect(307, Route.cimmichLibrary());
 }) satisfies PageLoad;

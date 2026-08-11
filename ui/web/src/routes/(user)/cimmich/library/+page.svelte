@@ -3,5 +3,5 @@
 </script>
 
 <UserPageLayout title="Library">
-  <p class="p-6 text-sm text-immich-fg/60 dark:text-immich-dark-fg/60">Opening Bulk tools…</p>
+  <p class="p-6 text-sm text-immich-fg/60 dark:text-immich-dark-fg/60">Opening your library…</p>
 </UserPageLayout>

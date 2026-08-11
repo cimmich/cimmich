@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { clickOutside } from '$lib/actions/click-outside';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
+  import CimmichTopSearch from '$lib/components/cimmich/CimmichTopSearch.svelte';
   import { cimmichModeSwitch } from '$lib/components/cimmich/navigation-mode-switch';
   import NotificationPanel from '$lib/components/shared-components/navigation-bar/NotificationPanel.svelte';
   import SearchBar from '$lib/components/shared-components/search-bar/SearchBar.svelte';
@@ -37,7 +38,8 @@
   let shouldShowNotificationPanel = $state(false);
   let innerWidth: number = $state(0);
   const hasUnreadNotifications = $derived(notificationManager.notifications.length > 0);
-  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname));
+  const libraryContext = $derived(page.url.searchParams.has('organise'));
+  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname, libraryContext));
   const showInlineBrand = $derived(mediaQueryManager.isFullSidebar && sidebarStore.isOpen);
 
   onMount(async () => {
@@ -97,7 +99,11 @@
     <div class="flex min-w-0 justify-between gap-2 pe-2 sm:gap-4 sm:pe-6 lg:gap-8">
       <div class="hidden w-full max-w-5xl flex-1 sm:block tall:ps-0">
         {#if featureFlagsManager.value.search}
-          <SearchBar grayTheme={true} />
+          {#if modeSwitch.cimmich}
+            <CimmichTopSearch />
+          {:else}
+            <SearchBar grayTheme={true} />
+          {/if}
         {/if}
       </div>
 
@@ -109,7 +115,7 @@
             variant="ghost"
             size="medium"
             icon={mdiMagnify}
-            href={Route.search()}
+            href={modeSwitch.cimmich ? Route.cimmichSmartSearch() : Route.search()}
             id="search-button"
             class="sm:hidden"
             aria-label={$t('go_to_search')}

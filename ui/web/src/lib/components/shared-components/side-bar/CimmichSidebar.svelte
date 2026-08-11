@@ -2,24 +2,29 @@
   import { page } from '$app/state';
   import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
   import { Route } from '$lib/route';
-  import { NavbarItem } from '@immich/ui';
+  import { NavbarGroup, NavbarItem } from '@immich/ui';
   import {
     mdiAccount,
     mdiAccountOutline,
+    mdiCalendarBlankOutline,
+    mdiClipboardCheckOutline,
+    mdiCogOutline,
     mdiFileDocumentOutline,
     mdiHome,
     mdiHomeOutline,
-    mdiImageMultiple,
     mdiImageMultipleOutline,
-    mdiMagnify,
     mdiMap,
     mdiMapOutline,
     mdiPackageVariantClosed,
     mdiPawOutline,
-    mdiTuneVariant,
+    mdiShieldCheckOutline,
   } from '@mdi/js';
 
   const isSectionActive = (href: string) => page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
+  const isLibraryActive = () =>
+    page.url.searchParams.has('organise') ||
+    isSectionActive(Route.cimmichLibrary()) ||
+    isSectionActive(Route.cimmichOrganise());
 </script>
 
 <Sidebar ariaLabel="Cimmich">
@@ -30,6 +35,10 @@
     activeIcon={mdiHome}
     isActive={() => page.url.pathname === Route.cimmichHome()}
   />
+  <NavbarItem title="Library" href={Route.cimmichLibrary()} icon={mdiImageMultipleOutline} isActive={isLibraryActive} />
+
+  <NavbarGroup title="Browse" size="tiny" />
+
   <NavbarItem
     title="People"
     href={Route.cimmichPeople()}
@@ -59,8 +68,7 @@
   <NavbarItem
     title="Events"
     href={Route.cimmichEvents()}
-    icon={mdiImageMultipleOutline}
-    activeIcon={mdiImageMultiple}
+    icon={mdiCalendarBlankOutline}
     isActive={() => isSectionActive(Route.cimmichEvents())}
   />
   <NavbarItem
@@ -70,15 +78,27 @@
     isActive={() => isSectionActive(Route.cimmichDocuments())}
   />
   <NavbarItem
-    title="Organise"
-    href={Route.cimmichOrganise()}
-    icon={mdiTuneVariant}
-    isActive={() => isSectionActive(Route.cimmichOrganise())}
+    title="Review"
+    href={Route.cimmichSteward()}
+    icon={mdiClipboardCheckOutline}
+    isActive={() => isSectionActive(Route.cimmichSteward())}
+  />
+
+  <NavbarGroup title="Manage" size="tiny" />
+
+  <NavbarItem
+    title="Archive Health"
+    href={Route.cimmichArchiveIntegrity()}
+    icon={mdiShieldCheckOutline}
+    isActive={() => isSectionActive(Route.cimmichArchiveIntegrity())}
   />
   <NavbarItem
-    title="Smart Search"
-    href={Route.cimmichSmartSearch()}
-    icon={mdiMagnify}
-    isActive={() => isSectionActive(Route.cimmichSmartSearch())}
+    title="Settings"
+    href={Route.cimmichSettings()}
+    icon={mdiCogOutline}
+    isActive={() =>
+      isSectionActive(Route.cimmichSettings()) ||
+      isSectionActive(Route.cimmichSetup()) ||
+      isSectionActive(Route.cimmichMaintenance())}
   />
 </Sidebar>

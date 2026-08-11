@@ -362,7 +362,7 @@ describe('Place, Thing and Event profile information architecture', () => {
 
     expect(sidebar).toContain('title="Documents"');
     expect(sidebar).toContain('href={Route.cimmichDocuments()}');
-    expect(sidebar.indexOf('title="Documents"')).toBeLessThan(sidebar.indexOf('title="Smart Search"'));
+    expect(sidebar.indexOf('title="Documents"')).toBeLessThan(sidebar.indexOf('title="Review"'));
     expect(route).toContain("page.url.searchParams.get('documentId')");
     expect(route).toContain('initialDocumentId={requestedDocumentId}');
     expect(route).toContain('onDocumentChange={selectDocument}');
