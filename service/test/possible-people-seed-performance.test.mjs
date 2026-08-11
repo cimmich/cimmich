@@ -40,6 +40,15 @@ test("Possible people seed work fails closed at the bounded transaction timeout"
     storeSource,
     /WHERE run_id = \$\{runId\} AND state IN \('queued','running'\)/,
   );
+  assert.match(
+    storeSource,
+    /DELETE FROM possible_person_edge WHERE run_id = \$\{runId\}/,
+  );
+  assert.match(
+    storeSource,
+    /DELETE FROM possible_person_seed WHERE run_id = \$\{runId\}/,
+  );
+  assert.match(storeSource, /SET state = 'failed', total_seeds = 0/);
 });
 
 test("Possible people batches reuse one session-local eligible candidate scope", async () => {
@@ -69,6 +78,10 @@ test("Possible people batches reuse one session-local eligible candidate scope",
   assert.doesNotMatch(batchSource, /JOIN identity_claim accepted/);
   assert.match(storeSource, /workSql = await sql\.reserve\(\)/);
   assert.match(storeSource, /dropPossiblePeopleCandidateScope\(workSql\)/);
+  assert.match(
+    storeSource,
+    /await releaseReservedConnection\(workSql\);\s+reserved = false;\s+workSql = sql;/,
+  );
   assert.match(batchSource, /const batchWorkerCount = 4/);
   assert.match(
     batchSource,

@@ -390,31 +390,42 @@ export const createPossiblePeopleStore = (
           space,
           presentationRank,
         });
+        if (reserved) {
+          await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
+          await releaseReservedConnection(workSql);
+          reserved = false;
+          workSql = sql;
+        }
         const [completedRun] =
           await workSql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
         if (!completedRun || completedRun.state !== "running") return;
         await finalizeRun(workSql, completedRun);
       } catch (error) {
-        await workSql`
-          UPDATE possible_person_run SET state = 'failed',
-            error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
-            error_message = ${String(error?.message || error).slice(0, 500)},
-            classification_state = CASE
-              WHEN classification_state = 'running' THEN 'failed'
-              ELSE classification_state
-            END,
-            classification_error_code = CASE
-              WHEN classification_state = 'running'
-                THEN ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)}
-              ELSE classification_error_code
-            END,
-            classification_error_message = CASE
-              WHEN classification_state = 'running'
-                THEN ${String(error?.message || error).slice(0, 500)}
-              ELSE classification_error_message
-            END
-          WHERE run_id = ${runId} AND state IN ('queued','running')
-        `.catch(() => {});
+        await withReservedTransaction(workSql, async (tx) => {
+          await tx`DELETE FROM possible_person_edge WHERE run_id = ${runId}`;
+          await tx`DELETE FROM possible_person_seed WHERE run_id = ${runId}`;
+          await tx`
+            UPDATE possible_person_run SET state = 'failed', total_seeds = 0,
+              processed_seeds = 0, edge_count = 0, cluster_count = 0,
+              error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
+              error_message = ${String(error?.message || error).slice(0, 500)},
+              classification_state = CASE
+                WHEN classification_state = 'running' THEN 'failed'
+                ELSE classification_state
+              END,
+              classification_error_code = CASE
+                WHEN classification_state = 'running'
+                  THEN ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)}
+                ELSE classification_error_code
+              END,
+              classification_error_message = CASE
+                WHEN classification_state = 'running'
+                  THEN ${String(error?.message || error).slice(0, 500)}
+                ELSE classification_error_message
+              END
+            WHERE run_id = ${runId} AND state IN ('queued','running')
+          `;
+        }).catch(() => {});
       } finally {
         await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
         if (reserved) await releaseReservedConnection(workSql);
