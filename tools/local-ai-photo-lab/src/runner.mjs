@@ -216,7 +216,7 @@ export const runPhotoLab = async ({
   const enhanceConfig = {
     ...config.providers.enhance,
     maxInputPixels: config.limits.maxEnhanceInputPixels,
-    timeoutMs: config.limits.providerTimeoutMs,
+    timeoutMs: config.limits.enhanceProviderTimeoutMs,
   };
   const imageProbes = [];
   for (const asset of photoSet.assets) {
@@ -322,10 +322,7 @@ export const runPhotoLab = async ({
         );
       }
       if (executedOperations.includes("enhance-preview")) {
-        const outputPath = join(
-          artifactRoot,
-          `${name}-enhanced-preview-x4.png`,
-        );
+        const outputPath = join(artifactRoot, `${name}-enhanced-quick-x2.png`);
         const enhanced = await timed(() =>
           providerImplementations.runEnhance({
             asset: assetInput,
@@ -343,10 +340,7 @@ export const runPhotoLab = async ({
             : enhanced;
       }
       if (executedOperations.includes("enhance")) {
-        const outputPath = join(
-          artifactRoot,
-          `${name}-enhanced-x${config.providers.enhance.scale}.png`,
-        );
+        const outputPath = join(artifactRoot, `${name}-enhanced-best-x2.png`);
         const enhanced = await timed(() =>
           providerImplementations.runEnhance({
             asset: assetInput,

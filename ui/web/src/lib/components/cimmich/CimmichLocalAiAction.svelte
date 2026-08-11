@@ -36,13 +36,13 @@
       id: 'quick' as const,
       available: selectionAllowed && (status?.capabilities.quick ?? false),
       title: 'Upscale · Quick',
-      detail: 'A fast x4 review preview. Your original stays untouched.',
+      detail: 'A fast, full-photo 2x upscale with conservative sharpening. Your original stays untouched.',
     },
     {
       id: 'best' as const,
       available: selectionAllowed && (status?.capabilities.best ?? false),
       title: 'Upscale · Best',
-      detail: 'A slower, cleaner 2x review render for close inspection.',
+      detail: 'A full-photo 2x AI reconstruction. Slow on CPU; live tile progress appears below.',
     },
     {
       id: 'faces' as const,
@@ -76,6 +76,27 @@
   const running = $derived(job?.state === 'queued' || job?.state === 'running');
   const finished = $derived(job && ['cancelled', 'completed', 'failed', 'partial'].includes(job.state));
   const selectedAvailable = $derived(operations.find((operation) => operation.id === selected)?.available ?? false);
+  const progressText = $derived.by(() => {
+    const progress = job?.progress;
+    if (!progress) {
+      return '';
+    }
+    const model = progress.model;
+    if (!model) {
+      return progress.phase.replaceAll('-', ' ');
+    }
+    if (model.stage === 'upscaling' && model.totalTiles) {
+      return `Upscaling · ${model.completedTiles ?? 0} of ${model.totalTiles} tiles`;
+    }
+    const labels: Record<string, string> = {
+      'checking-result': 'Checking the reconstructed image',
+      complete: 'Finishing the review artifact',
+      encoding: 'Writing the review image',
+      resampling: 'Upscaling the full photo',
+      sharpening: 'Applying conservative sharpening',
+    };
+    return labels[model.stage] ?? model.stage.replaceAll('-', ' ');
+  });
   const faceSummary = $derived.by(() => {
     const assets = job?.result?.assets ?? [];
     const detected = assets.reduce((sum, asset) => sum + (asset.operations?.faces?.faces?.length ?? 0), 0);
@@ -97,7 +118,7 @@
         label: token.endsWith(':overlay')
           ? 'Review overlay'
           : token.endsWith(':quick')
-            ? 'Quick preview'
+            ? 'Quick upscale'
             : 'Best preview',
         url: URL.createObjectURL(await getCimmichLocalAiArtifact(nextJob.jobId, token)),
       })),
@@ -256,9 +277,23 @@
               ? 'Review ready · some providers unavailable'
               : job.state.replace('-', ' ')}</strong
           >
-          <span>{job.progress.phase.replaceAll('-', ' ')}</span>
+          <span>{progressText}</span>
           {#if running}
-            <progress max={Math.max(1, job.progress.totalAssets)} value={job.progress.completedAssets}></progress>
+            {#if job.progress.model}
+              <progress
+                aria-label={progressText}
+                max={job.progress.model.totalUnits}
+                value={job.progress.model.completedUnits}
+              ></progress>
+            {:else if job.progress.phase === 'running-model'}
+              <progress aria-label="Preparing the local model"></progress>
+            {:else}
+              <progress
+                aria-label={progressText}
+                max={Math.max(1, job.progress.totalAssets)}
+                value={job.progress.completedAssets}
+              ></progress>
+            {/if}
           {/if}
           {#if job.result?.originalsUnchanged}
             <span class="verified"><Icon icon={mdiShieldCheckOutline} size="18" /> Original verified unchanged</span>

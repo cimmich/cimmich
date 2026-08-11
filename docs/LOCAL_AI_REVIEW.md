@@ -2,15 +2,17 @@
 
 Cimmich can run a deliberately small local photo lab from the photo viewer or
 from a selected set of at most 12 photos. The feature is optional, disabled by
-default, and remains useful only when the operator supplies compatible local
-model files.
+default, and keeps Quick model-free. Model-powered operations appear only when
+the operator supplies compatible local model files.
 
 ## Product contract
 
 The owner can request:
 
-- **Upscale · Quick** — a fast x4 derived review preview;
-- **Upscale · Best** — a slower 2x derived review render;
+- **Upscale · Quick** — a full-source 2x Lanczos resize with conservative
+  sharpening; it is the fast, non-generative option;
+- **Upscale · Best** — a full-source 2x Real-ESRGAN reconstruction, processed
+  in overlapping tiles with live progress;
 - **Look for missed Faces** — a fresh detector pass compared with Cimmich's
   saved Face boxes;
 - **Look for missed Bodies** — available only with a separately configured
@@ -23,6 +25,13 @@ The owner can request:
 Unavailable operations remain visible and explain the missing capability. A
 configured model never changes accepted identity or Context data by itself.
 Results are review candidates, not decisions.
+
+Quick and Best deliberately produce the same output dimensions. Quick changes
+pixel size without asking a model to invent detail. Best uses a learned model
+that can make edges and textures look cleaner but can also synthesize plausible
+detail, so close human review remains required. Best has its own bounded
+30-minute provider ceiling; every tile advances the visible progress bar and
+the job remains cancellable.
 
 ## Media and authority boundary
 
@@ -71,8 +80,9 @@ The default Compose deployment mounts:
 - `cimmich-local-ai` at `/local-ai` for bounded derived work; and
 - `cimmich-local-ai-models` read-only at `/local-ai-models` in the API.
 
-Set `CIMMICH_LOCAL_AI_ENABLED=true` only after privately installing compatible
-models. Face and enhancement default to
+Set `CIMMICH_LOCAL_AI_ENABLED=true` to expose the bounded local review surface.
+Quick then uses the packaged image runtime without a model. Face and Best
+default to
 `/local-ai-models/face-detector.onnx` and
 `/local-ai-models/enhance-x4.onnx`. Model weights are not bundled, fetched or
 redistributed by Cimmich. The operator is responsible for source, licence,

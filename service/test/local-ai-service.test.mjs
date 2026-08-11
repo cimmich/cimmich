@@ -55,7 +55,7 @@ test("Local AI reports only present models and checks current visibility before 
     });
     assert.equal(service.status().state, "ready");
     assert.equal(service.status().capabilities.faces, true);
-    assert.equal(service.status().capabilities.quick, false);
+    assert.equal(service.status().capabilities.quick, true);
     await assert.rejects(
       service.start({ operation: "faces", sourceAssetIds: [assetId] }),
       (error) =>
@@ -67,7 +67,7 @@ test("Local AI reports only present models and checks current visibility before 
   }
 });
 
-test("Local AI rejects unknown fields and unconfigured capabilities", async () => {
+test("Local AI rejects unknown fields and unconfigured model capabilities", async () => {
   const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
   try {
     const service = await createLocalAiService({
@@ -79,7 +79,7 @@ test("Local AI rejects unknown fields and unconfigured capabilities", async () =
       repository: {},
     });
     await assert.rejects(
-      service.start({ operation: "quick", sourceAssetIds: [assetId] }),
+      service.start({ operation: "best", sourceAssetIds: [assetId] }),
       (error) => error.code === "LOCAL_AI_CAPABILITY_UNAVAILABLE",
     );
     await assert.rejects(
@@ -113,6 +113,10 @@ test("Local AI completes a bounded derived run and re-verifies the source before
       child.stderr = new PassThrough();
       child.kill = () => true;
       setImmediate(async () => {
+        child.stderr.write(
+          'CIMMICH_LOCAL_AI_PROGRESS {"completedUnits":1,"operation":"quick","schemaVersion":"cimmich.local-ai-progress.v1","stage":"sharpening","totalUnits":3}\n',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 15));
         const outputRoot = args[args.indexOf("--output") + 1];
         const runDir = join(outputRoot, "sets", "test-set", "runs", "0001");
         const artifactPath = join(runDir, "artifacts", `${assetId}-quick.png`);
@@ -182,6 +186,7 @@ test("Local AI completes a bounded derived run and re-verifies the source before
       sourceAssetIds: [assetId],
     });
     let completed = started;
+    let observedModelProgress = null;
     for (
       let attempt = 0;
       attempt < 20 &&
@@ -190,8 +195,15 @@ test("Local AI completes a bounded derived run and re-verifies the source before
     ) {
       await new Promise((resolve) => setTimeout(resolve, 5));
       completed = service.get(started.jobId);
+      observedModelProgress ||= completed.progress.model || null;
     }
     assert.equal(completed.state, "completed");
+    assert.deepEqual(observedModelProgress, {
+      completedUnits: 1,
+      operation: "quick",
+      stage: "sharpening",
+      totalUnits: 3,
+    });
     assert.deepEqual(completed.artifactTokens, [`${assetId}:quick`]);
     assert.equal(completed.result.originalsUnchanged, true);
     const artifact = await service.artifact({

@@ -18,6 +18,7 @@ const providerFailure = (operation, error) => ({
 });
 
 const processOutputLimit = 16 * 1024 * 1024;
+export const progressPrefix = "CIMMICH_LOCAL_AI_PROGRESS ";
 
 const terminateProcess = (child) => {
   child.kill("SIGTERM");
@@ -42,6 +43,7 @@ export const runProcess = ({
     });
     const stdout = [];
     const stderr = [];
+    let progressBuffer = "";
     let outputBytes = 0;
     let settled = false;
     const fail = (error) => {
@@ -72,7 +74,15 @@ export const runProcess = ({
       target.push(chunk);
     };
     child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
+    child.stderr.on("data", (chunk) => {
+      collect(stderr)(chunk);
+      progressBuffer += chunk.toString("utf8");
+      const lines = progressBuffer.split("\n");
+      progressBuffer = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith(progressPrefix)) process.stderr.write(`${line}\n`);
+      }
+    });
     child.on("error", (error) => {
       fail(error);
     });
@@ -80,12 +90,18 @@ export const runProcess = ({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (progressBuffer.startsWith(progressPrefix))
+        process.stderr.write(`${progressBuffer}\n`);
       const output = Buffer.concat(stdout).toString("utf8").trim();
       if (code !== 0) {
         const details = Buffer.concat(stderr).toString("utf8").trim();
         let providerCode = "LOCAL_AI_PROVIDER_PROCESS_FAILED";
         try {
-          providerCode = JSON.parse(details).error?.code || providerCode;
+          const errorLine = details
+            .split("\n")
+            .findLast((line) => !line.startsWith(progressPrefix));
+          providerCode =
+            JSON.parse(errorLine || "{}").error?.code || providerCode;
         } catch {
           // The message remains local-only and is sanitized before persistence.
         }
@@ -634,7 +650,8 @@ export const runEnhance = async ({
   operation = "enhance",
   outputPath,
 }) => {
-  if (!config.enabled)
+  const quick = operation === "enhance-preview";
+  if (!quick && !config.enabled)
     return {
       operation,
       state: "unavailable",
@@ -645,22 +662,17 @@ export const runEnhance = async ({
       args: [
         join(pythonRoot, "image_tools.py"),
         "enhance",
+        "--method",
+        quick ? "quick" : "best",
         "--input",
         asset.path,
-        "--model",
-        config.modelPath,
+        ...(!quick ? ["--model", config.modelPath] : []),
         "--output",
         outputPath,
-        "--scale",
-        String(operation === "enhance-preview" ? 4 : config.scale),
         "--device",
         config.device,
         "--max-input-pixels",
         String(config.maxInputPixels),
-        "--preview-max-input-pixels",
-        String(
-          operation === "enhance-preview" ? config.previewMaxInputPixels : 0,
-        ),
       ],
       command: config.pythonPath,
       timeoutMs: config.timeoutMs,

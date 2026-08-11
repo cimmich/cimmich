@@ -3,7 +3,7 @@
   "benchmarkId": "enhancement-quick-v1",
   "cases": [
     {
-      "caseId": "portrait-native-x4-progressive",
+      "caseId": "portrait-full-source-x2-quick",
       "contextKind": "none",
       "operations": "enhance-preview",
       "assets": [
@@ -19,8 +19,8 @@
             "image": { "width": 1024, "height": 1536 },
             "operationStates": { "enhancePreview": "derived" },
             "enhancePreview": {
-              "width": 684,
-              "height": 1024,
+              "width": 2048,
+              "height": 3072,
               "quality": {
                 "downsampleMae": { "min": 0, "max": 0.025 },
                 "downsampleSsim": { "min": 0.98, "max": 1 },

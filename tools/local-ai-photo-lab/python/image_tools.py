@@ -11,7 +11,36 @@ from pathlib import Path
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+
+
+PROGRESS_PREFIX = "CIMMICH_LOCAL_AI_PROGRESS "
+
+
+def emit_progress(
+    *,
+    completed_units: int,
+    operation: str,
+    stage: str,
+    total_units: int,
+    completed_tiles: int | None = None,
+    total_tiles: int | None = None,
+) -> None:
+    payload = {
+        "completedUnits": completed_units,
+        "operation": operation,
+        "schemaVersion": "cimmich.local-ai-progress.v1",
+        "stage": stage,
+        "totalUnits": total_units,
+    }
+    if completed_tiles is not None:
+        payload["completedTiles"] = completed_tiles
+    if total_tiles is not None:
+        payload["totalTiles"] = total_tiles
+    sys.stderr.write(
+        f"{PROGRESS_PREFIX}{json.dumps(payload, sort_keys=True, separators=(',', ':'))}\n"
+    )
+    sys.stderr.flush()
 
 
 def file_digest(path: Path) -> str:
@@ -177,9 +206,13 @@ def enhancement_quality(
     overlap: int,
     native_scale: int,
 ) -> dict:
-    original = np.asarray(source, dtype=np.float32) / 255.0
+    metric_source = source.copy()
+    if metric_source.width * metric_source.height > 1_048_576:
+        metric_source.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+    original = np.asarray(metric_source, dtype=np.float32) / 255.0
     reconstructed = np.asarray(
-        enhanced.resize(source.size, Image.Resampling.LANCZOS), dtype=np.float32
+        enhanced.resize(metric_source.size, Image.Resampling.LANCZOS),
+        dtype=np.float32,
     ) / 255.0
     mae = float(np.mean(np.abs(original - reconstructed)))
     x_mean = float(original.mean())
@@ -200,7 +233,6 @@ def enhancement_quality(
         np.mean(np.abs(np.diff(reconstructed, axis=0)))
         + np.mean(np.abs(np.diff(reconstructed, axis=1)))
     )
-    output = np.asarray(enhanced, dtype=np.float32) / 255.0
     output_scale = enhanced.width / source.width
     seam_values: list[float] = []
     for axis, positions, maximum in (
@@ -212,18 +244,30 @@ def enhancement_quality(
             if boundary < 2 or boundary >= maximum - 2:
                 continue
             if axis == 1:
-                seam = float(np.mean(np.abs(output[:, boundary] - output[:, boundary - 1])))
+                strip = enhanced.crop(
+                    (max(0, boundary - 5), 0, min(enhanced.width, boundary + 5), enhanced.height)
+                )
+                strip.thumbnail((10, 2048), Image.Resampling.BOX)
+                output = np.asarray(strip, dtype=np.float32) / 255.0
+                center = min(5, output.shape[1] - 1)
+                seam = float(np.mean(np.abs(output[:, center] - output[:, center - 1])))
                 nearby = [
                     float(np.mean(np.abs(output[:, index] - output[:, index - 1])))
-                    for index in range(boundary - 4, boundary + 5)
-                    if 1 <= index < maximum and index != boundary
+                    for index in range(1, output.shape[1])
+                    if index != center
                 ]
             else:
-                seam = float(np.mean(np.abs(output[boundary] - output[boundary - 1])))
+                strip = enhanced.crop(
+                    (0, max(0, boundary - 5), enhanced.width, min(enhanced.height, boundary + 5))
+                )
+                strip.thumbnail((2048, 10), Image.Resampling.BOX)
+                output = np.asarray(strip, dtype=np.float32) / 255.0
+                center = min(5, output.shape[0] - 1)
+                seam = float(np.mean(np.abs(output[center] - output[center - 1])))
                 nearby = [
                     float(np.mean(np.abs(output[index] - output[index - 1])))
-                    for index in range(boundary - 4, boundary + 5)
-                    if 1 <= index < maximum and index != boundary
+                    for index in range(1, output.shape[0])
+                    if index != center
                 ]
             baseline = float(np.median(nearby)) if nearby else 0.0
             seam_values.append(seam / max(baseline, 1e-6))
@@ -238,28 +282,84 @@ def enhancement_quality(
 
 
 def enhance(args: argparse.Namespace) -> None:
-    import onnxruntime as ort
-
     source = Path(args.input).resolve(strict=True)
-    model = Path(args.model).resolve(strict=True)
     output = Path(args.output).resolve()
     original = open_rgb(source)
     if original.width * original.height > args.max_input_pixels:
         raise ValueError("enhance input pixel limit exceeded")
-    image = original
-    if args.preview_max_input_pixels > 0:
-        ratio = min(
-            1.0,
-            math.sqrt(args.preview_max_input_pixels / (image.width * image.height)),
-            256 / max(image.width, image.height),
+
+    if args.method == "quick":
+        emit_progress(
+            completed_units=0,
+            operation="quick",
+            stage="resampling",
+            total_units=3,
         )
-    else:
-        ratio = 1.0
-    if ratio < 1.0:
-        image = image.resize(
-            (max(1, round(image.width * ratio)), max(1, round(image.height * ratio))),
+        result = original.resize(
+            (original.width * 2, original.height * 2),
             Image.Resampling.LANCZOS,
         )
+        emit_progress(
+            completed_units=1,
+            operation="quick",
+            stage="sharpening",
+            total_units=3,
+        )
+        result = result.filter(
+            ImageFilter.UnsharpMask(radius=1.0, percent=45, threshold=3)
+        )
+        quality = enhancement_quality(original, result, [0], [0], 0, 2)
+        emit_progress(
+            completed_units=2,
+            operation="quick",
+            stage="encoding",
+            total_units=3,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.save(output, format="PNG", optimize=False)
+        emit_progress(
+            completed_units=3,
+            operation="quick",
+            stage="complete",
+            total_units=3,
+        )
+        print(
+            json.dumps(
+                {
+                    "artifactDigest": file_digest(output),
+                    "configDigest": canonical_digest(
+                        {
+                            "method": "lanczos-unsharp-v1",
+                            "requestedScale": 2,
+                            "unsharp": {"percent": 45, "radius": 1.0, "threshold": 3},
+                        }
+                    ),
+                    "height": result.height,
+                    "mode": "quick_full_source",
+                    "originalHeight": original.height,
+                    "originalWidth": original.width,
+                    "output": str(output),
+                    "processedHeight": original.height,
+                    "processedWidth": original.width,
+                    "provider": "pillow-lanczos-unsharp-local-photo-lab",
+                    "quality": quality,
+                    "scale": 2,
+                    "schemaVersion": "cimmich.local-ai-enhance-result.v1",
+                    "sourceScale": 1,
+                    "width": result.width,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return
+
+    import onnxruntime as ort
+
+    if not args.model:
+        raise ValueError("Best enhancement requires a model")
+    model = Path(args.model).resolve(strict=True)
+    image = original
     providers = ["CPUExecutionProvider"]
     if args.device == "coreml":
         if "CoreMLExecutionProvider" not in ort.get_available_providers():
@@ -279,9 +379,23 @@ def enhance(args: argparse.Namespace) -> None:
         reflected = ImageOps.expand(image, border=(0, 0, padded_width - image.width, padded_height - image.height))
         padded.paste(reflected.resize((padded_width, padded_height), Image.Resampling.BILINEAR), (0, 0))
         padded.paste(image, (0, 0))
-    result = Image.new("RGB", (padded_width * scale, padded_height * scale))
+    requested_scale = 2
+    result = Image.new(
+        "RGB", (padded_width * requested_scale, padded_height * requested_scale)
+    )
     xs = tile_positions(padded_width, tile, overlap)
     ys = tile_positions(padded_height, tile, overlap)
+    total_tiles = len(xs) * len(ys)
+    total_units = total_tiles + 2
+    completed_tiles = 0
+    emit_progress(
+        completed_units=0,
+        completed_tiles=0,
+        operation="best",
+        stage="upscaling",
+        total_tiles=total_tiles,
+        total_units=total_units,
+    )
     for y_index, y in enumerate(ys):
         for x_index, x in enumerate(xs):
             patch = np.asarray(padded.crop((x, y, x + tile, y + tile)), dtype=np.float32) / 255.0
@@ -289,20 +403,71 @@ def enhance(args: argparse.Namespace) -> None:
             enhanced = session.run([output_name], {input_name: tensor})[0][0]
             enhanced = np.clip(np.transpose(enhanced, (1, 2, 0)), 0, 1)
             tile_image = Image.fromarray((enhanced * 255.0 + 0.5).astype(np.uint8), "RGB")
+            tile_scale = scale
+            if requested_scale != scale:
+                tile_image = tile_image.resize(
+                    (tile * requested_scale, tile * requested_scale),
+                    Image.Resampling.LANCZOS,
+                )
+                tile_scale = requested_scale
             crop_left = 0 if x_index == 0 else overlap // 2
             crop_top = 0 if y_index == 0 else overlap // 2
             crop_right = tile if x_index == len(xs) - 1 else tile - overlap // 2
             crop_bottom = tile if y_index == len(ys) - 1 else tile - overlap // 2
             cropped = tile_image.crop(
-                (crop_left * scale, crop_top * scale, crop_right * scale, crop_bottom * scale)
+                (
+                    crop_left * tile_scale,
+                    crop_top * tile_scale,
+                    crop_right * tile_scale,
+                    crop_bottom * tile_scale,
+                )
             )
-            result.paste(cropped, ((x + crop_left) * scale, (y + crop_top) * scale))
-    result = result.crop((0, 0, image.width * scale, image.height * scale))
-    if args.scale == 2:
-        result = result.resize((image.width * 2, image.height * 2), Image.Resampling.LANCZOS)
+            result.paste(
+                cropped,
+                (
+                    (x + crop_left) * requested_scale,
+                    (y + crop_top) * requested_scale,
+                ),
+            )
+            completed_tiles += 1
+            emit_progress(
+                completed_units=completed_tiles,
+                completed_tiles=completed_tiles,
+                operation="best",
+                stage="upscaling",
+                total_tiles=total_tiles,
+                total_units=total_units,
+            )
+    result = result.crop(
+        (0, 0, image.width * requested_scale, image.height * requested_scale)
+    )
+    emit_progress(
+        completed_units=total_tiles,
+        completed_tiles=total_tiles,
+        operation="best",
+        stage="checking-result",
+        total_tiles=total_tiles,
+        total_units=total_units,
+    )
     quality = enhancement_quality(image, result, xs, ys, overlap, scale)
+    emit_progress(
+        completed_units=total_tiles + 1,
+        completed_tiles=total_tiles,
+        operation="best",
+        stage="encoding",
+        total_tiles=total_tiles,
+        total_units=total_units,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     result.save(output, format="PNG", optimize=False)
+    emit_progress(
+        completed_units=total_units,
+        completed_tiles=total_tiles,
+        operation="best",
+        stage="complete",
+        total_tiles=total_tiles,
+        total_units=total_units,
+    )
     print(
         json.dumps(
             {
@@ -313,16 +478,15 @@ def enhance(args: argparse.Namespace) -> None:
                         "modelDigest": file_digest(model),
                         "nativeScale": scale,
                         "overlap": overlap,
-                        "previewMaxInputPixels": args.preview_max_input_pixels,
-                        "previewMaximumDimension": 256 if args.preview_max_input_pixels > 0 else None,
-                        "requestedScale": args.scale,
+                        "method": "realesrgan-x4-tiled-to-x2-v2",
+                        "requestedScale": requested_scale,
                         "tile": tile,
                     }
                 ),
                 "height": result.height,
                 "executionProviders": session.get_providers(),
                 "modelDigest": file_digest(model),
-                "mode": "progressive_preview" if args.preview_max_input_pixels > 0 else "best_full_source",
+                "mode": "best_full_source",
                 "originalHeight": original.height,
                 "originalWidth": original.width,
                 "output": str(output),
@@ -330,7 +494,7 @@ def enhance(args: argparse.Namespace) -> None:
                 "processedWidth": image.width,
                 "provider": "realesrgan-onnx-local-photo-lab",
                 "quality": quality,
-                "scale": args.scale,
+                "scale": requested_scale,
                 "schemaVersion": "cimmich.local-ai-enhance-result.v1",
                 "sourceScale": round(image.width / original.width, 6),
                 "width": result.width,
@@ -374,12 +538,11 @@ def main() -> None:
     sub.add_parser("appearance")
     enhance_parser = sub.add_parser("enhance")
     enhance_parser.add_argument("--input", required=True)
-    enhance_parser.add_argument("--model", required=True)
+    enhance_parser.add_argument("--method", required=True, choices=["quick", "best"])
+    enhance_parser.add_argument("--model")
     enhance_parser.add_argument("--output", required=True)
-    enhance_parser.add_argument("--scale", required=True, type=int, choices=[2, 4])
     enhance_parser.add_argument("--device", required=True, choices=["coreml", "cpu"])
     enhance_parser.add_argument("--max-input-pixels", required=True, type=int)
-    enhance_parser.add_argument("--preview-max-input-pixels", default=0, type=int)
     overlay_parser = sub.add_parser("overlay")
     overlay_parser.add_argument("--input", required=True)
     overlay_parser.add_argument("--data", required=True)

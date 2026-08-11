@@ -12,9 +12,11 @@ or write back to it.
 
 ## Operations
 
-- `enhance-preview` — create a fast native-x4 progressive Real-ESRGAN result
-  from a bounded one-tile working image.
-- `enhance` — create the slower full-source x2 Best derivation.
+- `enhance-preview` — create a fast full-source x2 Lanczos derivation with
+  conservative sharpening. Despite the legacy operation identifier, it is a
+  real whole-photo upscale rather than a reduced preview.
+- `enhance` — create the slower full-source x2 Real-ESRGAN Best derivation with
+  bounded-memory tile assembly and structured tile progress.
 - `context` — evaluate ordered cross-photo body and Presence continuity from
   explicit accepted-subject anchors.
 - `faces` — rerun local face detection as review evidence.
@@ -194,10 +196,9 @@ structural similarity, edge-energy retention, and tile-seam risk. These are
 regression gates, not a claim that generated detail is historically true or
 identity preserving.
 
-Run the separate one-tile Quick gate with
-`benchmark/enhancement-quick-v1.json`. It proves the native-x4 progressive
-artifact, bounded 256-pixel working dimension, source immutability, and the
-same fidelity metrics without invoking Best.
+Run the separate Quick gate with `benchmark/enhancement-quick-v1.json`. It
+proves the full-source x2 artifact, source immutability, and fidelity metrics
+without invoking the learned Best provider.
 
 Create and benchmark the deterministic head-occlusion Context fixture:
 
@@ -282,11 +283,12 @@ timeout. This favors stable local memory use over archive-scale throughput.
   require abstention or review.
 - Model files are not bundled. Their code, model, and training-data licences
   must be resolved by the deployment owner before distribution.
-- On the measured local CoreML runtime, Quick produced a 752×1024 real-archive
-  result in 2.9 seconds from a 528×720 preview; Best produced 1056×1440 in 26.9
-  seconds. A larger 1024×1536 source still took roughly two minutes for Best.
-  The viewer should show Quick progressively and cache Best rather than block
-  zoom on full-source work.
+- Quick and Best now target the same x2 dimensions. Quick uses deterministic
+  resampling and conservative sharpening; Best uses the native-x4 model on the
+  full source, downsamples each completed tile directly into the x2 canvas,
+  and emits live progress. Runtime depends strongly on source dimensions and
+  CPU/GPU support, so product acceptance records measured times for the active
+  deployment rather than promising a universal duration.
 
 See `INTEGRATION_CONTRACT.md` for the later Cimmich seam and
 `MERGE_READINESS.md` for the standalone branch gates.

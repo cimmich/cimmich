@@ -8,8 +8,10 @@ Cimmich API, queue, database, viewer, or X1 integration.
 The photo viewer and multi-select toolbar may expose one **Local AI** action.
 Its primary surface is:
 
-- **Upscale — Quick**: progressive local result for the current photo.
-- **Upscale — Best**: full-source cached derivation.
+- **Upscale — Quick**: deterministic full-source x2 resize and conservative
+  sharpening for the current photo.
+- **Upscale — Best**: learned full-source x2 cached derivation with structured
+  tile progress.
 - **Context**: explain and propose continuity across the selected ordered set.
 
 An **Advanced rerun** section contains Find faces, Find bodies, and Add scene /

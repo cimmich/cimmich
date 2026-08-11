@@ -32,7 +32,19 @@ export type CimmichLocalAiJob = {
   error: { code: string; message: string } | null;
   jobId: string;
   operation: CimmichLocalAiOperation;
-  progress: { completedAssets: number; phase: string; totalAssets: number };
+  progress: {
+    completedAssets: number;
+    model?: {
+      completedTiles?: number;
+      completedUnits: number;
+      operation: 'best' | 'quick';
+      stage: string;
+      totalTiles?: number;
+      totalUnits: number;
+    };
+    phase: string;
+    totalAssets: number;
+  };
   result: {
     assets: Array<{
       assetId: string;

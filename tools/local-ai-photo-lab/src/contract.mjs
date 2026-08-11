@@ -100,6 +100,7 @@ export const validateConfig = (input) => {
   exactObject(
     input.limits,
     [
+      "enhanceProviderTimeoutMs",
       "maxAssets",
       "maxEnhanceInputPixels",
       "maxInputBytes",
@@ -109,6 +110,12 @@ export const validateConfig = (input) => {
     "config.limits",
   );
   const limits = {
+    enhanceProviderTimeoutMs: boundedInteger(
+      input.limits.enhanceProviderTimeoutMs,
+      "limits.enhanceProviderTimeoutMs",
+      1_000,
+      3_600_000,
+    ),
     maxAssets: boundedInteger(
       input.limits.maxAssets,
       "limits.maxAssets",
@@ -210,9 +217,7 @@ export const validateConfig = (input) => {
     "device",
     "enabled",
     "modelPath",
-    "previewMaxInputPixels",
     "pythonPath",
-    "scale",
   ]);
   enhance.pythonPath = resolve(
     requiredText(enhance.pythonPath, "providers.enhance.pythonPath", 4096),
@@ -222,14 +227,6 @@ export const validateConfig = (input) => {
   );
   if (!["coreml", "cpu"].includes(enhance.device))
     throw typedError("providers.enhance.device is unsupported");
-  if (![2, 4].includes(enhance.scale))
-    throw typedError("providers.enhance.scale must be 2 or 4");
-  enhance.previewMaxInputPixels = boundedInteger(
-    enhance.previewMaxInputPixels,
-    "providers.enhance.previewMaxInputPixels",
-    1,
-    limits.maxEnhanceInputPixels,
-  );
 
   exactObject(
     input.contextPolicy,

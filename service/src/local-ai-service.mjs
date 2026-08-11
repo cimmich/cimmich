@@ -24,7 +24,16 @@ const finalStates = new Set(["cancelled", "completed", "failed", "partial"]);
 const maxRetainedRuns = 12;
 const maxStoreBytes = 4 * 1024 * 1024 * 1024;
 const maxQueuedJobs = 4;
-const maximumRunMs = 12 * 60 * 1000;
+const maximumRunMs = 32 * 60 * 1000;
+const progressPrefix = "CIMMICH_LOCAL_AI_PROGRESS ";
+const progressStages = new Set([
+  "checking-result",
+  "complete",
+  "encoding",
+  "resampling",
+  "sharpening",
+  "upscaling",
+]);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -86,6 +95,7 @@ const providerConfig = ({ enabled, environment, modelPaths }) => ({
     requireBidirectionalAnchors: true,
   },
   limits: {
+    enhanceProviderTimeoutMs: 30 * 60 * 1000,
     maxAssets: 12,
     maxEnhanceInputPixels: 16_000_000,
     maxInputBytes: 128 * 1024 * 1024,
@@ -111,9 +121,7 @@ const providerConfig = ({ enabled, environment, modelPaths }) => ({
       device: "cpu",
       enabled: enabled && Boolean(modelPaths.enhance),
       modelPath: modelPaths.enhance || "/local-ai-models/enhance-disabled.onnx",
-      previewMaxInputPixels: 786_432,
       pythonPath: "/usr/bin/python3",
-      scale: 2,
     },
     faces: {
       detectorModelPath:
@@ -152,7 +160,7 @@ const publicCapabilities = (config, enabled) => {
     bodies,
     context: bodies,
     faces,
-    quick: enhance,
+    quick: enabled,
     sceneText,
   };
 };
@@ -171,11 +179,59 @@ const publicJob = (job) => ({
   state: job.state,
 });
 
-const collectProcess = (child, maximumBytes = 2 * 1024 * 1024) =>
+const parseModelProgress = (line) => {
+  if (!line.startsWith(progressPrefix)) return null;
+  try {
+    const value = JSON.parse(line.slice(progressPrefix.length));
+    const completedUnits = Number(value.completedUnits);
+    const totalUnits = Number(value.totalUnits);
+    const completedTiles =
+      value.completedTiles == null ? null : Number(value.completedTiles);
+    const totalTiles =
+      value.totalTiles == null ? null : Number(value.totalTiles);
+    if (
+      value.schemaVersion !== "cimmich.local-ai-progress.v1" ||
+      !["quick", "best"].includes(value.operation) ||
+      !progressStages.has(value.stage) ||
+      !Number.isSafeInteger(completedUnits) ||
+      !Number.isSafeInteger(totalUnits) ||
+      completedUnits < 0 ||
+      totalUnits < 1 ||
+      completedUnits > totalUnits ||
+      totalUnits > 1_000_000 ||
+      (completedTiles == null) !== (totalTiles == null) ||
+      (completedTiles != null &&
+        (!Number.isSafeInteger(completedTiles) || completedTiles < 0)) ||
+      (totalTiles != null &&
+        (!Number.isSafeInteger(totalTiles) ||
+          totalTiles < 1 ||
+          completedTiles > totalTiles))
+    ) {
+      return null;
+    }
+    return {
+      completedUnits,
+      ...(completedTiles == null ? {} : { completedTiles }),
+      operation: value.operation,
+      stage: value.stage,
+      ...(totalTiles == null ? {} : { totalTiles }),
+      totalUnits,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const collectProcess = (
+  child,
+  maximumBytes = 2 * 1024 * 1024,
+  onProgress = () => undefined,
+) =>
   new Promise((resolvePromise, reject) => {
     const stdout = [];
     const stderr = [];
     let bytes = 0;
+    let progressBuffer = "";
     let settled = false;
     const collect = (target) => (chunk) => {
       bytes += chunk.length;
@@ -196,7 +252,16 @@ const collectProcess = (child, maximumBytes = 2 * 1024 * 1024) =>
       target.push(chunk);
     };
     child.stdout.on("data", collect(stdout));
-    child.stderr.on("data", collect(stderr));
+    child.stderr.on("data", (chunk) => {
+      collect(stderr)(chunk);
+      progressBuffer += chunk.toString("utf8");
+      const lines = progressBuffer.split("\n");
+      progressBuffer = lines.pop() || "";
+      for (const line of lines) {
+        const progress = parseModelProgress(line);
+        if (progress) onProgress(progress);
+      }
+    });
     child.on("error", (error) => {
       if (settled) return;
       settled = true;
@@ -205,6 +270,8 @@ const collectProcess = (child, maximumBytes = 2 * 1024 * 1024) =>
     child.on("close", (code, signal) => {
       if (settled) return;
       settled = true;
+      const finalProgress = parseModelProgress(progressBuffer);
+      if (finalProgress) onProgress(finalProgress);
       resolvePromise({
         code,
         signal,
@@ -451,7 +518,15 @@ export const createLocalAiService = async ({
       job.child = child;
       job.timer = setTimeout(() => child.kill("SIGTERM"), maximumRunMs);
       job.timer.unref();
-      const processResult = await collectProcess(child);
+      const processResult = await collectProcess(child, undefined, (model) => {
+        if (job.state !== "running") return;
+        if (
+          ["quick", "best"].includes(job.operation) &&
+          model.operation !== job.operation
+        )
+          return;
+        job.progress = { ...job.progress, model };
+      });
       clearTimeout(job.timer);
       job.timer = null;
       job.child = null;

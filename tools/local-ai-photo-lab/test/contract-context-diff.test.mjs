@@ -31,6 +31,7 @@ const config = (endpoint = "http://127.0.0.1:11434") => ({
     requireBidirectionalAnchors: true,
   },
   limits: {
+    enhanceProviderTimeoutMs: 2000,
     maxAssets: 10,
     maxEnhanceInputPixels: 1000,
     maxInputBytes: 1000,
@@ -49,9 +50,7 @@ const config = (endpoint = "http://127.0.0.1:11434") => ({
       device: "cpu",
       enabled: true,
       modelPath: "/e",
-      previewMaxInputPixels: 1000,
       pythonPath: "/py",
-      scale: 2,
     },
     faces: {
       detectorModelPath: "/f",
@@ -158,6 +157,31 @@ test("provider subprocess output is bounded before JSON parsing", async () => {
       timeoutMs: 1000,
     }),
     { code: "LOCAL_AI_PROVIDER_OUTPUT_OVERSIZED" },
+  );
+});
+
+test("provider subprocesses forward only structured progress lines", async () => {
+  const originalWrite = process.stderr.write;
+  let forwarded = "";
+  process.stderr.write = (chunk) => {
+    forwarded += String(chunk);
+    return true;
+  };
+  try {
+    await runProcess({
+      args: [
+        "-e",
+        "process.stderr.write('private diagnostic\\nCIMMICH_LOCAL_AI_PROGRESS {\\\"schemaVersion\\\":\\\"cimmich.local-ai-progress.v1\\\"}\\n'); process.stdout.write('{}')",
+      ],
+      command: process.execPath,
+      timeoutMs: 1000,
+    });
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+  assert.equal(
+    forwarded,
+    'CIMMICH_LOCAL_AI_PROGRESS {"schemaVersion":"cimmich.local-ai-progress.v1"}\n',
   );
 });
 
@@ -342,7 +366,10 @@ test("photo-set contract binds ordered immutable source digests", async () => {
     value.assets[0].baselineObservations.faces[0].observationId,
     "existing-face",
   );
-  assert.equal(value.assets[0].baselineObservations.faces[0].subject, "Person A");
+  assert.equal(
+    value.assets[0].baselineObservations.faces[0].subject,
+    "Person A",
+  );
   assert.equal(value.assets[0].captureTime, "2026-08-11T00:00:00.000Z");
   const oversized = join(root, "oversized.bin");
   await writeFile(oversized, Buffer.alloc(1001));
@@ -515,7 +542,9 @@ test("context permits at most one supported body per subject and abstains on bod
       sourceContentDigest: "middle",
       operations: {
         bodies: {
-          bodies: features.map((feature, index) => body(`middle-${index}`, feature)),
+          bodies: features.map((feature, index) =>
+            body(`middle-${index}`, feature),
+          ),
         },
       },
     },
@@ -560,7 +589,10 @@ test("context permits at most one supported body per subject and abstains on bod
     contextKind: "sequence",
     policy,
   });
-  assert.equal(tied.candidates.every(({ state }) => state === "abstained"), true);
+  assert.equal(
+    tied.candidates.every(({ state }) => state === "abstained"),
+    true,
+  );
 });
 
 test("rerun diff matches observations by geometry", () => {

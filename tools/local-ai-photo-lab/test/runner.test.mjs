@@ -18,6 +18,7 @@ const configInput = {
     requireBidirectionalAnchors: true,
   },
   limits: {
+    enhanceProviderTimeoutMs: 2000,
     maxAssets: 10,
     maxEnhanceInputPixels: 1000,
     maxInputBytes: 1000,
@@ -36,9 +37,7 @@ const configInput = {
       device: "cpu",
       enabled: true,
       modelPath: "/e",
-      previewMaxInputPixels: 1000,
       pythonPath: "/py",
-      scale: 2,
     },
     faces: {
       detectorModelPath: "/f",
@@ -167,7 +166,7 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
   const persisted = await readFile(first.resultPath, "utf8");
   assert.equal(persisted.includes(root), false);
   assert.equal(persisted.includes("appearanceFeature"), false);
-  assert.equal(persisted.includes("artifacts/left-enhanced-x2.png"), true);
+  assert.equal(persisted.includes("artifacts/left-enhanced-best-x2.png"), true);
 
   const second = await runPhotoLab({
     configInput,
@@ -202,12 +201,10 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     providerImplementations,
     setInput,
   });
-  assert.deepEqual(quickEnhance.result.executedOperations, [
-    "enhance-preview",
-  ]);
+  assert.deepEqual(quickEnhance.result.executedOperations, ["enhance-preview"]);
   assert.equal(
     quickEnhance.result.assets[0].operations.enhancePreview.artifact.path,
-    "artifacts/left-enhanced-preview-x4.png",
+    "artifacts/left-enhanced-quick-x2.png",
   );
   assert.match(
     await readFile(quickEnhance.reportPath, "utf8"),

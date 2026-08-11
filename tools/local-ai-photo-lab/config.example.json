@@ -1,6 +1,7 @@
 {
   "schemaVersion": "cimmich.local-ai-photo-lab-config.v1",
   "limits": {
+    "enhanceProviderTimeoutMs": 1800000,
     "maxAssets": 100,
     "maxInputBytes": 134217728,
     "maxInputPixels": 12000000,
@@ -31,8 +32,6 @@
       "enabled": true,
       "pythonPath": "/absolute/path/to/python",
       "modelPath": "/absolute/path/to/realesrgan-x4-256.onnx",
-      "previewMaxInputPixels": 48000,
-      "scale": 2,
       "device": "coreml"
     }
   },

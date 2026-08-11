@@ -77,8 +77,44 @@ describe('Cimmich Local AI review action', () => {
     expect(dialog.parentElement).toHaveClass('local-ai-backdrop');
     expect(dialog.parentElement?.parentElement).toBe(document.body);
     expect(rendered.getByText(/Nothing is written into identity or Context data/)).toBeInTheDocument();
+    expect(rendered.getByText(/fast, full-photo 2x upscale/i)).toBeInTheDocument();
     expect(rendered.getByRole('radio', { name: /Look for missed Bodies/ })).toBeDisabled();
     expect(rendered.getByText('Requires a separately configured local Body model.')).toBeInTheDocument();
+  });
+
+  it('shows real tile progress for a running Best upscale', async () => {
+    const runningBest = {
+      ...completedFaceJob,
+      completedAt: null,
+      operation: 'best' as const,
+      progress: {
+        completedAssets: 0,
+        model: {
+          completedTiles: 7,
+          completedUnits: 7,
+          operation: 'best' as const,
+          stage: 'upscaling',
+          totalTiles: 24,
+          totalUnits: 26,
+        },
+        phase: 'running-model',
+        totalAssets: 1,
+      },
+      result: null,
+      state: 'running' as const,
+    };
+    mocks.start.mockResolvedValueOnce(runningBest);
+    mocks.getJob.mockResolvedValueOnce(runningBest);
+    const rendered = render(CimmichLocalAiAction, {
+      sourceAssetIds: ['2af22c3c-e009-42a4-98e8-bb0f790bb25f'],
+    });
+
+    await fireEvent.click(rendered.getByRole('button', { name: 'Open Local AI review' }));
+    await fireEvent.click(await rendered.findByRole('radio', { name: /Upscale · Best/ }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Run locally' }));
+
+    expect(await rendered.findByText('Upscaling · 7 of 24 tiles')).toBeInTheDocument();
+    expect(rendered.getByRole('progressbar', { name: 'Upscaling · 7 of 24 tiles' })).toHaveAttribute('value', '7');
   });
 
   it('shows the candidate delta and unchanged-original proof after a Face run', async () => {
