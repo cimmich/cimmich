@@ -3,11 +3,15 @@ import {
   classifyPossiblePeopleRun,
   possiblePeopleClassificationContract,
 } from "./possible-people-classifier.mjs";
+import { processPossiblePeopleBatches } from "./possible-people-batch.mjs";
 import {
   createPossiblePeopleProjection,
   projectPossiblePeopleRun as projectRun,
 } from "./possible-people-projection.mjs";
-import { seedPossiblePeopleRun } from "./possible-people-seed.mjs";
+import {
+  dropPossiblePeopleCandidateScope,
+  seedPossiblePeopleRun,
+} from "./possible-people-seed.mjs";
 import { PossiblePeopleUnionFind } from "./possible-people-union-find.mjs";
 
 const receiptId = "receipt_cimmich_possible_people_v1";
@@ -17,7 +21,6 @@ const seedLimit = 100_000;
 const neighbourLimit = 12;
 const similarityFloor = 0.55;
 const strongOneWayFloor = 0.68;
-const batchSize = 250;
 const { classificationVersion, knownPersonMarginFloor, knownPersonScoreFloor } =
   possiblePeopleClassificationContract;
 
@@ -136,95 +139,15 @@ const completeCommand = async (tx, commandId, response) => {
 };
 
 const seedRun = async (sql, runId, presentationRank) => {
-  const seeded = await seedPossiblePeopleRun({ sql, runId, presentationRank });
-  if (!seeded) {
+  const space = await seedPossiblePeopleRun({ sql, runId, presentationRank });
+  if (!space) {
     throw typedError(
       "No active Cimmich face embeddings are available for Possible people",
       409,
       "POSSIBLE_PEOPLE_VECTOR_SPACE_EMPTY",
     );
   }
-};
-
-const processBatch = async (sql, run, presentationRank) => {
-  const start = Number(run.processed_seeds) + 1;
-  const end = Math.min(Number(run.total_seeds), start + batchSize - 1);
-  await sql.begin(async (tx) => {
-    await tx`SET LOCAL ivfflat.probes = 16`;
-    await tx`
-      INSERT INTO possible_person_edge (
-        run_id, left_face_id, right_face_id, similarity, support_count
-      )
-      SELECT ${run.run_id}, edge.left_face_id, edge.right_face_id,
-        max(edge.similarity), least(2, count(*))::int
-      FROM (
-        SELECT least(seed.face_id, neighbour.face_id) AS left_face_id,
-          greatest(seed.face_id, neighbour.face_id) AS right_face_id,
-          neighbour.similarity
-        FROM possible_person_seed selected_seed
-        JOIN face_embedding seed ON seed.face_id = selected_seed.face_id
-          AND seed.state = 'active' AND seed.dimension = 512
-          AND seed.model_family = ${run.model_family}
-          AND seed.model_version = ${run.model_version}
-          AND seed.config_digest = ${run.config_digest}
-        JOIN current_matchable_physical_face seed_face
-          ON seed_face.face_id = seed.face_id
-        CROSS JOIN LATERAL (
-          SELECT candidate.face_id,
-            (1 - (candidate.embedding::vector(512) <=> seed.embedding::vector(512)))::float8
-              AS similarity
-          FROM face_embedding candidate
-          JOIN current_matchable_physical_face candidate_face
-            ON candidate_face.face_id = candidate.face_id AND candidate_face.state = 'valid'
-          JOIN asset candidate_asset
-            ON candidate_asset.asset_id = candidate_face.asset_id AND candidate_asset.state = 'active'
-          WHERE candidate.state = 'active' AND candidate.dimension = 512
-            AND candidate.model_family = ${run.model_family}
-            AND candidate.model_version = ${run.model_version}
-            AND candidate.config_digest = ${run.config_digest}
-            AND candidate.face_id <> seed.face_id
-            AND candidate_face.asset_id <> seed_face.asset_id
-            AND cimmich_face_match_eligible(
-              candidate_face.detection_confidence, candidate_face.box_w, candidate_face.box_h
-            )
-            AND cimmich_visibility_asset_rank(candidate_asset.asset_id) <= ${presentationRank()}
-            AND NOT EXISTS (
-              SELECT 1
-              FROM current_face_physical_member claimed_member
-              JOIN identity_claim accepted ON accepted.face_id = claimed_member.face_id
-                AND accepted.state = 'accepted'
-              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM current_face_physical_member claimed_member
-              JOIN identity_claim suggested ON suggested.face_id = claimed_member.face_id
-                AND suggested.state = 'candidate'
-              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
-            )
-            AND coalesce((
-              SELECT review.reason_code FROM decision review
-              WHERE review.subject_type = 'face_review'
-                AND review.subject_id = candidate.face_id
-              ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1
-            ), '') NOT IN ('face_review_geometry')
-          ORDER BY candidate.embedding::vector(512) <=> seed.embedding::vector(512)
-          LIMIT ${neighbourLimit}
-        ) neighbour
-        WHERE selected_seed.run_id = ${run.run_id}
-          AND selected_seed.seed_rank BETWEEN ${start} AND ${end}
-          AND neighbour.similarity >= ${similarityFloor}
-      ) edge
-      GROUP BY edge.left_face_id, edge.right_face_id
-      ON CONFLICT (run_id, left_face_id, right_face_id) DO UPDATE
-      SET similarity = greatest(possible_person_edge.similarity, excluded.similarity),
-        support_count = least(2, possible_person_edge.support_count + excluded.support_count)
-    `;
-    await tx`
-      UPDATE possible_person_run SET processed_seeds = ${end}
-      WHERE run_id = ${run.run_id} AND state = 'running'
-    `;
-  });
+  return space;
 };
 
 const finalizeRun = async (sql, run) => {
@@ -425,8 +348,14 @@ export const createPossiblePeopleStore = (
   const runWorker = (runId) => {
     if (worker) return worker;
     worker = (async () => {
+      let workSql = sql;
+      let reserved = false;
       try {
-        const claimed = await sql.begin(async (tx) => {
+        if (typeof sql.reserve === "function") {
+          workSql = await sql.reserve();
+          reserved = true;
+        }
+        const claimed = await workSql.begin(async (tx) => {
           const [run] = await tx`
             SELECT state FROM possible_person_run
             WHERE run_id = ${runId} FOR UPDATE
@@ -446,20 +375,23 @@ export const createPossiblePeopleStore = (
         });
         if (!claimed) return;
         await reconcilePhysicalFaces();
-        await seedRun(sql, runId, presentationRank);
-        while (true) {
-          const [run] =
-            await sql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
-          if (!run || run.state !== "running") return;
-          if (Number(run.processed_seeds) >= Number(run.total_seeds)) {
-            await finalizeRun(sql, run);
-            return;
-          }
-          await processBatch(sql, run, presentationRank);
-          await new Promise((resolve) => setImmediate(resolve));
-        }
+        const space = await seedRun(workSql, runId, presentationRank);
+        const [run] =
+          await workSql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
+        if (!run || run.state !== "running") return;
+        await processPossiblePeopleBatches({
+          sql,
+          coordinatorSql: workSql,
+          run,
+          space,
+          presentationRank,
+        });
+        const [completedRun] =
+          await workSql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
+        if (!completedRun || completedRun.state !== "running") return;
+        await finalizeRun(workSql, completedRun);
       } catch (error) {
-        await sql`
+        await workSql`
           UPDATE possible_person_run SET state = 'failed',
             error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
             error_message = ${String(error?.message || error).slice(0, 500)},
@@ -480,6 +412,8 @@ export const createPossiblePeopleStore = (
           WHERE run_id = ${runId} AND state IN ('queued','running')
         `.catch(() => {});
       } finally {
+        await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
+        if (reserved) await workSql.release().catch(() => {});
         worker = null;
       }
     })();

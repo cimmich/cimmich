@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { processPossiblePeopleBatches } from "../src/possible-people-batch.mjs";
 
 const readSource = () =>
   readFile(new URL("../src/possible-people-seed.mjs", import.meta.url), "utf8");
@@ -35,4 +36,102 @@ test("Possible people seed work fails closed at the bounded transaction timeout"
     storeSource,
     /WHERE run_id = \$\{runId\} AND state IN \('queued','running'\)/,
   );
+});
+
+test("Possible people batches reuse one session-local eligible candidate scope", async () => {
+  const [scopeSource, storeSource, batchSource] = await Promise.all([
+    readSource(),
+    readFile(new URL("../src/possible-people.mjs", import.meta.url), "utf8"),
+    readFile(
+      new URL("../src/possible-people-batch.mjs", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(
+    scopeSource,
+    /CREATE TEMP TABLE possible_people_candidate_scope/,
+  );
+  assert.match(scopeSource, /ON COMMIT PRESERVE ROWS/);
+  assert.match(scopeSource, /ANALYZE possible_people_candidate_scope/);
+  assert.match(
+    batchSource,
+    /EXISTS \(\s*SELECT 1 FROM possible_people_candidate_scope scope/,
+  );
+  assert.doesNotMatch(
+    batchSource,
+    /JOIN current_matchable_physical_face candidate_face/,
+  );
+  assert.doesNotMatch(batchSource, /JOIN identity_claim accepted/);
+  assert.match(storeSource, /workSql = await sql\.reserve\(\)/);
+  assert.match(storeSource, /dropPossiblePeopleCandidateScope\(workSql\)/);
+  assert.match(batchSource, /const batchWorkerCount = 4/);
+  assert.match(
+    batchSource,
+    /Promise\.allSettled\(connections\.map\(consume\)\)/,
+  );
+});
+
+test("Possible people batches fail closed at a bounded transaction timeout", async () => {
+  const source = await readFile(
+    new URL("../src/possible-people-batch.mjs", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /const batchStatementTimeoutMs = 10 \* 60 \* 1_000/);
+  assert.match(
+    source,
+    /set_config\(\s*'statement_timeout', \$\{String\(batchStatementTimeoutMs\)\}, true\s*\)/,
+  );
+});
+
+test("Possible people dispatches four bounded batches and releases temporary scopes", async () => {
+  let activeBatches = 0;
+  let completedBatches = 0;
+  let maxActiveBatches = 0;
+  let releasedConnections = 0;
+  const createConnection = () => {
+    const connection = async (strings) => {
+      const query = strings.join("?");
+      if (query.includes("INSERT INTO possible_person_edge")) {
+        activeBatches += 1;
+        maxActiveBatches = Math.max(maxActiveBatches, activeBatches);
+        await new Promise((resolve) => setImmediate(resolve));
+        activeBatches -= 1;
+        completedBatches += 1;
+      }
+      return [];
+    };
+    connection.begin = async (callback) => callback(connection);
+    connection.release = async () => {
+      releasedConnections += 1;
+    };
+    return connection;
+  };
+  const coordinatorSql = createConnection();
+  const sql = createConnection();
+  sql.reserve = async () => createConnection();
+
+  await processPossiblePeopleBatches({
+    coordinatorSql,
+    presentationRank: () => 2,
+    run: {
+      config_digest: "a".repeat(64),
+      model_family: "private-test",
+      model_version: "v1",
+      processed_seeds: 0,
+      run_id: "possible_run_parallel_test",
+      total_seeds: 1_000,
+    },
+    space: {
+      config_digest: "a".repeat(64),
+      model_family: "private-test",
+      model_version: "v1",
+    },
+    sql,
+  });
+
+  assert.equal(completedBatches, 4);
+  assert.equal(maxActiveBatches, 4);
+  assert.equal(releasedConnections, 3);
 });
