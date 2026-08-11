@@ -26,6 +26,8 @@ describe('public Cimmich product boundary', () => {
     expect(coverEditor).toContain('selectedIds.length >= 2 && selectedIds.length <= 6');
     expect(coverEditor).toContain("label: 'Favourites'");
     expect(coverEditor).toContain("label: 'Visible library'");
+    expect(coverEditor).toContain('candidateAssetIds.slice(0, 24)');
+    expect(coverEditor).toContain('metadataSearchDto: { size: 40');
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {

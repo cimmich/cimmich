@@ -47,7 +47,9 @@
   let recentLoadGeneration = 0;
   let searchGeneration = 0;
 
-  const suggestedAssets = $derived<PickerAsset[]>(candidateAssetIds.map((id) => ({ id, label: 'Suggested cover' })));
+  const suggestedAssets = $derived<PickerAsset[]>(
+    candidateAssetIds.slice(0, 24).map((id) => ({ id, label: 'Suggested cover' })),
+  );
   const pickerAssets = $derived.by(() => {
     const seen = new SvelteSet<string>();
     const assets: PickerAsset[] = [
@@ -77,7 +79,7 @@
     recentLoading = true;
     searchError = '';
     try {
-      const result = await searchAssets({ metadataSearchDto: { size: 80, type: AssetTypeEnum.Image, withExif: true } });
+      const result = await searchAssets({ metadataSearchDto: { size: 40, type: AssetTypeEnum.Image, withExif: true } });
       const readable = await filterVisibleCimmichAssets(
         result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline),
         getCimmichAssetEvidence,
