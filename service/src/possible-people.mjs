@@ -508,6 +508,25 @@ export const createPossiblePeopleStore = (
     if (worker) return worker;
     worker = (async () => {
       try {
+        const claimed = await sql.begin(async (tx) => {
+          const [run] = await tx`
+            SELECT state FROM possible_person_run
+            WHERE run_id = ${runId} FOR UPDATE
+          `;
+          if (!run || run.state === "failed" || run.state === "completed")
+            return false;
+          if (run.state === "running") {
+            await tx`
+              UPDATE possible_person_run SET state = 'failed',
+                error_code = 'POSSIBLE_PEOPLE_PROCESS_INTERRUPTED',
+                error_message = 'The service stopped before this explicit refresh completed.'
+              WHERE run_id = ${runId} AND state = 'running'
+            `;
+            return false;
+          }
+          return true;
+        });
+        if (!claimed) return;
         await reconcilePhysicalFaces();
         await seedRun(sql, runId, presentationRank);
         while (true) {
@@ -633,23 +652,15 @@ export const createPossiblePeopleStore = (
       const [active] = await tx`
         SELECT * FROM possible_person_run
         WHERE state IN ('queued','running')
-        ORDER BY created_at DESC, run_id DESC LIMIT 1 FOR UPDATE
+        ORDER BY created_at DESC, run_id DESC LIMIT 1
       `;
-      if (active && worker) {
+      if (active) {
         return completeCommand(tx, stableCommandId, {
           changed: false,
           replayed: false,
           run: projectRun(active),
           schemaVersion,
         });
-      }
-      if (active) {
-        await tx`
-          UPDATE possible_person_run SET state = 'failed',
-            error_code = 'POSSIBLE_PEOPLE_PROCESS_INTERRUPTED',
-            error_message = 'The service stopped before this explicit refresh completed.'
-          WHERE run_id = ${active.run_id}
-        `;
       }
       const runId = `possible_run_${randomUUID().replaceAll("-", "")}`;
       await tx`
@@ -680,7 +691,8 @@ export const createPossiblePeopleStore = (
         schemaVersion,
       });
     });
-    if (result.run?.state === "queued") void runWorker(result.run.runId);
+    if (["queued", "running"].includes(result.run?.state))
+      void runWorker(result.run.runId);
     return result;
   };
 
