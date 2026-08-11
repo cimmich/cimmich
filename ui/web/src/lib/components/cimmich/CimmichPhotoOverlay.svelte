@@ -1658,13 +1658,6 @@
     if (face.id !== selectedFaceId || isFaceActionSaving || !image) {
       return;
     }
-    if (event.key === 'Escape' && faceBoxDrafts[face.id]) {
-      event.preventDefault();
-      event.stopPropagation();
-      faceBoxDrafts = Object.fromEntries(Object.entries(faceBoxDrafts).filter(([faceId]) => faceId !== face.id));
-      faceActionMessage = 'Face position change cancelled.';
-      return;
-    }
     if (event.key === 'Enter' && faceBoxDrafts[face.id]) {
       event.preventDefault();
       event.stopPropagation();
@@ -1690,13 +1683,6 @@
   const handleBodyBoxKeydown = (event: KeyboardEvent, body: CimmichBodyOverlay, mode: ObservationBoxEditMode) => {
     const image = body.image || (imageMetrics && { width: imageMetrics.imageWidth, height: imageMetrics.imageHeight });
     if (body.id !== selectedBodyId || isObservationActionSaving || !image) {
-      return;
-    }
-    if (event.key === 'Escape' && bodyBoxDrafts[body.id]) {
-      event.preventDefault();
-      event.stopPropagation();
-      bodyBoxDrafts = Object.fromEntries(Object.entries(bodyBoxDrafts).filter(([bodyId]) => bodyId !== body.id));
-      observationActionMessage = 'Body position change cancelled.';
       return;
     }
     if (event.key === 'Enter' && bodyBoxDrafts[body.id]) {
@@ -3259,6 +3245,20 @@
   });
 
   const handleWindowKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && selectedFaceId && faceBoxDrafts[selectedFaceId]) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      faceBoxDrafts = Object.fromEntries(Object.entries(faceBoxDrafts).filter(([faceId]) => faceId !== selectedFaceId));
+      faceActionMessage = 'Face position change cancelled.';
+      return;
+    }
+    if (event.key === 'Escape' && selectedBodyId && bodyBoxDrafts[selectedBodyId]) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      bodyBoxDrafts = Object.fromEntries(Object.entries(bodyBoxDrafts).filter(([bodyId]) => bodyId !== selectedBodyId));
+      observationActionMessage = 'Body position change cancelled.';
+      return;
+    }
     if (event.key === 'Escape' && isManualTagRepositioning) {
       event.preventDefault();
       event.stopImmediatePropagation();

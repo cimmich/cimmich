@@ -299,7 +299,11 @@
       matchedCimmichIds = page.items.map((asset) => asset.sourceAssetId);
       totalMatches = page.summary.total;
       loadedCimmichSourceCount = Math.min(120, matchedCimmichIds.length);
-      resultAssets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
+      const assets = await fetchAssets(matchedCimmichIds.slice(0, loadedCimmichSourceCount), generation);
+      if (generation !== resultGeneration) {
+        return;
+      }
+      resultAssets = assets;
       return;
     }
     const intersection = await getCimmichTagAssets(
@@ -313,7 +317,11 @@
     totalMatches = intersection.total;
     cimmichTagCursor = intersection.nextCursor;
     loadedCimmichSourceCount = matchedCimmichIds.length;
-    resultAssets = await fetchAssets(matchedCimmichIds, generation);
+    const assets = await fetchAssets(matchedCimmichIds, generation);
+    if (generation !== resultGeneration) {
+      return;
+    }
+    resultAssets = assets;
   };
 
   const refreshResults = async () => {

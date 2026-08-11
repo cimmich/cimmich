@@ -83,4 +83,23 @@ describe('observation box geometry', () => {
     expect(overlay).toContain('onkeydown={(event) => handleBodyBoxKeydown(event, body, handle.mode)}');
     expect(overlay).toContain('Shift moves farther. Enter saves; Escape cancels.');
   });
+
+  it('cancels an active geometry draft in window capture before Escape can close the overlay', async () => {
+    const overlay = await readFile('src/lib/components/cimmich/CimmichPhotoOverlay.svelte', 'utf8');
+    const handler = overlay.slice(
+      overlay.indexOf('const handleWindowKeyDown'),
+      overlay.indexOf('const sidecarSections'),
+    );
+    const faceCancel = handler.indexOf('faceBoxDrafts[selectedFaceId]');
+    const bodyCancel = handler.indexOf('bodyBoxDrafts[selectedBodyId]');
+    const overlayClose = handler.indexOf("overlayView !== 'off'");
+
+    expect(faceCancel).toBeGreaterThan(0);
+    expect(bodyCancel).toBeGreaterThan(faceCancel);
+    expect(overlayClose).toBeGreaterThan(bodyCancel);
+    expect(handler).toContain("faceActionMessage = 'Face position change cancelled.'");
+    expect(handler).toContain("observationActionMessage = 'Body position change cancelled.'");
+    expect(overlay).not.toContain("event.key === 'Escape' && faceBoxDrafts[face.id]");
+    expect(overlay).not.toContain("event.key === 'Escape' && bodyBoxDrafts[body.id]");
+  });
 });

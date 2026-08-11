@@ -55,6 +55,14 @@ const asset = (id: string) =>
     visibility: AssetVisibility.Timeline,
   }) as unknown as AssetResponseDto;
 
+const deferred = <T>() => {
+  let resolve = (_: T) => {};
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+};
+
 describe('CimmichTagBrowser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -172,5 +180,67 @@ describe('CimmichTagBrowser', () => {
     rejectMore(new Error('obsolete page failure'));
     await waitFor(() => expect(queryByText('obsolete page failure')).not.toBeInTheDocument());
     expect(await findByText('Photos tagged Alex Example')).toBeInTheDocument();
+  });
+
+  it('keeps a newer intersection when obsolete single-Person asset hydration finishes last', async () => {
+    const staleAsset = deferred<AssetResponseDto>();
+    mocks.getPersonAssets.mockResolvedValue({
+      items: [{ assetId: 'asset_stale', sourceAssetId: 'source_stale' }],
+      nextCursor: null,
+      summary: { total: 1 },
+    });
+    mocks.getTagAssets.mockResolvedValue({
+      items: [{ assetId: 'asset_new', sourceAssetId: 'source_new' }],
+      nextCursor: null,
+      pageSize: 120,
+      total: 1,
+    });
+    mocks.getAssetInfo.mockImplementation(({ id }: { id: string }) =>
+      id === 'source_stale' ? staleAsset.promise : Promise.resolve(asset(id)),
+    );
+    const { findByText, getByRole, getByTestId } = render(CimmichTagBrowser, { tags: [] });
+    await findByText('Alex Example');
+
+    await fireEvent.click(getByRole('checkbox', { name: /Alex Example/ }));
+    await waitFor(() => expect(mocks.getAssetInfo).toHaveBeenCalledWith({ id: 'source_stale' }));
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+    await waitFor(() => expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new'));
+
+    staleAsset.resolve(asset('source_stale'));
+    await staleAsset.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new');
+  });
+
+  it('keeps a newer single-Person result when obsolete intersection hydration finishes last', async () => {
+    const staleAsset = deferred<AssetResponseDto>();
+    mocks.getPersonAssets.mockResolvedValue({
+      items: [{ assetId: 'asset_new', sourceAssetId: 'source_new' }],
+      nextCursor: null,
+      summary: { total: 1 },
+    });
+    mocks.getTagAssets.mockResolvedValue({
+      items: [{ assetId: 'asset_stale', sourceAssetId: 'source_stale' }],
+      nextCursor: null,
+      pageSize: 120,
+      total: 1,
+    });
+    mocks.getAssetInfo.mockImplementation(({ id }: { id: string }) =>
+      id === 'source_stale' ? staleAsset.promise : Promise.resolve(asset(id)),
+    );
+    const { findByText, getByRole, getByTestId } = render(CimmichTagBrowser, { tags: [] });
+    await findByText('Alex Example');
+
+    await fireEvent.click(getByRole('checkbox', { name: /Alex Example/ }));
+    await waitFor(() => expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new'));
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+    await waitFor(() => expect(mocks.getAssetInfo).toHaveBeenCalledWith({ id: 'source_stale' }));
+    await fireEvent.click(getByRole('checkbox', { name: /Blair Example/ }));
+    await waitFor(() => expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new'));
+
+    staleAsset.resolve(asset('source_stale'));
+    await staleAsset.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new');
   });
 });
