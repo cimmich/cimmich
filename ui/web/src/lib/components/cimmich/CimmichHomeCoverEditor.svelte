@@ -200,7 +200,7 @@
   >
     <ModalBody class="flex min-h-0 flex-col gap-5 overflow-hidden">
       <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Cover style" role="group">
-        {#each [{ description: 'Use Cimmich’s current cover logic.', icon: mdiAutoFix, label: 'Automatic', value: 'automatic' as const }, { description: 'Pin one photo.', icon: mdiImageOutline, label: 'Set photo', value: 'single' as const }, { description: 'Make a mosaic of 2–6 photos.', icon: mdiImageMultipleOutline, label: 'Group', value: 'group' as const }, { description: 'Choose afresh when Home opens.', icon: mdiShuffleVariant, label: 'Random from…', value: 'random' as const }] as option (option.value)}
+        {#each [{ description: 'Use Cimmich’s current cover logic.', icon: mdiAutoFix, label: 'Automatic', value: 'automatic' as const }, { description: 'Pin one photo.', icon: mdiImageOutline, label: 'Set photo', value: 'single' as const }, { description: 'Rotate through 2–6 photos.', icon: mdiImageMultipleOutline, label: 'Group of photos', value: 'group' as const }, { description: 'Choose afresh when Home opens.', icon: mdiShuffleVariant, label: 'Random from…', value: 'random' as const }] as option (option.value)}
           <button
             class={`min-h-24 rounded-2xl border p-3 text-left transition ${mode === option.value ? 'border-primary bg-primary/8 ring-2 ring-primary/20' : 'border-gray-200 hover:border-primary/60 dark:border-immich-dark-gray'}`}
             type="button"

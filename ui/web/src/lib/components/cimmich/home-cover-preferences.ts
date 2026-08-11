@@ -156,3 +156,12 @@ export const chooseCimmichHomeRandomAssetId = (
   const normalized = Number.isFinite(randomValue) ? Math.max(0, Math.min(0.999_999_999, randomValue)) : 0;
   return ids[Math.floor(normalized * ids.length)] ?? ids[0];
 };
+
+export const chooseCimmichHomeRotatingAssetId = (assetIds: string[], rotationIndex: number) => {
+  if (assetIds.length === 0) {
+    return null;
+  }
+  const integerIndex = Number.isFinite(rotationIndex) ? Math.trunc(rotationIndex) : 0;
+  const wrappedIndex = ((integerIndex % assetIds.length) + assetIds.length) % assetIds.length;
+  return assetIds[wrappedIndex] ?? assetIds[0];
+};

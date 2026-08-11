@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CIMMICH_HOME_COVER_STORAGE_KEY,
   chooseCimmichHomeRandomAssetId,
+  chooseCimmichHomeRotatingAssetId,
   loadCimmichHomeCoverPreferences,
   normalizeCimmichHomeCoverPreference,
   resolveCimmichHomeCoverAssetIds,
@@ -84,5 +85,13 @@ describe('Cimmich Home cover preferences', () => {
     expect(chooseCimmichHomeRandomAssetId(['a', 'a', 'b', 'c'], 0)).toBe('a');
     expect(chooseCimmichHomeRandomAssetId(['a', 'b', 'c'], 0.99)).toBe('c');
     expect(chooseCimmichHomeRandomAssetId([], 0.5)).toBeNull();
+  });
+
+  it('rotates through a selected group and wraps safely', () => {
+    expect(chooseCimmichHomeRotatingAssetId(['a', 'b', 'c'], 0)).toBe('a');
+    expect(chooseCimmichHomeRotatingAssetId(['a', 'b', 'c'], 4)).toBe('b');
+    expect(chooseCimmichHomeRotatingAssetId(['a', 'b', 'c'], -1)).toBe('c');
+    expect(chooseCimmichHomeRotatingAssetId(['a', 'b'], Number.NaN)).toBe('a');
+    expect(chooseCimmichHomeRotatingAssetId([], 2)).toBeNull();
   });
 });

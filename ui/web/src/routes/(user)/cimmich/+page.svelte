@@ -3,6 +3,7 @@
   import { filterVisibleCimmichAssets } from '$lib/components/cimmich/asset-picker-visibility';
   import {
     chooseCimmichHomeRandomAssetId,
+    chooseCimmichHomeRotatingAssetId,
     loadCimmichHomeCoverPreferences,
     normalizeCimmichHomeCoverPreference,
     resolveCimmichHomeCoverAssetIds,
@@ -76,6 +77,7 @@
   let coverGeneration = 0;
   let coverPreferences = $state<CimmichHomeCoverPreferences>({});
   let randomCoverAssetIds = $state<Partial<Record<CimmichHomeCoverSlot, string | null>>>({});
+  let coverRotationIndex = $state(0);
 
   const namedPeople = $derived(people.filter((person) => person.subject_kind === 'person'));
   const firstRunPending = $derived(
@@ -204,15 +206,6 @@
   const featureHref = $derived(
     featuredEvent ? cimmichHomeEntityHref('events', featuredEvent.entityId) : Route.cimmichEvents(),
   );
-
-  const coverGridClass = (count: number) =>
-    count <= 2
-      ? 'grid-cols-2'
-      : count <= 3
-        ? 'grid-cols-3'
-        : count === 4
-          ? 'grid-cols-2 grid-rows-2'
-          : 'grid-cols-3 grid-rows-2';
 
   const browserStorage = () => {
     try {
@@ -359,6 +352,20 @@
     void cimmichVisibilityManager.version;
     loadHome();
   });
+
+  $effect(() => {
+    const rotatingGroups = Object.values(coverPreferences).filter(
+      (preference) => preference?.mode === 'group' && preference.assetIds.length > 1,
+    );
+    coverRotationIndex = 0;
+    if (rotatingGroups.length === 0 || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    const timer = globalThis.setInterval(() => {
+      coverRotationIndex += 1;
+    }, 6000);
+    return () => globalThis.clearInterval(timer);
+  });
 </script>
 
 <UserPageLayout>
@@ -422,11 +429,17 @@
       >
         {#if resolvedHeroAssetIds.length > 0}
           {#if coverPreferences.hero?.mode === 'group'}
-            <div class={`absolute inset-0 grid gap-1 ${coverGridClass(resolvedHeroAssetIds.length)}`}>
-              {#each resolvedHeroAssetIds as id (id)}
-                <img class="size-full min-h-0 object-cover" src={assetUrl(id)} alt="" />
-              {/each}
-            </div>
+            {@const activeHeroAssetId = chooseCimmichHomeRotatingAssetId(resolvedHeroAssetIds, coverRotationIndex)}
+            {#if activeHeroAssetId}
+              {#key activeHeroAssetId}
+                <img
+                  class="cimmich-cover-enter absolute inset-0 size-full object-cover"
+                  src={assetUrl(activeHeroAssetId)}
+                  alt=""
+                  data-cover-rotation="hero"
+                />
+              {/key}
+            {/if}
           {:else}
             <div class="absolute inset-0 grid grid-cols-1 sm:grid-cols-[minmax(0,1.55fr)_minmax(9rem,0.55fr)]">
               <img class="size-full object-cover" src={assetUrl(resolvedHeroAssetIds[0])} alt="" />
@@ -508,16 +521,18 @@
             class="group relative min-h-48 overflow-hidden rounded-3xl border border-gray-200 bg-[#171b20] text-white shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-immich-dark-gray"
           >
             <a class="absolute inset-0 z-10" href={portal.href} aria-label={`Open ${portal.name}`}></a>
-            {#if portal.mediaIds.length > 1}
-              <div class={`absolute inset-0 grid gap-0.5 ${coverGridClass(portal.mediaIds.length)}`}>
-                {#each portal.mediaIds as id (id)}
+            {#if coverPreferences[portal.id]?.mode === 'group'}
+              {@const activePortalAssetId = chooseCimmichHomeRotatingAssetId(portal.mediaIds, coverRotationIndex)}
+              {#if activePortalAssetId}
+                {#key activePortalAssetId}
                   <img
-                    class="size-full min-h-0 object-cover transition duration-500 group-hover:scale-[1.025]"
-                    src={assetUrl(id)}
+                    class="cimmich-cover-enter absolute inset-0 size-full object-cover transition duration-500 group-hover:scale-[1.025]"
+                    src={assetUrl(activePortalAssetId)}
                     alt=""
+                    data-cover-rotation={portal.id}
                   />
-                {/each}
-              </div>
+                {/key}
+              {/if}
             {:else if portal.mediaIds[0]}
               {#if portal.mediaStyle && !coverPreferences[portal.id]}
                 <div
@@ -569,3 +584,26 @@
     </section>
   </div>
 </UserPageLayout>
+
+<style>
+  .cimmich-cover-enter {
+    animation: cimmich-cover-enter 500ms ease-out;
+  }
+
+  @keyframes cimmich-cover-enter {
+    from {
+      opacity: 0.4;
+      transform: scale(1.01);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cimmich-cover-enter {
+      animation: none;
+    }
+  }
+</style>

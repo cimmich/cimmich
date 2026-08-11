@@ -21,7 +21,8 @@ describe('public Cimmich product boundary', () => {
     expect(home).toContain("onSave={(preference) => saveCoverPreference('hero', preference)}");
     expect(coverEditor).toContain('Change ${label} cover');
     expect(coverEditor).toContain("label: 'Set photo'");
-    expect(coverEditor).toContain("label: 'Group'");
+    expect(coverEditor).toContain("label: 'Group of photos'");
+    expect(coverEditor).toContain('Rotate through 2–6 photos.');
     expect(coverEditor).toContain("label: 'Random from…'");
     expect(coverEditor).toContain('selectedIds.length >= 2 && selectedIds.length <= 6');
     expect(coverEditor).toContain("label: 'Favourites'");
