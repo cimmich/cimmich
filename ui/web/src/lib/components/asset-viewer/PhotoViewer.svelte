@@ -23,6 +23,7 @@
   import { useSwipe, type SwipeCustomEvent } from 'svelte-gestures';
   import { t } from 'svelte-i18n';
   import type { AssetCursor } from './AssetViewer.svelte';
+  import { normalizeIdentityReviewQuarterTurns } from '$lib/components/cimmich/identity-review-crop';
 
   type Props = {
     cursor: AssetCursor;
@@ -31,9 +32,19 @@
     onReady?: () => void;
     onError?: () => void;
     onSwipe?: (event: SwipeCustomEvent) => void;
+    rotationQuarterTurns?: number;
   };
 
-  let { cursor, element = $bindable(), sharedLink, onReady, onError, onSwipe }: Props = $props();
+  let {
+    cursor,
+    element = $bindable(),
+    sharedLink,
+    onReady,
+    onError,
+    onSwipe,
+    rotationQuarterTurns = 0,
+  }: Props = $props();
+  const normalizedRotation = $derived(normalizeIdentityReviewQuarterTurns(rotationQuarterTurns));
 
   const { slideshowState, slideshowLook } = slideshowStore;
   const asset = $derived(cursor.current);
@@ -72,7 +83,10 @@
       return { width: 0, height: 0 };
     }
 
-    return scaleToFit(getNaturalSize(assetViewerManager.imgRef), { width: containerWidth, height: containerHeight });
+    const natural = getNaturalSize(assetViewerManager.imgRef);
+    const rotatedNatural = normalizedRotation % 2 === 0 ? natural : { width: natural.height, height: natural.width };
+    const rotatedFit = scaleToFit(rotatedNatural, { width: containerWidth, height: containerHeight });
+    return normalizedRotation % 2 === 0 ? rotatedFit : { width: rotatedFit.height, height: rotatedFit.width };
   });
 
   const highlightedBoxes = $derived(getBoundingBox(assetViewerManager.highlightedFaces, overlaySize));
@@ -226,6 +240,7 @@
     {container}
     objectFit={$slideshowState !== SlideshowState.None && $slideshowLook === SlideshowLook.Cover ? 'cover' : 'contain'}
     {onUrlChange}
+    {rotationQuarterTurns}
     onImageReady={() => {
       visibleImageReady = true;
       onReady?.();

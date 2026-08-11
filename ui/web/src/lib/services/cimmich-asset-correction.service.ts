@@ -52,6 +52,14 @@ export const getCimmichAssetCorrections = (assetIds: string[]) =>
     { body: JSON.stringify({ assetIds }), method: 'POST' },
   );
 
+export const getCimmichAssetCorrectionForSource = async (sourceAssetId: string) => {
+  const display = await request<{ assetId: string }>(
+    `/v1/assets/display?sourceAssetId=${encodeURIComponent(sourceAssetId)}`,
+  );
+  const response = await getCimmichAssetCorrections([display.assetId]);
+  return response.items[0] ?? null;
+};
+
 export const rotateCimmichAssets = (
   assetIds: string[],
   direction: 'left' | 'right',

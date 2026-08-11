@@ -109,13 +109,20 @@
   import {
     adjustObservationBoxWithKeyboard,
     consumeObservationArrow,
+    observationBoxFromDrag,
     observationBoxesMatch,
-    observationBoxFromPointerDrag,
     observationBoxHandles as faceBoxHandles,
     observationBoxRegion as observationRegion,
     type ObservationBoxEditMode,
     type ObservationBoxPointerDrag,
   } from './observation-box-geometry';
+  import {
+    identityReviewCssTransform,
+    normalizeIdentityReviewQuarterTurns,
+    rotateIdentityReviewPoint,
+    rotateIdentityReviewSource,
+    unrotateIdentityReviewPoint,
+  } from './identity-review-crop';
   import { Icon, Tooltip } from '@immich/ui';
   import {
     mdiAccountMultipleOutline,
@@ -133,6 +140,7 @@
 
   interface Props {
     asset: AssetResponseDto;
+    rotationQuarterTurns?: number;
   }
 
   type SummaryMode = 'normal' | 'enhanced' | 'evidence';
@@ -143,7 +151,8 @@
   type FaceBucketDraft = 'face_only' | 'head' | 'lq' | 'prime' | 'secondary';
   type FaceEvidenceKindDraft = 'body' | 'face' | 'head';
 
-  let { asset }: Props = $props();
+  let { asset, rotationQuarterTurns = 0 }: Props = $props();
+  const normalizedRotation = $derived(normalizeIdentityReviewQuarterTurns(rotationQuarterTurns));
   let evidence = $state<CimmichPhotoEvidence>();
   let bundle = $state<CimmichEvidenceBundle>();
   let step2Readback = $state<CimmichStep2Readback>();
@@ -847,13 +856,17 @@
       return undefined;
     }
 
+    const rotatedWidth = normalizedRotation % 2 === 0 ? imageWidth : imageHeight;
+    const rotatedHeight = normalizedRotation % 2 === 0 ? imageHeight : imageWidth;
     const fitted = scaleToFit(
-      { width: imageWidth, height: imageHeight },
+      { width: rotatedWidth, height: rotatedHeight },
       { width: overlayWidth, height: overlayHeight },
     );
     return {
       imageWidth,
       imageHeight,
+      sourceDisplayWidth: normalizedRotation % 2 === 0 ? fitted.width : fitted.height,
+      sourceDisplayHeight: normalizedRotation % 2 === 0 ? fitted.height : fitted.width,
       offsetX: (overlayWidth - fitted.width) / 2,
       offsetY: (overlayHeight - fitted.height) / 2,
       width: fitted.width,
@@ -868,13 +881,143 @@
       ? `left: ${imageMetrics.offsetX}px; top: ${imageMetrics.offsetY}px; width: ${imageMetrics.width}px; height: ${imageMetrics.height}px;`
       : '',
   );
+  const rotatedSourceImageStyle = $derived.by(() => {
+    if (!imageMetrics) {
+      return '';
+    }
+    const transform = identityReviewCssTransform(
+      imageMetrics.sourceDisplayWidth,
+      imageMetrics.sourceDisplayHeight,
+      normalizedRotation,
+    );
+    return `left: ${imageMetrics.offsetX}px; top: ${imageMetrics.offsetY}px; width: ${imageMetrics.sourceDisplayWidth}px; height: ${imageMetrics.sourceDisplayHeight}px; transform-origin: 0 0;${transform ? ` transform: ${transform};` : ''}`;
+  });
   const spatialOverlayStyle = $derived(projectPhotoOverlayZoomStyle(assetViewerManager.zoomState));
+
+  const projectedSourcePoint = (x: number, y: number) => {
+    if (!imageMetrics) {
+      return { x: 0, y: 0 };
+    }
+    const point = rotateIdentityReviewPoint(
+      { x: x / imageMetrics.imageWidth, y: y / imageMetrics.imageHeight },
+      normalizedRotation,
+    );
+    return {
+      x: imageMetrics.offsetX + point.x * imageMetrics.width,
+      y: imageMetrics.offsetY + point.y * imageMetrics.height,
+    };
+  };
+
+  const projectedSourceBox = (bbox: { x1: number; x2: number; y1: number; y2: number }) => {
+    if (!imageMetrics) {
+      return { height: 0, left: 0, top: 0, width: 0 };
+    }
+    const rotated = rotateIdentityReviewSource(
+      {
+        box: {
+          h: (bbox.y2 - bbox.y1) / imageMetrics.imageHeight,
+          w: (bbox.x2 - bbox.x1) / imageMetrics.imageWidth,
+          x: bbox.x1 / imageMetrics.imageWidth,
+          y: bbox.y1 / imageMetrics.imageHeight,
+        },
+        height: imageMetrics.imageHeight,
+        width: imageMetrics.imageWidth,
+      },
+      normalizedRotation,
+    ).box;
+    return {
+      height: rotated.h * imageMetrics.height,
+      left: imageMetrics.offsetX + rotated.x * imageMetrics.width,
+      top: imageMetrics.offsetY + rotated.y * imageMetrics.height,
+      width: rotated.w * imageMetrics.width,
+    };
+  };
+
+  const projectedNormalizedBox = (geometry: ManualPhotoTagGeometry) => {
+    if (!imageMetrics) {
+      return { height: 0, left: 0, top: 0, width: 0 };
+    }
+    const rotated = rotateIdentityReviewSource(
+      { box: geometry, height: imageMetrics.imageHeight, width: imageMetrics.imageWidth },
+      normalizedRotation,
+    ).box;
+    return {
+      height: rotated.h * imageMetrics.height,
+      left: imageMetrics.offsetX + rotated.x * imageMetrics.width,
+      top: imageMetrics.offsetY + rotated.y * imageMetrics.height,
+      width: rotated.w * imageMetrics.width,
+    };
+  };
+
+  const sourcePointFromDisplayedRect = (clientX: number, clientY: number, rect: DOMRect) =>
+    unrotateIdentityReviewPoint(
+      {
+        x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+      },
+      normalizedRotation,
+    );
+
+  const sourceDragDelta = (deltaX: number, deltaY: number) => {
+    if (normalizedRotation === 1) {
+      return { x: deltaY, y: -deltaX };
+    }
+    if (normalizedRotation === 2) {
+      return { x: -deltaX, y: -deltaY };
+    }
+    if (normalizedRotation === 3) {
+      return { x: -deltaY, y: deltaX };
+    }
+    return { x: deltaX, y: deltaY };
+  };
+
+  const sourceObservationMode = (mode: ObservationBoxEditMode): ObservationBoxEditMode => {
+    if (mode === 'move' || normalizedRotation === 0) {
+      return mode;
+    }
+    const maps = {
+      1: { e: 'n', n: 'w', s: 'e', w: 's' },
+      2: { e: 'w', n: 's', s: 'n', w: 'e' },
+      3: { e: 's', n: 'e', s: 'w', w: 'n' },
+    } as const;
+    const mapped = [...mode].map((side) => maps[normalizedRotation as 1 | 2 | 3][side as 'e' | 'n' | 's' | 'w']);
+    const vertical = mapped.find((side) => side === 'n' || side === 's') ?? '';
+    const horizontal = mapped.find((side) => side === 'e' || side === 'w') ?? '';
+    return `${vertical}${horizontal}` as ObservationBoxEditMode;
+  };
+
+  const sourceArrowKey = (key: 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp') => {
+    const maps = {
+      1: { ArrowDown: 'ArrowRight', ArrowLeft: 'ArrowUp', ArrowRight: 'ArrowDown', ArrowUp: 'ArrowLeft' },
+      2: { ArrowDown: 'ArrowUp', ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft', ArrowUp: 'ArrowDown' },
+      3: { ArrowDown: 'ArrowLeft', ArrowLeft: 'ArrowDown', ArrowRight: 'ArrowUp', ArrowUp: 'ArrowRight' },
+    } as const;
+    return normalizedRotation === 0 ? key : maps[normalizedRotation][key];
+  };
+
+  const observationBoxFromRotatedPointer = (
+    drag: ObservationBoxPointerDrag,
+    pointer: { clientX: number; clientY: number },
+  ) => {
+    if (!imageMetrics) {
+      return drag.startBox;
+    }
+    const delta = sourceDragDelta(pointer.clientX - drag.startClientX, pointer.clientY - drag.startClientY);
+    return observationBoxFromDrag(
+      drag.startBox,
+      drag.image,
+      drag.mode,
+      (delta.x / imageMetrics.sourceDisplayWidth) * imageMetrics.imageWidth,
+      (delta.y / imageMetrics.sourceDisplayHeight) * imageMetrics.imageHeight,
+    );
+  };
 
   const manualTagGeometryStyle = (geometry: ManualPhotoTagGeometry | undefined) => {
     if (!imageMetrics || !geometry) {
       return '';
     }
-    return `left: ${imageMetrics.offsetX + geometry.x * imageMetrics.width}px; top: ${imageMetrics.offsetY + geometry.y * imageMetrics.height}px; width: ${geometry.w * imageMetrics.width}px; height: ${geometry.h * imageMetrics.height}px;`;
+    const projected = projectedNormalizedBox(geometry);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const manualTagDraftStyle = $derived(manualTagGeometryStyle(manualTagDraft));
@@ -884,8 +1027,9 @@
     if (!imageMetrics) {
       return '';
     }
-    const markerRight = imageMetrics.offsetX + (geometry.x + geometry.w) * imageMetrics.width;
-    const markerTop = imageMetrics.offsetY + geometry.y * imageMetrics.height;
+    const projected = projectedNormalizedBox(geometry);
+    const markerRight = projected.left + projected.width;
+    const markerTop = projected.top;
     const { left, maxHeight, top, width } = placeManualTagPanel({
       marker: { right: markerRight, top: markerTop },
       overlay: { height: overlayHeight, width: overlayWidth },
@@ -914,9 +1058,11 @@
     if (!imageMetrics) {
       return '';
     }
-    const centerX = tag.geometry.x + tag.geometry.w / 2;
-    const centerY = tag.geometry.y + tag.geometry.h / 2;
-    return `left: ${imageMetrics.offsetX + centerX * imageMetrics.width}px; top: ${imageMetrics.offsetY + centerY * imageMetrics.height}px;`;
+    const center = rotateIdentityReviewPoint(
+      { x: tag.geometry.x + tag.geometry.w / 2, y: tag.geometry.y + tag.geometry.h / 2 },
+      normalizedRotation,
+    );
+    return `left: ${imageMetrics.offsetX + center.x * imageMetrics.width}px; top: ${imageMetrics.offsetY + center.y * imageMetrics.height}px;`;
   };
 
   const manualTagTypeLabel = (tagType: CimmichManualSubjectTagType) =>
@@ -944,22 +1090,19 @@
     }
 
     const bbox = faceBox(face);
-    const left = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const width = ((bbox.x2 - bbox.x1) / imageMetrics.imageWidth) * imageMetrics.width;
-    const height = ((bbox.y2 - bbox.y1) / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const sourcePresenceMarkerStyle = (presence: (typeof sourcePresenceOverlays)[number]) => {
     if (!imageMetrics) {
       return '';
     }
-    const centerX = (presence.bbox.x1 + presence.bbox.x2) / 2;
-    const centerY = (presence.bbox.y1 + presence.bbox.y2) / 2;
-    const left = imageMetrics.offsetX + (centerX / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (centerY / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px;`;
+    const center = projectedSourcePoint(
+      (presence.bbox.x1 + presence.bbox.x2) / 2,
+      (presence.bbox.y1 + presence.bbox.y2) / 2,
+    );
+    return `left: ${center.x}px; top: ${center.y}px;`;
   };
 
   const bodyBoxStyle = (body: CimmichBodyOverlay) => {
@@ -968,11 +1111,8 @@
     }
 
     const bbox = bodyBox(body);
-    const left = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const width = ((bbox.x2 - bbox.x1) / imageMetrics.imageWidth) * imageMetrics.width;
-    const height = ((bbox.y2 - bbox.y1) / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const faceLabelStyle = (face: CimmichFaceOverlay) => {
@@ -981,8 +1121,9 @@
     }
 
     const bbox = faceBox(face);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const top = projected.top;
     const linkedBody = bodyByFaceId.get(face.id);
     const labelIndex = Math.max(
       0,
@@ -990,11 +1131,9 @@
         .filter((candidate) => candidate.id !== face.id)
         .filter((candidate) => {
           const candidateBox = faceBox(candidate);
-          const candidateCenterX =
-            imageMetrics.offsetX +
-            ((candidateBox.x1 + candidateBox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-          const candidateTop =
-            imageMetrics.offsetY + (candidateBox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
+          const candidateProjected = projectedSourceBox(candidateBox);
+          const candidateCenterX = candidateProjected.left + candidateProjected.width / 2;
+          const candidateTop = candidateProjected.top;
           return (
             Math.abs(candidateCenterX - centerX) < 220 &&
             Math.abs(candidateTop - top) < 48 &&
@@ -1013,9 +1152,8 @@
     }
 
     const bbox = faceBox(face);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const centerY = imageMetrics.offsetY + ((bbox.y1 + bbox.y2) / 2 / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${centerX}px; top: ${centerY}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left + projected.width / 2}px; top: ${projected.top + projected.height / 2}px;`;
   };
 
   const bodyDetailsStyle = (body: CimmichBodyOverlay) => {
@@ -1024,9 +1162,10 @@
     }
 
     const bbox = bodyBox(body);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bodyTop = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const bottom = imageMetrics.offsetY + (bbox.y2 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const bodyTop = projected.top;
+    const bottom = projected.top + projected.height;
     const left = Math.min(Math.max(12, centerX - 130), Math.max(12, overlayWidth - 272));
     const panelHeight = Math.min(292, Math.max(180, overlayHeight - 96));
     const belowTop = bottom + 10;
@@ -1042,9 +1181,9 @@
     }
 
     const bbox = bodyBox(body);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bodyAnchorY = bbox.y1 + (bbox.y2 - bbox.y1) * 0.38;
-    const top = imageMetrics.offsetY + (bodyAnchorY / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const top = projected.top + projected.height * 0.38;
     const labelCenterX = Math.min(Math.max(90, centerX), Math.max(90, overlayWidth - 90));
     return `left: ${labelCenterX}px; top: ${Math.max(92, top)}px; ${bodyColorStyle(body)}`;
   };
@@ -1053,10 +1192,7 @@
     if (!imageMetrics) {
       return { x: 0, y: 0 };
     }
-    return {
-      x: imageMetrics.offsetX + (point[0] / imageMetrics.imageWidth) * imageMetrics.width,
-      y: imageMetrics.offsetY + (point[1] / imageMetrics.imageHeight) * imageMetrics.height,
-    };
+    return projectedSourcePoint(point[0], point[1]);
   };
 
   const bodySkeletonPairs = [
@@ -1401,9 +1537,10 @@
     }
 
     const bbox = faceBox(face);
-    const faceLeft = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const faceRight = imageMetrics.offsetX + (bbox.x2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bottom = imageMetrics.offsetY + (bbox.y2 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const faceLeft = projected.left;
+    const faceRight = projected.left + projected.width;
+    const bottom = projected.top + projected.height;
     const placement = placeFaceDetailsPanel({
       editing: isEditingFaceName,
       face: { bottom, left: faceLeft, right: faceRight },
@@ -1669,7 +1806,13 @@
       return;
     }
     const current = faceBox(face);
-    const next = adjustObservationBoxWithKeyboard(current, image, mode, key, event.shiftKey);
+    const next = adjustObservationBoxWithKeyboard(
+      current,
+      image,
+      sourceObservationMode(mode),
+      sourceArrowKey(key),
+      event.shiftKey,
+    );
     if (observationBoxesMatch(current, next)) {
       return;
     }
@@ -1694,7 +1837,13 @@
       return;
     }
     const current = bodyBox(body);
-    const next = adjustObservationBoxWithKeyboard(current, image, mode, key, event.shiftKey);
+    const next = adjustObservationBoxWithKeyboard(
+      current,
+      image,
+      sourceObservationMode(mode),
+      sourceArrowKey(key),
+      event.shiftKey,
+    );
     if (observationBoxesMatch(current, next)) {
       return;
     }
@@ -1714,7 +1863,7 @@
     faceBoxDragState = {
       faceId: face.id,
       image,
-      mode,
+      mode: sourceObservationMode(mode),
       pointerId: event.pointerId,
       startBox: { ...faceBox(face) },
       startClientX: event.clientX,
@@ -1730,9 +1879,7 @@
       return;
     }
     event.preventDefault();
-    const nextBox = imageMetrics
-      ? observationBoxFromPointerDrag(faceBoxDragState, event, imageMetrics)
-      : faceBoxDragState.startBox;
+    const nextBox = observationBoxFromRotatedPointer(faceBoxDragState, event);
     faceBoxDrafts = { ...faceBoxDrafts, [faceBoxDragState.faceId]: nextBox };
   };
 
@@ -1814,7 +1961,7 @@
     bodyBoxDragState = {
       bodyId: body.id,
       image,
-      mode,
+      mode: sourceObservationMode(mode),
       pointerId: event.pointerId,
       startBox: { ...bodyBox(body) },
       startClientX: event.clientX,
@@ -1830,9 +1977,7 @@
       return;
     }
     event.preventDefault();
-    const nextBox = imageMetrics
-      ? observationBoxFromPointerDrag(bodyBoxDragState, event, imageMetrics)
-      : bodyBoxDragState.startBox;
+    const nextBox = observationBoxFromRotatedPointer(bodyBoxDragState, event);
     bodyBoxDrafts = { ...bodyBoxDrafts, [bodyBoxDragState.bodyId]: nextBox };
   };
 
@@ -2470,10 +2615,7 @@
 
   const objectPointerPosition = (event: PointerEvent, target: HTMLButtonElement) => {
     const rect = target.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
-    };
+    return sourcePointFromDisplayedRect(event.clientX, event.clientY, rect);
   };
 
   const beginObjectRegion = (event: PointerEvent & { currentTarget: HTMLButtonElement }) => {
@@ -2883,7 +3025,8 @@
     const rect = event.currentTarget.getBoundingClientRect();
     const clientX = event.detail === 0 ? rect.left + rect.width / 2 : event.clientX;
     const clientY = event.detail === 0 ? rect.top + rect.height / 2 : event.clientY;
-    const geometry = createManualPhotoTagGeometry(clientX, clientY, rect);
+    const point = sourcePointFromDisplayedRect(clientX, clientY, rect);
+    const geometry = createManualPhotoTagGeometry(point.x, point.y, { height: 1, left: 0, top: 0, width: 1 });
     if (!geometry) {
       return;
     }
@@ -4019,7 +4162,7 @@
             src={overlayUrl}
             alt=""
             class="absolute object-contain opacity-45 mix-blend-screen"
-            style={fittedImageStyle}
+            style={rotatedSourceImageStyle}
             aria-hidden="true"
             loading="lazy"
           />
