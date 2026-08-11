@@ -36,7 +36,7 @@ describe('app-wide Cimmich photo presentation boundary', () => {
       '<CimmichViewingMode />',
     );
     expect(source('src/lib/components/asset-viewer/AssetViewerNavBar.svelte')).toContain(
-      '<CimmichViewingMode variant="overlay" />',
+      '<CimmichViewingMode variant="overlay" restorePreference={false} />',
     );
   });
 });

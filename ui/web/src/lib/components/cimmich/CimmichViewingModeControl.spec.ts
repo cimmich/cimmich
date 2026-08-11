@@ -26,7 +26,6 @@ const renderControl = (overrides: Partial<Parameters<typeof render<typeof Cimmic
     onSelectMode,
     onUnlock,
     privateUnlocked: false,
-    switchToImmichHref: '/photos',
     ...overrides,
   });
 
@@ -34,8 +33,8 @@ const renderControl = (overrides: Partial<Parameters<typeof render<typeof Cimmic
 };
 
 describe('CimmichViewingModeControl', () => {
-  it('exposes the current mode as a compact named control and keeps Immich as a separate destination', async () => {
-    const { getByRole } = renderControl();
+  it('exposes the current mode as a compact named control without mixing product navigation into privacy', async () => {
+    const { getByRole, queryByText } = renderControl();
 
     const trigger = getByRole('button', { name: 'Viewing mode: Personal' });
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -43,7 +42,7 @@ describe('CimmichViewingModeControl', () => {
     await fireEvent.click(trigger);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    expect(getByRole('link', { name: 'Switch to Immich' })).toHaveAttribute('href', '/photos');
+    expect(queryByText('Switch to Immich')).not.toBeInTheDocument();
   });
 
   it('keeps the current mode visibly named in the dashboard treatment', () => {

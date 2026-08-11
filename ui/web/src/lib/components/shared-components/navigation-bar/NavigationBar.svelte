@@ -182,7 +182,7 @@
           <ActionButton action={Cast} />
         </div>
 
-        {#if !page.url.pathname.includes('/admin')}
+        {#if modeSwitch.cimmich && !page.url.pathname.includes('/admin')}
           <div class="ms-1 border-s border-gray-200 ps-1 dark:border-gray-700">
             <CimmichViewingMode />
           </div>

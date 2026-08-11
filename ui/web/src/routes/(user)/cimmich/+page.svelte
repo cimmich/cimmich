@@ -391,7 +391,7 @@
     >
       <div class="flex min-h-11 items-center justify-center gap-3 px-1 sm:justify-start">
         <span class="text-sm font-semibold whitespace-nowrap">Viewing mode</span>
-        <CimmichViewingMode variant="dashboard" />
+        <CimmichViewingMode variant="dashboard" restorePreference={false} />
       </div>
 
       <form class="relative min-w-0" action={Route.cimmichSmartSearch()} method="get" role="search">

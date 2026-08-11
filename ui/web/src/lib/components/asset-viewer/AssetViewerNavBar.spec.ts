@@ -75,7 +75,7 @@ describe('AssetViewerNavBar component', () => {
       'utf8',
     );
 
-    expect(source).toContain('<CimmichViewingMode variant="overlay" />');
+    expect(source).toContain('<CimmichViewingMode variant="overlay" restorePreference={false} />');
     expect(source).not.toContain('Immich view. All photos are visible.');
   });
 
@@ -85,7 +85,7 @@ describe('AssetViewerNavBar component', () => {
       'utf8',
     );
 
-    expect(source).toContain('<CimmichViewingMode variant="overlay" />');
+    expect(source).toContain('<CimmichViewingMode variant="overlay" restorePreference={false} />');
     expect(source).toContain('<span class="hidden md:inline">This </span>photo');
     expect(source).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />');
     expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');

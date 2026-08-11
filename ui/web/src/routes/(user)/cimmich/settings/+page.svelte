@@ -53,7 +53,7 @@
           </p>
         </div>
       </div>
-      <CimmichViewingMode variant="dashboard" />
+      <CimmichViewingMode variant="dashboard" restorePreference={false} />
     </section>
 
     <section class="grid gap-4 sm:grid-cols-2" aria-label="Cimmich settings">

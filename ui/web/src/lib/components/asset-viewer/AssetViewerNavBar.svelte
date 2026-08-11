@@ -107,7 +107,7 @@
 >
   <div class="dark flex items-center gap-1">
     <ActionButton action={Close} />
-    <CimmichViewingMode variant="overlay" />
+    <CimmichViewingMode variant="overlay" restorePreference={false} />
   </div>
 
   {#if photoPresentable}
