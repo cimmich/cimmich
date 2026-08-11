@@ -72,7 +72,10 @@ describe('Cimmich Local AI review action', () => {
     });
 
     await fireEvent.click(rendered.getByRole('button', { name: 'Open Local AI review' }));
-    expect(await rendered.findByRole('dialog', { name: 'Local AI' })).toBeInTheDocument();
+    const dialog = await rendered.findByRole('dialog', { name: 'Local AI' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.parentElement).toHaveClass('local-ai-backdrop');
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
     expect(rendered.getByText(/Nothing is written into identity or Context data/)).toBeInTheDocument();
     expect(rendered.getByRole('radio', { name: /Look for missed Bodies/ })).toBeDisabled();
     expect(rendered.getByText('Requires a separately configured local Body model.')).toBeInTheDocument();

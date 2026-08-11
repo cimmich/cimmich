@@ -1,5 +1,6 @@
 <script lang="ts">
   import { focusTrap } from '$lib/actions/focus-trap';
+  import { portal } from '$lib/elements/Portal.svelte';
   import {
     cancelCimmichLocalAiJob,
     getCimmichLocalAiArtifact,
@@ -194,6 +195,7 @@
   <div
     class="local-ai-backdrop"
     role="presentation"
+    use:portal={'body'}
     onkeydown={(event) => {
       if (event.key === 'Escape' && !running) {
         close();
