@@ -5,25 +5,28 @@ import {
   faceReviewReasonCode,
   readDeferredFaceReviews,
 } from "./deferred-face-review.mjs";
-import {
-  applyPrimeCurations,
-  buildPrimeCurations,
-  loadPrimeCuratorFaces,
-  primeCuratorPolicyVersion,
-} from "./prime-curator-repository.mjs";
+import { primeCuratorPolicyVersion } from "./prime-curator-repository.mjs";
 import { projectAssetFaceBodyLinks } from "./face-body-linker.mjs";
 import {
-  applyFaceBodyLinks,
-  buildFaceBodyLinks,
-  loadFaceBodyLinkAssets,
-} from "./face-body-linker-repository.mjs";
+  deferBodyLinksAfterCommand,
+  deferPrimeAfterCommand,
+  deferPrimeForPeople,
+  isHoldingPerson,
+  refreshPrimeAfterCommand,
+  refreshPrimeForPeople,
+  waitForMaintenanceIdle,
+} from "./repository-maintenance.mjs";
+export {
+  deferBodyLinksAfterCommand,
+  deferPrimeAfterCommand,
+  waitForMaintenanceIdle,
+} from "./repository-maintenance.mjs";
 import {
   lowQualityPolicyVersion,
   lowQualityReasons,
 } from "./low-quality-policy.mjs";
 import { createMediaJobLedger } from "./media-job-ledger.mjs";
 import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.mjs";
-import { createCoalescingMaintenanceLane } from "./coalescing-maintenance-lane.mjs";
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
@@ -735,161 +738,6 @@ const bridgeAssetBySourceId = (bridge, sourceAssetId) => {
     if (linked.sourceAssetId === sourceAssetId) return { assetId, ...linked };
   }
 };
-
-const isHoldingPerson = async (sql, personId) => {
-  const [row] = await sql`
-    SELECT EXISTS (
-      SELECT 1 FROM current_person_category
-      WHERE person_id = ${String(personId || "")} AND slug = 'holding'
-    ) AS holding
-  `;
-  return row?.holding === true;
-};
-
-// Identity transactions are authoritative and enqueue a durable SourcePack
-// rebuild in the database. Prime projection is an immediate convenience pass;
-// it must never make a successfully committed user correction look like it
-// failed. A maintenancePending response tells the UI/operator the projection
-// can be retried without repeating the identity command.
-const refreshPrimeAfterCommand = async (sql, personId) => {
-  if (!personId) return false;
-  try {
-    if (await isHoldingPerson(sql, personId)) {
-      await sql`
-        WITH retired_buckets AS (
-          UPDATE reference_bucket SET state = 'retired'
-          WHERE person_id = ${personId} AND state IN ('active','candidate')
-          RETURNING bucket_id
-        )
-        UPDATE reference_prototype SET state = 'retired'
-        WHERE person_id = ${personId} AND state = 'active'
-      `;
-      return false;
-    }
-    const faces = await loadPrimeCuratorFaces(sql, personId);
-    const curations = buildPrimeCurations(faces, {
-      evidenceCutoff: new Date().toISOString(),
-    });
-    if (curations.length > 0) {
-      await applyPrimeCurations(sql, curations, { execute: true });
-    } else {
-      await sql`UPDATE reference_prototype SET state = 'retired' WHERE person_id = ${personId} AND state = 'active'`;
-    }
-    return false;
-  } catch (error) {
-    console.error(
-      "Cimmich Prime maintenance deferred after committed identity command",
-      {
-        error: error instanceof Error ? error.message : String(error),
-        personId,
-      },
-    );
-    return true;
-  }
-};
-
-// Head classification is an operator-facing correction, while Prime curation
-// is a derived convenience projection. The shared lane is globally bounded,
-// ordered by priority and coalesced by Person: queued bursts become one rebuild
-// and a correction arriving during a rebuild requests at most one follow-up.
-// The authoritative transaction therefore never waits for gallery curation.
-const maintenanceEvent = (event) => {
-  if (event.kind === "failed") {
-    console.error(
-      JSON.stringify({ code: "CIMMICH_MAINTENANCE_FAILED", ...event }),
-    );
-    return;
-  }
-  if (event.kind === "completed" && event.durationMs >= 500) {
-    console.info(
-      JSON.stringify({ code: "CIMMICH_MAINTENANCE_SLOW", ...event }),
-    );
-  }
-};
-
-const primeMaintenanceLanes = new WeakMap();
-const primeMaintenanceLane = (sql) => {
-  let lane = primeMaintenanceLanes.get(sql);
-  if (!lane) {
-    lane = createCoalescingMaintenanceLane({
-      concurrency: 1,
-      maxAttempts: 3,
-      name: "prime_projection",
-      onEvent: maintenanceEvent,
-      worker: async (personId) => {
-        if (await refreshPrimeAfterCommand(sql, personId)) {
-          throw new Error("Prime projection rebuild did not complete");
-        }
-      },
-    });
-    primeMaintenanceLanes.set(sql, lane);
-  }
-  return lane;
-};
-
-export const deferPrimeAfterCommand = (sql, personId) => {
-  if (!personId) return false;
-  return primeMaintenanceLane(sql).schedule(personId, { priority: 20 });
-};
-
-const refreshPrimeForPeople = async (sql, personIds) => {
-  let maintenancePending = false;
-  for (const personId of [...new Set(personIds.filter(Boolean))]) {
-    maintenancePending =
-      (await refreshPrimeAfterCommand(sql, personId)) || maintenancePending;
-  }
-  return maintenancePending;
-};
-
-const deferPrimeForPeople = (sql, personIds) =>
-  [...new Set(personIds.filter(Boolean))]
-    .map((personId) => deferPrimeAfterCommand(sql, personId))
-    .some(Boolean);
-
-const refreshBodyLinksAfterCommand = async (sql, assetId) => {
-  if (!assetId) return { maintenancePending: false };
-  try {
-    const assets = await loadFaceBodyLinkAssets(sql, assetId);
-    const proposal = buildFaceBodyLinks(assets);
-    const summary = await applyFaceBodyLinks(sql, proposal, { execute: true });
-    return { ...summary, maintenancePending: false };
-  } catch (error) {
-    console.error(
-      "Cimmich Body linkage maintenance deferred after committed identity command",
-      {
-        assetId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-    return { maintenancePending: true };
-  }
-};
-
-const bodyLinkMaintenanceLanes = new WeakMap();
-const bodyLinkMaintenanceLane = (sql) => {
-  let lane = bodyLinkMaintenanceLanes.get(sql);
-  if (!lane) {
-    lane = createCoalescingMaintenanceLane({
-      concurrency: 1,
-      name: "body_link_projection",
-      onEvent: maintenanceEvent,
-      worker: (assetId) => refreshBodyLinksAfterCommand(sql, assetId),
-    });
-    bodyLinkMaintenanceLanes.set(sql, lane);
-  }
-  return lane;
-};
-
-export const deferBodyLinksAfterCommand = (sql, assetId) => {
-  if (!assetId) return false;
-  return bodyLinkMaintenanceLane(sql).schedule(assetId, { priority: 10 });
-};
-
-export const waitForMaintenanceIdle = (sql) =>
-  Promise.all([
-    primeMaintenanceLane(sql).whenIdle(),
-    bodyLinkMaintenanceLane(sql).whenIdle(),
-  ]);
 
 const boxOverlap = (left, right) => {
   const x1 = Math.max(Number(left.box_x), Number(right.box_x));

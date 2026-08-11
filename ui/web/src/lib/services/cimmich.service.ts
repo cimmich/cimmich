@@ -3,6 +3,7 @@ import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 import { createCimmichExploreClient } from './cimmich-explore.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
+import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
@@ -19,6 +20,7 @@ export type {
   CimmichFaceOwnerReviewMatchBatch,
 } from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+export type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -1775,28 +1777,6 @@ export type CimmichMachineSuggestionDecision = {
   state: 'accepted' | 'ignored';
 };
 
-export type CimmichIdentityAuditRun = {
-  acceptedComparableFaces: number;
-  acceptedEmbeddedFaces: number;
-  auditRunId: string;
-  completedAt: string | null;
-  contradictionCandidates: number;
-  derivativeCandidatesSuppressed: number;
-  errorCode: string | null;
-  independenceProviderConfigDigest: string | null;
-  independenceScoreFloor: number;
-  marginFloor: number;
-  packId: string;
-  policyVersion: string;
-  schemaVersion: 'cimmich.identity-audit.v2';
-  stale: boolean;
-  startedAt: string;
-  state: 'completed' | 'failed' | 'running';
-  scoreFloor: number;
-  untaggedCandidates: number;
-  untaggedEmbeddedFaces: number;
-};
-
 export type CimmichIdentityAuditReference = {
   assetId: string;
   box: { h: number; w: number; x: number; y: number };
@@ -2107,6 +2087,15 @@ export type CimmichImmichPersonCluster = {
 
 export type CimmichImmichPersonClusterPreview = {
   clusters: CimmichImmichPersonCluster[];
+  scanSummary?: {
+    complete: boolean;
+    scannedAssetCount: number;
+    scanAssetLimit: number;
+    targetAssetCount: number;
+    targetAssetLimit: number;
+    timeoutMs: number;
+    truncationReason: 'asset_limit' | 'target_limit' | 'timeout' | null;
+  };
   schemaVersion: 'cimmich.immich-person-resolution.v1';
   scope: CimmichImmichOnboardingScope;
 };

@@ -38,6 +38,18 @@ export const observationBoxRegion = (box: ObservationBox, image: ImageSize) => (
 export const observationArrowKey = (key: string): ObservationArrowKey | undefined =>
   key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' ? key : undefined;
 
+export const consumeObservationArrow = (
+  event: Pick<KeyboardEvent, 'key' | 'preventDefault' | 'stopPropagation'>,
+): ObservationArrowKey | undefined => {
+  const key = observationArrowKey(event.key);
+  if (!key) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  return key;
+};
+
 export const clampObservationBox = (box: ObservationBox, image: ImageSize): ObservationBox => {
   const minimumWidth = Math.min(MINIMUM_BOX_SIZE, image.width);
   const minimumHeight = Math.min(MINIMUM_BOX_SIZE, image.height);

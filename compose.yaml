@@ -43,6 +43,10 @@ services:
       timeout: 3s
       retries: 30
     networks: [cimmich-internal]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
 
   cimmich-storage-init:
     image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
@@ -77,6 +81,10 @@ services:
       - cimmich-face-provider:/face-provider
     restart: "no"
     network_mode: bridge
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
 
   cimmich-api:
     build:
@@ -128,6 +136,9 @@ services:
       - cimmich-config:/config
       - cimmich-documents:/documents
       - cimmich-face-provider:/face-provider:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

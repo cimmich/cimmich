@@ -108,7 +108,7 @@
   import { isRenderableBodyPoseOverlay } from './body-pose-presentation';
   import {
     adjustObservationBoxWithKeyboard,
-    observationArrowKey,
+    consumeObservationArrow,
     observationBoxesMatch,
     observationBoxFromPointerDrag,
     observationBoxHandles as faceBoxHandles,
@@ -1664,7 +1664,7 @@
       void saveFaceBox(face.id, faceBoxDrafts[face.id], image);
       return;
     }
-    const key = observationArrowKey(event.key);
+    const key = consumeObservationArrow(event);
     if (!key) {
       return;
     }
@@ -1673,8 +1673,6 @@
     if (observationBoxesMatch(current, next)) {
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
     faceBoxDrafts = { ...faceBoxDrafts, [face.id]: next };
     faceActionError = '';
     faceActionMessage = 'Face position adjusted. Press Enter to save or Escape to cancel.';
@@ -1691,7 +1689,7 @@
       void saveBodyBox(body.id, bodyBoxDrafts[body.id], image);
       return;
     }
-    const key = observationArrowKey(event.key);
+    const key = consumeObservationArrow(event);
     if (!key) {
       return;
     }
@@ -1700,8 +1698,6 @@
     if (observationBoxesMatch(current, next)) {
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
     bodyBoxDrafts = { ...bodyBoxDrafts, [body.id]: next };
     observationActionError = '';
     observationActionMessage = 'Body position adjusted. Press Enter to save or Escape to cancel.';
@@ -3597,6 +3593,11 @@
   bind:clientWidth={overlayWidth}
   bind:clientHeight={overlayHeight}
 >
+  <!-- These regions stay mounted so the first keyboard adjustment is announced
+       reliably; the visible action cards below remain the sighted presentation. -->
+  <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{faceActionMessage}</p>
+  <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{observationActionMessage}</p>
+
   {#if loadError && !isSummaryVisible && !isSidecarVisible}
     <div class="pointer-events-auto absolute inset-x-4 top-16 z-30 flex justify-center" role="alert">
       <div
@@ -5823,7 +5824,7 @@
   {#if overlayView === 'machinery' && (observationActionMessage || observationActionError)}
     <div
       class="pointer-events-auto absolute bottom-16 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-black/88 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-md"
-      role={observationActionError ? 'alert' : 'status'}
+      role={observationActionError ? 'alert' : undefined}
     >
       <span class={observationActionError ? 'text-red-100' : 'text-white/85'}>
         {observationActionError || observationActionMessage}

@@ -9,6 +9,7 @@
     undoCimmichImmichPersonClusterResolution,
     type CimmichImmichOnboardingScope,
     type CimmichImmichPersonCluster,
+    type CimmichImmichPersonClusterPreview,
     type CimmichPerson,
   } from '$lib/services/cimmich.service';
   import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
@@ -41,6 +42,7 @@
   let selectedPeople = $state<Record<string, string>>({});
   let newNames = $state<Record<string, string>>({});
   let visibleCount = $state(20);
+  let scanSummary = $state<CimmichImmichPersonClusterPreview['scanSummary']>(undefined);
 
   const needsDecision = (cluster: CimmichImmichPersonCluster) =>
     cluster.resolution.state === 'unresolved' ||
@@ -64,6 +66,7 @@
         getCimmichPeople(500),
       ]);
       clusters = clusterPreview.clusters;
+      scanSummary = clusterPreview.scanSummary;
       const nextDecisionCount = clusterPreview.clusters.filter((cluster) => needsDecision(cluster)).length;
       const nextDisplayedCount = mode === 'review' ? nextDecisionCount : clusterPreview.clusters.length;
       visibleCount = Math.min(nextDisplayedCount, Math.max(20, visibleCount));
@@ -75,9 +78,11 @@
           cluster.resolution.state === 'resolved' && cluster.resolution.personId ? cluster.resolution.personId : '',
         ]),
       );
-      const ready = clusterPreview.clusters.every(
-        (cluster) => cluster.resolution.state === 'resolved' && cluster.resolution.action !== 'later',
-      );
+      const ready =
+        clusterPreview.scanSummary?.complete !== false &&
+        clusterPreview.clusters.every(
+          (cluster) => cluster.resolution.state === 'resolved' && cluster.resolution.action !== 'later',
+        );
       onreadiness(ready);
       if (clusterPreview.clusters.length > 0 && ready) {
         oncomplete();
@@ -232,6 +237,17 @@
 
     {#if error}
       <p role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{error}</p>
+    {/if}
+    {#if scanSummary?.complete === false}
+      <p role="status" class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        Showing partial results from {scanSummary.scannedAssetCount.toLocaleString()} scanned assets and
+        {scanSummary.targetAssetCount.toLocaleString()} hydrated candidates. The bounded scan stopped at its
+        {scanSummary.truncationReason === 'timeout'
+          ? 'time limit'
+          : scanSummary.truncationReason === 'target_limit'
+            ? 'candidate limit'
+            : 'asset limit'}; refresh later to review another current snapshot.
+      </p>
     {/if}
     {#if notice}
       <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">

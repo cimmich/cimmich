@@ -14,7 +14,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("url.searchParams.delete('tab')");
     expect(source).toContain("url.searchParams.set('tab', tab)");
     expect(source).toContain('role="tablist"');
-    expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End']");
+    expect(source).toContain('use:keyboardTabs');
     expect(source).toContain("label: 'Map', value: 'map'");
     expect(source).toContain("label: 'Plan', value: 'plan'");
     expect(source).toContain("label: 'Journey', value: 'journey'");
@@ -348,15 +348,11 @@ describe('Place, Thing and Event profile information architecture', () => {
   it('moves keyboard focus to the newly selected tab without depending on a detail reload', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    expect(browser).toContain('bind:this={detailTabRail}');
-    expect(browser).toContain('onclick={() => selectDetailTab(tab.value, true)}');
-    expect(browser).toContain('selectDetailTab(next.value, true)');
-    expect(browser).toContain(
-      'const tab = rail.querySelector<HTMLButtonElement>(\'[role="tab"][aria-selected="true"]\')',
-    );
-    expect(browser).toContain('if (document.activeElement === tab) {');
-    expect(browser).not.toContain('if (active && active !== document.body) {');
-    expect(browser).not.toContain('void tabs?.[nextIndex]?.focus();');
+    expect(browser).toContain("import { keyboardTabs } from './keyboard-tabs';");
+    expect(browser).toContain('use:keyboardTabs');
+    expect(browser).toContain('onclick={() => selectDetailTab(tab.value)}');
+    expect(browser).not.toContain('pendingTabFocus');
+    expect(browser).not.toContain('detailTabRail');
   });
 
   it('makes Documents a first-class sidebar destination with URL-stable detail', async () => {

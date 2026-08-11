@@ -3,8 +3,12 @@ import { readFile } from 'node:fs/promises';
 import {
   adjustObservationBoxWithKeyboard,
   clampObservationBox,
+  consumeObservationArrow,
   observationArrowKey,
   observationBoxFromDrag,
+  observationBoxFromPointerDrag,
+  observationBoxRegion,
+  observationBoxesMatch,
 } from './observation-box-geometry';
 
 const image = { height: 800, width: 1000 };
@@ -16,6 +20,12 @@ describe('observation box geometry', () => {
     expect(observationArrowKey('Enter')).toBeUndefined();
   });
 
+  it('compares and normalises observation regions', () => {
+    expect(observationBoxesMatch(box, { ...box })).toBe(true);
+    expect(observationBoxesMatch(box, { ...box, x2: 301 })).toBe(false);
+    expect(observationBoxRegion(box, image)).toEqual({ h: 0.375, w: 0.2, x: 0.1, y: 0.25 });
+  });
+
   it('moves a box without changing its size or leaving the image', () => {
     expect(observationBoxFromDrag(box, image, 'move', -500, 500)).toEqual({
       x1: 0,
@@ -23,6 +33,23 @@ describe('observation box geometry', () => {
       y1: 500,
       y2: 800,
     });
+  });
+
+  it('maps pointer movement through the rendered image scale', () => {
+    expect(
+      observationBoxFromPointerDrag(
+        {
+          image,
+          mode: 'move',
+          pointerId: 4,
+          startBox: box,
+          startClientX: 20,
+          startClientY: 30,
+        },
+        { clientX: 70, clientY: 70 },
+        { height: 400, imageHeight: 800, imageWidth: 1000, width: 500 },
+      ),
+    ).toEqual({ x1: 200, x2: 400, y1: 280, y2: 580 });
   });
 
   it('clamps resized edges to the image and the 24 pixel quality floor', () => {
@@ -82,6 +109,27 @@ describe('observation box geometry', () => {
     expect(overlay).toContain("onkeydown={(event) => handleFaceBoxKeydown(event, face, 'move')}");
     expect(overlay).toContain('onkeydown={(event) => handleBodyBoxKeydown(event, body, handle.mode)}');
     expect(overlay).toContain('Shift moves farther. Enter saves; Escape cancels.');
+  });
+
+  it('consumes geometry arrows even when a clamped adjustment will be a no-op', () => {
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+    expect(consumeObservationArrow({ key: 'ArrowLeft', preventDefault, stopPropagation })).toBe('ArrowLeft');
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(consumeObservationArrow({ key: 'Enter', preventDefault, stopPropagation })).toBeUndefined();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('keeps first adjustment feedback in persistent polite live regions', async () => {
+    const overlay = await readFile('src/lib/components/cimmich/CimmichPhotoOverlay.svelte', 'utf8');
+    expect(overlay).toContain(
+      '<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{faceActionMessage}</p>',
+    );
+    expect(overlay).toContain(
+      '<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{observationActionMessage}</p>',
+    );
+    expect(overlay).toContain("role={observationActionError ? 'alert' : undefined}");
   });
 
   it('cancels an active geometry draft in window capture before Escape can close the overlay', async () => {

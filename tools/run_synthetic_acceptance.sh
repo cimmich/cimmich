@@ -6,6 +6,7 @@ RUN_ID=$$
 CONTAINER="cimmich-pg-acceptance-$RUN_ID"
 SERVICE_CONTAINER="cimmich-service-acceptance-$RUN_ID"
 SERVICE_IMAGE="cimmich-service-acceptance:$RUN_ID"
+FACE_REVIEW_DATABASE="cimmich_face_review_test"
 IMAGE=pgvector/pgvector:0.8.2-pg17-trixie
 
 cleanup() {
@@ -145,6 +146,14 @@ until docker exec "$SERVICE_CONTAINER" node -e "fetch('http://127.0.0.1:3101/hea
   fi
   sleep 1
 done
+docker exec "$CONTAINER" createdb -U cimmich_test "$FACE_REVIEW_DATABASE"
+docker exec \
+  -e DATABASE_URL="postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/$FACE_REVIEW_DATABASE" \
+  "$SERVICE_CONTAINER" node bin/migrate.mjs apply
+docker exec \
+  -e CIMMICH_TEST_DATABASE_URL="postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/$FACE_REVIEW_DATABASE" \
+  "$SERVICE_CONTAINER" node --test test/repository-face-review.integration.test.mjs
+docker exec "$CONTAINER" dropdb -U cimmich_test "$FACE_REVIEW_DATABASE"
 docker exec -e CIMMICH_PERSON_PROFILE_PHASE=write "$SERVICE_CONTAINER" \
   node acceptance/person-profile-journey.mjs
 docker exec -e CIMMICH_PERSON_DETAILS_DISPLAY_PHASE=write "$SERVICE_CONTAINER" \

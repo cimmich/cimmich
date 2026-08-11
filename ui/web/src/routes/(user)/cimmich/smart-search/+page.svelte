@@ -55,7 +55,7 @@
 
   const selectLens = (nextLens: 'documents' | 'photos') => {
     lens = nextLens;
-    syncRoute(nextLens, nextLens === 'documents' ? documentLensQuery : submittedQuery || query.trim());
+    syncRoute(nextLens, nextLens === 'documents' ? documentLensQuery : submittedQuery);
   };
 
   const updateDocumentQuery = (nextQuery: string) => {
@@ -154,9 +154,11 @@
       >
         <button
           bind:this={photoTab}
+          id="smart-search-photos-tab"
           class={`min-h-11 rounded-full px-5 text-sm font-semibold ${lens === 'photos' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-gray-600 dark:text-gray-300'}`}
           type="button"
           role="tab"
+          aria-controls="smart-search-photos-panel"
           aria-selected={lens === 'photos'}
           tabindex={lens === 'photos' ? 0 : -1}
           onkeydown={handleLensKeydown}
@@ -164,9 +166,11 @@
         >
         <button
           bind:this={documentTab}
+          id="smart-search-documents-tab"
           class={`min-h-11 rounded-full px-5 text-sm font-semibold ${lens === 'documents' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-gray-600 dark:text-gray-300'}`}
           type="button"
           role="tab"
+          aria-controls="smart-search-documents-panel"
           aria-selected={lens === 'documents'}
           tabindex={lens === 'documents' ? 0 : -1}
           onkeydown={handleLensKeydown}
@@ -217,7 +221,12 @@
     </section>
 
     {#if lens === 'documents'}
-      <div class="mx-auto mt-10 max-w-6xl text-left">
+      <div
+        class="mx-auto mt-10 max-w-6xl text-left"
+        id="smart-search-documents-panel"
+        role="tabpanel"
+        aria-labelledby="smart-search-documents-tab"
+      >
         <CimmichDocuments
           heading="All documents"
           initialQuery={documentLensQuery}
@@ -225,222 +234,224 @@
         />
       </div>
     {:else}
-      {#if error}
-        <div
-          class="mx-auto mt-8 max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
-          role="alert"
-        >
-          <p class="font-semibold">We couldn't finish that search.</p>
-          <p class="mt-1">{error.message}</p>
-          <div class="mt-4 flex flex-wrap gap-2">
-            <button
-              class="min-h-11 rounded-full bg-red-800 px-4 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:bg-red-200 dark:text-red-950"
-              type="button"
-              onclick={() => void search(undefined, failedQuery || query.trim())}>Try again</button
-            >
-            <button
-              class="min-h-11 rounded-full border border-red-300 px-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:border-red-800"
-              type="button"
-              onclick={() => {
-                query = failedQuery || query;
-                void searchInput?.focus();
-              }}>Edit search</button
-            >
-          </div>
-          <details class="mt-3 text-xs opacity-75">
-            <summary class="min-h-11 cursor-pointer py-3">Technical details</summary>
-            <p>{error.code}</p>
-          </details>
-        </div>
-      {/if}
-
-      {#if isSearching}
-        <div
-          class="mt-10 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6"
-          aria-label="Searching"
-          aria-busy="true"
-        >
-          {#each Array.from({ length: 18 }) as _, index (index)}<div
-              class="aspect-square animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800"
-            ></div>{/each}
-        </div>
-      {:else if result}
-        <section class="mt-10" aria-labelledby="smart-results-title">
-          <div class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h2 class="text-xl font-semibold" id="smart-results-title">
-                {result.items.length + result.documents.length === 0
-                  ? 'No matching results'
-                  : `${result.items.length + result.documents.length} ${result.items.length + result.documents.length === 1 ? 'result' : 'results'}`}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                for “{result.query}”{result.hasMore || result.documentHasMore ? ' · more results available' : ''}
-              </p>
+      <div id="smart-search-photos-panel" role="tabpanel" aria-labelledby="smart-search-photos-tab">
+        {#if error}
+          <div
+            class="mx-auto mt-8 max-w-3xl rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+            role="alert"
+          >
+            <p class="font-semibold">We couldn't finish that search.</p>
+            <p class="mt-1">{error.message}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button
+                class="min-h-11 rounded-full bg-red-800 px-4 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:bg-red-200 dark:text-red-950"
+                type="button"
+                onclick={() => void search(undefined, failedQuery || query.trim())}>Try again</button
+              >
+              <button
+                class="min-h-11 rounded-full border border-red-300 px-4 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 dark:border-red-800"
+                type="button"
+                onclick={() => {
+                  query = failedQuery || query;
+                  void searchInput?.focus();
+                }}>Edit search</button
+              >
             </div>
-            <details class="relative">
-              <summary
-                class="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border border-gray-300 px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-700"
-              >
-                <Icon icon={mdiTagMultipleOutline} size="19" /> What matched
-              </summary>
-              <div
-                class="absolute top-13 right-0 z-20 w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-xl dark:border-gray-700 dark:bg-gray-900"
-              >
-                {#if result.interpretation.selectors.length > 0}
-                  <p class="text-xs font-bold tracking-[0.14em] text-gray-500 uppercase">Recognised</p>
-                  <ul class="mt-2 grid gap-2">
-                    {#each result.interpretation.selectors as selector (`${selector.selectorKind}:${selector.entityKind}:${selector.label}`)}
-                      <li class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-800">
-                        <span class="font-semibold">{selector.label}</span><span class="ml-2 text-xs text-gray-500"
-                          >{smartSearchEntityLabel(selector.entityKind)} · {smartSearchMatchLabel(
-                            selector.matchKind,
-                          )}</span
-                        >
-                      </li>
-                    {/each}
-                  </ul>
-                {/if}
-                {#if result.interpretation.dateRange}
-                  <p class="mt-4 flex items-center gap-2 text-sm">
-                    <Icon icon={mdiCalendarRange} size="18" /><span class="font-semibold"
-                      >{result.interpretation.dateRange.sourceText}</span
-                    ><span class="text-gray-500">({result.interpretation.dateRange.precision})</span>
-                  </p>
-                {/if}
-                {#if result.interpretation.unresolvedTerms.length > 0}
-                  <p class="mt-4 text-xs font-bold tracking-[0.14em] text-gray-500 uppercase">Not understood yet</p>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    {#each result.interpretation.unresolvedTerms as term (term)}<span
-                        class="rounded-full border border-gray-300 px-2.5 py-1 text-xs dark:border-gray-700"
-                        >{term}</span
-                      >{/each}
-                  </div>
-                {/if}
-                {#if result.interpretation.candidateSetTruncated}
-                  <p
-                    class="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-                  >
-                    The candidate pool reached 5,000 items. Refine the names, context or date for a narrower result.
-                  </p>
-                {/if}
-              </div>
+            <details class="mt-3 text-xs opacity-75">
+              <summary class="min-h-11 cursor-pointer py-3">Technical details</summary>
+              <p>{error.code}</p>
             </details>
           </div>
+        {/if}
 
-          {#if result.items.length + result.documents.length === 0}
-            <div
-              class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-16 text-center dark:border-gray-700"
-            >
-              <Icon class="mx-auto text-gray-400" icon={mdiImageSearchOutline} size="34" />
-              <p class="mt-4 font-semibold">Try a recorded name, place, thing, event, Document or date</p>
-              {#if result.interpretation.unresolvedTerms.length > 0}<p
-                  class="mx-auto mt-2 max-w-xl text-sm/6 text-gray-500"
+        {#if isSearching}
+          <div
+            class="mt-10 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6"
+            aria-label="Searching"
+            aria-busy="true"
+          >
+            {#each Array.from({ length: 18 }) as _, index (index)}<div
+                class="aspect-square animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800"
+              ></div>{/each}
+          </div>
+        {:else if result}
+          <section class="mt-10" aria-labelledby="smart-results-title">
+            <div class="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h2 class="text-xl font-semibold" id="smart-results-title">
+                  {result.items.length + result.documents.length === 0
+                    ? 'No matching results'
+                    : `${result.items.length + result.documents.length} ${result.items.length + result.documents.length === 1 ? 'result' : 'results'}`}
+                </h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  for “{result.query}”{result.hasMore || result.documentHasMore ? ' · more results available' : ''}
+                </p>
+              </div>
+              <details class="relative">
+                <summary
+                  class="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-full border border-gray-300 px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary dark:border-gray-700"
                 >
-                  Some words were not recognised. Basic Search only uses details already recorded in Cimmich.
-                </p>{/if}
+                  <Icon icon={mdiTagMultipleOutline} size="19" /> What matched
+                </summary>
+                <div
+                  class="absolute top-13 right-0 z-20 w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  {#if result.interpretation.selectors.length > 0}
+                    <p class="text-xs font-bold tracking-[0.14em] text-gray-500 uppercase">Recognised</p>
+                    <ul class="mt-2 grid gap-2">
+                      {#each result.interpretation.selectors as selector (`${selector.selectorKind}:${selector.entityKind}:${selector.label}`)}
+                        <li class="rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-800">
+                          <span class="font-semibold">{selector.label}</span><span class="ml-2 text-xs text-gray-500"
+                            >{smartSearchEntityLabel(selector.entityKind)} · {smartSearchMatchLabel(
+                              selector.matchKind,
+                            )}</span
+                          >
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                  {#if result.interpretation.dateRange}
+                    <p class="mt-4 flex items-center gap-2 text-sm">
+                      <Icon icon={mdiCalendarRange} size="18" /><span class="font-semibold"
+                        >{result.interpretation.dateRange.sourceText}</span
+                      ><span class="text-gray-500">({result.interpretation.dateRange.precision})</span>
+                    </p>
+                  {/if}
+                  {#if result.interpretation.unresolvedTerms.length > 0}
+                    <p class="mt-4 text-xs font-bold tracking-[0.14em] text-gray-500 uppercase">Not understood yet</p>
+                    <div class="mt-2 flex flex-wrap gap-2">
+                      {#each result.interpretation.unresolvedTerms as term (term)}<span
+                          class="rounded-full border border-gray-300 px-2.5 py-1 text-xs dark:border-gray-700"
+                          >{term}</span
+                        >{/each}
+                    </div>
+                  {/if}
+                  {#if result.interpretation.candidateSetTruncated}
+                    <p
+                      class="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                    >
+                      The candidate pool reached 5,000 items. Refine the names, context or date for a narrower result.
+                    </p>
+                  {/if}
+                </div>
+              </details>
             </div>
-          {:else}
-            {#if result.documents.length > 0}
-              <section class="mt-6" aria-labelledby="smart-document-results-title">
-                <div class="flex items-center justify-between gap-3">
-                  <h3 class="text-base font-semibold" id="smart-document-results-title">
-                    Documents · {result.documents.length}
-                  </h3>
-                  {#if result.documentHasMore}<span class="text-xs text-gray-500">More Documents available</span>{/if}
-                </div>
-                <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {#each result.documents as document (document.documentId)}
-                    <button
-                      class="flex min-h-28 items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-gray-700 dark:bg-gray-900"
-                      type="button"
-                      aria-label={`Open ${document.displayTitle} in Documents`}
-                      onclick={() => {
-                        documentLensQuery = document.displayTitle;
-                        lens = 'documents';
-                        syncRoute('documents', document.displayTitle);
-                      }}
-                    >
-                      <span
-                        class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"
-                        aria-hidden="true"
+
+            {#if result.items.length + result.documents.length === 0}
+              <div
+                class="mt-5 rounded-3xl border border-dashed border-gray-300 px-6 py-16 text-center dark:border-gray-700"
+              >
+                <Icon class="mx-auto text-gray-400" icon={mdiImageSearchOutline} size="34" />
+                <p class="mt-4 font-semibold">Try a recorded name, place, thing, event, Document or date</p>
+                {#if result.interpretation.unresolvedTerms.length > 0}<p
+                    class="mx-auto mt-2 max-w-xl text-sm/6 text-gray-500"
+                  >
+                    Some words were not recognised. Basic Search only uses details already recorded in Cimmich.
+                  </p>{/if}
+              </div>
+            {:else}
+              {#if result.documents.length > 0}
+                <section class="mt-6" aria-labelledby="smart-document-results-title">
+                  <div class="flex items-center justify-between gap-3">
+                    <h3 class="text-base font-semibold" id="smart-document-results-title">
+                      Documents · {result.documents.length}
+                    </h3>
+                    {#if result.documentHasMore}<span class="text-xs text-gray-500">More Documents available</span>{/if}
+                  </div>
+                  <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {#each result.documents as document (document.documentId)}
+                      <button
+                        class="flex min-h-28 items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-gray-700 dark:bg-gray-900"
+                        type="button"
+                        aria-label={`Open ${document.displayTitle} in Documents`}
+                        onclick={() => {
+                          documentLensQuery = document.displayTitle;
+                          lens = 'documents';
+                          syncRoute('documents', document.displayTitle);
+                        }}
                       >
-                        <Icon icon={mdiFileDocumentOutline} size="23" />
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="line-clamp-2 block leading-5 font-semibold">{document.displayTitle}</span>
-                        <span class="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">
-                          {labelForDocumentKind(document.documentKind, document.documentLabel)} · {document.sourceFilename}
+                        <span
+                          class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"
+                          aria-hidden="true"
+                        >
+                          <Icon icon={mdiFileDocumentOutline} size="23" />
                         </span>
-                        {#if document.issuedOn || document.subjectCount}
-                          <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
-                            {#if document.issuedOn}{formatDocumentDate(
-                                document.issuedOn,
-                              )}{/if}{#if document.issuedOn && document.subjectCount}
-                              ·
-                            {/if}{#if document.subjectCount}{document.subjectCount} link{document.subjectCount === 1
-                                ? ''
-                                : 's'}{/if}
+                        <span class="min-w-0 flex-1">
+                          <span class="line-clamp-2 block leading-5 font-semibold">{document.displayTitle}</span>
+                          <span class="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">
+                            {labelForDocumentKind(document.documentKind, document.documentLabel)} · {document.sourceFilename}
                           </span>
-                        {/if}
-                      </span>
-                      <span
-                        class="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-semibold capitalize dark:bg-gray-800"
-                        >{document.effectiveVisibilityTier}</span
+                          {#if document.issuedOn || document.subjectCount}
+                            <span class="mt-2 block text-xs text-gray-500 dark:text-gray-400">
+                              {#if document.issuedOn}{formatDocumentDate(
+                                  document.issuedOn,
+                                )}{/if}{#if document.issuedOn && document.subjectCount}
+                                ·
+                              {/if}{#if document.subjectCount}{document.subjectCount} link{document.subjectCount === 1
+                                  ? ''
+                                  : 's'}{/if}
+                            </span>
+                          {/if}
+                        </span>
+                        <span
+                          class="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-semibold capitalize dark:bg-gray-800"
+                          >{document.effectiveVisibilityTier}</span
+                        >
+                      </button>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+              {#if result.items.length > 0}
+                <section class="mt-6" aria-labelledby="smart-photo-results-title">
+                  <h3 class="text-base font-semibold" id="smart-photo-results-title">Photos · {result.items.length}</h3>
+                  <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
+                    {#each result.items as item (item.assetId)}
+                      <a
+                        class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-gray-800"
+                        href={`/photos/${encodeURIComponent(item.sourceAssetId)}`}
+                        aria-label={`Open ${item.filename}`}
                       >
-                    </button>
-                  {/each}
-                </div>
-              </section>
+                        <img
+                          class="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                          src={getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview })}
+                          alt={item.filename}
+                          loading="lazy"
+                        />
+                        {#if item.captureTime}<time
+                            class="absolute right-2 bottom-2 rounded-full bg-black/55 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm"
+                            datetime={item.captureTime}
+                            >{new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(
+                              new Date(item.captureTime),
+                            )}</time
+                          >{/if}
+                      </a>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
             {/if}
-            {#if result.items.length > 0}
-              <section class="mt-6" aria-labelledby="smart-photo-results-title">
-                <h3 class="text-base font-semibold" id="smart-photo-results-title">Photos · {result.items.length}</h3>
-                <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
-                  {#each result.items as item (item.assetId)}
-                    <a
-                      class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-gray-800"
-                      href={`/photos/${encodeURIComponent(item.sourceAssetId)}`}
-                      aria-label={`Open ${item.filename}`}
-                    >
-                      <img
-                        class="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                        src={getAssetMediaUrl({ id: item.sourceAssetId, size: AssetMediaSize.Preview })}
-                        alt={item.filename}
-                        loading="lazy"
-                      />
-                      {#if item.captureTime}<time
-                          class="absolute right-2 bottom-2 rounded-full bg-black/55 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm"
-                          datetime={item.captureTime}
-                          >{new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(
-                            new Date(item.captureTime),
-                          )}</time
-                        >{/if}
-                    </a>
-                  {/each}
-                </div>
-              </section>
-            {/if}
-          {/if}
-        </section>
-      {:else}
-        <section class="mx-auto mt-12 grid max-w-4xl gap-3 sm:grid-cols-3" aria-label="Search suggestions">
-          <button class="smart-search-prompt" type="button" onclick={() => (query = 'Maya')}
-            ><Icon icon={mdiTagMultipleOutline} size="22" /><span
-              ><strong>People & pets</strong><small>Search a recorded name</small></span
-            ></button
-          >
-          <button class="smart-search-prompt" type="button" onclick={() => (query = 'Cedar House')}
-            ><Icon icon={mdiMagnify} size="22" /><span
-              ><strong>Context</strong><small>Places, things and events</small></span
-            ></button
-          >
-          <button class="smart-search-prompt" type="button" onclick={() => (query = String(new Date().getFullYear()))}
-            ><Icon icon={mdiCalendarRange} size="22" /><span
-              ><strong>Dates</strong><small>Day, month or year</small></span
-            ></button
-          >
-        </section>
-      {/if}
+          </section>
+        {:else}
+          <section class="mx-auto mt-12 grid max-w-4xl gap-3 sm:grid-cols-3" aria-label="Search suggestions">
+            <button class="smart-search-prompt" type="button" onclick={() => (query = 'Maya')}
+              ><Icon icon={mdiTagMultipleOutline} size="22" /><span
+                ><strong>People & pets</strong><small>Search a recorded name</small></span
+              ></button
+            >
+            <button class="smart-search-prompt" type="button" onclick={() => (query = 'Cedar House')}
+              ><Icon icon={mdiMagnify} size="22" /><span
+                ><strong>Context</strong><small>Places, things and events</small></span
+              ></button
+            >
+            <button class="smart-search-prompt" type="button" onclick={() => (query = String(new Date().getFullYear()))}
+              ><Icon icon={mdiCalendarRange} size="22" /><span
+                ><strong>Dates</strong><small>Day, month or year</small></span
+              ></button
+            >
+          </section>
+        {/if}
+      </div>
     {/if}
   </div>
 </UserPageLayout>

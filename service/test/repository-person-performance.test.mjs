@@ -1336,7 +1336,10 @@ test("Holding Prime retirement is one atomic SQL statement", async () => {
   // The maintenance helper is exercised indirectly by command methods in SQL
   // acceptance; this source assertion prevents reintroducing split retirement.
   const source = await import("node:fs/promises").then(({ readFile }) =>
-    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+    readFile(
+      new URL("../src/repository-maintenance.mjs", import.meta.url),
+      "utf8",
+    ),
   );
   assert.match(source, /WITH retired_buckets AS/);
   assert.doesNotMatch(

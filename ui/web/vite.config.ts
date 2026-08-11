@@ -7,7 +7,7 @@ import { defineConfig, loadEnv, type ProxyOptions, type UserConfig } from 'vite'
 import path from 'node:path';
 
 const criticalCimmichCoverageThresholds = {
-  'src/lib/components/cimmich/bulk-photo-sorter.ts': { branches: 60, functions: 70, lines: 70, statements: 70 },
+  'src/lib/components/cimmich/bulk-photo-sorter.ts': { branches: 80, functions: 90, lines: 80, statements: 80 },
   'src/lib/components/cimmich/cimmich-undo-receipt-context.svelte.ts': {
     branches: 80,
     functions: 100,
@@ -21,10 +21,10 @@ const criticalCimmichCoverageThresholds = {
     statements: 90,
   },
   'src/lib/components/cimmich/observation-box-geometry.ts': {
-    branches: 80,
-    functions: 55,
-    lines: 85,
-    statements: 85,
+    branches: 95,
+    functions: 100,
+    lines: 95,
+    statements: 95,
   },
   'src/lib/components/cimmich/persisted-undo-receipt.ts': {
     branches: 95,
@@ -117,9 +117,19 @@ export default defineConfig(({ mode }) => {
       },
       coverage: {
         provider: 'v8',
-        include: Object.keys(criticalCimmichCoverageThresholds),
+        include: [
+          'src/lib/components/cimmich/**/*.{ts,svelte.ts}',
+          'src/lib/managers/cimmich*.{ts,svelte.ts}',
+          'src/lib/services/cimmich*.ts',
+        ],
         reporter: ['text-summary', 'json-summary'],
-        thresholds: criticalCimmichCoverageThresholds,
+        thresholds: {
+          branches: 45,
+          functions: 55,
+          lines: 60,
+          statements: 60,
+          ...criticalCimmichCoverageThresholds,
+        },
       },
       env: {
         TZ: 'UTC',

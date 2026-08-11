@@ -142,6 +142,7 @@ test("non-Codex local script follows the neutral Guided recipe without disclosin
     assert.equal(call.url.includes(token), false);
     assert.equal(call.options.body?.includes(token) || false, false);
     assert.equal(call.options.headers.authorization, `Bearer ${token}`);
+    assert.equal(call.options.redirect, "error");
   }
   const serialized = JSON.stringify(receipt);
   assert.equal(serialized.includes("person-anonymous-1"), false);

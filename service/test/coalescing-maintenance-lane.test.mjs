@@ -63,6 +63,7 @@ test("maintenance lane retries bounded failures and completes the tracked job", 
     maxAttempts: 3,
     name: "retry",
     onEvent: (event) => events.push(event),
+    retryDelayMs: 1,
     worker: async () => {
       attempts += 1;
       if (attempts < 3) throw new Error("temporary rebuild failure");
@@ -74,8 +75,12 @@ test("maintenance lane retries bounded failures and completes the tracked job", 
 
   assert.equal(attempts, 3);
   assert.deepEqual(
-    events.map(({ kind }) => kind),
-    ["retrying", "retrying", "completed"],
+    events.map(({ kind, retryDelayMs }) => ({ kind, retryDelayMs })),
+    [
+      { kind: "retrying", retryDelayMs: 1 },
+      { kind: "retrying", retryDelayMs: 2 },
+      { kind: "completed", retryDelayMs: undefined },
+    ],
   );
   assert.deepEqual(lane.snapshot(), {
     active: 0,
@@ -95,6 +100,7 @@ test("maintenance lane surfaces terminal failure after exhausting its retry budg
     maxAttempts: 2,
     name: "exhausted",
     onEvent: (event) => events.push(event),
+    retryDelayMs: 1,
     worker: async () => {
       throw new Error("persistent rebuild failure");
     },

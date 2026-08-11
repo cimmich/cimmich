@@ -178,15 +178,22 @@ test("a completed audit is stale when no passed SourcePack remains active", asyn
           audit_run_id: "identity-audit.completed",
           completed_at: "2026-07-25T00:01:00.000Z",
           contradiction_candidates: 1,
+          contradiction_queries_eligible: 4,
           error_code: null,
           margin_floor: 0.21,
+          independence_candidates_eligible: 3,
+          independence_candidates_verified: 2,
+          independence_comparison_limit: 2,
           pack_id: "pack.retired",
           policy_version: "cimmich-best-prime-v1",
           score_floor: 0,
+          query_frontier_limit: 5,
           started_at: "2026-07-25T00:00:00.000Z",
           state: "completed",
+          truncation_projection_complete: true,
           untagged_candidates: 2,
           untagged_embedded_faces: 20,
+          untagged_queries_eligible: 7,
         },
       ];
     }
@@ -196,6 +203,11 @@ test("a completed audit is stale when no passed SourcePack remains active", asyn
   const result = await createIdentityAudit(sql).latest();
 
   assert.equal(result.stale, true);
+  assert.equal(result.queryFrontierTruncated, true);
+  assert.equal(result.independenceVerificationTruncated, true);
+  assert.equal(result.truncationProjectionComplete, true);
+  assert.equal(result.independenceCandidatesEligible, 3);
+  assert.equal(result.independenceCandidatesVerified, 2);
 });
 
 test("audit items expose the exact trusted references needed for visual review", async () => {

@@ -379,6 +379,33 @@
           Trusted references changed after this audit. Run it again before relying on these results.
         </p>
       {/if}
+      {#if run.state === 'completed' && (!run.truncationProjectionComplete || run.queryFrontierTruncated || run.independenceVerificationTruncated)}
+        <div
+          class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
+          <p class="font-semibold">Audit coverage needs attention.</p>
+          {#if !run.truncationProjectionComplete}
+            <p class="mt-1">
+              This run predates owner-visible limit reporting. Run the audit again before treating its queue as
+              exhaustive.
+            </p>
+          {/if}
+          {#if run.queryFrontierTruncated}
+            <p class="mt-1">
+              The strongest {run.queryFrontierLimit.toLocaleString()} queries in each queue were checked from
+              {(run.untaggedQueriesEligible + run.contradictionQueriesEligible).toLocaleString()} eligible Faces.
+            </p>
+          {/if}
+          {#if run.independenceVerificationTruncated}
+            <p class="mt-1">
+              Independent-image verification covered {run.independenceCandidatesVerified.toLocaleString()} of
+              {run.independenceCandidatesEligible.toLocaleString()} eligible candidates. Remaining candidates are visible
+              for review but are not independently verified.
+            </p>
+          {/if}
+        </div>
+      {/if}
     {/if}
   </div>
 

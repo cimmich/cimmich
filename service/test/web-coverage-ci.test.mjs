@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../../", import.meta.url);
 
-test("CI enforces measured coverage on critical Cimmich browser paths", async () => {
+test("CI measures the Cimmich Web surface and enforces higher critical-path floors", async () => {
   const [workflow, config] = await Promise.all([
     readFile(new URL(".github/workflows/ci.yml", root), "utf8"),
     readFile(new URL("ui/web/vite.config.ts", root), "utf8"),
@@ -17,8 +17,13 @@ test("CI enforces measured coverage on critical Cimmich browser paths", async ()
   );
   assert.match(
     config,
-    /include: Object\.keys\(criticalCimmichCoverageThresholds\)/u,
+    /src\/lib\/components\/cimmich\/\*\*\/\*\.\{ts,svelte\.ts\}/u,
   );
+  assert.match(config, /src\/lib\/services\/cimmich\*\.ts/u);
+  assert.match(config, /branches: 45/u);
+  assert.match(config, /functions: 55/u);
+  assert.match(config, /lines: 60/u);
+  assert.match(config, /\.\.\.criticalCimmichCoverageThresholds/u);
   assert.match(config, /cimmich-undo-receipt-context\.svelte\.ts/u);
   assert.match(config, /persisted-undo-receipt\.ts/u);
   assert.match(config, /cimmich-visibility-manager\.svelte\.ts/u);

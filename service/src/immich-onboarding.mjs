@@ -959,6 +959,7 @@ export const createImmichOnboarding = ({
     ) {
       return {
         clusters: unlabelledClusterCache.clusters,
+        scanSummary: unlabelledClusterCache.scanSummary,
         scope,
       };
     }
@@ -1047,9 +1048,11 @@ export const createImmichOnboarding = ({
       clusters,
       expiresAt: Date.now() + 20_000,
       key: cacheKey,
+      scanSummary: scanned.scanSummary,
     };
     return {
       clusters,
+      scanSummary: scanned.scanSummary,
       scope,
     };
   };
@@ -1058,7 +1061,7 @@ export const createImmichOnboarding = ({
     scope: inputScope,
     viewingMode = "Standard",
   } = {}) => {
-    const { clusters, scope } = await scanUnlabelledClusters({
+    const { clusters, scanSummary, scope } = await scanUnlabelledClusters({
       inputScope,
       viewingMode,
     });
@@ -1099,6 +1102,7 @@ export const createImmichOnboarding = ({
                 },
         };
       }),
+      scanSummary,
       scope,
     };
   };

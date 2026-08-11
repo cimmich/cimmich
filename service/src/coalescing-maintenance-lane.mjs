@@ -8,6 +8,7 @@ export const createCoalescingMaintenanceLane = ({
   maxAttempts = 1,
   name,
   onEvent = () => {},
+  retryDelayMs = 100,
   worker,
 }) => {
   if (typeof worker !== "function") {
@@ -15,6 +16,7 @@ export const createCoalescingMaintenanceLane = ({
   }
   const maximumConcurrency = Math.max(1, Math.floor(Number(concurrency) || 1));
   const maximumAttempts = Math.max(1, Math.floor(Number(maxAttempts) || 1));
+  const baseRetryDelayMs = Math.max(1, Math.floor(Number(retryDelayMs) || 1));
   const jobs = new Map();
   const pending = [];
   const idleWaiters = new Set();
@@ -82,6 +84,9 @@ export const createCoalescingMaintenanceLane = ({
       retry = job.attempt < maximumAttempts;
       if (retry) retried += 1;
       else failed += 1;
+      const nextRetryDelayMs = retry
+        ? baseRetryDelayMs * 2 ** (job.attempt - 1)
+        : undefined;
       onEvent({
         attempt: job.attempt,
         durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
@@ -92,18 +97,28 @@ export const createCoalescingMaintenanceLane = ({
         name,
         queueAgeMs,
         requestCount: job.requestCount,
+        retryDelayMs: nextRetryDelayMs,
       });
     } finally {
       active -= 1;
-      if (retry || job.dirty) {
-        if (!retry) job.attempt = 0;
+      if (retry) {
+        const delayMs = baseRetryDelayMs * 2 ** (job.attempt - 1);
+        job.requestedAt = Date.now();
+        job.state = "backoff";
+        setTimeout(() => {
+          job.state = "queued";
+          pending.push(job);
+          queueDrain();
+        }, delayMs);
+      } else if (job.dirty) {
+        job.attempt = 0;
         job.requestedAt = Date.now();
         job.state = "queued";
         pending.push(job);
       } else {
         jobs.delete(job.key);
       }
-      queueDrain();
+      if (!retry) queueDrain();
       settleIdle();
     }
   };

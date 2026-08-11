@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BULK_PHOTO_SORTER_RECEIPT_KEY,
   buildBulkPhotoSorterSearch,
+  bulkPhotoSorterActionLabel,
+  bulkPhotoSorterActionNeedsTarget,
   bulkPhotoSorterChangedAssets,
   bulkPhotoSorterFilterFingerprint,
   bulkPhotoSorterMappedIds,
@@ -54,6 +56,30 @@ describe('bulk photo sorter', () => {
       visibility: AssetVisibility.Archive,
     });
     expect(query).not.toHaveProperty('personIds');
+  });
+
+  it('maps alternate metadata selectors without leaking unused filters', () => {
+    expect(
+      buildBulkPhotoSorterSearch({
+        ...emptyBulkPhotoSorterFilters(),
+        favorite: 'no',
+        mediaType: 'video',
+        notInAlbum: true,
+        visibility: 'locked',
+      }),
+    ).toMatchObject({
+      isFavorite: false,
+      isNotInAlbum: true,
+      type: AssetTypeEnum.Video,
+      visibility: AssetVisibility.Locked,
+    });
+    expect(buildBulkPhotoSorterSearch({ ...emptyBulkPhotoSorterFilters(), visibility: 'timeline' })).toHaveProperty(
+      'visibility',
+      AssetVisibility.Timeline,
+    );
+    expect(buildBulkPhotoSorterSearch({ ...emptyBulkPhotoSorterFilters(), favorite: 'any' })).not.toHaveProperty(
+      'isFavorite',
+    );
   });
 
   it('creates a stable fingerprint after trimming the folder', () => {
@@ -136,5 +162,17 @@ describe('bulk photo sorter', () => {
       'tagged',
     ]);
     expect(bulkPhotoSorterChangedAssets([plain, locked], 'archive').map(({ id }) => id)).toEqual(['plain']);
+    const archived = asset({ id: 'archived', visibility: AssetVisibility.Archive });
+    expect(bulkPhotoSorterChangedAssets([plain, archived], 'unarchive').map(({ id }) => id)).toEqual(['archived']);
+    expect(bulkPhotoSorterChangedAssets([plain], 'favorite').map(({ id }) => id)).toEqual(['plain']);
+    expect(bulkPhotoSorterChangedAssets([plain], 'unfavorite')).toEqual([]);
+    expect(bulkPhotoSorterChangedAssets([plain], 'rotate-left')).toEqual([plain]);
+  });
+
+  it('names actions and identifies only actions that require a target', () => {
+    expect(bulkPhotoSorterActionLabel('place-attach')).toBe('Attach to Place');
+    expect(bulkPhotoSorterActionLabel('visibility-private')).toBe('Set Cimmich visibility to Private');
+    expect(bulkPhotoSorterActionNeedsTarget('album-add')).toBe(true);
+    expect(bulkPhotoSorterActionNeedsTarget('favorite')).toBe(false);
   });
 });

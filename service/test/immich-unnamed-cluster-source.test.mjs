@@ -25,7 +25,7 @@ const readyCompanion = (overrides = {}) => ({
   ...overrides,
 });
 
-test("unnamed-person discovery rejects candidate expansion beyond its configured bound", async () => {
+test("unnamed-person discovery returns useful partial candidates at its configured bound", async () => {
   const person = { id: "unnamed", isHidden: false, name: null };
   const companion = readyCompanion({
     listAssets: async () => ({
@@ -38,27 +38,42 @@ test("unnamed-person discovery rejects candidate expansion beyond its configured
     }),
   });
 
-  await assert.rejects(
-    scanUnnamed(companion, scope, { maxTargetAssets: 1 }),
-    (error) =>
-      error.code === "IMMICH_PERSON_RESOLUTION_TARGET_TOO_LARGE" &&
-      error.statusCode === 413,
+  const result = await scanUnnamed(companion, scope, { maxTargetAssets: 1 });
+  assert.deepEqual(
+    result.assets.map(({ immichAssetId }) => immichAssetId),
+    ["one"],
   );
+  assert.equal(result.scanSummary.complete, false);
+  assert.equal(result.scanSummary.truncationReason, "target_limit");
 });
 
-test("unnamed-person discovery enforces one end-to-end time bound", async () => {
+test("unnamed-person discovery returns hydrated progress at its end-to-end time bound", async () => {
   let clock = 0;
   const companion = readyCompanion({
-    listAssets: async () => {
+    listAssetFaces: async ({ assetId }) => {
       clock = 10;
-      return { items: [], nextCursor: "more" };
+      return { assetId, items: [] };
     },
+    listAssets: async () => ({
+      items: [
+        {
+          assetType: "image",
+          immichAssetId: "one",
+          people: [{ id: "unnamed", isHidden: false, name: null }],
+        },
+      ],
+      nextCursor: "more",
+    }),
   });
 
-  await assert.rejects(
-    scanUnnamed(companion, scope, { now: () => clock, timeoutMs: 10 }),
-    (error) =>
-      error.code === "IMMICH_PERSON_RESOLUTION_SOURCE_TIMEOUT" &&
-      error.statusCode === 504,
+  const result = await scanUnnamed(companion, scope, {
+    now: () => clock,
+    timeoutMs: 10,
+  });
+  assert.deepEqual(
+    result.assets.map(({ immichAssetId }) => immichAssetId),
+    ["one"],
   );
+  assert.equal(result.scanSummary.complete, false);
+  assert.equal(result.scanSummary.truncationReason, "timeout");
 });

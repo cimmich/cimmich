@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deferPrimeAfterCommand } from "../src/repository.mjs";
+import {
+  createCimmichRepository,
+  deferPrimeAfterCommand,
+} from "../src/repository.mjs";
+
+test("repository exposes the extracted maintenance idle barrier", async () => {
+  const repository = createCimmichRepository(async () => [], new Map(), {
+    currentRank: () => 0,
+  });
+  await repository.whenMaintenanceIdle();
+});
 
 test("deferred Prime maintenance coalesces queued rebuilds per Person", async () => {
   let runs = 0;
@@ -61,8 +71,10 @@ test("interactive identity commands schedule derived work on the maintenance poo
   assert.doesNotMatch(reassignment, /await refreshBodyLinksAfterCommand/);
 });
 
-test("deferred Prime maintenance retries a failed repository rebuild", async (t) => {
+test("deferred Prime maintenance retries a failed repository rebuild with the original error", async (t) => {
   t.mock.method(console, "error", () => {});
+  const warnings = [];
+  t.mock.method(console, "warn", (message) => warnings.push(message));
   let attempts = 0;
   const sql = async (strings) => {
     const statement = strings.join("?");
@@ -80,8 +92,40 @@ test("deferred Prime maintenance retries a failed repository rebuild", async (t)
   };
 
   assert.equal(deferPrimeAfterCommand(sql, "person-retry"), true);
-  for (let turn = 0; turn < 20 && attempts < 2; turn += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
+  for (let turn = 0; turn < 40 && attempts < 2; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.equal(attempts, 2);
+  assert.equal(warnings.length, 1);
+  const event = JSON.parse(warnings[0]);
+  assert.equal(event.code, "CIMMICH_MAINTENANCE_RETRYING");
+  assert.equal(event.error, "temporary repository failure");
+  assert.equal(event.retryDelayMs, 250);
+});
+
+test("deferred Body linkage retries instead of silently completing a failed projection", async (t) => {
+  const warnings = [];
+  t.mock.method(console, "warn", (message) =>
+    warnings.push(JSON.parse(message)),
+  );
+  let attempts = 0;
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("FROM face_observation fo")) {
+      attempts += 1;
+      if (attempts === 1) throw new Error("temporary body linkage failure");
+      return [];
+    }
+    if (statement.includes("CREATE TEMP TABLE")) return [];
+    return [];
+  };
+
+  const { deferBodyLinksAfterCommand, waitForMaintenanceIdle } =
+    await import("../src/repository.mjs");
+  assert.equal(deferBodyLinksAfterCommand(sql, "asset-retry"), true);
+  await waitForMaintenanceIdle(sql);
+
+  assert.equal(attempts, 2);
+  assert.equal(warnings[0].code, "CIMMICH_MAINTENANCE_RETRYING");
+  assert.equal(warnings[0].error, "temporary body linkage failure");
 });

@@ -25,6 +25,7 @@
   import CimmichObjectVisibility from './CimmichObjectVisibility.svelte';
   import CimmichPlaceDeleteDialog from './CimmichPlaceDeleteDialog.svelte';
   import { focusTrap } from '$lib/actions/focus-trap';
+  import { keyboardTabs } from './keyboard-tabs';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
     CimmichServiceError,
@@ -937,46 +938,14 @@
     void goto(getContextDetailHref(page.url, activeFamily, entity.entityId, entity.displayName));
   };
 
-  let detailTabRail = $state<HTMLDivElement | undefined>();
-  let pendingTabFocus = false;
-
-  $effect(() => {
-    const rail = detailTabRail;
-    void activeDetailTab;
-    if (!rail || !pendingTabFocus) {
-      return;
-    }
-    const tab = rail.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
-    tab?.focus();
-    if (document.activeElement === tab) {
-      pendingTabFocus = false;
-    }
-  });
-
-  const selectDetailTab = (tab: ContextDetailTab, restoreFocus = false) => {
+  const selectDetailTab = (tab: ContextDetailTab) => {
     const url = new URL(page.url);
     if (tab === 'photos') {
       url.searchParams.delete('tab');
     } else {
       url.searchParams.set('tab', tab);
     }
-    pendingTabFocus = restoreFocus;
     void goto(`${url.pathname}${url.search}`, { keepFocus: true, noScroll: true, replaceState: true });
-  };
-
-  const handleDetailTabKeydown = (event: KeyboardEvent, index: number) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-      return;
-    }
-    event.preventDefault();
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? detailTabs.length - 1
-          : (index + (event.key === 'ArrowRight' ? 1 : -1) + detailTabs.length) % detailTabs.length;
-    const next = detailTabs[nextIndex];
-    selectDetailTab(next.value, true);
   };
 
   const resetForm = () => {
@@ -3241,12 +3210,12 @@
 
     <div class="context-profile-rail mt-6">
       <div
-        bind:this={detailTabRail}
         class="context-profile-tabs"
         role="tablist"
         aria-label={`${selected.entity.displayName} content`}
+        use:keyboardTabs
       >
-        {#each detailTabs as tab, index (tab.value)}
+        {#each detailTabs as tab (tab.value)}
           <button
             class:context-profile-tab--active={activeDetailTab === tab.value}
             class="context-profile-tab"
@@ -3254,8 +3223,7 @@
             role="tab"
             aria-selected={activeDetailTab === tab.value}
             tabindex={activeDetailTab === tab.value ? 0 : -1}
-            onkeydown={(event) => handleDetailTabKeydown(event, index)}
-            onclick={() => selectDetailTab(tab.value, true)}
+            onclick={() => selectDetailTab(tab.value)}
           >
             <Icon icon={tab.icon} size="18" />
             {tab.label}

@@ -5,11 +5,11 @@ therefore contain unusually sensitive facts even when they contain no media.
 
 ## Supported versions
 
-| Version                         | Supported                                         |
-| :------------------------------ | :------------------------------------------------ |
-| `v1.1.0-community-preview.8`    | Yes, while Community Preview 8 is current        |
-| Earlier Community Preview tags | No; upgrade to the current named release         |
-| Public Beta and Build Week tags | No                                                |
+| Version                         | Supported                                 |
+| :------------------------------ | :---------------------------------------- |
+| `v1.1.0-community-preview.8`    | Yes, while Community Preview 8 is current |
+| Earlier Community Preview tags  | No; upgrade to the current named release  |
+| Public Beta and Build Week tags | No                                        |
 
 `main` is reviewed for the next candidate but is not a substitute for a named
 release when reporting an installed-version problem.
@@ -62,6 +62,15 @@ are dropped, privilege escalation is disabled, and nginx's bounded runtime
 state is confined to a 16 MiB `noexec,nosuid,nodev` temporary filesystem.
 These controls limit container impact; they do not make an unsupported public
 or directly LAN-exposed installation safe.
+
+The long-lived API also uses a read-only root filesystem, a bounded
+`noexec,nosuid,nodev` temporary filesystem, dropped capabilities and
+`no-new-privileges`. PostgreSQL drops every capability before adding back only
+the five capabilities its official entrypoint needs for initial volume
+ownership and user transition. The optional, short-lived face-model installer
+uses a read-only root filesystem, drops all capabilities and disables privilege
+escalation; downloaded models are checksum-pinned and written only to its
+dedicated volume.
 
 Treat backups, provider artifacts, configuration volumes, and Document-store
 exports as sensitive. Keep them mode-restricted and encrypted at rest where the

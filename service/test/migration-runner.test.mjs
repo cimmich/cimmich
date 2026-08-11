@@ -1190,3 +1190,21 @@ test("schema 129 binds one durable Immich owner without storing a credential", a
   assert.match(migration, /ORDER BY completed_at DESC, command_id DESC/);
   assert.doesNotMatch(migration, /api[_ ]?key|cookie|authorization|secret/i);
 });
+
+test("schema 130 persists owner-visible identity audit truncation counts", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0130_identity_audit_truncation_projection_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /untagged_queries_eligible/);
+  assert.match(source, /contradiction_queries_eligible/);
+  assert.match(source, /independence_candidates_eligible/);
+  assert.match(source, /independence_candidates_verified/);
+  assert.match(source, /identity_audit_independence_verified_bound/);
+  assert.match(source, /truncation_projection_complete/);
+});

@@ -114,6 +114,7 @@ test("incremental start gates staleness on the base run's start, inclusively", a
         runRow({
           state: "completed",
           completed_at: "2026-07-30T03:00:00.000Z",
+          truncation_projection_complete: true,
         }),
       ];
     }
@@ -123,6 +124,7 @@ test("incremental start gates staleness on the base run's start, inclusively", a
           completed_at: "2026-07-30T03:00:00.000Z",
           started_at: baseStartedAt,
           state: "completed",
+          truncation_projection_complete: true,
         }),
       ];
     }
