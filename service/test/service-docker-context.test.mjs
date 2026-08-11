@@ -27,6 +27,10 @@ test("service Dockerfile build context is an explicit backend allowlist", async 
     "!providers/perceptual-dhash/*.py",
     "!providers/perceptual-dhash/*.json",
     "!providers/perceptual-dhash/requirements.txt",
+    "!providers/ultralytics-yolo-body/*.py",
+    "!tools/local-ai-photo-lab/bin/**",
+    "!tools/local-ai-photo-lab/src/**",
+    "!tools/local-ai-photo-lab/python/**",
   ]) {
     assert.ok(ignore.split("\n").includes(required), required);
   }
@@ -61,6 +65,12 @@ test("public-demo API build context admits the reference adapter but no weights 
   assert.ok(ignore.split("\n").includes("!providers/opencv-sface/*.py"));
   assert.ok(ignore.split("\n").includes("!providers/perceptual-dhash/*.py"));
   assert.ok(ignore.split("\n").includes("!service/enhanced/**"));
+  assert.ok(
+    ignore.split("\n").includes("!providers/ultralytics-yolo-body/*.py"),
+  );
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/bin/**"));
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/src/**"));
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/python/**"));
   assert.ok(
     ignore.split("\n").includes("!providers/opencv-sface/install-models.sh"),
   );
