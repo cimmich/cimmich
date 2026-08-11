@@ -312,8 +312,17 @@ export const getCimmichPetPhotoContext = (url: URL) => {
   return petId && petName ? { petId, petName } : undefined;
 };
 
+const isExplicitCimmichPhotoContext = (url: URL) => {
+  if (!url.pathname.startsWith('/photos/')) {
+    return false;
+  }
+  const overlay = url.searchParams.get('cimmichOverlay');
+  return url.searchParams.get('organise') === '1' || overlay === 'machinery' || overlay === 'people';
+};
+
 export const isCimmichViewingSurface = (url: URL) =>
   url.pathname.startsWith('/cimmich') ||
+  isExplicitCimmichPhotoContext(url) ||
   Boolean(getCimmichPersonPhotoContext(url)) ||
   Boolean(getCimmichPetPhotoContext(url));
 

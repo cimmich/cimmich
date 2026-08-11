@@ -1,3 +1,4 @@
+import { AssetTypeEnum } from '@immich/sdk';
 import '@testing-library/jest-dom';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -9,6 +10,10 @@ import { preferencesFactory } from '@test-data/factories/preferences-factory';
 import { userAdminFactory } from '@test-data/factories/user-factory';
 import AssetViewerNavBar from './AssetViewerNavBar.svelte';
 
+const appState = vi.hoisted(() => ({ data: {}, url: new URL('http://localhost/photos/asset-1') }));
+
+vi.mock('$app/state', () => ({ page: appState }));
+
 vi.mock(import('$lib/managers/feature-flags-manager.svelte'), () => ({
   featureFlagsManager: {
     init: vi.fn(),
@@ -19,6 +24,12 @@ vi.mock(import('$lib/managers/feature-flags-manager.svelte'), () => ({
 
 vi.mock('$lib/services/cimmich.service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('$lib/services/cimmich.service')>()),
+  getCimmichAssetEvidence: vi.fn().mockResolvedValue({ asset_id: 'cimmich-asset-1' }),
+  getCimmichVisibilityObject: vi.fn().mockResolvedValue({
+    objectId: 'cimmich-asset-1',
+    objectScope: 'asset',
+    visibilityTier: 'private',
+  }),
   getCimmichVisibilityStatus: vi.fn().mockResolvedValue({
     capabilities: { album: true, asset: true, collection: true, document: true, entityProfile: true },
     forcedStandard: false,
@@ -54,6 +65,7 @@ describe('AssetViewerNavBar component', () => {
 
   afterEach(() => {
     authManager.reset();
+    appState.url = new URL('http://localhost/photos/asset-1');
   });
 
   afterAll(() => {
@@ -91,6 +103,18 @@ describe('AssetViewerNavBar component', () => {
     expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');
     expect(source).not.toContain('Immich view · All photos visible</span>');
     expect(source).not.toContain('Immich · All visible</span>');
+  });
+
+  it('shows Local AI when Library opens a photo with the Cimmich organise marker', () => {
+    const owner = userAdminFactory.build();
+    authManager.setUser(owner);
+    authManager.setPreferences(preferencesFactory.build({ cast: { gCastEnabled: false } }));
+    appState.url = new URL('http://localhost/photos/asset-1?organise=1');
+
+    const asset = assetFactory.build({ isTrashed: false, ownerId: owner.id, type: AssetTypeEnum.Image });
+    const { getByLabelText } = renderWithTooltips(AssetViewerNavBar, { asset, ...additionalProps });
+
+    expect(getByLabelText('Open Local AI review')).toBeInTheDocument();
   });
 
   describe('if the current user owns the asset', () => {

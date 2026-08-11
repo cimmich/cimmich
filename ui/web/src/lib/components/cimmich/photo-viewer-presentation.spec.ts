@@ -114,6 +114,19 @@ describe('photo viewer presentation context', () => {
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1'))).toBe(false);
   });
 
+  it('keeps explicit Cimmich Library and Face-review photo journeys inside Cimmich', () => {
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=1'))).toBe(true);
+    expect(
+      isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery')),
+    ).toBe(true);
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=people'))).toBe(true);
+  });
+
+  it('does not let arbitrary photo query parameters turn Immich into Cimmich', () => {
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=0'))).toBe(false);
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=unexpected'))).toBe(false);
+  });
+
   it('recognises Pet viewer context without treating it as a Person highlight', () => {
     const url = new URL('http://localhost/photos/asset-1?cimmichPetId=pet-1&cimmichPetName=Juniper');
 
