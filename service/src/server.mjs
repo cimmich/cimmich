@@ -3150,15 +3150,20 @@ export const createCimmichServer = ({
       const {
         personCandidatesMatch,
         personKnownClusterSuggestionsMatch,
+        possiblePeopleRead,
         possiblePersonResolveMatch,
         possiblePersonUndoMatch,
       } = matchPossiblePeopleRoutes(url.pathname);
-      if (request.method === "GET" && url.pathname === "/v1/possible-people") {
+      if (request.method === "GET" && possiblePeopleRead) {
         requireProjection("person_review");
         sendJson(
           response,
           200,
-          await repository.possiblePeopleSnapshot(),
+          await (possiblePeopleRead === "previews"
+            ? repository.possiblePeoplePreviews({
+                clusterIds: url.searchParams.getAll("clusterId"),
+              })
+            : repository.possiblePeopleSnapshot()),
           allowedOrigin,
         );
         return;

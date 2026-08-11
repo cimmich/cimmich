@@ -861,6 +861,7 @@ export const createPossiblePeopleStore = (
   return {
     classifyLatest,
     knownSuggestions: projection.knownSuggestions,
+    previews: projection.previews,
     refresh,
     resolve,
     snapshot: projection.snapshot,

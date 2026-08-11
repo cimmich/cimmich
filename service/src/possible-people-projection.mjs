@@ -19,6 +19,27 @@ const cleanId = (value, label) => {
   return normalized;
 };
 
+const previewBatchLimit = 20;
+
+export const normalizePossiblePeoplePreviewClusterIds = (values) => {
+  if (!Array.isArray(values)) {
+    throw typedError(
+      "Possible person cluster IDs are required",
+      400,
+      "POSSIBLE_PEOPLE_PREVIEW_INPUT_INVALID",
+    );
+  }
+  const ids = [...new Set(values.map((value) => cleanId(value, "Cluster ID")))];
+  if (ids.length === 0 || ids.length > previewBatchLimit) {
+    throw typedError(
+      `Choose between 1 and ${previewBatchLimit} possible person clusters`,
+      400,
+      "POSSIBLE_PEOPLE_PREVIEW_INPUT_INVALID",
+    );
+  }
+  return ids;
+};
+
 export const projectPossiblePeopleRun = (row) =>
   row
     ? {
@@ -220,5 +241,45 @@ export const createPossiblePeopleProjection = (
     };
   };
 
-  return { knownSuggestions, snapshot };
+  const previews = async ({ clusterIds }) => {
+    const selectedClusterIds =
+      normalizePossiblePeoplePreviewClusterIds(clusterIds);
+    const { completed } = await readLatestPossiblePeopleRuns(
+      sql,
+      algorithmVersion,
+    );
+    if (!completed) {
+      return {
+        items: [],
+        runId: null,
+        schemaVersion: "cimmich.possible-person-previews.v1",
+      };
+    }
+    const rows = await sql`
+      SELECT cluster_id
+      FROM face_cluster
+      WHERE possible_person_run_id = ${completed.run_id}
+        AND cluster_id = ANY(${selectedClusterIds}::text[])
+        AND suggested_person_id IS NULL
+        AND status IN ('open','closed','linked')
+      ORDER BY array_position(${selectedClusterIds}::text[], cluster_id)
+    `;
+    const eligibleClusterIds = rows.map((row) => row.cluster_id);
+    const grouped = await readKnownPersonClusterPreviews(
+      sql,
+      eligibleClusterIds,
+    );
+    return {
+      items: eligibleClusterIds.map((clusterId) => ({
+        clusterId,
+        previews: grouped.get(clusterId) || [],
+      })),
+      runId: completed.run_id,
+      schemaVersion: "cimmich.possible-person-previews.v1",
+    };
+  };
+
+  return { knownSuggestions, previews, snapshot };
 };
+
+export const possiblePeoplePreviewBatchLimit = previewBatchLimit;

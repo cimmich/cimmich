@@ -618,6 +618,17 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
         schemaVersion: "cimmich.known-person-cluster-suggestions.v2",
       };
     },
+    possiblePeoplePreviews: async (input) => {
+      calls.push(["previews", input]);
+      return {
+        items: input.clusterIds.map((clusterId) => ({
+          clusterId,
+          previews: [],
+        })),
+        runId: "possible_run_1",
+        schemaVersion: "cimmich.possible-person-previews.v1",
+      };
+    },
     possiblePeopleRefresh: async (input) => {
       calls.push(["refresh", input]);
       return {
@@ -652,6 +663,15 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
         "opening Possible people must not enqueue matching work",
       );
 
+      const previews = await fetch(
+        `${root}/v1/possible-people/previews?clusterId=cluster%2Fone&clusterId=cluster-two`,
+      );
+      assert.equal(previews.status, 200);
+      assert.deepEqual(
+        (await previews.json()).items.map((item) => item.clusterId),
+        ["cluster/one", "cluster-two"],
+      );
+
       const refreshed = await fetch(`${root}/v1/possible-people/refresh`, {
         body: JSON.stringify({ commandId: "possible-people-refresh-1" }),
         headers: {
@@ -683,6 +703,8 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
   assert.deepEqual(calls, [
     ["visibility", "person_review"],
     ["snapshot"],
+    ["visibility", "person_review"],
+    ["previews", { clusterIds: ["cluster/one", "cluster-two"] }],
     ["visibility", "person_review"],
     ["refresh", { actorId: "owner", commandId: "possible-people-refresh-1" }],
     ["visibility", "person_review"],

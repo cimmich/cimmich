@@ -2407,6 +2407,7 @@ export const createCimmichRepository = (
     possiblePeopleRefresh: possiblePeople.refresh,
     possiblePeopleClassify: possiblePeople.classifyLatest,
     possiblePeopleKnownSuggestions: possiblePeople.knownSuggestions,
+    possiblePeoplePreviews: possiblePeople.previews,
     possiblePeopleResolve: possiblePeople.resolve,
     possiblePeopleSnapshot: possiblePeople.snapshot,
     possiblePeopleUndo: possiblePeople.undo,
