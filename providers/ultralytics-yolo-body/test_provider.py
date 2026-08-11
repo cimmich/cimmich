@@ -1,4 +1,6 @@
 import hashlib
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
 import tempfile
 import unittest
@@ -55,6 +57,16 @@ class TorchRuntime:
     @classmethod
     def set_num_interop_threads(cls, value):
         cls.interop_threads = value
+
+
+class NoisyModel(Model):
+    def __init__(self, path):
+        print("provider boot chatter")
+        super().__init__(path)
+
+    def predict(self, *args, **kwargs):
+        print("provider prediction chatter")
+        return super().predict(*args, **kwargs)
 
 
 class ProviderTest(unittest.TestCase):
@@ -128,6 +140,61 @@ class ProviderTest(unittest.TestCase):
             manifest_path.write_text(json.dumps(invalid_manifest))
             with self.assertRaises(provider.ProviderError):
                 provider.load_manifest(manifest_path, model)
+
+    def test_provider_chatter_cannot_pollute_the_stdout_protocol(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "image.jpg"
+            image.write_bytes(b"image")
+            model = root / "model.pt"
+            model.write_bytes(b"model")
+            core = {
+                "detector": {
+                    "artifactDigest": hashlib.sha256(b"model").hexdigest(),
+                    "modelId": "test-model",
+                    "modelVersionId": "v1",
+                    "scoreThreshold": 0.3,
+                },
+                "execution": {
+                    "device": "cpu",
+                    "network": "forbidden",
+                    "runtimeId": "test-runtime",
+                    "threads": 1,
+                },
+                "licensing": {"code": "declared", "model": "unknown", "trainingData": "unknown"},
+                "preprocessing": {
+                    "colorSpace": "rgb",
+                    "coordinateSpace": "normalized_image",
+                    "inputHeight": 640,
+                    "inputWidth": 640,
+                    "resizeMode": "letterbox",
+                },
+                "privacy": {"externalUpload": "none", "sourceMedia": "local-read-only"},
+                "provider": {"providerId": "ultralytics-yolo-body", "versionId": "v3"},
+                "resources": {"maxMemoryMiB": 1024, "maxRuntimeMs": 60000},
+                "schemaVersion": "cimmich.body-detector.v1",
+            }
+            manifest = {**core, "detectorConfigDigest": provider.canonical_digest(core)}
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest))
+            request = {
+                "assetToken": "a" * 64,
+                "imagePath": str(image),
+                "inputRevision": "b" * 64,
+                "manifestPath": str(manifest_path),
+                "modelPath": str(model),
+                "presentationRotationQuarterTurns": 0,
+                "schemaVersion": provider.REQUEST_SCHEMA,
+                "sourceContentDigest": hashlib.sha256(b"image").hexdigest(),
+            }
+            stdout = StringIO()
+            stderr = StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = provider.execute(request, model_factory=NoisyModel)
+            self.assertEqual(result["state"], "bodies_detected")
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("provider boot chatter", stderr.getvalue())
+            self.assertIn("provider prediction chatter", stderr.getvalue())
 
     def test_request_rejects_extra_fields_and_source_drift(self):
         base = {

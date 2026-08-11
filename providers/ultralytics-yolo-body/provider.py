@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import hashlib
 from io import BytesIO
 import json
@@ -193,15 +194,20 @@ def project_result(request: dict, manifest: dict, model: Any, image_input: Any) 
     )
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
-    results = model.predict(
-        presentation_image(image_input, quarter_turns),
-        classes=[0],
-        conf=RAW_CONFIDENCE_FLOOR,
-        device=runtime_device,
-        imgsz=manifest["preprocessing"]["inputWidth"],
-        max_det=MAX_RAW_DETECTIONS,
-        verbose=False,
-    )
+    # stdout is the provider protocol: one JSON document in one-shot mode and
+    # length-prefixed frames in resident mode. Ultralytics may announce first-
+    # run settings or cache creation while importing/loading/predicting, so
+    # keep all provider chatter on the already-isolated stderr channel.
+    with redirect_stdout(sys.stderr):
+        results = model.predict(
+            presentation_image(image_input, quarter_turns),
+            classes=[0],
+            conf=RAW_CONFIDENCE_FLOOR,
+            device=runtime_device,
+            imgsz=manifest["preprocessing"]["inputWidth"],
+            max_det=MAX_RAW_DETECTIONS,
+            verbose=False,
+        )
     if len(results) != 1:
         raise ProviderError("provider returned an invalid result count")
     result = results[0]
@@ -254,13 +260,15 @@ def execute(request: dict, model_factory=None, torch_module: Any = None) -> dict
     if file_digest(image_path) != request["sourceContentDigest"]:
         raise ProviderError("source image digest changed")
     if model_factory is None:
-        configure_runtime(manifest, torch_module=torch_module)
-        from ultralytics import YOLO
+        with redirect_stdout(sys.stderr):
+            configure_runtime(manifest, torch_module=torch_module)
+            from ultralytics import YOLO
 
-        model_factory = YOLO
+            model_factory = YOLO
     elif torch_module is not None:
         configure_runtime(manifest, torch_module=torch_module)
-    model = model_factory(str(model_path))
+    with redirect_stdout(sys.stderr):
+        model = model_factory(str(model_path))
     return project_result(request, manifest, model, str(image_path))
 
 
@@ -338,10 +346,11 @@ def write_resident_result(value: dict) -> None:
 
 def serve(manifest_path: Path, model_path: Path) -> int:
     manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
-    configure_runtime(manifest)
-    from ultralytics import YOLO
+    with redirect_stdout(sys.stderr):
+        configure_runtime(manifest)
+        from ultralytics import YOLO
 
-    model = YOLO(str(model_path.resolve()))
+        model = YOLO(str(model_path.resolve()))
     while True:
         try:
             frame = read_resident_frame()

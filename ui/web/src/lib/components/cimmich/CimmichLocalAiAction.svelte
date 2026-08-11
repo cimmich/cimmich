@@ -107,7 +107,8 @@
     const assets = job?.result?.assets ?? [];
     const detected = assets.reduce((sum, asset) => sum + (asset.operations?.bodies?.bodies?.length ?? 0), 0);
     const added = assets.reduce((sum, asset) => sum + (asset.baselineComparison?.bodies?.added?.length ?? 0), 0);
-    return { added, detected };
+    const failed = assets.some((asset) => asset.operations?.bodies?.state === 'failed');
+    return { added, detected, failed };
   });
 
   const revokeArtifacts = () => {
@@ -308,7 +309,11 @@
             <span>{faceSummary.detected} detected · {faceSummary.added} not in the saved Face boxes</span>
           {/if}
           {#if job.operation === 'bodies' && finished && job.result}
-            <span>{bodySummary.detected} detected · {bodySummary.added} not in the saved Body boxes</span>
+            {#if bodySummary.failed}
+              <span role="alert">Body detection did not complete. No detections were accepted; run it again.</span>
+            {:else}
+              <span>{bodySummary.detected} detected · {bodySummary.added} not in the saved Body boxes</span>
+            {/if}
           {/if}
           {#if job.result?.summary?.text && job.operation === 'context'}
             <p>{job.result.summary.text}</p>

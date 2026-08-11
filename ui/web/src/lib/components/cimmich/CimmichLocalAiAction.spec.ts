@@ -156,4 +156,42 @@ describe('Cimmich Local AI review action', () => {
 
     expect(await rendered.findByText('3 detected · 2 not in the saved Body boxes')).toBeInTheDocument();
   });
+
+  it('does not report zero Bodies when the detector failed', async () => {
+    mocks.status.mockResolvedValueOnce({
+      ...(await mocks.status()),
+      capabilities: { best: true, bodies: true, context: false, faces: true, quick: true, sceneText: false },
+    });
+    mocks.start.mockResolvedValueOnce({
+      ...completedFaceJob,
+      operation: 'bodies',
+      state: 'partial',
+      result: {
+        ...completedFaceJob.result,
+        state: 'partial',
+        assets: [
+          {
+            assetId: completedFaceJob.sourceAssetIds[0],
+            baselineComparison: { bodies: { added: [], removed: [] }, faces: null },
+            operations: {
+              bodies: {
+                errorCode: 'LOCAL_AI_PROVIDER_OUTPUT_INVALID',
+                message: 'The local provider failed.',
+                state: 'failed',
+              },
+            },
+          },
+        ],
+      },
+    });
+    const rendered = render(CimmichLocalAiAction, { sourceAssetIds: completedFaceJob.sourceAssetIds });
+    await fireEvent.click(rendered.getByRole('button', { name: 'Open Local AI review' }));
+    await fireEvent.click(await rendered.findByRole('radio', { name: /Look for missed Bodies/ }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Run locally' }));
+
+    expect(await rendered.findByRole('alert')).toHaveTextContent(
+      'Body detection did not complete. No detections were accepted; run it again.',
+    );
+    expect(rendered.queryByText(/0 detected/)).not.toBeInTheDocument();
+  });
 });

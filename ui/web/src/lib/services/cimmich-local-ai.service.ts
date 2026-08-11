@@ -53,8 +53,8 @@ export type CimmichLocalAiJob = {
         faces?: { added: unknown[]; removed: unknown[] } | null;
       } | null;
       operations?: {
-        bodies?: { bodies?: unknown[]; state: string };
-        faces?: { faces?: unknown[]; state: string };
+        bodies?: { bodies?: unknown[]; errorCode?: string; message?: string; state: string };
+        faces?: { faces?: unknown[]; errorCode?: string; message?: string; state: string };
       };
     }>;
     originalsUnchanged: boolean;
