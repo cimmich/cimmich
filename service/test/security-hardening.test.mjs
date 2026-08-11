@@ -86,6 +86,11 @@ test("local runtime secrets, images and browser response headers are hardened", 
     );
     assert.match(
       nginx,
+      /location \/cimmich-api\/ \{[\s\S]*proxy_buffering off;/,
+      "owner API responses must stream rather than filling the gateway tmpfs",
+    );
+    assert.match(
+      nginx,
       /location \^~ \/cimmich-api\/_internal\/ \{[\s\S]*return 404;/,
     );
     assert.match(
