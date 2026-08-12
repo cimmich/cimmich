@@ -169,59 +169,59 @@
 </script>
 
 <section class="grid gap-6" aria-label="Identity overview">
-  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Library snapshot">
-    <article class="relative overflow-hidden rounded-3xl bg-primary p-5 text-white shadow-sm">
-      <div class="absolute -top-6 -right-6 size-28 rounded-full bg-white/10"></div>
-      <div class="flex items-center gap-2 text-sm font-semibold text-white/80">
-        <Icon icon={mdiImageMultipleOutline} size="19" /> Photos
-      </div>
-      <strong class="mt-5 block text-4xl tabular-nums">{coverage.assets.total.toLocaleString()}</strong>
-      <button
-        class="mt-3 min-h-10 text-sm font-semibold underline decoration-white/50 underline-offset-4"
-        type="button"
-        onclick={() => onopenphotos()}
-      >
-        View all photos
-      </button>
-    </article>
+  <section class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Library snapshot">
+    <button
+      class="min-h-20 rounded-2xl bg-primary p-3 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4"
+      type="button"
+      onclick={() => onopenphotos()}
+    >
+      <span class="flex items-center gap-1.5 text-xs font-semibold text-white/80">
+        <Icon icon={mdiImageMultipleOutline} size="17" /> Photos
+      </span>
+      <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.total.toLocaleString()}</strong>
+        <span class="text-xs font-semibold text-white/85">View all</span>
+      </span>
+    </button>
 
     <article
-      class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+      class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
     >
-      <div class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
-        <Icon icon={mdiTimelineClockOutline} size="19" /> Years represented
+      <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiTimelineClockOutline} size="17" /> Years represented
       </div>
-      <strong class="mt-5 block text-4xl tabular-nums">{credibleYears.length.toLocaleString()}</strong>
-      <span class="mt-2 block text-sm text-gray-500 dark:text-gray-400">{yearRange}</span>
+      <div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <strong class="text-2xl leading-none tabular-nums">{credibleYears.length.toLocaleString()}</strong>
+        <span class="text-xs text-gray-500 dark:text-gray-400">{yearRange}</span>
+      </div>
     </article>
 
     <button
-      class="rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
+      class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
       type="button"
       onclick={() => onopenidentity('all')}
     >
-      <span class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
-        <Icon icon={mdiAccountCheckOutline} size="19" /> Face visible
+      <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiAccountCheckOutline} size="17" /> Face visible
       </span>
-      <span class="mt-5 flex items-end justify-between gap-3">
-        <strong class="text-4xl tabular-nums">{coverage.assets.face.toLocaleString()}</strong>
-        <span class="pb-1 text-sm font-semibold text-primary">{facePercent}%</span>
-      </span>
-      <span class="mt-3 block h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" aria-hidden="true">
-        <span class="block h-full rounded-full bg-primary" style={`width: ${facePercent}%`}></span>
+      <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.face.toLocaleString()}</strong>
+        <span class="text-xs font-semibold text-primary">{facePercent}%</span>
       </span>
     </button>
 
     <button
-      class="rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
+      class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
       type="button"
       onclick={() => onopenidentity('body')}
     >
-      <span class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
-        <Icon icon={mdiHumanGreeting} size="19" /> Body-only photos
+      <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiHumanGreeting} size="17" /> Body-only photos
       </span>
-      <strong class="mt-5 block text-4xl tabular-nums">{coverage.assets.bodyOnly.toLocaleString()}</strong>
-      <span class="mt-2 block text-sm font-semibold text-primary">Open this set</span>
+      <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.bodyOnly.toLocaleString()}</strong>
+        <span class="text-xs font-semibold text-primary">Open set</span>
+      </span>
     </button>
   </section>
 

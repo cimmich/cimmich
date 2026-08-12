@@ -36,6 +36,10 @@ describe('Person identity overview', () => {
     expect(source).not.toContain('One photo from every represented year');
     expect(source).toContain('Scroll through time →');
     expect(source).toContain('Library snapshot');
+    expect(source).toContain('grid grid-cols-2 gap-2 lg:grid-cols-4');
+    expect(source).toContain('min-h-20 rounded-2xl');
+    expect(source).not.toContain('mt-5 block text-4xl');
+    expect(source).not.toContain('size-28 rounded-full bg-white/10');
     expect(source).toContain('Years represented');
     expect(source).toContain('Places & stories');
     expect(source).toContain('People & pets');
