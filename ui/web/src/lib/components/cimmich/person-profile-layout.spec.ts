@@ -9,6 +9,7 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-workspace-navigation.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonAppearanceGallery.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
@@ -152,8 +153,10 @@ describe('Person profile layout', () => {
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
     expect(source).toContain('cimmichExplore.getAssetsPage(personId)');
     expect(source).toContain('loadPersonAppearanceAssets(personId)');
-    expect(source).toContain('cimmichAppearanceAssets.bodyConfirmed.toLocaleString()');
-    expect(source).toContain('cimmichAppearanceAssets.bodyCandidate.toLocaleString()');
+    expect(source).toContain('cimmichAppearanceAssets.appearance');
+    expect(source).toContain('cimmichAppearanceAssets.head');
+    expect(source).toContain('cimmichAppearanceAssets.body');
+    expect(source).toContain('cimmichAppearanceAssets.presence');
     expect(source).toContain('refreshCimmichIdentityAfterReview');
     expect(source).toContain('cimmichIdentityAuditProgress.completed');
     expect(source).toContain('Route.viewCimmichPersonAsset');
@@ -198,23 +201,24 @@ describe('Person profile layout', () => {
     expect(source).toContain(
       "{ id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' }",
     );
-    expect(source).toContain("{ id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' }");
     expect(source).toContain(
-      "{ id: 'body', label: 'Body', description: 'Body-only until a Face or Head is confirmed' }",
+      "{ id: 'appearance', label: 'Appearance', description: 'Head or Body placement without a Face' }",
     );
+    expect(source).toContain("{ id: 'head', label: 'Head', description: 'Head placement without a usable Face' }");
+    expect(source).toContain("{ id: 'body', label: 'Body', description: 'Body placement without a usable Face' }");
     expect(source).toContain(
-      "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
+      "{ id: 'presence', label: 'Presence', description: 'Attributed without a visible Face, Head, or Body placement' }",
     );
-    expect(source).toContain("label: 'Body review'");
-    expect(source).toContain('accepted · ${cimmichAppearanceAssets.bodyCandidate.toLocaleString()} placement');
+    expect(source).toContain("label: 'All appearance'");
+    expect(source).toContain("label: 'Body'");
     expect(source).toMatch(
       /id: 'presence',[\s\S]+label: 'Presence',[\s\S]+cimmichIdentityCountLabel\(cimmichAppearanceAssets\.presenceTotal\)/,
     );
     expect(source).toContain("association_types.includes('body_candidate')");
-    expect(source).toContain('Body placement needed');
-    expect(source).toContain('pre-Cimmich placement candidates are shown together');
-    expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
-    expect(source).toContain('No Face-derived Head references');
+    expect(source).toContain("association_types.includes('head')");
+    expect(source).toContain('Head and Body placements are one operational Appearance state.');
+    expect(source).toContain('Attributed to this person without a visible Face, Head, or Body placement.');
+    expect(source).toContain('No Head photos');
     expect(source).toContain("const hasBody = asset.association_types.includes('body')");
     expect(source).toContain('Review face');
     expect(source).not.toContain("id: 'face_only', label: 'Not used'");

@@ -4,6 +4,7 @@ export const projectPersonAssetRow = ({ bridge, row: input }) => {
   const {
     body_candidate_count: _bodyCandidateCount,
     confirmed_body_count: _confirmedBodyCount,
+    head_count: _headCount,
     presence_count: _presenceCount,
     total_count: _totalCount,
     ...row
@@ -42,6 +43,7 @@ export const projectPersonAssetRow = ({ bridge, row: input }) => {
 export const projectPersonAssetSummary = (row) => ({
   body: Number(row?.confirmed_body_count || 0),
   bodyCandidate: Number(row?.body_candidate_count || 0),
+  head: Number(row?.head_count || 0),
   presence: Number(row?.presence_count || 0),
   total: Number(row?.total_count || 0),
 });

@@ -9,7 +9,7 @@ jobs: Overview, Face, Appearance, Checks and Display. Face and Appearance retain
 their own bounded filters; Checks separates New matches, Multiple in one photo
 and Possible mistags.
 
-The projection answers four bounded questions:
+The projection answers five bounded questions:
 
 1. Which visible photos have accepted Face, standalone Head, Body or Presence
    evidence for this Person?
@@ -21,10 +21,21 @@ The projection answers four bounded questions:
 5. Which visible People and Pets most frequently share accepted active photos
    with this Person?
 
-Bars report the fraction of accepted Person photos on which a channel is
-observed. They are not identity confidence and are not combined into a
-completeness score. A photo does not become defective because it lacks a Place,
-Event, Thing, Head or Body observation.
+The opening coverage states are operational and mutually exclusive: **Face
+visible**; **Appearance only**, meaning an accepted Head or Body placement but
+no Face; and **Presence only**, meaning the Person is attributed to the photo
+without a Face, Head or Body placement. Head and Body remain distinct correction
+detail, but both mean that some part of the Person is visibly placed. These
+counts are not identity confidence and are not combined into a completeness
+score. A photo does not become defective because it lacks a Place, Event or
+Thing.
+
+A Face retained in the Head reference bucket is operationally Head, not Face:
+the geometry says where the head is, but it is not good enough to count as a
+usable Face. Presence also includes accepted whole-photo tags and unresolved
+pre-Cimmich attributions where the owner recorded the Person without placing
+visible geometry. If stronger evidence exists on the same photo, the photo is
+reported in Face or Appearance instead of being double-counted as Presence.
 
 ## Authority
 
@@ -49,8 +60,10 @@ clearest Person-centred crop; when that year has no accepted Face, another
 accepted Person photo is used as a full-photo fallback. Future-dated years stay
 visible with an explicit date-review marker instead of silently distorting the
 credible year range. Timeline cards display chronologically with each year's
-photo count and open as ordinary Cimmich photos without forcing the machinery
-overlay. Selection itself has no write or identity authority.
+plain photo count and open as ordinary Cimmich photos without forcing the
+machinery overlay. The old unlabelled relative-volume glyph is deliberately
+absent: it consumed card width without communicating more clearly than the
+exact count. Selection itself has no write or identity authority.
 
 The Person profile and Overview use the same population: visible accepted
 associations on active assets. Active assets are labelled **available photos**.
@@ -77,3 +90,12 @@ years, plus at most six co-appearing People or Pets; it contains no vectors or
 source paths. The profile loads it only when
 Identity Overview is opened and retains it for that mounted Person/visibility
 generation.
+
+The Appearance workspace reads one combined Head-or-Body page and derives its
+visible Head and Body lanes from the returned association types and exact
+summary counts. Presence remains a separate bounded page. This avoids four
+equivalent Person-asset scans on the first Identity load while preserving the
+same mutually exclusive operational states.
+The combined Appearance result is rendered as soon as it resolves; slower Face,
+candidate and display-photo projections continue in the background instead of
+holding an already-ready Appearance gallery behind their completion.

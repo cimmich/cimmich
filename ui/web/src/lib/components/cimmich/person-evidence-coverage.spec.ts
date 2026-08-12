@@ -3,7 +3,7 @@ import type { CimmichPersonEvidenceCoverage } from '$lib/services/cimmich.servic
 import { evidenceCoverageNotes, evidenceCoveragePercent, evidenceSourceReason } from './person-evidence-coverage';
 
 const coverage = (): CimmichPersonEvidenceCoverage => ({
-  assets: { body: 8, bodyOnly: 2, dated: 9, face: 7, head: 1, presence: 1, total: 10 },
+  assets: { appearanceOnly: 2, body: 8, dated: 9, face: 7, head: 1, presence: 1, presenceOnly: 1, total: 10 },
   authority: {
     automaticIdentityAuthority: 'none',
     inference: 'none',
@@ -16,7 +16,7 @@ const coverage = (): CimmichPersonEvidenceCoverage => ({
   person: { displayName: 'Maya', personId: 'person-maya' },
   references: { head: 1, lowQuality: 2, prime: 3, secondary: 6 },
   review: { bodyWithoutPose: 2, candidateFaces: 3, futureDates: 1 },
-  schemaVersion: 'cimmich.person-evidence-coverage.v3',
+  schemaVersion: 'cimmich.person-evidence-coverage.v4',
   sourceSuggestions: [
     {
       box: { h: 0.2, w: 0.2, x: 0.4, y: 0.3 },

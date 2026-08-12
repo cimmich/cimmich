@@ -1026,7 +1026,7 @@ describe('Cimmich Person projection page client contract', () => {
       nextCursor: 'next-cursor',
       pageSize: 120,
       schemaVersion: 'cimmich.person-projection-page.v1',
-      summary: { body: 41, bodyCandidate: 7, presence: 3, total: 51 },
+      summary: { body: 41, bodyCandidate: 7, head: 0, presence: 3, total: 51 },
     } as const;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(page));
 
@@ -1043,7 +1043,7 @@ describe('Cimmich Person projection page client contract', () => {
       nextCursor: null,
       pageSize: 120,
       schemaVersion: 'cimmich.person-projection-page.v1',
-      summary: { body: 0, bodyCandidate: 0, presence: 0, total: 0 },
+      summary: { body: 0, bodyCandidate: 0, head: 0, presence: 0, total: 0 },
     } as const;
     const facets = {
       availableAssets: 10,

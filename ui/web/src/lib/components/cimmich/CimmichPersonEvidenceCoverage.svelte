@@ -19,14 +19,13 @@
     mdiMapMarkerOutline,
     mdiPawOutline,
     mdiRun,
-    mdiTimelineClockOutline,
   } from '@mdi/js';
   import { Icon } from '@immich/ui';
   import { evidenceCoverageNotes, evidenceCoveragePercent } from './person-evidence-coverage';
 
   interface Props {
     coverage: CimmichPersonEvidenceCoverage;
-    onopenidentity: (filter: 'all' | 'body' | 'candidates') => void;
+    onopenidentity: (filter: 'all' | 'appearance' | 'body' | 'candidates' | 'presence') => void;
     onopenphotos: (options?: { futureDates?: boolean }) => void;
   }
 
@@ -53,7 +52,6 @@
     firstYear === null ? 'Dates unavailable' : firstYear === lastYear ? `${firstYear}` : `${firstYear}–${lastYear}`,
   );
   const yearCounts = $derived(new Map(coverage.time.years.map(({ assetCount, year }) => [year, assetCount])));
-  const maximumYearCount = $derived(Math.max(1, ...coverage.time.years.map(({ assetCount }) => assetCount)));
   const facePercent = $derived(evidenceCoveragePercent(coverage.assets.face, coverage.assets.total));
   const contextGroups = $derived([
     { icon: mdiMapMarkerOutline, items: coverage.context.places, kind: 'place' as const, label: 'Places' },
@@ -72,28 +70,28 @@
       label: 'Face photos',
     },
     {
+      count: coverage.assets.appearanceOnly,
+      detail: 'Accepted Head or Body placement without an accepted Face',
+      icon: mdiHumanGreeting,
+      label: 'Appearance-only photos',
+    },
+    {
+      count: coverage.assets.presenceOnly,
+      detail: 'Attributed to this Person without a visible Face, Head or Body placement',
+      icon: mdiAccountGroupOutline,
+      label: 'Presence-only photos',
+    },
+    {
       count: coverage.assets.body,
       detail: `${coverage.observations.body.toLocaleString()} accepted Body observations · ${coverage.observations.bodyHints.toLocaleString()} imported Body hints`,
       icon: mdiHumanGreeting,
-      label: 'Body photos',
-    },
-    {
-      count: coverage.assets.bodyOnly,
-      detail: 'Accepted Body without an accepted Face or Head',
-      icon: mdiHumanGreeting,
-      label: 'Body-only photos',
+      label: 'Body markings',
     },
     {
       count: coverage.assets.head,
       detail: `${coverage.observations.head.toLocaleString()} standalone Head observations`,
       icon: mdiAccountCheckOutline,
-      label: 'Head photos',
-    },
-    {
-      count: coverage.assets.presence,
-      detail: `${coverage.observations.presence.toLocaleString()} accepted Presence records`,
-      icon: mdiHumanGreeting,
-      label: 'Presence photos',
+      label: 'Head markings',
     },
   ]);
   const referenceRows = $derived([
@@ -143,8 +141,6 @@
   const sourceYear = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) =>
     source.captureTime ? new Date(source.captureTime).getUTCFullYear() : null;
   const yearVolume = (year: number | null) => (year === null ? 0 : (yearCounts.get(year) ?? 0));
-  const yearBarHeight = (year: number | null) =>
-    `${Math.max(8, Math.round((yearVolume(year) / maximumYearCount) * 100))}%`;
   const contextBarWidth = (item: CimmichPersonEvidenceCoverageContext) =>
     `${Math.max(5, Math.round((item.assetCount / maximumContextCount) * 100))}%`;
   const coSubjectBarWidth = (assetCount: number) =>
@@ -184,43 +180,45 @@
       </span>
     </button>
 
-    <article
-      class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
-    >
-      <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-        <Icon icon={mdiTimelineClockOutline} size="17" /> Years represented
-      </div>
-      <div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-        <strong class="text-2xl leading-none tabular-nums">{credibleYears.length.toLocaleString()}</strong>
-        <span class="text-xs text-gray-500 dark:text-gray-400">{yearRange}</span>
-      </div>
-    </article>
-
     <button
       class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
       type="button"
       onclick={() => onopenidentity('all')}
     >
-      <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+      <div class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
         <Icon icon={mdiAccountCheckOutline} size="17" /> Face visible
-      </span>
-      <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+      </div>
+      <div class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
         <strong class="text-2xl leading-none tabular-nums">{coverage.assets.face.toLocaleString()}</strong>
         <span class="text-xs font-semibold text-primary">{facePercent}%</span>
+      </div>
+    </button>
+
+    <button
+      class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
+      type="button"
+      onclick={() => onopenidentity('appearance')}
+    >
+      <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiHumanGreeting} size="17" /> Appearance only
+      </span>
+      <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.appearanceOnly.toLocaleString()}</strong>
+        <span class="text-xs font-semibold text-primary">Open appearance</span>
       </span>
     </button>
 
     <button
       class="min-h-20 rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md sm:p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
       type="button"
-      onclick={() => onopenidentity('body')}
+      onclick={() => onopenidentity('presence')}
     >
       <span class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-        <Icon icon={mdiHumanGreeting} size="17" /> Body-only photos
+        <Icon icon={mdiAccountGroupOutline} size="17" /> Presence only
       </span>
       <span class="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.bodyOnly.toLocaleString()}</strong>
-        <span class="text-xs font-semibold text-primary">Open set</span>
+        <strong class="text-2xl leading-none tabular-nums">{coverage.assets.presenceOnly.toLocaleString()}</strong>
+        <span class="text-xs font-semibold text-primary">Open presence</span>
       </span>
     </button>
   </section>
@@ -231,7 +229,9 @@
   >
     <header class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
       <h2 id="coverage-timeline-title" class="text-xl font-semibold">Timeline evolution</h2>
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Scroll through time →</span>
+      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+        {credibleYears.length.toLocaleString()} years · {yearRange}
+      </span>
     </header>
 
     <div
@@ -260,16 +260,11 @@
               >
             {/if}
           </span>
-          <span class="grid grid-cols-[1fr_1.25rem] gap-2 p-3">
-            <span>
-              <strong class="block text-base tabular-nums">{year ?? 'Unknown'}</strong>
-              <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400"
-                >{yearVolume(year).toLocaleString()} photos</span
-              >
-            </span>
-            <span class="flex h-9 items-end rounded-full bg-gray-200 px-1 dark:bg-gray-700" aria-hidden="true">
-              <span class="block w-full rounded-full bg-primary/80" style={`height: ${yearBarHeight(year)}`}></span>
-            </span>
+          <span class="block p-3">
+            <strong class="block text-base tabular-nums">{year ?? 'Unknown'}</strong>
+            <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400"
+              >{yearVolume(year).toLocaleString()} photos</span
+            >
           </span>
         </a>
       {:else}

@@ -1159,13 +1159,13 @@ export type CimmichPersonProjectionPage<T> = {
   pageSize: number;
   schemaVersion: 'cimmich.person-projection-page.v1';
 };
-
-export type CimmichPersonAssetAssociationFilter = 'body' | 'presence';
+export type CimmichPersonAssetAssociationFilter = 'appearance' | 'body' | 'head' | 'presence';
 
 export type CimmichPersonAssetPage = CimmichPersonProjectionPage<CimmichPersonAsset> & {
   summary: {
     body: number;
     bodyCandidate: number;
+    head: number;
     presence: number;
     total: number;
   };

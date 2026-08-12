@@ -18,6 +18,7 @@ export type CachedPersonWorkspace = {
   assets: CimmichPersonAsset[];
   assetsNextCursor: string | null;
   appearanceAssets: CimmichPersonAppearanceAssets;
+  appearanceLoaded: boolean;
   candidates: CimmichIdentityCandidate[];
   corrections: CimmichIdentityCorrectionDiscovery['items'];
   evidenceCoverage?: CimmichPersonEvidenceCoverage;

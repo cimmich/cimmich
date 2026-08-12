@@ -442,6 +442,12 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.match(statement, /gallery_latest AS MATERIALIZED/);
   assert.match(statement, /accepted_assets AS MATERIALIZED/);
   assert.match(statement, /FROM current_manual_head_tag/);
+  assert.match(statement, /FROM imported_identity_locator locator/);
+  assert.match(statement, /locator\.intended_tag_type = 'body'/);
+  assert.match(
+    statement,
+    /locator\.resolution_kind = 'stronger_existing_truth'/,
+  );
   assert.match(statement, /photo_history AS MATERIALIZED/);
   assert.match(statement, /asset\.media_kind = 'image'/);
   assert.match(statement, /futureCaptureDateCount/);
@@ -880,6 +886,7 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
     presence_evidence: false,
     body_candidate_count: 7,
     confirmed_body_count: 41,
+    head_count: 3,
     presence_count: 3,
     total_count: 51,
     width: 100,
@@ -898,6 +905,7 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
   assert.deepEqual(page.summary, {
     body: 41,
     bodyCandidate: 7,
+    head: 3,
     presence: 3,
     total: 51,
   });
@@ -919,6 +927,7 @@ test("Person Body pages bind their filter into the cursor scope", async () => {
     body_candidate_count: 1,
     capture_time: new Date(Date.UTC(2026, 0, 2 - index)),
     confirmed_body_count: 2,
+    head_count: 1,
     contexts: [],
     has_body: true,
     has_body_candidate: false,
@@ -947,6 +956,7 @@ test("Person Body pages bind their filter into the cursor scope", async () => {
   assert.deepEqual(page.summary, {
     body: 2,
     bodyCandidate: 1,
+    head: 1,
     presence: 0,
     total: 3,
   });

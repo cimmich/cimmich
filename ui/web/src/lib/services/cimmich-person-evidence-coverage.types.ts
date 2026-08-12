@@ -1,11 +1,12 @@
 export type CimmichPersonEvidenceCoverage = {
   assets: {
+    appearanceOnly: number;
     body: number;
-    bodyOnly: number;
     dated: number;
     face: number;
     head: number;
     presence: number;
+    presenceOnly: number;
     total: number;
   };
   authority: {
@@ -47,7 +48,7 @@ export type CimmichPersonEvidenceCoverage = {
     candidateFaces: number;
     futureDates: number;
   };
-  schemaVersion: 'cimmich.person-evidence-coverage.v3';
+  schemaVersion: 'cimmich.person-evidence-coverage.v4';
   sourceSuggestions: Array<{
     box: { h: number; w: number; x: number; y: number } | null;
     bucketKind: 'head' | 'lq' | 'prime' | 'secondary' | null;

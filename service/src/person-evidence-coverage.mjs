@@ -1,5 +1,5 @@
 export const personEvidenceCoverageSchemaVersion =
-  "cimmich.person-evidence-coverage.v3";
+  "cimmich.person-evidence-coverage.v4";
 
 const immutableAuthority = Object.freeze({
   automaticIdentityAuthority: "none",
@@ -22,12 +22,13 @@ const projectContext = (items, kind) =>
 
 export const projectPersonEvidenceCoverage = (row) => ({
   assets: {
+    appearanceOnly: number(row.appearance_only_asset_count),
     body: number(row.body_asset_count),
-    bodyOnly: number(row.body_only_asset_count),
     dated: number(row.dated_asset_count),
     face: number(row.face_asset_count),
     head: number(row.head_asset_count),
     presence: number(row.presence_asset_count),
+    presenceOnly: number(row.presence_only_asset_count),
     total: number(row.total_asset_count),
   },
   authority: immutableAuthority,
@@ -51,9 +52,7 @@ export const projectPersonEvidenceCoverage = (row) => ({
           }
         : null,
     displayName: String(item.displayName || ""),
-    sourceAssetId: item.sourceAssetId
-      ? String(item.sourceAssetId)
-      : null,
+    sourceAssetId: item.sourceAssetId ? String(item.sourceAssetId) : null,
     subjectId: String(item.subjectId || ""),
     subjectKind: item.subjectKind === "pet" ? "pet" : "person",
   })),
@@ -148,6 +147,12 @@ export const createPersonEvidenceCoverageStore = (
           FROM current_person
           WHERE person_id = ${id} AND status = 'active'
             AND subject_kind = 'person'
+        ), target_gallery AS MATERIALIZED (
+          SELECT gallery.face_id, gallery.bucket_kind
+          FROM current_reference_gallery gallery
+          JOIN target_person person ON person.person_id = gallery.person_id
+          WHERE gallery.membership_state = 'active'
+            AND gallery.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
         ), all_accepted_faces AS MATERIALIZED (
           SELECT identity.face_id, face.asset_id, face.box_x, face.box_y,
             face.box_w, face.box_h, face.quality_measurements
@@ -225,11 +230,7 @@ export const createPersonEvidenceCoverageStore = (
         ), body_hint_faces AS MATERIALIZED (
           SELECT DISTINCT face.face_id
           FROM all_accepted_faces face
-          LEFT JOIN current_reference_gallery gallery
-            ON gallery.person_id = ${id}
-            AND gallery.face_id = face.face_id
-            AND gallery.membership_state = 'active'
-            AND gallery.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
+          LEFT JOIN target_gallery gallery ON gallery.face_id = face.face_id
           LEFT JOIN same_person_detector_faces detected
             ON detected.person_id = ${id}
             AND detected.face_id = face.face_id
@@ -261,11 +262,17 @@ export const createPersonEvidenceCoverageStore = (
           SELECT face.*
           FROM all_accepted_faces face
           JOIN body_hint_faces body_hint ON body_hint.face_id = face.face_id
+        ), reference_head_faces AS MATERIALIZED (
+          SELECT face.face_id AS head_id, face.asset_id
+          FROM all_accepted_faces face
+          JOIN target_gallery gallery
+            ON gallery.face_id = face.face_id AND gallery.bucket_kind = 'head'
         ), accepted_faces AS MATERIALIZED (
           SELECT face.*
           FROM all_accepted_faces face
           LEFT JOIN body_hint_faces body_hint ON body_hint.face_id = face.face_id
-          WHERE body_hint.face_id IS NULL
+          LEFT JOIN reference_head_faces head ON head.head_id = face.face_id
+          WHERE body_hint.face_id IS NULL AND head.head_id IS NULL
         ), accepted_bodies AS MATERIALIZED (
           SELECT tag.body_tag_id, body.body_id, body.asset_id,
             (pose.body_id IS NOT NULL) AS has_pose
@@ -286,6 +293,8 @@ export const createPersonEvidenceCoverageStore = (
             AND head.state = 'valid'
           JOIN asset ON asset.asset_id = head.asset_id AND asset.state = 'active'
           WHERE cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+          UNION ALL
+          SELECT head_id, asset_id FROM reference_head_faces
         ), accepted_presence AS MATERIALIZED (
           SELECT presence.presence_tag_id, presence.asset_id
           FROM current_presence_tag presence
@@ -293,12 +302,28 @@ export const createPersonEvidenceCoverageStore = (
           JOIN asset ON asset.asset_id = presence.asset_id AND asset.state = 'active'
           WHERE presence.state = 'accepted'
             AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+        ), accepted_presence_assets AS MATERIALIZED (
+          SELECT asset_id FROM accepted_presence
+          UNION
+          SELECT locator.asset_id
+          FROM imported_identity_locator locator
+          JOIN target_person person ON person.person_id = locator.person_id
+          JOIN asset ON asset.asset_id = locator.asset_id AND asset.state = 'active'
+          WHERE locator.intended_tag_type = 'body'
+            AND (
+              locator.state = 'unresolved'
+              OR (
+                locator.state = 'resolved'
+                AND locator.resolution_kind = 'stronger_existing_truth'
+              )
+            )
+            AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
         ), evidence_rows AS MATERIALIZED (
           SELECT asset_id, 'face'::text AS kind FROM accepted_faces
           UNION ALL SELECT asset_id, 'body_hint' FROM accepted_body_hints
           UNION ALL SELECT asset_id, 'body' FROM accepted_bodies
           UNION ALL SELECT asset_id, 'head' FROM accepted_heads
-          UNION ALL SELECT asset_id, 'presence' FROM accepted_presence
+          UNION ALL SELECT asset_id, 'presence' FROM accepted_presence_assets
         ), evidence_assets AS MATERIALIZED (
           SELECT evidence.asset_id,
             bool_or(evidence.kind = 'face') AS has_face,
@@ -315,11 +340,8 @@ export const createPersonEvidenceCoverageStore = (
             AND asset.state = 'active'
         ), reference_counts AS MATERIALIZED (
           SELECT gallery.bucket_kind, count(DISTINCT gallery.face_id)::int AS count
-          FROM current_reference_gallery gallery
-          JOIN accepted_faces face ON face.face_id = gallery.face_id
-          WHERE gallery.person_id = ${id}
-            AND gallery.membership_state = 'active'
-            AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+          FROM target_gallery gallery
+          JOIN all_accepted_faces face ON face.face_id = gallery.face_id
           GROUP BY gallery.bucket_kind
         ), context_counts AS MATERIALIZED (
           SELECT entity.entity_id, entity.entity_kind,
@@ -435,11 +457,8 @@ export const createPersonEvidenceCoverageStore = (
             AND projection.state = 'active'
           LEFT JOIN LATERAL (
             SELECT gallery.bucket_kind
-            FROM current_reference_gallery gallery
-            WHERE gallery.person_id = ${id}
-              AND gallery.face_id = face.face_id
-              AND gallery.membership_state = 'active'
-              AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+            FROM target_gallery gallery
+            WHERE gallery.face_id = face.face_id
             ORDER BY CASE gallery.bucket_kind
               WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1
               WHEN 'lq' THEN 3 ELSE 4 END
@@ -509,8 +528,12 @@ export const createPersonEvidenceCoverageStore = (
             WHERE has_body OR has_body_hint) AS body_asset_count,
           (SELECT count(*)::int FROM visible_assets WHERE has_presence) AS presence_asset_count,
           (SELECT count(*)::int FROM visible_assets
-            WHERE (has_body OR has_body_hint) AND NOT has_face AND NOT has_head)
-            AS body_only_asset_count,
+            WHERE NOT has_face AND (has_head OR has_body OR has_body_hint))
+            AS appearance_only_asset_count,
+          (SELECT count(*)::int FROM visible_assets
+            WHERE has_presence AND NOT has_face AND NOT has_head
+              AND NOT has_body AND NOT has_body_hint)
+            AS presence_only_asset_count,
           (SELECT count(*)::int FROM visible_assets
             WHERE capture_time IS NOT NULL) AS dated_asset_count,
           (SELECT count(*)::int FROM accepted_faces) AS face_observation_count,

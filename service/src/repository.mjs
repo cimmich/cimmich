@@ -173,9 +173,11 @@ const cleanPersonAssetAssociationType = (value) => {
   const associationType = String(value || "all")
     .trim()
     .toLowerCase();
-  if (!["all", "body", "presence"].includes(associationType)) {
+  if (
+    !["all", "appearance", "body", "head", "presence"].includes(associationType)
+  ) {
     throw typedError(
-      "associationType must be all, body, or presence",
+      "associationType must be all, appearance, body, head, or presence",
       400,
       "PERSON_ASSET_ASSOCIATION_INVALID",
     );
@@ -3748,6 +3750,23 @@ export const createCimmichRepository = (
           SELECT 1 FROM hidden_assets hidden
           WHERE hidden.object_id = head.asset_id
         )
+        UNION ALL
+        SELECT locator.person_id, locator.asset_id, 'presence' AS association_type
+        FROM imported_identity_locator locator
+        JOIN asset locator_asset ON locator_asset.asset_id = locator.asset_id
+          AND locator_asset.state = 'active'
+        WHERE locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
+            )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = locator.asset_id
+          )
       ), claim_counts AS (
         SELECT current.person_id,
           count(*) FILTER (WHERE current.state = 'accepted')::int AS accepted_faces,
@@ -4033,6 +4052,24 @@ export const createCimmichRepository = (
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
             WHERE hidden.object_id = head.asset_id
+          )
+        UNION
+        SELECT locator.asset_id
+        FROM imported_identity_locator locator
+        JOIN asset locator_asset ON locator_asset.asset_id = locator.asset_id
+          AND locator_asset.state = 'active'
+        WHERE locator.person_id = ${id}
+          AND locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
+            )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = locator.asset_id
           )
       ), photo_history AS MATERIALIZED (
         SELECT
@@ -6181,6 +6218,9 @@ export const createCimmichRepository = (
         SELECT projected_assets.*,
           (count(*) OVER ())::int AS total_count,
           (count(*) FILTER (
+            WHERE has_head AND NOT has_face
+          ) OVER ())::int AS head_count,
+          (count(*) FILTER (
             WHERE (has_body OR has_body_hint_face)
               AND NOT has_face AND NOT has_head
           ) OVER ())::int AS confirmed_body_count,
@@ -6191,25 +6231,41 @@ export const createCimmichRepository = (
               AND NOT has_body
               AND NOT has_body_hint_face
           ) OVER ())::int AS body_candidate_count,
-          (count(*) FILTER (WHERE has_presence) OVER ())::int AS presence_count
+          (count(*) FILTER (
+            WHERE (has_presence OR has_body_candidate)
+              AND NOT has_face
+              AND NOT has_head
+              AND NOT has_body
+              AND NOT has_body_hint_face
+          ) OVER ())::int AS presence_count
         FROM projected_assets
         WHERE
           (
             ${assetAssociation === "all"}
             OR (
-              ${assetAssociation === "body"}
-              AND (
-                ((has_body OR has_body_hint_face) AND NOT has_face AND NOT has_head)
-                OR (
-                  has_body_candidate
-                  AND NOT has_face
-                  AND NOT has_head
-                  AND NOT has_body
-                  AND NOT has_body_hint_face
-                )
-              )
+              ${assetAssociation === "appearance"}
+              AND NOT has_face
+              AND (has_head OR has_body OR has_body_hint_face)
             )
-            OR (${assetAssociation === "presence"} AND has_presence)
+            OR (
+              ${assetAssociation === "body"}
+              AND (has_body OR has_body_hint_face)
+              AND NOT has_face
+              AND NOT has_head
+            )
+            OR (
+              ${assetAssociation === "head"}
+              AND has_head
+              AND NOT has_face
+            )
+            OR (
+              ${assetAssociation === "presence"}
+              AND (has_presence OR has_body_candidate)
+              AND NOT has_face
+              AND NOT has_head
+              AND NOT has_body
+              AND NOT has_body_hint_face
+            )
           )
           AND (
             NOT ${filters.futureDates}

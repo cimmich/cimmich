@@ -1,5 +1,6 @@
 export type CimmichIdentityFilter =
   | 'all'
+  | 'appearance'
   | 'body'
   | 'candidates'
   | 'head'

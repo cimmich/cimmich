@@ -13,46 +13,57 @@ import { getCimmichKnownPersonClusterSuggestions } from '$lib/services/possible-
 import type { CimmichIdentityFilter } from './person-workspace-navigation';
 
 export type CimmichPersonAppearanceAssets = {
+  appearance: CimmichPersonAsset[];
+  appearanceTotal: number;
   body: CimmichPersonAsset[];
-  bodyCandidate: number;
-  bodyConfirmed: number;
   bodyTotal: number;
+  head: CimmichPersonAsset[];
+  headTotal: number;
   presence: CimmichPersonAsset[];
   presenceTotal: number;
 };
 
 export const emptyPersonAppearanceAssets = (): CimmichPersonAppearanceAssets => ({
+  appearance: [],
+  appearanceTotal: 0,
   body: [],
-  bodyCandidate: 0,
-  bodyConfirmed: 0,
   bodyTotal: 0,
+  head: [],
+  headTotal: 0,
   presence: [],
   presenceTotal: 0,
 });
 
 export const loadPersonAppearanceAssets = async (personId: string): Promise<CimmichPersonAppearanceAssets> => {
-  const [body, presence] = await Promise.all([
-    getCimmichPersonAssetsPage(personId, 250, undefined, 'body'),
+  const [appearance, presence] = await Promise.all([
+    getCimmichPersonAssetsPage(personId, 250, undefined, 'appearance'),
     getCimmichPersonAssetsPage(personId, 250, undefined, 'presence'),
   ]);
   return {
-    body: body.items,
-    bodyCandidate: body.summary.bodyCandidate,
-    bodyConfirmed: body.summary.body,
-    bodyTotal: body.summary.body + body.summary.bodyCandidate,
+    appearance: appearance.items,
+    appearanceTotal: appearance.summary.total,
+    body: appearance.items.filter((asset) => asset.association_types.includes('body')),
+    bodyTotal: appearance.summary.body,
+    head: appearance.items.filter((asset) => asset.association_types.includes('head')),
+    headTotal: appearance.summary.head,
     presence: presence.items,
-    presenceTotal: presence.summary.presence,
+    presenceTotal: presence.summary.total,
   };
 };
 
 export const loadPersonIdentityPrimary = async (
   personId: string,
   loadAssets: () => Promise<Pick<CimmichPersonAssetPage, 'items' | 'nextCursor'>>,
+  onAppearanceAssets?: (appearanceAssets: CimmichPersonAppearanceAssets) => void,
 ) => {
+  const appearancePromise = loadPersonAppearanceAssets(personId).then((appearanceAssets) => {
+    onAppearanceAssets?.(appearanceAssets);
+    return appearanceAssets;
+  });
   const [facesPage, assetsPage, appearanceAssets, candidates, presentation] = await Promise.all([
     getCimmichIdentityFacesPage(personId, 120),
     loadAssets(),
-    loadPersonAppearanceAssets(personId),
+    appearancePromise,
     getCimmichPersonCandidates(personId),
     getCimmichPersonPresentation(personId),
   ]);
@@ -85,7 +96,7 @@ export const identitySectionForFilter = (filter: CimmichIdentityFilter): Cimmich
   if (filter === 'overview') {
     return 'overview';
   }
-  if (filter === 'body' || filter === 'head' || filter === 'presence') {
+  if (filter === 'appearance' || filter === 'body' || filter === 'head' || filter === 'presence') {
     return 'appearance';
   }
   if (filter === 'candidates') {
@@ -101,7 +112,7 @@ export const identitySectionDefaultFilter = (section: CimmichIdentitySection): C
   section === 'overview'
     ? 'overview'
     : section === 'appearance'
-      ? 'body'
+      ? 'appearance'
       : section === 'checks'
         ? 'candidates'
         : section === 'display'
@@ -141,14 +152,16 @@ export const personIdentityWorkspaceGroups = ({
       id: 'appearance',
       label: 'Appearance',
       filters: [
-        { id: 'head', label: 'Head', count: cimmichIdentityCountLabel(faceSummary.head) },
+        {
+          id: 'appearance',
+          label: 'All appearance',
+          count: cimmichIdentityCountLabel(cimmichAppearanceAssets.appearanceTotal),
+        },
+        { id: 'head', label: 'Head', count: cimmichIdentityCountLabel(cimmichAppearanceAssets.headTotal) },
         {
           id: 'body',
-          label: 'Body review',
-          count:
-            loading && !loaded
-              ? '…'
-              : `${cimmichAppearanceAssets.bodyConfirmed.toLocaleString()} accepted · ${cimmichAppearanceAssets.bodyCandidate.toLocaleString()} placement`,
+          label: 'Body',
+          count: cimmichIdentityCountLabel(cimmichAppearanceAssets.bodyTotal),
         },
         {
           id: 'presence',
@@ -193,7 +206,8 @@ export const cimmichIdentityAdvancedFilters: Array<{
   { id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' },
   { id: 'secondary', label: 'Supporting', description: 'Remaining usable Face evidence' },
   { id: 'lq', label: 'Low quality', description: 'Condition-routed Face evidence' },
-  { id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' },
-  { id: 'body', label: 'Body', description: 'Body-only until a Face or Head is confirmed' },
-  { id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' },
+  { id: 'appearance', label: 'Appearance', description: 'Head or Body placement without a Face' },
+  { id: 'head', label: 'Head', description: 'Head placement without a usable Face' },
+  { id: 'body', label: 'Body', description: 'Body placement without a usable Face' },
+  { id: 'presence', label: 'Presence', description: 'Attributed without a visible Face, Head, or Body placement' },
 ];

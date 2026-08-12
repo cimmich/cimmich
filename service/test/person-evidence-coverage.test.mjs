@@ -7,10 +7,10 @@ import {
 } from "../src/person-evidence-coverage.mjs";
 
 const projectionRow = {
+  appearance_only_asset_count: 2,
   body_asset_count: 7,
   body_hint_observation_count: 2,
   body_observation_count: 8,
-  body_only_asset_count: 2,
   body_without_pose_count: 3,
   candidate_face_count: 4,
   contexts: [
@@ -59,6 +59,7 @@ const projectionRow = {
   person_id: "person-maya",
   pose_observation_count: 5,
   presence_asset_count: 2,
+  presence_only_asset_count: 1,
   presence_observation_count: 2,
   prime_reference_count: 3,
   secondary_reference_count: 6,
@@ -106,12 +107,13 @@ test("Person evidence coverage projects accepted evidence without mutation autho
     personId: "person-maya",
   });
   assert.deepEqual(result.assets, {
+    appearanceOnly: 2,
     body: 7,
-    bodyOnly: 2,
     dated: 11,
     face: 9,
     head: 1,
     presence: 2,
+    presenceOnly: 1,
     total: 11,
   });
   assert.deepEqual(result.observations, {
@@ -164,11 +166,20 @@ test("Person evidence coverage projects accepted evidence without mutation autho
   assert.equal(statements.length, 1);
   assert.match(statements[0], /current_face_identity/);
   assert.match(statements[0], /all_accepted_faces AS MATERIALIZED/);
+  assert.match(statements[0], /target_gallery AS MATERIALIZED/);
   assert.match(statements[0], /same_person_detector_faces AS MATERIALIZED/);
   assert.match(statements[0], /body_hint_faces AS MATERIALIZED/);
   assert.match(statements[0], /body_hint\.face_id IS NULL/);
   assert.match(statements[0], /accepted_body_hints AS MATERIALIZED/);
+  assert.match(statements[0], /reference_head_faces AS MATERIALIZED/);
+  assert.match(statements[0], /accepted_presence_assets AS MATERIALIZED/);
+  assert.match(statements[0], /locator\.intended_tag_type = 'body'/);
   assert.match(statements[0], /has_body OR has_body_hint/);
+  assert.match(
+    statements[0],
+    /NOT has_face AND \(has_head OR has_body OR has_body_hint\)/,
+  );
+  assert.match(statements[0], /has_presence AND NOT has_face AND NOT has_head/);
   assert.match(statements[0], /source_gallery_permission/);
   assert.match(statements[0], /effective_gallery_permission/);
   assert.match(statements[0], /resolution_kind = 'stronger_existing_truth'/);
