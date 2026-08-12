@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-11
+Updated: 2026-08-13
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview release: migration-ledger schema 128/patch 1
+Current Community Preview release: migration-ledger schema 130/patch 1
 Current development source: migration-ledger schema 130/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
+Current release candidate: `v1.1.0-community-preview.9` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -30,6 +30,35 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 9 navigation and matching-continuity gate — 2026-08-13
+
+Preview 9 corrects two release-blocking regressions: the exact Cimmich photo
+viewer could open projected media but could not move to the adjacent item, and
+the post-Preview-8 Possible People pipeline no longer ran the archive-wide
+per-Face SourcePack pass that had supplied high-quality known-Person review
+candidates. The repair restores that machinery without reverting the later
+review, owner-boundary, navigation or Local AI work.
+
+The candidate requires:
+
+- previous/next controls, pointer use and Left/Right arrow keys to change the
+  exact rendered media while retaining projected collection and privacy state;
+- an archive-wide per-Face pass against the one active qualified SourcePack,
+  using its frozen score and margin floors plus same-photo and shared-context
+  guards;
+- bounded Mac-local vector scoring with no biometric network path, a dry-run
+  default and persistence limited to review candidates;
+- known-Person classification based on distributed cluster-member consensus,
+  requiring one unopposed Person, at least two matching samples and at least a
+  50% match fraction;
+- explicit tests that neither matcher path can accept identity automatically or
+  write source media; and
+- the complete schema-130 service, Web, provider, migration, browser,
+  publication-scan, clean-bundle and installer-preflight release gates.
+
+Exact clean-tree commit/tree identity, bundle hashes and hosted proof are
+recorded only after the reviewed merge produces the immutable tag target.
 
 ## Independent-review follow-up gate — 2026-08-11
 
@@ -535,8 +564,8 @@ Schema 130 durably records both ranked-query and independent-verification
 frontiers on every identity-audit run. The owner surface reports partial audit
 coverage explicitly, and legacy runs state that they predate complete limit
 reporting rather than presenting a bounded queue as exhaustive.
-The Community Preview 8 release remains schema 128; schema 130 is current local
-development source pending full lifecycle and live-runtime certification.
+Community Preview 9 advances the maintained release to schema 130 while the
+schema-128 Preview 8 tag and bundles remain immutable.
 
 ## Historical Public Beta Patch 6 certification
 

@@ -212,6 +212,10 @@ export const createPossiblePeopleProjection = (
           evidence: row.evidence,
           faceCount: Number(row.evidence?.faceCount || 0),
           match: {
+            bestScore:
+              row.suggestion_evidence?.bestScore == null
+                ? null
+                : Number(row.suggestion_evidence.bestScore),
             classificationVersion:
               row.suggestion_evidence?.classificationVersion,
             leadScore: Number(row.suggestion_evidence?.leadScore || 0),
@@ -219,12 +223,22 @@ export const createPossiblePeopleProjection = (
               row.suggestion_evidence?.margin == null
                 ? null
                 : Number(row.suggestion_evidence.margin),
+            matchedFaceCount: Number(
+              row.suggestion_evidence?.matchedFaceCount || 1,
+            ),
+            matchFraction:
+              row.suggestion_evidence?.matchFraction == null
+                ? null
+                : Number(row.suggestion_evidence.matchFraction),
             referenceFaceId: row.suggestion_evidence?.referenceFaceId || null,
             runnerPersonId: row.suggestion_evidence?.runnerPersonId || null,
             runnerScore:
               row.suggestion_evidence?.runnerScore == null
                 ? null
                 : Number(row.suggestion_evidence.runnerScore),
+            sampledFaceCount: Number(
+              row.suggestion_evidence?.sampledFaceCount || 1,
+            ),
           },
           representative: {
             box: { h: row.box_h, w: row.box_w, x: row.box_x, y: row.box_y },

@@ -7,7 +7,10 @@ import {
   deriveSourcePackSuccessorNext,
   projectSourcePackReviewGate,
 } from "../src/face-matching-operator.mjs";
-import { deriveSourcePackReviewGate } from "../src/source-pack-evaluator.mjs";
+import {
+  deriveSourcePackReviewGate,
+  sourcePackReviewGateContract,
+} from "../src/source-pack-evaluator.mjs";
 
 const face = (personId, captureTime) => ({ captureTime, personId });
 
@@ -428,6 +431,17 @@ const gateContext = {
   packId: "pack-owner-v1",
   split: { kind: "synthetic-open-set" },
 };
+
+test("open-set operating-point selection keeps a calibration precision buffer", () => {
+  assert.equal(
+    sourcePackReviewGateContract.calibrationMinimumDecisionPrecisionPercent,
+    99,
+  );
+  assert.equal(
+    sourcePackReviewGateContract.minimumDecisionPrecisionPercent,
+    98,
+  );
+});
 
 test("review receipt projection is immutable, server-derived and closed when unavailable", () => {
   const absent = projectSourcePackReviewGate({ packId: gateContext.packId });

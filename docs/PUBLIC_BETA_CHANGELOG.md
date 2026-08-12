@@ -4,6 +4,29 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.9 — Photo navigation and matching continuity
+
+- The exact Cimmich photo viewer again moves through its projected collection
+  with the previous/next controls, mouse clicks and Left/Right arrow keys. It
+  retains the collection context and presentation boundary while the viewed
+  media changes.
+- Archive-wide SourcePack matching again scores each eligible Face against the
+  active qualified Prime reference set. Frozen score and margin floors,
+  same-photo and shared-context guards, active-pack provenance and local-only
+  scoring remain mandatory.
+- Possible People known-person suggestions now sample members across each
+  recurring group instead of trusting one representative Face. A suggestion
+  requires one unopposed Person, at least two matching samples and at least
+  half of the sampled group; the UI exposes that consensus evidence.
+- The archive matcher is dry-run by default and may persist review candidates
+  only. It never accepts identity, never writes source media and cannot turn a
+  diagnostic replay into matching authority.
+- The maintained bundle now includes the schema-129 single-owner boundary,
+  schema-130 durable audit-frontier reporting, the familiar community
+  navigation default and the optional experimental Local AI review surface
+  accumulated after Preview 8.
+- Compatibility remains exact Immich 3.1.0; the release schema is 130/patch 1.
+
 ## v1.1.0-community-preview.8 — Photo privacy and portable operations
 
 - Standard and Personal now exclude higher-ranked photos before inherited
