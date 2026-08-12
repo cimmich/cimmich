@@ -82,6 +82,9 @@ services:
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
     image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    # Bind-mounted operator state remains owner-only on Linux by running
+    # one-shot writers as the invoking host user rather than the image UID.
+    user: ${CIMMICH_PUBLIC_DEMO_HOST_UID:-1000}:${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
     environment:
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
     volumes:
