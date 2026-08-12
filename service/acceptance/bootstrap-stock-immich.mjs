@@ -17,6 +17,8 @@ const receiptPath = String(
 ).trim();
 const withOnboardingPeopleFixture =
   process.env.CIMMICH_STOCK_ONBOARDING_PEOPLE_FIXTURE === "1";
+const withSecondaryUserFixture =
+  process.env.CIMMICH_STOCK_SECONDARY_USER_FIXTURE === "1";
 
 if (
   !apiRoot ||
@@ -70,6 +72,32 @@ const key = await requestJson("/api-keys", {
   token: login.accessToken,
 });
 assert.equal(typeof key.secret, "string");
+
+let secondaryKey = null;
+if (withSecondaryUserFixture) {
+  const secondaryEmail = `secondary-${email}`;
+  const secondaryPassword = `${password}-secondary`;
+  await requestJson("/admin/users", {
+    body: {
+      email: secondaryEmail,
+      name: "Cimmich Secondary Fixture",
+      password: secondaryPassword,
+      shouldChangePassword: false,
+    },
+    token: login.accessToken,
+  });
+  const secondaryLogin = await requestJson("/auth/login", {
+    body: { email: secondaryEmail, password: secondaryPassword },
+  });
+  secondaryKey = await requestJson("/api-keys", {
+    body: {
+      name: "Cimmich disposable secondary key",
+      permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
+    },
+    token: secondaryLogin.accessToken,
+  });
+  assert.equal(typeof secondaryKey.secret, "string");
+}
 
 const fixture = await readFile(fixturePath);
 const fixtureDigest = createHash("sha256").update(fixture).digest("hex");
@@ -178,6 +206,7 @@ await writeFile(
     fixtureSha256: fixtureDigest,
     immichVersion: "3.1.0",
     permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
+    secondaryApiKey: secondaryKey?.secret || null,
     peopleFixture: withOnboardingPeopleFixture
       ? { labelled: 1, unlabelled: 1 }
       : null,
@@ -200,6 +229,7 @@ process.stdout.write(
       ? { labelled: 1, unlabelled: 1 }
       : null,
     permissions: IMMICH_READ_ONLY_COMPANION_PERMISSIONS,
+    secondaryUserFixture: Boolean(secondaryKey),
     stableAssetObservations: stableObservations,
     status: "READY",
   })}\n`,

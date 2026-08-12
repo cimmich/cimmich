@@ -7,6 +7,8 @@ export const load = (async ({ params, url }) => {
   const mode = url.searchParams.get('mode');
   const identityFilter = url.searchParams.get('identityFilter');
   const identityReviewCount = Number(url.searchParams.get('identityReviewCount') || 0);
+  const resolvedMode = mode === 'evidence' ? 'identity' : mode;
+  const resolvedIdentityFilter = mode === 'evidence' ? 'overview' : identityFilter;
 
   return {
     meta: {
@@ -15,22 +17,28 @@ export const load = (async ({ params, url }) => {
     personId: url.searchParams.get('personId') || '',
     personName: decodeURIComponent(params.personName),
     mode:
-      mode === 'connections' || mode === 'details' || mode === 'documents' || mode === 'identity' || mode === 'setup'
-        ? mode
+      resolvedMode === 'connections' ||
+      resolvedMode === 'details' ||
+      resolvedMode === 'documents' ||
+      resolvedMode === 'identity' ||
+      resolvedMode === 'setup'
+        ? resolvedMode
         : 'photos',
     identityFilter:
-      identityFilter === 'body' ||
-      identityFilter === 'candidates' ||
-      identityFilter === 'head' ||
-      identityFilter === 'lq' ||
-      identityFilter === 'needs_qc' ||
-      identityFilter === 'presentation' ||
-      identityFilter === 'presence' ||
-      identityFilter === 'prime' ||
-      identityFilter === 'references' ||
-      identityFilter === 'secondary'
-        ? identityFilter
-        : 'all',
+      resolvedIdentityFilter === 'all' ||
+      resolvedIdentityFilter === 'body' ||
+      resolvedIdentityFilter === 'candidates' ||
+      resolvedIdentityFilter === 'head' ||
+      resolvedIdentityFilter === 'lq' ||
+      resolvedIdentityFilter === 'needs_qc' ||
+      resolvedIdentityFilter === 'overview' ||
+      resolvedIdentityFilter === 'presentation' ||
+      resolvedIdentityFilter === 'presence' ||
+      resolvedIdentityFilter === 'prime' ||
+      resolvedIdentityFilter === 'references' ||
+      resolvedIdentityFilter === 'secondary'
+        ? resolvedIdentityFilter
+        : 'overview',
     identityReviewCount: Number.isFinite(identityReviewCount)
       ? Math.min(1_000_000, Math.max(0, Math.floor(identityReviewCount)))
       : 0,

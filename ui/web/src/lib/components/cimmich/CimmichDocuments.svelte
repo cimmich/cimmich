@@ -52,6 +52,7 @@
     labelForDocumentKind,
   } from './document-presentation';
   import { filterVisibleCimmichAssets } from './asset-picker-visibility';
+  import CimmichDocumentSearch from './CimmichDocumentSearch.svelte';
 
   type Subject = { id: string; kind: CimmichDocumentSubjectKind; name: string };
   type UndoReceipt = { decisionId: string; kind: 'document' | 'visibility'; message: string };
@@ -60,10 +61,18 @@
     initialDocumentId?: string;
     initialQuery?: string;
     onDocumentChange?: (documentId: string | null) => void;
+    onQueryChange?: (query: string) => void;
     subject?: Subject;
   }
 
-  let { heading = 'Documents', initialDocumentId = '', initialQuery = '', onDocumentChange, subject }: Props = $props();
+  let {
+    heading = 'Documents',
+    initialDocumentId = '',
+    initialQuery = '',
+    onDocumentChange,
+    onQueryChange,
+    subject,
+  }: Props = $props();
   let documents = $state<CimmichDocument[]>([]);
   let loaded = $state(false);
   let error = $state<CimmichServiceError | null>(null);
@@ -168,6 +177,12 @@
         loaded = true;
       }
     }
+  };
+
+  const submitSearch = () => {
+    query = query.trim();
+    onQueryChange?.(query);
+    void load();
   };
 
   const openDetail = async (document: Pick<CimmichDocument, 'documentId'>, notify = true) => {
@@ -675,35 +690,19 @@
 >
   <div class:without-heading={!heading} class="document-toolbar">
     {#if heading}<h2 class="text-xl font-semibold whitespace-nowrap" id="documents-heading">{heading}</h2>{/if}
-    {#if loaded && (documents.length > 0 || query || kindFilter || showArchived)}
-      <form
-        class="document-toolbar-search"
-        role="search"
-        onsubmit={(event) => {
-          event.preventDefault();
+    {#if loaded && (!subject || documents.length > 0 || query || kindFilter || showArchived)}
+      <CimmichDocumentSearch
+        {kindFilter}
+        onArchivedChange={(next) => {
+          showArchived = next;
           void load();
         }}
-      >
-        <label class="document-search">
-          <Icon icon={mdiMagnify} size="20" />
-          <span class="sr-only">Search documents</span>
-          <input bind:value={query} placeholder="Search title or filename" maxlength="200" />
-        </label>
-        <label class="document-field compact"
-          ><span class="sr-only">Document type</span><select bind:value={kindFilter} aria-label="Document type">
-            <option value="">All types</option>
-            {#each documentKindOptions as option (option.value)}<option value={option.value}>{option.label}</option
-              >{/each}
-          </select></label
-        >
-        <button class="document-secondary-button document-search-submit" type="submit" aria-label="Search">
-          <Icon icon={mdiMagnify} size="18" /><span class="sr-only">Search</span>
-        </button>
-        <label class:active={showArchived} class="document-archive-toggle" title="Include archived">
-          <input class="sr-only" type="checkbox" bind:checked={showArchived} onchange={() => void load()} />
-          <Icon icon={mdiArchiveArrowDownOutline} size="18" /><span class="sr-only">Include archived</span>
-        </label>
-      </form>
+        onKindChange={(next) => (kindFilter = next)}
+        onQueryChange={(next) => (query = next)}
+        onSearch={submitSearch}
+        {query}
+        {showArchived}
+      />
     {/if}
     <div class="document-toolbar-actions">
       {#if subject}<button class="document-secondary-button" type="button" onclick={() => void openExisting()}

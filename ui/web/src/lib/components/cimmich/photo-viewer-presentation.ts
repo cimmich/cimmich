@@ -30,6 +30,13 @@ export type ManualTagPanelPlacement = {
   width: number;
 };
 
+export type BulkFacePanelPlacement = {
+  left: number;
+  maxHeight: number;
+  top: number;
+  width: number;
+};
+
 type FaceDetailsPanelPlacementInput = {
   editing: boolean;
   face: { bottom: number; left: number; right: number };
@@ -40,6 +47,12 @@ type FaceDetailsPanelPlacementInput = {
 type ManualTagPanelPlacementInput = {
   marker: { right: number; top: number };
   overlay: { height: number; width: number };
+};
+
+type BulkFacePanelPlacementInput = {
+  overlay: { height: number; width: number };
+  requestedLeft?: number;
+  requestedTop: number;
 };
 
 type PhotoTagSubject = {
@@ -263,6 +276,26 @@ export const placeManualTagPanel = ({ marker, overlay }: ManualTagPanelPlacement
   };
 };
 
+export const placeBulkFacePanel = ({
+  overlay,
+  requestedLeft,
+  requestedTop,
+}: BulkFacePanelPlacementInput): BulkFacePanelPlacement => {
+  const margin = 12;
+  const toolbarClearance = 76;
+  const width = Math.min(448, Math.max(0, overlay.width - margin * 2));
+  const rightAlignedLeft = Math.max(margin, overlay.width - width - margin);
+  const left = Math.min(Math.max(margin, requestedLeft ?? rightAlignedLeft), rightAlignedLeft);
+  const top = Math.min(Math.max(toolbarClearance, requestedTop), Math.max(toolbarClearance, overlay.height - 220));
+
+  return {
+    left,
+    maxHeight: Math.max(0, overlay.height - top - margin),
+    top,
+    width,
+  };
+};
+
 export const stopPhotoViewerShortcutPropagation = (event: Pick<KeyboardEvent, 'stopPropagation'>) => {
   event.stopPropagation();
 };
@@ -279,10 +312,22 @@ export const getCimmichPetPhotoContext = (url: URL) => {
   return petId && petName ? { petId, petName } : undefined;
 };
 
+const isExplicitCimmichPhotoContext = (url: URL) => {
+  if (!url.pathname.startsWith('/photos/')) {
+    return false;
+  }
+  const overlay = url.searchParams.get('cimmichOverlay');
+  return url.searchParams.get('organise') === '1' || overlay === 'machinery' || overlay === 'people';
+};
+
 export const isCimmichViewingSurface = (url: URL) =>
   url.pathname.startsWith('/cimmich') ||
+  isExplicitCimmichPhotoContext(url) ||
   Boolean(getCimmichPersonPhotoContext(url)) ||
   Boolean(getCimmichPetPhotoContext(url));
+
+export const shouldDeferCimmichExactPhotoTimeline = (url: URL, assetId: string | undefined) =>
+  Boolean(assetId?.trim()) && url.pathname.startsWith('/photos/') && isCimmichViewingSurface(url);
 
 export const matchesCimmichPersonPhotoContext = (
   context: CimmichPersonPhotoContext | undefined,

@@ -2,11 +2,14 @@
   import { getCimmichPeople, type CimmichImmichPersonCluster, type CimmichPerson } from '$lib/services/cimmich.service';
   import {
     getCimmichPossiblePeople,
+    getCimmichPossiblePersonPreviews,
     refreshCimmichPossiblePeople,
     resolveCimmichPossiblePerson,
     undoCimmichPossiblePersonResolution,
+    type CimmichPossiblePersonPreview,
     type CimmichPossiblePeopleRun,
   } from '$lib/services/possible-people.service';
+  import Combobox, { type ComboBoxOption } from '$lib/components/shared-components/Combobox.svelte';
   import { getAssetMediaUrl } from '$lib/utils';
   import { cimmichSquareCropBackgroundStyle, cimmichSquareCropFrame } from '$lib/utils/cimmich-crop';
   import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
@@ -43,6 +46,11 @@
   let visibleCount = $state(20);
   let activeRun = $state<CimmichPossiblePeopleRun | null>(null);
   let completedRun = $state<CimmichPossiblePeopleRun | null>(null);
+  let previewRunId = $state('__uninitialized__');
+  let previewsByCluster = $state<Record<string, CimmichPossiblePersonPreview[]>>({});
+  let previewIndexes = $state<Record<string, number>>({});
+  let previewLoading = $state<Record<string, boolean>>({});
+  let previewError = $state('');
   let refreshRequested = $state(false);
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   const minimumRecurringPhotos = 5;
@@ -84,6 +92,17 @@
   const displayedClusters = $derived(mode === 'active' ? activeClusters : ignoredClusters);
   const visibleClusters = $derived(displayedClusters.slice(0, visibleCount));
   const remainingCount = $derived(Math.max(0, displayedClusters.length - visibleClusters.length));
+  const peopleOptions = $derived<ComboBoxOption[]>(
+    people.map((person) => ({
+      description:
+        Number.isFinite(person.asset_count) && person.asset_count > 0
+          ? `${person.asset_count.toLocaleString()} ${person.asset_count === 1 ? 'photo' : 'photos'}`
+          : undefined,
+      label: person.display_name,
+      searchText: person.display_name,
+      value: person.person_id,
+    })),
+  );
 
   const load = async () => {
     const generation = ++loadGeneration;
@@ -97,6 +116,14 @@
       clusters = preview.clusters;
       activeRun = preview.activeRun;
       completedRun = preview.completedRun;
+      const nextPreviewRunId = preview.completedRun?.runId || '';
+      if (nextPreviewRunId !== previewRunId) {
+        previewRunId = nextPreviewRunId;
+        previewsByCluster = {};
+        previewIndexes = {};
+        previewLoading = {};
+        previewError = '';
+      }
       onignoredcount(
         preview.clusters.filter((cluster) => hasMeaningfulRecurrence(cluster) && isIgnored(cluster)).length,
       );
@@ -196,6 +223,58 @@
     }
   };
 
+  const selectExistingPerson = (clusterId: string, option: ComboBoxOption | undefined) => {
+    selectedPeople = { ...selectedPeople, [clusterId]: option?.value || '' };
+  };
+
+  const selectedPersonOption = (clusterId: string) =>
+    peopleOptions.find((option) => option.value === selectedPeople[clusterId]);
+
+  const ensureVisiblePreviews = async (clusterIds: string[], expectedRunId: string) => {
+    if (!expectedRunId) {
+      return;
+    }
+    const missing = clusterIds.filter(
+      (clusterId) => previewsByCluster[clusterId] === undefined && !previewLoading[clusterId],
+    );
+    if (missing.length === 0) {
+      return;
+    }
+    previewLoading = {
+      ...previewLoading,
+      ...Object.fromEntries(missing.map((clusterId) => [clusterId, true])),
+    };
+    previewError = '';
+    try {
+      const result = await getCimmichPossiblePersonPreviews(missing);
+      if (previewRunId !== expectedRunId || result.runId !== expectedRunId) {
+        return;
+      }
+      const next = { ...previewsByCluster };
+      for (const clusterId of missing) {
+        next[clusterId] = [];
+      }
+      for (const item of result.items) {
+        next[item.clusterId] = item.previews;
+      }
+      previewsByCluster = next;
+    } catch {
+      if (previewRunId === expectedRunId) {
+        previewsByCluster = {
+          ...previewsByCluster,
+          ...Object.fromEntries(missing.map((clusterId) => [clusterId, []])),
+        };
+        previewError = 'Extra evidence photos could not be loaded. The representative photo is still available.';
+      }
+    } finally {
+      const nextLoading = { ...previewLoading };
+      for (const clusterId of missing) {
+        delete nextLoading[clusterId];
+      }
+      previewLoading = nextLoading;
+    }
+  };
+
   const resolve = async (cluster: CimmichImmichPersonCluster, action: 'create_person' | 'existing_person') => {
     if (busyClusterId) {
       return;
@@ -220,10 +299,13 @@
         ...(action === 'existing_person' ? { personId } : { newPersonName }),
         snapshotDigest: cluster.snapshotDigest,
       });
-      notice =
-        action === 'existing_person'
-          ? `${result.candidateCount ?? cluster.faceCount} faces were added to that Person’s review queue.`
-          : `Person created; ${result.candidateCount ?? cluster.faceCount} faces were added to their review queue.`;
+      const candidateCount = result.candidateCount ?? cluster.faceCount;
+      const collisionAssetCount = result.collisionAssetCount ?? 0;
+      notice = `${action === 'create_person' ? 'Person created; ' : ''}${candidateCount} faces were added to ${action === 'existing_person' ? 'that Person’s' : 'their'} Checks.${
+        collisionAssetCount > 0
+          ? ` ${result.collisionFaceCount ?? collisionAssetCount} appear in ${collisionAssetCount} ${collisionAssetCount === 1 ? 'photo that already contains that Person' : 'photos that already contain that Person'}, so they are under Multiple in one photo.`
+          : ' They are under New matches.'
+      } Nothing was confirmed.`;
       openClusterId = '';
       clusters = clusters.filter((candidate) => candidate.immichPersonId !== cluster.immichPersonId);
     } catch (error_) {
@@ -260,8 +342,26 @@
     }
   };
 
-  const cropFrame = (cluster: CimmichImmichPersonCluster) => {
-    const box = cluster.representative.box;
+  type Preview = CimmichImmichPersonCluster['representative'] | CimmichPossiblePersonPreview;
+
+  const previewsFor = (cluster: CimmichImmichPersonCluster): Preview[] =>
+    previewsByCluster[cluster.immichPersonId]?.length
+      ? previewsByCluster[cluster.immichPersonId]
+      : [cluster.representative];
+  const previewIndexFor = (cluster: CimmichImmichPersonCluster) =>
+    Math.min(previewIndexes[cluster.immichPersonId] ?? 0, previewsFor(cluster).length - 1);
+  const previewFor = (cluster: CimmichImmichPersonCluster) => previewsFor(cluster)[previewIndexFor(cluster)];
+
+  const movePreview = (cluster: CimmichImmichPersonCluster, direction: -1 | 1) => {
+    const count = previewsFor(cluster).length;
+    previewIndexes = {
+      ...previewIndexes,
+      [cluster.immichPersonId]: (previewIndexFor(cluster) + direction + count) % count,
+    };
+  };
+
+  const cropFrame = (preview: Preview) => {
+    const box = preview.box;
     return {
       box,
       centerX: box.x + box.w / 2,
@@ -271,29 +371,29 @@
         boxW: box.w,
         boxX: box.x,
         boxY: box.y,
-        height: cluster.representative.height ?? 0,
+        height: preview.height ?? 0,
         padding: 4,
-        width: cluster.representative.width ?? 0,
+        width: preview.width ?? 0,
       }),
     };
   };
 
-  const cropStyle = (cluster: CimmichImmichPersonCluster) => {
-    const box = cluster.representative.box;
+  const cropStyle = (preview: Preview) => {
+    const box = preview.box;
     return cimmichSquareCropBackgroundStyle({
       boxH: box.h,
       boxW: box.w,
       boxX: box.x,
       boxY: box.y,
-      height: cluster.representative.height ?? 0,
+      height: preview.height ?? 0,
       padding: 4,
-      url: getAssetMediaUrl({ id: cluster.representative.sourceAssetId, size: AssetMediaSize.Preview }),
-      width: cluster.representative.width ?? 0,
+      url: getAssetMediaUrl({ id: preview.sourceAssetId, size: AssetMediaSize.Preview }),
+      width: preview.width ?? 0,
     });
   };
 
-  const faceMarkerStyle = (cluster: CimmichImmichPersonCluster) => {
-    const { box, centerX, centerY, cropH, cropW, cropX, cropY } = cropFrame(cluster);
+  const faceMarkerStyle = (preview: Preview) => {
+    const { box, centerX, centerY, cropH, cropW, cropX, cropY } = cropFrame(preview);
     const diameter = Math.min(96, Math.max(box.w / cropW, box.h / cropH) * 1.18 * 100);
     const left = ((centerX - cropX) * 100) / cropW - diameter / 2;
     const top = ((centerY - cropY) * 100) / cropH - diameter / 2;
@@ -318,6 +418,13 @@
 
   $effect(() => {
     void load();
+  });
+
+  $effect(() => {
+    void ensureVisiblePreviews(
+      visibleClusters.map((cluster) => cluster.immichPersonId),
+      previewRunId,
+    );
   });
 
   onDestroy(() => {
@@ -361,6 +468,11 @@
       {notice}
     </p>
   {/if}
+  {#if previewError}
+    <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+      {previewError}
+    </p>
+  {/if}
 
   {#if loading}
     <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -385,21 +497,51 @@
   {:else}
     <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {#each visibleClusters as cluster (cluster.immichPersonId)}
+        {@const previews = previewsFor(cluster)}
+        {@const previewIndex = previewIndexFor(cluster)}
+        {@const preview = previewFor(cluster)}
         <article class="flex min-w-0 flex-col rounded-2xl border border-gray-200 p-3 dark:border-gray-700">
-          <a
-            href={`/photos/${cluster.representative.sourceAssetId}`}
-            class="relative block aspect-square w-full overflow-hidden rounded-xl bg-gray-200 bg-no-repeat dark:bg-gray-800"
-            style={cropStyle(cluster)}
-            aria-label="Open representative photo for possible person"
-            data-testid="possible-person-photo"
-          >
-            <span
-              class="pointer-events-none absolute rounded-full border-2 border-dotted border-white/95 shadow-[0_0_0_1px_rgba(0,0,0,0.4),0_0_12px_rgba(0,0,0,0.35)]"
-              style={faceMarkerStyle(cluster)}
-              data-testid="possible-person-face-marker"
-              aria-hidden="true"
-            ></span>
-          </a>
+          <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-800">
+            <a
+              href={`/photos/${preview.sourceAssetId}?cimmichFaceId=${encodeURIComponent(preview.faceId)}&cimmichOverlay=machinery`}
+              class="block size-full bg-no-repeat"
+              style={cropStyle(preview)}
+              aria-label={`Open evidence photo ${previewIndex + 1} for possible person`}
+              data-testid="possible-person-photo"
+            >
+              <span
+                class="pointer-events-none absolute rounded-full border-2 border-dotted border-white/95 shadow-[0_0_0_1px_rgba(0,0,0,0.4),0_0_12px_rgba(0,0,0,0.35)]"
+                style={faceMarkerStyle(preview)}
+                data-testid="possible-person-face-marker"
+                aria-hidden="true"
+              ></span>
+            </a>
+            {#if previews.length > 1}
+              <button
+                class="absolute top-1/2 left-2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-xl text-white hover:bg-black/80"
+                type="button"
+                aria-label="Previous evidence photo for possible person"
+                onclick={() => movePreview(cluster, -1)}>←</button
+              >
+              <button
+                class="absolute top-1/2 right-2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-xl text-white hover:bg-black/80"
+                type="button"
+                aria-label="Next evidence photo for possible person"
+                onclick={() => movePreview(cluster, 1)}>→</button
+              >
+              <span
+                class="absolute right-2 bottom-2 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white"
+              >
+                {previewIndex + 1} of {previews.length}
+              </span>
+            {:else if previewLoading[cluster.immichPersonId]}
+              <span
+                class="absolute right-2 bottom-2 rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold text-white"
+              >
+                Loading photos…
+              </span>
+            {/if}
+          </div>
           <div class="min-w-0 px-1 pt-4">
             <p class="font-semibold">Possible person</p>
             <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
@@ -451,25 +593,16 @@
           </div>
           {#if mode === 'active' && openClusterId === cluster.immichPersonId}
             <div class="mt-3 grid gap-3 border-t border-gray-200 pt-3 dark:border-gray-700">
-              <label class="grid gap-1.5 text-xs font-semibold">
-                Match an existing Person
-                <select
-                  class="min-h-10 rounded-xl border border-gray-300 bg-transparent px-3 text-sm font-normal dark:border-gray-600"
-                  value={selectedPeople[cluster.immichPersonId] || ''}
-                  disabled={loadingPeople}
-                  onchange={(event) => {
-                    selectedPeople = {
-                      ...selectedPeople,
-                      [cluster.immichPersonId]: event.currentTarget.value,
-                    };
-                  }}
-                >
-                  <option value="">{loadingPeople ? 'Loading people…' : 'Choose a Person'}</option>
-                  {#each people as person (person.person_id)}
-                    <option value={person.person_id}>{person.display_name}</option>
-                  {/each}
-                </select>
-              </label>
+              <Combobox
+                label="Match an existing Person"
+                options={peopleOptions}
+                selectedOption={selectedPersonOption(cluster.immichPersonId)}
+                placeholder={loadingPeople ? 'Loading people…' : 'Type a Person’s name…'}
+                disabled={loadingPeople || Boolean(busyClusterId)}
+                defaultFirstOption
+                clearSelectionOnInput
+                onSelect={(option) => selectExistingPerson(cluster.immichPersonId, option)}
+              />
               <button
                 type="button"
                 class="inline-flex min-h-9 w-fit items-center gap-1.5 rounded-full border border-gray-300 px-3 text-xs font-semibold disabled:opacity-50 dark:border-gray-600"

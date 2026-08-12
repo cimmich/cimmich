@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import hashlib
 from io import BytesIO
 import json
+import os
 import struct
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +25,7 @@ MAX_RESIDENT_METADATA_BYTES = 64 * 1024
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
+MAX_RUNTIME_THREADS = 16
 
 
 class ProviderError(Exception):
@@ -75,6 +79,7 @@ def load_request(raw: bytes) -> dict:
             "inputRevision",
             "manifestPath",
             "modelPath",
+            "presentationRotationQuarterTurns",
             "schemaVersion",
             "sourceContentDigest",
         },
@@ -87,6 +92,13 @@ def load_request(raw: bytes) -> dict:
     for field in ("imagePath", "manifestPath", "modelPath"):
         if not isinstance(value[field], str) or not value[field] or "\x00" in value[field]:
             raise ProviderError(f"{field} is invalid")
+    validate_quarter_turns(value["presentationRotationQuarterTurns"])
+    return value
+
+
+def validate_quarter_turns(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 3:
+        raise ProviderError("presentation rotation is invalid")
     return value
 
 
@@ -111,25 +123,91 @@ def load_manifest(path: Path, model_path: Path) -> dict:
         raise ProviderError("provider privacy boundary is invalid")
     if manifest.get("detector", {}).get("artifactDigest") != file_digest(model_path):
         raise ProviderError("model checkpoint does not match the manifest")
+    threads = manifest.get("execution", {}).get("threads")
+    if (
+        not isinstance(threads, int)
+        or isinstance(threads, bool)
+        or not 1 <= threads <= MAX_RUNTIME_THREADS
+    ):
+        raise ProviderError("provider thread budget is invalid")
     return manifest
+
+
+def configure_runtime(manifest: dict, torch_module: Any = None) -> Any:
+    runtime_cache = str(Path(tempfile.gettempdir()) / "cimmich-ultralytics")
+    os.environ.setdefault("YOLO_CONFIG_DIR", runtime_cache)
+    os.environ.setdefault("MPLCONFIGDIR", runtime_cache)
+    if torch_module is None:
+        import torch as torch_module
+
+    threads = manifest["execution"]["threads"]
+    torch_module.set_num_threads(threads)
+    try:
+        torch_module.set_num_interop_threads(min(threads, 4))
+    except RuntimeError:
+        # PyTorch permits the inter-op pool to be configured only before work
+        # starts. The resident provider sets it during boot; a reused in-process
+        # test/runtime may already have initialized it.
+        pass
+    return torch_module
 
 
 def round6(value: float) -> float:
     return round(max(0.0, min(1.0, float(value))), 6)
 
 
+def source_box(box: dict, quarter_turns: int) -> dict:
+    """Map a box from the corrected presentation back to source coordinates."""
+    x, y, width, height = box["x"], box["y"], box["w"], box["h"]
+    if quarter_turns == 1:
+        return {"x": y, "y": 1 - x - width, "w": height, "h": width}
+    if quarter_turns == 2:
+        return {"x": 1 - x - width, "y": 1 - y - height, "w": width, "h": height}
+    if quarter_turns == 3:
+        return {"x": 1 - y - height, "y": x, "w": height, "h": width}
+    return box
+
+
+def presentation_image(image_input: Any, quarter_turns: int) -> Any:
+    if quarter_turns == 0:
+        return image_input
+    try:
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        if isinstance(image_input, (str, Path)):
+            with Image.open(image_input) as opened:
+                image = np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
+        else:
+            image = np.asarray(image_input)
+        return np.rot90(image, k=-quarter_turns).copy()
+    except (OSError, ValueError) as error:
+        raise ProviderError(
+            "source media is not a readable image",
+            "ULTRALYTICS_BODY_SOURCE_UNREADABLE",
+        ) from error
+
+
 def project_result(request: dict, manifest: dict, model: Any, image_input: Any) -> dict:
+    quarter_turns = validate_quarter_turns(
+        request["presentationRotationQuarterTurns"]
+    )
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
-    results = model.predict(
-        image_input,
-        classes=[0],
-        conf=RAW_CONFIDENCE_FLOOR,
-        device=runtime_device,
-        imgsz=manifest["preprocessing"]["inputWidth"],
-        max_det=MAX_RAW_DETECTIONS,
-        verbose=False,
-    )
+    # stdout is the provider protocol: one JSON document in one-shot mode and
+    # length-prefixed frames in resident mode. Ultralytics may announce first-
+    # run settings or cache creation while importing/loading/predicting, so
+    # keep all provider chatter on the already-isolated stderr channel.
+    with redirect_stdout(sys.stderr):
+        results = model.predict(
+            presentation_image(image_input, quarter_turns),
+            classes=[0],
+            conf=RAW_CONFIDENCE_FLOOR,
+            device=runtime_device,
+            imgsz=manifest["preprocessing"]["inputWidth"],
+            max_det=MAX_RAW_DETECTIONS,
+            verbose=False,
+        )
     if len(results) != 1:
         raise ProviderError("provider returned an invalid result count")
     result = results[0]
@@ -146,14 +224,18 @@ def project_result(request: dict, manifest: dict, model: Any, image_input: Any) 
             if float(confidence) < manifest["detector"]["scoreThreshold"]:
                 continue
             x1, y1, x2, y2 = coords
+            box = source_box(
+                {
+                    "h": (y2 - y1) / height,
+                    "w": (x2 - x1) / width,
+                    "x": x1 / width,
+                    "y": y1 / height,
+                },
+                quarter_turns,
+            )
             bodies.append(
                 {
-                    "box": {
-                        "h": round6((y2 - y1) / height),
-                        "w": round6((x2 - x1) / width),
-                        "x": round6(x1 / width),
-                        "y": round6(y1 / height),
-                    },
+                    "box": {key: round6(box[key]) for key in ("h", "w", "x", "y")},
                     "confidence": round6(confidence),
                 }
             )
@@ -169,7 +251,7 @@ def project_result(request: dict, manifest: dict, model: Any, image_input: Any) 
     }
 
 
-def execute(request: dict, model_factory=None) -> dict:
+def execute(request: dict, model_factory=None, torch_module: Any = None) -> dict:
     image_path = Path(request["imagePath"]).resolve()
     model_path = Path(request["modelPath"]).resolve()
     manifest = load_manifest(Path(request["manifestPath"]).resolve(), model_path)
@@ -178,10 +260,15 @@ def execute(request: dict, model_factory=None) -> dict:
     if file_digest(image_path) != request["sourceContentDigest"]:
         raise ProviderError("source image digest changed")
     if model_factory is None:
-        from ultralytics import YOLO
+        with redirect_stdout(sys.stderr):
+            configure_runtime(manifest, torch_module=torch_module)
+            from ultralytics import YOLO
 
-        model_factory = YOLO
-    model = model_factory(str(model_path))
+            model_factory = YOLO
+    elif torch_module is not None:
+        configure_runtime(manifest, torch_module=torch_module)
+    with redirect_stdout(sys.stderr):
+        model = model_factory(str(model_path))
     return project_result(request, manifest, model, str(image_path))
 
 
@@ -191,6 +278,7 @@ def load_resident_request(value: Any) -> dict:
         {
             "assetToken",
             "inputRevision",
+            "presentationRotationQuarterTurns",
             "schemaVersion",
             "sourceContentDigest",
         },
@@ -200,6 +288,7 @@ def load_resident_request(value: Any) -> dict:
         raise ProviderError("resident request schema is invalid")
     for field in ("assetToken", "inputRevision", "sourceContentDigest"):
         digest_string(value[field], field)
+    validate_quarter_turns(value["presentationRotationQuarterTurns"])
     return value
 
 
@@ -257,9 +346,11 @@ def write_resident_result(value: dict) -> None:
 
 def serve(manifest_path: Path, model_path: Path) -> int:
     manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
-    from ultralytics import YOLO
+    with redirect_stdout(sys.stderr):
+        configure_runtime(manifest)
+        from ultralytics import YOLO
 
-    model = YOLO(str(model_path.resolve()))
+        model = YOLO(str(model_path.resolve()))
     while True:
         try:
             frame = read_resident_frame()

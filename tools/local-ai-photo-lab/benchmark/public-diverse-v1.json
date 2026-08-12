@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "cimmich.local-ai-photo-lab-benchmark.v1",
+  "benchmarkId": "public-diverse-v1",
+  "cases": [
+    {
+      "caseId": "six-photo-model-matrix",
+      "contextKind": "none",
+      "operations": "faces,bodies,scene-text",
+      "assets": [
+        {
+          "assetId": "clear-portrait",
+          "fixturePath": "CHA-001-maya-kitchen.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "crowded-group",
+          "fixturePath": "CHA-016-busy-family-dinner.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "no-person-gate",
+          "fixturePath": "CHA-019-moss-front-gate.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "silhouettes",
+          "fixturePath": "CHA-028-five-silhouettes.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "backs-turned",
+          "fixturePath": "CHA-045-crew-walking-away.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "document-itinerary",
+          "fixturePath": "CHA-046-bluewater-itinerary.png",
+          "acceptedSubjects": []
+        }
+      ],
+      "expectations": {
+        "executionModes": {
+          "faces": "resident-set",
+          "bodies": "resident-set"
+        },
+        "assets": {
+          "clear-portrait": {
+            "image": { "width": 1024, "height": 1536 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "peopleEstimate": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
+            "visibleText": { "min": 0, "max": 0 }
+          },
+          "crowded-group": {
+            "image": { "width": 1680, "height": 936 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 5, "max": 7 },
+            "bodies": { "min": 5, "max": 7 },
+            "peopleEstimate": { "min": 5, "max": 7 },
+            "maxFaceReview": 2,
+            "crossModelState": "clear",
+            "visibleText": { "min": 0, "max": 0 }
+          },
+          "no-person-gate": {
+            "image": { "width": 1024, "height": 1536 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "no_body",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "peopleEstimate": { "min": 0, "max": 0 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
+            "visibleText": { "min": 0, "max": 0 }
+          },
+          "silhouettes": {
+            "image": { "width": 1704, "height": 923 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "bodies_detected",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 5, "max": 5 },
+            "peopleEstimate": { "min": 5, "max": 5 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
+            "visibleText": { "min": 0, "max": 0 }
+          },
+          "backs-turned": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "bodies_detected",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 5, "max": 5 },
+            "peopleEstimate": { "min": 5, "max": 5 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
+            "visibleText": { "min": 0, "max": 0 }
+          },
+          "document-itinerary": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "no_body",
+              "sceneText": "proposed"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "peopleEstimate": { "min": 0, "max": 0 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear",
+            "visibleText": { "min": 11, "max": 11 },
+            "visibleTextIncludes": [
+              "BLUEWATER WEEKEND",
+              "Friday 15 July",
+              "4:00 Leave Cedar House",
+              "2:00 Home"
+            ]
+          }
+        },
+        "contextCandidates": [],
+        "maximumUnexpectedContextCandidates": 0
+      }
+    }
+  ]
+}

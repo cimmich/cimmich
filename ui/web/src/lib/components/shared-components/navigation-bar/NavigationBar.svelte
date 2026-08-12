@@ -6,6 +6,8 @@
   import { page } from '$app/state';
   import { clickOutside } from '$lib/actions/click-outside';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
+  import CimmichTopSearch from '$lib/components/cimmich/CimmichTopSearch.svelte';
+  import { cimmichModeSwitch } from '$lib/components/cimmich/navigation-mode-switch';
   import NotificationPanel from '$lib/components/shared-components/navigation-bar/NotificationPanel.svelte';
   import SearchBar from '$lib/components/shared-components/search-bar/SearchBar.svelte';
   import SkipLink from '$lib/elements/SkipLink.svelte';
@@ -16,6 +18,7 @@
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { notificationManager } from '$lib/stores/notification-manager.svelte';
   import { sidebarStore } from '$lib/stores/sidebar.svelte';
+  import { cimmichExperience } from '$lib/stores/cimmich-experience.store';
   import { ActionButton, Button, IconButton, Logo } from '@immich/ui';
   import { mdiBellBadge, mdiBellOutline, mdiMagnify, mdiMenu, mdiTrayArrowUp } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -36,6 +39,9 @@
   let shouldShowNotificationPanel = $state(false);
   let innerWidth: number = $state(0);
   const hasUnreadNotifications = $derived(notificationManager.notifications.length > 0);
+  const libraryContext = $derived(page.url.searchParams.has('organise'));
+  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname, libraryContext, $cimmichExperience === 'frontier'));
+  const showInlineBrand = $derived(mediaQueryManager.isFullSidebar && sidebarStore.isOpen);
 
   onMount(async () => {
     try {
@@ -53,9 +59,9 @@
 <nav id="dashboard-navbar" class="h-(--navbar-height) w-dvw text-sm max-md:h-(--navbar-height-md)">
   <SkipLink text={$t('skip_to_content')} />
   <div
-    class="grid h-full grid-cols-[--spacing(32)_auto] items-center py-2 sidebar:grid-cols-[--spacing(64)_auto] {noBorder
-      ? ''
-      : 'border-b'}"
+    class="grid h-full items-center py-2 transition-[grid-template-columns] duration-200 {noBorder ? '' : 'border-b'}"
+    class:grid-cols-[--spacing(32)_auto]={!showInlineBrand}
+    class:grid-cols-[--spacing(64)_auto]={showInlineBrand}
   >
     <div class="mx-4 flex flex-row items-center gap-1">
       <IconButton
@@ -75,16 +81,30 @@
             event.stopPropagation();
           }
         }}
-        class="sidebar:hidden"
       />
-      <a data-sveltekit-preload-data="hover" href={Route.photos()}>
-        <Logo variant={mediaQueryManager.isFullSidebar ? 'inline' : 'icon'} class="max-md:h-12" />
+      <a
+        data-sveltekit-preload-data="hover"
+        href={modeSwitch.href}
+        class="flex min-w-0 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-primary"
+        aria-label={modeSwitch.label}
+        title={modeSwitch.label}
+      >
+        {#if modeSwitch.cimmich}
+          <img class="size-10 shrink-0 rounded-full object-cover" src="/cimmich-logo.png" alt="" />
+          {#if showInlineBrand}<span class="truncate text-lg font-semibold tracking-tight">Cimmich</span>{/if}
+        {:else}
+          <Logo variant={showInlineBrand ? 'inline' : 'icon'} class="max-md:h-12" />
+        {/if}
       </a>
     </div>
     <div class="flex min-w-0 justify-between gap-2 pe-2 sm:gap-4 sm:pe-6 lg:gap-8">
       <div class="hidden w-full max-w-5xl flex-1 sm:block tall:ps-0">
         {#if featureFlagsManager.value.search}
-          <SearchBar grayTheme={true} />
+          {#if modeSwitch.cimmich}
+            <CimmichTopSearch />
+          {:else}
+            <SearchBar grayTheme={true} />
+          {/if}
         {/if}
       </div>
 
@@ -96,7 +116,7 @@
             variant="ghost"
             size="medium"
             icon={mdiMagnify}
-            href={Route.search()}
+            href={modeSwitch.cimmich ? Route.cimmichSmartSearch() : Route.search()}
             id="search-button"
             class="sm:hidden"
             aria-label={$t('go_to_search')}
@@ -163,7 +183,7 @@
           <ActionButton action={Cast} />
         </div>
 
-        {#if !page.url.pathname.includes('/admin')}
+        {#if ($cimmichExperience === 'companion' || modeSwitch.cimmich) && !page.url.pathname.includes('/admin')}
           <div class="ms-1 border-s border-gray-200 ps-1 dark:border-gray-700">
             <CimmichViewingMode />
           </div>

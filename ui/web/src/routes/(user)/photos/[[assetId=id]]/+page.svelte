@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
+  import { shouldDeferCimmichExactPhotoTimeline } from '$lib/components/cimmich/photo-viewer-presentation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -49,25 +50,29 @@
   let cimmichSubjectAssetsReady = $state(false);
   let cimmichSubjectAssetLoad = 0;
   let futureAssetCount = $state(0);
+  const cimmichAssetId = $derived(page.params.assetId || '');
   const cimmichPersonId = $derived(page.url.searchParams.get('cimmichPersonId') || '');
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
   const cimmichSubjectId = $derived(cimmichPersonId || cimmichPetId);
+  const directCimmichViewer = $derived(shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId));
   const options = $derived({
     visibility: AssetVisibility.Timeline,
     withStacked: true,
     withPartners: true,
-    ...(cimmichSubjectId ? { assetFilter: cimmichSubjectAssetIds } : {}),
+    ...(directCimmichViewer ? { deferInit: true } : {}),
+    ...(cimmichSubjectId && !cimmichAssetId ? { assetFilter: cimmichSubjectAssetIds } : {}),
   });
 
   $effect(() => {
     const personId = cimmichPersonId;
     const petId = cimmichPetId;
     const subjectId = personId || petId;
+    const assetId = cimmichAssetId;
     const run = ++cimmichSubjectAssetLoad;
-    cimmichSubjectAssetIds = new Set();
-    cimmichSubjectAssetsReady = !subjectId;
-    if (!subjectId) {
+    cimmichSubjectAssetIds = new Set(assetId ? [assetId] : []);
+    cimmichSubjectAssetsReady = !subjectId || Boolean(assetId);
+    if (!subjectId || assetId) {
       return;
     }
     const request = personId ? getCimmichPersonAssets(personId) : getCimmichPetMedia(petId);

@@ -14,7 +14,7 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain("url.searchParams.delete('tab')");
     expect(source).toContain("url.searchParams.set('tab', tab)");
     expect(source).toContain('role="tablist"');
-    expect(source).toContain("['ArrowLeft', 'ArrowRight', 'Home', 'End']");
+    expect(source).toContain('use:keyboardTabs');
     expect(source).toContain("label: 'Map', value: 'map'");
     expect(source).toContain("label: 'Plan', value: 'plan'");
     expect(source).toContain("label: 'Journey', value: 'journey'");
@@ -345,31 +345,24 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(hero).toMatch(/<Map\b[\s\S]*?center=\{locatorCenter\}[\s\S]*?zoom=\{13\}/);
   });
 
-  it('returns focus to the selected tab, which the rail rebuild would otherwise drop', async () => {
+  it('moves keyboard focus to the newly selected tab without depending on a detail reload', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
-    // Changing tab re-renders the detail and destroys the rail's buttons, so the
-    // focused tab node stops existing and focus falls to <body>: arrow keys then
-    // work exactly once, and a click leaves focus nowhere. Restoration must survive
-    // SEVERAL rebuilds, so the latch stays armed and only reclaims focus when
-    // nothing owns it.
-    expect(browser).toContain('bind:this={detailTabRail}');
-    expect(browser).toContain('onclick={() => selectDetailTab(tab.value, true)}');
-    expect(browser).toContain('selectDetailTab(next.value, true)');
-    expect(browser).toContain('rail.querySelector<HTMLButtonElement>(\'[role="tab"][aria-selected="true"]\')?.focus()');
-    expect(browser).toContain('if (active && active !== document.body) {');
-    // The old one-shot attempt focused a node that the pending navigation was
-    // about to throw away.
-    expect(browser).not.toContain('void tabs?.[nextIndex]?.focus();');
+    expect(browser).toContain("import { keyboardTabs } from './keyboard-tabs';");
+    expect(browser).toContain('use:keyboardTabs');
+    expect(browser).toContain('onclick={() => selectDetailTab(tab.value)}');
+    expect(browser).not.toContain('pendingTabFocus');
+    expect(browser).not.toContain('detailTabRail');
   });
 
   it('makes Documents a first-class sidebar destination with URL-stable detail', async () => {
-    const sidebar = await read('src/lib/components/shared-components/side-bar/UserSidebar.svelte');
+    const sidebar = await read('src/lib/components/shared-components/side-bar/CimmichSidebar.svelte');
     const route = await read('src/routes/(user)/cimmich/documents/+page.svelte');
     const server = await read('src/routes/(user)/cimmich/documents/+page.ts');
 
-    expect(sidebar).toContain("{ title: 'Documents', href: Route.cimmichDocuments()");
-    expect(sidebar.indexOf("title: 'Documents'")).toBeLessThan(sidebar.indexOf("title: 'Smart Search'"));
+    expect(sidebar).toContain('title="Documents"');
+    expect(sidebar).toContain('href={Route.cimmichDocuments()}');
+    expect(sidebar.indexOf('title="Documents"')).toBeLessThan(sidebar.indexOf('title="Review"'));
     expect(route).toContain("page.url.searchParams.get('documentId')");
     expect(route).toContain('initialDocumentId={requestedDocumentId}');
     expect(route).toContain('onDocumentChange={selectDocument}');

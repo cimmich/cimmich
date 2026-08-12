@@ -6,7 +6,7 @@ export const load = (async ({ url }) => {
 
   return {
     meta: {
-      title: 'Legacy archive overview unavailable',
+      title: 'Cimmich',
     },
   };
 }) satisfies PageLoad;

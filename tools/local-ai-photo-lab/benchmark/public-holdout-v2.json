@@ -1,0 +1,268 @@
+{
+  "schemaVersion": "cimmich.local-ai-photo-lab-benchmark.v1",
+  "benchmarkId": "public-holdout-v2",
+  "cases": [
+    {
+      "caseId": "profiles-motion-pets-backs-groups",
+      "contextKind": "none",
+      "operations": "faces,bodies",
+      "assets": [
+        {
+          "assetId": "alex-portrait",
+          "fixturePath": "CHA-002-alex-porch-planter.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "samira-tall-garden",
+          "fixturePath": "CHA-005-samira-garden.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "pet-negative",
+          "fixturePath": "CHA-007-pixel-star-quilt.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "moving-day-four",
+          "fixturePath": "CHA-009-moving-day.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "backlight-human-pet",
+          "fixturePath": "CHA-014-alex-juniper-backlight.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "rain-partial",
+          "fixturePath": "CHA-017-porch-rain-boxes.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "walking-away-human-pet",
+          "fixturePath": "CHA-018-eli-juniper-walking-away.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "driving-profile",
+          "fixturePath": "CHA-022-maya-driving-profile.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "beach-arrival-five",
+          "fixturePath": "CHA-023-bluewater-arrival.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "dog-face-negative",
+          "fixturePath": "CHA-027-juniper-shallows.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "tide-pool-backs",
+          "fixturePath": "CHA-029-tide-pool-heads.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "motion-blur",
+          "fixturePath": "CHA-036-eli-motion-blur.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "formal-group-six",
+          "fixturePath": "CHA-038-formal-family-group.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "garden-negative",
+          "fixturePath": "CHA-039-garden-overview.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "document-pet-negative",
+          "fixturePath": "CHA-047-juniper-vaccination-record.png",
+          "acceptedSubjects": []
+        },
+        {
+          "assetId": "maya-two-strangers",
+          "fixturePath": "CHA-051-maya-bluewater-boardwalk-strangers.png",
+          "acceptedSubjects": []
+        }
+      ],
+      "expectations": {
+        "executionModes": {
+          "faces": "resident-set",
+          "bodies": "resident-set"
+        },
+        "assets": {
+          "alex-portrait": {
+            "image": { "width": 1024, "height": 1535 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "samira-tall-garden": {
+            "image": { "width": 862, "height": 1825 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "pet-negative": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": { "faces": "no_face", "bodies": "no_body" },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "maximumUnreviewedFaces": 0,
+            "crossModelState": "clear"
+          },
+          "moving-day-four": {
+            "image": { "width": 1538, "height": 1022 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 4, "max": 4 },
+            "bodies": { "min": 4, "max": 4 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "backlight-human-pet": {
+            "image": { "width": 864, "height": 1821 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "rain-partial": {
+            "image": { "width": 941, "height": 1672 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 2, "max": 2 },
+            "maxFaceReview": 1,
+            "maximumUnreviewedFaces": 0,
+            "crossModelState": "review"
+          },
+          "walking-away-human-pet": {
+            "image": { "width": 1024, "height": 1536 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "driving-profile": {
+            "image": { "width": 1619, "height": 972 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "beach-arrival-five": {
+            "image": { "width": 1729, "height": 910 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 5, "max": 5 },
+            "bodies": { "min": 5, "max": 5 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "dog-face-negative": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": { "bodies": "no_body" },
+            "faces": { "min": 0, "max": 1 },
+            "bodies": { "min": 0, "max": 0 },
+            "maxFaceReview": 1,
+            "maximumUnreviewedFaces": 0
+          },
+          "tide-pool-backs": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": {
+              "faces": "no_face",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 3, "max": 3 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "motion-blur": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 1, "max": 1 },
+            "bodies": { "min": 1, "max": 1 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "formal-group-six": {
+            "image": { "width": 1535, "height": 1024 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 6, "max": 6 },
+            "bodies": { "min": 6, "max": 6 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          },
+          "garden-negative": {
+            "image": { "width": 1538, "height": 1022 },
+            "operationStates": { "faces": "no_face", "bodies": "no_body" },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "maximumUnreviewedFaces": 0,
+            "crossModelState": "clear"
+          },
+          "document-pet-negative": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": { "faces": "no_face", "bodies": "no_body" },
+            "faces": { "min": 0, "max": 0 },
+            "bodies": { "min": 0, "max": 0 },
+            "maximumUnreviewedFaces": 0,
+            "crossModelState": "clear"
+          },
+          "maya-two-strangers": {
+            "image": { "width": 1536, "height": 1024 },
+            "operationStates": {
+              "faces": "faces_detected",
+              "bodies": "bodies_detected"
+            },
+            "faces": { "min": 3, "max": 3 },
+            "bodies": { "min": 3, "max": 3 },
+            "maxFaceReview": 0,
+            "crossModelState": "clear"
+          }
+        },
+        "contextCandidates": [],
+        "maximumUnexpectedContextCandidates": 0
+      }
+    }
+  ]
+}

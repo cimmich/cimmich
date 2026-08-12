@@ -99,7 +99,7 @@ export const Route = {
 
   // cimmich
   cimmich: () => '/cimmich',
-  cimmichHome: () => '/cimmich/home',
+  cimmichHome: () => '/cimmich',
   cimmichSteward: () => '/cimmich/steward',
   cimmichPhotoReview: () => '/cimmich/steward/photos',
   cimmichActivities: () => '/cimmich/activities',
@@ -107,6 +107,8 @@ export const Route = {
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
   cimmichArchiveIntegrity: () => '/cimmich/archive-integrity',
+  cimmichLibrary: () => '/cimmich/library',
+  cimmichLibraryBulk: () => '/cimmich/library/bulk',
   cimmichMaintenance: () => '/cimmich/maintenance',
   cimmichSetup: () => '/cimmich/setup',
   cimmichOrganise: () => '/cimmich/organise',
@@ -132,6 +134,7 @@ export const Route = {
   cimmichPlaces: () => '/cimmich/places',
   cimmichThings: () => '/cimmich/things',
   cimmichSmartSearch: () => '/cimmich/smart-search',
+  cimmichSettings: () => '/cimmich/settings',
 
   // photos
   photos: (params?: { at?: string; organise?: 1 }) => '/photos' + asQueryString(params),
@@ -161,11 +164,11 @@ export const Route = {
   viewCimmichPetAsset: ({ id, petId, petName }: { id: string; petId: string; petName: string }) =>
     `/photos/${id}` + asQueryString({ cimmichPetId: petId, cimmichPetName: petName }),
   archive: () => '/archive',
-  favorites: () => '/favorites',
+  favorites: (params?: { organise?: 1 }) => '/favorites' + asQueryString(params),
   locked: () => '/locked',
   trash: () => '/trash',
   viewTrashedAsset: ({ id }: { id: string }) => `/trash/photos/${id}`,
-  recentlyAdded: () => '/recently-added',
+  recentlyAdded: (params?: { organise?: 1 }) => '/recently-added' + asQueryString(params),
 
   // search
   search: (dto?: MetadataSearchDto | SmartSearchDto) => {

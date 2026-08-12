@@ -4,6 +4,8 @@ import { createCoalescedReload } from './coalesced-reload';
 export type KnownClusterReviewChange = {
   candidateCount: number;
   clusterId: string;
+  collisionAssetCount?: number;
+  collisionFaceCount?: number;
   kind: 'review' | 'reject' | 'ungroup';
 };
 
@@ -59,8 +61,12 @@ export const createKnownClusterReviewController = (options: Options) => {
         return;
       }
       options.setError('');
+      const collisionAssetCount = change.collisionAssetCount ?? 0;
+      const collisionFaceCount = change.collisionFaceCount ?? 0;
       options.setMessage(
-        `${change.candidateCount.toLocaleString()} grouped Faces were moved into ${current.personName}’s Checks. Nothing was confirmed.`,
+        collisionAssetCount > 0
+          ? `${change.candidateCount.toLocaleString()} grouped Faces were moved into ${current.personName}’s Checks. ${collisionFaceCount.toLocaleString()} appear in ${collisionAssetCount.toLocaleString()} ${collisionAssetCount === 1 ? 'photo that already contains' : 'photos that already contain'} ${current.personName}, so they are under Multiple in one photo. Nothing was confirmed.`
+          : `${change.candidateCount.toLocaleString()} grouped Faces were moved into ${current.personName}’s New matches. Nothing was confirmed.`,
       );
       reload.schedule(current);
     },

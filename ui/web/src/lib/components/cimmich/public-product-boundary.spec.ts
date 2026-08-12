@@ -5,18 +5,30 @@ const read = (path: string) => readFile(new URL(path, import.meta.url), 'utf8');
 
 describe('public Cimmich product boundary', () => {
   it('does not advertise legacy proof labs or private fixture copy from Home', async () => {
-    const home = await read(['../../../routes/(user)/cimmich', 'home', '+page.svelte'].join('/'));
+    const home = await read('../../../routes/(user)/cimmich/+page.svelte');
+    const coverEditor = await read('./CimmichHomeCoverEditor.svelte');
     expect(home).not.toMatch(/Trips lab|Activities lab|Quality control|Legacy overview/);
     expect(home).not.toContain('>Maintenance<');
     expect(home).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
     expect(home).toContain('href={Route.cimmichSetup()}');
-    expect(home).toContain('href={Route.cimmichMaintenance()}');
-    expect(home).toMatch(/>\s*Models & Guided\s*</);
     expect(home).toContain("name: 'Documents'");
-    expect(home).toContain('Counts and previews follow the Viewing mode below.');
-    expect(home).toContain('Cimmich is a local companion for Immich 3.1.0, not a replacement gallery.');
-    expect(home).toContain('Your originals and Immich database stay untouched,');
-    expect(home).toContain('every core organising tool works without optional models.');
+    expect(home).toContain('Counts and previews follow your current viewing mode.');
+    expect(home).not.toContain('Cimmich controls');
+    expect(home).not.toContain('Cimmich owns the library experience.');
+    expect(home).not.toContain('Immich 3.1.0 remains the media foundation underneath.');
+    expect(home).not.toContain('Models & Guided');
+    expect(home).toContain('<CimmichHomeCoverEditor');
+    expect(home).toContain("onSave={(preference) => saveCoverPreference('hero', preference)}");
+    expect(coverEditor).toContain('Change ${label} cover');
+    expect(coverEditor).toContain("label: 'Set photo'");
+    expect(coverEditor).toContain("label: 'Group of photos'");
+    expect(coverEditor).toContain('Rotate through 2–6 photos.');
+    expect(coverEditor).toContain("label: 'Random from…'");
+    expect(coverEditor).toContain('selectedIds.length >= 2 && selectedIds.length <= 6');
+    expect(coverEditor).toContain("label: 'Favourites'");
+    expect(coverEditor).toContain("label: 'Visible library'");
+    expect(coverEditor).toContain('candidateAssetIds.slice(0, 24)');
+    expect(coverEditor).toContain('metadataSearchDto: { size: 40');
   });
 
   it('uses public Cedar House examples in Smart Search', async () => {
@@ -30,6 +42,16 @@ describe('public Cimmich product boundary', () => {
     expect(search).toContain('result.documents');
     expect(search).toContain('Open ${document.displayTitle} in Documents');
     expect(search).toContain('initialQuery={documentLensQuery}');
+  });
+
+  it('keeps draft photo text out of shared URLs and wires both search tabpanels', async () => {
+    const search = await read('../../../routes/(user)/cimmich/smart-search/+page.svelte');
+    expect(search).toContain("nextLens === 'documents' ? documentLensQuery : submittedQuery");
+    expect(search).not.toContain('submittedQuery || query.trim()');
+    expect(search).toContain('aria-controls="smart-search-photos-panel"');
+    expect(search).toContain('aria-controls="smart-search-documents-panel"');
+    expect(search).toContain('id="smart-search-photos-panel" role="tabpanel"');
+    expect(search).toContain('id="smart-search-documents-panel"');
   });
 
   it('keeps Smart Search failures recoverable without losing the attempted query', async () => {
@@ -65,6 +87,7 @@ describe('public Cimmich product boundary', () => {
 
   it('keeps the photo workflow task-led and leaves evidence in the existing Info panel', async () => {
     const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
+    const editActions = await read('../cimmich/CimmichPeopleEditActions.svelte');
     const detailPanel = await read('../asset-viewer/DetailPanel.svelte');
     expect(overlay).toContain('aria-label="People"');
     expect(overlay).toContain('aria-label="Context"');
@@ -73,7 +96,9 @@ describe('public Cimmich product boundary', () => {
     expect(overlay).toContain('data-testid="cimmich-add-tag-action"');
     expect(overlay).toContain('data-testid="cimmich-add-presence-action"');
     expect(overlay).toContain('geometry: null');
-    expect(overlay).toContain('data-testid="cimmich-detailed-view"');
+    expect(overlay).toContain('<CimmichPeopleEditActions');
+    expect(editActions).toContain('data-testid="cimmich-detailed-view"');
+    expect(editActions).toContain("bulkOpen ? 'Close all Face tags' : 'Edit all Face tags'");
     expect(overlay).toContain('attachCimmichContextAssets');
     expect(overlay).toContain('detachCimmichContextAssets');
     expect(overlay).toContain('undoCimmichContextDecision');
@@ -139,6 +164,8 @@ describe('public Cimmich product boundary', () => {
     const unavailable = await read('./CimmichUnavailableCapability.svelte');
     expect(unavailable).toContain('does not expose a validated capability');
     expect(unavailable).toMatch(/Nothing has been inferred or\s+changed/);
+    expect(unavailable).toContain('Use Cimmich Home to open the supported tools.');
+    expect(unavailable).not.toContain('five main sections');
     expect(unavailable).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
   });
 });

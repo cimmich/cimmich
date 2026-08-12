@@ -137,23 +137,53 @@ canonical_request() {
   canonical_method=$1
   canonical_path=$2
   canonical_body=${3:-}
+  ui_port=$(configured_value CIMMICH_COMPANION_UI_PORT)
   compose exec -T cimmich-api node -e '
-    const [method, path, body] = process.argv.slice(1);
-    fetch(`http://127.0.0.1:3101${path}`, {
-      body: body ? body : undefined,
-      headers: {
-        ...(body ? { "content-type": "application/json" } : {}),
-        "x-cimmich-actor": "owner-operator",
-        "x-cimmich-device-id": "owner-operator",
-        "x-cimmich-surface": "interactive",
-      },
-      method,
-    }).then(async (response) => {
+    const fs = require("node:fs");
+    const [method, path, body, uiPort] = process.argv.slice(1);
+    (async () => {
+      let apiKey = process.env.IMMICH_API_KEY || "";
+      const filename = process.env.CIMMICH_IMMICH_CREDENTIAL_FILE || "";
+      if (filename && fs.existsSync(filename)) {
+        const credential = JSON.parse(fs.readFileSync(filename, "utf8"));
+        apiKey = credential.apiKey;
+      }
+      let principalId = "owner-operator-bootstrap";
+      let bindingState = "bootstrap";
+      if (apiKey) {
+        const ownerSession = await fetch(
+          "http://127.0.0.1:3101/_internal/owner-session",
+          { headers: { "x-api-key": apiKey } },
+        );
+        if (!ownerSession.ok) throw new Error("owner session unavailable");
+        principalId = String(
+          ownerSession.headers.get("x-cimmich-authenticated-principal") || "",
+        );
+        bindingState = String(
+          ownerSession.headers.get("x-cimmich-owner-binding-state") || "",
+        );
+        if (!principalId || bindingState !== "owner") {
+          throw new Error("owner session unavailable");
+        }
+      }
+      const response = await fetch(`http://127.0.0.1:3101${path}`, {
+        body: body ? body : undefined,
+        headers: {
+          ...(body ? { "content-type": "application/json" } : {}),
+          origin: `http://127.0.0.1:${uiPort}`,
+          "x-cimmich-actor": "owner-operator",
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-device-id": "owner-operator",
+          "x-cimmich-owner-binding-state": bindingState,
+          "x-cimmich-surface": "interactive",
+        },
+        method,
+      });
       const responseBody = await response.text();
       process.stdout.write(responseBody);
       if (!response.ok) process.exitCode = 1;
-    }).catch(() => process.exit(1));
-  ' "$canonical_method" "$canonical_path" "$canonical_body"
+    })().catch(() => process.exit(1));
+  ' "$canonical_method" "$canonical_path" "$canonical_body" "$ui_port"
 }
 
 configure() {
@@ -180,8 +210,10 @@ configure() {
   test "$ui_bind_address" != "0.0.0.0" ||
     fail "Cimmich UI bind address must name one trusted interface"
   allowed_hosts=127.0.0.1,localhost,cimmich-api
+  allowed_origins="http://127.0.0.1:$ui_port,http://localhost:$ui_port"
   if test "$ui_bind_address" != 127.0.0.1; then
     allowed_hosts="$allowed_hosts,$ui_bind_address"
+    allowed_origins="$allowed_origins,http://$ui_bind_address:$ui_port"
   fi
   validate_source_id "$source_id"
   case "$private_lock_mode" in
@@ -212,6 +244,7 @@ configure() {
     printf 'CIMMICH_COMPANION_UI_PORT=%s\n' "$ui_port"
     printf 'CIMMICH_COMPANION_UI_BIND_ADDRESS=%s\n' "$ui_bind_address"
     printf 'CIMMICH_ALLOWED_HOSTS=%s\n' "$allowed_hosts"
+    printf 'CIMMICH_ALLOWED_ORIGINS=%s\n' "$allowed_origins"
     printf 'CIMMICH_IMMICH_SOURCE_ID=%s\n' "$source_id"
     printf 'CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE=%s\n' "$private_lock_mode"
     printf 'CIMMICH_DB_PASSWORD=%s\n' "$database_password"

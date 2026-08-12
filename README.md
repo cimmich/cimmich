@@ -60,6 +60,9 @@ owner-controlled context beside Immich.
   by exact privacy tier, Tags and Labels, Places, Events and Things.
 - **Owner-controlled review.** Matching may suggest; the archive owner accepts,
   corrects, rejects, merges or undoes every consequential identity decision.
+- **Bounded Local AI review.** From one photo or a small selection, optional
+  local models can look for missed Faces or create derived enhancement previews
+  without replacing originals or silently accepting results.
 - **Presentation modes.** Standard, Personal and optional password-gated
   Private modes control what is comfortable to show on a shared screen.
 
@@ -103,13 +106,13 @@ accuracy or demographic fairness. [Take the full product tour](docs/WALKTHROUGH.
 
 ## Is the Community Preview for you?
 
-| A reasonable fit today | Not yet a supported fit |
-| :--- | :--- |
-| You already run exact Immich 3.1.0 | You need compatibility with another Immich version |
-| You can run the checked-in installer and inspect its Compose file | You need a one-click native Windows installer |
-| You can keep a separate Cimmich backup | You need stable APIs and schemas across releases |
-| You want a local, single-owner companion | You need Internet-facing or multi-user deployment |
-| You want inspectable suggestions and manual decisions | You need automatic identity acceptance or certified biometric accuracy |
+| A reasonable fit today                                            | Not yet a supported fit                                                |
+| :---------------------------------------------------------------- | :--------------------------------------------------------------------- |
+| You already run exact Immich 3.1.0                                | You need compatibility with another Immich version                     |
+| You can run the checked-in installer and inspect its Compose file | You need a one-click native Windows installer                          |
+| You can keep a separate Cimmich backup                            | You need stable APIs and schemas across releases                       |
+| You want a local, single-owner companion                          | You need Internet-facing or multi-user deployment                      |
+| You want inspectable suggestions and manual decisions             | You need automatic identity acceptance or certified biometric accuracy |
 
 ## Install beside Immich
 
@@ -150,16 +153,17 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 ## Documentation
 
-| I want to… | Start here |
-| :--- | :--- |
-| See what the product does | [Product walkthrough](docs/WALKTHROUGH.md) |
-| Install, update, back up or remove it | [Installation and operations](INSTALL.md) |
-| Understand data and network behavior | [Privacy guide](PRIVACY.md) |
-| Resolve a common question | [FAQ](docs/FAQ.md) |
-| Understand the repository | [Development guide](DEVELOPMENT.md) |
-| Propose a change | [Contributing guide](CONTRIBUTING.md) |
-| Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md) |
-| Inspect release and journey evidence | [Documentation index](docs/README.md) |
+| I want to…                                               | Start here                                 |
+| :------------------------------------------------------- | :----------------------------------------- |
+| See what the product does                                | [Product walkthrough](docs/WALKTHROUGH.md) |
+| Install, update, back up or remove it                    | [Installation and operations](INSTALL.md)  |
+| Understand data and network behavior                     | [Privacy guide](PRIVACY.md)                |
+| Use or operate optional Local AI review                  | [Local AI review](docs/LOCAL_AI_REVIEW.md) |
+| Resolve a common question                                | [FAQ](docs/FAQ.md)                         |
+| Understand the repository                                | [Development guide](DEVELOPMENT.md)        |
+| Propose a change                                         | [Contributing guide](CONTRIBUTING.md)      |
+| Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md)                |
+| Inspect release and journey evidence                     | [Documentation index](docs/README.md)      |
 
 ## Current limitations
 

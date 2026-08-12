@@ -146,7 +146,12 @@ export const createImmichCompanionManager = async ({
   }
 
   const manager = {
-    async connect({ apiBaseUrl: nextUrl, apiKey: nextKey }) {
+    async connect({
+      apiBaseUrl: nextUrl,
+      apiKey: nextKey,
+      beforeStore,
+      expectedPrincipalId = "",
+    }) {
       const credential = normalizeCredential({
         apiBaseUrl: nextUrl,
         apiKey: nextKey,
@@ -165,6 +170,23 @@ export const createImmichCompanionManager = async ({
         );
       }
       const verified = await candidate.verifyOnboardingPermissions();
+      const candidatePrincipalId = String(status.principal?.userId || "");
+      if (
+        expectedPrincipalId &&
+        candidatePrincipalId !== String(expectedPrincipalId)
+      ) {
+        throw typedError(
+          "IMMICH_OWNER_CONNECTION_FORBIDDEN",
+          "The dedicated Immich API key belongs to a different user than the authenticated setup session",
+          403,
+        );
+      }
+      if (beforeStore) {
+        if (typeof beforeStore !== "function") {
+          throw new Error("Immich connection owner binding is invalid");
+        }
+        await beforeStore(candidatePrincipalId);
+      }
       await writeCredential(filename, credential);
       companion = candidate;
       permissionReceipt = verified;

@@ -82,6 +82,9 @@ services:
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
     image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    # Bind-mounted operator state remains owner-only on Linux by running
+    # one-shot writers as the invoking host user rather than the image UID.
+    user: ${CIMMICH_PUBLIC_DEMO_HOST_UID:-1000}:${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
     environment:
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
     volumes:
@@ -145,6 +148,8 @@ services:
       CIMMICH_GUIDED_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_API_PORT:-3301}
       CIMMICH_GUIDED_UI_PUBLIC_URL: http://127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}
       CIMMICH_GUIDED_VISIBILITY_CEILING: private
+      CIMMICH_IMMICH_WEB_ORIGIN: http://immich-server:2283
+      CIMMICH_OWNER_GATEWAY_REQUIRED: "true"
       CIMMICH_RUNTIME_MODE: production
       CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: password
       DATABASE_URL: postgres://cimmich:${CIMMICH_DB_PASSWORD:?set CIMMICH_DB_PASSWORD}@cimmich-database:5432/cimmich
@@ -174,6 +179,10 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    # Read only the two group-owned runtime secrets from the owner-only host
+    # state without exposing the complete operator-state directory.
+    group_add:
+      - ${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
     volumes:
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/display-bridge.json:/demo-state/display-bridge.json:ro
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/immich-credential.json:/demo-state/immich-credential.json:ro
@@ -196,12 +205,18 @@ services:
       immich-server:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 5s
       timeout: 3s
       retries: 60
     ports:
-      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}:80
+      - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_UI_PORT:-3303}:8080
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     networks:
       - demo-internal
 

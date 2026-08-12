@@ -3,13 +3,16 @@ import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 import { createCimmichExploreClient } from './cimmich-explore.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
+import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-coverage.types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
 
 export * from './cimmich-asset-correction.service';
 export * from './cimmich-asset-label.service';
 export * from './cimmich-bulk-album-operation.service';
+export * from './cimmich-local-ai.service';
 export * from './cimmich-deferred-face-review';
 export type { CimmichExploreFacet, CimmichExploreFacetResult, CimmichExploreFilters } from './cimmich-explore.service';
 
@@ -19,6 +22,11 @@ export type {
   CimmichFaceOwnerReviewMatchBatch,
 } from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+export type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
+export type {
+  CimmichPersonEvidenceCoverage,
+  CimmichPersonEvidenceCoverageContext,
+} from './cimmich-person-evidence-coverage.types';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -1151,13 +1159,13 @@ export type CimmichPersonProjectionPage<T> = {
   pageSize: number;
   schemaVersion: 'cimmich.person-projection-page.v1';
 };
-
-export type CimmichPersonAssetAssociationFilter = 'body' | 'presence';
+export type CimmichPersonAssetAssociationFilter = 'appearance' | 'body' | 'head' | 'presence';
 
 export type CimmichPersonAssetPage = CimmichPersonProjectionPage<CimmichPersonAsset> & {
   summary: {
     body: number;
     bodyCandidate: number;
+    head: number;
     presence: number;
     total: number;
   };
@@ -1775,28 +1783,6 @@ export type CimmichMachineSuggestionDecision = {
   state: 'accepted' | 'ignored';
 };
 
-export type CimmichIdentityAuditRun = {
-  acceptedComparableFaces: number;
-  acceptedEmbeddedFaces: number;
-  auditRunId: string;
-  completedAt: string | null;
-  contradictionCandidates: number;
-  derivativeCandidatesSuppressed: number;
-  errorCode: string | null;
-  independenceProviderConfigDigest: string | null;
-  independenceScoreFloor: number;
-  marginFloor: number;
-  packId: string;
-  policyVersion: string;
-  schemaVersion: 'cimmich.identity-audit.v2';
-  stale: boolean;
-  startedAt: string;
-  state: 'completed' | 'failed' | 'running';
-  scoreFloor: number;
-  untaggedCandidates: number;
-  untaggedEmbeddedFaces: number;
-};
-
 export type CimmichIdentityAuditReference = {
   assetId: string;
   box: { h: number; w: number; x: number; y: number };
@@ -2107,6 +2093,15 @@ export type CimmichImmichPersonCluster = {
 
 export type CimmichImmichPersonClusterPreview = {
   clusters: CimmichImmichPersonCluster[];
+  scanSummary?: {
+    complete: boolean;
+    scannedAssetCount: number;
+    scanAssetLimit: number;
+    targetAssetCount: number;
+    targetAssetLimit: number;
+    timeoutMs: number;
+    truncationReason: 'asset_limit' | 'target_limit' | 'timeout' | null;
+  };
   schemaVersion: 'cimmich.immich-person-resolution.v1';
   scope: CimmichImmichOnboardingScope;
 };
@@ -2592,6 +2587,8 @@ export const request = async <T>(path: string, init?: RequestInit, timeoutMs = d
     init?.signal?.removeEventListener('abort', abortFromCaller);
   }
 };
+
+export const cimmichRequestContext = () => ({ apiRoot, headers: visibilityHeaders() });
 const cimmichExploreClient = createCimmichExploreClient(request, coalesceCimmichRequest);
 export const getCimmichExploreFacets = cimmichExploreClient.getExploreFacets;
 export const getCimmichPersonAssetsPage = cimmichExploreClient.getPersonAssetsPage;
@@ -3686,6 +3683,9 @@ export const getCimmichPersonConnections = async (personId: string) => {
   }>(`/v1/people/${encodeURIComponent(personId)}/connections`);
   return result.items;
 };
+
+export const getCimmichPersonEvidenceCoverage = (personId: string) =>
+  request<CimmichPersonEvidenceCoverage>(`/v1/people/${encodeURIComponent(personId)}/evidence-coverage`);
 
 export const getCimmichXmpUnresolvedNames = (limit = 24) =>
   request<{

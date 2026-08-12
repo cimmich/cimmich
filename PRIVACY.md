@@ -21,15 +21,16 @@ deployment risks, see [SECURITY.md](SECURITY.md).
 
 ## What Cimmich reads and stores
 
-| Data | Read from | Stored by Cimmich | Written back to Immich |
-| :--- | :--- | :--- | :--- |
-| Library inventory and supported metadata | Supported Immich interfaces | Cimmich's own records linking back to each Immich asset | No |
-| Original media bytes | Bounded read-only Immich request when required | Not retained as original media | No |
-| People, Pets, Places, Things and Events | Imported or owner-created context | Cimmich's separate PostgreSQL database | No |
-| Face, Head, Body and Presence observations | Owner actions or optional providers | Typed evidence in the Cimmich database | No |
-| Identity decisions and corrections | Archive owner | Cimmich decision history | No |
-| Imported documents | Owner upload | Separate Cimmich document store, indexed by file checksum | No |
-| Configuration and credentials | Owner configuration | Dedicated Cimmich configuration/state | No |
+| Data                                       | Read from                                      | Stored by Cimmich                                                                     | Written back to Immich |
+| :----------------------------------------- | :--------------------------------------------- | :------------------------------------------------------------------------------------ | :--------------------- |
+| Library inventory and supported metadata   | Supported Immich interfaces                    | Cimmich's own records linking back to each Immich asset                               | No                     |
+| Original media bytes                       | Bounded read-only Immich request when required | Not retained as original media                                                        | No                     |
+| Local AI review artifacts                  | A deliberate 1–12 photo owner request          | Bounded Cimmich-derived previews/overlays; temporary original work copies are deleted | No                     |
+| People, Pets, Places, Things and Events    | Imported or owner-created context              | Cimmich's separate PostgreSQL database                                                | No                     |
+| Face, Head, Body and Presence observations | Owner actions or optional providers            | Typed evidence in the Cimmich database                                                | No                     |
+| Identity decisions and corrections         | Archive owner                                  | Cimmich decision history                                                              | No                     |
+| Imported documents                         | Owner upload                                   | Separate Cimmich document store, indexed by file checksum                             | No                     |
+| Configuration and credentials              | Owner configuration                            | Dedicated Cimmich configuration/state                                                 | No                     |
 
 An original still may be read temporarily for a supported local operation. It
 may exist briefly in process or browser memory while being viewed or handled,
@@ -67,6 +68,12 @@ The owner accepts, corrects, rejects, merges or undoes consequential decisions.
 
 The Community Preview makes no representative biometric-accuracy or
 demographic-fairness claim.
+
+Optional Local AI review is initiated from the viewer or a small selected set.
+Its enhancement images and overlays are derived copies, capped to 12 recent
+runs or 4 GiB. They do not replace originals or become accepted identity or
+Context truth. Model weights remain separately supplied local artifacts. See
+[Local AI review](docs/LOCAL_AI_REVIEW.md).
 
 ## Network behavior
 

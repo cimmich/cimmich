@@ -3,7 +3,7 @@
   import { focusTrap } from '$lib/actions/focus-trap';
   import Portal from '$lib/elements/Portal.svelte';
   import { Icon } from '@immich/ui';
-  import { mdiArrowTopRight, mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
+  import { mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
   import { onMount } from 'svelte';
 
   export type CimmichViewingMode = 'personal' | 'private' | 'standard';
@@ -13,11 +13,9 @@
     mode: CimmichViewingMode;
     onLock: () => Promise<void>;
     onSelectMode: (mode: CimmichViewingMode) => Promise<void>;
-    onSwitchToImmich?: () => Promise<void>;
     onUnlock: (password: string) => Promise<void>;
     privateConfigured?: boolean;
     privateUnlocked: boolean;
-    switchToImmichHref?: string;
     variant?: 'dashboard' | 'default' | 'overlay';
   }
 
@@ -26,11 +24,9 @@
     mode,
     onLock,
     onSelectMode,
-    onSwitchToImmich,
     onUnlock,
     privateConfigured = true,
     privateUnlocked,
-    switchToImmichHref = '/photos',
     variant = 'default',
   }: Props = $props();
 
@@ -122,21 +118,6 @@
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Private could not be locked';
     } finally {
-      busy = false;
-    }
-  };
-
-  const switchToImmich = async (event: MouseEvent) => {
-    if (!onSwitchToImmich) {
-      return;
-    }
-    event.preventDefault();
-    busy = true;
-    error = '';
-    try {
-      await onSwitchToImmich();
-    } catch (error_) {
-      error = error_ instanceof Error ? error_.message : 'Immich could not be opened';
       busy = false;
     }
   };
@@ -262,22 +243,6 @@
         {error}
       </p>
     {/if}
-
-    <div
-      class="mt-2 border-t {variant === 'overlay' ? 'border-white/20' : 'border-gray-200 dark:border-gray-700'} pt-2"
-    >
-      <a
-        class="flex min-h-11 items-center justify-between rounded-xl px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary {variant ===
-        'overlay'
-          ? 'hover:bg-white/12'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-800'}"
-        href={switchToImmichHref}
-        onclick={switchToImmich}
-      >
-        <span>Switch to Immich</span>
-        <Icon icon={mdiArrowTopRight} size="18" />
-      </a>
-    </div>
   </div>
 {/snippet}
 

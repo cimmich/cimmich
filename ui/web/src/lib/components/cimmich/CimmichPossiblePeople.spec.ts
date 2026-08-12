@@ -1,9 +1,11 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import TestWrapper from '$lib/components/TestWrapper.svelte';
 import CimmichPossiblePeople from './CimmichPossiblePeople.svelte';
 
 const mocks = vi.hoisted(() => ({
   getPeople: vi.fn(),
+  previews: vi.fn(),
   refresh: vi.fn(),
   preview: vi.fn(),
   resolve: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock('$lib/services/cimmich.service', () => ({
 
 vi.mock('$lib/services/possible-people.service', () => ({
   getCimmichPossiblePeople: mocks.preview,
+  getCimmichPossiblePersonPreviews: mocks.previews,
   refreshCimmichPossiblePeople: mocks.refresh,
   resolveCimmichPossiblePerson: mocks.resolve,
   undoCimmichPossiblePersonResolution: mocks.undo,
@@ -54,8 +57,12 @@ const cluster = (
   sourceRevision: 'a'.repeat(64),
 });
 
+const renderPossiblePeople = (mode: 'active' | 'ignored') =>
+  render(TestWrapper, { component: CimmichPossiblePeople, componentProps: { mode } });
+
 describe('Possible people', () => {
   beforeEach(() => {
+    vi.stubGlobal('visualViewport', null);
     vi.clearAllMocks();
     mocks.getPeople.mockResolvedValue([
       {
@@ -64,6 +71,23 @@ describe('Possible people', () => {
         subject_kind: 'person',
       },
     ]);
+    mocks.previews.mockImplementation((clusterIds: string[]) => ({
+      items: clusterIds.map((clusterId) => ({
+        clusterId,
+        previews: [
+          {
+            box: { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+            faceId: `face-${clusterId}`,
+            height: 1000,
+            membershipScore: 0.9,
+            sourceAssetId: `asset-${clusterId}`,
+            width: 1000,
+          },
+        ],
+      })),
+      runId: 'possible_run_test',
+      schemaVersion: 'cimmich.possible-person-previews.v1',
+    }));
     mocks.preview.mockResolvedValue({
       activeRun: null,
       clusters: [
@@ -95,13 +119,13 @@ describe('Possible people', () => {
   });
 
   it('shows only recurring active groups with time and place evidence', async () => {
-    const { getByRole, getByTestId, getByText, queryByText } = render(CimmichPossiblePeople, { mode: 'active' });
+    const { getByRole, getByTestId, getByText, queryByText } = renderPossiblePeople('active');
 
     await waitFor(() => expect(getByText('8 photos')).toBeInTheDocument());
     expect(getByText('Seen 2020–2024 · 4 years')).toBeInTheDocument();
     expect(getByText('2 known places')).toBeInTheDocument();
     expect(queryByText('2 photos')).not.toBeInTheDocument();
-    expect(getByTestId('possible-person-photo')).toHaveClass('w-full', 'aspect-square');
+    expect(getByTestId('possible-person-photo')).toHaveClass('size-full');
     expect(getByTestId('possible-person-face-marker')).toHaveClass('border-dotted', 'rounded-full');
     expect(getByRole('button', { name: 'Ignore' })).toBeInTheDocument();
   });
@@ -118,10 +142,10 @@ describe('Possible people', () => {
       schemaVersion: 'cimmich.possible-people-snapshot.v1',
     });
 
-    const { getByText, getAllByRole } = render(CimmichPossiblePeople, { mode: 'active' });
+    const { getByText, getAllByRole } = renderPossiblePeople('active');
 
     await waitFor(() => expect(getByText('3 photos')).toBeInTheDocument());
-    expect(getAllByRole('link', { name: 'Open representative photo for possible person' })).toHaveLength(1);
+    expect(getAllByRole('link', { name: 'Open evidence photo 1 for possible person' })).toHaveLength(1);
   });
 
   it('moves Ignore into a recoverable later decision', async () => {
@@ -136,7 +160,7 @@ describe('Possible people', () => {
         state: 'later',
       },
     });
-    const { getByRole, queryByText } = render(CimmichPossiblePeople, { mode: 'active' });
+    const { getByRole, queryByText } = renderPossiblePeople('active');
 
     await waitFor(() => expect(getByRole('button', { name: 'Ignore' })).toBeInTheDocument());
     await fireEvent.click(getByRole('button', { name: 'Ignore' }));
@@ -157,12 +181,15 @@ describe('Possible people', () => {
 
   it('maps a recurring group to a selected known Person without leaving the page', async () => {
     mocks.resolve.mockResolvedValue({ changed: true });
-    const { getByRole } = render(CimmichPossiblePeople, { mode: 'active' });
+    const { getByRole } = renderPossiblePeople('active');
 
     await waitFor(() => expect(getByRole('button', { name: 'Name or match' })).toBeInTheDocument());
     await fireEvent.click(getByRole('button', { name: 'Name or match' }));
     const picker = await waitFor(() => getByRole('combobox', { name: 'Match an existing Person' }));
-    await fireEvent.change(picker, { target: { value: 'person-maya' } });
+    expect(picker).toHaveAttribute('type', 'text');
+    await fireEvent.focus(picker);
+    await fireEvent.input(picker, { target: { value: 'Maya' } });
+    await fireEvent.click(getByRole('option', { name: 'Maya Chen' }));
     await fireEvent.click(getByRole('button', { name: 'Use selected Person' }));
 
     await waitFor(() =>
@@ -176,9 +203,42 @@ describe('Possible people', () => {
     );
   });
 
+  it('loads bounded distinct evidence photos and moves through them inline', async () => {
+    mocks.previews.mockResolvedValue({
+      items: [
+        {
+          clusterId: 'recurring',
+          previews: Array.from({ length: 7 }, (_, index) => ({
+            box: { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
+            faceId: `face-preview-${index + 1}`,
+            height: 1000,
+            membershipScore: 0.9 - index / 100,
+            sourceAssetId: `asset-preview-${index + 1}`,
+            width: 1000,
+          })),
+        },
+      ],
+      runId: 'possible_run_test',
+      schemaVersion: 'cimmich.possible-person-previews.v1',
+    });
+    const { getByRole, getByText } = renderPossiblePeople('active');
+
+    await waitFor(() => expect(getByText('1 of 7')).toBeInTheDocument());
+    expect(getByRole('link', { name: 'Open evidence photo 1 for possible person' })).toHaveAttribute(
+      'href',
+      '/photos/asset-preview-1?cimmichFaceId=face-preview-1&cimmichOverlay=machinery',
+    );
+    await fireEvent.click(getByRole('button', { name: 'Next evidence photo for possible person' }));
+    expect(getByText('2 of 7')).toBeInTheDocument();
+    expect(getByRole('link', { name: 'Open evidence photo 2 for possible person' })).toHaveAttribute(
+      'href',
+      '/photos/asset-preview-2?cimmichFaceId=face-preview-2&cimmichOverlay=machinery',
+    );
+  });
+
   it('restores ignored groups from Needs attention', async () => {
     mocks.undo.mockResolvedValue({ changed: true });
-    const { getByRole } = render(CimmichPossiblePeople, { mode: 'ignored' });
+    const { getByRole } = renderPossiblePeople('ignored');
 
     await waitFor(() => expect(getByRole('button', { name: 'Restore' })).toBeInTheDocument());
     await fireEvent.click(getByRole('button', { name: 'Restore' }));
@@ -204,11 +264,14 @@ describe('Possible people', () => {
       schemaVersion: 'cimmich.possible-people-snapshot.v1',
     });
 
-    const { getAllByRole, getByText } = render(CimmichPossiblePeople, { mode: 'active' });
+    const { getAllByRole, getByText } = renderPossiblePeople('active');
 
     await waitFor(() => expect(getByText('7 photos')).toBeInTheDocument());
-    const links = getAllByRole('link', { name: 'Open representative photo for possible person' });
+    const links = getAllByRole('link', { name: 'Open evidence photo 1 for possible person' });
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute('href', '/photos/asset-higher-photo-count');
+    expect(links[0]).toHaveAttribute(
+      'href',
+      '/photos/asset-higher-photo-count?cimmichFaceId=face-higher-photo-count&cimmichOverlay=machinery',
+    );
   });
 });

@@ -170,17 +170,78 @@ jobs:
         working-directory: ui/web
         run: pnpm run check:typescript
 
-      - name: Discover release browser journeys
-        working-directory: ui/web
-        run: pnpm exec playwright test --list
-
       - name: Run web tests
         working-directory: ui/web
-        run: pnpm run test -- --run
+        run: pnpm run test:cov -- --run
 
       - name: Build production web
         working-directory: ui/web
         run: pnpm run build
+
+  browser-journeys:
+    name: Browser journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CIMMICH_E2E_BASE_URL: http://127.0.0.1:3303
+      CIMMICH_PUBLIC_DEMO_PROJECT: cimmich-public-demo-ci
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable pinned pnpm
+        run: corepack enable
+
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('ui/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install browser-test dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium and system dependencies
+        working-directory: ui/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Fetch the checksum-pinned fictional demo archive
+        env:
+          CEDAR_ARCHIVE_SHA256: 937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f
+          CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT: ${{ runner.temp }}/cedar-house-v1
+        run: |
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" \
+            https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz
+          printf '%s  %s\n' "$CEDAR_ARCHIVE_SHA256" "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" -C "$RUNNER_TEMP"
+          test "$(find "$CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT/media" -type f -name '*.png' | wc -l)" -eq 51
+
+      - name: Run all six browser journeys against an isolated demo
+        env:
+          CIMMICH_E2E_STATE_ROOT: ${{ runner.temp }}/cimmich-public-demo-ci
+          CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT: ${{ runner.temp }}/cedar-house-v1
+          CIMMICH_PUBLIC_DEMO_STATE_ROOT: ${{ runner.temp }}/cimmich-public-demo-ci
+        run: |
+          tools/public_demo.sh up
+          tools/run_browser_acceptance.sh
+
+      - name: Destroy the isolated demo
+        if: always()
+        env:
+          CIMMICH_PUBLIC_DEMO_STATE_ROOT: ${{ runner.temp }}/cimmich-public-demo-ci
+        run: |
+          if test -f "$CIMMICH_PUBLIC_DEMO_STATE_ROOT/.cimmich-public-demo"; then
+            tools/public_demo.sh destroy "--confirm=$CIMMICH_PUBLIC_DEMO_PROJECT"
+          fi
 
   full-release-lifecycle:
     name: Full release lifecycle

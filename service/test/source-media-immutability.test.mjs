@@ -35,6 +35,7 @@ const reviewedWriters = [
   "bin/validate-recognition-provider.mjs",
   "src/documents.mjs",
   "src/immich-companion-manager.mjs",
+  "src/local-ai-service.mjs",
 ];
 
 const productionModules = async (directory) => {

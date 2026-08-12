@@ -22,6 +22,7 @@
   interface Props {
     timelineManager: TimelineManager;
     invisible: boolean;
+    directViewer?: boolean;
     withStacked?: boolean;
     isShared?: boolean;
     album?: AlbumResponseDto;
@@ -31,6 +32,7 @@
 
   let {
     timelineManager,
+    directViewer = false,
     // eslint-disable-next-line no-useless-assignment
     invisible = $bindable(false),
     removeAction,
@@ -68,9 +70,14 @@
     previousAsset: undefined,
     nextAsset: undefined,
   });
+  let nearbyLoadGeneration = 0;
 
-  const loadCloseAssets = async (currentAsset: AssetResponseDto) => {
+  const loadCloseAssets = async (currentAsset: AssetResponseDto, generation: number) => {
     const [nextAsset, previousAsset] = await Promise.all([getNextAsset(currentAsset), getPreviousAsset(currentAsset)]);
+
+    if (generation !== nearbyLoadGeneration || directViewer) {
+      return;
+    }
 
     assetCursor = {
       current: currentAsset,
@@ -82,12 +89,20 @@
   //TODO: replace this with async derived in svelte 6
   $effect(() => {
     const asset = assetViewerManager.asset;
-    if (asset) {
-      handlePromiseError(loadCloseAssets(asset));
+    const generation = ++nearbyLoadGeneration;
+    if (!asset) {
+      return;
+    }
+    assetCursor = { current: asset, nextAsset: undefined, previousAsset: undefined };
+    if (!directViewer) {
+      handlePromiseError(loadCloseAssets(asset, generation));
     }
   });
 
   const handleRandom = async () => {
+    if (directViewer) {
+      return;
+    }
     const randomAsset = await timelineManager.getRandomAsset();
     if (!randomAsset) {
       return;
@@ -219,7 +234,11 @@
 
   const handleUpdateOrUpload = (asset: AssetResponseDto) => {
     if (asset.id === assetCursor.current.id) {
-      void loadCloseAssets(asset);
+      const generation = ++nearbyLoadGeneration;
+      assetCursor = { current: asset, nextAsset: undefined, previousAsset: undefined };
+      if (!directViewer) {
+        handlePromiseError(loadCloseAssets(asset, generation));
+      }
     }
   };
 
@@ -256,7 +275,7 @@
       assetCacheManager.invalidate();
     }}
     onUndoDelete={handleUndoDelete}
-    onRandom={handleRandom}
+    onRandom={directViewer ? undefined : handleRandom}
     onRemoveFromAlbum={handleRemoveFromAlbum}
     onClose={handleClose}
   />

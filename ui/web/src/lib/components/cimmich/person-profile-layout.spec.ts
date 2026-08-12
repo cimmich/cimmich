@@ -8,6 +8,8 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/identity-audit-correction-controller.svelte.ts', 'utf8'),
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-workspace-navigation.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonAppearanceGallery.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
@@ -48,7 +50,11 @@ describe('Person profile layout', () => {
   });
 
   it('keeps Photos compact and makes Identity an operational maintenance workspace', async () => {
-    const source = await readPersonProfile();
+    const [source, navigation, workspace] = await Promise.all([
+      readPersonProfile(),
+      readFile('src/lib/components/cimmich/CimmichPersonIdentityNavigation.svelte', 'utf8'),
+      readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
+    ]);
 
     expect(source).toContain('aria-label="Photo view options"');
     expect(source).toContain('aria-label="Thumbnail size"');
@@ -60,17 +66,17 @@ describe('Person profile layout', () => {
     expect(source).toContain('Body photo');
     expect(source).toContain('Hero photo');
     expect(source).not.toContain('Identity workspaces');
-    expect(source).toContain('aria-label="Identity tools"');
-    expect(source).toContain("label: 'Face evidence'");
-    expect(source).toContain("label: 'Appearance'");
-    expect(source).toContain("label: 'Display'");
-    expect(source).toContain("label: 'Review'");
-    expect(source).toContain('lg:border-l');
-    expect(source).not.toContain('overflow-x-auto pb-1');
-    expect(source).toContain("{ id: 'presentation', label: 'Photos'");
+    expect(navigation).toContain('aria-label="Identity sections"');
+    expect(workspace).toContain("label: 'Overview'");
+    expect(workspace).toContain("label: 'Face'");
+    expect(workspace).toContain("label: 'Appearance'");
+    expect(workspace).toContain("label: 'Display'");
+    expect(workspace).toContain("label: 'Checks'");
+    expect(navigation).not.toContain('lg:border-l');
+    expect(workspace).toMatch(/id: 'presentation',[\s\S]+label: 'Photos'/);
     expect(source).toContain('aria-label="Display photo choices"');
-    expect(source).toContain("{ id: 'prime', label: 'Core matching set'");
-    expect(source).toContain("{ id: 'secondary', label: 'Supporting'");
+    expect(workspace).toContain("{ id: 'prime', label: 'Core matching set'");
+    expect(workspace).toMatch(/id: 'secondary',[\s\S]+label: 'Supporting Face evidence'/);
     expect(source).toContain('Use automatic');
     expect(source).toContain("'Not selected'");
     expect(source).toContain("cimmichIdentityFilter === 'candidates'");
@@ -146,6 +152,11 @@ describe('Person profile layout', () => {
     expect(source).toContain('Show 20 more');
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
     expect(source).toContain('cimmichExplore.getAssetsPage(personId)');
+    expect(source).toContain('loadPersonAppearanceAssets(personId)');
+    expect(source).toContain('cimmichAppearanceAssets.appearance');
+    expect(source).toContain('cimmichAppearanceAssets.head');
+    expect(source).toContain('cimmichAppearanceAssets.body');
+    expect(source).toContain('cimmichAppearanceAssets.presence');
     expect(source).toContain('refreshCimmichIdentityAfterReview');
     expect(source).toContain('cimmichIdentityAuditProgress.completed');
     expect(source).toContain('Route.viewCimmichPersonAsset');
@@ -190,22 +201,25 @@ describe('Person profile layout', () => {
     expect(source).toContain(
       "{ id: 'prime', label: 'Core', description: 'Selected to cover the person for matching' }",
     );
-    expect(source).toContain("{ id: 'head', label: 'Head references', description: 'Face-derived, not manual tags' }");
     expect(source).toContain(
-      "{ id: 'body', label: 'Body', description: 'Body-only evidence without a usable Face or Head' }",
+      "{ id: 'appearance', label: 'Appearance', description: 'Head or Body placement without a Face' }",
     );
+    expect(source).toContain("{ id: 'head', label: 'Head', description: 'Head placement without a usable Face' }");
+    expect(source).toContain("{ id: 'body', label: 'Body', description: 'Body placement without a usable Face' }");
     expect(source).toContain(
-      "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
+      "{ id: 'presence', label: 'Presence', description: 'Attributed without a visible Face, Head, or Body placement' }",
     );
-    expect(source).toContain("{ id: 'body', label: 'Body', count: cimmichBodyAssets.length.toLocaleString() }");
-    expect(source).toContain(
-      "{ id: 'presence', label: 'Presence', count: cimmichPresenceAssets.length.toLocaleString() }",
+    expect(source).toContain("label: 'All appearance'");
+    expect(source).toContain("label: 'Body'");
+    expect(source).toMatch(
+      /id: 'presence',[\s\S]+label: 'Presence',[\s\S]+cimmichIdentityCountLabel\(cimmichAppearanceAssets\.presenceTotal\)/,
     );
     expect(source).toContain("association_types.includes('body_candidate')");
-    expect(source).toContain('Body placement needed');
-    expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
-    expect(source).toContain('No Face-derived Head references');
-    expect(source).toContain("association_types.includes('body') || association_types.includes('body_candidate')");
+    expect(source).toContain("association_types.includes('head')");
+    expect(source).toContain('Head and Body placements are one operational Appearance state.');
+    expect(source).toContain('Attributed to this person without a visible Face, Head, or Body placement.');
+    expect(source).toContain('No Head photos');
+    expect(source).toContain("const hasBody = asset.association_types.includes('body')");
     expect(source).toContain('Review face');
     expect(source).not.toContain("id: 'face_only', label: 'Not used'");
     expect(source).not.toContain('<h2 class="text-xl font-semibold">Matching</h2>');
@@ -244,8 +258,10 @@ describe('Person profile layout', () => {
     );
     expect(projection).toContain('void openCimmichIdentity(generation)');
     expect(source).toMatch(
-      /const openCimmichIdentity = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
+      /const loadCimmichIdentityReviewData = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
     );
+    expect(source).toContain('void loadCimmichIdentityReviewData(personId, generation)');
+    expect(source).not.toContain("if (cimmichIdentityFilter === 'all') {\n        cimmichIdentityFilter = 'prime';");
   });
 
   it('keeps rapid review decisions independent and coalesces their projection refresh', async () => {
@@ -267,9 +283,25 @@ describe('Person profile layout', () => {
 
     expect(source).toContain('readPersonWorkspaceCache<CachedPersonWorkspace>');
     expect(source).toContain('writePersonWorkspaceCache<CachedPersonWorkspace>');
+    expect(source).toContain('cimmichEvidenceCoverage = cached.evidenceCoverage');
+    expect(source).toContain('evidenceCoverage: cimmichEvidenceCoverage');
+    expect(source).toContain('void untrack(() => loadCimmichEvidence(generation))');
     expect(source).toContain("url.searchParams.set('returnScroll'");
     expect(source).toContain("url.searchParams.set('identityFilter', identityFilter)");
     expect(source).toContain('onOpen={storeCimmichReturnScroll}');
+  });
+
+  it('loads the light Overview projection before any full Identity workspace', async () => {
+    const source = await readPersonProfile();
+    const openStart = source.indexOf('const openCimmichIdentity = async');
+    const openEnd = source.indexOf('const openCimmichIdentityAt', openStart);
+    const openIdentity = source.slice(openStart, openEnd);
+
+    expect(openIdentity).toContain("if (cimmichIdentityFilter === 'overview')");
+    expect(openIdentity).toContain('void untrack(() => loadCimmichEvidence(generation))');
+    expect(openIdentity.indexOf('return;')).toBeLessThan(openIdentity.indexOf('loadPersonIdentityPrimary'));
+    expect(source).toContain('void openCimmichIdentityAt(identitySectionDefaultFilter(section))');
+    expect(source).toContain("personId && mode === 'photos' && filterKey !== cimmichExplore.loadedKey");
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {

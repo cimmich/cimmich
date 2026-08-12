@@ -50,7 +50,9 @@ Object.defineProperty(globalThis, 'matchMedia', {
 vi.mock('$env/dynamic/public', () => {
   return {
     env: {
+      PUBLIC_CIMMICH_DEFAULT_EXPERIENCE: 'companion',
       PUBLIC_IMMICH_HOSTNAME: '',
+      PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT: 'false',
     },
   };
 });

@@ -1,10 +1,12 @@
 export type CimmichIdentityFilter =
   | 'all'
+  | 'appearance'
   | 'body'
   | 'candidates'
   | 'head'
   | 'lq'
   | 'needs_qc'
+  | 'overview'
   | 'presentation'
   | 'presence'
   | 'prime'
@@ -16,7 +18,7 @@ export type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'ident
 const workspaceUrl = (mode: CimmichPersonMode, identityFilter: CimmichIdentityFilter) => {
   const url = new URL(globalThis.location.href);
   url.searchParams.set('mode', mode);
-  if (mode === 'identity' && identityFilter !== 'all') {
+  if (mode === 'identity' && identityFilter !== 'overview') {
     url.searchParams.set('identityFilter', identityFilter);
   } else {
     url.searchParams.delete('identityFilter');

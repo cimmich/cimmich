@@ -217,7 +217,7 @@ describe('Cimmich first-run Immich setup', () => {
     const { getByRole, getByText } = render(CimmichImmichSetup);
 
     await waitFor(() => expect(getByText(/Your 2 existing Cimmich People are preserved/)).toBeInTheDocument());
-    expect(getByRole('link', { name: 'Not now — continue using Cimmich' })).toHaveAttribute('href', '/cimmich/home');
+    expect(getByRole('link', { name: 'Not now — continue using Cimmich' })).toHaveAttribute('href', '/cimmich');
 
     await fireEvent.click(getByRole('button', { name: 'Preview this scope' }));
     await waitFor(() => expect(getByText(/0 labelled Immich People/)).toBeInTheDocument());
@@ -271,7 +271,7 @@ describe('Cimmich first-run Immich setup', () => {
     expect(getByText('8 items')).toBeInTheDocument();
     expect(getByText(/deliberately did not guess/)).toBeInTheDocument();
     expect(getByRole('link', { name: 'People' })).toHaveAttribute('href', '/cimmich/people');
-    expect(getByRole('link', { name: 'Open Cimmich' })).toHaveAttribute('href', '/cimmich/home');
+    expect(getByRole('link', { name: 'Open Cimmich' })).toHaveAttribute('href', '/cimmich');
     expect(getByRole('link', { name: 'Optional matching' })).toHaveAttribute('href', '#cimmich-face-matching-title');
     expect(queryByRole('button', { name: 'Preview this scope' })).not.toBeInTheDocument();
 

@@ -364,6 +364,18 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     statement,
     /WHERE identity\.state = 'accepted' AND identity\.face_state = 'valid'/,
   );
+  assert.match(
+    statement,
+    /JOIN asset identity_asset ON identity_asset\.asset_id = fo\.asset_id\s+AND identity_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset body_asset ON body_asset\.asset_id = observation\.asset_id\s+AND body_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset presence_asset ON presence_asset\.asset_id = presence\.asset_id\s+AND presence_asset\.state = 'active'/,
+  );
   assert.doesNotMatch(statement, /subject\.subject_kind = 'pet'/);
   assert.match(statement, /body_representatives AS MATERIALIZED/);
   // Asset visibility is enforced through the one materialized hidden-asset
@@ -430,6 +442,12 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.match(statement, /gallery_latest AS MATERIALIZED/);
   assert.match(statement, /accepted_assets AS MATERIALIZED/);
   assert.match(statement, /FROM current_manual_head_tag/);
+  assert.match(statement, /FROM imported_identity_locator locator/);
+  assert.match(statement, /locator\.intended_tag_type = 'body'/);
+  assert.match(
+    statement,
+    /locator\.resolution_kind = 'stronger_existing_truth'/,
+  );
   assert.match(statement, /photo_history AS MATERIALIZED/);
   assert.match(statement, /asset\.media_kind = 'image'/);
   assert.match(statement, /futureCaptureDateCount/);
@@ -437,6 +455,14 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.match(statement, /body_representative AS MATERIALIZED/);
   assert.match(statement, /tag\.person_id =/);
   assert.match(statement, /tag\.state = 'accepted'/);
+  assert.match(
+    statement,
+    /JOIN asset face_asset ON face_asset\.asset_id = face\.asset_id\s+AND face_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset claim_asset ON claim_asset\.asset_id = claim_face\.asset_id\s+AND claim_asset\.state = 'active'/,
+  );
   // Asset visibility runs through the materialized hidden-asset set, not
   // per-row rank function calls.
   assert.match(statement, /hidden_assets AS MATERIALIZED/);
@@ -665,9 +691,19 @@ test("Person assets resolve scoped associations without expanding person_assets"
     /locator\.resolution_kind = 'stronger_existing_truth'/,
   );
   assert.match(statement, /'body_hint_face'::text/);
+  assert.match(statement, /has_body OR has_body_hint_face/);
+  assert.match(statement, /NOT has_body_hint_face/);
   assert.match(statement, /effective_gallery_permission/);
   assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
+  assert.match(
+    statement,
+    /detected_identity\.state IN \('accepted', 'superseded'\)/,
+  );
   assert.match(statement, /FROM current_context_asset context_link/);
+  assert.match(
+    statement,
+    /projected_assets\.capture_time > now\(\) \+ interval '24 hours'/,
+  );
   assert.match(statement, /cimmich_visibility_context_entity_rank/);
   assert.match(
     statement,
@@ -850,6 +886,7 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
     presence_evidence: false,
     body_candidate_count: 7,
     confirmed_body_count: 41,
+    head_count: 3,
     presence_count: 3,
     total_count: 51,
     width: 100,
@@ -868,6 +905,7 @@ test("Person asset pages return an opaque subject-bound continuation", async () 
   assert.deepEqual(page.summary, {
     body: 41,
     bodyCandidate: 7,
+    head: 3,
     presence: 3,
     total: 51,
   });
@@ -889,6 +927,7 @@ test("Person Body pages bind their filter into the cursor scope", async () => {
     body_candidate_count: 1,
     capture_time: new Date(Date.UTC(2026, 0, 2 - index)),
     confirmed_body_count: 2,
+    head_count: 1,
     contexts: [],
     has_body: true,
     has_body_candidate: false,
@@ -917,6 +956,7 @@ test("Person Body pages bind their filter into the cursor scope", async () => {
   assert.deepEqual(page.summary, {
     body: 2,
     bodyCandidate: 1,
+    head: 1,
     presence: 0,
     total: 3,
   });
@@ -1004,6 +1044,10 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
   );
   assert.match(statement, /cimmich_visibility_asset_rank/);
   assert.match(statement, /filtered_gallery\.bucket_kind =/);
+  assert.match(statement, /source_gallery_permission/);
+  assert.match(statement, /effective_gallery_permission/);
+  assert.match(statement, /resolution_kind = 'stronger_existing_truth'/);
+  assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
 });
 
 test("Holding match batches are Person-scoped, ordered and concurrency-bounded", async () => {
@@ -1336,7 +1380,10 @@ test("Holding Prime retirement is one atomic SQL statement", async () => {
   // The maintenance helper is exercised indirectly by command methods in SQL
   // acceptance; this source assertion prevents reintroducing split retirement.
   const source = await import("node:fs/promises").then(({ readFile }) =>
-    readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
+    readFile(
+      new URL("../src/repository-maintenance.mjs", import.meta.url),
+      "utf8",
+    ),
   );
   assert.match(source, /WITH retired_buckets AS/);
   assert.doesNotMatch(

@@ -1,0 +1,513 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { runPhotoLab } from "../src/runner.mjs";
+
+const tinyPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+const configInput = {
+  contextPolicy: {
+    maximumTemporalGapSeconds: 600,
+    minimumMargin: 0.05,
+    minimumSimilarity: 0.72,
+    requireBidirectionalAnchors: true,
+  },
+  limits: {
+    enhanceProviderTimeoutMs: 2000,
+    maxAssets: 10,
+    maxEnhanceInputPixels: 1000,
+    maxInputBytes: 1000,
+    maxInputPixels: 1000,
+    providerTimeoutMs: 1000,
+  },
+  providers: {
+    bodies: {
+      enabled: true,
+      manifestPath: "/m",
+      modelPath: "/b",
+      providerScriptPath: "/p",
+      pythonPath: "/py",
+    },
+    enhance: {
+      device: "cpu",
+      enabled: true,
+      modelPath: "/e",
+      pythonPath: "/py",
+      runtimePath: "/runtime",
+    },
+    faces: {
+      detectorModelPath: "/f",
+      device: "cpu",
+      enabled: true,
+      pythonPath: "/py",
+      scoreThreshold: 0.2,
+    },
+    poses: {
+      enabled: true,
+      manifestPath: "/pose-manifest",
+      modelPath: "/pose-model",
+      providerScriptPath: "/pose-provider",
+      pythonPath: "/py",
+    },
+    sceneText: {
+      enabled: true,
+      endpoint: "http://localhost:11434",
+      model: "vision",
+    },
+  },
+  schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
+};
+
+const providerImplementations = {
+  async probeImage() {
+    return {
+      height: 1,
+      schemaVersion: "cimmich.local-ai-image-probe.v1",
+      width: 1,
+    };
+  },
+  async renderOverlay({ outputPath }) {
+    await writeFile(outputPath, tinyPng);
+    return { artifactDigest: "overlay" };
+  },
+  async runBodies({ asset }) {
+    return {
+      bodies: [
+        {
+          appearanceFeature: [1, 0],
+          bodyId: `body-${asset.assetId}`,
+          box: { h: 0.8, w: 0.5, x: 0.2, y: 0.1 },
+          featureDigest: "private-vector-digest",
+        },
+      ],
+      operation: "bodies",
+      state: "bodies_detected",
+    };
+  },
+  async runEnhance({ outputPath }) {
+    await writeFile(outputPath, tinyPng);
+    return {
+      artifactDigest: "enhance",
+      operation: "enhance",
+      scale: 2,
+      state: "derived",
+    };
+  },
+  async runFaces({ asset }) {
+    return {
+      faces: [
+        {
+          bodyId: `face-${asset.assetId}`,
+          box: { h: 0.2, w: 0.2, x: 0.3, y: 0.1 },
+        },
+      ],
+      operation: "faces",
+      state: "faces_detected",
+    };
+  },
+  async runPoses() {
+    return {
+      operation: "poses",
+      poses: [
+        {
+          box: { h: 0.8, w: 0.5, x: 0.2, y: 0.1 },
+          confidence: 0.9,
+          keypoints: [{ confidence: 0.9, joint: "nose", x: 0.4, y: 0.2 }],
+        },
+      ],
+      state: "poses_detected",
+    };
+  },
+  async runSceneText() {
+    return {
+      operation: "scene-text",
+      proposal: {
+        activities: [],
+        objects: [],
+        peopleCountEstimate: 1,
+        qualityFlags: [],
+        scene: "room",
+        summary: "A person.",
+        visibleText: [],
+      },
+      state: "proposed",
+    };
+  },
+};
+
+test("runner appends immutable receipts, strips paths/vectors, and diffs reruns", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-runner-"));
+  const inputs = join(root, "inputs");
+  const outputRoot = join(root, "output");
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(inputs));
+  const paths = ["left.png", "middle.png", "right.png"].map((name) =>
+    join(inputs, name),
+  );
+  for (const [index, path] of paths.entries())
+    await writeFile(path, Buffer.concat([tinyPng, Buffer.from([index])]));
+  const setInput = {
+    assets: paths.map((path, index) => ({
+      acceptedSubjects: index === 1 ? [] : ["Person A"],
+      assetId: ["left", "middle", "right"][index],
+      ...(index === 0
+        ? { baselineObservations: { bodies: [], faces: [] } }
+        : {}),
+      path,
+    })),
+    contextKind: "sequence",
+    schemaVersion: "cimmich.local-ai-photo-set.v1",
+    setId: "three-frame",
+  };
+  const first = await runPhotoLab({
+    configInput,
+    operationsInput: "full",
+    outputRoot,
+    providerImplementations,
+    setInput,
+  });
+  assert.equal(first.result.state, "completed");
+  assert.equal(first.result.context.candidates[0].state, "supported");
+  assert.equal(first.result.summary.state, "proposed");
+  assert.match(first.result.summary.text, /candidate for Person A/);
+  assert.equal(first.result.assets[0].baselineComparison.faces.added.length, 1);
+  assert.equal(
+    first.result.assets[0].baselineComparison.bodies.added.length,
+    1,
+  );
+  assert.equal(first.result.originalsUnchanged, true);
+  assert.equal(
+    JSON.parse(await readFile(first.statePath, "utf8")).state,
+    "complete",
+  );
+  const persisted = await readFile(first.resultPath, "utf8");
+  assert.equal(persisted.includes(root), false);
+  assert.equal(persisted.includes("appearanceFeature"), false);
+  assert.equal(persisted.includes("artifacts/left-enhanced-best-x2.png"), true);
+
+  const second = await runPhotoLab({
+    configInput,
+    operationsInput: "full",
+    outputRoot,
+    providerImplementations,
+    setInput,
+  });
+  assert.equal(second.result.revision, 2);
+  assert.equal(
+    JSON.parse(await readFile(second.diffPath, "utf8")).previousRunId,
+    first.result.runId,
+  );
+  assert.notEqual(first.resultPath, second.resultPath);
+
+  const facesOnly = await runPhotoLab({
+    configInput,
+    operationsInput: "faces",
+    outputRoot: join(root, "faces-only"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(facesOnly.result.executedOperations, ["faces"]);
+  assert.deepEqual(Object.keys(facesOnly.result.assets[0].operations), [
+    "faces",
+  ]);
+
+  const quickEnhance = await runPhotoLab({
+    configInput,
+    operationsInput: "enhance-preview",
+    outputRoot: join(root, "enhance-preview"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(quickEnhance.result.executedOperations, ["enhance-preview"]);
+  assert.equal(
+    quickEnhance.result.assets[0].operations.enhancePreview.artifact.path,
+    "artifacts/left-enhanced-quick-x2.png",
+  );
+  assert.match(
+    await readFile(quickEnhance.reportPath, "utf8"),
+    /Quick enhancement: derived/,
+  );
+
+  const contextOnly = await runPhotoLab({
+    configInput,
+    operationsInput: "context",
+    outputRoot: join(root, "context-only"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(contextOnly.result.executedOperations, [
+    "bodies",
+    "context",
+  ]);
+  assert.deepEqual(Object.keys(contextOnly.result.assets[0].operations), [
+    "bodies",
+  ]);
+
+  const contextAndQuick = await runPhotoLab({
+    configInput,
+    operationsInput: "context,enhance-preview",
+    outputRoot: join(root, "context-and-quick"),
+    providerImplementations,
+    setInput,
+  });
+  assert.deepEqual(contextAndQuick.result.executedOperations, [
+    "bodies",
+    "context",
+    "enhance-preview",
+  ]);
+
+  const poseReview = await runPhotoLab({
+    configInput,
+    operationsInput: "poses",
+    outputRoot: join(root, "pose-review"),
+    providerImplementations,
+    setInput: {
+      assets: [{ acceptedSubjects: [], assetId: "pose", path: paths[0] }],
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "pose-review",
+    },
+  });
+  assert.deepEqual(poseReview.result.executedOperations, ["bodies", "poses"]);
+  assert.equal(
+    poseReview.result.assets[0].operations.poses.poses[0].association.state,
+    "supported",
+  );
+  assert.equal(
+    poseReview.result.assets[0].operations.poses.poses[0].reliableKeypointCount,
+    1,
+  );
+  assert.match(
+    poseReview.result.assets[0].artifacts.overlay.path,
+    /review-overlay\.png$/,
+  );
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "poses",
+      outputRoot: join(root, "pose-too-many"),
+      providerImplementations,
+      setInput,
+    }),
+    { code: "LOCAL_AI_POSE_ASSETS_INVALID" },
+  );
+
+  const ambiguousPose = await runPhotoLab({
+    configInput,
+    operationsInput: "poses",
+    outputRoot: join(root, "pose-ambiguous"),
+    providerImplementations: {
+      ...providerImplementations,
+      async runBodies({ asset }) {
+        const duplicate = {
+          appearanceFeature: [1, 0],
+          box: { h: 0.8, w: 0.5, x: 0.2, y: 0.1 },
+        };
+        return {
+          bodies: [
+            { ...duplicate, bodyId: `body-a-${asset.assetId}` },
+            { ...duplicate, bodyId: `body-b-${asset.assetId}` },
+          ],
+          operation: "bodies",
+          state: "bodies_detected",
+        };
+      },
+    },
+    setInput: {
+      assets: [{ acceptedSubjects: [], assetId: "ambiguous", path: paths[0] }],
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "pose-ambiguous",
+    },
+  });
+  assert.equal(
+    ambiguousPose.result.assets[0].operations.poses.poses[0].association.state,
+    "ambiguous",
+  );
+
+  const disagreementProviders = {
+    ...providerImplementations,
+    async runBodies() {
+      return { bodies: [], operation: "bodies", state: "no_body" };
+    },
+    async runFaces() {
+      return {
+        faces: [
+          {
+            box: { h: 0.02, w: 0.02, x: 0.3, y: 0.1 },
+            quality: {
+              pixelHeight: 12,
+              pixelWidth: 12,
+              reviewReasons: ["LOW_CONFIDENCE", "TINY_FACE"],
+            },
+          },
+        ],
+        operation: "faces",
+        state: "faces_detected",
+      };
+    },
+    async runSceneText() {
+      return {
+        operation: "scene-text",
+        proposal: {
+          activities: [],
+          objects: [],
+          peopleCountEstimate: 0,
+          qualityFlags: [],
+          scene: "empty garden",
+          summary: "No person is visible.",
+          visibleText: [],
+        },
+        state: "proposed",
+      };
+    },
+  };
+  const disagreement = await runPhotoLab({
+    configInput,
+    operationsInput: "faces,bodies,scene-text",
+    outputRoot: join(root, "disagreement"),
+    providerImplementations: disagreementProviders,
+    setInput: {
+      assets: [
+        {
+          acceptedSubjects: [],
+          assetId: "empty",
+          path: paths[0],
+        },
+      ],
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "disagreement",
+    },
+  });
+  assert.deepEqual(disagreement.result.assets[0].crossModelChecks.reasonCodes, [
+    "ALL_FACE_CANDIDATES_REQUIRE_REVIEW",
+    "FACE_WITHOUT_BODY_SUPPORT",
+    "FACE_ONLY_WITH_NO_PERSON_SUPPORT",
+  ]);
+  assert.match(disagreement.result.summary.text, /Candidate review/);
+
+  const rejectedOutput = join(root, "rejected-before-output");
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "faces",
+      outputRoot: rejectedOutput,
+      providerImplementations: {
+        ...providerImplementations,
+        async probeImage() {
+          throw Object.assign(new Error("not an image"), {
+            code: "LOCAL_AI_SOURCE_UNREADABLE",
+          });
+        },
+      },
+      setInput: {
+        assets: [{ acceptedSubjects: [], assetId: "bad", path: paths[0] }],
+        contextKind: "none",
+        schemaVersion: "cimmich.local-ai-photo-set.v1",
+        setId: "bad",
+      },
+    }),
+    { code: "LOCAL_AI_SOURCE_UNREADABLE" },
+  );
+  assert.equal(await stat(rejectedOutput).catch(() => null), null);
+
+  const failedOutput = join(root, "failed-after-reservation");
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "faces",
+      outputRoot: failedOutput,
+      providerImplementations: {
+        ...providerImplementations,
+        async runFaces() {
+          throw Object.assign(new Error("provider exploded"), {
+            code: "LOCAL_AI_TEST_PROVIDER_FAILED",
+          });
+        },
+      },
+      setInput: {
+        assets: [{ acceptedSubjects: [], assetId: "failed", path: paths[0] }],
+        contextKind: "none",
+        schemaVersion: "cimmich.local-ai-photo-set.v1",
+        setId: "failed",
+      },
+    }),
+    { code: "LOCAL_AI_TEST_PROVIDER_FAILED" },
+  );
+  const [failedSet] = await readdir(join(failedOutput, "sets"));
+  const failedState = JSON.parse(
+    await readFile(
+      join(failedOutput, "sets", failedSet, "runs", "0001", "run-state.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(failedState.state, "failed");
+  assert.equal(failedState.errorCode, "LOCAL_AI_TEST_PROVIDER_FAILED");
+});
+
+test("runner loads the face provider once for a multi-photo set", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-face-batch-"));
+  const paths = [join(root, "one.png"), join(root, "two.png")];
+  await Promise.all(paths.map((path) => writeFile(path, tinyPng)));
+  let batchCalls = 0;
+  let oneShotCalls = 0;
+  const providers = {
+    ...providerImplementations,
+    async runFaces() {
+      oneShotCalls += 1;
+      return { faces: [], operation: "faces", state: "no_face" };
+    },
+    async runFacesBatch({ assets }) {
+      batchCalls += 1;
+      return assets.map(() => ({
+        durationMs: 1,
+        faces: [],
+        operation: "faces",
+        provider: { executionMode: "resident-set" },
+        state: "no_face",
+      }));
+    },
+  };
+  const result = await runPhotoLab({
+    configInput,
+    operationsInput: "faces",
+    outputRoot: join(root, "output"),
+    providerImplementations: providers,
+    setInput: {
+      assets: paths.map((path, index) => ({
+        acceptedSubjects: [],
+        assetId: `asset-${index}`,
+        path,
+      })),
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "face-batch",
+    },
+  });
+  assert.equal(result.result.state, "completed");
+  assert.equal(batchCalls, 1);
+  assert.equal(oneShotCalls, 0);
+  assert.deepEqual(
+    result.result.assets.map(
+      (asset) => asset.operations.faces.provider.executionMode,
+    ),
+    ["resident-set", "resident-set"],
+  );
+});
+
+test("Vulkan Best keeps its optional shader cache in disposable tmpfs", async () => {
+  const source = await readFile(
+    new URL("../python/image_tools.py", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /"HOME": "\/tmp"/);
+  assert.match(
+    source,
+    /"XDG_CACHE_HOME": "\/tmp\/cimmich-local-ai-vulkan-cache"/,
+  );
+});

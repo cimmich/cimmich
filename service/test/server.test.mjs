@@ -58,6 +58,222 @@ test("raw API rejects an untrusted Host even when Origin is absent", async () =>
   });
 });
 
+test("canonical Local AI routes expose bounded jobs and verified binary review artifacts", async () => {
+  const calls = [];
+  const jobId = "95e571ab-79a1-4f45-8416-2a3f22ca7f7a";
+  const token = "2af22c3c-e009-42a4-98e8-bb0f790bb25f:quick";
+  const job = {
+    artifactTokens: [token],
+    jobId,
+    operation: "quick",
+    schemaVersion: "cimmich.local-ai-jobs.v1",
+    state: "completed",
+  };
+  const localAi = {
+    artifact: async (input) => {
+      calls.push(["artifact", input]);
+      return {
+        bytes: Buffer.from("derived-review"),
+        disposition: "inline",
+        filename: "quick.png",
+        mimeType: "image/png",
+      };
+    },
+    cancel: (id) => {
+      calls.push(["cancel", id]);
+      return job;
+    },
+    get: (id) => {
+      calls.push(["get", id]);
+      return job;
+    },
+    start: async (input) => {
+      calls.push(["start", input]);
+      return job;
+    },
+    status: () => ({
+      capabilities: { best: true, faces: true, quick: true },
+      enabled: true,
+      schemaVersion: "cimmich.local-ai-jobs.v1",
+      state: "ready",
+    }),
+  };
+  await withServer(
+    {},
+    async (root) => {
+      const status = await fetch(`${root}/v1/local-ai`);
+      assert.equal(status.status, 200);
+      assert.equal((await status.json()).state, "ready");
+
+      const started = await fetch(`${root}/v1/local-ai/jobs`, {
+        body: JSON.stringify({
+          operation: "quick",
+          sourceAssetIds: [token.split(":")[0]],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(started.status, 202);
+
+      assert.equal(
+        (await fetch(`${root}/v1/local-ai/jobs/${jobId}`)).status,
+        200,
+      );
+      assert.equal(
+        (await fetch(`${root}/v1/local-ai/jobs/${jobId}`, { method: "DELETE" }))
+          .status,
+        200,
+      );
+
+      const artifact = await fetch(
+        `${root}/v1/local-ai/jobs/${jobId}/artifacts/${encodeURIComponent(token)}`,
+      );
+      assert.equal(artifact.status, 200);
+      assert.equal(artifact.headers.get("content-type"), "image/png");
+      assert.equal(await artifact.text(), "derived-review");
+    },
+    { localAi, surfacePolicy: "canonical" },
+  );
+  assert.deepEqual(calls, [
+    ["start", { operation: "quick", sourceAssetIds: [token.split(":")[0]] }],
+    ["get", jobId],
+    ["cancel", jobId],
+    ["artifact", { jobId, token }],
+  ]);
+});
+
+test("canonical owner gateway headers bind routes to the verified principal", async () => {
+  const calls = [];
+  const principalId = "22222222-2222-4222-8222-222222222222";
+  const origin = "http://owner.example.test";
+  const immichOnboarding = {
+    connect: async (input) => {
+      calls.push(input);
+      return { state: "connected" };
+    },
+    status: async () => ({ connection: { state: "not_configured" } }),
+  };
+  const immichOwnerSession = {
+    authorize: async (headers) => {
+      assert.equal(headers.cookie, "immich_access_token=owner");
+      return { principalId, state: "owner" };
+    },
+  };
+  await withServer(
+    { summary: async () => ({ assets: 1 }) },
+    async (root) => {
+      const auth = await fetch(`${root}/_internal/owner-session`, {
+        headers: { cookie: "immich_access_token=owner" },
+      });
+      assert.equal(auth.status, 204);
+      assert.equal(
+        auth.headers.get("x-cimmich-authenticated-principal"),
+        principalId,
+      );
+      assert.equal(auth.headers.get("x-cimmich-owner-binding-state"), "owner");
+
+      const missing = await fetch(`${root}/v1/summary`);
+      assert.equal(missing.status, 403);
+      assert.equal(
+        (await missing.json()).code,
+        "IMMICH_OWNER_SESSION_FORBIDDEN",
+      );
+
+      const summary = await fetch(`${root}/v1/summary`, {
+        headers: {
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-owner-binding-state": "owner",
+        },
+      });
+      assert.equal(summary.status, 200);
+
+      const missingOrigin = await fetch(
+        `${root}/v1/onboarding/immich/connect`,
+        {
+          body: JSON.stringify({
+            apiBaseUrl: "http://immich.test/api",
+            commandId: "onboarding.owner-binding.test",
+            credential: "synthetic-dedicated-key",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-authenticated-principal": principalId,
+            "x-cimmich-owner-binding-state": "owner",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(missingOrigin.status, 403);
+      assert.equal(
+        (await missingOrigin.json()).code,
+        "IMMICH_OWNER_ORIGIN_REQUIRED",
+      );
+
+      const connected = await fetch(`${root}/v1/onboarding/immich/connect`, {
+        body: JSON.stringify({
+          apiBaseUrl: "http://immich.test/api",
+          commandId: "onboarding.owner-binding.test",
+          credential: "synthetic-dedicated-key",
+        }),
+        headers: {
+          "content-type": "application/json",
+          origin,
+          "sec-fetch-site": "same-origin",
+          "x-cimmich-actor": "owner-browser",
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-owner-binding-state": "owner",
+        },
+        method: "POST",
+      });
+      assert.equal(connected.status, 200);
+    },
+    {
+      allowedOrigins: new Set([origin]),
+      immichOnboarding,
+      immichOwnerSession,
+      ownerGatewayRequired: true,
+      surfacePolicy: "canonical",
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].authenticatedPrincipalId, principalId);
+});
+
+test("bootstrap owner sessions can reach setup only", async () => {
+  const principalId = "33333333-3333-4333-8333-333333333333";
+  await withServer(
+    { summary: async () => ({ assets: 1 }) },
+    async (root) => {
+      const headers = {
+        "x-cimmich-authenticated-principal": principalId,
+        "x-cimmich-owner-binding-state": "bootstrap",
+      };
+      const setup = await fetch(`${root}/v1/onboarding/immich`, { headers });
+      assert.equal(setup.status, 200);
+      const ownerData = await fetch(`${root}/v1/summary`, { headers });
+      assert.equal(ownerData.status, 403);
+      assert.equal(
+        (await ownerData.json()).code,
+        "IMMICH_OWNER_SESSION_FORBIDDEN",
+      );
+    },
+    {
+      immichOnboarding: {
+        status: async () => ({ connection: { state: "not_configured" } }),
+      },
+      immichOwnerSession: {
+        authorize: async () => ({ principalId, state: "bootstrap" }),
+      },
+      ownerGatewayRequired: true,
+      surfacePolicy: "canonical",
+      visibility: {
+        requireProjection: () => {},
+        runRequest: (_request, _response, run) => run(),
+      },
+    },
+  );
+});
+
 test("decision history is visibility-registered and bounded before projection", async () => {
   const calls = [];
   const repository = {
@@ -124,6 +340,39 @@ test("Person connections are read before the generic Person route", async () => 
   assert.deepEqual(calls, [
     ["visibility", "people"],
     ["connections", { personId: "person-maya" }],
+  ]);
+});
+
+test("Person evidence coverage is read before the generic Person route", async () => {
+  const calls = [];
+  const projection = {
+    person: { displayName: "Maya", personId: "person-maya" },
+    schemaVersion: "cimmich.person-evidence-coverage.v2",
+  };
+  const repository = {
+    personEvidenceCoverage: async (input) => {
+      calls.push(["evidence", input]);
+      return projection;
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/people/person-maya/evidence-coverage`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), projection);
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "people"],
+    ["evidence", { personId: "person-maya" }],
   ]);
 });
 
@@ -402,6 +651,17 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
         schemaVersion: "cimmich.known-person-cluster-suggestions.v2",
       };
     },
+    possiblePeoplePreviews: async (input) => {
+      calls.push(["previews", input]);
+      return {
+        items: input.clusterIds.map((clusterId) => ({
+          clusterId,
+          previews: [],
+        })),
+        runId: "possible_run_1",
+        schemaVersion: "cimmich.possible-person-previews.v1",
+      };
+    },
     possiblePeopleRefresh: async (input) => {
       calls.push(["refresh", input]);
       return {
@@ -436,6 +696,15 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
         "opening Possible people must not enqueue matching work",
       );
 
+      const previews = await fetch(
+        `${root}/v1/possible-people/previews?clusterId=cluster%2Fone&clusterId=cluster-two`,
+      );
+      assert.equal(previews.status, 200);
+      assert.deepEqual(
+        (await previews.json()).items.map((item) => item.clusterId),
+        ["cluster/one", "cluster-two"],
+      );
+
       const refreshed = await fetch(`${root}/v1/possible-people/refresh`, {
         body: JSON.stringify({ commandId: "possible-people-refresh-1" }),
         headers: {
@@ -467,6 +736,8 @@ test("Possible people reads a stored snapshot and starts work only on explicit R
   assert.deepEqual(calls, [
     ["visibility", "person_review"],
     ["snapshot"],
+    ["visibility", "person_review"],
+    ["previews", { clusterIds: ["cluster/one", "cluster-two"] }],
     ["visibility", "person_review"],
     ["refresh", { actorId: "owner", commandId: "possible-people-refresh-1" }],
     ["visibility", "person_review"],
@@ -582,7 +853,7 @@ test("satellite map tiles are same-origin, bounded and cacheable", async () => {
   const calls = [];
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
   const satelliteTileFetch = async (url, options) => {
-    calls.push([url, Boolean(options?.signal)]);
+    calls.push([url, Boolean(options?.signal), options?.redirect]);
     return new Response(bytes, {
       headers: { "content-type": "image/jpeg" },
       status: 200,
@@ -610,8 +881,80 @@ test("satellite map tiles are same-origin, bounded and cacheable", async () => {
     [
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/18/153563/242651",
       true,
+      "error",
     ],
   ]);
+});
+
+test("satellite map tiles remain timeout-bound while reading the response body", async () => {
+  let requestSignal;
+  const satelliteTileFetch = async (_url, options) => {
+    requestSignal = options.signal;
+    let bodyController;
+    const body = new ReadableStream({
+      start(controller) {
+        bodyController = controller;
+        controller.enqueue(new Uint8Array([0xff, 0xd8]));
+      },
+    });
+    requestSignal.addEventListener(
+      "abort",
+      () => bodyController.error(new Error("provider body stalled")),
+      { once: true },
+    );
+    return new Response(body, {
+      headers: { "content-type": "image/jpeg" },
+      status: 200,
+    });
+  };
+
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/map/satellite/1/0/0`);
+      assert.equal(response.status, 502);
+      assert.equal((await response.json()).code, "SATELLITE_TILE_UNAVAILABLE");
+    },
+    { satelliteTileFetch, satelliteTileTimeoutMs: 20 },
+  );
+  assert.equal(requestSignal.aborted, true);
+});
+
+test("satellite map tiles cancel an oversized chunked response before allocation", async () => {
+  let cancelled = false;
+  let chunk = 0;
+  const satelliteTileFetch = async (_url, options) => {
+    assert.equal(options.redirect, "error");
+    return new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+        pull(controller) {
+          chunk += 1;
+          controller.enqueue(new Uint8Array(chunk <= 2 ? 1024 * 1024 : 1));
+        },
+      }),
+      {
+        headers: { "content-type": "image/png" },
+        status: 200,
+      },
+    );
+  };
+
+  await withServer(
+    {},
+    async (root) => {
+      const response = await fetch(`${root}/v1/map/satellite/1/0/0`);
+      assert.equal(response.status, 502);
+      assert.equal(
+        (await response.json()).code,
+        "SATELLITE_TILE_PAYLOAD_INVALID",
+      );
+    },
+    { satelliteTileFetch },
+  );
+  assert.equal(cancelled, true);
 });
 
 test("zero-egress mode refuses address and satellite provider requests", async () => {
@@ -1187,7 +1530,7 @@ test("Person projection pages are additive to legacy limit responses", async () 
       assert.deepEqual(await legacy.json(), { items: [] });
 
       const assets = await fetch(
-        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one&associationType=body`,
+        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one&associationType=body&future=1`,
       );
       assert.deepEqual(await assets.json(), page);
 
@@ -1213,6 +1556,14 @@ test("Person projection pages are additive to legacy limit responses", async () 
       {
         associationType: "body",
         cursor: "cursor-one",
+        exploreFilters: {
+          eventIds: [],
+          futureDates: true,
+          labelIds: [],
+          placeIds: [],
+          privacyTiers: [],
+          thingIds: [],
+        },
         limit: null,
         pageSize: "24",
         personId: "person-one",

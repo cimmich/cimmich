@@ -5,14 +5,18 @@ const cleanPriority = (value) => {
 
 export const createCoalescingMaintenanceLane = ({
   concurrency = 1,
+  maxAttempts = 1,
   name,
   onEvent = () => {},
+  retryDelayMs = 100,
   worker,
 }) => {
   if (typeof worker !== "function") {
     throw new Error("Maintenance lane requires a worker");
   }
   const maximumConcurrency = Math.max(1, Math.floor(Number(concurrency) || 1));
+  const maximumAttempts = Math.max(1, Math.floor(Number(maxAttempts) || 1));
+  const baseRetryDelayMs = Math.max(1, Math.floor(Number(retryDelayMs) || 1));
   const jobs = new Map();
   const pending = [];
   const idleWaiters = new Set();
@@ -21,6 +25,7 @@ export const createCoalescingMaintenanceLane = ({
   let completed = 0;
   let failed = 0;
   let coalesced = 0;
+  let retried = 0;
 
   const snapshot = () => ({
     active,
@@ -29,6 +34,7 @@ export const createCoalescingMaintenanceLane = ({
     failed,
     name,
     pending: pending.length,
+    retried,
     tracked: jobs.size,
   });
 
@@ -59,6 +65,8 @@ export const createCoalescingMaintenanceLane = ({
     active += 1;
     job.state = "running";
     job.dirty = false;
+    job.attempt += 1;
+    let retry = false;
     const startedAt = performance.now();
     const queueAgeMs = Date.now() - job.requestedAt;
     try {
@@ -73,26 +81,44 @@ export const createCoalescingMaintenanceLane = ({
         requestCount: job.requestCount,
       });
     } catch (error) {
-      failed += 1;
+      retry = job.attempt < maximumAttempts;
+      if (retry) retried += 1;
+      else failed += 1;
+      const nextRetryDelayMs = retry
+        ? baseRetryDelayMs * 2 ** (job.attempt - 1)
+        : undefined;
       onEvent({
+        attempt: job.attempt,
         durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
         error: error instanceof Error ? error.message : String(error),
         key: job.key,
-        kind: "failed",
+        kind: retry ? "retrying" : "failed",
+        maxAttempts: maximumAttempts,
         name,
         queueAgeMs,
         requestCount: job.requestCount,
+        retryDelayMs: nextRetryDelayMs,
       });
     } finally {
       active -= 1;
-      if (job.dirty) {
+      if (retry) {
+        const delayMs = baseRetryDelayMs * 2 ** (job.attempt - 1);
+        job.requestedAt = Date.now();
+        job.state = "backoff";
+        setTimeout(() => {
+          job.state = "queued";
+          pending.push(job);
+          queueDrain();
+        }, delayMs);
+      } else if (job.dirty) {
+        job.attempt = 0;
         job.requestedAt = Date.now();
         job.state = "queued";
         pending.push(job);
       } else {
         jobs.delete(job.key);
       }
-      queueDrain();
+      if (!retry) queueDrain();
       settleIdle();
     }
   };
@@ -124,6 +150,7 @@ export const createCoalescingMaintenanceLane = ({
       return true;
     }
     const job = {
+      attempt: 0,
       dirty: false,
       key,
       priority: cleanPriority(priority),

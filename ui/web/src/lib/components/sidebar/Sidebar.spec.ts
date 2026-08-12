@@ -33,7 +33,7 @@ describe('Sidebar component', () => {
     isFullSidebar | isSidebarOpen | expectedInert
     ${false}      | ${false}      | ${true}
     ${false}      | ${true}       | ${false}
-    ${true}       | ${false}      | ${false}
+    ${true}       | ${false}      | ${true}
     ${true}       | ${true}       | ${false}
   `(
     'inert is $expectedInert when isFullSidebar=$isFullSidebar and isSidebarOpen=$isSidebarOpen',
@@ -51,7 +51,7 @@ describe('Sidebar component', () => {
     },
   );
 
-  it('should set width when sidebar is expanded', () => {
+  it('should set drawer width when the small-screen sidebar is expanded', () => {
     // setup
     mocks.mediaQueryManager.isFullSidebar = false;
     sidebarStore.isOpen = true;
@@ -61,9 +61,19 @@ describe('Sidebar component', () => {
     const parent = screen.getByTestId('sidebar-parent');
 
     // then
-    expect(parent.classList).toContain('sidebar:w-64'); // sets the initial width for page load
     expect(parent.classList).toContain('w-[min(100vw,16rem)]');
     expect(parent.classList).toContain('shadow-2xl');
+  });
+
+  it('sets a fixed width when the desktop sidebar is expanded', () => {
+    mocks.mediaQueryManager.isFullSidebar = true;
+    sidebarStore.isOpen = true;
+
+    render(SideBarSection);
+    const parent = screen.getByTestId('sidebar-parent');
+
+    expect(parent.classList).toContain('w-64');
+    expect(parent.classList).not.toContain('shadow-2xl');
   });
 
   it('should close the sidebar if it is open on initial render', () => {

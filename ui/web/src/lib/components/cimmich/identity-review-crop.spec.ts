@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { fitIdentityReviewCrop, identityReviewSvgTransform, rotateIdentityReviewSource } from './identity-review-crop';
+import {
+  fitIdentityReviewCrop,
+  identityReviewCssTransform,
+  identityReviewSvgTransform,
+  normalizeIdentityReviewQuarterTurns,
+  rotateIdentityReviewPoint,
+  rotateIdentityReviewSource,
+  unrotateIdentityReviewPoint,
+} from './identity-review-crop';
 
 describe('fitIdentityReviewCrop', () => {
   it.each([
@@ -51,5 +59,15 @@ describe('fitIdentityReviewCrop', () => {
     expect(identityReviewSvgTransform(4000, 3000, 1)).toBe('translate(3000 0) rotate(90)');
     expect(identityReviewSvgTransform(4000, 3000, 2)).toBe('translate(4000 3000) rotate(180)');
     expect(identityReviewSvgTransform(4000, 3000, 3)).toBe('translate(0 4000) rotate(-90)');
+  });
+
+  it('projects CSS transforms and round-trips normalized points', () => {
+    expect(normalizeIdentityReviewQuarterTurns(-1)).toBe(3);
+    expect(identityReviewCssTransform(4000, 3000, 1)).toBe('translate(3000px, 0px) rotate(90deg)');
+    expect(identityReviewCssTransform(4000, 3000, 3)).toBe('translate(0px, 4000px) rotate(-90deg)');
+
+    const point = { x: 0.2, y: 0.3 };
+    expect(rotateIdentityReviewPoint(point, 1)).toEqual({ x: 0.7, y: 0.2 });
+    expect(unrotateIdentityReviewPoint(rotateIdentityReviewPoint(point, 3), 3)).toEqual(point);
   });
 });

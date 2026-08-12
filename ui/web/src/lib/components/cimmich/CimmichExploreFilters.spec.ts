@@ -10,6 +10,7 @@ import CimmichExploreFilters from './CimmichExploreFilters.svelte';
 
 const filters: CimmichExploreFilterState = {
   eventIds: [],
+  futureDates: false,
   labelIds: [],
   placeIds: [],
   privacyTiers: [],
@@ -42,6 +43,24 @@ beforeEach(() => {
 });
 
 describe('Cimmich Explore protected discovery', () => {
+  it('starts closed while keeping active filters visible and removable', async () => {
+    const activeFilters = { ...filters, labelIds: ['label-restricted'] };
+    const onchange = vi.fn();
+    const { getByRole, queryByRole } = render(CimmichExploreFilters, {
+      filters: activeFilters,
+      onchange,
+      result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+    });
+
+    const explore = getByRole('button', { name: /Explore/ });
+    expect(explore).toHaveAttribute('aria-expanded', 'false');
+    expect(getByRole('button', { name: /Label: Restricted/ })).toBeVisible();
+    expect(queryByRole('combobox', { name: 'Add tag or label filter' })).not.toBeInTheDocument();
+
+    await fireEvent.click(explore);
+    expect(getByRole('combobox', { name: 'Add tag or label filter' })).toBeVisible();
+  });
+
   it('offers a deliberate Private transition instead of claiming protected photos are zero', async () => {
     const onchange = vi.fn();
     const requestedModes: string[] = [];

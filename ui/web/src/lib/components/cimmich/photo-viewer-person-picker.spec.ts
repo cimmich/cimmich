@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
 const readPhotoOverlay = () => readFile('src/lib/components/cimmich/CimmichPhotoOverlay.svelte', 'utf8');
+const readPhotoOverlayStyles = () => readFile('src/lib/components/cimmich/CimmichPhotoOverlay.css', 'utf8');
 const readCimmichService = async () => {
   const files = await Promise.all([
     readFile('src/lib/services/cimmich.service.ts', 'utf8'),
@@ -24,6 +25,29 @@ describe('photo viewer Person picker', () => {
     expect(source).toContain("page.url.searchParams.get('cimmichOverlay') === 'people'");
   });
 
+  it('keeps typed existing-Person selection separate from explicit Person creation', async () => {
+    const source = await readPhotoOverlay();
+
+    expect(source).toContain('searchManualPhotoTagPeople(manualTagSubjects, normalizedFaceNameDraft, 8)');
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('role="listbox"');
+    expect(source).toContain('Existing People matching the typed name');
+    expect(source).toContain('Create a new Person named “{normalizedFaceNameDraft}” instead');
+    expect(source).toContain(
+      "faceActionError = 'Choose an existing Person, or explicitly choose to create a new one.'",
+    );
+    expect(source).toContain("faceEvidenceKindDraft !== 'body' && !faceDraftHasIdentityTarget");
+  });
+
+  it('shows marginal detector evidence without hiding the machine candidate', async () => {
+    const source = await readPhotoOverlay();
+
+    expect(source).toContain('candidatePresentationLabel(face, bestCandidate)');
+    expect(source).toContain('Face signal ${Math.round(detection * 100)}%');
+    expect(source).toContain('Match ${candidateSimilarityLabel(candidate.rawScore)}');
+    expect(source).not.toContain('detection >= 0.4 ? bestCandidate');
+  });
+
   it('defensively limits a larger API response to the requested shortlist', async () => {
     const source = await readCimmichService();
 
@@ -31,7 +55,11 @@ describe('photo viewer Person picker', () => {
   });
 
   it('renders imported locators as a linked Person tag and a single edit dot, never as a model box', async () => {
-    const [overlay, evidenceService] = await Promise.all([readPhotoOverlay(), readCimmichEvidenceService()]);
+    const [overlay, styles, evidenceService] = await Promise.all([
+      readPhotoOverlay(),
+      readPhotoOverlayStyles(),
+      readCimmichEvidenceService(),
+    ]);
 
     expect(evidenceService).toContain('(asset.identity_locators ?? []).map');
     expect(evidenceService).toContain('personIdentityKey: locator.person_id');
@@ -40,9 +68,9 @@ describe('photo viewer Person picker', () => {
     expect(overlay).toContain('sourcePresenceMarkerStyle(presence)');
     expect(overlay).toContain('cimmich-tagging-dot--named');
     expect(overlay).toContain('cimmich-tagging-dot--tagged');
-    expect(overlay).toContain('.cimmich-matching-unknown.cimmich-tagging-dot--tagged span');
-    expect(overlay.indexOf('.cimmich-matching-unknown.cimmich-tagging-dot--tagged span')).toBeGreaterThan(
-      overlay.indexOf('.cimmich-matching-unknown span'),
+    expect(styles).toContain('.cimmich-matching-unknown.cimmich-tagging-dot--tagged span');
+    expect(styles.indexOf('.cimmich-matching-unknown.cimmich-tagging-dot--tagged span')).toBeGreaterThan(
+      styles.indexOf('.cimmich-matching-unknown span'),
     );
     expect(overlay).toContain('<span>Tagged · {presence.name}</span>');
     expect(overlay).not.toContain('sourcePresenceBoxStyle(presence)');

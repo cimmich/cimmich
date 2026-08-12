@@ -61,8 +61,16 @@ declared lifecycle; backing up only one is incomplete.
 
 ## Local caller trust boundary
 
-Cimmich V1 is a single-user local companion, not a multi-tenant authorization
-server. `x-cimmich-actor`, `x-cimmich-principal-id` and
+Cimmich V1 is a single-owner local companion, not a multi-tenant authorization
+server. The supported same-origin gateway verifies the live Immich
+`/api/users/me` principal through a bounded internal authorizer and compares it
+with Cimmich's durable singleton owner binding. A different valid Immich user
+cannot read or mutate that owner's Cimmich state. Before the first claim, only
+the closed setup/status bootstrap routes are available, and the submitted
+dedicated API key must belong to the same principal as the browser session.
+Unsafe owner methods also require the exact configured UI Origin.
+
+`x-cimmich-actor`, `x-cimmich-principal-id` and
 `x-cimmich-device-id` are local attribution and presentation-session inputs;
 they are not proof of a remote user's identity. The supported deployment binds
 the service to loopback or a private container network and admits only exact

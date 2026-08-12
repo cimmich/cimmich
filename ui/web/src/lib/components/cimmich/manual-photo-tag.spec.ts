@@ -8,6 +8,7 @@ import {
   manualPhotoTagSubjectLabel,
   resizeManualPhotoTagGeometryForType,
   resolveManualPhotoTagPersonConflict,
+  searchManualPhotoTagPeople,
 } from './manual-photo-tag';
 
 const rect = { height: 500, left: 100, top: 50, width: 1000 };
@@ -129,6 +130,30 @@ describe('findExactManualPhotoTagPerson', () => {
       id: 'person-maya',
       kind: 'person',
     });
+  });
+});
+
+describe('searchManualPhotoTagPeople', () => {
+  const subjects = [
+    { id: 'person-pete', kind: 'person' as const, name: 'Pete Marques' },
+    { aliases: ['Peter H'], id: 'person-peter', kind: 'person' as const, name: 'Peter Hart' },
+    { id: 'person-jo', kind: 'person' as const, name: 'Jo Pete' },
+    { id: 'pet-pete', kind: 'pet' as const, name: 'Pete' },
+  ];
+
+  it('returns bounded existing People while the owner types, with prefix matches first', () => {
+    expect(searchManualPhotoTagPeople(subjects, 'Pete', 2).map((subject) => subject.id)).toEqual([
+      'person-pete',
+      'person-peter',
+    ]);
+  });
+
+  it('searches aliases without mixing Pets into a Person assignment', () => {
+    expect(searchManualPhotoTagPeople(subjects, 'Peter H').map((subject) => subject.id)).toEqual(['person-peter']);
+  });
+
+  it('does not open the whole People directory for an empty query', () => {
+    expect(searchManualPhotoTagPeople(subjects, '   ')).toEqual([]);
   });
 });
 

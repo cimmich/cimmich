@@ -87,7 +87,9 @@ CIMMICH_STOCK_ADMIN_EMAIL="fixture-${RUN_ID}@example.invalid" \
 CIMMICH_STOCK_ADMIN_PASSWORD="${RUN_ID}-fixture-only-password" \
 CIMMICH_STOCK_BOOTSTRAP_RECEIPT="$RECEIPT" \
 CIMMICH_STOCK_ONBOARDING_PEOPLE_FIXTURE=1 \
+CIMMICH_STOCK_SECONDARY_USER_FIXTURE=1 \
 node "$ROOT/service/acceptance/bootstrap-stock-immich.mjs" >/dev/null
+printf 'phase=stock-immich-bootstrap result=PASS\n'
 
 node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));fs.writeFileSync(process.argv[2],v.apiKey+'\n',{mode:0o600})" \
@@ -106,42 +108,68 @@ owner_request() {
   owner_path=$2
   owner_body=${3:-}
   companion_compose exec -T cimmich-api node -e '
-    const [method, path, body] = process.argv.slice(1);
-    fetch(`http://127.0.0.1:3101${path}`, {
-      body: body ? body : undefined,
-      headers: {
-        ...(body ? { "content-type": "application/json" } : {}),
-        "x-cimmich-actor": "companion-acceptance-owner",
-        "x-cimmich-device-id": "companion-acceptance",
-        "x-cimmich-surface": "interactive",
-      },
-      method,
-    }).then(async (response) => {
+    const [method, path, body, uiPort] = process.argv.slice(1);
+    (async () => {
+      const ownerSession = await fetch(
+        "http://127.0.0.1:3101/_internal/owner-session",
+        { headers: { "x-api-key": process.env.IMMICH_API_KEY } },
+      );
+      if (!ownerSession.ok) throw new Error("owner session unavailable");
+      const principalId = String(
+        ownerSession.headers.get("x-cimmich-authenticated-principal") || "",
+      );
+      const bindingState = String(
+        ownerSession.headers.get("x-cimmich-owner-binding-state") || "",
+      );
+      if (!principalId || bindingState !== "owner") {
+        throw new Error("owner session unavailable");
+      }
+      const response = await fetch(`http://127.0.0.1:3101${path}`, {
+        body: body ? body : undefined,
+        headers: {
+          ...(body ? { "content-type": "application/json" } : {}),
+          origin: `http://127.0.0.1:${uiPort}`,
+          "x-cimmich-actor": "companion-acceptance-owner",
+          "x-cimmich-authenticated-principal": principalId,
+          "x-cimmich-device-id": "companion-acceptance",
+          "x-cimmich-owner-binding-state": bindingState,
+          "x-cimmich-surface": "interactive",
+        },
+        method,
+      });
       const responseBody = await response.text();
       process.stdout.write(responseBody);
-      if (!response.ok) process.exitCode = 1;
-    }).catch(() => process.exit(1));
-  ' "$owner_method" "$owner_path" "$owner_body"
+      if (!response.ok) {
+        process.stderr.write(responseBody);
+        process.exitCode = 1;
+      }
+    })().catch(() => process.exit(1));
+  ' "$owner_method" "$owner_path" "$owner_body" "$UI_PORT"
 }
 
 "$ROOT/tools/companion.sh" configure \
   "http://host.docker.internal:${IMMICH_PORT}" "$API_KEY_FILE" >/dev/null
+printf 'phase=companion-configure result=PASS\n'
 "$ROOT/tools/companion.sh" up >/dev/null
+printf 'phase=companion-up result=PASS\n'
 onboarding_status=$(owner_request GET /v1/onboarding/immich)
 printf '%s' "$onboarding_status" | grep -q '"permissionVerification":"verified"'
 printf '%s' "$onboarding_status" | grep -q '"next":"preview"'
+printf 'phase=owner-status result=PASS\n'
 owner_request POST /v1/onboarding/immich/preview \
   '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}' \
   > "$ONBOARDING_PREVIEW"
 PREVIEW_DIGEST=$(node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.counts.assets!==1||v.counts.people!==2||v.counts.labelledPeople!==1||v.counts.unlabelledPeople!==1||v.counts.assignedFaces!==2||v.connection.permissionVerification!=='verified'){process.stderr.write(JSON.stringify({counts:v.counts,permissionVerification:v.connection?.permissionVerification}));process.exit(2)}process.stdout.write(v.previewDigest)" \
   "$ONBOARDING_PREVIEW")
+printf 'phase=onboarding-preview result=PASS\n'
 owner_request POST /v1/onboarding/immich/import \
   "{\"commandId\":\"companion-onboarding-import-unresolved\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
   > "$UNRESOLVED_IMPORT"
 node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed_with_review'||v.import?.projectedPeople!==1||v.import?.reviewItems<1||v.next?.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import,next:v.next}));process.exit(2)}" \
   "$UNRESOLVED_IMPORT"
+printf 'phase=onboarding-unresolved-import result=PASS\n'
 cluster_preview=$(owner_request POST /v1/onboarding/immich/person-clusters:preview \
   '{"scope":{"importPeople":true,"includeHiddenPeople":false,"mediaKinds":["image","video"],"providerMode":"deferred","visibilities":["timeline"]}}')
 cluster_fields=$(printf '%s' "$cluster_preview" | node -e '
@@ -155,19 +183,24 @@ cluster_id=${cluster_fields%%|*}
 cluster_rest=${cluster_fields#*|}
 cluster_revision=${cluster_rest%%|*}
 cluster_digest=${cluster_rest#*|}
+printf 'phase=person-cluster-preview result=PASS\n'
 cluster_resolution=$(owner_request POST "/v1/onboarding/immich/person-clusters/${cluster_id}/resolve" \
   "{\"action\":\"unknown\",\"commandId\":\"companion-onboarding-cluster-unknown\",\"expectedSourceRevision\":\"$cluster_revision\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]},\"snapshotDigest\":\"$cluster_digest\"}")
 printf '%s' "$cluster_resolution" | grep -q '"action":"unknown"'
+printf 'phase=person-cluster-resolution result=PASS\n'
 owner_request POST /v1/onboarding/immich/import \
   "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}" \
   > "$ONBOARDING_IMPORT"
 node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(v.state!=='completed'||v.replayed!==false||v.import?.assignedFaces!==1||v.import?.projectedPeople!==0||v.import?.importedSourceFaces!==1||v.import?.reviewItems!==0||v.next.automaticIdentityAuthority!=='none'){process.stderr.write(JSON.stringify({state:v.state,import:v.import}));process.exit(2)}" \
   "$ONBOARDING_IMPORT"
+printf 'phase=onboarding-final-import result=PASS\n'
 onboarding_replay=$(owner_request POST /v1/onboarding/immich/import \
   "{\"commandId\":\"companion-onboarding-import-0001\",\"previewDigest\":\"$PREVIEW_DIGEST\",\"scope\":{\"importPeople\":true,\"includeHiddenPeople\":false,\"mediaKinds\":[\"image\",\"video\"],\"providerMode\":\"deferred\",\"visibilities\":[\"timeline\"]}}")
 printf '%s' "$onboarding_replay" | grep -q '"replayed":true'
+printf 'phase=onboarding-replay result=PASS\n'
 "$ROOT/tools/companion.sh" sync 1 >/dev/null
+printf 'phase=inventory-sync result=PASS\n'
 
 health=$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/health")
 printf '%s' "$health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
@@ -175,9 +208,57 @@ escaped_status=$(curl --silent --show-error -o "$SECURITY_PROOF/guided-listener-
   -w '%{http_code}' "http://127.0.0.1:${API_PORT}/v1/summary")
 test "$escaped_status" = 403
 grep -q '"code":"GUIDED_SURFACE_REQUIRED"' "$SECURITY_PROOF/guided-listener-owner-route.json"
+printf 'phase=guided-listener-isolation result=PASS\n'
 gateway_health=$(curl --fail --silent --show-error \
   "http://127.0.0.1:${UI_PORT}/cimmich-api/health")
 printf '%s' "$gateway_health" | grep -q '"schemaVersion":'"$SCHEMA_VERSION"
+printf 'phase=gateway-health result=PASS\n'
+gateway_unauthenticated=$(curl --silent --show-error \
+  -o "$SECURITY_PROOF/gateway-unauthenticated.json" -w '%{http_code}' \
+  "http://127.0.0.1:${UI_PORT}/cimmich-api/v1/summary")
+test "$gateway_unauthenticated" = 401
+printf 'phase=gateway-anonymous-denial result=PASS\n'
+api_key=$(tr -d '\r\n' < "$API_KEY_FILE")
+if gateway_owner=$(curl --silent --show-error -H "x-api-key: $api_key" \
+  -o "$SECURITY_PROOF/gateway-owner-summary.json" -w '%{http_code}' \
+  "http://127.0.0.1:${UI_PORT}/cimmich-api/v1/summary"); then
+  :
+else
+  gateway_owner_transport=$?
+  printf 'gateway owner transport failed: curl=%s status=%s\n' \
+    "$gateway_owner_transport" "$gateway_owner" >&2
+  companion_compose logs --tail=80 cimmich-api cimmich-gateway >&2
+  exit 1
+fi
+if test "$gateway_owner" != 200; then
+  if test -f "$SECURITY_PROOF/gateway-owner-summary.json"; then
+    cat "$SECURITY_PROOF/gateway-owner-summary.json" >&2
+  fi
+  companion_compose logs --tail=80 cimmich-api cimmich-gateway >&2
+  exit 1
+fi
+if ! grep -q '"assets":' "$SECURITY_PROOF/gateway-owner-summary.json"; then
+  cat "$SECURITY_PROOF/gateway-owner-summary.json" >&2
+  exit 1
+fi
+printf 'phase=gateway-owner-read result=PASS\n'
+secondary_api_key=$(node -e \
+  "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));if(!v.secondaryApiKey)process.exit(2);process.stdout.write(v.secondaryApiKey)" \
+  "$RECEIPT")
+gateway_secondary=$(curl --silent --show-error \
+  -H "x-api-key: $secondary_api_key" \
+  -o "$SECURITY_PROOF/gateway-secondary-user.json" -w '%{http_code}' \
+  "http://127.0.0.1:${UI_PORT}/cimmich-api/v1/summary")
+test "$gateway_secondary" = 403
+printf 'phase=gateway-secondary-denial result=PASS\n'
+gateway_cross_origin=$(curl --silent --show-error \
+  -H "x-api-key: $api_key" -H 'content-type: application/json' \
+  -H 'origin: https://cross-site.example.invalid' \
+  -o "$SECURITY_PROOF/gateway-cross-origin.json" -w '%{http_code}' \
+  -X POST --data '{}' \
+  "http://127.0.0.1:${UI_PORT}/cimmich-api/v1/onboarding/immich/connect")
+test "$gateway_cross_origin" = 403
+printf 'phase=gateway-cross-origin-denial result=PASS\n'
 curl --fail --silent --show-error "http://127.0.0.1:${UI_PORT}/api/server/version" |
   grep -q '"minor":1'
 

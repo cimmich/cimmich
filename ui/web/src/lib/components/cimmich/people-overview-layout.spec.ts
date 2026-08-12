@@ -8,7 +8,8 @@ describe('People overview layout', () => {
     const source = await readPeopleOverview();
 
     expect(source).toContain('aria-label="Filter names and photo count"');
-    expect(source).toContain('initiallyExpanded');
+    expect(source).toContain('<CimmichExploreFilters');
+    expect(source).not.toContain('initiallyExpanded');
     expect(source).toContain("category.id === 'all' ? 'All categories'");
     expect(source).not.toContain('pinnedPeopleCategories');
     expect(source).not.toContain('togglePinnedPeopleCategory');

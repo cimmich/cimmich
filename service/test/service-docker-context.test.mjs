@@ -27,6 +27,12 @@ test("service Dockerfile build context is an explicit backend allowlist", async 
     "!providers/perceptual-dhash/*.py",
     "!providers/perceptual-dhash/*.json",
     "!providers/perceptual-dhash/requirements.txt",
+    "!providers/ultralytics-yolo-body/*.py",
+    "!providers/ultralytics-yolo-body/requirements-linux-cpu.txt",
+    "!providers/ultralytics-yolo-pose/*.py",
+    "!tools/local-ai-photo-lab/bin/**",
+    "!tools/local-ai-photo-lab/src/**",
+    "!tools/local-ai-photo-lab/python/**",
   ]) {
     assert.ok(ignore.split("\n").includes(required), required);
   }
@@ -56,11 +62,37 @@ test("public-demo API build context admits the reference adapter but no weights 
   );
   assert.match(dockerfile, /COPY providers\/opencv-sface/);
   assert.match(dockerfile, /COPY providers\/perceptual-dhash/);
+  assert.match(dockerfile, /CIMMICH_WITH_ULTRALYTICS_BODY/);
+  assert.match(dockerfile, /requirements-linux-cpu\.txt/);
+  assert.match(dockerfile, /COPY providers\/ultralytics-yolo-pose/);
   assert.match(dockerfile, /COPY service\/enhanced \.\/enhanced/);
+  assert.match(dockerfile, /python:3\.11-slim-trixie@sha256:/);
+  assert.match(
+    dockerfile,
+    /COPY --from=python-runtime \/usr\/local \/usr\/local/,
+  );
+  assert.match(dockerfile, /node:22-trixie-slim@sha256:/);
+  assert.match(dockerfile, /mesa-vulkan-drivers/);
+  assert.match(dockerfile, /realesrgan-ncnn-vulkan/);
+  assert.doesNotMatch(dockerfile, /COPY .*realesrgan-x4plus\.(?:bin|param)/);
   assert.match(ignore, /^\*\*$/m);
   assert.ok(ignore.split("\n").includes("!providers/opencv-sface/*.py"));
   assert.ok(ignore.split("\n").includes("!providers/perceptual-dhash/*.py"));
   assert.ok(ignore.split("\n").includes("!service/enhanced/**"));
+  assert.ok(
+    ignore.split("\n").includes("!providers/ultralytics-yolo-body/*.py"),
+  );
+  assert.ok(
+    ignore
+      .split("\n")
+      .includes("!providers/ultralytics-yolo-body/requirements-linux-cpu.txt"),
+  );
+  assert.ok(
+    ignore.split("\n").includes("!providers/ultralytics-yolo-pose/*.py"),
+  );
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/bin/**"));
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/src/**"));
+  assert.ok(ignore.split("\n").includes("!tools/local-ai-photo-lab/python/**"));
   assert.ok(
     ignore.split("\n").includes("!providers/opencv-sface/install-models.sh"),
   );
@@ -94,4 +126,19 @@ test("public-demo UI clean builds its local SDK through an explicit allowlist", 
   assert.ok(ignore.split("\n").includes("!ui/packages/sdk/**"));
   assert.doesNotMatch(ignore, /!.*\.env/);
   assert.doesNotMatch(ignore, /!.*private/i);
+});
+
+test("companion UI dependency installation is cached ahead of ordinary source", async () => {
+  const dockerfile = await readFile(
+    new URL("../../tools/cimmich_ui.Dockerfile", import.meta.url),
+    "utf8",
+  );
+  const metadata = dockerfile.indexOf("COPY ui/web/package.json");
+  const install = dockerfile.indexOf(
+    "pnpm --filter @immich/sdk --filter immich-web install",
+  );
+  const source = dockerfile.indexOf("COPY ui/web ./web");
+  assert.ok(metadata >= 0);
+  assert.ok(metadata < install);
+  assert.ok(install < source);
 });

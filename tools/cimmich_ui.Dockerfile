@@ -10,17 +10,26 @@ WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@11.6.0 --activate
 
 COPY ui/package.json ui/pnpm-lock.yaml ui/pnpm-workspace.yaml ./
+COPY ui/packages/sdk/package.json ./packages/sdk/package.json
+COPY ui/web/package.json ./web/package.json
+
+RUN pnpm --filter @immich/sdk --filter immich-web install --frozen-lockfile --force
+
 COPY ui/packages ./packages
 COPY ui/i18n ./i18n
 COPY ui/web ./web
 
-RUN pnpm --filter @immich/sdk --filter immich-web install --frozen-lockfile --force && \
+RUN \
     mkdir -p /workspace/web/node_modules/@immich && \
     ln -sfn ../../../packages/sdk /workspace/web/node_modules/@immich/sdk && \
     pnpm --filter @immich/sdk build
 
 ARG PUBLIC_CIMMICH_API_URL=http://127.0.0.1:3101
+ARG PUBLIC_CIMMICH_DEFAULT_EXPERIENCE=companion
+ARG PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=false
 ENV PUBLIC_CIMMICH_API_URL=${PUBLIC_CIMMICH_API_URL} \
+    PUBLIC_CIMMICH_DEFAULT_EXPERIENCE=${PUBLIC_CIMMICH_DEFAULT_EXPERIENCE} \
+    PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=${PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT} \
     CIMMICH_NODE_RUNTIME=true
 
 RUN pnpm --filter immich-web build && \

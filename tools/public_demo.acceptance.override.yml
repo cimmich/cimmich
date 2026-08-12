@@ -1,5 +1,9 @@
 services:
   cimmich-api:
+    environment:
+      # Direct owner-listener acceptance is isolated to loopback; gateway
+      # authentication is still exercised separately through the public port.
+      CIMMICH_OWNER_GATEWAY_REQUIRED: "false"
     ports:
       # Acceptance-only owner listener. The shipped runtime exposes only 3102.
       - 127.0.0.1:${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_OWNER_API_PORT:?set the acceptance owner API port}:3101

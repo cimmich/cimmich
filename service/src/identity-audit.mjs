@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createIdentityAuditDecisions } from "./identity-audit-decisions.mjs";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
+import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -11,19 +12,15 @@ export const identityAuditIndependenceScoreFloor = 0.75;
 // exact float equality (which failed whole audit runs on last-bit replays).
 export const identityAuditSimilarityEpsilon = 1e-6;
 // The full audit scores every eligible query Face against the whole prime
-// gallery in one statement, which is unbounded O(queries x gallery). The
-// query side is therefore capped the same way repository.mjs bounds
-// machineSuggestions: one deterministic ranked frontier. The default sits far
-// above any realistic library so it is behavior-preserving; when a library
-// does exceed it, the truncation is reported (never silent) via a structured
-// IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED warning.
-export const identityAuditQueryFrontierLimit = 50_000;
+// gallery in one statement, which is O(queries x gallery). Keep one
+// deterministic, production-sized query frontier. Larger libraries retain
+// their strongest eligible queries and emit a structured truncation warning.
+export const identityAuditQueryFrontierLimit = 5_000;
 // Independent-evidence verification runs two provider comparisons per
-// candidate. The historical behavior (no candidate bound, two concurrent
-// verification lanes) stays the default; both are configurable knobs now.
+// candidate. Bound the normal owner run to 100 strongest candidates (200
+// provider comparisons); controlled diagnostics may supply another limit.
 export const identityAuditIndependenceConcurrency = 2;
-export const identityAuditIndependenceComparisonLimit =
-  Number.POSITIVE_INFINITY;
+export const identityAuditIndependenceComparisonLimit = 100;
 // Both audit transactions run under these bounds. The reconcile sweep's
 // interrupt threshold must exceed the longest stretch a healthy run can go
 // without touching its own run row - one full audit transaction - or the
@@ -109,36 +106,6 @@ export const carryForwardIdentityAuditDismissals = async (
       AND current.review_state = 'open'
   `;
 };
-const projectRun = (row, currentPackId = null) =>
-  row
-    ? {
-        acceptedComparableFaces: Number(row.accepted_comparable_faces || 0),
-        acceptedEmbeddedFaces: Number(row.accepted_embedded_faces || 0),
-        auditRunId: row.audit_run_id,
-        completedAt: row.completed_at || null,
-        contradictionCandidates: Number(row.contradiction_candidates || 0),
-        derivativeCandidatesSuppressed: Number(
-          row.derivative_candidates_suppressed || 0,
-        ),
-        errorCode: row.error_code || null,
-        independenceProviderConfigDigest:
-          row.independence_provider_config_digest || null,
-        independenceScoreFloor: Number(
-          row.independence_score_floor ?? identityAuditIndependenceScoreFloor,
-        ),
-        marginFloor: Number(row.margin_floor),
-        packId: row.pack_id,
-        policyVersion: row.policy_version,
-        schemaVersion: identityAuditSchemaVersion,
-        stale: row.state === "completed" && currentPackId !== row.pack_id,
-        startedAt: row.started_at,
-        state: row.state,
-        scoreFloor: Number(row.score_floor),
-        untaggedCandidates: Number(row.untagged_candidates || 0),
-        untaggedEmbeddedFaces: Number(row.untagged_embedded_faces || 0),
-      }
-    : null;
-
 const auditSql = async (
   sql,
   runId,
@@ -468,6 +435,7 @@ const auditSql = async (
       UPDATE identity_audit_run
       SET last_progress_at = now(),
         untagged_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
+        untagged_queries_eligible = ${Number(untaggedFrontier?.eligible_queries || 0)},
         untagged_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}
@@ -484,6 +452,7 @@ const auditSql = async (
       SET last_progress_at = now(),
         accepted_embedded_faces = base.accepted_embedded_faces,
         accepted_comparable_faces = base.accepted_comparable_faces,
+        contradiction_queries_eligible = base.contradiction_queries_eligible,
         contradiction_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}
@@ -681,6 +650,7 @@ const auditSql = async (
       SET last_progress_at = now(),
         accepted_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
         accepted_comparable_faces = ${Number(coverage?.comparable_faces || 0)},
+        contradiction_queries_eligible = ${Number(contradictionFrontier?.eligible_queries || 0)},
         contradiction_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}
@@ -768,9 +738,8 @@ export const suppressSamePhotoDerivatives = async (
       AND item.suggested_reference_asset_id IS NOT NULL
     ORDER BY item.suggested_score DESC, item.margin DESC, item.face_id
   `;
-  // Both knobs default to the historical behavior (no bound, two lanes). A
-  // finite bound trims the already strongest-first candidate ranking, and the
-  // truncation is reported rather than silent.
+  // A finite bound trims the already strongest-first candidate ranking, and
+  // the truncation is reported rather than silent.
   const boundedComparisonLimit = cleanComparisonLimit(
     comparisonLimit,
     identityAuditIndependenceComparisonLimit,
@@ -880,6 +849,9 @@ export const suppressSamePhotoDerivatives = async (
     await tx`
       UPDATE identity_audit_run
       SET derivative_candidates_suppressed = ${suppressed.length},
+        independence_candidates_eligible = ${candidates.length},
+        independence_candidates_verified = ${verifiable.length},
+        truncation_projection_complete = true,
         independence_provider_config_digest =
           ${provider.manifest.providerConfigDigest},
         independence_score_floor = ${scoreFloor},
@@ -918,6 +890,12 @@ export const createIdentityAudit = (
   let reconcileInterruptedRunPromise = null;
   let reconcileInterruptedRunAt = 0;
   const reconcileRearmMs = 15 * 60 * 1000;
+  const projectRun = (row, currentPackId = null) =>
+    projectIdentityAuditRun(row, currentPackId, {
+      defaultIndependenceScoreFloor: identityAuditIndependenceScoreFloor,
+      defaultQueryFrontierLimit: identityAuditQueryFrontierLimit,
+      schemaVersion: identityAuditSchemaVersion,
+    });
   const reconcileInterruptedRun = async () => {
     // Stale-gated so one replica's cold start cannot fail a run another
     // replica is still driving. The sweep re-arms periodically: a
@@ -1030,6 +1008,17 @@ export const createIdentityAudit = (
           },
         );
       }
+      if (!base.truncation_projection_complete) {
+        throw Object.assign(
+          new Error(
+            "Incremental identity audit requires a base with complete limit reporting",
+          ),
+          {
+            code: "IDENTITY_AUDIT_INCREMENTAL_BASE_TRUNCATION_UNKNOWN",
+            statusCode: 409,
+          },
+        );
+      }
       // The base run's comparison snapshot is taken when its first statement
       // starts, not when the run completes - claims accepted during the base
       // run were never audited by it, so the staleness frontier must be
@@ -1085,13 +1074,28 @@ export const createIdentityAudit = (
       baseRunId = base.audit_run_id;
     }
     const runId = `identity-audit.${randomUUID()}`;
+    const storedQueryFrontierLimit = cleanFrontierLimit(
+      queryFrontierLimit,
+      identityAuditQueryFrontierLimit,
+    );
+    const boundedIndependenceComparisonLimit = cleanComparisonLimit(
+      independenceComparisonLimit,
+      identityAuditIndependenceComparisonLimit,
+    );
+    const storedIndependenceComparisonLimit = Number.isFinite(
+      boundedIndependenceComparisonLimit,
+    )
+      ? boundedIndependenceComparisonLimit
+      : null;
     try {
       await sql`
         INSERT INTO identity_audit_run (
-          audit_run_id, pack_id, policy_version, score_floor, margin_floor, state
+          audit_run_id, pack_id, policy_version, score_floor, margin_floor,
+          query_frontier_limit, independence_comparison_limit, state
         ) VALUES (
           ${runId}, ${pack.pack_id}, ${pack.policy_version},
-          ${Number(pack.score_floor)}, ${Number(pack.margin_floor)}, 'running'
+          ${Number(pack.score_floor)}, ${Number(pack.margin_floor)},
+          ${storedQueryFrontierLimit}, ${storedIndependenceComparisonLimit}, 'running'
         )
       `;
     } catch (error) {
@@ -1108,13 +1112,17 @@ export const createIdentityAudit = (
       presentationRank(),
       Number(pack.score_floor),
       Number(pack.margin_floor),
-      { baseRunId, incrementalFaceIds, queryFrontierLimit },
+      {
+        baseRunId,
+        incrementalFaceIds,
+        queryFrontierLimit: storedQueryFrontierLimit,
+      },
     )
       .then(() =>
         suppressSamePhotoDerivatives(sql, {
           companion,
           comparisonConcurrency: independenceConcurrency,
-          comparisonLimit: independenceComparisonLimit,
+          comparisonLimit: boundedIndependenceComparisonLimit,
           provider: derivativeProvider,
           runId,
           sourceId,

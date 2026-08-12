@@ -1,4 +1,10 @@
 export const matchPossiblePeopleRoutes = (pathname) => ({
+  possiblePeopleRead:
+    pathname === "/v1/possible-people"
+      ? "snapshot"
+      : pathname === "/v1/possible-people/previews"
+        ? "previews"
+        : null,
   personCandidatesMatch: pathname.match(/^\/v1\/people\/([^/]+)\/candidates$/),
   personKnownClusterSuggestionsMatch: pathname.match(
     /^\/v1\/people\/([^/]+)\/possible-clusters$/,

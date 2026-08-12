@@ -99,6 +99,31 @@ test("a principal-valid but under-scoped key is rejected before persistence", as
   await assert.rejects(readFile(filename), (error) => error.code === "ENOENT");
 });
 
+test("connection persistence requires the live setup principal to own the API key", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-companion-manager-"));
+  const filename = join(root, "immich-credential.json");
+  const manager = await createImmichCompanionManager({
+    credentialFile: filename,
+    fetchImpl: readyFetch,
+  });
+  let beforeStoreCalls = 0;
+  await assert.rejects(
+    manager.connect({
+      apiBaseUrl: "http://immich.test",
+      apiKey: "fixture-secret-key-123456",
+      beforeStore: async () => {
+        beforeStoreCalls += 1;
+      },
+      expectedPrincipalId: "secondary-user",
+    }),
+    (error) =>
+      error.code === "IMMICH_OWNER_CONNECTION_FORBIDDEN" &&
+      error.statusCode === 403,
+  );
+  assert.equal(beforeStoreCalls, 0);
+  await assert.rejects(readFile(filename), (error) => error.code === "ENOENT");
+});
+
 test("failed validation cannot create the credential store", async () => {
   const root = await mkdtemp(join(tmpdir(), "cimmich-companion-manager-"));
   const filename = join(root, "immich-credential.json");

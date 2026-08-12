@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 SCHEMA = "cimmich.body-detector.v1"
+MAX_RUNTIME_THREADS = 16
 
 
 def digest(value: object) -> str:
@@ -29,6 +30,10 @@ def build(args: argparse.Namespace) -> dict:
     artifact = args.model.resolve()
     if not artifact.is_file():
         raise ValueError("Model checkpoint is unavailable")
+    if not 1 <= args.threads <= MAX_RUNTIME_THREADS:
+        raise ValueError(
+            f"Thread budget must be from 1 to {MAX_RUNTIME_THREADS}"
+        )
     core = {
         "detector": {
             "artifactDigest": file_digest(artifact),
@@ -60,7 +65,7 @@ def build(args: argparse.Namespace) -> dict:
         },
         "provider": {
             "providerId": "ultralytics-yolo-body",
-            "versionId": "v2",
+            "versionId": "v3",
         },
         "resources": {
             "maxMemoryMiB": args.max_memory_mib,

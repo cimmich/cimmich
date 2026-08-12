@@ -309,6 +309,10 @@ test("the Immich adapter permits only its exact read-only route and method allow
     ),
     false,
   );
+  assert.equal(
+    calls.every(({ options }) => options.redirect === "error"),
+    true,
+  );
 });
 
 test("ready status binds only the stable principal ID and redacts profile fields", async () => {
@@ -483,6 +487,7 @@ test("original image reads are bounded, read-only and return no upstream path", 
   );
   const originalCall = calls.find((call) => call.url.endsWith("/original"));
   assert.equal(originalCall.options.method, undefined);
+  assert.equal(originalCall.options.redirect, "error");
   assert.equal(
     originalCall.options.headers["x-api-key"],
     "synthetic-secret-key",
@@ -498,7 +503,8 @@ test("original image and video fingerprints stream exact bytes without returning
     const companion = createImmichCompanion({
       apiBaseUrl: "http://immich.test",
       apiKey: "synthetic-secret-key",
-      fetchImpl: async (url) => {
+      fetchImpl: async (url, options = {}) => {
+        assert.equal(options.redirect, "error");
         if (url.endsWith("/server/version")) {
           return jsonResponse({
             major: 3,

@@ -49,6 +49,8 @@ test("local runtime secrets, images and browser response headers are hardened", 
     publicDemoGateway,
     stockImmich,
     companionUi,
+    publicDemoUi,
+    nginxRuntime,
     companionCompose,
     publicDemoCompose,
   ] = await Promise.all([
@@ -57,6 +59,8 @@ test("local runtime secrets, images and browser response headers are hardened", 
     source("tools/public_demo_nginx.conf"),
     source("ops/stock-immich-v3.1.0.compose.yml"),
     source("tools/cimmich_ui.Dockerfile"),
+    source("tools/public_demo_ui.Dockerfile"),
+    source("tools/cimmich_nginx_runtime.conf"),
     source("compose.yaml"),
     source("tools/public_demo.compose.yml"),
   ]);
@@ -74,11 +78,20 @@ test("local runtime secrets, images and browser response headers are hardened", 
   for (const nginx of [gateway, publicDemoGateway]) {
     assert.match(
       nginx,
-      /location = \/_cimmich_immich_session \{[\s\S]*internal;[\s\S]*\/api\/users\/me;[\s\S]*proxy_set_header Cookie \$http_cookie;[\s\S]*proxy_set_header Authorization \$http_authorization;[\s\S]*proxy_set_header X-Api-Key \$http_x_api_key;/,
+      /location = \/_cimmich_owner_session \{[\s\S]*internal;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\/_internal\/owner-session;[\s\S]*proxy_set_header Cookie \$http_cookie;[\s\S]*proxy_set_header Authorization \$http_authorization;[\s\S]*proxy_set_header X-Api-Key \$http_x_api_key;/,
     );
     assert.match(
       nginx,
-      /location \/cimmich-api\/ \{[\s\S]*auth_request \/_cimmich_immich_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
+      /location \/cimmich-api\/ \{[\s\S]*auth_request \/_cimmich_owner_session;[\s\S]*auth_request_set \$cimmich_authenticated_principal[\s\S]*proxy_set_header Origin \$http_origin;[\s\S]*proxy_set_header X-Cimmich-Authenticated-Principal \$cimmich_authenticated_principal;/,
+    );
+    assert.match(
+      nginx,
+      /location \/cimmich-api\/ \{[\s\S]*proxy_buffering off;/,
+      "owner API responses must stream rather than filling the gateway tmpfs",
+    );
+    assert.match(
+      nginx,
+      /location \^~ \/cimmich-api\/_internal\/ \{[\s\S]*return 404;/,
     );
     assert.match(
       nginx,
@@ -105,10 +118,46 @@ test("local runtime secrets, images and browser response headers are hardened", 
     );
   }
   assert.match(companionUi, /USER node\s+CMD \["node", "build"\]/);
-  assert.ok(
-    (companionCompose.match(/no-new-privileges:true/g) || []).length >= 2,
+  assert.match(
+    publicDemoUi,
+    /COPY tools\/cimmich_nginx_runtime\.conf \/etc\/nginx\/nginx\.conf/,
   );
-  assert.ok((companionCompose.match(/cap_drop: \[ALL\]/g) || []).length >= 2);
+  assert.match(publicDemoUi, /USER nginx/);
+  assert.match(publicDemoUi, /ENTRYPOINT \[\]/);
+  assert.match(publicDemoUi, /EXPOSE 8080/);
+  assert.match(nginxRuntime, /pid \/tmp\/nginx\.pid/);
+  for (const temporaryPath of [
+    "client_body_temp_path /tmp/client-body",
+    "proxy_temp_path /tmp/proxy",
+    "fastcgi_temp_path /tmp/fastcgi",
+    "uwsgi_temp_path /tmp/uwsgi",
+    "scgi_temp_path /tmp/scgi",
+  ]) {
+    assert.match(nginxRuntime, new RegExp(temporaryPath));
+  }
+  assert.match(companionCompose, /CIMMICH_OWNER_GATEWAY_REQUIRED: "true"/);
+  assert.match(companionCompose, /CIMMICH_IMMICH_WEB_ORIGIN:/);
+  for (const compose of [companionCompose, publicDemoCompose]) {
+    const gateway = compose.match(
+      /  (?:cimmich-gateway|public-demo-ui):\n(?<body>[\s\S]*?)(?:\n  [a-z]|\nnetworks:)/,
+    )?.groups?.body;
+    assert.ok(gateway);
+    assert.match(gateway, /read_only: true/);
+    assert.match(gateway, /\/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777/);
+    assert.match(gateway, /no-new-privileges:true/);
+    assert.match(gateway, /cap_drop: \[ALL\]/);
+    assert.match(gateway, /:8080/);
+  }
+  const companionGateway = companionCompose.match(
+    /  cimmich-gateway:\n(?<body>[\s\S]*?)\nnetworks:/,
+  )?.groups?.body;
+  assert.ok(companionGateway);
+  assert.match(companionGateway, /entrypoint: \[\]/);
+  assert.match(companionGateway, /user: 101:101/);
+  assert.match(
+    companionGateway,
+    /cimmich_nginx_runtime\.conf:\/etc\/nginx\/nginx\.conf:ro/,
+  );
   assert.match(lab, /no-new-privileges:true/);
   assert.match(lab, /cap_drop: \[ALL\]/);
   const publicDemoApi = publicDemoCompose.match(
@@ -117,6 +166,14 @@ test("local runtime secrets, images and browser response headers are hardened", 
   assert.ok(publicDemoApi);
   assert.match(publicDemoApi, /no-new-privileges:true/);
   assert.match(publicDemoApi, /cap_drop: \[ALL\]/);
+});
+
+test("Vulkan deployment grants only read/write access to the render node", async () => {
+  const compose = await source("compose.local-ai-vulkan.yaml");
+  assert.match(compose, /source: \$\{CIMMICH_LOCAL_AI_RENDER_DEVICE/);
+  assert.match(compose, /target: \/dev\/dri\/renderD128/);
+  assert.match(compose, /permissions: rw/);
+  assert.doesNotMatch(compose, /permissions: rwm/);
 });
 
 test("backup restore validates hostile input before replacing owner state", async () => {

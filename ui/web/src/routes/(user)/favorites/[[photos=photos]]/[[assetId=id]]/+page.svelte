@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -31,6 +33,7 @@
   let { data }: Props = $props();
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
+  const isLibraryContext = $derived(page.url.searchParams.has('organise'));
   const options = { isFavorite: true, withStacked: true };
 
   const handleEscape = () => {
@@ -47,18 +50,25 @@
 </script>
 
 <UserPageLayout hideNavbar={assetMultiSelectManager.selectionActive} title={data.meta.title} scrollbar={false}>
-  <Timeline
-    enableRouting={true}
-    withStacked={true}
-    bind:timelineManager
-    {options}
-    assetInteraction={assetMultiSelectManager}
-    onEscape={handleEscape}
-  >
-    {#snippet empty()}
-      <EmptyPlaceholder text={$t('no_favorites_message')} class="mx-auto mt-10" />
-    {/snippet}
-  </Timeline>
+  <div class="flex h-full min-h-0 flex-col">
+    {#if isLibraryContext}
+      <CimmichOrganiseModeSwitch />
+    {/if}
+    <div class="min-h-0 flex-1">
+      <Timeline
+        enableRouting={true}
+        withStacked={true}
+        bind:timelineManager
+        {options}
+        assetInteraction={assetMultiSelectManager}
+        onEscape={handleEscape}
+      >
+        {#snippet empty()}
+          <EmptyPlaceholder text={$t('no_favorites_message')} class="mx-auto mt-10" />
+        {/snippet}
+      </Timeline>
+    </div>
+  </div>
 </UserPageLayout>
 
 <!-- Multiselection mode app bar -->

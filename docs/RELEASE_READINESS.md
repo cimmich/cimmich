@@ -3,7 +3,7 @@
 Updated: 2026-08-11
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
-Current development source: migration-ledger schema 128/patch 1
+Current development source: migration-ledger schema 130/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
@@ -20,6 +20,9 @@ Release evidence must be produced from one clean immutable commit and include:
 - privacy/publication scan and reconciled public documentation;
 - named tar/ZIP bundles plus `SHA256SUMS`, with installer preflight from both;
 - service, web, Svelte, TypeScript, formatting, lint and production build;
+- measured Web coverage across the Cimmich component, manager and service
+  modules, with higher per-file floors for privacy/session, mutation,
+  bounded-cache, geometry and viewer-presentation paths;
 - migration, synthetic, stock-Immich and public-demo lifecycle acceptance;
 - schema-75 Patch-6 forward-upgrade and portable restore proof;
 - signed-in desktop/mobile walkthroughs of every top-level Cimmich section;
@@ -27,6 +30,32 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Independent-review follow-up gate — 2026-08-11
+
+The local development candidate closes every High, Medium and Low actionable
+finding in the independent CD report. Geometry arrows are consumed even at a
+clamp boundary and first adjustment feedback uses persistent live regions.
+Context tabs use the shared synchronous keyboard-tabs behavior. Identity-audit
+query and independent-verification ceilings are durably projected to the owner,
+while bounded unnamed-person discovery returns explicit hydrated partial
+progress instead of discarding it.
+
+Maintenance retries now use observable exponential backoff, preserve original
+failure details, and apply equally to Prime and Body-link projections. Smart
+Search never publishes an unsubmitted draft and its lenses own real tabpanels.
+The required Web coverage gate measures the full Cimmich component, manager and
+service surface, with higher floors on critical modules. Browser acceptance
+navigates every Organise mode, verifies the rendered viewer media changes, and
+restores Standard mode in `finally`. Disposable Postgres acceptance compares
+batch Face-review output byte-for-byte with the single-Face path. The Guided
+client rejects redirects, and Compose hardens PostgreSQL, the API and optional
+face-model installer in addition to the gateway.
+
+Required proof for this gate is schema-130 migration acceptance, full synthetic
+acceptance, the service suite, Web coverage, Svelte/TypeScript/lint/format/build,
+source-shape, Compose render and the publication/privacy scan. This remains a
+local source gate: it authorizes no deployment or public release.
 
 ## Community Preview 8 photo-presentation and portable-lifecycle gate — 2026-08-11
 
@@ -498,6 +527,16 @@ Schema 128 keeps generic labels inside Cimmich and records exact browser-driven
 folder-album checkpoints. Neither path writes archive sidecars or moves source
 media; duplicate titles must be resolved in the reviewed manifest and Undo
 removes only memberships proven to have been created by that operation.
+Schema 129 adds one durable Immich-owner binding. The gateway now delegates its
+session decision to a bounded Cimmich `/users/me` authorizer, rejects a valid
+secondary-user session or API key, limits first setup to a closed bootstrap
+surface, and requires the exact configured Origin for unsafe owner requests.
+Schema 130 durably records both ranked-query and independent-verification
+frontiers on every identity-audit run. The owner surface reports partial audit
+coverage explicitly, and legacy runs state that they predate complete limit
+reporting rather than presenting a bounded queue as exhaustive.
+The Community Preview 8 release remains schema 128; schema 130 is current local
+development source pending full lifecycle and live-runtime certification.
 
 ## Historical Public Beta Patch 6 certification
 
@@ -506,8 +545,9 @@ post-submission identity machinery rather than publishing database work without
 a usable review loop:
 
 - known-Person and recurring unnamed-Person suggestions are separate;
-- Face evidence, Head/Body/Presence appearance, Display framing and Review are
-  separate jobs on a Person profile;
+- Identity is one Person-profile destination with Overview, Face,
+  Head/Body/Presence Appearance, Checks and Display jobs. Checks visibly split
+  New matches, same-photo collisions and Possible mistags;
 - a negative proposed-name decision opens reassignment instead of discarding
   the unresolved face;
 - imported source locators remain explicit owner placement questions and are

@@ -46,3 +46,24 @@ test("same-photo Face comparison batches reject unsafe shapes", async () => {
     (error) => error.code === "FACE_REVIEW_BATCH_INVALID",
   );
 });
+
+test("same-photo Face comparison batch uses one database-side loader", async () => {
+  const calls = [];
+  const result = await runFaceReviewComparisonBatch({
+    faceIds: ["face-1", "face-2"],
+    limitPerFace: 3,
+    loadBatch: async (request) => {
+      calls.push(request);
+      return request.faceIds.map((faceId) => ({ faceId, matches: [] }));
+    },
+    loadComparisons: async () => {
+      throw new Error("per-face loader must not run");
+    },
+  });
+
+  assert.deepEqual(calls, [{ faceIds: ["face-1", "face-2"], limitPerFace: 3 }]);
+  assert.deepEqual(
+    result.items.map(({ faceId }) => faceId),
+    ["face-1", "face-2"],
+  );
+});

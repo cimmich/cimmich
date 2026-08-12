@@ -14,6 +14,7 @@ describe('Cimmich Explore filter URLs', () => {
     const filters = cimmichExploreFiltersFromUrl(source);
     expect(filters).toEqual({
       eventIds: [],
+      futureDates: false,
       labelIds: ['label-one', 'label-two'],
       placeIds: [],
       privacyTiers: ['private'],
@@ -27,11 +28,20 @@ describe('Cimmich Explore filter URLs', () => {
     expect(
       withCimmichExploreFilters('/cimmich/people/Aga?personId=person-aga', {
         eventIds: [],
+        futureDates: false,
         labelIds: ['label-restricted'],
         placeIds: [],
         privacyTiers: ['private'],
         thingIds: [],
       }),
     ).toBe('/cimmich/people/Aga?personId=person-aga&privacy=private&label=label-restricted');
+  });
+
+  it('round-trips the exact future-date review scope', () => {
+    const source = new URL('http://cimmich.local/cimmich/people/Benji?personId=person-benji&mode=photos&future=1');
+    const filters = cimmichExploreFiltersFromUrl(source);
+    expect(filters.futureDates).toBe(true);
+    expect(cimmichExploreFilterCount(filters)).toBe(1);
+    expect(cimmichExploreFiltersUrl(source, { ...filters, futureDates: false }).searchParams.has('future')).toBe(false);
   });
 });

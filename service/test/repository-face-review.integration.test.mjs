@@ -114,12 +114,24 @@ integrationTest(
         limit: 5,
       });
 
+      const scoredItems = result.items.filter(
+        ({ similarity }) => similarity != null,
+      );
       assert.deepEqual(
-        result.items.map(({ display_name }) => display_name),
+        scoredItems.map(({ display_name }) => display_name),
         ["Alex", "Maya"],
       );
-      assert.equal(Number(result.items[0].similarity), 1);
-      assert.ok(Math.abs(Number(result.items[1].similarity) - 0.8) < 1e-6);
+      assert.equal(Number(scoredItems[0].similarity), 1);
+      assert.ok(Math.abs(Number(scoredItems[1].similarity) - 0.8) < 1e-6);
+
+      const batch = await repository.faceReviewComparisonsBatch({
+        faceIds: ["face_review_query"],
+        limitPerFace: 5,
+      });
+      assert.equal(
+        JSON.stringify(batch.items[0].matches),
+        JSON.stringify(result.items),
+      );
 
       const moved = await repository.setFaceBucket({
         actorId: "integration-test",

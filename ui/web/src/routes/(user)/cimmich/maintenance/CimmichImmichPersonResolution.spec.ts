@@ -113,6 +113,29 @@ describe('Immich unnamed Person resolution', () => {
     );
   });
 
+  it('keeps bounded partial scan progress owner-visible', async () => {
+    mocks.preview.mockResolvedValue({
+      clusters: [cluster],
+      scanSummary: {
+        complete: false,
+        scannedAssetCount: 250_000,
+        scanAssetLimit: 250_000,
+        targetAssetCount: 1,
+        targetAssetLimit: 10_000,
+        timeoutMs: 120_000,
+        truncationReason: 'asset_limit',
+      },
+      schemaVersion: 'cimmich.immich-person-resolution.v1',
+      scope,
+    });
+    const onreadiness = vi.fn();
+    const { getByRole } = render(CimmichImmichPersonResolution, { onreadiness, scope });
+
+    await waitFor(() => expect(getByRole('status')).toHaveTextContent(/Showing partial results from 250,000/));
+    expect(getByRole('status')).toHaveTextContent(/asset limit/);
+    expect(onreadiness).toHaveBeenLastCalledWith(false);
+  });
+
   it('uses a human label and bounded preview while relegating the raw upstream ID to technical details', async () => {
     const { getByLabelText, getByText } = render(CimmichImmichPersonResolution, { scope });
 

@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
+  import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -44,6 +46,7 @@
   let { data }: Props = $props();
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
+  const isLibraryContext = $derived(page.url.searchParams.has('organise'));
   const options = {
     visibility: AssetVisibility.Timeline,
     withStacked: true,
@@ -90,19 +93,30 @@
 </script>
 
 <UserPageLayout hideNavbar={assetMultiSelectManager.selectionActive} title={data.meta.title} scrollbar={false}>
-  <Timeline
-    enableRouting={true}
-    bind:timelineManager
-    {options}
-    assetInteraction={assetMultiSelectManager}
-    removeAction={AssetAction.ARCHIVE}
-    onEscape={handleEscape}
-    withStacked
-  >
-    {#snippet empty()}
-      <EmptyPlaceholder text={$t('no_assets_message')} onClick={() => openFileUploadDialog()} class="mx-auto mt-10" />
-    {/snippet}
-  </Timeline>
+  <div class="flex h-full min-h-0 flex-col">
+    {#if isLibraryContext}
+      <CimmichOrganiseModeSwitch />
+    {/if}
+    <div class="min-h-0 flex-1">
+      <Timeline
+        enableRouting={true}
+        bind:timelineManager
+        {options}
+        assetInteraction={assetMultiSelectManager}
+        removeAction={AssetAction.ARCHIVE}
+        onEscape={handleEscape}
+        withStacked
+      >
+        {#snippet empty()}
+          <EmptyPlaceholder
+            text={$t('no_assets_message')}
+            onClick={() => openFileUploadDialog()}
+            class="mx-auto mt-10"
+          />
+        {/snippet}
+      </Timeline>
+    </div>
+  </div>
 </UserPageLayout>
 
 {#if assetMultiSelectManager.selectionActive}

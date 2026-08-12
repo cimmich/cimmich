@@ -5,25 +5,28 @@ import {
   faceReviewReasonCode,
   readDeferredFaceReviews,
 } from "./deferred-face-review.mjs";
-import {
-  applyPrimeCurations,
-  buildPrimeCurations,
-  loadPrimeCuratorFaces,
-  primeCuratorPolicyVersion,
-} from "./prime-curator-repository.mjs";
+import { primeCuratorPolicyVersion } from "./prime-curator-repository.mjs";
 import { projectAssetFaceBodyLinks } from "./face-body-linker.mjs";
 import {
-  applyFaceBodyLinks,
-  buildFaceBodyLinks,
-  loadFaceBodyLinkAssets,
-} from "./face-body-linker-repository.mjs";
+  deferBodyLinksAfterCommand,
+  deferPrimeAfterCommand,
+  deferPrimeForPeople,
+  isHoldingPerson,
+  refreshPrimeAfterCommand,
+  refreshPrimeForPeople,
+  waitForMaintenanceIdle,
+} from "./repository-maintenance.mjs";
+export {
+  deferBodyLinksAfterCommand,
+  deferPrimeAfterCommand,
+  waitForMaintenanceIdle,
+} from "./repository-maintenance.mjs";
 import {
   lowQualityPolicyVersion,
   lowQualityReasons,
 } from "./low-quality-policy.mjs";
 import { createMediaJobLedger } from "./media-job-ledger.mjs";
 import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.mjs";
-import { createCoalescingMaintenanceLane } from "./coalescing-maintenance-lane.mjs";
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
@@ -39,9 +42,11 @@ import { createDocumentLegacyPetStore } from "./document-legacy-pet.mjs";
 import { createIdentityAudit } from "./identity-audit.mjs";
 import { createFaceMatches } from "./face-match-repository.mjs";
 import { runFaceReviewComparisonBatch } from "./face-review-comparison-batch.mjs";
+import { loadFaceReviewComparisonBatch } from "./face-review-comparison-repository.mjs";
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
+import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
@@ -54,6 +59,10 @@ import { matcherPolicyMargin } from "./source-pack-evaluator.mjs";
 import { createTagAssetSearch } from "./tag-asset-search.mjs";
 import { attachAssetCorrections } from "./asset-correction-repository.mjs";
 import { createArchiveIntegrityStore } from "./archive-integrity.mjs";
+import {
+  bridgeAssetBySourceId,
+  createAssetDisplayResolver,
+} from "./asset-display-resolver.mjs";
 import { createAssetLabelStore } from "./asset-labels.mjs";
 import { createBulkAlbumOperationStore } from "./bulk-album-operations.mjs";
 import {
@@ -61,6 +70,7 @@ import {
   normalizeExploreFilters,
 } from "./explore-facets.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
+import * as personPage from "./person-page-projections.mjs";
 import {
   readAcceptedPhysicalFaceClaims,
   readVisibleCanonicalPhysicalFace,
@@ -163,9 +173,11 @@ const cleanPersonAssetAssociationType = (value) => {
   const associationType = String(value || "all")
     .trim()
     .toLowerCase();
-  if (!["all", "body", "presence"].includes(associationType)) {
+  if (
+    !["all", "appearance", "body", "head", "presence"].includes(associationType)
+  ) {
     throw typedError(
-      "associationType must be all, body, or presence",
+      "associationType must be all, appearance, body, head, or presence",
       400,
       "PERSON_ASSET_ASSOCIATION_INVALID",
     );
@@ -729,162 +741,6 @@ const projectPersonPresentation = (bridge, row) => {
   };
 };
 
-const bridgeAssetBySourceId = (bridge, sourceAssetId) => {
-  for (const [assetId, linked] of bridge) {
-    if (linked.sourceAssetId === sourceAssetId) return { assetId, ...linked };
-  }
-};
-
-const isHoldingPerson = async (sql, personId) => {
-  const [row] = await sql`
-    SELECT EXISTS (
-      SELECT 1 FROM current_person_category
-      WHERE person_id = ${String(personId || "")} AND slug = 'holding'
-    ) AS holding
-  `;
-  return row?.holding === true;
-};
-
-// Identity transactions are authoritative and enqueue a durable SourcePack
-// rebuild in the database. Prime projection is an immediate convenience pass;
-// it must never make a successfully committed user correction look like it
-// failed. A maintenancePending response tells the UI/operator the projection
-// can be retried without repeating the identity command.
-const refreshPrimeAfterCommand = async (sql, personId) => {
-  if (!personId) return false;
-  try {
-    if (await isHoldingPerson(sql, personId)) {
-      await sql`
-        WITH retired_buckets AS (
-          UPDATE reference_bucket SET state = 'retired'
-          WHERE person_id = ${personId} AND state IN ('active','candidate')
-          RETURNING bucket_id
-        )
-        UPDATE reference_prototype SET state = 'retired'
-        WHERE person_id = ${personId} AND state = 'active'
-      `;
-      return false;
-    }
-    const faces = await loadPrimeCuratorFaces(sql, personId);
-    const curations = buildPrimeCurations(faces, {
-      evidenceCutoff: new Date().toISOString(),
-    });
-    if (curations.length > 0) {
-      await applyPrimeCurations(sql, curations, { execute: true });
-    } else {
-      await sql`UPDATE reference_prototype SET state = 'retired' WHERE person_id = ${personId} AND state = 'active'`;
-    }
-    return false;
-  } catch (error) {
-    console.error(
-      "Cimmich Prime maintenance deferred after committed identity command",
-      {
-        error: error instanceof Error ? error.message : String(error),
-        personId,
-      },
-    );
-    return true;
-  }
-};
-
-// Head classification is an operator-facing correction, while Prime curation
-// is a derived convenience projection. The shared lane is globally bounded,
-// ordered by priority and coalesced by Person: queued bursts become one rebuild
-// and a correction arriving during a rebuild requests at most one follow-up.
-// The authoritative transaction therefore never waits for gallery curation.
-const maintenanceEvent = (event) => {
-  if (event.kind === "failed") {
-    console.error(
-      JSON.stringify({ code: "CIMMICH_MAINTENANCE_FAILED", ...event }),
-    );
-    return;
-  }
-  if (event.kind === "completed" && event.durationMs >= 500) {
-    console.info(
-      JSON.stringify({ code: "CIMMICH_MAINTENANCE_SLOW", ...event }),
-    );
-  }
-};
-
-const primeMaintenanceLanes = new WeakMap();
-const primeMaintenanceLane = (sql) => {
-  let lane = primeMaintenanceLanes.get(sql);
-  if (!lane) {
-    lane = createCoalescingMaintenanceLane({
-      concurrency: 1,
-      name: "prime_projection",
-      onEvent: maintenanceEvent,
-      worker: (personId) => refreshPrimeAfterCommand(sql, personId),
-    });
-    primeMaintenanceLanes.set(sql, lane);
-  }
-  return lane;
-};
-
-export const deferPrimeAfterCommand = (sql, personId) => {
-  if (!personId) return false;
-  return primeMaintenanceLane(sql).schedule(personId, { priority: 20 });
-};
-
-const refreshPrimeForPeople = async (sql, personIds) => {
-  let maintenancePending = false;
-  for (const personId of [...new Set(personIds.filter(Boolean))]) {
-    maintenancePending =
-      (await refreshPrimeAfterCommand(sql, personId)) || maintenancePending;
-  }
-  return maintenancePending;
-};
-
-const deferPrimeForPeople = (sql, personIds) =>
-  [...new Set(personIds.filter(Boolean))]
-    .map((personId) => deferPrimeAfterCommand(sql, personId))
-    .some(Boolean);
-
-const refreshBodyLinksAfterCommand = async (sql, assetId) => {
-  if (!assetId) return { maintenancePending: false };
-  try {
-    const assets = await loadFaceBodyLinkAssets(sql, assetId);
-    const proposal = buildFaceBodyLinks(assets);
-    const summary = await applyFaceBodyLinks(sql, proposal, { execute: true });
-    return { ...summary, maintenancePending: false };
-  } catch (error) {
-    console.error(
-      "Cimmich Body linkage maintenance deferred after committed identity command",
-      {
-        assetId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-    return { maintenancePending: true };
-  }
-};
-
-const bodyLinkMaintenanceLanes = new WeakMap();
-const bodyLinkMaintenanceLane = (sql) => {
-  let lane = bodyLinkMaintenanceLanes.get(sql);
-  if (!lane) {
-    lane = createCoalescingMaintenanceLane({
-      concurrency: 1,
-      name: "body_link_projection",
-      onEvent: maintenanceEvent,
-      worker: (assetId) => refreshBodyLinksAfterCommand(sql, assetId),
-    });
-    bodyLinkMaintenanceLanes.set(sql, lane);
-  }
-  return lane;
-};
-
-export const deferBodyLinksAfterCommand = (sql, assetId) => {
-  if (!assetId) return false;
-  return bodyLinkMaintenanceLane(sql).schedule(assetId, { priority: 10 });
-};
-
-export const waitForMaintenanceIdle = (sql) =>
-  Promise.all([
-    primeMaintenanceLane(sql).whenIdle(),
-    bodyLinkMaintenanceLane(sql).whenIdle(),
-  ]);
-
 const boxOverlap = (left, right) => {
   const x1 = Math.max(Number(left.box_x), Number(right.box_x));
   const y1 = Math.max(Number(left.box_y), Number(right.box_y));
@@ -1083,123 +939,19 @@ export const createCimmichRepository = (
     }
     return subject;
   };
+  const personEvidenceCoverage = createPersonEvidenceCoverageStore(sql, {
+    presentationRank,
+    requireVisibleSubject,
+  });
   const conditionConsensusReviewEnabled =
     options.conditionConsensusReviewEnabled === true;
   const allTrustedShortlistReviewEnabled =
     options.allTrustedShortlistReviewEnabled === true;
-  const resolveVisibleAssetDisplay = async (value) => {
-    const requestedId = String(value || "").trim();
-    if (!requestedId || requestedId.length > 240) {
-      throw typedError(
-        "A stable Cimmich or Immich asset ID is required",
-        400,
-        "ASSET_DISPLAY_ID_INVALID",
-      );
-    }
-    const [projection] = await sql`
-      SELECT projection.cimmich_asset_id AS asset_id,
-        projection.immich_asset_id AS source_asset_id,
-        projection.original_file_name AS filename,
-        projection.state AS projection_state,
-        asset.state AS asset_state
-      FROM immich_asset_projection projection
-      JOIN asset ON asset.asset_id = projection.cimmich_asset_id
-      WHERE (projection.cimmich_asset_id = ${requestedId}
-          OR projection.immich_asset_id = ${requestedId})
-        AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
-      ORDER BY CASE WHEN projection.immich_asset_id = ${requestedId} THEN 0 ELSE 1 END,
-        CASE WHEN projection.state = 'active' AND asset.state = 'active'
-          THEN 0 ELSE 1 END,
-        projection.last_seen_at DESC,
-        projection.source_id
-      LIMIT 1
-    `;
-    const [newerEquivalent] = projection
-      ? await sql`
-        SELECT candidate_projection.cimmich_asset_id AS asset_id,
-          candidate_projection.immich_asset_id AS source_asset_id,
-          candidate_projection.original_file_name AS filename
-        FROM immich_asset_projection requested_projection
-        JOIN asset requested_asset
-          ON requested_asset.asset_id = requested_projection.cimmich_asset_id
-        JOIN asset candidate_asset
-          ON candidate_asset.state = 'active'
-          AND candidate_asset.asset_id <> requested_asset.asset_id
-        JOIN immich_asset_projection candidate_projection
-          ON candidate_projection.cimmich_asset_id = candidate_asset.asset_id
-          AND candidate_projection.state = 'active'
-          AND candidate_projection.last_seen_at
-            > requested_projection.last_seen_at
-        WHERE requested_projection.cimmich_asset_id = ${projection.asset_id}
-          AND requested_projection.immich_asset_id = ${projection.source_asset_id}
-          AND cimmich_visibility_asset_rank(candidate_asset.asset_id)
-            <= ${presentationRank()}
-          AND (
-            (
-              requested_asset.content_hash IS NOT NULL
-              AND requested_asset.content_hash = candidate_asset.content_hash
-            )
-            OR (
-              requested_projection.original_file_name IS NOT NULL
-              AND candidate_projection.original_file_name IS NOT NULL
-              AND lower(requested_projection.original_file_name)
-                = lower(candidate_projection.original_file_name)
-              AND requested_asset.capture_time = candidate_asset.capture_time
-              AND requested_asset.width = candidate_asset.width
-              AND requested_asset.height = candidate_asset.height
-            )
-          )
-        ORDER BY candidate_projection.last_seen_at DESC,
-          candidate_projection.source_id,
-          candidate_projection.immich_asset_id
-        LIMIT 1
-      `
-      : [];
-    const displayProjection =
-      newerEquivalent ||
-      ((projection?.projection_state ?? "active") === "active" &&
-      (projection?.asset_state ?? "active") === "active"
-        ? projection
-        : null);
-    const legacy = projection
-      ? null
-      : bridgeAssetBySourceId(bridge, requestedId) ||
-        (bridge.has(requestedId)
-          ? { assetId: requestedId, ...bridge.get(requestedId) }
-          : null);
-    const assetId = displayProjection?.asset_id || legacy?.assetId;
-    if (!assetId) {
-      throw typedError(
-        "Cimmich asset display mapping not found",
-        404,
-        "ASSET_DISPLAY_NOT_FOUND",
-      );
-    }
-    if (!projection) {
-      const [visible] = await sql`
-        SELECT asset_id FROM asset
-        WHERE asset_id = ${assetId} AND state = 'active'
-          AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
-      `;
-      if (!visible) {
-        throw typedError(
-          "Cimmich asset display mapping not found",
-          404,
-          "ASSET_DISPLAY_NOT_FOUND",
-        );
-      }
-    }
-    const fields = bridgeFields(bridge, assetId);
-    return {
-      assetId,
-      filename: displayProjection?.filename || fields.filename,
-      schemaVersion: "cimmich.asset-display.v1",
-      sourceAssetId:
-        displayProjection?.source_asset_id ||
-        legacy?.sourceAssetId ||
-        requestedId,
-    };
-  };
+  const resolveVisibleAssetDisplay = createAssetDisplayResolver({
+    bridge,
+    presentationRank,
+    sql,
+  });
   const petMatching = createPetMatchingStore(sql, {
     bridgeFields: (assetId) => bridgeFields(bridge, assetId),
     presentationRank,
@@ -1412,6 +1164,9 @@ export const createCimmichRepository = (
         coalesce((
           SELECT count(DISTINCT association.asset_id)::int
           FROM person_assets association
+          JOIN asset confirmed_asset
+            ON confirmed_asset.asset_id = association.asset_id
+            AND confirmed_asset.state = 'active'
           WHERE association.person_id = pet.person_id
             AND association.authority_state = 'accepted'
             AND cimmich_visibility_asset_rank(association.asset_id) <= ${presentationRank()}
@@ -2553,6 +2308,7 @@ export const createCimmichRepository = (
     possiblePeopleRefresh: possiblePeople.refresh,
     possiblePeopleClassify: possiblePeople.classifyLatest,
     possiblePeopleKnownSuggestions: possiblePeople.knownSuggestions,
+    possiblePeoplePreviews: possiblePeople.previews,
     possiblePeopleResolve: possiblePeople.resolve,
     possiblePeopleSnapshot: possiblePeople.snapshot,
     possiblePeopleUndo: possiblePeople.undo,
@@ -3916,6 +3672,8 @@ export const createCimmichRepository = (
         FROM current_face_identity current
         JOIN identity_claim claim ON claim.identity_claim_id = current.identity_claim_id
         JOIN face_observation fo ON fo.face_id = current.face_id
+        JOIN asset identity_asset ON identity_asset.asset_id = fo.asset_id
+          AND identity_asset.state = 'active'
         WHERE NOT EXISTS (
           SELECT 1 FROM hidden_assets hidden WHERE hidden.object_id = fo.asset_id
         )
@@ -3964,6 +3722,8 @@ export const createCimmichRepository = (
           END AS association_type
         FROM current_body_tag tag
         JOIN body_observation observation ON observation.body_id = tag.body_id
+        JOIN asset body_asset ON body_asset.asset_id = observation.asset_id
+          AND body_asset.state = 'active'
         WHERE tag.state = 'accepted'
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -3973,6 +3733,8 @@ export const createCimmichRepository = (
         SELECT presence.person_id, presence.asset_id,
           CASE WHEN presence.reason_code = 'head_evidence' THEN 'head' ELSE 'presence' END AS association_type
         FROM current_presence_tag presence
+        JOIN asset presence_asset ON presence_asset.asset_id = presence.asset_id
+          AND presence_asset.state = 'active'
         WHERE presence.state = 'accepted'
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -3982,10 +3744,29 @@ export const createCimmichRepository = (
         SELECT tag.subject_id, head.asset_id, 'head' AS association_type
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
+        JOIN asset head_asset ON head_asset.asset_id = head.asset_id
+          AND head_asset.state = 'active'
         WHERE NOT EXISTS (
           SELECT 1 FROM hidden_assets hidden
           WHERE hidden.object_id = head.asset_id
         )
+        UNION ALL
+        SELECT locator.person_id, locator.asset_id, 'presence' AS association_type
+        FROM imported_identity_locator locator
+        JOIN asset locator_asset ON locator_asset.asset_id = locator.asset_id
+          AND locator_asset.state = 'active'
+        WHERE locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
+            )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = locator.asset_id
+          )
       ), claim_counts AS (
         SELECT current.person_id,
           count(*) FILTER (WHERE current.state = 'accepted')::int AS accepted_faces,
@@ -4208,6 +3989,8 @@ export const createCimmichRepository = (
         FROM current_face_identity identity
         JOIN target_person person ON person.person_id = identity.person_id
         JOIN face_observation face ON face.face_id = identity.face_id
+        JOIN asset face_asset ON face_asset.asset_id = face.asset_id
+          AND face_asset.state = 'active'
         WHERE identity.state = 'accepted'
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -4242,6 +4025,8 @@ export const createCimmichRepository = (
         SELECT body.asset_id
         FROM current_body_tag tag
         JOIN body_observation body ON body.body_id = tag.body_id
+        JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+          AND body_asset.state = 'active'
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -4250,6 +4035,8 @@ export const createCimmichRepository = (
         UNION
         SELECT tag.asset_id
         FROM current_presence_tag tag
+        JOIN asset presence_asset ON presence_asset.asset_id = tag.asset_id
+          AND presence_asset.state = 'active'
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -4259,10 +4046,30 @@ export const createCimmichRepository = (
         SELECT head.asset_id
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
+        JOIN asset head_asset ON head_asset.asset_id = head.asset_id
+          AND head_asset.state = 'active'
         WHERE tag.subject_id = ${id}
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
             WHERE hidden.object_id = head.asset_id
+          )
+        UNION
+        SELECT locator.asset_id
+        FROM imported_identity_locator locator
+        JOIN asset locator_asset ON locator_asset.asset_id = locator.asset_id
+          AND locator_asset.state = 'active'
+        WHERE locator.person_id = ${id}
+          AND locator.intended_tag_type = 'body'
+          AND (
+            locator.state = 'unresolved'
+            OR (
+              locator.state = 'resolved'
+              AND locator.resolution_kind = 'stronger_existing_truth'
+            )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM hidden_assets hidden
+            WHERE hidden.object_id = locator.asset_id
           )
       ), photo_history AS MATERIALIZED (
         SELECT
@@ -4286,6 +4093,8 @@ export const createCimmichRepository = (
         UNION
         SELECT tag.asset_id
         FROM current_presence_tag tag
+        JOIN asset presence_asset ON presence_asset.asset_id = tag.asset_id
+          AND presence_asset.state = 'active'
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND tag.reason_code = 'head_evidence'
           AND NOT EXISTS (
@@ -4296,6 +4105,8 @@ export const createCimmichRepository = (
         SELECT head.asset_id
         FROM current_manual_head_tag tag
         JOIN manual_head_observation head ON head.head_id = tag.head_id
+        JOIN asset head_asset ON head_asset.asset_id = head.asset_id
+          AND head_asset.state = 'active'
         WHERE tag.subject_id = ${id}
           AND NOT EXISTS (
             SELECT 1 FROM hidden_assets hidden
@@ -4341,6 +4152,8 @@ export const createCimmichRepository = (
           body.box_w, body.box_h
         FROM current_body_tag tag
         JOIN body_observation body ON body.body_id = tag.body_id
+        JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+          AND body_asset.state = 'active'
         WHERE tag.person_id = ${id} AND tag.state = 'accepted'
           AND body.state = 'valid'
           AND NOT EXISTS (
@@ -4358,6 +4171,8 @@ export const createCimmichRepository = (
           SELECT count(*) FROM current_face_identity identity
           JOIN identity_claim claim ON claim.identity_claim_id = identity.identity_claim_id
           JOIN face_observation claim_face ON claim_face.face_id = claim.face_id AND claim_face.state = 'valid'
+          JOIN asset claim_asset ON claim_asset.asset_id = claim_face.asset_id
+            AND claim_asset.state = 'active'
           WHERE identity.person_id = p.person_id AND identity.state = 'candidate'
             AND cimmich_face_match_eligible(
               claim_face.detection_confidence,
@@ -4773,8 +4588,18 @@ export const createCimmichRepository = (
       const people = await sql`
       SELECT p.person_id, p.display_name, p.subject_kind, p.status,
         (SELECT count(*)::int FROM person_alias pa WHERE pa.person_id = p.person_id AND pa.state = 'active') AS aliases,
-        (SELECT count(*)::int FROM current_face_identity cfi WHERE cfi.person_id = p.person_id AND cfi.state = 'accepted') AS accepted_faces,
-        (SELECT count(DISTINCT asset_id)::int FROM person_assets assets WHERE assets.person_id = p.person_id AND assets.authority_state = 'accepted') AS assets
+        (SELECT count(*)::int
+          FROM current_face_identity cfi
+          JOIN face_observation face ON face.face_id = cfi.face_id
+          JOIN asset face_asset ON face_asset.asset_id = face.asset_id
+            AND face_asset.state = 'active'
+          WHERE cfi.person_id = p.person_id AND cfi.state = 'accepted') AS accepted_faces,
+        (SELECT count(DISTINCT assets.asset_id)::int
+          FROM person_assets assets
+          JOIN asset confirmed_asset ON confirmed_asset.asset_id = assets.asset_id
+            AND confirmed_asset.state = 'active'
+          WHERE assets.person_id = p.person_id
+            AND assets.authority_state = 'accepted') AS assets
       FROM person p
       WHERE p.person_id IN (${sourcePersonId}, ${targetPersonId})
       ORDER BY p.person_id
@@ -6095,6 +5920,10 @@ export const createCimmichRepository = (
         JOIN current_face_identity detected_identity
           ON detected_identity.person_id = imported_identity.person_id
           AND detected_identity.face_id <> imported_identity.face_id
+          -- A superseded detector claim still proves that the machinery found
+          -- this Person's face on the photo. Physical-Face reconciliation can
+          -- supersede the duplicate claim after preserving the canonical
+          -- identity; it must not demote the photo back into Body.
           AND detected_identity.state IN ('accepted', 'superseded')
           AND detected_identity.origin <> 'trusted_import'
         JOIN face_observation detected
@@ -6389,32 +6218,58 @@ export const createCimmichRepository = (
         SELECT projected_assets.*,
           (count(*) OVER ())::int AS total_count,
           (count(*) FILTER (
-            WHERE has_body AND NOT has_face AND NOT has_head
+            WHERE has_head AND NOT has_face
+          ) OVER ())::int AS head_count,
+          (count(*) FILTER (
+            WHERE (has_body OR has_body_hint_face)
+              AND NOT has_face AND NOT has_head
           ) OVER ())::int AS confirmed_body_count,
           (count(*) FILTER (
             WHERE has_body_candidate
               AND NOT has_face
               AND NOT has_head
               AND NOT has_body
+              AND NOT has_body_hint_face
           ) OVER ())::int AS body_candidate_count,
-          (count(*) FILTER (WHERE has_presence) OVER ())::int AS presence_count
+          (count(*) FILTER (
+            WHERE (has_presence OR has_body_candidate)
+              AND NOT has_face
+              AND NOT has_head
+              AND NOT has_body
+              AND NOT has_body_hint_face
+          ) OVER ())::int AS presence_count
         FROM projected_assets
         WHERE
           (
             ${assetAssociation === "all"}
             OR (
-              ${assetAssociation === "body"}
-              AND (
-                (has_body AND NOT has_face AND NOT has_head)
-                OR (
-                  has_body_candidate
-                  AND NOT has_face
-                  AND NOT has_head
-                  AND NOT has_body
-                )
-              )
+              ${assetAssociation === "appearance"}
+              AND NOT has_face
+              AND (has_head OR has_body OR has_body_hint_face)
             )
-            OR (${assetAssociation === "presence"} AND has_presence)
+            OR (
+              ${assetAssociation === "body"}
+              AND (has_body OR has_body_hint_face)
+              AND NOT has_face
+              AND NOT has_head
+            )
+            OR (
+              ${assetAssociation === "head"}
+              AND has_head
+              AND NOT has_face
+            )
+            OR (
+              ${assetAssociation === "presence"}
+              AND (has_presence OR has_body_candidate)
+              AND NOT has_face
+              AND NOT has_head
+              AND NOT has_body
+              AND NOT has_body_hint_face
+            )
+          )
+          AND (
+            NOT ${filters.futureDates}
+            OR projected_assets.capture_time > now() + interval '24 hours'
           )
           AND (
             cardinality(${filters.privacyTiers}::text[]) = 0
@@ -6489,37 +6344,8 @@ export const createCimmichRepository = (
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map(
-        ({
-          body_candidate_count: _bodyCandidateCount,
-          confirmed_body_count: _confirmedBodyCount,
-          presence_count: _presenceCount,
-          total_count: _totalCount,
-          ...row
-        }) => ({
-          ...row,
-          association_types: [
-            ...(row.has_face ? ["face"] : []),
-            ...(row.has_head ? ["head"] : []),
-            ...(row.has_body && !row.has_face && !row.has_head ? ["body"] : []),
-            ...(row.has_body_candidate &&
-            !row.has_face &&
-            !row.has_head &&
-            !row.has_body
-              ? ["body_candidate"]
-              : []),
-            ...(row.has_presence &&
-            !row.has_face &&
-            !row.has_head &&
-            !row.has_body &&
-            !row.has_body_candidate
-              ? ["presence"]
-              : []),
-          ],
-          contexts: Array.isArray(row.contexts) ? row.contexts : [],
-          labels: Array.isArray(row.labels) ? row.labels : [],
-          ...bridgeFields(bridge, row.asset_id),
-        }),
+      const items = pageRows.map((row) =>
+        personPage.projectPersonAssetRow({ bridge, row }),
       );
       if (!paged) return items;
       const last = pageRows.at(-1);
@@ -6539,12 +6365,7 @@ export const createCimmichRepository = (
             : null,
         pageSize: boundedLimit,
         schemaVersion: personPageSchemaVersion,
-        summary: {
-          body: Number(pageRows[0]?.confirmed_body_count || 0),
-          bodyCandidate: Number(pageRows[0]?.body_candidate_count || 0),
-          presence: Number(pageRows[0]?.presence_count || 0),
-          total: Number(pageRows[0]?.total_count || 0),
-        },
+        summary: personPage.projectPersonAssetSummary(pageRows[0]),
       };
     },
 
@@ -6765,7 +6586,11 @@ export const createCimmichRepository = (
     faceReviewComparisonsBatch(input) {
       return runFaceReviewComparisonBatch({
         ...input,
-        loadComparisons: (request) => repository.faceReviewComparisons(request),
+        loadBatch: (request) =>
+          loadFaceReviewComparisonBatch(sql, {
+            ...request,
+            visibleRank: presentationRank(),
+          }),
       });
     },
 
@@ -6865,10 +6690,15 @@ export const createCimmichRepository = (
     async assetEvidence({ sourceAssetId }) {
       const linked = await resolveVisibleAssetDisplay(sourceAssetId);
       const [asset] = await sql`
-      SELECT asset_id, capture_time, height, media_kind, mime_type, width
+      SELECT asset.asset_id, asset.capture_time, asset.height, asset.media_kind,
+        asset.mime_type, asset.width,
+        coalesce(rotation.rotation_quarter_turns, 0)::int AS rotation_quarter_turns
       FROM asset
-      WHERE asset_id = ${linked.assetId} AND state = 'active'
-        AND cimmich_visibility_asset_rank(asset_id) <= ${presentationRank()}
+      LEFT JOIN current_asset_correction rotation
+        ON rotation.asset_id = asset.asset_id
+        AND rotation.correction_kind = 'rotation'
+      WHERE asset.asset_id = ${linked.assetId} AND asset.state = 'active'
+        AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
     `;
       if (!asset)
         throw Object.assign(new Error("Cimmich asset not found"), {
@@ -7073,6 +6903,8 @@ export const createCimmichRepository = (
               SELECT 1
               FROM identity_claim claim
               JOIN face_observation face ON face.face_id = claim.face_id
+              JOIN asset face_asset ON face_asset.asset_id = face.asset_id
+                AND face_asset.state = 'active'
               WHERE claim.person_id = person.person_id
                 AND claim.state = 'accepted'
                 AND face.state = 'valid'
@@ -7082,6 +6914,8 @@ export const createCimmichRepository = (
               SELECT 1
               FROM current_body_tag accepted_body
               JOIN body_observation body ON body.body_id = accepted_body.body_id
+              JOIN asset body_asset ON body_asset.asset_id = body.asset_id
+                AND body_asset.state = 'active'
               WHERE accepted_body.person_id = person.person_id
                 AND accepted_body.state = 'accepted'
                 AND body.state = 'valid'
@@ -7090,6 +6924,9 @@ export const createCimmichRepository = (
             OR EXISTS (
               SELECT 1
               FROM current_presence_tag accepted_presence
+              JOIN asset presence_asset
+                ON presence_asset.asset_id = accepted_presence.asset_id
+                AND presence_asset.state = 'active'
               WHERE accepted_presence.person_id = person.person_id
                 AND accepted_presence.state = 'accepted'
                 AND cimmich_visibility_asset_rank(accepted_presence.asset_id) <= ${presentationRank()}
@@ -7098,6 +6935,8 @@ export const createCimmichRepository = (
               SELECT 1
               FROM current_manual_head_tag accepted_head
               JOIN manual_head_observation head ON head.head_id = accepted_head.head_id
+              JOIN asset head_asset ON head_asset.asset_id = head.asset_id
+                AND head_asset.state = 'active'
               WHERE accepted_head.subject_id = person.person_id
                 AND accepted_head.state = 'accepted'
                 AND head.state = 'valid'
@@ -7297,6 +7136,95 @@ export const createCimmichRepository = (
             WHERE identity.person_id = ${id}
               AND identity.state = 'accepted'
               AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+              AND NOT (
+                coalesce(
+                  face.quality_measurements->>'source_gallery_permission',
+                  ''
+                ) = 'never'
+                AND coalesce(
+                  face.quality_measurements->>'effective_gallery_permission',
+                  ''
+                ) = 'never'
+                AND NOT EXISTS (
+                  SELECT 1 FROM current_reference_gallery gallery
+                  WHERE gallery.person_id = identity.person_id
+                    AND gallery.face_id = identity.face_id
+                    AND gallery.membership_state = 'active'
+                    AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+                )
+                AND EXISTS (
+                  SELECT 1 FROM imported_identity_locator locator
+                  WHERE locator.person_id = identity.person_id
+                    AND locator.asset_id = face.asset_id
+                    AND locator.intended_tag_type = 'body'
+                    AND (
+                      locator.state = 'unresolved'
+                      OR (
+                        locator.state = 'resolved'
+                        AND locator.resolution_kind = 'stronger_existing_truth'
+                      )
+                    )
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM current_face_identity detected_identity
+                  JOIN face_observation detected
+                    ON detected.face_id = detected_identity.face_id
+                    AND detected.asset_id = face.asset_id
+                    AND detected.state = 'valid'
+                  CROSS JOIN LATERAL (
+                    SELECT
+                      greatest(
+                        0,
+                        least(
+                          face.box_x + face.box_w,
+                          detected.box_x + detected.box_w
+                        ) - greatest(face.box_x, detected.box_x)
+                      ) * greatest(
+                        0,
+                        least(
+                          face.box_y + face.box_h,
+                          detected.box_y + detected.box_h
+                        ) - greatest(face.box_y, detected.box_y)
+                      ) AS intersection
+                  ) overlap
+                  WHERE detected_identity.person_id = identity.person_id
+                    AND detected_identity.face_id <> identity.face_id
+                    AND detected_identity.state IN ('accepted', 'superseded')
+                    AND detected_identity.origin <> 'trusted_import'
+                    AND (
+                      overlap.intersection / greatest(
+                        0.000001,
+                        face.box_w * face.box_h
+                          + detected.box_w * detected.box_h
+                          - overlap.intersection
+                      ) >= 0.62
+                      OR (
+                        overlap.intersection / greatest(
+                          0.000001,
+                          least(
+                            face.box_w * face.box_h,
+                            detected.box_w * detected.box_h
+                          )
+                        ) >= 0.5
+                        AND abs(
+                          face.box_x + face.box_w / 2
+                            - detected.box_x - detected.box_w / 2
+                        ) / greatest(
+                          0.000001,
+                          least(face.box_w, detected.box_w)
+                        ) <= 0.45
+                        AND abs(
+                          face.box_y + face.box_h / 2
+                            - detected.box_y - detected.box_h / 2
+                        ) / greatest(
+                          0.000001,
+                          least(face.box_h, detected.box_h)
+                        ) <= 0.25
+                      )
+                    )
+                )
+              )
           ),
           classified_faces AS (
             SELECT accepted.face_id, main_bucket.bucket_kind
@@ -7336,6 +7264,95 @@ export const createCimmichRepository = (
         JOIN asset a ON a.asset_id = fo.asset_id AND a.state = 'active'
         WHERE cfi.person_id = ${id} AND cfi.state = 'accepted'
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
+          AND NOT (
+            coalesce(
+              fo.quality_measurements->>'source_gallery_permission',
+              ''
+            ) = 'never'
+            AND coalesce(
+              fo.quality_measurements->>'effective_gallery_permission',
+              ''
+            ) = 'never'
+            AND NOT EXISTS (
+              SELECT 1 FROM current_reference_gallery gallery
+              WHERE gallery.person_id = cfi.person_id
+                AND gallery.face_id = cfi.face_id
+                AND gallery.membership_state = 'active'
+                AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+            )
+            AND EXISTS (
+              SELECT 1 FROM imported_identity_locator locator
+              WHERE locator.person_id = cfi.person_id
+                AND locator.asset_id = fo.asset_id
+                AND locator.intended_tag_type = 'body'
+                AND (
+                  locator.state = 'unresolved'
+                  OR (
+                    locator.state = 'resolved'
+                    AND locator.resolution_kind = 'stronger_existing_truth'
+                  )
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_identity detected_identity
+              JOIN face_observation detected
+                ON detected.face_id = detected_identity.face_id
+                AND detected.asset_id = fo.asset_id
+                AND detected.state = 'valid'
+              CROSS JOIN LATERAL (
+                SELECT
+                  greatest(
+                    0,
+                    least(
+                      fo.box_x + fo.box_w,
+                      detected.box_x + detected.box_w
+                    ) - greatest(fo.box_x, detected.box_x)
+                  ) * greatest(
+                    0,
+                    least(
+                      fo.box_y + fo.box_h,
+                      detected.box_y + detected.box_h
+                    ) - greatest(fo.box_y, detected.box_y)
+                  ) AS intersection
+              ) overlap
+              WHERE detected_identity.person_id = cfi.person_id
+                AND detected_identity.face_id <> cfi.face_id
+                AND detected_identity.state IN ('accepted', 'superseded')
+                AND detected_identity.origin <> 'trusted_import'
+                AND (
+                  overlap.intersection / greatest(
+                    0.000001,
+                    fo.box_w * fo.box_h
+                      + detected.box_w * detected.box_h
+                      - overlap.intersection
+                  ) >= 0.62
+                  OR (
+                    overlap.intersection / greatest(
+                      0.000001,
+                      least(
+                        fo.box_w * fo.box_h,
+                        detected.box_w * detected.box_h
+                      )
+                    ) >= 0.5
+                    AND abs(
+                      fo.box_x + fo.box_w / 2
+                        - detected.box_x - detected.box_w / 2
+                    ) / greatest(
+                      0.000001,
+                      least(fo.box_w, detected.box_w)
+                    ) <= 0.45
+                    AND abs(
+                      fo.box_y + fo.box_h / 2
+                        - detected.box_y - detected.box_h / 2
+                    ) / greatest(
+                      0.000001,
+                      least(fo.box_h, detected.box_h)
+                    ) <= 0.25
+                  )
+                )
+            )
+          )
           AND (
             ${bucketFilter} = ''
             OR (
@@ -7573,21 +7590,9 @@ export const createCimmichRepository = (
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map((row) => {
-        const mainBucket = row.buckets.find((bucket) =>
-          ["head", "lq", "prime", "secondary"].includes(bucket.bucket_kind),
-        );
-        return {
-          ...row,
-          // Evidence classification is exhaustive for the audit surface.
-          // A Face without a gallery bucket is still Supporting identity
-          // evidence; matcher membership remains an independent nullable fact.
-          main_evidence_tier: mainBucket?.bucket_kind || "secondary",
-          matching_reference_tier: mainBucket?.bucket_kind || null,
-          ...identityQcFields(row),
-          ...bridgeFields(bridge, row.asset_id),
-        };
-      });
+      const items = pageRows.map((row) =>
+        personPage.projectIdentityFaceRow({ bridge, identityQcFields, row }),
+      );
       if (!paged) return items;
       const last = pageRows.at(-1);
       const lastQuality = Number(last?.quality_measurements?.quality_score);
@@ -10280,6 +10285,9 @@ export const createCimmichRepository = (
   Object.assign(repository, assetLabels);
   Object.assign(repository, bulkAlbumOperations);
   Object.assign(repository, exploreFacets);
+  Object.assign(repository, {
+    personEvidenceCoverage: personEvidenceCoverage.read,
+  });
   attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {
     petMatchImport: petMatching.importBatch,

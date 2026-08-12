@@ -11,6 +11,7 @@ export type ManualPhotoTagGeometry = {
 export type ManualPhotoTagType = 'body' | 'face' | 'head' | 'presence';
 
 export type ManualPhotoTagSubject = {
+  aliases?: string[];
   icon?: string;
   id: string;
   kind: 'person' | 'pet';
@@ -40,16 +41,58 @@ export const createManualPhotoTagPetSubject = (pet: CimmichPet): ManualPhotoTagS
 };
 
 export const createManualPhotoTagPersonSubjects = (
-  people: Array<Pick<CimmichPerson, 'display_name' | 'person_id' | 'subject_kind'>>,
+  people: Array<
+    Pick<CimmichPerson, 'display_name' | 'person_id' | 'subject_kind'> & Partial<Pick<CimmichPerson, 'aliases'>>
+  >,
 ): ManualPhotoTagSubject[] =>
   people
     .filter((person) => person.subject_kind === 'person')
-    .map((person) => ({ id: person.person_id, kind: 'person', name: person.display_name }));
+    .map((person) => ({
+      ...(person.aliases?.length ? { aliases: person.aliases } : {}),
+      id: person.person_id,
+      kind: 'person',
+      name: person.display_name,
+    }));
 
 export const manualPhotoTagSubjectLabel = (subject: Pick<ManualPhotoTagSubject, 'kind' | 'speciesLabel'>) =>
   subject.kind === 'pet' ? `Pet · ${subject.speciesLabel?.trim() || 'Species not set'}` : 'Person';
 
 const normalizedSubjectName = (value: string) => value.trim().replaceAll(/\s+/g, ' ').toLocaleLowerCase();
+
+export const searchManualPhotoTagPeople = (
+  subjects: ManualPhotoTagSubject[],
+  query: string,
+  limit = 8,
+): ManualPhotoTagSubject[] => {
+  const normalizedQuery = normalizedSubjectName(query);
+  if (!normalizedQuery || limit <= 0) {
+    return [];
+  }
+
+  return subjects
+    .filter((subject) => subject.kind === 'person')
+    .flatMap((subject) => {
+      const values = [subject.name, ...(subject.aliases ?? [])]
+        .map((value) => normalizedSubjectName(value))
+        .filter(Boolean);
+      const exact = values.includes(normalizedQuery);
+      const prefix = values.some((value) => value.startsWith(normalizedQuery));
+      const wordPrefix = values.some((value) => value.split(' ').some((word) => word.startsWith(normalizedQuery)));
+      const includes = values.some((value) => value.includes(normalizedQuery));
+      if (!exact && !prefix && !wordPrefix && !includes) {
+        return [];
+      }
+      return [{ rank: exact ? 0 : prefix ? 1 : wordPrefix ? 2 : 3, subject }];
+    })
+    .sort(
+      (left, right) =>
+        left.rank - right.rank ||
+        left.subject.name.localeCompare(right.subject.name) ||
+        left.subject.id.localeCompare(right.subject.id),
+    )
+    .slice(0, limit)
+    .map(({ subject }) => subject);
+};
 
 export const findExactManualPhotoTagPerson = (
   subjects: ManualPhotoTagSubject[],

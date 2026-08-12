@@ -233,6 +233,7 @@ export const runGuidedLocalClientConformance = async ({
           ...(body ? { "content-type": "application/json" } : {}),
         },
         method,
+        redirect: "error",
       }),
     );
   };

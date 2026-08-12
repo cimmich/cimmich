@@ -7,6 +7,7 @@ const batchError = (message) =>
 export const runFaceReviewComparisonBatch = async ({
   faceIds,
   limitPerFace = 5,
+  loadBatch,
   loadComparisons,
 }) => {
   if (!Array.isArray(faceIds) || faceIds.length < 1 || faceIds.length > 24) {
@@ -26,19 +27,12 @@ export const runFaceReviewComparisonBatch = async ({
     throw batchError("limitPerFace must be an integer from 1 to 5");
   }
 
-  const items = [];
-  for (let offset = 0; offset < normalizedFaceIds.length; offset += 4) {
-    const chunk = normalizedFaceIds.slice(offset, offset + 4);
-    const comparisons = await Promise.all(
-      chunk.map((faceId) => loadComparisons({ faceId, limit: parsedLimit })),
-    );
-    items.push(
-      ...chunk.map((faceId, index) => ({
-        faceId,
-        matches: comparisons[index].items,
-      })),
-    );
-  }
+  const items = loadBatch
+    ? await loadBatch({
+        faceIds: normalizedFaceIds,
+        limitPerFace: parsedLimit,
+      })
+    : await loadLegacyChunks(normalizedFaceIds, parsedLimit, loadComparisons);
   return {
     automaticIdentityAuthority: "none",
     bulkAutomationAuthority: "none",
@@ -49,4 +43,21 @@ export const runFaceReviewComparisonBatch = async ({
     reviewOnly: true,
     schemaVersion: "cimmich.face-owner-review-comparisons-batch.v1",
   };
+};
+
+const loadLegacyChunks = async (faceIds, limitPerFace, loadComparisons) => {
+  const items = [];
+  for (let offset = 0; offset < faceIds.length; offset += 4) {
+    const chunk = faceIds.slice(offset, offset + 4);
+    const comparisons = await Promise.all(
+      chunk.map((faceId) => loadComparisons({ faceId, limit: limitPerFace })),
+    );
+    items.push(
+      ...chunk.map((faceId, index) => ({
+        faceId,
+        matches: comparisons[index].items,
+      })),
+    );
+  }
+  return items;
 };

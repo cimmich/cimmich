@@ -5,12 +5,14 @@ import CimmichContextCollection from './CimmichContextCollection.svelte';
 import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
 
 const mocks = vi.hoisted(() => ({
+  getAssetInfo: vi.fn().mockResolvedValue({ exifInfo: null }),
   getMapMarkers: vi.fn().mockResolvedValue([]),
   getVisibleMapAssetIds: vi.fn().mockResolvedValue(new Set<string>()),
 }));
 
 vi.mock('@immich/sdk', async (importOriginal) => ({
   ...(await importOriginal()),
+  getAssetInfo: mocks.getAssetInfo,
   getMapMarkers: mocks.getMapMarkers,
 }));
 

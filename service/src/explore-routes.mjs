@@ -40,12 +40,20 @@ const exploreFacetResponse = async ({
 const exploreFiltersFromSearchParams = (searchParams) => {
   const filters = {
     eventIds: searchParams.getAll("event"),
+    futureDates: searchParams.get("future") === "1",
     labelIds: searchParams.getAll("label"),
     placeIds: searchParams.getAll("place"),
     privacyTiers: searchParams.getAll("privacy"),
     thingIds: searchParams.getAll("thing"),
   };
-  return Object.values(filters).some((values) => values.length > 0)
+  return filters.futureDates ||
+    [
+      filters.eventIds,
+      filters.labelIds,
+      filters.placeIds,
+      filters.privacyTiers,
+      filters.thingIds,
+    ].some((values) => values.length > 0)
     ? filters
     : undefined;
 };

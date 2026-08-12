@@ -62,6 +62,10 @@
   import { getAltText } from '$lib/utils/thumbnail-util';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import type { AssetResponseDto, SharedLinkResponseDto } from '@immich/sdk';
+  import {
+    identityReviewCssTransform,
+    normalizeIdentityReviewQuarterTurns,
+  } from '$lib/components/cimmich/identity-review-crop';
   import { untrack, type Snippet } from 'svelte';
 
   type Props = {
@@ -76,6 +80,7 @@
     imgRef?: HTMLImageElement;
     backdrop?: Snippet;
     overlays?: Snippet;
+    rotationQuarterTurns?: number;
   };
 
   let {
@@ -91,7 +96,10 @@
     onError,
     backdrop,
     overlays,
+    rotationQuarterTurns = 0,
   }: Props = $props();
+
+  const normalizedRotation = $derived(normalizeIdentityReviewQuarterTurns(rotationQuarterTurns));
 
   const afterThumbnail = (loader: AdaptiveImageLoader) => {
     if (assetViewerManager.zoom > 1) {
@@ -141,7 +149,7 @@
     return () => loader.destroy();
   });
 
-  const imageDimensions = $derived.by(() => {
+  const sourceDimensions = $derived.by(() => {
     const { width, height } = asset;
     if (width && width > 0 && height && height > 0) {
       return { width, height };
@@ -149,35 +157,54 @@
     return { width: 1, height: 1 };
   });
 
-  const { insetInlineStart, top, displayWidth, displayHeight, rasterWidth, rasterHeight, rasterScale } = $derived.by(
-    () => {
-      const scaleFn = objectFit === 'cover' ? scaleToCover : scaleToFit;
-      const { width, height } = scaleFn(imageDimensions, container);
-      if (maxRasterPixels === 0) {
-        return {
-          insetInlineStart: (container.width - width) / 2 + 'px',
-          top: (container.height - height) / 2 + 'px',
-          displayWidth: width + 'px',
-          displayHeight: height + 'px',
-          rasterWidth: width + 'px',
-          rasterHeight: height + 'px',
-          rasterScale: 1,
-        };
-      }
-      const nativeRatio = imageDimensions.width / width;
-      const budgetRatio = Math.sqrt(maxRasterPixels / Math.max(width * height, 1));
-      const rasterRatio = Math.max(1, Math.min(nativeRatio, budgetRatio));
-      return {
-        insetInlineStart: (container.width - width) / 2 + 'px',
-        top: (container.height - height) / 2 + 'px',
-        displayWidth: width + 'px',
-        displayHeight: height + 'px',
-        rasterWidth: width * rasterRatio + 'px',
-        rasterHeight: height * rasterRatio + 'px',
-        rasterScale: 1 / rasterRatio,
-      };
-    },
+  const imageDimensions = $derived(
+    normalizedRotation % 2 === 0
+      ? sourceDimensions
+      : { width: sourceDimensions.height, height: sourceDimensions.width },
   );
+
+  const {
+    insetInlineStart,
+    top,
+    displayWidth,
+    displayHeight,
+    rasterWidth,
+    rasterHeight,
+    rasterScale,
+    sourceDisplayWidth,
+    sourceDisplayHeight,
+    sourceRasterWidth,
+    sourceRasterHeight,
+    sourceRasterTransform,
+    sourceDisplayTransform,
+  } = $derived.by(() => {
+    const scaleFn = objectFit === 'cover' ? scaleToCover : scaleToFit;
+    const { width, height } = scaleFn(imageDimensions, container);
+    const nativeRatio = imageDimensions.width / width;
+    const budgetRatio = maxRasterPixels === 0 ? 1 : Math.sqrt(maxRasterPixels / Math.max(width * height, 1));
+    const rasterRatio = maxRasterPixels === 0 ? 1 : Math.max(1, Math.min(nativeRatio, budgetRatio));
+    const rotatedRasterWidth = width * rasterRatio;
+    const rotatedRasterHeight = height * rasterRatio;
+    const rawRasterWidth = normalizedRotation % 2 === 0 ? rotatedRasterWidth : rotatedRasterHeight;
+    const rawRasterHeight = normalizedRotation % 2 === 0 ? rotatedRasterHeight : rotatedRasterWidth;
+    const rawDisplayWidth = normalizedRotation % 2 === 0 ? width : height;
+    const rawDisplayHeight = normalizedRotation % 2 === 0 ? height : width;
+    return {
+      insetInlineStart: (container.width - width) / 2 + 'px',
+      top: (container.height - height) / 2 + 'px',
+      displayWidth: width + 'px',
+      displayHeight: height + 'px',
+      rasterWidth: rotatedRasterWidth + 'px',
+      rasterHeight: rotatedRasterHeight + 'px',
+      rasterScale: 1 / rasterRatio,
+      sourceDisplayWidth: rawDisplayWidth + 'px',
+      sourceDisplayHeight: rawDisplayHeight + 'px',
+      sourceRasterWidth: rawRasterWidth + 'px',
+      sourceRasterHeight: rawRasterHeight + 'px',
+      sourceRasterTransform: identityReviewCssTransform(rawRasterWidth, rawRasterHeight, normalizedRotation),
+      sourceDisplayTransform: identityReviewCssTransform(rawDisplayWidth, rawDisplayHeight, normalizedRotation),
+    };
+  });
 
   const { status } = $derived(adaptiveImageLoader);
   const alt = $derived(status.urls.preview ? $getAltText(toTimelineAsset(asset)) : '');
@@ -235,55 +262,63 @@
       style:transform-origin="0 0"
       style:will-change={maxRasterPixels > 0 ? 'transform' : undefined}
     >
-      {#if show.alphaBackground}
-        <AlphaBackground />
-      {/if}
-
-      {#if show.thumbhash}
-        {#if asset.thumbhash}
-          <!-- Thumbhash / spinner layer  -->
-          <Thumbhash base64ThumbHash={asset.thumbhash} class="absolute size-full" />
-        {:else if show.spinner}
-          <DelayedLoadingSpinner />
+      <div
+        class="absolute top-0 left-0"
+        style:width={sourceRasterWidth}
+        style:height={sourceRasterHeight}
+        style:transform={sourceRasterTransform || undefined}
+        style:transform-origin="0 0"
+      >
+        {#if show.alphaBackground}
+          <AlphaBackground />
         {/if}
-      {/if}
 
-      {#if show.thumbnail}
-        <ImageLayer
-          {adaptiveImageLoader}
-          width={rasterWidth}
-          height={rasterHeight}
-          quality="thumbnail"
-          src={status.urls.thumbnail}
-          alt=""
-          role="presentation"
-          bind:ref={thumbnailElement}
-        />
-      {/if}
+        {#if show.thumbhash}
+          {#if asset.thumbhash}
+            <!-- Thumbhash / spinner layer  -->
+            <Thumbhash base64ThumbHash={asset.thumbhash} class="absolute size-full" />
+          {:else if show.spinner}
+            <DelayedLoadingSpinner />
+          {/if}
+        {/if}
 
-      {#if show.preview}
-        <ImageLayer
-          {adaptiveImageLoader}
-          {alt}
-          width={rasterWidth}
-          height={rasterHeight}
-          quality="preview"
-          src={status.urls.preview}
-          bind:ref={previewElement}
-        />
-      {/if}
+        {#if show.thumbnail}
+          <ImageLayer
+            {adaptiveImageLoader}
+            width={sourceRasterWidth}
+            height={sourceRasterHeight}
+            quality="thumbnail"
+            src={status.urls.thumbnail}
+            alt=""
+            role="presentation"
+            bind:ref={thumbnailElement}
+          />
+        {/if}
 
-      {#if show.original}
-        <ImageLayer
-          {adaptiveImageLoader}
-          {alt}
-          width={rasterWidth}
-          height={rasterHeight}
-          quality="original"
-          src={status.urls.original}
-          bind:ref={originalElement}
-        />
-      {/if}
+        {#if show.preview}
+          <ImageLayer
+            {adaptiveImageLoader}
+            {alt}
+            width={sourceRasterWidth}
+            height={sourceRasterHeight}
+            quality="preview"
+            src={status.urls.preview}
+            bind:ref={previewElement}
+          />
+        {/if}
+
+        {#if show.original}
+          <ImageLayer
+            {adaptiveImageLoader}
+            {alt}
+            width={sourceRasterWidth}
+            height={sourceRasterHeight}
+            quality="original"
+            src={status.urls.original}
+            bind:ref={originalElement}
+          />
+        {/if}
+      </div>
     </div>
 
     {#if show.brokenAsset}
@@ -291,7 +326,13 @@
     {/if}
 
     {#if overlays}
-      <div class="pointer-events-none absolute inset-0">
+      <div
+        class="pointer-events-none absolute top-0 left-0"
+        style:width={sourceDisplayWidth}
+        style:height={sourceDisplayHeight}
+        style:transform={sourceDisplayTransform || undefined}
+        style:transform-origin="0 0"
+      >
         {@render overlays()}
       </div>
     {/if}

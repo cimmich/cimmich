@@ -8,6 +8,7 @@ import {
   isNamedFace,
   isCimmichViewingSurface,
   matchesCimmichPersonPhotoContext,
+  placeBulkFacePanel,
   placeFaceDetailsPanel,
   placeManualTagPanel,
   projectFaceEditorPersonDraft,
@@ -19,6 +20,7 @@ import {
   projectPhotoOverlayZoomStyle,
   projectNamedPhotoPresence,
   projectTypedManualTagSummary,
+  shouldDeferCimmichExactPhotoTimeline,
   stopPhotoViewerShortcutPropagation,
 } from './photo-viewer-presentation';
 
@@ -111,6 +113,36 @@ describe('photo viewer presentation context', () => {
       isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichPetId=pet-1&cimmichPetName=Juniper')),
     ).toBe(true);
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1'))).toBe(false);
+  });
+
+  it('keeps explicit Cimmich Library and Face-review photo journeys inside Cimmich', () => {
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=1'))).toBe(true);
+    expect(
+      isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery')),
+    ).toBe(true);
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=people'))).toBe(true);
+  });
+
+  it('does not let arbitrary photo query parameters turn Immich into Cimmich', () => {
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=0'))).toBe(false);
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=unexpected'))).toBe(false);
+  });
+
+  it('defers the full timeline only for an exact Cimmich photo viewer', () => {
+    expect(
+      shouldDeferCimmichExactPhotoTimeline(
+        new URL('http://localhost/photos/asset-1?cimmichPersonId=person-1&cimmichPersonName=Maya+Chen'),
+        'asset-1',
+      ),
+    ).toBe(true);
+    expect(
+      shouldDeferCimmichExactPhotoTimeline(
+        new URL('http://localhost/photos/asset-1?cimmichOverlay=machinery'),
+        'asset-1',
+      ),
+    ).toBe(true);
+    expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos/asset-1'), 'asset-1')).toBe(false);
+    expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos?organise=1'), undefined)).toBe(false);
   });
 
   it('recognises Pet viewer context without treating it as a Person highlight', () => {
@@ -221,6 +253,27 @@ describe('photo viewer presentation context', () => {
     expect(placement.width).toBeCloseTo(236.61);
     expect(placement.left + placement.width).toBeLessThanOrEqual(248.61);
     expect(placement.top + placement.maxHeight).toBeLessThanOrEqual(708);
+  });
+
+  it('keeps the bulk Face panel inside a 320px reflow viewport', () => {
+    const placement = placeBulkFacePanel({
+      overlay: { height: 640, width: 320 },
+      requestedLeft: 400,
+      requestedTop: 144,
+    });
+
+    expect(placement).toEqual({ left: 12, maxHeight: 484, top: 144, width: 296 });
+    expect(placement.left + placement.width).toBeLessThanOrEqual(308);
+  });
+
+  it('clamps a dragged bulk Face panel back into a wide viewer', () => {
+    const placement = placeBulkFacePanel({
+      overlay: { height: 720, width: 1280 },
+      requestedLeft: 1200,
+      requestedTop: 900,
+    });
+
+    expect(placement).toEqual({ left: 820, maxHeight: 208, top: 500, width: 448 });
   });
 
   it('keeps the compact evidence panel near the selected face when it already fits', () => {

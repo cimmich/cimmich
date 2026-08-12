@@ -1,16 +1,23 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { readBoundedResponseBytes } from "./bounded-response.mjs";
 import { integrationSettingsPack } from "./integration-settings.mjs";
 import { createReviewRoutes } from "./review-routes.mjs";
 import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
 import { createAssetVisibilityRoutes } from "./asset-visibility-routes.mjs";
 import { createBulkAlbumOperationRoutes } from "./bulk-album-operation-routes.mjs";
+import { createLocalAiRoutes } from "./local-ai-routes.mjs";
 import {
   attachProjectionSnapshotInvalidation,
   exploreFacetResponse,
   personAssetRequestFromUrl,
 } from "./explore-routes.mjs";
 import { matchPossiblePeopleRoutes } from "./possible-people-routes.mjs";
+import {
+  enforceOwnerGatewayRequest,
+  handleOwnerSessionAuthRequest,
+} from "./owner-gateway-policy.mjs";
+import { sendBinary, sendMapTile } from "./response-writers.mjs";
 import {
   observeRequestTiming,
   safeRouteFamily,
@@ -45,45 +52,6 @@ const sendJson = (response, statusCode, body, origin = "") => {
       : {}),
   });
   response.end(`${JSON.stringify(projectedBody)}\n`);
-};
-
-const encodedFilename = (value) =>
-  encodeURIComponent(String(value || "document")).replace(
-    /[!'()*]/g,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-
-const sendBinary = (
-  response,
-  { bytes, disposition, filename, mimeType },
-  origin = "",
-) => {
-  response.writeHead(200, {
-    "cache-control": "no-store",
-    "content-disposition": `${disposition}; filename*=UTF-8''${encodedFilename(filename)}`,
-    "content-length": bytes.length,
-    "content-security-policy": "sandbox; default-src 'none'",
-    "content-type": mimeType,
-    "x-content-type-options": "nosniff",
-    ...(origin
-      ? { "access-control-allow-origin": origin, vary: "Origin" }
-      : {}),
-  });
-  response.end(bytes);
-};
-
-const sendMapTile = (response, { bytes, mimeType }, origin = "") => {
-  response.writeHead(200, {
-    "cache-control": "public, max-age=86400, stale-while-revalidate=604800",
-    "content-length": bytes.length,
-    "content-security-policy": "default-src 'none'",
-    "content-type": mimeType,
-    "x-content-type-options": "nosniff",
-    ...(origin
-      ? { "access-control-allow-origin": origin, vary: "Origin" }
-      : {}),
-  });
-  response.end(bytes);
 };
 
 const readJsonBody = async (request, maximumBytes = 32_768) => {
@@ -199,11 +167,15 @@ export const createCimmichServer = ({
   immichCompanion,
   immichInventory,
   immichOnboarding,
+  immichOwnerSession,
+  localAi,
   mediaOperator,
   memorySteward,
   optionalEgressEnabled = true,
+  ownerGatewayRequired = false,
   repository,
   satelliteTileFetch = globalThis.fetch,
+  satelliteTileTimeoutMs = 8_000,
   surfacePolicy = "combined",
   visibility,
 }) => {
@@ -227,6 +199,9 @@ export const createCimmichServer = ({
     ),
     createBulkAlbumOperationRoutes(repository, readJsonBody, sendJson),
     createReviewRoutes(repository, requireProjection, readJsonBody, sendJson),
+    ...(surfacePolicy === "guided"
+      ? []
+      : [createLocalAiRoutes(localAi, readJsonBody, sendJson, sendBinary)]),
   ];
 
   const handleRequest = async (request, response) => {
@@ -262,6 +237,24 @@ export const createCimmichServer = ({
 
     try {
       const url = new URL(request.url || "/", "http://cimmich.local");
+      if (
+        await handleOwnerSessionAuthRequest({
+          immichOwnerSession,
+          request,
+          response,
+          surfacePolicy,
+          url,
+        })
+      ) {
+        return;
+      }
+      enforceOwnerGatewayRequest({
+        allowedOrigin,
+        ownerGatewayRequired,
+        request,
+        surfacePolicy,
+        url,
+      });
       const guidedSurface =
         String(request.headers["x-cimmich-surface"] || "")
           .trim()
@@ -832,6 +825,8 @@ export const createCimmichServer = ({
             actorId: request.headers["x-cimmich-actor"],
             apiBaseUrl: body.apiBaseUrl,
             apiKey: body.credential,
+            authenticatedPrincipalId:
+              request.headers["x-cimmich-authenticated-principal"],
             commandId: body.commandId,
           }),
           allowedOrigin,
@@ -1096,43 +1091,58 @@ export const createCimmichServer = ({
           );
         }
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8_000);
+        const timeout = setTimeout(
+          () => controller.abort(),
+          satelliteTileTimeoutMs,
+        );
         let tileResponse;
+        let bytes;
+        let mimeType;
         try {
           tileResponse = await satelliteTileFetch(
             `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${tileX}`,
-            { signal: controller.signal },
+            { redirect: "error", signal: controller.signal },
           );
-        } finally {
-          clearTimeout(timeout);
-        }
-        if (!tileResponse?.ok) {
+          if (!tileResponse?.ok) {
+            throw Object.assign(new Error("Satellite tile is unavailable"), {
+              code: "SATELLITE_TILE_UNAVAILABLE",
+              statusCode: 502,
+            });
+          }
+          mimeType = String(tileResponse.headers?.get?.("content-type") || "")
+            .split(";")[0]
+            .trim()
+            .toLowerCase();
+          if (
+            !new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)
+          ) {
+            throw Object.assign(
+              new Error("Satellite tile format is unsupported"),
+              {
+                code: "SATELLITE_TILE_FORMAT_INVALID",
+                statusCode: 502,
+              },
+            );
+          }
+          bytes = await readBoundedResponseBytes(
+            tileResponse,
+            2 * 1024 * 1024,
+            {
+              code: "SATELLITE_TILE_PAYLOAD_INVALID",
+              message: "Satellite tile payload is invalid",
+              statusCode: 502,
+            },
+          );
+        } catch (error) {
+          if (String(error?.code || "").startsWith("SATELLITE_TILE_")) {
+            throw error;
+          }
           throw Object.assign(new Error("Satellite tile is unavailable"), {
             code: "SATELLITE_TILE_UNAVAILABLE",
             statusCode: 502,
           });
-        }
-        const mimeType = String(
-          tileResponse.headers?.get?.("content-type") || "",
-        )
-          .split(";")[0]
-          .trim()
-          .toLowerCase();
-        if (!new Set(["image/jpeg", "image/png", "image/webp"]).has(mimeType)) {
-          throw Object.assign(
-            new Error("Satellite tile format is unsupported"),
-            {
-              code: "SATELLITE_TILE_FORMAT_INVALID",
-              statusCode: 502,
-            },
-          );
-        }
-        const bytes = Buffer.from(await tileResponse.arrayBuffer());
-        if (bytes.length === 0 || bytes.length > 2 * 1024 * 1024) {
-          throw Object.assign(new Error("Satellite tile payload is invalid"), {
-            code: "SATELLITE_TILE_PAYLOAD_INVALID",
-            statusCode: 502,
-          });
+        } finally {
+          clearTimeout(timeout);
         }
         sendMapTile(response, { bytes, mimeType }, allowedOrigin);
         return;
@@ -3140,15 +3150,20 @@ export const createCimmichServer = ({
       const {
         personCandidatesMatch,
         personKnownClusterSuggestionsMatch,
+        possiblePeopleRead,
         possiblePersonResolveMatch,
         possiblePersonUndoMatch,
       } = matchPossiblePeopleRoutes(url.pathname);
-      if (request.method === "GET" && url.pathname === "/v1/possible-people") {
+      if (request.method === "GET" && possiblePeopleRead) {
         requireProjection("person_review");
         sendJson(
           response,
           200,
-          await repository.possiblePeopleSnapshot(),
+          await (possiblePeopleRead === "previews"
+            ? repository.possiblePeoplePreviews({
+                clusterIds: url.searchParams.getAll("clusterId"),
+              })
+            : repository.possiblePeopleSnapshot()),
           allowedOrigin,
         );
         return;

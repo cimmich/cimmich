@@ -13,7 +13,7 @@
 
   let { ariaLabel, children }: Props = $props();
 
-  const isHidden = $derived(!sidebarStore.isOpen && !mediaQueryManager.isFullSidebar);
+  const isHidden = $derived(!sidebarStore.isOpen);
   const isExpanded = $derived(sidebarStore.isOpen && !mediaQueryManager.isFullSidebar);
 
   onMount(() => {
@@ -35,11 +35,12 @@
   id="sidebar"
   aria-label={ariaLabel}
   tabindex="-1"
-  class="relative z-1 w-0 immich-scrollbar overflow-x-hidden overflow-y-auto bg-light pt-8 transition-all duration-200 sidebar:w-64"
+  class="relative z-1 w-0 immich-scrollbar overflow-x-hidden overflow-y-auto bg-light pt-8 transition-all duration-200"
   class:shadow-2xl={isExpanded}
   class:dark:border-e-immich-dark-gray={isExpanded}
   class:border-r={isExpanded}
-  class:w-[min(100vw,16rem)]={sidebarStore.isOpen}
+  class:w-64={sidebarStore.isOpen && mediaQueryManager.isFullSidebar}
+  class:w-[min(100vw,16rem)]={sidebarStore.isOpen && !mediaQueryManager.isFullSidebar}
   data-testid="sidebar-parent"
   inert={isHidden}
   use:clickOutside={{ onOutclick: closeSidebar, onEscape: closeSidebar }}

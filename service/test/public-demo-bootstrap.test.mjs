@@ -267,10 +267,13 @@ test("demo tooling contains no workspace-specific default outside its test fixtu
 });
 
 test("public demo stop and restart preserve state while destruction is explicit", async () => {
-  const source = await readFile(
-    path.resolve(serviceRoot, "../tools/public_demo.sh"),
-    "utf8",
-  );
+  const [source, compose] = await Promise.all([
+    readFile(path.resolve(serviceRoot, "../tools/public_demo.sh"), "utf8"),
+    readFile(
+      path.resolve(serviceRoot, "../tools/public_demo.compose.yml"),
+      "utf8",
+    ),
+  ]);
   const acceptance = await readFile(
     path.resolve(serviceRoot, "../tools/public_demo_acceptance.sh"),
     "utf8",
@@ -291,6 +294,21 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(source, /refresh\(\)/);
   assert.match(source, /refresh_counts_after.*refresh_counts_before/);
   assert.match(source, /compose build cimmich-api public-demo-ui/);
+  assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_UID="\$\(id -u\)"/);
+  assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_GID="\$\(id -g\)"/);
+  assert.match(
+    compose,
+    /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+  );
+  assert.match(
+    compose,
+    /group_add:\n\s+- \$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+  );
+  assert.match(source, /chmod 640 "\$GUIDED_TOKEN_FILE"/);
+  assert.match(
+    source,
+    /chmod 640 "\$STATE_ROOT\/immich-credential\.json" "\$GUIDED_TOKEN_FILE"/,
+  );
   assert.match(source, /destroy\)/);
   assert.match(source, /compose down --volumes --remove-orphans/);
   assert.match(source, /preflight_backup_databases/);

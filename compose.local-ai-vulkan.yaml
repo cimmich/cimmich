@@ -1,0 +1,12 @@
+services:
+  cimmich-api:
+    # Hardware access is deliberately a deployment override: the base stack
+    # remains portable and fails closed to CPU unless Vulkan is selected.
+    environment:
+      CIMMICH_LOCAL_AI_ENHANCE_DEVICE: vulkan
+    devices:
+      - source: ${CIMMICH_LOCAL_AI_RENDER_DEVICE:-/dev/dri/renderD128}
+        target: /dev/dri/renderD128
+        permissions: rw
+    group_add:
+      - "${CIMMICH_LOCAL_AI_RENDER_GROUP_ID:-990}"

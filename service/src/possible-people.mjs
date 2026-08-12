@@ -3,11 +3,20 @@ import {
   classifyPossiblePeopleRun,
   possiblePeopleClassificationContract,
 } from "./possible-people-classifier.mjs";
+import { processPossiblePeopleBatches } from "./possible-people-batch.mjs";
 import {
   createPossiblePeopleProjection,
   projectPossiblePeopleRun as projectRun,
 } from "./possible-people-projection.mjs";
+import {
+  dropPossiblePeopleCandidateScope,
+  seedPossiblePeopleRun,
+} from "./possible-people-seed.mjs";
 import { PossiblePeopleUnionFind } from "./possible-people-union-find.mjs";
+import {
+  releaseReservedConnection,
+  withReservedTransaction,
+} from "./postgres-reserved.mjs";
 
 const receiptId = "receipt_cimmich_possible_people_v1";
 const algorithmVersion = "cimmich-possible-people-graph-v2";
@@ -16,7 +25,6 @@ const seedLimit = 100_000;
 const neighbourLimit = 12;
 const similarityFloor = 0.55;
 const strongOneWayFloor = 0.68;
-const batchSize = 250;
 const { classificationVersion, knownPersonMarginFloor, knownPersonScoreFloor } =
   possiblePeopleClassificationContract;
 
@@ -135,22 +143,7 @@ const completeCommand = async (tx, commandId, response) => {
 };
 
 const seedRun = async (sql, runId, presentationRank) => {
-  const [space] = await sql`
-    SELECT embedding.model_family, embedding.model_version,
-      embedding.config_digest, embedding.dimension, count(*)::int AS face_count
-    FROM face_embedding embedding
-    JOIN current_matchable_physical_face face
-      ON face.face_id = embedding.face_id AND face.state = 'valid'
-    JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
-    WHERE embedding.state = 'active' AND embedding.dimension = 512
-      AND cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
-      AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
-    GROUP BY embedding.model_family, embedding.model_version,
-      embedding.config_digest, embedding.dimension
-    ORDER BY face_count DESC, embedding.model_family, embedding.model_version,
-      embedding.config_digest
-    LIMIT 1
-  `;
+  const space = await seedPossiblePeopleRun({ sql, runId, presentationRank });
   if (!space) {
     throw typedError(
       "No active Cimmich face embeddings are available for Possible people",
@@ -158,155 +151,7 @@ const seedRun = async (sql, runId, presentationRank) => {
       "POSSIBLE_PEOPLE_VECTOR_SPACE_EMPTY",
     );
   }
-  await sql.begin(async (tx) => {
-    await tx`
-      UPDATE possible_person_run
-      SET state = 'running', started_at = now(), model_family = ${space.model_family},
-        model_version = ${space.model_version}, config_digest = ${space.config_digest},
-        dimension = ${Number(space.dimension)}
-      WHERE run_id = ${runId} AND state = 'queued'
-    `;
-    await tx`
-      INSERT INTO possible_person_seed (run_id, seed_rank, face_id)
-      SELECT ${runId}, row_number() OVER (
-          ORDER BY ranked.detection_confidence DESC NULLS LAST,
-            ranked.face_area DESC, ranked.capture_time DESC NULLS LAST, ranked.face_id
-        )::int,
-        ranked.face_id
-      FROM (
-        SELECT face.face_id, face.detection_confidence,
-          (face.box_w * face.box_h)::float8 AS face_area, asset.capture_time,
-          row_number() OVER (
-            PARTITION BY asset.asset_id
-            ORDER BY face.detection_confidence DESC NULLS LAST,
-              (face.box_w * face.box_h) DESC, face.face_id
-          ) AS asset_face_rank
-        FROM face_embedding embedding
-        JOIN current_matchable_physical_face face
-          ON face.face_id = embedding.face_id AND face.state = 'valid'
-        JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
-        WHERE embedding.state = 'active' AND embedding.dimension = 512
-          AND embedding.model_family = ${space.model_family}
-          AND embedding.model_version = ${space.model_version}
-          AND embedding.config_digest = ${space.config_digest}
-          AND cimmich_face_match_eligible(
-            face.detection_confidence, face.box_w, face.box_h
-          )
-          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM current_face_physical_member claimed_member
-            JOIN identity_claim accepted ON accepted.face_id = claimed_member.face_id
-              AND accepted.state = 'accepted'
-            WHERE claimed_member.physical_face_id = face.physical_face_id
-          )
-          AND NOT EXISTS (
-            SELECT 1
-            FROM current_face_physical_member claimed_member
-            JOIN identity_claim candidate ON candidate.face_id = claimed_member.face_id
-              AND candidate.state = 'candidate'
-            WHERE claimed_member.physical_face_id = face.physical_face_id
-          )
-          AND coalesce((
-            SELECT review.reason_code FROM decision review
-            WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id
-            ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1
-          ), '') NOT IN ('face_review_geometry')
-      ) ranked
-      WHERE ranked.asset_face_rank <= 4
-      ORDER BY ranked.detection_confidence DESC NULLS LAST,
-        ranked.face_area DESC, ranked.capture_time DESC NULLS LAST, ranked.face_id
-      LIMIT ${seedLimit}
-    `;
-    await tx`
-      UPDATE possible_person_run
-      SET total_seeds = (
-        SELECT count(*)::int FROM possible_person_seed WHERE run_id = ${runId}
-      )
-      WHERE run_id = ${runId}
-    `;
-  });
-};
-
-const processBatch = async (sql, run, presentationRank) => {
-  const start = Number(run.processed_seeds) + 1;
-  const end = Math.min(Number(run.total_seeds), start + batchSize - 1);
-  await sql.begin(async (tx) => {
-    await tx`SET LOCAL ivfflat.probes = 16`;
-    await tx`
-      INSERT INTO possible_person_edge (
-        run_id, left_face_id, right_face_id, similarity, support_count
-      )
-      SELECT ${run.run_id}, edge.left_face_id, edge.right_face_id,
-        max(edge.similarity), least(2, count(*))::int
-      FROM (
-        SELECT least(seed.face_id, neighbour.face_id) AS left_face_id,
-          greatest(seed.face_id, neighbour.face_id) AS right_face_id,
-          neighbour.similarity
-        FROM possible_person_seed selected_seed
-        JOIN face_embedding seed ON seed.face_id = selected_seed.face_id
-          AND seed.state = 'active' AND seed.dimension = 512
-          AND seed.model_family = ${run.model_family}
-          AND seed.model_version = ${run.model_version}
-          AND seed.config_digest = ${run.config_digest}
-        JOIN current_matchable_physical_face seed_face
-          ON seed_face.face_id = seed.face_id
-        CROSS JOIN LATERAL (
-          SELECT candidate.face_id,
-            (1 - (candidate.embedding::vector(512) <=> seed.embedding::vector(512)))::float8
-              AS similarity
-          FROM face_embedding candidate
-          JOIN current_matchable_physical_face candidate_face
-            ON candidate_face.face_id = candidate.face_id AND candidate_face.state = 'valid'
-          JOIN asset candidate_asset
-            ON candidate_asset.asset_id = candidate_face.asset_id AND candidate_asset.state = 'active'
-          WHERE candidate.state = 'active' AND candidate.dimension = 512
-            AND candidate.model_family = ${run.model_family}
-            AND candidate.model_version = ${run.model_version}
-            AND candidate.config_digest = ${run.config_digest}
-            AND candidate.face_id <> seed.face_id
-            AND candidate_face.asset_id <> seed_face.asset_id
-            AND cimmich_face_match_eligible(
-              candidate_face.detection_confidence, candidate_face.box_w, candidate_face.box_h
-            )
-            AND cimmich_visibility_asset_rank(candidate_asset.asset_id) <= ${presentationRank()}
-            AND NOT EXISTS (
-              SELECT 1
-              FROM current_face_physical_member claimed_member
-              JOIN identity_claim accepted ON accepted.face_id = claimed_member.face_id
-                AND accepted.state = 'accepted'
-              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM current_face_physical_member claimed_member
-              JOIN identity_claim suggested ON suggested.face_id = claimed_member.face_id
-                AND suggested.state = 'candidate'
-              WHERE claimed_member.physical_face_id = candidate_face.physical_face_id
-            )
-            AND coalesce((
-              SELECT review.reason_code FROM decision review
-              WHERE review.subject_type = 'face_review'
-                AND review.subject_id = candidate.face_id
-              ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1
-            ), '') NOT IN ('face_review_geometry')
-          ORDER BY candidate.embedding::vector(512) <=> seed.embedding::vector(512)
-          LIMIT ${neighbourLimit}
-        ) neighbour
-        WHERE selected_seed.run_id = ${run.run_id}
-          AND selected_seed.seed_rank BETWEEN ${start} AND ${end}
-          AND neighbour.similarity >= ${similarityFloor}
-      ) edge
-      GROUP BY edge.left_face_id, edge.right_face_id
-      ON CONFLICT (run_id, left_face_id, right_face_id) DO UPDATE
-      SET similarity = greatest(possible_person_edge.similarity, excluded.similarity),
-        support_count = least(2, possible_person_edge.support_count + excluded.support_count)
-    `;
-    await tx`
-      UPDATE possible_person_run SET processed_seeds = ${end}
-      WHERE run_id = ${run.run_id} AND state = 'running'
-    `;
-  });
+  return space;
 };
 
 const finalizeRun = async (sql, run) => {
@@ -490,7 +335,12 @@ const finalizeRun = async (sql, run) => {
 
 export const createPossiblePeopleStore = (
   sql,
-  { createPerson, presentationRank = () => 0 } = {},
+  {
+    createPerson,
+    presentationRank = () => 0,
+    reconcilePhysicalFaces = () =>
+      sql`SELECT cimmich_refresh_physical_face_reconciliation()`,
+  } = {},
 ) => {
   let worker = null;
   let classificationWorker = null;
@@ -502,41 +352,83 @@ export const createPossiblePeopleStore = (
   const runWorker = (runId) => {
     if (worker) return worker;
     worker = (async () => {
+      let workSql = sql;
+      let reserved = false;
       try {
-        await seedRun(sql, runId, presentationRank);
-        while (true) {
-          const [run] =
-            await sql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
-          if (!run || run.state !== "running") return;
-          if (Number(run.processed_seeds) >= Number(run.total_seeds)) {
-            await finalizeRun(sql, run);
-            return;
-          }
-          await processBatch(sql, run, presentationRank);
-          await new Promise((resolve) => setImmediate(resolve));
+        if (typeof sql.reserve === "function") {
+          workSql = await sql.reserve();
+          reserved = true;
         }
+        const claimed = await withReservedTransaction(workSql, async (tx) => {
+          const [run] = await tx`
+            SELECT state FROM possible_person_run
+            WHERE run_id = ${runId} FOR UPDATE
+          `;
+          if (!run || run.state === "failed" || run.state === "completed")
+            return false;
+          if (run.state === "running") {
+            await tx`
+              UPDATE possible_person_run SET state = 'failed',
+                error_code = 'POSSIBLE_PEOPLE_PROCESS_INTERRUPTED',
+                error_message = 'The service stopped before this explicit refresh completed.'
+              WHERE run_id = ${runId} AND state = 'running'
+            `;
+            return false;
+          }
+          return true;
+        });
+        if (!claimed) return;
+        await reconcilePhysicalFaces();
+        const space = await seedRun(workSql, runId, presentationRank);
+        const [run] =
+          await workSql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
+        if (!run || run.state !== "running") return;
+        await processPossiblePeopleBatches({
+          sql,
+          coordinatorSql: workSql,
+          run,
+          space,
+          presentationRank,
+        });
+        if (reserved) {
+          await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
+          await releaseReservedConnection(workSql);
+          reserved = false;
+          workSql = sql;
+        }
+        const [completedRun] =
+          await workSql`SELECT * FROM possible_person_run WHERE run_id = ${runId}`;
+        if (!completedRun || completedRun.state !== "running") return;
+        await finalizeRun(workSql, completedRun);
       } catch (error) {
-        await sql`
-          UPDATE possible_person_run SET state = 'failed',
-            error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
-            error_message = ${String(error?.message || error).slice(0, 500)},
-            classification_state = CASE
-              WHEN classification_state = 'running' THEN 'failed'
-              ELSE classification_state
-            END,
-            classification_error_code = CASE
-              WHEN classification_state = 'running'
-                THEN ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)}
-              ELSE classification_error_code
-            END,
-            classification_error_message = CASE
-              WHEN classification_state = 'running'
-                THEN ${String(error?.message || error).slice(0, 500)}
-              ELSE classification_error_message
-            END
-          WHERE run_id = ${runId} AND state IN ('queued','running')
-        `.catch(() => {});
+        await withReservedTransaction(workSql, async (tx) => {
+          await tx`DELETE FROM possible_person_edge WHERE run_id = ${runId}`;
+          await tx`DELETE FROM possible_person_seed WHERE run_id = ${runId}`;
+          await tx`
+            UPDATE possible_person_run SET state = 'failed', total_seeds = 0,
+              processed_seeds = 0, edge_count = 0, cluster_count = 0,
+              error_code = ${String(error?.code || "POSSIBLE_PEOPLE_REFRESH_FAILED").slice(0, 120)},
+              error_message = ${String(error?.message || error).slice(0, 500)},
+              classification_state = CASE
+                WHEN classification_state = 'running' THEN 'failed'
+                ELSE classification_state
+              END,
+              classification_error_code = CASE
+                WHEN classification_state = 'running'
+                  THEN ${String(error?.code || "POSSIBLE_PEOPLE_CLASSIFICATION_FAILED").slice(0, 120)}
+                ELSE classification_error_code
+              END,
+              classification_error_message = CASE
+                WHEN classification_state = 'running'
+                  THEN ${String(error?.message || error).slice(0, 500)}
+                ELSE classification_error_message
+              END
+            WHERE run_id = ${runId} AND state IN ('queued','running')
+          `;
+        }).catch(() => {});
       } finally {
+        await dropPossiblePeopleCandidateScope(workSql).catch(() => {});
+        if (reserved) await releaseReservedConnection(workSql);
         worker = null;
       }
     })();
@@ -627,9 +519,9 @@ export const createPossiblePeopleStore = (
       const [active] = await tx`
         SELECT * FROM possible_person_run
         WHERE state IN ('queued','running')
-        ORDER BY created_at DESC, run_id DESC LIMIT 1 FOR UPDATE
+        ORDER BY created_at DESC, run_id DESC LIMIT 1
       `;
-      if (active && worker) {
+      if (active) {
         return completeCommand(tx, stableCommandId, {
           changed: false,
           replayed: false,
@@ -637,15 +529,6 @@ export const createPossiblePeopleStore = (
           schemaVersion,
         });
       }
-      if (active) {
-        await tx`
-          UPDATE possible_person_run SET state = 'failed',
-            error_code = 'POSSIBLE_PEOPLE_PROCESS_INTERRUPTED',
-            error_message = 'The service stopped before this explicit refresh completed.'
-          WHERE run_id = ${active.run_id}
-        `;
-      }
-      await tx`SELECT cimmich_refresh_physical_face_reconciliation()`;
       const runId = `possible_run_${randomUUID().replaceAll("-", "")}`;
       await tx`
         INSERT INTO possible_person_run (
@@ -675,7 +558,8 @@ export const createPossiblePeopleStore = (
         schemaVersion,
       });
     });
-    if (result.run?.state === "queued") void runWorker(result.run.runId);
+    if (["queued", "running"].includes(result.run?.state))
+      void runWorker(result.run.runId);
     return result;
   };
 
@@ -854,7 +738,50 @@ export const createPossiblePeopleStore = (
         WHERE cluster_id = ${cluster.cluster_id}
       `;
       let candidateCount = 0;
+      let collisionAssetCount = 0;
+      let collisionFaceCount = 0;
       if (action !== "later") {
+        const [collisionSummary] = await tx`
+          SELECT
+            count(*)::int AS collision_face_count,
+            count(DISTINCT face.asset_id)::int AS collision_asset_count
+          FROM face_cluster_member member
+          JOIN face_observation face ON face.face_id = member.face_id AND face.state = 'valid'
+          JOIN current_face_physical_member member_physical
+            ON member_physical.face_id = member.face_id
+          WHERE member.cluster_id = ${cluster.cluster_id}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_physical_member accepted_member
+              JOIN identity_claim accepted ON accepted.face_id = accepted_member.face_id
+                AND accepted.state = 'accepted'
+                AND accepted.person_id = ${selectedPersonId}
+              WHERE accepted_member.physical_face_id = member_physical.physical_face_id
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_physical_member candidate_member
+              JOIN identity_claim duplicate ON duplicate.face_id = candidate_member.face_id
+                AND duplicate.person_id = ${selectedPersonId}
+                AND duplicate.state = 'candidate'
+              WHERE candidate_member.physical_face_id = member_physical.physical_face_id
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM face_observation accepted_face
+              JOIN identity_claim accepted ON accepted.face_id = accepted_face.face_id
+                AND accepted.state = 'accepted'
+                AND accepted.person_id = ${selectedPersonId}
+              WHERE accepted_face.asset_id = face.asset_id
+                AND accepted_face.state = 'valid'
+            )
+        `;
+        collisionAssetCount = Number(
+          collisionSummary?.collision_asset_count || 0,
+        );
+        collisionFaceCount = Number(
+          collisionSummary?.collision_face_count || 0,
+        );
         const inserted = await tx`
           INSERT INTO identity_claim (
             identity_claim_id, face_id, person_id, origin, state,
@@ -904,6 +831,8 @@ export const createPossiblePeopleStore = (
       return completeCommand(tx, stableCommandId, {
         candidateCount,
         changed: true,
+        collisionAssetCount,
+        collisionFaceCount,
         createdPerson,
         decisionId,
         replayed: false,
@@ -968,13 +897,21 @@ export const createPossiblePeopleStore = (
     });
   };
 
+  const waitForIdle = async () => {
+    while (worker || classificationWorker) {
+      await (worker || classificationWorker);
+    }
+  };
+
   return {
     classifyLatest,
     knownSuggestions: projection.knownSuggestions,
+    previews: projection.previews,
     refresh,
     resolve,
     snapshot: projection.snapshot,
     undo,
+    waitForIdle,
   };
 };
 

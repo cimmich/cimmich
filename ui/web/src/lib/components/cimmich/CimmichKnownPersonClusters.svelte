@@ -10,7 +10,13 @@
 
   interface Props {
     items: CimmichKnownPersonClusterSuggestion[];
-    onChanged?: (input: { candidateCount: number; clusterId: string; kind: 'review' | 'reject' | 'ungroup' }) => void;
+    onChanged?: (input: {
+      candidateCount: number;
+      clusterId: string;
+      collisionAssetCount: number;
+      collisionFaceCount: number;
+      kind: 'review' | 'reject' | 'ungroup';
+    }) => void;
     personId: string;
     personName: string;
   }
@@ -86,7 +92,13 @@
         personId,
         snapshotDigest: item.snapshotDigest,
       });
-      onChanged({ candidateCount: result.candidateCount ?? item.faceCount, clusterId: item.clusterId, kind: 'review' });
+      onChanged({
+        candidateCount: result.candidateCount ?? item.faceCount,
+        clusterId: item.clusterId,
+        collisionAssetCount: result.collisionAssetCount ?? 0,
+        collisionFaceCount: result.collisionFaceCount ?? 0,
+        kind: 'review',
+      });
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : `Cimmich could not move this group to ${personName}’s checks.`;
     } finally {
@@ -106,7 +118,13 @@
         commandId: `possible-person.known-reject.${createCimmichUuid()}`,
         snapshotDigest: item.snapshotDigest,
       });
-      onChanged({ candidateCount: 0, clusterId: item.clusterId, kind: 'reject' });
+      onChanged({
+        candidateCount: 0,
+        clusterId: item.clusterId,
+        collisionAssetCount: 0,
+        collisionFaceCount: 0,
+        kind: 'reject',
+      });
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : `Cimmich could not reject the ${personName} match.`;
     } finally {
@@ -127,7 +145,13 @@
         snapshotDigest: item.snapshotDigest,
       });
       confirmUngroupClusterId = '';
-      onChanged({ candidateCount: 0, clusterId: item.clusterId, kind: 'ungroup' });
+      onChanged({
+        candidateCount: 0,
+        clusterId: item.clusterId,
+        collisionAssetCount: 0,
+        collisionFaceCount: 0,
+        kind: 'ungroup',
+      });
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Cimmich could not ungroup these photos.';
     } finally {

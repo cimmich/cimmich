@@ -27,6 +27,7 @@ const receipt: CimmichEntityMediaActionReceipt = {
   version: 1,
   visibilityDecisionIds: [],
 };
+const privateContext = { ownerId: 'owner-1', sessionId: 'session-1', viewingMode: 'private' as const };
 
 describe('entity media actions', () => {
   it('caps visible selection at 100 before an action can be submitted', () => {
@@ -60,10 +61,38 @@ describe('entity media actions', () => {
       removeItem: vi.fn((key: string) => values.delete(key)),
       setItem: vi.fn((key: string, value: string) => values.set(key, value)),
     };
-    saveCimmichEntityMediaActionReceipt(storage, receipt);
-    expect(loadCimmichEntityMediaActionReceipt(storage)).toEqual(receipt);
+    saveCimmichEntityMediaActionReceipt(storage, receipt, privateContext, 1000);
+    expect(loadCimmichEntityMediaActionReceipt(storage, privateContext, 1001)).toEqual(receipt);
     expect(isCimmichEntityMediaActionReceipt({ ...receipt, assetIds: 'asset-1' })).toBe(false);
-    saveCimmichEntityMediaActionReceipt(storage, null);
+    saveCimmichEntityMediaActionReceipt(storage, null, privateContext);
     expect(values.has(ENTITY_MEDIA_ACTION_RECEIPT_KEY)).toBe(false);
+  });
+
+  it('clears Private receipts after a viewing-mode, owner, session, or expiry boundary', () => {
+    const cases = [
+      { ...privateContext, viewingMode: 'standard' as const },
+      { ...privateContext, ownerId: 'owner-2' },
+      { ...privateContext, sessionId: 'session-2' },
+    ];
+    for (const context of cases) {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        removeItem: (key: string) => values.delete(key),
+        setItem: (key: string, value: string) => values.set(key, value),
+      };
+      saveCimmichEntityMediaActionReceipt(storage, receipt, privateContext, 1000);
+      expect(loadCimmichEntityMediaActionReceipt(storage, context, 1001)).toBeNull();
+      expect(values.has(ENTITY_MEDIA_ACTION_RECEIPT_KEY)).toBe(false);
+    }
+
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      removeItem: (key: string) => values.delete(key),
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    saveCimmichEntityMediaActionReceipt(storage, receipt, privateContext, 1000);
+    expect(loadCimmichEntityMediaActionReceipt(storage, privateContext, 1000 + 30 * 60_000)).toBeNull();
   });
 });

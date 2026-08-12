@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 128. Schema 76 adds
+patch level 1. Current post-submission source is schema 130. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -203,6 +203,16 @@ for folder-to-album manifests. Label membership is append-only, idempotent and
 undoable without touching Immich tag tables or source sidecars. Album writes
 remain user-session Immich operations; Cimmich checkpoints only the exact
 memberships and newly created albums needed for bounded resume and Undo.
+Schema 129 binds the installation to one durable Immich principal independently
+of the current API-key secret. The same-origin gateway verifies `/api/users/me`
+through a bounded internal authorizer and admits owner routes only when the
+live session matches that principal. First setup is limited to a closed
+bootstrap surface, and unsafe owner requests require the exact configured UI
+Origin.
+Schema 130 records the eligible and admitted work at both identity-audit
+frontiers. Completed runs now project whether query ranking or independent
+image verification was bounded, and legacy runs explicitly request a fresh
+audit instead of silently presenting an incomplete queue as exhaustive.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
@@ -322,6 +332,26 @@ derived from distinct visible active image assets with accepted Face, Body or
 Presence association. Future captures are excluded from the range and counted
 separately; undated images and non-image media affect neither. This is a read
 aggregate, not Profile persistence or source metadata repair.
+
+`GET /v1/people/:personId/evidence-coverage` exposes the read-only
+`cimmich.person-evidence-coverage.v4` projection. It counts only visible active
+assets and accepted Face, standalone Head, Body and Presence ledgers; persisted
+pose is counted only for an accepted Body. Its operational summary is mutually
+exclusive: Face visible; Appearance only (Head or Body without Face); and
+Presence only (attributed without Face, Head or Body placement). Head and Body
+remain separate correction detail, not separate top-level states. Face records
+in the Head reference bucket count as Head, while unresolved pre-Cimmich
+whole-photo attributions count as Presence until visible geometry is placed.
+It also returns the accepted
+reference-role split, capture-year spread, up to six visible context entities
+per family, pending candidate/date/pose notes and one privacy-filtered display
+photo for each represented capture year (up to 120 years). A best available
+accepted Face leads each year; years without one fall back to another accepted
+Person photo. It also returns the six most frequent privacy-visible People or
+Pets sharing those accepted active photos, ranked by distinct shared-photo
+count with bounded presentation media. The projection has no inference, write, source-mutation or
+automatic identity authority. See
+`docs/PERSON_EVIDENCE_COVERAGE.md`.
 
 Holding hints are separately bounded by
 `cimmich.person-holding-match-batch.v1`:
@@ -1012,6 +1042,13 @@ two local provider invocations under an allowlisted process environment. That
 environment removes ambient credentials but is not an operating-system network
 or filesystem sandbox; operators must trust provider code or add external
 container isolation.
+The owner-only Local AI surface can also expose an exactly-one-photo pose
+review when the Body and pose model/manifest pairs are both configured. That
+path runs a fresh Body pass, requires two identical pose replays, projects
+saved presentation rotation back to source coordinates, and labels skeletons
+as supported, ambiguous or unmatched. Its PNG overlay and minimized result are
+derived review artifacts only: they do not invoke the repository writer or
+grant Person, Face, Context or matching authority.
 The bundled `ultralytics-yolo-pose` reference pack is optional and ships no
 weights. COCO-17 projection requires at least seven keypoints clearing the
 manifest threshold; a caller cannot lower that floor. One isolated

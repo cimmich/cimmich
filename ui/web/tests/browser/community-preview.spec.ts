@@ -19,6 +19,21 @@ const readCredential = (key: string) => {
   return match[1];
 };
 
+const readDemoAssetId = (assetId: string) => {
+  const stateRoot = process.env.CIMMICH_E2E_STATE_ROOT;
+  if (!stateRoot) {
+    throw new Error('Set CIMMICH_E2E_STATE_ROOT for the isolated fictional demo');
+  }
+  const source = JSON.parse(readFileSync(path.join(stateRoot, 'immich-map.json'), 'utf8')) as {
+    assets?: Array<{ assetId?: unknown; immichAssetId?: unknown }>;
+  };
+  const match = source.assets?.find((asset) => asset.assetId === assetId);
+  if (typeof match?.immichAssetId !== 'string') {
+    throw new TypeError(`The isolated demo is missing mapped asset ${assetId}`);
+  }
+  return match.immichAssetId;
+};
+
 const authenticate = async (page: Page) => {
   await page.goto('/cimmich/home', { waitUntil: 'networkidle' });
   if (!page.url().includes('/auth/login')) {
@@ -27,7 +42,7 @@ const authenticate = async (page: Page) => {
   await page.getByLabel('Email').fill(readCredential('CIMMICH_DEMO_ADMIN_EMAIL'));
   await page.getByLabel('Password').fill(readCredential('CIMMICH_DEMO_ADMIN_PASSWORD'));
   await page.getByRole('button', { name: 'Login' }).click();
-  await expect(page).toHaveURL(/\/cimmich\/home|\/photos/u);
+  await expect(page).toHaveURL(/\/(?:cimmich|photos)(?:[/?#]|$)/u);
 };
 
 test.beforeEach(async ({ page }) => {
@@ -52,13 +67,23 @@ test('viewing mode menu opens through a real pointer interaction', async ({ page
   await expect(dialog.getByRole('button', { name: 'Private' })).toBeVisible();
 });
 
-test('Organise preserves all four familiar library modes', async ({ page }) => {
-  await page.getByRole('link', { name: 'Organise', exact: true }).click();
-  const modes = page.getByRole('navigation', { name: 'Organise by' });
-  await expect(modes.getByRole('link', { name: 'Timeline' })).toHaveAttribute('href', '/photos?organise=1');
-  await expect(modes.getByRole('link', { name: 'Folders' })).toHaveAttribute('href', '/folders?organise=1');
-  await expect(modes.getByRole('link', { name: 'Tags' })).toHaveAttribute('href', '/tags?organise=1');
-  await expect(modes.getByRole('link', { name: 'Albums' })).toHaveAttribute('href', '/albums?organise=1');
+test('the familiar sidebar nests Cimmich beside ordinary library destinations', async ({ page }) => {
+  const primaryNavigation = page.getByRole('navigation', { name: /primary/iu });
+  await expect(primaryNavigation.getByRole('link', { name: 'Cimmich', exact: true })).toBeVisible();
+  for (const [name, href, pathname, organise] of [
+    ['Photos', '/photos', '/photos', false],
+    ['Albums', '/albums', '/albums', false],
+    ['Library', '/cimmich/library', '/photos', true],
+    ['People', '/cimmich/people', '/cimmich/people', false],
+    ['Settings', '/cimmich/settings', '/cimmich/settings', false],
+  ] as const) {
+    const destination = primaryNavigation.getByRole('link', { name, exact: true });
+    await expect(destination).toHaveAttribute('href', href);
+    await destination.click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe(pathname);
+    await expect.poll(() => new URL(page.url()).searchParams.has('organise')).toBe(organise);
+    await expect(page.locator('main')).toBeVisible();
+  }
 });
 
 test('Cimmich tags narrow to the true intersection', async ({ page }) => {
@@ -77,8 +102,52 @@ test('photo viewer advances and returns without losing the timeline', async ({ p
     .click();
   await expect(page.getByRole('button', { name: 'View next asset' })).toBeVisible();
   const firstUrl = page.url();
+  const media = page.locator('#immich-asset-viewer img, #immich-asset-viewer video').first();
+  await expect(media).toBeVisible();
+  const firstSource = (await media.getAttribute('src')) ?? (await media.getAttribute('poster'));
+  expect(firstSource).toBeTruthy();
   await page.getByRole('button', { name: 'View next asset' }).click();
   await expect.poll(() => page.url()).not.toBe(firstUrl);
+  await expect
+    .poll(async () => (await media.getAttribute('src')) ?? (await media.getAttribute('poster')))
+    .not.toBe(firstSource);
+  await expect(media).toBeVisible();
   await page.getByRole('button', { name: 'Go back' }).click();
   await expect(page).toHaveURL(/\/photos/u);
+});
+
+test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/cimmich/home');
+  await page
+    .getByRole('button', { name: /Viewing mode:/u })
+    .first()
+    .click();
+  await page.getByRole('button', { name: 'Personal', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Viewing mode: Personal' }).first()).toBeVisible();
+  try {
+    const targetAssetId = readDemoAssetId('CHA-035');
+    await page.goto(`/photos/${targetAssetId}`);
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/photos/${targetAssetId}`);
+    const peopleAction = page.getByTestId('cimmich-people-view');
+    if ((await peopleAction.getAttribute('aria-pressed')) !== 'true') {
+      await peopleAction.click();
+    }
+
+    const bulkAction = page.getByRole('button', { name: 'Edit all Face tags' });
+    await expect(bulkAction).toBeVisible();
+    await bulkAction.click();
+    const panel = page.getByTestId('cimmich-face-bulk-panel');
+    await expect(panel).toBeVisible();
+    const bounds = await panel.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  } finally {
+    await page.goto('/cimmich/home');
+    await page.getByRole('button', { name: 'Viewing mode: Personal' }).first().click();
+    await page.getByRole('button', { name: 'Standard', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Viewing mode: Standard' }).first()).toBeVisible();
+  }
 });

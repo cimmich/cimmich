@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
 import CimmichAppearancesPanel from './CimmichAppearancesPanel.svelte';
@@ -79,5 +79,28 @@ describe('CimmichAppearancesPanel visibility projection', () => {
 
     expect(await findByText('Body')).toBeInTheDocument();
     expect(queryByText('Body-linked')).not.toBeInTheDocument();
+  });
+
+  it('lets the owner retry a failed evidence request in place', async () => {
+    mocks.getEvidence.mockRejectedValueOnce(new Error('Evidence is temporarily unavailable')).mockResolvedValueOnce({
+      bundle: undefined,
+      evidence: {
+        packetItems: [],
+        stateRows: [],
+        summary: { bodyContextPeople: [], candidatePeople: [], localDescription: 'Recovered', sourcePeople: [] },
+      },
+      matchedFilename: 'visible.jpg',
+    });
+
+    const rendered = render(CimmichAppearancesPanel, {
+      asset: { id: 'asset-1', originalFileName: 'visible.jpg' } as never,
+    });
+
+    expect(await rendered.findByRole('alert')).toHaveTextContent('Evidence is temporarily unavailable');
+    await fireEvent.click(rendered.getByRole('button', { name: 'Try again' }));
+
+    expect(await rendered.findByText('Recovered')).toBeInTheDocument();
+    expect(mocks.getEvidence).toHaveBeenCalledTimes(2);
+    expect(rendered.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

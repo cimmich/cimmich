@@ -35,6 +35,7 @@ remain available without controlling the front door.
 - [Community Preview acceptance journeys](COMMUNITY_PREVIEW_JOURNEYS.md)
 - [Privacy boundary](PRIVACY_BOUNDARY.md)
 - [Source-media immutability](SOURCE_MEDIA_IMMUTABILITY.md)
+- [Local AI review](LOCAL_AI_REVIEW.md)
 - [Migration operations](MIGRATION_OPERATIONS.md)
 - [Archive mobility](ARCHIVE_MOBILITY.md)
 - [Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md)

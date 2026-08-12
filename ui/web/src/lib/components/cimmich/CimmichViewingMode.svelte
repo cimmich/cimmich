@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import {
     getCimmichVisibilityStatus,
     lockCimmichPrivateMode,
@@ -14,13 +13,18 @@
   import { Icon } from '@immich/ui';
   import { mdiShieldAlertOutline } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
+  import {
+    loadCimmichViewingModePreference,
+    saveCimmichViewingModePreference,
+  } from './cimmich-viewing-mode-preference';
   import CimmichViewingModeControl from './CimmichViewingModeControl.svelte';
 
   interface Props {
+    restorePreference?: boolean;
     variant?: 'dashboard' | 'default' | 'overlay';
   }
 
-  let { variant = 'default' }: Props = $props();
+  let { restorePreference = true, variant = 'default' }: Props = $props();
 
   let status = $state<CimmichVisibilityStatus>();
   let statusError = $state('');
@@ -42,15 +46,32 @@
     statusError = '';
     try {
       const previous = status;
-      const next = await getCimmichVisibilityStatus();
+      const loaded = await getCimmichVisibilityStatus();
       if (generation !== loadGeneration) {
         return;
+      }
+      let next = loaded;
+      if (restorePreference) {
+        const preferredMode = loadCimmichViewingModePreference();
+        if (preferredMode !== loaded.viewingMode && (preferredMode !== 'private' || loaded.privateAuthorized)) {
+          const intentSequence = createCimmichViewingModeIntentSequence();
+          cimmichVisibilityManager.beginViewingModeIntent(intentSequence);
+          const preferred = await setCimmichViewingMode(preferredMode, intentSequence);
+          if (
+            generation !== loadGeneration ||
+            !cimmichVisibilityManager.isCurrentViewingModeIntent(preferred.intentSequence)
+          ) {
+            return;
+          }
+          next = preferred;
+        }
       }
       status = next;
       cimmichVisibilityManager.recordVisibilityStatus(next);
       if (
-        previous &&
-        (previous.viewingMode !== next.viewingMode || previous.privateAuthorized !== next.privateAuthorized)
+        (previous &&
+          (previous.viewingMode !== next.viewingMode || previous.privateAuthorized !== next.privateAuthorized)) ||
+        loaded.viewingMode !== next.viewingMode
       ) {
         notifyVisibilityChange();
       }
@@ -76,6 +97,7 @@
         return;
       }
       status = next;
+      saveCimmichViewingModePreference(next.viewingMode);
       notifyVisibilityChange();
     } catch (error) {
       statusError = error instanceof Error ? error.message : 'Viewing mode could not be changed';
@@ -89,6 +111,7 @@
     try {
       await unlockCimmichPrivateMode(password);
       status = await getCimmichVisibilityStatus();
+      saveCimmichViewingModePreference('private');
       notifyVisibilityChange();
     } catch (error) {
       statusError = error instanceof Error ? error.message : 'Private could not be unlocked';
@@ -101,6 +124,7 @@
     statusError = '';
     try {
       status = await lockCimmichPrivateMode('explicit');
+      saveCimmichViewingModePreference(status.viewingMode);
       notifyVisibilityChange();
     } catch (error) {
       statusError = error instanceof Error ? error.message : 'Private could not be locked';
@@ -109,7 +133,13 @@
   };
 
   const handleVisibilityChange = () => {
-    if (document.visibilityState !== 'hidden' || !status?.privateAuthorized) {
+    if (document.visibilityState !== 'hidden') {
+      if (restorePreference) {
+        void loadStatus();
+      }
+      return;
+    }
+    if (!status?.privateAuthorized) {
       return;
     }
     loadGeneration += 1;
@@ -129,10 +159,6 @@
       status = next;
       cimmichVisibilityManager.recordVisibilityStatus(next);
     }
-  };
-
-  const switchToImmich = async () => {
-    await goto('/photos');
   };
 
   onMount(() => {
@@ -157,7 +183,6 @@
     mode={status.viewingMode}
     onLock={lock}
     onSelectMode={selectMode}
-    onSwitchToImmich={switchToImmich}
     onUnlock={unlock}
     privateConfigured={status.privateConfigured}
     privateUnlocked={status.privateAuthorized}

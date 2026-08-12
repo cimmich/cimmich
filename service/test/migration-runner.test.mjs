@@ -1173,3 +1173,38 @@ test("schema 128 keeps generic labels and folder-album recovery Cimmich-owned", 
   assert.match(migration, /CREATE TABLE bulk_album_operation_checkpoint \(/);
   assert.doesNotMatch(migration, /UPDATE\s+(immich|tag_asset)|\.xmp/i);
 });
+
+test("schema 129 binds one durable Immich owner without storing a credential", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0129_immich_owner_binding_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(migration, /CREATE TABLE immich_companion_owner \(/);
+  assert.match(migration, /singleton boolean PRIMARY KEY/);
+  assert.match(migration, /SELECT principal_id, completed_at/);
+  assert.match(migration, /ORDER BY completed_at DESC, command_id DESC/);
+  assert.doesNotMatch(migration, /api[_ ]?key|cookie|authorization|secret/i);
+});
+
+test("schema 130 persists owner-visible identity audit truncation counts", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0130_identity_audit_truncation_projection_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /untagged_queries_eligible/);
+  assert.match(source, /contradiction_queries_eligible/);
+  assert.match(source, /independence_candidates_eligible/);
+  assert.match(source, /independence_candidates_verified/);
+  assert.match(source, /identity_audit_independence_verified_bound/);
+  assert.match(source, /truncation_projection_complete/);
+});

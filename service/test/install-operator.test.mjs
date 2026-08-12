@@ -331,7 +331,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(compose, /CIMMICH_ALLOWED_HOSTS:/);
   assert.match(
     gateway,
-    /location \/cimmich-api\/[\s\S]*auth_request \/_cimmich_immich_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
+    /location \/cimmich-api\/[\s\S]*auth_request \/_cimmich_owner_session;[\s\S]*proxy_pass http:\/\/cimmich-api:3101\//,
   );
   assert.match(
     compose,

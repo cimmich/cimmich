@@ -795,6 +795,7 @@ const acceptImportedIdentity = async (
 export const createImmichOnboarding = ({
   companion,
   immichInventory,
+  ownerBinding = null,
   presentationRank = () => 0,
   resolveCimmichAssetId = null,
   sourceId = "immich-primary",
@@ -825,12 +826,20 @@ export const createImmichOnboarding = ({
       "Immich onboarding visibility and asset resolution options are invalid",
     );
   }
+  if (
+    ownerBinding !== null &&
+    (typeof ownerBinding?.claim !== "function" ||
+      typeof ownerBinding?.refresh !== "function")
+  ) {
+    throw new Error("Immich onboarding owner binding is invalid");
+  }
   let unlabelledClusterCache = null;
 
   const connect = async ({
     actorId,
     apiBaseUrl,
     apiKey,
+    authenticatedPrincipalId,
     commandId: inputCommandId,
   }) => {
     if (!companion.connect) {
@@ -841,6 +850,9 @@ export const createImmichOnboarding = ({
       );
     }
     const actor = boundedId(actorId, "actorId", 120);
+    const authenticatedPrincipal = ownerBinding
+      ? boundedId(authenticatedPrincipalId, "authenticatedPrincipalId", 200)
+      : "";
     const stableCommandId = commandId(inputCommandId);
     const normalizedUrl = String(apiBaseUrl || "").trim();
     const normalizedKey = String(apiKey || "").trim();
@@ -849,13 +861,15 @@ export const createImmichOnboarding = ({
       apiKey: normalizedKey,
     });
     const [existing] = await sql`
-      SELECT actor_id, request_digest, response
+      SELECT actor_id, principal_id, request_digest, response
       FROM immich_companion_connection_command
       WHERE command_id = ${stableCommandId}
     `;
     if (existing) {
       if (
         existing.actor_id !== actor ||
+        (authenticatedPrincipal &&
+          existing.principal_id !== authenticatedPrincipal) ||
         existing.request_digest !== requestDigest
       ) {
         throw typedError(
@@ -866,20 +880,22 @@ export const createImmichOnboarding = ({
       }
       return { ...existing.response, replayed: true };
     }
-    return sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx) => {
       await tx`
         SELECT pg_advisory_xact_lock(
           hashtextextended('cimmich:immich-companion-credential', 67)
         )
       `;
       const [raced] = await tx`
-        SELECT actor_id, request_digest, response
+        SELECT actor_id, principal_id, request_digest, response
         FROM immich_companion_connection_command
         WHERE command_id = ${stableCommandId} FOR UPDATE
       `;
       if (raced) {
         if (
           raced.actor_id !== actor ||
+          (authenticatedPrincipal &&
+            raced.principal_id !== authenticatedPrincipal) ||
           raced.request_digest !== requestDigest
         ) {
           throw typedError(
@@ -893,6 +909,13 @@ export const createImmichOnboarding = ({
       const connected = await companion.connect({
         apiBaseUrl: normalizedUrl,
         apiKey: normalizedKey,
+        ...(authenticatedPrincipal
+          ? {
+              beforeStore: (principalId) =>
+                ownerBinding.claim({ executor: tx, principalId }),
+              expectedPrincipalId: authenticatedPrincipal,
+            }
+          : {}),
       });
       const response = {
         schemaVersion: IMMICH_ONBOARDING_SCHEMA_VERSION,
@@ -912,6 +935,8 @@ export const createImmichOnboarding = ({
       `;
       return response;
     });
+    if (ownerBinding) await ownerBinding.refresh();
+    return result;
   };
 
   const preview = async ({
@@ -934,6 +959,7 @@ export const createImmichOnboarding = ({
     ) {
       return {
         clusters: unlabelledClusterCache.clusters,
+        scanSummary: unlabelledClusterCache.scanSummary,
         scope,
       };
     }
@@ -1022,9 +1048,11 @@ export const createImmichOnboarding = ({
       clusters,
       expiresAt: Date.now() + 20_000,
       key: cacheKey,
+      scanSummary: scanned.scanSummary,
     };
     return {
       clusters,
+      scanSummary: scanned.scanSummary,
       scope,
     };
   };
@@ -1033,7 +1061,7 @@ export const createImmichOnboarding = ({
     scope: inputScope,
     viewingMode = "Standard",
   } = {}) => {
-    const { clusters, scope } = await scanUnlabelledClusters({
+    const { clusters, scanSummary, scope } = await scanUnlabelledClusters({
       inputScope,
       viewingMode,
     });
@@ -1074,6 +1102,7 @@ export const createImmichOnboarding = ({
                 },
         };
       }),
+      scanSummary,
       scope,
     };
   };

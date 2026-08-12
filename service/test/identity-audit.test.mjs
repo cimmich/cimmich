@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   carryForwardIdentityAuditDismissals,
   createIdentityAudit,
+  identityAuditIndependenceComparisonLimit,
   identityAuditQueryFrontierLimit,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
@@ -177,15 +178,22 @@ test("a completed audit is stale when no passed SourcePack remains active", asyn
           audit_run_id: "identity-audit.completed",
           completed_at: "2026-07-25T00:01:00.000Z",
           contradiction_candidates: 1,
+          contradiction_queries_eligible: 4,
           error_code: null,
           margin_floor: 0.21,
+          independence_candidates_eligible: 3,
+          independence_candidates_verified: 2,
+          independence_comparison_limit: 2,
           pack_id: "pack.retired",
           policy_version: "cimmich-best-prime-v1",
           score_floor: 0,
+          query_frontier_limit: 5,
           started_at: "2026-07-25T00:00:00.000Z",
           state: "completed",
+          truncation_projection_complete: true,
           untagged_candidates: 2,
           untagged_embedded_faces: 20,
+          untagged_queries_eligible: 7,
         },
       ];
     }
@@ -195,6 +203,11 @@ test("a completed audit is stale when no passed SourcePack remains active", asyn
   const result = await createIdentityAudit(sql).latest();
 
   assert.equal(result.stale, true);
+  assert.equal(result.queryFrontierTruncated, true);
+  assert.equal(result.independenceVerificationTruncated, true);
+  assert.equal(result.truncationProjectionComplete, true);
+  assert.equal(result.independenceCandidatesEligible, 3);
+  assert.equal(result.independenceCandidatesVerified, 2);
 });
 
 test("audit items expose the exact trusted references needed for visual review", async () => {
@@ -602,10 +615,11 @@ test("full audit bounds both comparison frontiers deterministically and reports 
     source.indexOf("eligible_queries AS MATERIALIZED") <
       source.indexOf("stronger.asset_id = candidate.asset_id"),
   );
-  // Truncation is observable, never silent, and the default bound sits far
-  // above realistic library sizes so default behavior is unchanged.
+  // Truncation is observable, never silent, and the default is a finite
+  // production frontier rather than a diagnostic-scale near-unbounded scan.
   assert.match(source, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
-  assert.ok(identityAuditQueryFrontierLimit >= 50_000);
+  assert.equal(identityAuditQueryFrontierLimit, 5_000);
+  assert.equal(identityAuditIndependenceComparisonLimit, 100);
 });
 
 test("independence verification honors the configured bound and concurrency", async () => {

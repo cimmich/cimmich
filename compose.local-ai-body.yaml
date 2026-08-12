@@ -1,0 +1,20 @@
+services:
+  cimmich-api:
+    # The provider runtime is an explicit image-build capability. Model and
+    # manifest files remain deployment-owned in the existing read-only Local AI
+    # model volume and never enter an image or release source.
+    build:
+      args:
+        CIMMICH_WITH_ULTRALYTICS_BODY: "true"
+    environment:
+      CIMMICH_LOCAL_AI_BODY_ENABLED: "true"
+      CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH: /local-ai-models/body/yolo11n-cpu.json
+      CIMMICH_LOCAL_AI_BODY_MODEL_PATH: /local-ai-models/body/yolo11n.pt
+      CIMMICH_LOCAL_AI_BODY_PYTHON_PATH: /usr/bin/python3
+      CIMMICH_LOCAL_AI_POSE_ENABLED: "true"
+      CIMMICH_LOCAL_AI_POSE_MANIFEST_PATH: /local-ai-models/body/yolo11n-pose-cpu.json
+      CIMMICH_LOCAL_AI_POSE_MODEL_PATH: /local-ai-models/body/yolo11n-pose.pt
+      CIMMICH_LOCAL_AI_POSE_PYTHON_PATH: /usr/bin/python3
+      # Context needs a separately validated body-continuity receipt. Enabling
+      # Bodies alone must not silently turn it on.
+      CIMMICH_LOCAL_AI_CONTEXT_ENABLED: "false"

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { page } from '$app/state';
   import { focusTrap } from '$lib/actions/focus-trap';
   import { shortcuts } from '$lib/actions/shortcut';
   import type { Action, OnAction, PreAction } from '$lib/components/asset-viewer/actions/action';
@@ -52,6 +53,8 @@
   import OcrButton from './OcrButton.svelte';
   import PhotoViewer from './PhotoViewer.svelte';
   import CimmichPhotoOverlay from '$lib/components/cimmich/CimmichPhotoOverlay.svelte';
+  import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
+  import { getCimmichAssetCorrectionForSource } from '$lib/services/cimmich-asset-correction.service';
   import SlideshowBar from './SlideshowBar.svelte';
   import SlideshowMetadataOverlay from './SlideshowMetadataOverlay.svelte';
   import VideoViewer from './VideoWrapperViewer.svelte';
@@ -119,21 +122,28 @@
   let presentationError = $state(false);
   let presentationReady = $state(false);
   let presentableAssetIds = $state<Set<string>>(new Set());
+  let cimmichRotationQuarterTurns = $state(0);
 
   $effect(() => {
     const visibilityVersion = cimmichVisibilityManager.version;
     const requestedIds = [asset.id, ...(stack?.assets.map(({ id }) => id) ?? [])];
+    const cimmichSurface = isCimmichViewingSurface(page.url);
     const generation = ++presentationGeneration;
     presentationError = false;
     presentationReady = false;
     preloadManager.destroy();
-    void cimmichAssetPresentationManager
-      .presentableIds(requestedIds, visibilityVersion)
-      .then((nextIds) => {
+    void Promise.all([
+      cimmichAssetPresentationManager.presentableIds(requestedIds, visibilityVersion),
+      cimmichSurface && asset.type === AssetTypeEnum.Image
+        ? getCimmichAssetCorrectionForSource(asset.id).catch(() => null)
+        : Promise.resolve(null),
+    ])
+      .then(([nextIds, correction]) => {
         if (generation !== presentationGeneration) {
           return;
         }
         presentableAssetIds = nextIds;
+        cimmichRotationQuarterTurns = correction?.rotationQuarterTurns ?? 0;
         presentationReady = true;
       })
       .catch(() => {
@@ -626,7 +636,12 @@
     {:else if viewerKind === 'CropArea'}
       <CropArea {asset} />
     {:else if viewerKind === 'PhotoViewer'}
-      <PhotoViewer cursor={{ ...cursor, current: asset }} {sharedLink} {onSwipe} />
+      <PhotoViewer
+        cursor={{ ...cursor, current: asset }}
+        {sharedLink}
+        {onSwipe}
+        rotationQuarterTurns={cimmichRotationQuarterTurns}
+      />
     {:else if viewerKind === 'VideoViewer'}
       <VideoViewer
         {asset}
@@ -644,7 +659,7 @@
     {/if}
 
     {#if presentationAllowed && assetViewerManager.isShowCimmichOverlay && viewerKind === 'PhotoViewer'}
-      <CimmichPhotoOverlay {asset} />
+      <CimmichPhotoOverlay {asset} rotationQuarterTurns={cimmichRotationQuarterTurns} />
     {/if}
 
     {#if presentationAllowed && showActivityStatus}

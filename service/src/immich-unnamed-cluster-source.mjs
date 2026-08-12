@@ -11,7 +11,33 @@ const batches = (items, size) => {
   return result;
 };
 
-export const scanUnnamed = async (companion, scope) => {
+export const unnamedScanAssetLimit = 250_000;
+export const unnamedTargetAssetLimit = 10_000;
+export const unnamedScanTimeoutMs = 120_000;
+
+const positiveLimit = (value, fallback) => {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+};
+
+export const scanUnnamed = async (
+  companion,
+  scope,
+  {
+    maxScannedAssets = unnamedScanAssetLimit,
+    maxTargetAssets = unnamedTargetAssetLimit,
+    now = Date.now,
+    timeoutMs = unnamedScanTimeoutMs,
+  } = {},
+) => {
+  const scanAssetLimit = positiveLimit(maxScannedAssets, unnamedScanAssetLimit);
+  const targetAssetLimit = positiveLimit(
+    maxTargetAssets,
+    unnamedTargetAssetLimit,
+  );
+  const durationLimitMs = positiveLimit(timeoutMs, unnamedScanTimeoutMs);
+  const startedAt = now();
+  const durationExpired = () => now() - startedAt >= durationLimitMs;
   const status = await verifiedCompanionStatus(companion, {
     failClosed: true,
   });
@@ -24,26 +50,31 @@ export const scanUnnamed = async (companion, scope) => {
   }
 
   const assets = [];
+  const facesByAsset = new Map();
   const targetAssetIds = new Set();
   let scannedAssetCount = 0;
-  for (const visibility of scope.visibilities) {
+  let truncationReason = null;
+  scan: for (const visibility of scope.visibilities) {
     let cursor = "";
     do {
+      if (durationExpired()) {
+        truncationReason = "timeout";
+        break scan;
+      }
       const page = await companion.listAssets({
         cursor,
         includePeople: true,
         limit: 500,
         visibility,
       });
-      scannedAssetCount += page.items.length;
-      if (scannedAssetCount > 1_000_000) {
-        throw typedError(
-          "IMMICH_PERSON_RESOLUTION_SOURCE_TOO_LARGE",
-          "Immich possible-person discovery exceeds the supported scan bound",
-          413,
-        );
-      }
-      for (const asset of page.items) {
+      const remainingScanCapacity = Math.max(
+        0,
+        scanAssetLimit - scannedAssetCount,
+      );
+      const pageItems = page.items.slice(0, remainingScanCapacity);
+      scannedAssetCount += pageItems.length;
+      const pageTargets = [];
+      for (const asset of pageItems) {
         const hasUnnamedPerson = (
           Array.isArray(asset.people) ? asset.people : []
         ).some(
@@ -57,31 +88,60 @@ export const scanUnnamed = async (companion, scope) => {
         ) {
           continue;
         }
+        if (targetAssetIds.size >= targetAssetLimit) {
+          truncationReason = "target_limit";
+          break;
+        }
         targetAssetIds.add(asset.immichAssetId);
-        assets.push(asset);
+        pageTargets.push(asset);
+      }
+      for (const group of batches(pageTargets, 8)) {
+        if (durationExpired()) {
+          truncationReason = "timeout";
+          break scan;
+        }
+        const pages = await Promise.all(
+          group.map((asset) =>
+            companion.listAssetFaces({ assetId: asset.immichAssetId }),
+          ),
+        );
+        for (const page of pages) {
+          facesByAsset.set(
+            page.assetId,
+            page.items.filter(
+              (face) =>
+                face.person &&
+                !face.person.name &&
+                (scope.includeHiddenPeople || !face.person.isHidden),
+            ),
+          );
+        }
+        assets.push(...group);
+      }
+      if (truncationReason) {
+        break scan;
+      }
+      if (
+        scannedAssetCount >= scanAssetLimit &&
+        (page.items.length > pageItems.length || page.nextCursor)
+      ) {
+        truncationReason = "asset_limit";
+        break scan;
       }
       cursor = page.nextCursor || "";
     } while (cursor);
   }
-
-  const facesByAsset = new Map();
-  for (const group of batches(assets, 8)) {
-    const pages = await Promise.all(
-      group.map((asset) =>
-        companion.listAssetFaces({ assetId: asset.immichAssetId }),
-      ),
-    );
-    for (const page of pages) {
-      facesByAsset.set(
-        page.assetId,
-        page.items.filter(
-          (face) =>
-            face.person &&
-            !face.person.name &&
-            (scope.includeHiddenPeople || !face.person.isHidden),
-        ),
-      );
-    }
-  }
-  return { assets, facesByAsset };
+  return {
+    assets,
+    facesByAsset,
+    scanSummary: {
+      complete: truncationReason === null,
+      scannedAssetCount,
+      scanAssetLimit,
+      targetAssetCount: assets.length,
+      targetAssetLimit,
+      timeoutMs: durationLimitMs,
+      truncationReason,
+    },
+  };
 };

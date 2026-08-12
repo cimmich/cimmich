@@ -14,6 +14,7 @@
   import UnstackAction from '$lib/components/asset-viewer/actions/UnstackAction.svelte';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import CimmichAssetVisibility from '$lib/components/cimmich/CimmichAssetVisibility.svelte';
+  import CimmichLocalAiAction from '$lib/components/cimmich/CimmichLocalAiAction.svelte';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
   import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
   import { page } from '$app/state';
@@ -25,6 +26,7 @@
   import { getAlbumAssetActions } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
   import { getAssetActions } from '$lib/services/asset.service';
+  import { cimmichLocalAiExperiment } from '$lib/stores/cimmich-experience.store';
   import { getSharedLink, withoutIcons } from '$lib/utils';
   import type { OnUndoDelete } from '$lib/utils/actions';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -106,7 +108,7 @@
 >
   <div class="dark flex items-center gap-1">
     <ActionButton action={Close} />
-    <CimmichViewingMode variant="overlay" />
+    <CimmichViewingMode variant="overlay" restorePreference={false} />
   </div>
 
   {#if photoPresentable}
@@ -128,6 +130,9 @@
           <span class="text-xs font-semibold"><span class="hidden md:inline">This </span>photo</span>
           <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />
         </div>
+        {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
+          <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
+        {/if}
       {/if}
       <ActionButton action={Cast} />
       <ActionButton action={Actions.Share} />

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  normalizePossiblePeoplePreviewClusterIds,
+  possiblePeoplePreviewBatchLimit,
+} from "../src/possible-people-projection.mjs";
 
 const readSource = (name) =>
   readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
@@ -28,6 +32,8 @@ test("known-Person classification is versioned, separated and never identity aut
   assert.match(projection, /cluster\.suggested_person_id IS NULL/);
   assert.match(projection, /cluster\.suggested_person_id = \$\{/);
   assert.match(projection, /known-person-cluster-suggestions\.v2/);
+  assert.match(projection, /possible-person-previews\.v1/);
+  assert.match(projection, /readKnownPersonClusterPreviews/);
   assert.match(previews, /previewLimit = 7/);
   assert.match(previews, /DISTINCT ON \(member\.cluster_id, face\.asset_id\)/);
   assert.match(previews, /face\.box_x::float8/);
@@ -48,9 +54,39 @@ test("known-Person classification is versioned, separated and never identity aut
     /'run_id', \$\{cluster\.possible_person_run_id\}::text/,
   );
   assert.match(possiblePeople, /'automatic_acceptance', 'false'/);
+  assert.match(possiblePeople, /collision_asset_count/);
+  assert.match(possiblePeople, /collision_face_count/);
+  assert.match(possiblePeople, /accepted_face\.asset_id = face\.asset_id/);
   assert.match(
     possiblePeople,
     /member\.face_id, \$\{selectedPersonId\}.*'candidate'/s,
+  );
+});
+
+test("generic Possible people previews are unique and bounded to one visible page", () => {
+  assert.equal(possiblePeoplePreviewBatchLimit, 20);
+  assert.deepEqual(
+    normalizePossiblePeoplePreviewClusterIds([
+      "cluster_a",
+      "cluster_a",
+      "cluster_b",
+    ]),
+    ["cluster_a", "cluster_b"],
+  );
+  assert.throws(
+    () => normalizePossiblePeoplePreviewClusterIds([]),
+    (error) =>
+      error.statusCode === 400 &&
+      error.code === "POSSIBLE_PEOPLE_PREVIEW_INPUT_INVALID",
+  );
+  assert.throws(
+    () =>
+      normalizePossiblePeoplePreviewClusterIds(
+        Array.from({ length: 21 }, (_, index) => `cluster_${index}`),
+      ),
+    (error) =>
+      error.statusCode === 400 &&
+      error.code === "POSSIBLE_PEOPLE_PREVIEW_INPUT_INVALID",
   );
 });
 

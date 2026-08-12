@@ -1,9 +1,11 @@
 <script lang="ts">
+  import './CimmichPhotoOverlay.css';
   import { page } from '$app/state';
   import { tick } from 'svelte';
   import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { AssetResponseDto } from '@immich/sdk';
   import CimmichFaceReviewQueueActions from './CimmichFaceReviewQueueActions.svelte';
+  import CimmichPeopleEditActions from './CimmichPeopleEditActions.svelte';
   import { cimmichFaceReviewMessage } from '$lib/services/cimmich-deferred-face-review';
   import { Route } from '$lib/route';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
@@ -79,6 +81,7 @@
     isNamedBody,
     isNamedFace,
     matchesCimmichPersonPhotoContext,
+    placeBulkFacePanel,
     placeFaceDetailsPanel,
     placeManualTagPanel,
     photoContextKindLabel,
@@ -100,10 +103,28 @@
     manualPhotoTagSubjectLabel,
     resizeManualPhotoTagGeometryForType,
     resolveManualPhotoTagPersonConflict,
+    searchManualPhotoTagPeople,
     type ManualPhotoTagGeometry,
     type ManualPhotoTagSubject,
   } from './manual-photo-tag';
   import { isRenderableBodyPoseOverlay } from './body-pose-presentation';
+  import {
+    adjustObservationBoxWithKeyboard,
+    consumeObservationArrow,
+    observationBoxFromDrag,
+    observationBoxesMatch,
+    observationBoxHandles as faceBoxHandles,
+    observationBoxRegion as observationRegion,
+    type ObservationBoxEditMode,
+    type ObservationBoxPointerDrag,
+  } from './observation-box-geometry';
+  import {
+    identityReviewCssTransform,
+    normalizeIdentityReviewQuarterTurns,
+    rotateIdentityReviewPoint,
+    rotateIdentityReviewSource,
+    unrotateIdentityReviewPoint,
+  } from './identity-review-crop';
   import { Icon, Tooltip } from '@immich/ui';
   import {
     mdiAccountMultipleOutline,
@@ -116,42 +137,24 @@
     mdiPawOutline,
     mdiPencilOutline,
     mdiTagOutline,
-    mdiTargetAccount,
     mdiTrashCanOutline,
   } from '@mdi/js';
 
   interface Props {
     asset: AssetResponseDto;
+    rotationQuarterTurns?: number;
   }
 
   type SummaryMode = 'normal' | 'enhanced' | 'evidence';
   type OverlayView = 'context' | 'machinery' | 'off' | 'people';
   type FaceBox = CimmichFaceOverlay['bbox'];
   type BodyBox = CimmichBodyOverlay['bbox'];
-  type FaceBoxDragMode = 'e' | 'move' | 'n' | 'ne' | 'nw' | 's' | 'se' | 'sw' | 'w';
   type BodyIdentityMode = 'face_match' | 'implied' | 'unlinked' | 'user_tag';
   type FaceBucketDraft = 'face_only' | 'head' | 'lq' | 'prime' | 'secondary';
   type FaceEvidenceKindDraft = 'body' | 'face' | 'head';
-  type FaceBoxDragState = {
-    faceId: string;
-    image: { height: number; width: number };
-    mode: FaceBoxDragMode;
-    pointerId: number;
-    startBox: FaceBox;
-    startClientX: number;
-    startClientY: number;
-  };
-  type BodyBoxDragState = {
-    bodyId: string;
-    image: { height: number; width: number };
-    mode: FaceBoxDragMode;
-    pointerId: number;
-    startBox: BodyBox;
-    startClientX: number;
-    startClientY: number;
-  };
 
-  let { asset }: Props = $props();
+  let { asset, rotationQuarterTurns = 0 }: Props = $props();
+  const normalizedRotation = $derived(normalizeIdentityReviewQuarterTurns(rotationQuarterTurns));
   let evidence = $state<CimmichPhotoEvidence>();
   let bundle = $state<CimmichEvidenceBundle>();
   let step2Readback = $state<CimmichStep2Readback>();
@@ -260,14 +263,15 @@
   let isBodyIdentitySaving = $state(false);
   let faceNameDraft = $state('');
   let faceSelectedPersonId = $state('');
+  let isCreatingFacePerson = $state(false);
   let faceActionMessage = $state('');
   let faceActionError = $state('');
   let identityCorrectionUndoDecisionId = $state('');
   let isFaceActionSaving = $state(false);
   let faceBoxDrafts = $state<Record<string, FaceBox>>({});
-  let faceBoxDragState = $state<FaceBoxDragState>();
+  let faceBoxDragState = $state<ObservationBoxPointerDrag & { faceId: string }>();
   let bodyBoxDrafts = $state<Record<string, BodyBox>>({});
-  let bodyBoxDragState = $state<BodyBoxDragState>();
+  let bodyBoxDragState = $state<ObservationBoxPointerDrag & { bodyId: string }>();
   let hoveredFaceId = $state('');
   let hoveredBodyId = $state('');
   let candidateAcceptingFaceId = $state('');
@@ -855,13 +859,17 @@
       return undefined;
     }
 
+    const rotatedWidth = normalizedRotation % 2 === 0 ? imageWidth : imageHeight;
+    const rotatedHeight = normalizedRotation % 2 === 0 ? imageHeight : imageWidth;
     const fitted = scaleToFit(
-      { width: imageWidth, height: imageHeight },
+      { width: rotatedWidth, height: rotatedHeight },
       { width: overlayWidth, height: overlayHeight },
     );
     return {
       imageWidth,
       imageHeight,
+      sourceDisplayWidth: normalizedRotation % 2 === 0 ? fitted.width : fitted.height,
+      sourceDisplayHeight: normalizedRotation % 2 === 0 ? fitted.height : fitted.width,
       offsetX: (overlayWidth - fitted.width) / 2,
       offsetY: (overlayHeight - fitted.height) / 2,
       width: fitted.width,
@@ -876,13 +884,143 @@
       ? `left: ${imageMetrics.offsetX}px; top: ${imageMetrics.offsetY}px; width: ${imageMetrics.width}px; height: ${imageMetrics.height}px;`
       : '',
   );
+  const rotatedSourceImageStyle = $derived.by(() => {
+    if (!imageMetrics) {
+      return '';
+    }
+    const transform = identityReviewCssTransform(
+      imageMetrics.sourceDisplayWidth,
+      imageMetrics.sourceDisplayHeight,
+      normalizedRotation,
+    );
+    return `left: ${imageMetrics.offsetX}px; top: ${imageMetrics.offsetY}px; width: ${imageMetrics.sourceDisplayWidth}px; height: ${imageMetrics.sourceDisplayHeight}px; transform-origin: 0 0;${transform ? ` transform: ${transform};` : ''}`;
+  });
   const spatialOverlayStyle = $derived(projectPhotoOverlayZoomStyle(assetViewerManager.zoomState));
+
+  const projectedSourcePoint = (x: number, y: number) => {
+    if (!imageMetrics) {
+      return { x: 0, y: 0 };
+    }
+    const point = rotateIdentityReviewPoint(
+      { x: x / imageMetrics.imageWidth, y: y / imageMetrics.imageHeight },
+      normalizedRotation,
+    );
+    return {
+      x: imageMetrics.offsetX + point.x * imageMetrics.width,
+      y: imageMetrics.offsetY + point.y * imageMetrics.height,
+    };
+  };
+
+  const projectedSourceBox = (bbox: { x1: number; x2: number; y1: number; y2: number }) => {
+    if (!imageMetrics) {
+      return { height: 0, left: 0, top: 0, width: 0 };
+    }
+    const rotated = rotateIdentityReviewSource(
+      {
+        box: {
+          h: (bbox.y2 - bbox.y1) / imageMetrics.imageHeight,
+          w: (bbox.x2 - bbox.x1) / imageMetrics.imageWidth,
+          x: bbox.x1 / imageMetrics.imageWidth,
+          y: bbox.y1 / imageMetrics.imageHeight,
+        },
+        height: imageMetrics.imageHeight,
+        width: imageMetrics.imageWidth,
+      },
+      normalizedRotation,
+    ).box;
+    return {
+      height: rotated.h * imageMetrics.height,
+      left: imageMetrics.offsetX + rotated.x * imageMetrics.width,
+      top: imageMetrics.offsetY + rotated.y * imageMetrics.height,
+      width: rotated.w * imageMetrics.width,
+    };
+  };
+
+  const projectedNormalizedBox = (geometry: ManualPhotoTagGeometry) => {
+    if (!imageMetrics) {
+      return { height: 0, left: 0, top: 0, width: 0 };
+    }
+    const rotated = rotateIdentityReviewSource(
+      { box: geometry, height: imageMetrics.imageHeight, width: imageMetrics.imageWidth },
+      normalizedRotation,
+    ).box;
+    return {
+      height: rotated.h * imageMetrics.height,
+      left: imageMetrics.offsetX + rotated.x * imageMetrics.width,
+      top: imageMetrics.offsetY + rotated.y * imageMetrics.height,
+      width: rotated.w * imageMetrics.width,
+    };
+  };
+
+  const sourcePointFromDisplayedRect = (clientX: number, clientY: number, rect: DOMRect) =>
+    unrotateIdentityReviewPoint(
+      {
+        x: Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)),
+        y: Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)),
+      },
+      normalizedRotation,
+    );
+
+  const sourceDragDelta = (deltaX: number, deltaY: number) => {
+    if (normalizedRotation === 1) {
+      return { x: deltaY, y: -deltaX };
+    }
+    if (normalizedRotation === 2) {
+      return { x: -deltaX, y: -deltaY };
+    }
+    if (normalizedRotation === 3) {
+      return { x: -deltaY, y: deltaX };
+    }
+    return { x: deltaX, y: deltaY };
+  };
+
+  const sourceObservationMode = (mode: ObservationBoxEditMode): ObservationBoxEditMode => {
+    if (mode === 'move' || normalizedRotation === 0) {
+      return mode;
+    }
+    const maps = {
+      1: { e: 'n', n: 'w', s: 'e', w: 's' },
+      2: { e: 'w', n: 's', s: 'n', w: 'e' },
+      3: { e: 's', n: 'e', s: 'w', w: 'n' },
+    } as const;
+    const mapped = [...mode].map((side) => maps[normalizedRotation as 1 | 2 | 3][side as 'e' | 'n' | 's' | 'w']);
+    const vertical = mapped.find((side) => side === 'n' || side === 's') ?? '';
+    const horizontal = mapped.find((side) => side === 'e' || side === 'w') ?? '';
+    return `${vertical}${horizontal}` as ObservationBoxEditMode;
+  };
+
+  const sourceArrowKey = (key: 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'ArrowUp') => {
+    const maps = {
+      1: { ArrowDown: 'ArrowRight', ArrowLeft: 'ArrowUp', ArrowRight: 'ArrowDown', ArrowUp: 'ArrowLeft' },
+      2: { ArrowDown: 'ArrowUp', ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft', ArrowUp: 'ArrowDown' },
+      3: { ArrowDown: 'ArrowLeft', ArrowLeft: 'ArrowDown', ArrowRight: 'ArrowUp', ArrowUp: 'ArrowRight' },
+    } as const;
+    return normalizedRotation === 0 ? key : maps[normalizedRotation][key];
+  };
+
+  const observationBoxFromRotatedPointer = (
+    drag: ObservationBoxPointerDrag,
+    pointer: { clientX: number; clientY: number },
+  ) => {
+    if (!imageMetrics) {
+      return drag.startBox;
+    }
+    const delta = sourceDragDelta(pointer.clientX - drag.startClientX, pointer.clientY - drag.startClientY);
+    return observationBoxFromDrag(
+      drag.startBox,
+      drag.image,
+      drag.mode,
+      (delta.x / imageMetrics.sourceDisplayWidth) * imageMetrics.imageWidth,
+      (delta.y / imageMetrics.sourceDisplayHeight) * imageMetrics.imageHeight,
+    );
+  };
 
   const manualTagGeometryStyle = (geometry: ManualPhotoTagGeometry | undefined) => {
     if (!imageMetrics || !geometry) {
       return '';
     }
-    return `left: ${imageMetrics.offsetX + geometry.x * imageMetrics.width}px; top: ${imageMetrics.offsetY + geometry.y * imageMetrics.height}px; width: ${geometry.w * imageMetrics.width}px; height: ${geometry.h * imageMetrics.height}px;`;
+    const projected = projectedNormalizedBox(geometry);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const manualTagDraftStyle = $derived(manualTagGeometryStyle(manualTagDraft));
@@ -892,8 +1030,9 @@
     if (!imageMetrics) {
       return '';
     }
-    const markerRight = imageMetrics.offsetX + (geometry.x + geometry.w) * imageMetrics.width;
-    const markerTop = imageMetrics.offsetY + geometry.y * imageMetrics.height;
+    const projected = projectedNormalizedBox(geometry);
+    const markerRight = projected.left + projected.width;
+    const markerTop = projected.top;
     const { left, maxHeight, top, width } = placeManualTagPanel({
       marker: { right: markerRight, top: markerTop },
       overlay: { height: overlayHeight, width: overlayWidth },
@@ -922,9 +1061,11 @@
     if (!imageMetrics) {
       return '';
     }
-    const centerX = tag.geometry.x + tag.geometry.w / 2;
-    const centerY = tag.geometry.y + tag.geometry.h / 2;
-    return `left: ${imageMetrics.offsetX + centerX * imageMetrics.width}px; top: ${imageMetrics.offsetY + centerY * imageMetrics.height}px;`;
+    const center = rotateIdentityReviewPoint(
+      { x: tag.geometry.x + tag.geometry.w / 2, y: tag.geometry.y + tag.geometry.h / 2 },
+      normalizedRotation,
+    );
+    return `left: ${imageMetrics.offsetX + center.x * imageMetrics.width}px; top: ${imageMetrics.offsetY + center.y * imageMetrics.height}px;`;
   };
 
   const manualTagTypeLabel = (tagType: CimmichManualSubjectTagType) =>
@@ -952,22 +1093,19 @@
     }
 
     const bbox = faceBox(face);
-    const left = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const width = ((bbox.x2 - bbox.x1) / imageMetrics.imageWidth) * imageMetrics.width;
-    const height = ((bbox.y2 - bbox.y1) / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const sourcePresenceMarkerStyle = (presence: (typeof sourcePresenceOverlays)[number]) => {
     if (!imageMetrics) {
       return '';
     }
-    const centerX = (presence.bbox.x1 + presence.bbox.x2) / 2;
-    const centerY = (presence.bbox.y1 + presence.bbox.y2) / 2;
-    const left = imageMetrics.offsetX + (centerX / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (centerY / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px;`;
+    const center = projectedSourcePoint(
+      (presence.bbox.x1 + presence.bbox.x2) / 2,
+      (presence.bbox.y1 + presence.bbox.y2) / 2,
+    );
+    return `left: ${center.x}px; top: ${center.y}px;`;
   };
 
   const bodyBoxStyle = (body: CimmichBodyOverlay) => {
@@ -976,11 +1114,8 @@
     }
 
     const bbox = bodyBox(body);
-    const left = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const width = ((bbox.x2 - bbox.x1) / imageMetrics.imageWidth) * imageMetrics.width;
-    const height = ((bbox.y2 - bbox.y1) / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left}px; top: ${projected.top}px; width: ${projected.width}px; height: ${projected.height}px;`;
   };
 
   const faceLabelStyle = (face: CimmichFaceOverlay) => {
@@ -989,8 +1124,9 @@
     }
 
     const bbox = faceBox(face);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const top = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const top = projected.top;
     const linkedBody = bodyByFaceId.get(face.id);
     const labelIndex = Math.max(
       0,
@@ -998,11 +1134,9 @@
         .filter((candidate) => candidate.id !== face.id)
         .filter((candidate) => {
           const candidateBox = faceBox(candidate);
-          const candidateCenterX =
-            imageMetrics.offsetX +
-            ((candidateBox.x1 + candidateBox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-          const candidateTop =
-            imageMetrics.offsetY + (candidateBox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
+          const candidateProjected = projectedSourceBox(candidateBox);
+          const candidateCenterX = candidateProjected.left + candidateProjected.width / 2;
+          const candidateTop = candidateProjected.top;
           return (
             Math.abs(candidateCenterX - centerX) < 220 &&
             Math.abs(candidateTop - top) < 48 &&
@@ -1021,9 +1155,8 @@
     }
 
     const bbox = faceBox(face);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const centerY = imageMetrics.offsetY + ((bbox.y1 + bbox.y2) / 2 / imageMetrics.imageHeight) * imageMetrics.height;
-    return `left: ${centerX}px; top: ${centerY}px;`;
+    const projected = projectedSourceBox(bbox);
+    return `left: ${projected.left + projected.width / 2}px; top: ${projected.top + projected.height / 2}px;`;
   };
 
   const bodyDetailsStyle = (body: CimmichBodyOverlay) => {
@@ -1032,9 +1165,10 @@
     }
 
     const bbox = bodyBox(body);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bodyTop = imageMetrics.offsetY + (bbox.y1 / imageMetrics.imageHeight) * imageMetrics.height;
-    const bottom = imageMetrics.offsetY + (bbox.y2 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const bodyTop = projected.top;
+    const bottom = projected.top + projected.height;
     const left = Math.min(Math.max(12, centerX - 130), Math.max(12, overlayWidth - 272));
     const panelHeight = Math.min(292, Math.max(180, overlayHeight - 96));
     const belowTop = bottom + 10;
@@ -1050,9 +1184,9 @@
     }
 
     const bbox = bodyBox(body);
-    const centerX = imageMetrics.offsetX + ((bbox.x1 + bbox.x2) / 2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bodyAnchorY = bbox.y1 + (bbox.y2 - bbox.y1) * 0.38;
-    const top = imageMetrics.offsetY + (bodyAnchorY / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const centerX = projected.left + projected.width / 2;
+    const top = projected.top + projected.height * 0.38;
     const labelCenterX = Math.min(Math.max(90, centerX), Math.max(90, overlayWidth - 90));
     return `left: ${labelCenterX}px; top: ${Math.max(92, top)}px; ${bodyColorStyle(body)}`;
   };
@@ -1061,10 +1195,7 @@
     if (!imageMetrics) {
       return { x: 0, y: 0 };
     }
-    return {
-      x: imageMetrics.offsetX + (point[0] / imageMetrics.imageWidth) * imageMetrics.width,
-      y: imageMetrics.offsetY + (point[1] / imageMetrics.imageHeight) * imageMetrics.height,
-    };
+    return projectedSourcePoint(point[0], point[1]);
   };
 
   const bodySkeletonPairs = [
@@ -1346,6 +1477,19 @@
     linkedBody ? `${facePeopleTagLabel(face)} · face + body` : `Face · ${facePeopleTagLabel(face)}`;
   const bestFaceCandidate = (face: CimmichFaceOverlay) => faceMatchUi.governed(face.candidateMatches)[0];
   const candidateSimilarityLabel = (score: number) => `${Math.round(score * 100)}%`;
+  const faceDetectionSignal = (face: CimmichFaceOverlay) => {
+    const score = Number(face.detScore);
+    return Number.isFinite(score) ? score : undefined;
+  };
+  const candidatePresentationLabel = (
+    face: CimmichFaceOverlay,
+    candidate: { personName: string; rawScore: number },
+  ) => {
+    const detection = faceDetectionSignal(face);
+    const faceSignal =
+      detection !== undefined && detection < 0.4 ? ` · Face signal ${Math.round(detection * 100)}%` : '';
+    return `${candidate.personName}?${faceSignal} · Match ${candidateSimilarityLabel(candidate.rawScore)}`;
+  };
   const machineBodyLabel = (body: CimmichBodyOverlay) => {
     const mode = bodyPeopleTagMode(body);
     if (mode === 'body-only') {
@@ -1392,13 +1536,16 @@
       .filter(({ point }) => Boolean(point))
       .map(({ index, point }) => ({ ...bodyPoint(point!), key: index }));
 
-  const bulkPanelDefaultLeft = $derived.by(() => Math.max(12, overlayWidth - Math.min(448, overlayWidth - 24) - 12));
-  const bulkPanelStyle = $derived.by(() => {
-    const width = Math.min(448, Math.max(320, overlayWidth - 24));
-    const left = Math.min(Math.max(12, bulkPanelX ?? bulkPanelDefaultLeft), Math.max(12, overlayWidth - width - 12));
-    const top = Math.min(Math.max(76, bulkPanelY), Math.max(76, overlayHeight - 220));
-    return `left: ${left}px; top: ${top}px; width: ${width}px; max-height: calc(100% - ${top + 12}px);`;
-  });
+  const bulkPanelPlacement = $derived(
+    placeBulkFacePanel({
+      overlay: { height: overlayHeight, width: overlayWidth },
+      requestedLeft: bulkPanelX,
+      requestedTop: bulkPanelY,
+    }),
+  );
+  const bulkPanelStyle = $derived(
+    `left: ${bulkPanelPlacement.left}px; top: ${bulkPanelPlacement.top}px; width: ${bulkPanelPlacement.width}px; max-height: ${bulkPanelPlacement.maxHeight}px;`,
+  );
 
   const faceDetailsStyle = (face: CimmichFaceOverlay) => {
     if (!imageMetrics) {
@@ -1406,9 +1553,10 @@
     }
 
     const bbox = faceBox(face);
-    const faceLeft = imageMetrics.offsetX + (bbox.x1 / imageMetrics.imageWidth) * imageMetrics.width;
-    const faceRight = imageMetrics.offsetX + (bbox.x2 / imageMetrics.imageWidth) * imageMetrics.width;
-    const bottom = imageMetrics.offsetY + (bbox.y2 / imageMetrics.imageHeight) * imageMetrics.height;
+    const projected = projectedSourceBox(bbox);
+    const faceLeft = projected.left;
+    const faceRight = projected.left + projected.width;
+    const bottom = projected.top + projected.height;
     const placement = placeFaceDetailsPanel({
       editing: isEditingFaceName,
       face: { bottom, left: faceLeft, right: faceRight },
@@ -1469,17 +1617,6 @@
     `cimmich-body-label--${bodyIdentityMode(body).replaceAll('_', '-')}`,
     body.id === selectedBodyId ? 'cimmich-body-label--selected' : '',
   ];
-  const faceBoxHandles: Array<{ label: string; mode: FaceBoxDragMode }> = [
-    { label: 'Resize top left', mode: 'nw' },
-    { label: 'Resize top', mode: 'n' },
-    { label: 'Resize top right', mode: 'ne' },
-    { label: 'Resize left', mode: 'w' },
-    { label: 'Resize right', mode: 'e' },
-    { label: 'Resize bottom left', mode: 'sw' },
-    { label: 'Resize bottom', mode: 's' },
-    { label: 'Resize bottom right', mode: 'se' },
-  ];
-
   const bucketLabel = (bucket: string) => bucket.replace(/^face_/, '').replaceAll('_', ' ');
   const faceBucketFromOverlay = (face: CimmichFaceOverlay): FaceBucketDraft => {
     const bucket = face.bucket.replace(/^face_/, '');
@@ -1596,10 +1733,18 @@
       ) ||
       '',
   );
+  const facePersonSearchResults = $derived(searchManualPhotoTagPeople(manualTagSubjects, normalizedFaceNameDraft, 8));
   const faceDraftCreatesPerson = $derived(
     Boolean(
-      normalizedFaceNameDraft && !faceDraftKnownPersonName && !isManualTagSubjectsLoading && !manualTagSubjectsError,
+      isCreatingFacePerson &&
+      normalizedFaceNameDraft &&
+      !faceDraftKnownPersonName &&
+      !isManualTagSubjectsLoading &&
+      !manualTagSubjectsError,
     ),
+  );
+  const faceDraftHasIdentityTarget = $derived(
+    Boolean(faceSelectedPersonId || faceDraftKnownPersonName || faceDraftCreatesPerson),
   );
   const faceDraftNameChanged = $derived(
     Boolean(
@@ -1656,89 +1801,82 @@
     }
     event.preventDefault();
     const overlayRect = overlayElement.getBoundingClientRect();
-    const width = Math.min(448, Math.max(320, overlayWidth - 24));
-    bulkPanelX = Math.min(
-      Math.max(12, event.clientX - overlayRect.left - bulkPanelDragOffsetX),
-      Math.max(12, overlayWidth - width - 12),
-    );
-    bulkPanelY = Math.min(
-      Math.max(76, event.clientY - overlayRect.top - bulkPanelDragOffsetY),
-      Math.max(76, overlayHeight - 220),
-    );
+    const placement = placeBulkFacePanel({
+      overlay: { height: overlayHeight, width: overlayWidth },
+      requestedLeft: event.clientX - overlayRect.left - bulkPanelDragOffsetX,
+      requestedTop: event.clientY - overlayRect.top - bulkPanelDragOffsetY,
+    });
+    bulkPanelX = placement.left;
+    bulkPanelY = placement.top;
   };
 
   const stopBulkPanelDrag = () => {
     isDraggingBulkPanel = false;
   };
 
-  const clampFaceBox = (box: FaceBox, image: { height: number; width: number }) => {
-    const minSize = 24;
-    let x1 = Math.round(Math.max(0, Math.min(box.x1, image.width - minSize)));
-    let y1 = Math.round(Math.max(0, Math.min(box.y1, image.height - minSize)));
-    let x2 = Math.round(Math.max(minSize, Math.min(box.x2, image.width)));
-    let y2 = Math.round(Math.max(minSize, Math.min(box.y2, image.height)));
-
-    if (x2 - x1 < minSize) {
-      if (box.x1 === x1) {
-        x2 = Math.min(image.width, x1 + minSize);
-      } else {
-        x1 = Math.max(0, x2 - minSize);
-      }
+  const handleFaceBoxKeydown = (event: KeyboardEvent, face: CimmichFaceOverlay, mode: ObservationBoxEditMode) => {
+    const image = face.image || (imageMetrics && { width: imageMetrics.imageWidth, height: imageMetrics.imageHeight });
+    if (face.id !== selectedFaceId || isFaceActionSaving || !image) {
+      return;
     }
-    if (y2 - y1 < minSize) {
-      if (box.y1 === y1) {
-        y2 = Math.min(image.height, y1 + minSize);
-      } else {
-        y1 = Math.max(0, y2 - minSize);
-      }
+    if (event.key === 'Enter' && faceBoxDrafts[face.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      void saveFaceBox(face.id, faceBoxDrafts[face.id], image);
+      return;
     }
-    return { x1, y1, x2, y2 };
+    const key = consumeObservationArrow(event);
+    if (!key) {
+      return;
+    }
+    const current = faceBox(face);
+    const next = adjustObservationBoxWithKeyboard(
+      current,
+      image,
+      sourceObservationMode(mode),
+      sourceArrowKey(key),
+      event.shiftKey,
+    );
+    if (observationBoxesMatch(current, next)) {
+      return;
+    }
+    faceBoxDrafts = { ...faceBoxDrafts, [face.id]: next };
+    faceActionError = '';
+    faceActionMessage = 'Face position adjusted. Press Enter to save or Escape to cancel.';
   };
 
-  const boxFromDrag = (
-    drag: {
-      image: { height: number; width: number };
-      mode: FaceBoxDragMode;
-      startBox: FaceBox | BodyBox;
-      startClientX: number;
-      startClientY: number;
-    },
-    event: PointerEvent,
-  ) => {
-    if (!imageMetrics) {
-      return drag.startBox;
+  const handleBodyBoxKeydown = (event: KeyboardEvent, body: CimmichBodyOverlay, mode: ObservationBoxEditMode) => {
+    const image = body.image || (imageMetrics && { width: imageMetrics.imageWidth, height: imageMetrics.imageHeight });
+    if (body.id !== selectedBodyId || isObservationActionSaving || !image) {
+      return;
     }
-    const deltaX = ((event.clientX - drag.startClientX) / imageMetrics.width) * imageMetrics.imageWidth;
-    const deltaY = ((event.clientY - drag.startClientY) / imageMetrics.height) * imageMetrics.imageHeight;
-    const box = { ...drag.startBox };
-    if (drag.mode === 'move') {
-      const width = box.x2 - box.x1;
-      const height = box.y2 - box.y1;
-      const x1 = Math.max(0, Math.min(drag.image.width - width, drag.startBox.x1 + deltaX));
-      const y1 = Math.max(0, Math.min(drag.image.height - height, drag.startBox.y1 + deltaY));
-      return {
-        x1: Math.round(x1),
-        y1: Math.round(y1),
-        x2: Math.round(x1 + width),
-        y2: Math.round(y1 + height),
-      };
+    if (event.key === 'Enter' && bodyBoxDrafts[body.id]) {
+      event.preventDefault();
+      event.stopPropagation();
+      void saveBodyBox(body.id, bodyBoxDrafts[body.id], image);
+      return;
     }
-    if (drag.mode.includes('w')) {
-      box.x1 = drag.startBox.x1 + deltaX;
+    const key = consumeObservationArrow(event);
+    if (!key) {
+      return;
     }
-    if (drag.mode.includes('e')) {
-      box.x2 = drag.startBox.x2 + deltaX;
+    const current = bodyBox(body);
+    const next = adjustObservationBoxWithKeyboard(
+      current,
+      image,
+      sourceObservationMode(mode),
+      sourceArrowKey(key),
+      event.shiftKey,
+    );
+    if (observationBoxesMatch(current, next)) {
+      return;
     }
-    if (drag.mode.includes('n')) {
-      box.y1 = drag.startBox.y1 + deltaY;
-    }
-    if (drag.mode.includes('s')) {
-      box.y2 = drag.startBox.y2 + deltaY;
-    }
-    return clampFaceBox(box, drag.image);
+    bodyBoxDrafts = { ...bodyBoxDrafts, [body.id]: next };
+    observationActionError = '';
+    observationActionMessage = 'Body position adjusted. Press Enter to save or Escape to cancel.';
   };
 
-  const startFaceBoxDrag = (event: PointerEvent, face: CimmichFaceOverlay, mode: FaceBoxDragMode) => {
+  const startFaceBoxDrag = (event: PointerEvent, face: CimmichFaceOverlay, mode: ObservationBoxEditMode) => {
     if (!imageMetrics) {
       return;
     }
@@ -1749,7 +1887,7 @@
     faceBoxDragState = {
       faceId: face.id,
       image,
-      mode,
+      mode: sourceObservationMode(mode),
       pointerId: event.pointerId,
       startBox: { ...faceBox(face) },
       startClientX: event.clientX,
@@ -1765,16 +1903,9 @@
       return;
     }
     event.preventDefault();
-    const nextBox = boxFromDrag(faceBoxDragState, event);
+    const nextBox = observationBoxFromRotatedPointer(faceBoxDragState, event);
     faceBoxDrafts = { ...faceBoxDrafts, [faceBoxDragState.faceId]: nextBox };
   };
-
-  const observationRegion = (box: FaceBox | BodyBox, image: { height: number; width: number }) => ({
-    h: (box.y2 - box.y1) / image.height,
-    w: (box.x2 - box.x1) / image.width,
-    x: box.x1 / image.width,
-    y: box.y1 / image.height,
-  });
 
   const saveFaceBox = async (faceId: string, box: FaceBox, image: { height: number; width: number }) => {
     if (!evidence) {
@@ -1843,7 +1974,7 @@
     void saveFaceBox(drag.faceId, box, drag.image);
   };
 
-  const startBodyBoxDrag = (event: PointerEvent, body: CimmichBodyOverlay, mode: FaceBoxDragMode) => {
+  const startBodyBoxDrag = (event: PointerEvent, body: CimmichBodyOverlay, mode: ObservationBoxEditMode) => {
     if (!imageMetrics || !isCimmichEvidence) {
       return;
     }
@@ -1854,7 +1985,7 @@
     bodyBoxDragState = {
       bodyId: body.id,
       image,
-      mode,
+      mode: sourceObservationMode(mode),
       pointerId: event.pointerId,
       startBox: { ...bodyBox(body) },
       startClientX: event.clientX,
@@ -1870,7 +2001,7 @@
       return;
     }
     event.preventDefault();
-    const nextBox = boxFromDrag(bodyBoxDragState, event);
+    const nextBox = observationBoxFromRotatedPointer(bodyBoxDragState, event);
     bodyBoxDrafts = { ...bodyBoxDrafts, [bodyBoxDragState.bodyId]: nextBox };
   };
 
@@ -1940,6 +2071,7 @@
       candidateName: faceCandidateDisplayName(face),
     });
     faceSelectedPersonId = face.name ? face.personIdentityKey || '' : '';
+    isCreatingFacePerson = false;
     faceActionMessage = '';
     faceActionError = '';
     clearIdentityConfirmId = '';
@@ -2014,6 +2146,7 @@
       faceSelectedPersonId = personPhotoContext.personId;
     }
     isEditingFaceName = true;
+    isCreatingFacePerson = false;
     faceActionError = '';
     void loadManualTagSubjects();
   };
@@ -2091,6 +2224,10 @@
   const saveSelectedFaceCorrection = async () => {
     if (faceEvidenceKindDraft === 'body') {
       await reclassifySelectedFaceAsBody();
+      return;
+    }
+    if (!faceDraftHasIdentityTarget) {
+      faceActionError = 'Choose an existing Person, or explicitly choose to create a new one.';
       return;
     }
     await runFaceAction('rename');
@@ -2508,10 +2645,7 @@
 
   const objectPointerPosition = (event: PointerEvent, target: HTMLButtonElement) => {
     const rect = target.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
-    };
+    return sourcePointFromDisplayedRect(event.clientX, event.clientY, rect);
   };
 
   const beginObjectRegion = (event: PointerEvent & { currentTarget: HTMLButtonElement }) => {
@@ -2764,6 +2898,19 @@
     selectOverlayView(isPeopleSurfaceActive ? 'off' : 'people');
   };
 
+  const toggleBulkFacePanel = () => {
+    assetViewerManager.closeDetailPanel();
+    isBulkFacePanelOpen = !isBulkFacePanelOpen;
+    if (!isBulkFacePanelOpen) {
+      return;
+    }
+    overlayView = 'machinery';
+    isFacesVisible = true;
+    selectedFaceId = selectedBodyId = '';
+    isEditingFaceName = isTaggingMode = false;
+    cancelManualTagDraft();
+    closePresencePicker();
+  };
   const toggleContextView = () => {
     if (isContextSurfaceActive) {
       selectOverlayView('off');
@@ -2908,7 +3055,8 @@
     const rect = event.currentTarget.getBoundingClientRect();
     const clientX = event.detail === 0 ? rect.left + rect.width / 2 : event.clientX;
     const clientY = event.detail === 0 ? rect.top + rect.height / 2 : event.clientY;
-    const geometry = createManualPhotoTagGeometry(clientX, clientY, rect);
+    const point = sourcePointFromDisplayedRect(clientX, clientY, rect);
+    const geometry = createManualPhotoTagGeometry(point.x, point.y, { height: 1, left: 0, top: 0, width: 1 });
     if (!geometry) {
       return;
     }
@@ -3266,6 +3414,20 @@
   });
 
   const handleWindowKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && selectedFaceId && faceBoxDrafts[selectedFaceId]) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      faceBoxDrafts = Object.fromEntries(Object.entries(faceBoxDrafts).filter(([faceId]) => faceId !== selectedFaceId));
+      faceActionMessage = 'Face position change cancelled.';
+      return;
+    }
+    if (event.key === 'Escape' && selectedBodyId && bodyBoxDrafts[selectedBodyId]) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      bodyBoxDrafts = Object.fromEntries(Object.entries(bodyBoxDrafts).filter(([bodyId]) => bodyId !== selectedBodyId));
+      observationActionMessage = 'Body position change cancelled.';
+      return;
+    }
     if (event.key === 'Escape' && isManualTagRepositioning) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -3604,6 +3766,11 @@
   bind:clientWidth={overlayWidth}
   bind:clientHeight={overlayHeight}
 >
+  <!-- These regions stay mounted so the first keyboard adjustment is announced
+       reliably; the visible action cards below remain the sighted presentation. -->
+  <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{faceActionMessage}</p>
+  <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{observationActionMessage}</p>
+
   {#if loadError && !isSummaryVisible && !isSidecarVisible}
     <div class="pointer-events-auto absolute inset-x-4 top-16 z-30 flex justify-center" role="alert">
       <div
@@ -3768,28 +3935,13 @@
               </button>
             {/snippet}
           </Tooltip>
-          <Tooltip text={overlayView === 'machinery' ? 'Finish editing' : 'Edit people tags'}>
-            {#snippet child({ props })}
-              <button
-                {...props}
-                class={[
-                  'flex h-10 items-center justify-center gap-2 rounded-full border px-3 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
-                  overlayView === 'machinery'
-                    ? 'border-white bg-white text-black shadow-sm'
-                    : 'border-white/25 bg-black/25 text-white hover:border-white/45 hover:bg-white/10',
-                ]}
-                type="button"
-                aria-label={overlayView === 'machinery' ? 'Finish editing people tags' : 'Edit people tags'}
-                aria-pressed={overlayView === 'machinery'}
-                onclick={() => selectOverlayView(overlayView === 'machinery' ? 'people' : 'machinery')}
-                data-testid="cimmich-detailed-view"
-              >
-                <Icon icon={mdiTargetAccount} size="18" />
-                <span class="hidden text-sm font-medium sm:inline">{overlayView === 'machinery' ? 'Done' : 'Edit'}</span
-                >
-              </button>
-            {/snippet}
-          </Tooltip>
+          <CimmichPeopleEditActions
+            bulkFaceCount={bulkFaces.length}
+            bulkOpen={isBulkFacePanelOpen}
+            detailed={overlayView === 'machinery'}
+            onToggleBulk={toggleBulkFacePanel}
+            onToggleDetailed={() => selectOverlayView(overlayView === 'machinery' ? 'people' : 'machinery')}
+          />
         {:else if isContextSurfaceActive}
           <span class="mx-1 h-6 w-px bg-white/20" aria-hidden="true"></span>
           <button
@@ -4031,13 +4183,16 @@
       style={spatialOverlayStyle}
       data-testid="cimmich-machinery-overlay-layer"
     >
+      <p id="cimmich-observation-keyboard-help" class="sr-only">
+        Arrow keys move a selected box or focused resize edge. Shift moves farther. Enter saves; Escape cancels.
+      </p>
       {#if isBodiesVisible && visibleSpatialBodyOverlays.length > 0}
         {#each visibleBodyOverlayUrls as overlayUrl (overlayUrl)}
           <img
             src={overlayUrl}
             alt=""
             class="absolute object-contain opacity-45 mix-blend-screen"
-            style={fittedImageStyle}
+            style={rotatedSourceImageStyle}
             aria-hidden="true"
             loading="lazy"
           />
@@ -4088,7 +4243,12 @@
             style={`${bodyBoxStyle(body)} ${bodyColorStyle(body)}`}
             data-testid="cimmich-machine-body"
             data-body-id={body.id}
-            title={body.id === selectedBodyId ? 'Drag to move this Body' : bodyLabelTitle(body)}
+            title={body.id === selectedBodyId ? 'Drag or use arrow keys to move this Body' : bodyLabelTitle(body)}
+            aria-label={bodyLabelTitle(body)}
+            aria-describedby={body.id === selectedBodyId ? 'cimmich-observation-keyboard-help' : undefined}
+            aria-keyshortcuts={body.id === selectedBodyId
+              ? 'ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape'
+              : undefined}
             type="button"
             onmouseenter={() => (hoveredBodyId = body.id)}
             onmouseleave={() => (hoveredBodyId = '')}
@@ -4103,6 +4263,7 @@
               event.stopPropagation();
               setSelectedBody(body);
             }}
+            onkeydown={(event) => handleBodyBoxKeydown(event, body, 'move')}
           ></button>
           {#if body.id === selectedBodyId}
             <div class="cimmich-observation-handles" style={bodyBoxStyle(body)} aria-label="Resize Body">
@@ -4111,7 +4272,10 @@
                   class={`cimmich-face-box-handle cimmich-face-box-handle--${handle.mode}`}
                   type="button"
                   aria-label={handle.label.replace('Resize', 'Resize Body')}
+                  aria-describedby="cimmich-observation-keyboard-help"
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
                   onpointerdown={(event) => startBodyBoxDrag(event, body, handle.mode)}
+                  onkeydown={(event) => handleBodyBoxKeydown(event, body, handle.mode)}
                 ></button>
               {/each}
             </div>
@@ -4134,6 +4298,11 @@
             data-context-person={faceMatchesPersonContext(face) ? 'true' : undefined}
             style={`${faceBoxStyle(face)} ${machineFaceColorStyle(face, linkedBody)}`}
             title={faceLabelTitle(face, linkedBody)}
+            aria-label={faceLabelTitle(face, linkedBody)}
+            aria-describedby={face.id === selectedFaceId ? 'cimmich-observation-keyboard-help' : undefined}
+            aria-keyshortcuts={face.id === selectedFaceId
+              ? 'ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape'
+              : undefined}
             type="button"
             onmouseenter={() => (hoveredFaceId = face.id)}
             onmouseleave={() => (hoveredFaceId = '')}
@@ -4148,6 +4317,7 @@
               event.stopPropagation();
               setSelectedFace(face, { editName: face.status !== 'named' });
             }}
+            onkeydown={(event) => handleFaceBoxKeydown(event, face, 'move')}
           ></button>
           <div
             class={[
@@ -4173,9 +4343,7 @@
                 setSelectedFace(face, { editName: face.status !== 'named' });
               }}
             >
-              {bestCandidate
-                ? `${bestCandidate.personName} · ${candidateSimilarityLabel(bestCandidate.rawScore)}`
-                : machineFaceLabel(face, linkedBody)}
+              {bestCandidate ? candidatePresentationLabel(face, bestCandidate) : machineFaceLabel(face, linkedBody)}
             </button>
             {#if bestCandidate}
               <button
@@ -4196,7 +4364,7 @@
               <div class="cimmich-machine-candidate-list" aria-label="Candidate matches">
                 {#each faceMatchUi.governed(face.candidateMatches) as candidate (candidate.personId)}
                   <span>
-                    <span>{candidate.personName} · {candidateSimilarityLabel(candidate.rawScore)}</span>
+                    <span>{candidatePresentationLabel(face, candidate)}</span>
                     <button
                       type="button"
                       aria-label={`Accept ${candidate.personName} for this Face`}
@@ -4222,7 +4390,10 @@
                   class={`cimmich-face-box-handle cimmich-face-box-handle--${handle.mode}`}
                   type="button"
                   aria-label={handle.label.replace('Resize', 'Resize Face')}
+                  aria-describedby="cimmich-observation-keyboard-help"
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Escape"
                   onpointerdown={(event) => startFaceBoxDrag(event, face, handle.mode)}
+                  onkeydown={(event) => handleFaceBoxKeydown(event, face, handle.mode)}
                 ></button>
               {/each}
             </div>
@@ -5416,21 +5587,81 @@
               class="w-full rounded-sm border border-white/20 bg-white/10 p-2 text-sm text-white outline-none focus:border-white/60"
               placeholder="Type a name or choose a match"
               type="text"
-              oninput={() => (faceSelectedPersonId = '')}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="cimmich-face-person-results"
+              aria-expanded={Boolean(normalizedFaceNameDraft && !faceDraftKnownPersonName && !isCreatingFacePerson)}
+              oninput={() => {
+                faceSelectedPersonId = '';
+                isCreatingFacePerson = false;
+              }}
             />
           </label>
           {#if isManualTagSubjectsLoading}
             <p class="text-white/50">Checking People…</p>
           {:else if manualTagSubjectsError}
             <p class="text-red-200" role="alert">People are unavailable. Close and try again.</p>
+          {:else if normalizedFaceNameDraft && !faceDraftKnownPersonName && !isCreatingFacePerson}
+            <div
+              id="cimmich-face-person-results"
+              class="overflow-hidden rounded-sm border border-white/15 bg-black/35"
+              role="listbox"
+              aria-label="Existing People matching the typed name"
+            >
+              <p
+                class="border-b border-white/10 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/45 uppercase"
+              >
+                Existing People
+              </p>
+              {#if facePersonSearchResults.length > 0}
+                {#each facePersonSearchResults as person (person.id)}
+                  <button
+                    class="flex min-h-11 w-full items-center border-b border-white/10 px-2 py-1.5 text-left last:border-b-0 hover:bg-white/10"
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    onclick={() => {
+                      faceNameDraft = person.name;
+                      faceSelectedPersonId = person.id;
+                      isCreatingFacePerson = false;
+                      faceActionError = '';
+                    }}
+                  >
+                    {person.name}
+                  </button>
+                {/each}
+              {:else}
+                <p class="p-2 text-white/50">No existing Person matches “{normalizedFaceNameDraft}”.</p>
+              {/if}
+            </div>
+            <button
+              class="justify-self-start rounded-sm border border-white/20 px-2 py-1 text-white/70"
+              type="button"
+              onclick={() => {
+                isCreatingFacePerson = true;
+                faceSelectedPersonId = '';
+                faceActionError = '';
+              }}
+            >
+              Create a new Person named “{normalizedFaceNameDraft}” instead
+            </button>
           {:else if showFaceDraftIdentityCue}
             <p class={faceDraftCreatesPerson ? 'text-emerald-200' : 'text-white/55'}>
               {#if faceDraftCreatesPerson}
-                New Person · Create “{normalizedFaceNameDraft}”
+                New Person · Create “{normalizedFaceNameDraft}” only when you save
               {:else}
                 Existing Person · {faceDraftKnownPersonName}
               {/if}
             </p>
+            {#if faceDraftCreatesPerson}
+              <button
+                class="justify-self-start rounded-sm border border-white/20 px-2 py-1 text-white/70"
+                type="button"
+                onclick={() => (isCreatingFacePerson = false)}
+              >
+                Back to existing People
+              </button>
+            {/if}
           {/if}
           {#if isCimmichEvidence && faceEvidenceKindDraft === 'face'}
             <div class="overflow-hidden rounded-sm border border-white/15 bg-black/35">
@@ -5545,6 +5776,7 @@
                 !faceDraftHasChanges ||
                 isManualTagSubjectsLoading ||
                 Boolean(manualTagSubjectsError) ||
+                (faceEvidenceKindDraft !== 'body' && !faceDraftHasIdentityTarget) ||
                 (faceEvidenceKindDraft === 'body' && !faceDraftReclassificationPerson)}
               type="submit"
             >
@@ -5824,7 +6056,7 @@
   {#if overlayView === 'machinery' && (observationActionMessage || observationActionError)}
     <div
       class="pointer-events-auto absolute bottom-16 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-black/88 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-md"
-      role={observationActionError ? 'alert' : 'status'}
+      role={observationActionError ? 'alert' : undefined}
     >
       <span class={observationActionError ? 'text-red-100' : 'text-white/85'}>
         {observationActionError || observationActionMessage}
@@ -6168,1177 +6400,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  .cimmich-step2-region {
-    position: absolute;
-    border: 2px solid rgb(52 211 153 / 0.94);
-    border-radius: 5px;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.72),
-      inset 0 0 0 1px rgb(255 255 255 / 0.18);
-  }
-
-  .cimmich-step2-label {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    max-width: 210px;
-    overflow: hidden;
-    border: 1px solid rgb(52 211 153 / 0.78);
-    border-radius: 5px;
-    background: rgb(2 44 34 / 0.9);
-    padding: 4px 7px;
-    color: rgb(236 253 245);
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.15;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cimmich-step2-region-rejected {
-    border-color: rgb(251 191 36 / 0.9);
-    border-style: dashed;
-  }
-
-  .cimmich-step2-label-rejected {
-    border-color: rgb(251 191 36 / 0.78);
-    background: rgb(69 26 3 / 0.92);
-    color: rgb(254 243 199);
-  }
-
-  .cimmich-body-label {
-    position: absolute;
-    pointer-events: auto;
-    transform: translate(-50%, -100%);
-    max-width: 180px;
-    overflow: hidden;
-    margin: 0;
-    border: 1px solid rgb(var(--cimmich-body-rgb) / 0.68);
-    border-radius: 5px;
-    background: rgb(0 0 0 / 0.76);
-    padding: 3px 6px;
-    color: white;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
-    white-space: nowrap;
-  }
-
-  .cimmich-body-label--face-match {
-    border-color: rgb(var(--cimmich-body-rgb) / 0.82);
-    box-shadow:
-      inset 3px 0 0 rgb(var(--cimmich-body-rgb) / 0.95),
-      0 0 0 1px rgb(0 0 0 / 0.35),
-      0 8px 18px rgb(0 0 0 / 0.22);
-  }
-
-  .cimmich-body-label--implied {
-    border-color: rgb(var(--cimmich-body-rgb) / 0.5);
-    background: rgb(0 0 0 / 0.62);
-    padding-bottom: 6px;
-    color: rgb(255 255 255 / 0.92);
-    font-weight: 650;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.35),
-      0 8px 18px rgb(0 0 0 / 0.18);
-  }
-
-  .cimmich-body-label--implied::after {
-    position: absolute;
-    right: 6px;
-    bottom: 2px;
-    left: 6px;
-    height: 3px;
-    border-radius: 999px;
-    background: rgb(var(--cimmich-body-rgb) / 0.95);
-    content: '';
-  }
-
-  .cimmich-body-label:hover,
-  .cimmich-body-label--selected {
-    background: rgb(var(--cimmich-body-rgb) / 0.92);
-    color: black;
-    text-shadow: none;
-  }
-
-  .cimmich-body-skeleton-line {
-    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.85));
-    opacity: 0.98;
-    stroke: rgb(var(--cimmich-body-rgb) / 0.96);
-    stroke-linecap: round;
-    stroke-width: 4.5;
-    vector-effect: non-scaling-stroke;
-  }
-
-  .cimmich-body-skeleton-joint {
-    fill: rgb(var(--cimmich-body-rgb) / 0.95);
-    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.9));
-    stroke: rgb(0 0 0 / 0.72);
-    stroke-width: 1.25;
-    vector-effect: non-scaling-stroke;
-  }
-
-  [data-testid='cimmich-body-skeleton'] {
-    opacity: 0.52;
-    transition: opacity 120ms ease;
-  }
-
-  .cimmich-body-skeleton--emphasized {
-    opacity: 1;
-  }
-
-  .cimmich-body-skeleton--muted {
-    opacity: 0.14;
-  }
-
-  .cimmich-person-tag {
-    position: absolute;
-    z-index: 10;
-    pointer-events: auto;
-    transform: translate(-50%, -100%) scale(var(--cimmich-overlay-inverse-zoom, 1));
-    transform-origin: bottom center;
-    max-width: 190px;
-    overflow: hidden;
-    margin: 0;
-    border: 1px solid rgb(255 255 255 / 0.74);
-    border-radius: 999px;
-    background: rgb(0 0 0 / 0.82);
-    padding: 5px 9px;
-    color: white;
-    font-size: 12px;
-    font-weight: 750;
-    line-height: 1;
-    text-overflow: ellipsis;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.82);
-    white-space: nowrap;
-    box-shadow: 0 7px 18px rgb(0 0 0 / 0.28);
-  }
-
-  .cimmich-person-tag--actionable {
-    display: flex;
-    min-height: 36px;
-    max-width: 240px;
-    align-items: stretch;
-    padding: 0;
-  }
-
-  .cimmich-person-tag__name {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    overflow: hidden;
-    padding: 7px 11px 7px 13px;
-    color: inherit;
-    font-size: 13px;
-    line-height: 1;
-    text-decoration: none;
-    text-overflow: ellipsis;
-  }
-
-  .cimmich-person-tag__edit {
-    display: flex;
-    width: 36px;
-    flex: 0 0 36px;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    border-left: 1px solid rgb(15 23 42 / 0.14);
-    background: transparent;
-    color: inherit;
-  }
-
-  .cimmich-person-tag__name:hover,
-  .cimmich-person-tag__name:focus-visible,
-  .cimmich-person-tag__edit:hover,
-  .cimmich-person-tag__edit:focus-visible {
-    background: rgb(15 23 42 / 0.1);
-    outline: none;
-  }
-
-  .cimmich-person-tag--confirmed {
-    z-index: 30;
-    border-color: rgb(255 255 255 / 0.9);
-    background: rgb(255 255 255 / 0.94);
-    color: rgb(15 23 42);
-    text-shadow: none;
-  }
-
-  .cimmich-person-tag--body-only {
-    border-color: rgb(255 255 255 / 0.96);
-    border-style: solid;
-    background-color: rgb(255 255 255 / 0.94);
-    background-image:
-      repeating-linear-gradient(45deg, rgb(71 85 105 / 0.1) 0 1px, transparent 1px 7px),
-      repeating-linear-gradient(-45deg, rgb(71 85 105 / 0.1) 0 1px, transparent 1px 7px);
-    color: rgb(15 23 42);
-    text-shadow: none;
-    box-shadow: 0 7px 18px rgb(0 0 0 / 0.28);
-  }
-
-  .cimmich-person-tag--candidate {
-    border-color: rgb(251 191 36 / 0.96);
-    border-style: dashed;
-    background: rgb(69 26 3 / 0.88);
-    color: rgb(254 243 199);
-  }
-
-  .cimmich-person-tag--unresolved {
-    border-color: rgb(255 255 255 / 0.76);
-    border-style: dashed;
-    background: rgb(15 23 42 / 0.88);
-  }
-
-  .cimmich-person-tag--arrival {
-    pointer-events: none;
-    animation: cimmich-person-arrival 1500ms ease-out both;
-  }
-
-  @keyframes cimmich-person-arrival {
-    0% {
-      opacity: 0;
-      filter: blur(2px);
-    }
-
-    15%,
-    65% {
-      opacity: 1;
-      filter: blur(0);
-    }
-
-    100% {
-      opacity: 0;
-      filter: blur(0);
-    }
-  }
-
-  .cimmich-person-tag:hover,
-  .cimmich-person-tag:focus-within,
-  .cimmich-person-tag--selected {
-    z-index: 40;
-    outline: 2px solid rgb(255 255 255 / 0.92);
-    outline-offset: 2px;
-  }
-
-  .cimmich-manual-presence-label {
-    position: absolute;
-    z-index: 32;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    transform: translate(-50%, -100%) scale(var(--cimmich-overlay-inverse-zoom, 1));
-    transform-origin: bottom center;
-    max-width: 190px;
-    overflow: hidden;
-    margin: 0;
-    border: 1px solid rgb(103 232 249 / 0.92);
-    border-radius: 999px;
-    background: rgb(8 47 73 / 0.9);
-    padding: 5px 9px;
-    color: white;
-    font-size: 12px;
-    font-weight: 750;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    box-shadow: 0 7px 18px rgb(0 0 0 / 0.32);
-    cursor: pointer;
-  }
-
-  .cimmich-manual-presence-label--tagging {
-    border-color: rgb(110 231 183 / 0.95);
-    border-style: dashed;
-    background: rgb(6 78 59 / 0.88);
-  }
-
-  .cimmich-manual-presence-label--face {
-    border-color: rgb(103 232 249 / 0.95);
-    border-style: solid;
-    background: rgb(8 47 73 / 0.92);
-  }
-
-  .cimmich-manual-presence-label--body,
-  .cimmich-manual-presence-label--head {
-    border-color: rgb(255 255 255 / 0.96);
-    border-style: solid;
-    background-color: rgb(255 255 255 / 0.94);
-    background-image:
-      repeating-linear-gradient(45deg, rgb(71 85 105 / 0.1) 0 1px, transparent 1px 7px),
-      repeating-linear-gradient(-45deg, rgb(71 85 105 / 0.1) 0 1px, transparent 1px 7px);
-    color: rgb(15 23 42);
-    text-shadow: none;
-  }
-
-  .cimmich-manual-presence-label--presence {
-    border-color: rgb(110 231 183 / 0.95);
-    border-style: dotted;
-    background: rgb(6 78 59 / 0.88);
-  }
-
-  .cimmich-manual-presence-label:hover,
-  .cimmich-manual-presence-label--selected {
-    z-index: 40;
-    outline: 2px solid rgb(255 255 255 / 0.92);
-    outline-offset: 2px;
-  }
-
-  .cimmich-tagging-legend {
-    position: absolute;
-    bottom: 24px;
-    left: 16px;
-    z-index: 35;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    max-width: calc(100% - 32px);
-    border: 1px solid rgb(255 255 255 / 0.14);
-    border-radius: 999px;
-    background: rgb(2 6 23 / 0.78);
-    padding: 5px;
-    color: rgb(255 255 255 / 0.82);
-    font-size: 10px;
-    font-weight: 750;
-    line-height: 1;
-    box-shadow: 0 7px 20px rgb(0 0 0 / 0.3);
-    backdrop-filter: blur(10px);
-  }
-
-  .cimmich-tagging-legend > span {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    min-height: 24px;
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.06);
-    padding: 0 8px;
-  }
-
-  .cimmich-tagging-hint {
-    max-width: calc(100% - 32px);
-    border: 1px solid rgb(255 255 255 / 0.18);
-    border-radius: 999px;
-    background: rgb(2 6 23 / 0.78);
-    padding: 8px 13px;
-    color: rgb(255 255 255 / 0.9);
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.2;
-    text-align: center;
-    white-space: nowrap;
-    box-shadow: 0 7px 20px rgb(0 0 0 / 0.28);
-    backdrop-filter: blur(10px);
-  }
-
-  .cimmich-tagging-key {
-    display: inline-block;
-    width: 9px;
-    height: 9px;
-    flex: none;
-  }
-
-  .cimmich-tagging-key--named {
-    border: 2px solid white;
-    border-radius: 999px;
-    background: rgb(34 211 238 / 0.9);
-  }
-
-  .cimmich-tagging-key--unassigned {
-    border: 2px solid rgb(254 243 199 / 0.95);
-    border-radius: 999px;
-    background: rgb(245 158 11 / 0.9);
-  }
-
-  .cimmich-tagging-key--body,
-  .cimmich-tagging-key--head {
-    border: 1px solid rgb(255 255 255 / 0.9);
-    border-radius: 2px;
-    background-color: rgb(255 255 255 / 0.92);
-    background-image: repeating-linear-gradient(45deg, rgb(71 85 105 / 0.32) 0 1px, transparent 1px 4px);
-  }
-
-  .cimmich-tagging-key--presence {
-    transform: rotate(45deg);
-    border: 2px solid rgb(167 243 208 / 0.95);
-    border-radius: 50% 50% 50% 0;
-    background: rgb(16 185 129 / 0.7);
-  }
-
-  .cimmich-matching-unknown {
-    position: absolute;
-    pointer-events: auto;
-    width: 9px;
-    height: 9px;
-    transform: translate(-50%, -50%);
-    overflow: visible;
-    margin: 0;
-    border: 1px solid rgb(255 255 255 / 0.45);
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.14);
-    padding: 0;
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.36);
-    transition:
-      background 120ms ease,
-      border-color 120ms ease,
-      box-shadow 120ms ease;
-  }
-
-  .cimmich-tagging-dot {
-    width: 44px;
-    height: 44px;
-    border: 0;
-    background: transparent;
-    cursor: pointer;
-    box-shadow: none;
-  }
-
-  .cimmich-tagging-dot::before {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 13px;
-    height: 13px;
-    border: 2px solid;
-    border-radius: 999px;
-    content: '';
-    transform: translate(-50%, -50%);
-    box-shadow:
-      0 0 0 2px rgb(0 0 0 / 0.62),
-      0 5px 12px rgb(0 0 0 / 0.34);
-    transition:
-      transform 120ms ease,
-      box-shadow 120ms ease;
-  }
-
-  .cimmich-tagging-dot--named::before {
-    border-color: rgb(255 255 255 / 0.98);
-    background: rgb(34 211 238 / 0.9);
-  }
-
-  .cimmich-tagging-dot--unresolved::before {
-    border-color: rgb(254 243 199 / 0.95);
-    background: rgb(245 158 11 / 0.9);
-  }
-
-  .cimmich-tagging-dot:hover,
-  .cimmich-tagging-dot:focus-visible,
-  .cimmich-tagging-dot.cimmich-matching-unknown--selected {
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    outline: none;
-  }
-
-  .cimmich-tagging-dot:hover::before,
-  .cimmich-tagging-dot:focus-visible::before,
-  .cimmich-tagging-dot.cimmich-matching-unknown--selected::before {
-    transform: translate(-50%, -50%) scale(1.25);
-    box-shadow:
-      0 0 0 3px rgb(255 255 255 / 0.28),
-      0 7px 18px rgb(0 0 0 / 0.38);
-  }
-
-  .cimmich-tagging-dot span {
-    top: 6px;
-  }
-
-  .cimmich-manual-tag-canvas {
-    cursor: crosshair;
-  }
-
-  .cimmich-manual-tag-canvas:focus-visible {
-    outline: 2px solid rgb(103 232 249 / 0.95);
-    outline-offset: -3px;
-  }
-
-  .cimmich-manual-tag-region {
-    min-width: 30px;
-    min-height: 36px;
-    border: 2px dashed rgb(103 232 249 / 0.98);
-    border-radius: 12px;
-    background: rgb(6 182 212 / 0.08);
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.65),
-      0 0 24px rgb(34 211 238 / 0.28);
-  }
-
-  .cimmich-manual-tag-region span,
-  .cimmich-manual-tag-region span::before {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    display: block;
-    content: '';
-    background: rgb(255 255 255 / 0.96);
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
-    transform: translate(-50%, -50%);
-  }
-
-  .cimmich-manual-tag-region span {
-    width: 18px;
-    height: 2px;
-  }
-
-  .cimmich-manual-tag-region span::before {
-    width: 2px;
-    height: 18px;
-  }
-
-  .cimmich-matching-unknown span {
-    position: absolute;
-    left: 50%;
-    top: -7px;
-    transform: translate(-50%, -100%);
-    opacity: 0;
-    width: max-content;
-    border: 1px dashed rgb(255 255 255 / 0.88);
-    border-radius: 999px;
-    background: rgb(15 23 42 / 0.94);
-    padding: 4px 8px;
-    color: white;
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
-    pointer-events: none;
-    transition: opacity 120ms ease;
-  }
-
-  .cimmich-matching-unknown.cimmich-tagging-dot--tagged span {
-    opacity: 1;
-  }
-
-  .cimmich-matching-unknown:hover,
-  .cimmich-matching-unknown:focus-visible,
-  .cimmich-matching-unknown--selected {
-    border-color: rgb(255 255 255 / 0.95);
-    background: rgb(255 255 255 / 0.72);
-    box-shadow:
-      0 0 0 4px rgb(255 255 255 / 0.16),
-      0 7px 18px rgb(0 0 0 / 0.28);
-    outline: none;
-  }
-
-  .cimmich-matching-unknown:hover span,
-  .cimmich-matching-unknown:focus-visible span,
-  .cimmich-matching-unknown--selected span {
-    opacity: 1;
-  }
-
-  .cimmich-machine-face {
-    position: absolute;
-    pointer-events: auto;
-    margin: 0;
-    border: 3px solid rgb(var(--cimmich-body-rgb) / 0.98);
-    border-radius: 50%;
-    background: rgb(var(--cimmich-body-rgb) / 0.08);
-    padding: 0;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.7),
-      0 0 18px rgb(var(--cimmich-body-rgb) / 0.34);
-  }
-
-  .cimmich-machine-face--untagged,
-  .cimmich-machine-face--sidecar-only {
-    border-style: dashed;
-  }
-
-  .cimmich-machine-face:hover,
-  .cimmich-machine-face--selected {
-    background: rgb(var(--cimmich-body-rgb) / 0.2);
-    box-shadow:
-      0 0 0 2px rgb(255 255 255 / 0.95),
-      0 0 24px rgb(var(--cimmich-body-rgb) / 0.58);
-  }
-
-  .cimmich-machine-face--selected {
-    cursor: move;
-    touch-action: none;
-  }
-
-  .cimmich-machine-face {
-    z-index: 15;
-  }
-
-  .cimmich-machine-face--linked-focus {
-    z-index: 21;
-  }
-
-  .cimmich-machine-body {
-    position: absolute;
-    z-index: 8;
-    pointer-events: auto;
-    margin: 0;
-    border: 2px solid rgb(var(--cimmich-body-rgb) / 0.5);
-    border-radius: 10px;
-    background: rgb(var(--cimmich-body-rgb) / 0.025);
-    padding: 0;
-    opacity: 0.42;
-    transition:
-      background 120ms ease,
-      border-color 120ms ease,
-      opacity 120ms ease;
-  }
-
-  .cimmich-machine-body--unlinked {
-    border-style: dashed;
-  }
-
-  .cimmich-machine-body--pose {
-    border-color: transparent;
-    background: transparent;
-    opacity: 1;
-    box-shadow: none;
-  }
-
-  .cimmich-machine-body--pose:hover,
-  .cimmich-machine-body--pose.cimmich-machine-body--emphasized,
-  .cimmich-machine-body--pose.cimmich-machine-body--selected {
-    border-color: transparent;
-    background: transparent;
-    opacity: 1;
-    box-shadow: none;
-  }
-
-  .cimmich-machine-body:hover,
-  .cimmich-machine-body--emphasized,
-  .cimmich-machine-body--selected {
-    z-index: 20;
-    border-color: rgb(var(--cimmich-body-rgb) / 0.96);
-    background: rgb(var(--cimmich-body-rgb) / 0.08);
-    opacity: 1;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.58),
-      0 0 20px rgb(var(--cimmich-body-rgb) / 0.22);
-  }
-
-  .cimmich-machine-body--selected {
-    cursor: move;
-    touch-action: none;
-  }
-
-  .cimmich-observation-handles {
-    position: absolute;
-    z-index: 36;
-    pointer-events: none;
-  }
-
-  .cimmich-machine-face--context {
-    border-color: rgb(34 211 238 / 0.98);
-    box-shadow:
-      0 0 0 3px rgb(255 255 255 / 0.92),
-      0 0 0 7px rgb(34 211 238 / 0.42),
-      0 0 24px rgb(34 211 238 / 0.5);
-  }
-
-  .cimmich-machine-face-label {
-    position: absolute;
-    z-index: 25;
-    pointer-events: auto;
-    transform: translate(-50%, -100%);
-    max-width: 190px;
-    display: flex;
-    overflow: visible;
-    margin: 0;
-    border: 1px solid rgb(var(--cimmich-body-rgb) / 0.92);
-    border-radius: 999px;
-    background: rgb(0 0 0 / 0.8);
-    padding: 0;
-    color: white;
-    font-size: 11px;
-    font-weight: 750;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    box-shadow: inset 3px 0 0 rgb(var(--cimmich-body-rgb) / 0.96);
-  }
-
-  .cimmich-machine-face-label-main {
-    min-width: 0;
-    overflow: hidden;
-    border: 0;
-    border-radius: inherit;
-    background: transparent;
-    padding: 4px 8px;
-    color: inherit;
-    font: inherit;
-    line-height: inherit;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cimmich-machine-face-label--candidate {
-    border-color: rgb(251 191 36 / 0.95);
-    background: rgb(69 26 3 / 0.92);
-    color: rgb(254 243 199);
-    box-shadow: inset 3px 0 0 rgb(251 191 36 / 0.96);
-  }
-
-  .cimmich-machine-candidate-accept {
-    display: grid;
-    width: 28px;
-    min-height: 24px;
-    flex: none;
-    place-items: center;
-    border: 0;
-    border-left: 1px solid rgb(251 191 36 / 0.35);
-    border-radius: 0 999px 999px 0;
-    background: rgb(251 191 36 / 0.14);
-    color: rgb(254 243 199);
-  }
-
-  .cimmich-machine-candidate-accept:hover,
-  .cimmich-machine-candidate-accept:focus-visible {
-    background: rgb(251 191 36 / 0.96);
-    color: black;
-    outline: none;
-  }
-
-  .cimmich-machine-candidate-list {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    z-index: 60;
-    display: none;
-    min-width: 220px;
-    overflow: hidden;
-    border: 1px solid rgb(255 255 255 / 0.16);
-    border-radius: 10px;
-    background: rgb(2 6 23 / 0.94);
-    padding: 4px;
-    color: white;
-    box-shadow: 0 14px 34px rgb(0 0 0 / 0.48);
-    backdrop-filter: blur(12px);
-  }
-
-  .cimmich-machine-face-label--candidate:hover .cimmich-machine-candidate-list,
-  .cimmich-machine-face-label--candidate:focus-within .cimmich-machine-candidate-list {
-    display: grid;
-  }
-
-  .cimmich-machine-candidate-list > span {
-    display: flex;
-    min-height: 34px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-radius: 7px;
-    padding-left: 9px;
-  }
-
-  .cimmich-machine-candidate-list > span:hover {
-    background: rgb(255 255 255 / 0.08);
-  }
-
-  .cimmich-machine-candidate-list button {
-    display: grid;
-    width: 32px;
-    min-height: 32px;
-    flex: none;
-    place-items: center;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: rgb(253 230 138);
-  }
-
-  .cimmich-machine-candidate-list button:hover,
-  .cimmich-machine-candidate-list button:focus-visible {
-    background: rgb(251 191 36 / 0.92);
-    color: black;
-    outline: none;
-  }
-
-  .cimmich-source-presence-label {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    max-width: 190px;
-    overflow: hidden;
-    border: 1px solid rgb(251 191 36 / 0.78);
-    border-radius: 5px;
-    background: rgb(0 0 0 / 0.78);
-    padding: 3px 6px;
-    color: rgb(254 243 199);
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
-    white-space: nowrap;
-  }
-
-  .cimmich-source-presence-label--context {
-    border-color: rgb(255 255 255 / 0.92);
-    background: rgb(120 53 15 / 0.92);
-    color: white;
-  }
-
-  .cimmich-face-box {
-    position: absolute;
-    pointer-events: auto;
-    cursor: move;
-    touch-action: none;
-    margin: 0;
-    background: transparent;
-    border: 2px solid rgb(255 255 255 / 0.9);
-    border-radius: 8px;
-    padding: 0;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.55),
-      0 10px 24px rgb(0 0 0 / 0.25);
-    text-align: left;
-  }
-
-  .cimmich-match-face-marker {
-    position: absolute;
-    pointer-events: auto;
-    width: 12px;
-    height: 12px;
-    transform: translate(-50%, -50%);
-    margin: 0;
-    border: 2px solid rgb(255 255 255 / 0.92);
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.28);
-    padding: 0;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.72),
-      0 2px 7px rgb(0 0 0 / 0.38);
-  }
-
-  .cimmich-match-face-marker--named {
-    border-color: rgb(255 255 255 / 0.94);
-    background: rgb(255 255 255 / 0.35);
-  }
-
-  .cimmich-match-face-marker--untagged {
-    width: 10px;
-    height: 10px;
-    border-color: rgb(251 191 36 / 0.94);
-    background: rgb(251 191 36 / 0.22);
-  }
-
-  .cimmich-match-face-marker--sidecar-only {
-    width: 10px;
-    height: 10px;
-    border-color: rgb(96 165 250 / 0.94);
-    background: rgb(96 165 250 / 0.22);
-  }
-
-  .cimmich-match-face-marker--rejected {
-    width: 9px;
-    height: 9px;
-    border-color: rgb(248 113 113 / 0.94);
-    border-style: dashed;
-    background: rgb(248 113 113 / 0.2);
-  }
-
-  .cimmich-match-face-marker--body-linked {
-    border-color: rgb(var(--cimmich-body-rgb) / 0.92);
-    background: rgb(var(--cimmich-body-rgb) / 0.28);
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.72),
-      0 0 0 4px rgb(var(--cimmich-body-rgb) / 0.16),
-      0 2px 7px rgb(0 0 0 / 0.38);
-  }
-
-  .cimmich-match-candidate-label {
-    position: absolute;
-    pointer-events: auto;
-    transform: translate(-50%, -100%);
-    max-width: 180px;
-    overflow: hidden;
-    margin: 0;
-    border: 1px solid rgb(251 191 36 / 0.88);
-    border-radius: 5px;
-    background: rgb(20 13 0 / 0.82);
-    padding: 3px 6px;
-    color: rgb(254 243 199);
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.86);
-    white-space: nowrap;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.55),
-      0 8px 18px rgb(0 0 0 / 0.22);
-  }
-
-  .cimmich-match-candidate-label:hover,
-  .cimmich-match-candidate-label:focus-visible {
-    background: rgb(251 191 36 / 0.92);
-    color: black;
-    text-shadow: none;
-    outline: none;
-  }
-
-  .cimmich-match-face-marker:hover,
-  .cimmich-match-face-marker--selected {
-    background: rgb(var(--cimmich-body-rgb, 255 255 255) / 0.78);
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.68),
-      0 0 0 5px rgb(var(--cimmich-body-rgb, 255 255 255) / 0.24),
-      0 8px 22px rgb(0 0 0 / 0.22);
-  }
-
-  .cimmich-face-box-handle {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    margin: 0;
-    border: 1px solid rgb(0 0 0 / 0.72);
-    border-radius: 9999px;
-    background: rgb(255 255 255 / 0.96);
-    box-shadow: 0 2px 5px rgb(0 0 0 / 0.42);
-    padding: 0;
-    pointer-events: auto;
-    touch-action: none;
-  }
-
-  .cimmich-face-box-handle:hover,
-  .cimmich-face-box-handle:focus-visible {
-    outline: 2px solid rgb(255 255 255 / 0.95);
-    outline-offset: 2px;
-  }
-
-  .cimmich-face-box-handle--nw {
-    top: -7px;
-    left: -7px;
-    cursor: nwse-resize;
-  }
-
-  .cimmich-face-box-handle--n {
-    top: -7px;
-    left: 50%;
-    cursor: ns-resize;
-    transform: translateX(-50%);
-  }
-
-  .cimmich-face-box-handle--ne {
-    top: -7px;
-    right: -7px;
-    cursor: nesw-resize;
-  }
-
-  .cimmich-face-box-handle--w {
-    top: 50%;
-    left: -7px;
-    cursor: ew-resize;
-    transform: translateY(-50%);
-  }
-
-  .cimmich-face-box-handle--e {
-    top: 50%;
-    right: -7px;
-    cursor: ew-resize;
-    transform: translateY(-50%);
-  }
-
-  .cimmich-face-box-handle--sw {
-    bottom: -7px;
-    left: -7px;
-    cursor: nesw-resize;
-  }
-
-  .cimmich-face-box-handle--s {
-    bottom: -7px;
-    left: 50%;
-    cursor: ns-resize;
-    transform: translateX(-50%);
-  }
-
-  .cimmich-face-box-handle--se {
-    right: -7px;
-    bottom: -7px;
-    cursor: nwse-resize;
-  }
-
-  .cimmich-face-label {
-    position: absolute;
-    pointer-events: auto;
-    transform: translate(-50%, -100%);
-    max-width: 180px;
-    overflow: hidden;
-    margin: 0;
-    border: 1px solid rgb(255 255 255 / 0.22);
-    border-radius: 5px;
-    background: rgb(0 0 0 / 0.78);
-    padding: 3px 6px;
-    color: white;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
-    white-space: nowrap;
-  }
-
-  .cimmich-face-leader {
-    position: absolute;
-    width: 2px;
-    min-height: 6px;
-    transform: translateX(-50%);
-    border-radius: 999px;
-    background: rgb(255 255 255 / 0.78);
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
-    pointer-events: none;
-  }
-
-  .cimmich-face-leader::after {
-    position: absolute;
-    bottom: -2px;
-    left: 50%;
-    width: 6px;
-    height: 6px;
-    transform: translateX(-50%);
-    border-radius: 999px;
-    background: currentColor;
-    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.72);
-    content: '';
-  }
-
-  .cimmich-face-leader--named {
-    color: rgb(74 222 128);
-    background: rgb(74 222 128 / 0.84);
-  }
-
-  .cimmich-face-leader--untagged {
-    color: rgb(253 186 116);
-    background: rgb(253 186 116 / 0.84);
-  }
-
-  .cimmich-face-leader--sidecar-only {
-    color: rgb(251 191 36);
-    background: rgb(251 191 36 / 0.84);
-  }
-
-  .cimmich-face-leader--rejected {
-    color: rgb(248 113 113);
-    background: rgb(248 113 113 / 0.84);
-  }
-
-  .cimmich-face-leader--body-linked {
-    color: rgb(var(--cimmich-body-rgb));
-    background: rgb(var(--cimmich-body-rgb) / 0.88);
-  }
-
-  .cimmich-face-label:hover,
-  .cimmich-face-label--selected {
-    background: rgb(255 255 255 / 0.92);
-    color: black;
-    text-shadow: none;
-  }
-
-  .cimmich-face-label--named {
-    border-color: rgb(74 222 128 / 0.72);
-    box-shadow:
-      inset 3px 0 0 rgb(74 222 128 / 0.95),
-      0 0 0 1px rgb(0 0 0 / 0.35);
-  }
-
-  .cimmich-face-label--untagged {
-    border-color: rgb(250 204 21 / 0.75);
-    background: rgb(63 52 12 / 0.84);
-    color: rgb(254 249 195);
-    font-weight: 650;
-  }
-
-  .cimmich-face-label--sidecar-only {
-    border-color: rgb(147 197 253 / 0.72);
-    color: rgb(219 234 254);
-  }
-
-  .cimmich-face-label--rejected {
-    border-color: rgb(248 113 113 / 0.75);
-    color: rgb(254 226 226);
-    text-decoration: line-through;
-  }
-
-  .cimmich-face-label--body-linked {
-    border-color: rgb(var(--cimmich-body-rgb) / 0.8);
-    box-shadow:
-      inset 3px 0 0 rgb(var(--cimmich-body-rgb) / 0.95),
-      0 0 0 1px rgb(0 0 0 / 0.35);
-  }
-
-  .cimmich-face-label--body-linked:hover,
-  .cimmich-face-label--body-linked.cimmich-face-label--selected {
-    background: rgb(var(--cimmich-body-rgb) / 0.92);
-    border-color: rgb(var(--cimmich-body-rgb) / 1);
-    color: black;
-    text-shadow: none;
-  }
-
-  .cimmich-face-label:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 3px;
-  }
-
-  .cimmich-face-marker {
-    position: absolute;
-    pointer-events: auto;
-    display: grid;
-    width: 18px;
-    height: 18px;
-    transform: translate(-50%, -50%);
-    place-items: center;
-    border: 1px solid rgb(255 255 255 / 0.32);
-    border-radius: 9999px;
-    background: rgb(0 0 0 / 0.34);
-    color: rgb(255 255 255 / 0.68);
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1;
-    text-shadow: 0 1px 1px rgb(0 0 0 / 0.8);
-  }
-
-  .cimmich-face-marker:hover,
-  .cimmich-face-marker--selected {
-    border-color: rgb(255 255 255 / 0.9);
-    background: rgb(255 255 255 / 0.9);
-    color: black;
-    text-shadow: none;
-  }
-
-  .cimmich-face-marker:focus-visible {
-    outline: 2px solid white;
-    outline-offset: 3px;
-  }
-
-  .cimmich-face-box--named {
-    border-color: rgb(74 222 128 / 0.95);
-  }
-
-  .cimmich-face-box--untagged {
-    border-color: rgb(250 204 21 / 0.95);
-    border-style: dashed;
-  }
-
-  .cimmich-face-box--rejected {
-    border-color: rgb(248 113 113 / 0.9);
-    border-style: dotted;
-  }
-
-  .cimmich-face-box--sidecar {
-    border-color: rgb(147 197 253 / 0.9);
-    border-style: dashed;
-  }
-
-  .cimmich-face-box--selected {
-    border-width: 3px;
-    box-shadow:
-      0 0 0 2px rgb(255 255 255 / 0.75),
-      0 14px 28px rgb(0 0 0 / 0.3);
-  }
-
-  .cimmich-person-tag--context,
-  .cimmich-machine-face-label--context,
-  .cimmich-body-label--context {
-    z-index: 45;
-    outline: 3px solid rgb(34 211 238 / 0.96);
-    outline-offset: 3px;
-    box-shadow:
-      0 0 0 7px rgb(34 211 238 / 0.16),
-      0 10px 24px rgb(0 0 0 / 0.38);
-  }
-</style>

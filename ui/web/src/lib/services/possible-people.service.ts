@@ -28,6 +28,15 @@ export type CimmichPossiblePeopleSnapshot = {
   schemaVersion: 'cimmich.possible-people-snapshot.v1';
 };
 
+export type CimmichPossiblePersonPreview = {
+  box: { h: number; w: number; x: number; y: number };
+  faceId: string;
+  height: number | null;
+  membershipScore: number | null;
+  sourceAssetId: string;
+  width: number | null;
+};
+
 export type CimmichKnownPersonClusterSuggestion = {
   clusterId: string;
   evidence: CimmichImmichPersonCluster['evidence'];
@@ -47,23 +56,30 @@ export type CimmichKnownPersonClusterSuggestion = {
     sourceAssetId: string;
     width: number | null;
   };
-  previews: Array<{
-    box: { h: number; w: number; x: number; y: number };
-    faceId: string;
-    height: number | null;
-    membershipScore: number | null;
-    sourceAssetId: string;
-    width: number | null;
-  }>;
+  previews: CimmichPossiblePersonPreview[];
   snapshotDigest: string;
   sourceRevision: string;
 };
 
 type PossiblePersonResolutionResult = CimmichImmichPersonResolutionResult & {
   candidateCount?: number;
+  collisionAssetCount?: number;
+  collisionFaceCount?: number;
 };
 
 export const getCimmichPossiblePeople = () => request<CimmichPossiblePeopleSnapshot>('/v1/possible-people');
+
+export const getCimmichPossiblePersonPreviews = (clusterIds: string[]) => {
+  const search = new URLSearchParams();
+  for (const clusterId of clusterIds) {
+    search.append('clusterId', clusterId);
+  }
+  return request<{
+    items: Array<{ clusterId: string; previews: CimmichPossiblePersonPreview[] }>;
+    runId: string | null;
+    schemaVersion: 'cimmich.possible-person-previews.v1';
+  }>(`/v1/possible-people/previews?${search.toString()}`);
+};
 
 export const getCimmichKnownPersonClusterSuggestions = async (personId: string) => {
   const result = await request<{
