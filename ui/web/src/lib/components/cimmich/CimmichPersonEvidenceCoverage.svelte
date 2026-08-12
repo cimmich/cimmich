@@ -280,16 +280,16 @@
         </div>
       </div>
 
-      <div class="mt-5 grid gap-6 md:grid-cols-3">
+      <div class="mt-5 grid gap-6 md:grid-cols-2">
         {#each contextGroups as group (group.label)}
-          <section>
+          <section class={group.kind === 'place' ? 'md:col-span-2' : ''}>
             <h3
               class="flex items-center gap-2 text-xs font-bold tracking-wide text-gray-500 uppercase dark:text-gray-400"
             >
               <Icon icon={group.icon} size="16" />
               {group.label}
             </h3>
-            <div class="mt-3 grid gap-2">
+            <div class={['mt-3 grid gap-2', group.kind === 'place' && 'sm:grid-cols-2']}>
               {#each group.items as item (item.entityId)}
                 <a
                   class="group relative overflow-hidden rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-immich-dark-gray"
@@ -300,7 +300,7 @@
                     style={`width: ${contextBarWidth(item)}`}
                   ></span>
                   <span class="relative flex items-center justify-between gap-3 text-sm">
-                    <span class="truncate font-medium">{item.displayName}</span>
+                    <span class="min-w-0 font-medium text-pretty">{item.displayName}</span>
                     <strong class="tabular-nums">{item.assetCount.toLocaleString()}</strong>
                   </span>
                 </a>
