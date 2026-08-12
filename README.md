@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 8** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 9** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
