@@ -3798,7 +3798,6 @@
                 coverage={cimmichEvidenceCoverage}
                 onopenidentity={(filter) => void openCimmichIdentityAt(filter)}
                 onopenphotos={openCimmichPhotos}
-                profileAssetCount={cimmichPerson.asset_count}
               />
             {:else if cimmichEvidenceError}
               <CimmichStatePanel

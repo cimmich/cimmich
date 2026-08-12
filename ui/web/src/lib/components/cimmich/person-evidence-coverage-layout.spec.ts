@@ -26,8 +26,9 @@ describe('Person identity overview', () => {
     const source = await readFile('src/lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte', 'utf8');
 
     expect(source).toContain('{coverage.person.displayName} in Cimmich');
-    expect(source).toContain('source {missingSourceCount === 1');
-    expect(source).toContain('Route.cimmichArchiveIntegrity()');
+    expect(source).toContain('{coverage.assets.total.toLocaleString()} available photos');
+    expect(source).not.toContain('missingSourceCount');
+    expect(source).not.toContain('source files missing');
     expect(source).not.toContain('not connected yet');
     expect(source).toContain('Recognition examples');
     expect(source).toContain('shown oldest first');

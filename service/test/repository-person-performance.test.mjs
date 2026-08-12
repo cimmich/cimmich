@@ -364,6 +364,18 @@ test("People project ordinary accepted Faces and accepted Body regions without m
     statement,
     /WHERE identity\.state = 'accepted' AND identity\.face_state = 'valid'/,
   );
+  assert.match(
+    statement,
+    /JOIN asset identity_asset ON identity_asset\.asset_id = fo\.asset_id\s+AND identity_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset body_asset ON body_asset\.asset_id = observation\.asset_id\s+AND body_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset presence_asset ON presence_asset\.asset_id = presence\.asset_id\s+AND presence_asset\.state = 'active'/,
+  );
   assert.doesNotMatch(statement, /subject\.subject_kind = 'pet'/);
   assert.match(statement, /body_representatives AS MATERIALIZED/);
   // Asset visibility is enforced through the one materialized hidden-asset
@@ -437,6 +449,14 @@ test("Person overview uses request-local evidence sets instead of global project
   assert.match(statement, /body_representative AS MATERIALIZED/);
   assert.match(statement, /tag\.person_id =/);
   assert.match(statement, /tag\.state = 'accepted'/);
+  assert.match(
+    statement,
+    /JOIN asset face_asset ON face_asset\.asset_id = face\.asset_id\s+AND face_asset\.state = 'active'/,
+  );
+  assert.match(
+    statement,
+    /JOIN asset claim_asset ON claim_asset\.asset_id = claim_face\.asset_id\s+AND claim_asset\.state = 'active'/,
+  );
   // Asset visibility runs through the materialized hidden-asset set, not
   // per-row rank function calls.
   assert.match(statement, /hidden_assets AS MATERIALIZED/);

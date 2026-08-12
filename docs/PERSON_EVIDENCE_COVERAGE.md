@@ -48,10 +48,12 @@ Recognition examples and displays the selected set chronologically. Opening a
 suggestion enters the existing machinery overlay; the suggestion itself has no
 write authority.
 
-The Overview reconciles the Person-profile photo count with the active evidence
-projection. Active assets are labelled **available photos**. A profile record
-whose source asset is missing is labelled **source file missing** and links to
-Archive Health; it is not described as unconnected identity evidence.
+The Person profile and Overview use the same population: visible accepted
+associations on active assets. Active assets are labelled **available photos**.
+Retired catalogue rows remain in the provenance ledgers, but never inflate a
+Person's current photo or Face totals. Archive Health reports source/inventory
+problems directly; the UI never infers a missing file by subtracting two
+different projections.
 
 ## Privacy and performance
 

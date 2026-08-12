@@ -22,14 +22,12 @@
     coverage: CimmichPersonEvidenceCoverage;
     onopenidentity: (filter: 'all' | 'body' | 'candidates') => void;
     onopenphotos: (options?: { futureDates?: boolean }) => void;
-    profileAssetCount: number;
   }
 
-  let { coverage, onopenidentity, onopenphotos, profileAssetCount }: Props = $props();
+  let { coverage, onopenidentity, onopenphotos }: Props = $props();
 
   const notes = $derived(evidenceCoverageNotes(coverage));
   const actionableNotes = $derived(notes.filter((note) => note.action !== null));
-  const missingSourceCount = $derived(Math.max(0, profileAssetCount - coverage.assets.total));
   const orderedSourceSuggestions = $derived(
     [...coverage.sourceSuggestions].sort((left, right) => {
       if (!left.captureTime) {
@@ -129,12 +127,6 @@
       </h2>
       <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
         <span>{coverage.assets.total.toLocaleString()} available photos</span>
-        {#if missingSourceCount > 0}
-          <span aria-hidden="true">·</span>
-          <a class="font-medium text-primary hover:underline" href={Route.cimmichArchiveIntegrity()}>
-            {missingSourceCount.toLocaleString()} source {missingSourceCount === 1 ? 'file' : 'files'} missing
-          </a>
-        {/if}
       </p>
     </div>
     <button
