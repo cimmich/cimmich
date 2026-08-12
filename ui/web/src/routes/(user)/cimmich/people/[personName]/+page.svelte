@@ -3032,8 +3032,9 @@
 
   $effect(() => {
     const personId = cimmichPerson?.person_id;
+    const mode = cimmichMode;
     const filterKey = cimmichExplore.key;
-    if (personId && filterKey !== cimmichExplore.loadedKey) {
+    if (personId && mode === 'photos' && filterKey !== cimmichExplore.loadedKey) {
       void cimmichExplore.load(personId);
     }
   });

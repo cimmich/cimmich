@@ -297,6 +297,7 @@ describe('Person profile layout', () => {
     expect(openIdentity).toContain('void untrack(() => loadCimmichEvidence(generation))');
     expect(openIdentity.indexOf('return;')).toBeLessThan(openIdentity.indexOf('loadPersonIdentityPrimary'));
     expect(source).toContain('void openCimmichIdentityAt(identitySectionDefaultFilter(section))');
+    expect(source).toContain("personId && mode === 'photos' && filterKey !== cimmichExplore.loadedKey");
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {
