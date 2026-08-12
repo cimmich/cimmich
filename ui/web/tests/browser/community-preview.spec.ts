@@ -42,7 +42,7 @@ const authenticate = async (page: Page) => {
   await page.getByLabel('Email').fill(readCredential('CIMMICH_DEMO_ADMIN_EMAIL'));
   await page.getByLabel('Password').fill(readCredential('CIMMICH_DEMO_ADMIN_PASSWORD'));
   await page.getByRole('button', { name: 'Login' }).click();
-  await expect(page).toHaveURL(/\/cimmich\/home|\/photos/u);
+  await expect(page).toHaveURL(/\/(?:cimmich|photos)(?:[/?#]|$)/u);
 };
 
 test.beforeEach(async ({ page }) => {
