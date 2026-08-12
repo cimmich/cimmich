@@ -29,7 +29,12 @@
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
   import { Route } from '$lib/route';
   import { getAssetBulkActions } from '$lib/services/asset.service';
-  import { getCimmichPersonAssets, getCimmichPetMedia, getCimmichSummary } from '$lib/services/cimmich.service';
+  import {
+    getCimmichPersonAssetNeighbors,
+    getCimmichPersonAssets,
+    getCimmichPetMedia,
+    getCimmichSummary,
+  } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl, memoryLaneTitle } from '$lib/utils';
   import {
     updateStackedAssetInTimeline,
@@ -48,6 +53,7 @@
   let timelineManager = $state<TimelineManager>() as TimelineManager;
   let cimmichSubjectAssetIds = $state<Set<string>>(new Set());
   let cimmichSubjectAssetsReady = $state(false);
+  let cimmichSubjectNavigationFailed = $state(false);
   let cimmichSubjectAssetLoad = 0;
   let futureAssetCount = $state(0);
   const cimmichAssetId = $derived(page.params.assetId || '');
@@ -55,7 +61,9 @@
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
   const cimmichSubjectId = $derived(cimmichPersonId || cimmichPetId);
-  const directCimmichViewer = $derived(shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId));
+  const directCimmichViewer = $derived(
+    shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId) && !cimmichSubjectNavigationFailed,
+  );
   const options = $derived({
     visibility: AssetVisibility.Timeline,
     withStacked: true,
@@ -72,10 +80,15 @@
     const run = ++cimmichSubjectAssetLoad;
     cimmichSubjectAssetIds = new Set(assetId ? [assetId] : []);
     cimmichSubjectAssetsReady = !subjectId || Boolean(assetId);
-    if (!subjectId || assetId) {
+    cimmichSubjectNavigationFailed = false;
+    if (!subjectId) {
       return;
     }
-    const request = personId ? getCimmichPersonAssets(personId) : getCimmichPetMedia(petId);
+    const request = personId
+      ? assetId
+        ? getCimmichPersonAssetNeighbors(personId, assetId)
+        : getCimmichPersonAssets(personId)
+      : getCimmichPetMedia(petId);
     void request
       .then((assets) => {
         if (run !== cimmichSubjectAssetLoad) {
@@ -87,6 +100,7 @@
       .catch(() => {
         if (run === cimmichSubjectAssetLoad) {
           cimmichSubjectAssetsReady = true;
+          cimmichSubjectNavigationFailed = true;
         }
       });
   });
@@ -178,6 +192,7 @@
           enableRouting={true}
           bind:timelineManager
           {options}
+          directNavigationAssetIds={directCimmichViewer ? [...cimmichSubjectAssetIds] : undefined}
           assetInteraction={assetMultiSelectManager}
           removeAction={AssetAction.ARCHIVE}
           onEscape={handleEscape}

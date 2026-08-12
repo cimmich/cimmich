@@ -23,17 +23,22 @@ describe('app-wide Cimmich photo presentation boundary', () => {
     expect(viewer).toContain('presentationAllowed && assetViewerManager.isShowCimmichOverlay');
   });
 
-  it('keeps exact Cimmich viewers out of the full timeline and adjacent-asset path', () => {
+  it('keeps exact subject viewers out of the full timeline while retaining bounded adjacent navigation', () => {
     const photos = source('src/routes/(user)/photos/[[assetId=id]]/+page.svelte');
     const timeline = source('src/lib/components/timeline/Timeline.svelte');
     const timelineViewer = source('src/lib/components/timeline/TimelineAssetViewer.svelte');
 
     expect(photos).toContain('shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId)');
     expect(photos).toContain('directCimmichViewer ? { deferInit: true } : {}');
+    expect(photos).toContain(
+      'directNavigationAssetIds={directCimmichViewer ? [...cimmichSubjectAssetIds] : undefined}',
+    );
     expect(timeline).toContain('const directViewer = $derived(options?.deferInit === true)');
     expect(timeline).toContain('<TimelineAssetViewer');
     expect(timeline).toContain('{directViewer}');
-    expect(timelineViewer).toContain('if (!directViewer) {');
+    expect(timeline).toContain('{directNavigationAssetIds}');
+    expect(timelineViewer).toContain('directPhotoViewerAdjacentIds(navigationAssetIds, currentAsset.id)');
+    expect(timelineViewer).toContain('loadDirectCloseAssets(asset, navigationAssetIds, generation)');
     expect(timelineViewer).toContain('onRandom={directViewer ? undefined : handleRandom}');
   });
 

@@ -116,6 +116,30 @@ test('photo viewer advances and returns without losing the timeline', async ({ p
   await expect(page).toHaveURL(/\/photos/u);
 });
 
+test('Cimmich Person viewer moves between photos by keyboard and pointer', async ({ page }) => {
+  await page.goto('/cimmich/people');
+  await page
+    .getByRole('link', { name: /Maya Chen/u })
+    .first()
+    .click();
+  const photoLink = page.locator('a[href^="/photos/"][href*="cimmichPersonId"]').first();
+  await expect(photoLink).toBeVisible();
+  await photoLink.click();
+
+  const previous = page.getByRole('button', { name: 'View previous asset' });
+  const next = page.getByRole('button', { name: 'View next asset' });
+  await expect(next).toBeVisible();
+  const firstUrl = page.url();
+  const firstPhotoPath = new URL(firstUrl).pathname;
+
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => new URL(page.url()).pathname).not.toBe(firstPhotoPath);
+  await expect(previous).toBeVisible();
+
+  await previous.click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe(firstPhotoPath);
+});
+
 test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/cimmich/home');

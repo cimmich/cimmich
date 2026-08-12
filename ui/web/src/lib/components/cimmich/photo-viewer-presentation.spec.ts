@@ -21,6 +21,7 @@ import {
   projectNamedPhotoPresence,
   projectTypedManualTagSummary,
   shouldDeferCimmichExactPhotoTimeline,
+  directPhotoViewerAdjacentIds,
   stopPhotoViewerShortcutPropagation,
 } from './photo-viewer-presentation';
 
@@ -140,9 +141,24 @@ describe('photo viewer presentation context', () => {
         new URL('http://localhost/photos/asset-1?cimmichOverlay=machinery'),
         'asset-1',
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos/asset-1'), 'asset-1')).toBe(false);
     expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos?organise=1'), undefined)).toBe(false);
+  });
+
+  it('projects bounded adjacent targets for direct photo navigation', () => {
+    expect(directPhotoViewerAdjacentIds(['newest', 'current', 'oldest'], 'current')).toEqual({
+      nextAssetId: 'oldest',
+      previousAssetId: 'newest',
+    });
+    expect(directPhotoViewerAdjacentIds(['current', 'oldest'], 'current')).toEqual({
+      nextAssetId: 'oldest',
+      previousAssetId: undefined,
+    });
+    expect(directPhotoViewerAdjacentIds(['newest'], 'missing')).toEqual({
+      nextAssetId: undefined,
+      previousAssetId: undefined,
+    });
   });
 
   it('recognises Pet viewer context without treating it as a Person highlight', () => {

@@ -327,7 +327,20 @@ export const isCimmichViewingSurface = (url: URL) =>
   Boolean(getCimmichPetPhotoContext(url));
 
 export const shouldDeferCimmichExactPhotoTimeline = (url: URL, assetId: string | undefined) =>
-  Boolean(assetId?.trim()) && url.pathname.startsWith('/photos/') && isCimmichViewingSurface(url);
+  Boolean(assetId?.trim()) &&
+  url.pathname.startsWith('/photos/') &&
+  (Boolean(getCimmichPersonPhotoContext(url)) || Boolean(getCimmichPetPhotoContext(url)));
+
+export const directPhotoViewerAdjacentIds = (assetIds: string[], currentAssetId: string) => {
+  const currentIndex = assetIds.indexOf(currentAssetId);
+  if (currentIndex === -1) {
+    return { nextAssetId: undefined, previousAssetId: undefined };
+  }
+  return {
+    nextAssetId: assetIds[currentIndex + 1],
+    previousAssetId: currentIndex > 0 ? assetIds[currentIndex - 1] : undefined,
+  };
+};
 
 export const matchesCimmichPersonPhotoContext = (
   context: CimmichPersonPhotoContext | undefined,

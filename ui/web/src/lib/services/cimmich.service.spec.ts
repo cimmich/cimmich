@@ -50,6 +50,7 @@ import {
   getCimmichPersonDetailsDisplay,
   getCimmichPersonDetailsDisplayDefaults,
   getCimmichPersonAssetsPage,
+  getCimmichPersonAssetNeighbors,
   getCimmichPersonByName,
   getCimmichPersonCandidateSummary,
   getCimmichPeople,
@@ -1033,6 +1034,17 @@ describe('Cimmich Person projection page client contract', () => {
     await expect(getCimmichPersonAssetsPage('person/1', 120, 'opaque+/=', 'body')).resolves.toEqual(page);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://127.0.0.1:3101/v1/people/person%2F1/assets?pageSize=120&cursor=opaque%2B%2F%3D&associationType=body',
+    );
+    fetchMock.mockRestore();
+  });
+
+  it('requests only the adjacent Person assets for an exact photo viewer', async () => {
+    const neighbors = { items: [{ asset_id: 'asset-1' }] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(Response.json(neighbors));
+
+    await expect(getCimmichPersonAssetNeighbors('person/1', 'asset+/=')).resolves.toEqual(neighbors.items);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://127.0.0.1:3101/v1/people/person%2F1/assets?neighborOf=asset%2B%2F%3D',
     );
     fetchMock.mockRestore();
   });

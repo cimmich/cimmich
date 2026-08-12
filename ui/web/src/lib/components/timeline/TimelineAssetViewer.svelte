@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import type { Action } from '$lib/components/asset-viewer/actions/action';
   import type { AssetCursor } from '$lib/components/asset-viewer/AssetViewer.svelte';
+  import { directPhotoViewerAdjacentIds } from '$lib/components/cimmich/photo-viewer-presentation';
   import { AssetAction } from '$lib/constants';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { assetCacheManager } from '$lib/managers/AssetCacheManager.svelte';
@@ -23,6 +24,7 @@
     timelineManager: TimelineManager;
     invisible: boolean;
     directViewer?: boolean;
+    directNavigationAssetIds?: string[];
     withStacked?: boolean;
     isShared?: boolean;
     album?: AlbumResponseDto;
@@ -33,6 +35,7 @@
   let {
     timelineManager,
     directViewer = false,
+    directNavigationAssetIds = [],
     // eslint-disable-next-line no-useless-assignment
     invisible = $bindable(false),
     removeAction,
@@ -86,15 +89,36 @@
     };
   };
 
+  const loadDirectCloseAssets = async (
+    currentAsset: AssetResponseDto,
+    navigationAssetIds: string[],
+    generation: number,
+  ) => {
+    const { nextAssetId, previousAssetId } = directPhotoViewerAdjacentIds(navigationAssetIds, currentAsset.id);
+    const [nextAsset, previousAsset] = await Promise.all([
+      nextAssetId ? getAsset(nextAssetId) : undefined,
+      previousAssetId ? getAsset(previousAssetId) : undefined,
+    ]);
+
+    if (generation !== nearbyLoadGeneration || !directViewer) {
+      return;
+    }
+
+    assetCursor = { current: currentAsset, nextAsset, previousAsset };
+  };
+
   //TODO: replace this with async derived in svelte 6
   $effect(() => {
     const asset = assetViewerManager.asset;
+    const navigationAssetIds = directNavigationAssetIds;
     const generation = ++nearbyLoadGeneration;
     if (!asset) {
       return;
     }
     assetCursor = { current: asset, nextAsset: undefined, previousAsset: undefined };
-    if (!directViewer) {
+    if (directViewer) {
+      handlePromiseError(loadDirectCloseAssets(asset, navigationAssetIds, generation));
+    } else {
       handlePromiseError(loadCloseAssets(asset, generation));
     }
   });
@@ -236,7 +260,9 @@
     if (asset.id === assetCursor.current.id) {
       const generation = ++nearbyLoadGeneration;
       assetCursor = { current: asset, nextAsset: undefined, previousAsset: undefined };
-      if (!directViewer) {
+      if (directViewer) {
+        handlePromiseError(loadDirectCloseAssets(asset, directNavigationAssetIds, generation));
+      } else {
         handlePromiseError(loadCloseAssets(asset, generation));
       }
     }
