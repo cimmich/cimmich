@@ -63,6 +63,7 @@ describe('human-first Library information architecture', () => {
     const source = await read('src/routes/(user)/photos/[[assetId=id]]/+page.svelte');
 
     expect(source).toContain("const cimmichAssetId = $derived(page.params.assetId || '')");
+    expect(source).toContain('cimmichSubjectId && !cimmichAssetId ? { assetFilter: cimmichSubjectAssetIds } : {}');
     expect(source).toContain('cimmichSubjectAssetIds = new Set(assetId ? [assetId] : [])');
     expect(source).toContain('cimmichSubjectAssetsReady = !subjectId || Boolean(assetId)');
     expect(source).toContain('if (!subjectId || assetId)');

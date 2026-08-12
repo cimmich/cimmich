@@ -58,7 +58,7 @@
     visibility: AssetVisibility.Timeline,
     withStacked: true,
     withPartners: true,
-    ...(cimmichSubjectId ? { assetFilter: cimmichSubjectAssetIds } : {}),
+    ...(cimmichSubjectId && !cimmichAssetId ? { assetFilter: cimmichSubjectAssetIds } : {}),
   });
 
   $effect(() => {
