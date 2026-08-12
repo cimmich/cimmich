@@ -21,6 +21,16 @@ owner-controlled context beside Immich.
 [Try fictional data](demo/cedar-house-v1/README.md) · [Understand privacy](PRIVACY.md) ·
 [Contribute](CONTRIBUTING.md)
 
+> [!NOTE]
+> **OpenAI Build Week — Apps for Your Life.** Cimmich's original submission was
+> built with **Codex powered by GPT-5.6 Sol** and remains preserved at the exact
+> [`v1.0.0-build-week` tag and release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week):
+> [read the original submission README](https://github.com/cimmich/cimmich/blob/v1.0.0-build-week/README.md) ·
+> [watch the three-minute demo](https://youtu.be/CfR_r0n4deQ) ·
+> [inspect the Build Week evidence](https://github.com/cimmich/cimmich/blob/v1.0.0-build-week/docs/BUILD_WEEK_EVIDENCE.md).
+> Living product development continues on `main` without rewriting that
+> historical release.
+
 > [!IMPORTANT]
 > Cimmich is an unofficial companion project. It is not affiliated with or
 > endorsed by Immich or OpenAI.
