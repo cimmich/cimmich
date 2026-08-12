@@ -25,8 +25,14 @@ const seedLimit = 100_000;
 const neighbourLimit = 12;
 const similarityFloor = 0.55;
 const strongOneWayFloor = 0.68;
-const { classificationVersion, knownPersonMarginFloor, knownPersonScoreFloor } =
-  possiblePeopleClassificationContract;
+const {
+  classificationVersion,
+  clusterConsensusFloor,
+  clusterMinimumVotes,
+  clusterSampleLimit,
+  knownPersonMarginFloor,
+  knownPersonScoreFloor,
+} = possiblePeopleClassificationContract;
 
 const typedError = (message, statusCode, code, details) =>
   Object.assign(new Error(message), {
@@ -479,7 +485,10 @@ export const createPossiblePeopleStore = (
           409,
           "POSSIBLE_PEOPLE_SNAPSHOT_EMPTY",
         );
-      if (run.classification_state === "completed") {
+      if (
+        run.classification_state === "completed" &&
+        run.classification_version === classificationVersion
+      ) {
         return completeCommand(tx, stableCommandId, {
           changed: false,
           replayed: false,
@@ -918,6 +927,9 @@ export const createPossiblePeopleStore = (
 export const possiblePeopleContract = Object.freeze({
   algorithmVersion,
   classificationVersion,
+  clusterConsensusFloor,
+  clusterMinimumVotes,
+  clusterSampleLimit,
   knownPersonMarginFloor,
   knownPersonScoreFloor,
   neighbourLimit,

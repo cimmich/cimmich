@@ -175,9 +175,10 @@
         </span>
       </div>
       <p class="mt-1 max-w-3xl text-xs/5 text-gray-600 dark:text-gray-300">
-        Cimmich found these recurring groups in the unnamed archive and matched their representative Face to
-        {personName}’s confirmed reference library. This is a grouped proposal only; no photo is identified until you
-        move the group into Checks and confirm it.
+        Cimmich compared Face evidence distributed across each recurring group with {personName}’s confirmed reference
+        library. A group appears here only when multiple sampled Faces agree, at least half of the sample matches, and
+        no other known Person wins a sampled Face. This is still a proposal; no photo is identified until you move the
+        group into Checks and confirm it.
       </p>
     </div>
 
@@ -235,10 +236,11 @@
                 {item.evidence.photoCount === 1 ? 'photo' : 'photos'} may be {personName}
               </p>
               <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                Similarity {item.match.leadScore.toFixed(3)}
+                {item.match.matchedFaceCount} of {item.match.sampledFaceCount} sampled Faces agree · average similarity
+                {item.match.leadScore.toFixed(3)}
                 {item.match.margin === null
                   ? ' · no close competing Person'
-                  : ` · ${item.match.margin.toFixed(3)} ahead`}
+                  : ` · average ${item.match.margin.toFixed(3)} ahead`}
               </p>
             </div>
             <div class="grid grid-cols-2 gap-2">

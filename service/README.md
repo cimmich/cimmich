@@ -693,6 +693,14 @@ It also owns the Adaptive SourcePack boundary:
   provider's exact vector space;
 - `bin/evaluate-source-pack.mjs --pack-id=<id> --calibration-end=<ISO> [--execute]`
   evaluates later calibration/holdout evidence and persists leakage assertions;
+- `bin/run-source-pack-archive-matcher.mjs --python=<numpy-python> [--pack-id=<id>]`
+  restores the archive-wide, per-Face SourcePack pass. It is dry-run by default,
+  scores vector batches on the local Mac without sending biometric data over the
+  network, applies the pack's frozen score/margin and same-photo/context guards,
+  and can persist only review candidates from the one active passed SourcePack.
+  `--current-prime-diagnostic`, `--current-all-diagnostic` and
+  `--possible-run-id=<id>` are deliberately diagnostic-only so a gallery replay
+  cannot silently become identity authority;
 - `bin/source-pack-lifecycle.mjs` records a versioned human-review-only gate
   receipt including the frozen review score/margin policy, atomically activates
   a qualified pack and rolls an active successor

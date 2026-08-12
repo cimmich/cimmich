@@ -42,12 +42,16 @@ export type CimmichKnownPersonClusterSuggestion = {
   evidence: CimmichImmichPersonCluster['evidence'];
   faceCount: number;
   match: {
+    bestScore: number | null;
     classificationVersion: string;
     leadScore: number;
     margin: number | null;
+    matchedFaceCount: number;
+    matchFraction: number | null;
     referenceFaceId: string | null;
     runnerPersonId: string | null;
     runnerScore: number | null;
+    sampledFaceCount: number;
   };
   representative: {
     box: { h: number; w: number; x: number; y: number };
