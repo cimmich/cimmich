@@ -67,17 +67,18 @@ test('viewing mode menu opens through a real pointer interaction', async ({ page
   await expect(dialog.getByRole('button', { name: 'Private' })).toBeVisible();
 });
 
-test('the familiar sidebar preserves all four ordinary library modes', async ({ page }) => {
+test('the familiar sidebar nests Cimmich beside ordinary library destinations', async ({ page }) => {
   const primaryNavigation = page.getByRole('navigation', { name: /primary/iu });
+  await expect(primaryNavigation.getByRole('link', { name: 'Cimmich', exact: true })).toBeVisible();
   for (const [name, pathname] of [
     ['Photos', '/photos'],
-    ['Folders', '/folders'],
-    ['Tags', '/tags'],
     ['Albums', '/albums'],
+    ['Library', '/cimmich/library'],
+    ['People', '/cimmich/people'],
+    ['Settings', '/cimmich/settings'],
   ] as const) {
     await primaryNavigation.getByRole('link', { name, exact: true }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(pathname);
-    await expect.poll(() => new URL(page.url()).searchParams.has('organise')).toBe(false);
     await expect(page.locator('main')).toBeVisible();
   }
 });
