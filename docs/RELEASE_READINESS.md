@@ -545,8 +545,9 @@ post-submission identity machinery rather than publishing database work without
 a usable review loop:
 
 - known-Person and recurring unnamed-Person suggestions are separate;
-- Face evidence, Head/Body/Presence appearance, Display framing and Review are
-  separate jobs on a Person profile;
+- Identity is one Person-profile destination with Overview, Face,
+  Head/Body/Presence Appearance, Checks and Display jobs. Checks visibly split
+  New matches, same-photo collisions and Possible mistags;
 - a negative proposed-name decision opens reassignment instead of discarding
   the unresolved face;
 - imported source locators remain explicit owner placement questions and are

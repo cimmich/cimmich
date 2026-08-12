@@ -12,7 +12,6 @@
     onconnections: () => void;
     ondetails: () => void;
     ondocuments: () => void;
-    onevidence: () => void;
     onidentity: () => void;
     onphotos: () => void;
     possibleMistags: number;
@@ -28,7 +27,6 @@
     onconnections,
     ondetails,
     ondocuments,
-    onevidence,
     onidentity,
     onphotos,
     possibleMistags,
@@ -45,17 +43,6 @@
     onclick={onphotos}
     tabId="photos"
   />
-  {#if subjectKind === 'person'}
-    <CimmichPersonTabButton active={mode === 'evidence'} label="Evidence" onclick={onevidence} tabId="evidence" />
-    <CimmichPersonTabButton active={mode === 'details'} label="Details" onclick={ondetails} tabId="details" />
-    <CimmichPersonTabButton
-      active={mode === 'connections'}
-      count={connectionCount}
-      label="Connections"
-      onclick={onconnections}
-      tabId="connections"
-    />
-  {/if}
   <button
     class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${mode === 'identity' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
     data-person-tab="identity"
@@ -68,5 +55,15 @@
     Identity
     <CimmichIdentityWaitingBadges {newMatches} {possibleMistags} {waitingHint} />
   </button>
+  {#if subjectKind === 'person'}
+    <CimmichPersonTabButton active={mode === 'details'} label="Details" onclick={ondetails} tabId="details" />
+    <CimmichPersonTabButton
+      active={mode === 'connections'}
+      count={connectionCount}
+      label="Connections"
+      onclick={onconnections}
+      tabId="connections"
+    />
+  {/if}
   <CimmichPersonTabButton active={mode === 'documents'} label="Documents" onclick={ondocuments} tabId="documents" />
 </div>

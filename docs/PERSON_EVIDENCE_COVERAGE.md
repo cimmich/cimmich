@@ -1,7 +1,13 @@
-# Person Evidence & coverage
+# Person Identity overview
 
-Person profiles expose a read-only **Evidence** tab backed by
+Person profiles expose a read-only **Identity → Overview** view backed by
 `GET /v1/people/:personId/evidence-coverage`.
+
+The former top-level Evidence tab is retired. Existing `?mode=evidence` links
+normalize to `?mode=identity`, whose default subview is Overview. Identity now owns five
+jobs: Overview, Face, Appearance, Checks and Display. Face and Appearance retain
+their own bounded filters; Checks separates New matches, Multiple in one photo
+and Possible mistags.
 
 The projection answers four bounded questions:
 
@@ -37,13 +43,20 @@ Context counts are descriptive, not a demand to tag every photo.
 Suggestions are accepted Face observations only. Cimmich chooses the strongest
 visible source per capture year, ranks Core then Supporting references ahead of
 unclassified/low-quality/head roles, excludes future-dated sources from the
-front of the ranking, and returns at most six. Opening a suggestion enters the
-existing machinery overlay; the suggestion itself has no write authority.
+front of the selection, and returns at most six. The profile labels these
+Recognition examples and displays the selected set chronologically. Opening a
+suggestion enters the existing machinery overlay; the suggestion itself has no
+write authority.
+
+The Overview reconciles the Person-profile photo count with the active evidence
+projection. Active assets are labelled **available photos**. A profile record
+whose source asset is missing is labelled **source file missing** and links to
+Archive Health; it is not described as unconnected identity evidence.
 
 ## Privacy and performance
 
 Every asset, Person and context read stays inside the current viewing-mode
 ceiling. The response contains stable IDs, bounded aggregate counts and at most
 six source/context rows per family; it contains no vectors or source paths. The
-profile loads it only when Evidence is opened and retains it for that mounted
-Person/visibility generation.
+profile loads it only when Identity Overview is opened and retains it for that
+mounted Person/visibility generation.

@@ -84,6 +84,12 @@ describe('Known Person grouped proposals', () => {
         expect.objectContaining({ action: 'ungroup', snapshotDigest: 'a'.repeat(64) }),
       ),
     );
-    expect(onChanged).toHaveBeenCalledWith({ candidateCount: 0, clusterId: 'cluster-one', kind: 'ungroup' });
+    expect(onChanged).toHaveBeenCalledWith({
+      candidateCount: 0,
+      clusterId: 'cluster-one',
+      collisionAssetCount: 0,
+      collisionFaceCount: 0,
+      kind: 'ungroup',
+    });
   });
 });

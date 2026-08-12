@@ -54,6 +54,9 @@ test("known-Person classification is versioned, separated and never identity aut
     /'run_id', \$\{cluster\.possible_person_run_id\}::text/,
   );
   assert.match(possiblePeople, /'automatic_acceptance', 'false'/);
+  assert.match(possiblePeople, /collision_asset_count/);
+  assert.match(possiblePeople, /collision_face_count/);
+  assert.match(possiblePeople, /accepted_face\.asset_id = face\.asset_id/);
   assert.match(
     possiblePeople,
     /member\.face_id, \$\{selectedPersonId\}.*'candidate'/s,

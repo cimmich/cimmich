@@ -49,7 +49,11 @@ describe('Person profile layout', () => {
   });
 
   it('keeps Photos compact and makes Identity an operational maintenance workspace', async () => {
-    const source = await readPersonProfile();
+    const [source, navigation, workspace] = await Promise.all([
+      readPersonProfile(),
+      readFile('src/lib/components/cimmich/CimmichPersonIdentityNavigation.svelte', 'utf8'),
+      readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
+    ]);
 
     expect(source).toContain('aria-label="Photo view options"');
     expect(source).toContain('aria-label="Thumbnail size"');
@@ -61,17 +65,17 @@ describe('Person profile layout', () => {
     expect(source).toContain('Body photo');
     expect(source).toContain('Hero photo');
     expect(source).not.toContain('Identity workspaces');
-    expect(source).toContain('aria-label="Identity tools"');
-    expect(source).toContain("label: 'Face evidence'");
-    expect(source).toContain("label: 'Appearance'");
-    expect(source).toContain("label: 'Display'");
-    expect(source).toContain("label: 'Review'");
-    expect(source).toContain('lg:border-l');
-    expect(source).not.toContain('overflow-x-auto pb-1');
-    expect(source).toMatch(/id: 'presentation',[\s\S]+label: 'Photos'/);
+    expect(navigation).toContain('aria-label="Identity sections"');
+    expect(workspace).toContain("label: 'Overview'");
+    expect(workspace).toContain("label: 'Face'");
+    expect(workspace).toContain("label: 'Appearance'");
+    expect(workspace).toContain("label: 'Display'");
+    expect(workspace).toContain("label: 'Checks'");
+    expect(navigation).not.toContain('lg:border-l');
+    expect(workspace).toMatch(/id: 'presentation',[\s\S]+label: 'Photos'/);
     expect(source).toContain('aria-label="Display photo choices"');
-    expect(source).toContain("{ id: 'prime', label: 'Core matching set'");
-    expect(source).toMatch(/id: 'secondary',[\s\S]+label: 'Supporting Face evidence'/);
+    expect(workspace).toContain("{ id: 'prime', label: 'Core matching set'");
+    expect(workspace).toMatch(/id: 'secondary',[\s\S]+label: 'Supporting Face evidence'/);
     expect(source).toContain('Use automatic');
     expect(source).toContain("'Not selected'");
     expect(source).toContain("cimmichIdentityFilter === 'candidates'");

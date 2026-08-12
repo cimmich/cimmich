@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
-describe('Person Evidence & coverage workspace', () => {
-  it('is a first-class keyboard tab with a reloadable URL mode', async () => {
+describe('Person identity overview', () => {
+  it('merges the former Evidence surface into a reloadable Identity overview', async () => {
     const [page, load, navigation, tabs] = await Promise.all([
       readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
       readFile('src/routes/(user)/cimmich/people/[personName]/+page.ts', 'utf8'),
@@ -10,12 +10,14 @@ describe('Person Evidence & coverage workspace', () => {
       readFile('src/lib/components/cimmich/CimmichPersonPrimaryTabs.svelte', 'utf8'),
     ]);
 
-    expect(load).toContain("mode === 'evidence'");
-    expect(navigation).toContain("'evidence'");
+    expect(load).toContain("mode === 'evidence' ? 'identity'");
+    expect(load).toContain("mode === 'evidence' ? 'overview'");
+    expect(navigation).not.toContain("| 'evidence'");
     expect(tabs).toContain('role="tablist"');
     expect(tabs).toContain('use:keyboardTabs');
-    expect(tabs).toContain('label="Evidence"');
-    expect(page).toContain("cimmichMode === 'evidence'");
+    expect(tabs).not.toContain('label="Evidence"');
+    expect(tabs).toContain('Identity');
+    expect(page).toContain("cimmichIdentityFilter === 'overview'");
     expect(page).toContain('getCimmichPersonEvidenceCoverage(cimmichPerson.person_id)');
     expect(page).toContain('<CimmichPersonEvidenceCoverage');
   });
@@ -23,9 +25,12 @@ describe('Person Evidence & coverage workspace', () => {
   it('leads with photos and user questions while keeping machinery detail optional', async () => {
     const source = await readFile('src/lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte', 'utf8');
 
-    expect(source).toContain('photos of {coverage.person.displayName}');
-    expect(source).toContain('not connected yet');
-    expect(source).toContain('Examples Cimmich recognises');
+    expect(source).toContain('{coverage.person.displayName} in Cimmich');
+    expect(source).toContain('source {missingSourceCount === 1');
+    expect(source).toContain('Route.cimmichArchiveIntegrity()');
+    expect(source).not.toContain('not connected yet');
+    expect(source).toContain('Recognition examples');
+    expect(source).toContain('shown oldest first');
     expect(source).toContain('How Cimmich recognises {coverage.person.displayName}');
     expect(source).toContain('Why do these numbers overlap?');
     expect(source).toContain('When these photos were taken');

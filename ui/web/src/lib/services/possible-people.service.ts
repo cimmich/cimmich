@@ -63,6 +63,8 @@ export type CimmichKnownPersonClusterSuggestion = {
 
 type PossiblePersonResolutionResult = CimmichImmichPersonResolutionResult & {
   candidateCount?: number;
+  collisionAssetCount?: number;
+  collisionFaceCount?: number;
 };
 
 export const getCimmichPossiblePeople = () => request<CimmichPossiblePeopleSnapshot>('/v1/possible-people');

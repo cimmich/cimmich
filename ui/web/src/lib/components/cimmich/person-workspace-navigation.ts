@@ -5,18 +5,19 @@ export type CimmichIdentityFilter =
   | 'head'
   | 'lq'
   | 'needs_qc'
+  | 'overview'
   | 'presentation'
   | 'presence'
   | 'prime'
   | 'references'
   | 'secondary';
 
-export type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'evidence' | 'identity' | 'photos' | 'setup';
+export type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
 
 const workspaceUrl = (mode: CimmichPersonMode, identityFilter: CimmichIdentityFilter) => {
   const url = new URL(globalThis.location.href);
   url.searchParams.set('mode', mode);
-  if (mode === 'identity' && identityFilter !== 'all') {
+  if (mode === 'identity' && identityFilter !== 'overview') {
     url.searchParams.set('identityFilter', identityFilter);
   } else {
     url.searchParams.delete('identityFilter');

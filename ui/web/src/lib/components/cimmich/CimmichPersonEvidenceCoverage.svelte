@@ -29,7 +29,18 @@
 
   const notes = $derived(evidenceCoverageNotes(coverage));
   const actionableNotes = $derived(notes.filter((note) => note.action !== null));
-  const outsideEvidenceCount = $derived(Math.max(0, profileAssetCount - coverage.assets.total));
+  const missingSourceCount = $derived(Math.max(0, profileAssetCount - coverage.assets.total));
+  const orderedSourceSuggestions = $derived(
+    [...coverage.sourceSuggestions].sort((left, right) => {
+      if (!left.captureTime) {
+        return 1;
+      }
+      if (!right.captureTime) {
+        return -1;
+      }
+      return left.captureTime.localeCompare(right.captureTime) || left.faceId.localeCompare(right.faceId);
+    }),
+  );
   const maximumYearCount = $derived(Math.max(1, ...coverage.time.years.map(({ assetCount }) => assetCount)));
   const evidenceRows = $derived([
     {
@@ -114,10 +125,16 @@
   <header class="flex flex-wrap items-end justify-between gap-4">
     <div>
       <h2 id="person-evidence-coverage-title" class="text-2xl font-semibold">
-        {coverage.assets.total.toLocaleString()} photos of {coverage.person.displayName}
+        {coverage.person.displayName} in Cimmich
       </h2>
-      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-        {profileAssetCount.toLocaleString()} in this profile · {outsideEvidenceCount.toLocaleString()} not connected yet
+      <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
+        <span>{coverage.assets.total.toLocaleString()} available photos</span>
+        {#if missingSourceCount > 0}
+          <span aria-hidden="true">·</span>
+          <a class="font-medium text-primary hover:underline" href={Route.cimmichArchiveIntegrity()}>
+            {missingSourceCount.toLocaleString()} source {missingSourceCount === 1 ? 'file' : 'files'} missing
+          </a>
+        {/if}
       </p>
     </div>
     <button
@@ -130,9 +147,14 @@
   </header>
 
   <section aria-labelledby="coverage-examples-title">
-    <h3 id="coverage-examples-title" class="sr-only">Examples Cimmich recognises</h3>
+    <div class="mb-3">
+      <h3 id="coverage-examples-title" class="text-xl font-semibold">Recognition examples</h3>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        One strong accepted Face from each available year, shown oldest first.
+      </p>
+    </div>
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {#each coverage.sourceSuggestions as source (source.faceId)}
+      {#each orderedSourceSuggestions as source (source.faceId)}
         <a
           class="group overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
           href={Route.viewCimmichPersonAsset({

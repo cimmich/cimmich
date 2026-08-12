@@ -299,10 +299,13 @@
         ...(action === 'existing_person' ? { personId } : { newPersonName }),
         snapshotDigest: cluster.snapshotDigest,
       });
-      notice =
-        action === 'existing_person'
-          ? `${result.candidateCount ?? cluster.faceCount} faces were added to that Person’s review queue.`
-          : `Person created; ${result.candidateCount ?? cluster.faceCount} faces were added to their review queue.`;
+      const candidateCount = result.candidateCount ?? cluster.faceCount;
+      const collisionAssetCount = result.collisionAssetCount ?? 0;
+      notice = `${action === 'create_person' ? 'Person created; ' : ''}${candidateCount} faces were added to ${action === 'existing_person' ? 'that Person’s' : 'their'} Checks.${
+        collisionAssetCount > 0
+          ? ` ${result.collisionFaceCount ?? collisionAssetCount} appear in ${collisionAssetCount} ${collisionAssetCount === 1 ? 'photo that already contains that Person' : 'photos that already contain that Person'}, so they are under Multiple in one photo.`
+          : ' They are under New matches.'
+      } Nothing was confirmed.`;
       openClusterId = '';
       clusters = clusters.filter((candidate) => candidate.immichPersonId !== cluster.immichPersonId);
     } catch (error_) {

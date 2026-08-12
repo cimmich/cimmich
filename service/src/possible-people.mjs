@@ -738,7 +738,50 @@ export const createPossiblePeopleStore = (
         WHERE cluster_id = ${cluster.cluster_id}
       `;
       let candidateCount = 0;
+      let collisionAssetCount = 0;
+      let collisionFaceCount = 0;
       if (action !== "later") {
+        const [collisionSummary] = await tx`
+          SELECT
+            count(*)::int AS collision_face_count,
+            count(DISTINCT face.asset_id)::int AS collision_asset_count
+          FROM face_cluster_member member
+          JOIN face_observation face ON face.face_id = member.face_id AND face.state = 'valid'
+          JOIN current_face_physical_member member_physical
+            ON member_physical.face_id = member.face_id
+          WHERE member.cluster_id = ${cluster.cluster_id}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_physical_member accepted_member
+              JOIN identity_claim accepted ON accepted.face_id = accepted_member.face_id
+                AND accepted.state = 'accepted'
+                AND accepted.person_id = ${selectedPersonId}
+              WHERE accepted_member.physical_face_id = member_physical.physical_face_id
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_physical_member candidate_member
+              JOIN identity_claim duplicate ON duplicate.face_id = candidate_member.face_id
+                AND duplicate.person_id = ${selectedPersonId}
+                AND duplicate.state = 'candidate'
+              WHERE candidate_member.physical_face_id = member_physical.physical_face_id
+            )
+            AND EXISTS (
+              SELECT 1
+              FROM face_observation accepted_face
+              JOIN identity_claim accepted ON accepted.face_id = accepted_face.face_id
+                AND accepted.state = 'accepted'
+                AND accepted.person_id = ${selectedPersonId}
+              WHERE accepted_face.asset_id = face.asset_id
+                AND accepted_face.state = 'valid'
+            )
+        `;
+        collisionAssetCount = Number(
+          collisionSummary?.collision_asset_count || 0,
+        );
+        collisionFaceCount = Number(
+          collisionSummary?.collision_face_count || 0,
+        );
         const inserted = await tx`
           INSERT INTO identity_claim (
             identity_claim_id, face_id, person_id, origin, state,
@@ -788,6 +831,8 @@ export const createPossiblePeopleStore = (
       return completeCommand(tx, stableCommandId, {
         candidateCount,
         changed: true,
+        collisionAssetCount,
+        collisionFaceCount,
         createdPerson,
         decisionId,
         replayed: false,

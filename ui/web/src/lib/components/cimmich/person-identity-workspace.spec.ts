@@ -1,4 +1,10 @@
-import { emptyPersonAppearanceAssets, loadPersonAppearanceAssets } from './person-identity-workspace';
+import {
+  emptyPersonAppearanceAssets,
+  identitySectionDefaultFilter,
+  identitySectionForFilter,
+  loadPersonAppearanceAssets,
+  personIdentityWorkspaceGroups,
+} from './person-identity-workspace';
 
 const mocks = vi.hoisted(() => ({
   getPersonAssetsPage: vi.fn(),
@@ -55,5 +61,28 @@ describe('person identity workspace', () => {
       presenceTotal: 0,
     });
     expect(first).not.toBe(second);
+  });
+
+  it('keeps Identity jobs in five stable sections', () => {
+    const groups = personIdentityWorkspaceGroups({
+      appearanceAssets: emptyPersonAppearanceAssets(),
+      awaitingCounts: { newMatches: 7, possibleMistags: 2 },
+      faceSummary: { all: 10, head: 1, lowQuality: 2, prime: 3, secondary: 5 },
+      loaded: true,
+      loading: false,
+      presentationSelectionCount: 2,
+    });
+
+    expect(groups.map(({ id }) => id)).toEqual(['overview', 'face', 'appearance', 'display', 'checks']);
+    expect(groups.find(({ id }) => id === 'face')?.filters.map(({ id }) => id)).toEqual([
+      'all',
+      'prime',
+      'secondary',
+      'lq',
+    ]);
+    expect(identitySectionForFilter('overview')).toBe('overview');
+    expect(identitySectionForFilter('head')).toBe('appearance');
+    expect(identitySectionForFilter('candidates')).toBe('checks');
+    expect(identitySectionDefaultFilter('face')).toBe('all');
   });
 });

@@ -79,6 +79,35 @@ type IdentityWorkspaceGroupsInput = {
   presentationSelectionCount: number;
 };
 
+export type CimmichIdentitySection = 'appearance' | 'checks' | 'display' | 'face' | 'overview';
+
+export const identitySectionForFilter = (filter: CimmichIdentityFilter): CimmichIdentitySection => {
+  if (filter === 'overview') {
+    return 'overview';
+  }
+  if (filter === 'body' || filter === 'head' || filter === 'presence') {
+    return 'appearance';
+  }
+  if (filter === 'candidates') {
+    return 'checks';
+  }
+  if (filter === 'presentation') {
+    return 'display';
+  }
+  return 'face';
+};
+
+export const identitySectionDefaultFilter = (section: CimmichIdentitySection): CimmichIdentityFilter =>
+  section === 'overview'
+    ? 'overview'
+    : section === 'appearance'
+      ? 'body'
+      : section === 'checks'
+        ? 'candidates'
+        : section === 'display'
+          ? 'presentation'
+          : 'all';
+
 export const personIdentityWorkspaceGroups = ({
   appearanceAssets: cimmichAppearanceAssets,
   awaitingCounts,
@@ -90,8 +119,13 @@ export const personIdentityWorkspaceGroups = ({
   const cimmichIdentityCountLabel = (count: number) => (loading && !loaded ? '…' : count.toLocaleString());
   return [
     {
-      id: 'references',
-      label: 'Face evidence',
+      id: 'overview',
+      label: 'Overview',
+      filters: [{ id: 'overview', label: 'Overview', count: '' }],
+    },
+    {
+      id: 'face',
+      label: 'Face',
       filters: [
         { id: 'all', label: 'All confirmed', count: cimmichIdentityCountLabel(faceSummary.all) },
         { id: 'prime', label: 'Core matching set', count: cimmichIdentityCountLabel(faceSummary.prime) },
@@ -135,8 +169,8 @@ export const personIdentityWorkspaceGroups = ({
       ],
     },
     {
-      id: 'review',
-      label: 'Review',
+      id: 'checks',
+      label: 'Checks',
       filters: [
         {
           id: 'candidates',
