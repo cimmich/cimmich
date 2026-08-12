@@ -4,7 +4,11 @@
   import CimmichUnknownPersonAction from './CimmichUnknownPersonAction.svelte';
   import type { CimmichIdentityAuditCorrectionController } from './identity-audit-correction-controller.svelte';
   import type { CimmichPhotoReviewController } from './photo-review-controller.svelte';
-  import type { CimmichPersonReviewItem, CimmichSamePhotoCollisionGroup } from './same-photo-collision-review';
+  import {
+    currentIdentityComparison,
+    type CimmichPersonReviewItem,
+    type CimmichSamePhotoCollisionGroup,
+  } from './same-photo-collision-review';
 
   interface Props {
     correction: CimmichIdentityAuditCorrectionController;
@@ -91,12 +95,13 @@
         <div class="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
           {#each collision.items as item (`collision:${item.faceId}`)}
             {@const closestMatches = correction.matchesFor(item)}
+            {@const currentComparison = currentIdentityComparison(item, closestMatches)}
             <section
               class="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-black/10"
             >
               <CimmichReviewPhotoMedia
                 busy={Boolean(savingId || photoReview.savingId)}
-                contextLabel={`Face region · ${Math.round(item.suggestedPerson.score * 100)}% match`}
+                contextLabel={`Original proposal · ${Math.round(item.suggestedPerson.score * 100)}% similarity`}
                 filename={item.filename}
                 href={item.sourceAssetId
                   ? Route.viewCimmichPersonAsset({
@@ -118,20 +123,31 @@
               />
               <div class="grid gap-2 p-3">
                 <div>
-                  <p class="text-sm font-semibold">Could this Face be {personName}?</p>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    Match {item.suggestedPerson.score.toFixed(2)}
-                    {item.samePhotoAcceptedCount ? ` · ${personName} is already confirmed elsewhere in this photo` : ''}
-                  </p>
+                  {#if currentComparison.decisiveDisagreement && currentComparison.leader}
+                    <p class="text-sm font-semibold">
+                      Current evidence points to {currentComparison.leader.display_name}
+                    </p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      Original proposal: {personName} · {matchPercent(item.suggestedPerson.score)} similarity
+                    </p>
+                  {:else}
+                    <p class="text-sm font-semibold">Could this Face be {personName}?</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      Source similarity {item.suggestedPerson.score.toFixed(2)}
+                      {item.samePhotoAcceptedCount
+                        ? ` · ${personName} is already confirmed elsewhere in this photo`
+                        : ''}
+                    </p>
+                  {/if}
                 </div>
                 <div
                   class="grid gap-1.5 rounded-lg border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-black/20"
                 >
                   <div class="flex items-center justify-between gap-2">
                     <p class="text-[11px] font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
-                      Closest known People
+                      Current accepted-Face comparison
                     </p>
-                    <span class="text-[10px] text-gray-400">Comparison only</span>
+                    <span class="text-[10px] text-gray-400">Similarity, not probability</span>
                   </div>
                   {#if correction.loading(item)}
                     <p class="text-xs text-gray-500 dark:text-gray-400">Comparing this Face…</p>
@@ -155,7 +171,7 @@
                           >
                             <span class="truncate font-semibold">
                               {match.display_name}
-                              {match.person_id === item.suggestedPerson.personId ? ' · proposed' : ''}
+                              {match.person_id === item.suggestedPerson.personId ? ' · original proposal' : ''}
                             </span>
                             <span class="text-gray-500 tabular-nums dark:text-gray-400">
                               {matchPercent(match.similarity ?? match.prime_score)}
@@ -198,14 +214,33 @@
                   {/if}
                 </div>
                 {#if item.kind === 'untagged_match'}
-                  <button
-                    class="min-h-10 rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-                    type="button"
-                    disabled={Boolean(savingId)}
-                    onclick={() => onConfirm(item)}
-                  >
-                    {savingId === `confirm:${item.faceId}` ? 'Saving…' : `Confirm ${personName}`}
-                  </button>
+                  {#if currentComparison.decisiveDisagreement && currentComparison.leader}
+                    <button
+                      class="min-h-10 rounded-md bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                      type="button"
+                      disabled={Boolean(savingId)}
+                      onclick={() => correction.toggleComparison(item, currentComparison.leader?.person_id ?? '')}
+                    >
+                      Review {currentComparison.leader.display_name}
+                    </button>
+                    <button
+                      class="min-h-10 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold hover:bg-white disabled:opacity-40 dark:border-gray-600 dark:hover:bg-gray-800"
+                      type="button"
+                      disabled={Boolean(savingId)}
+                      onclick={() => onConfirm(item)}
+                    >
+                      {savingId === `confirm:${item.faceId}` ? 'Saving…' : `Confirm original proposal: ${personName}`}
+                    </button>
+                  {:else}
+                    <button
+                      class="min-h-10 rounded-md bg-immich-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                      type="button"
+                      disabled={Boolean(savingId)}
+                      onclick={() => onConfirm(item)}
+                    >
+                      {savingId === `confirm:${item.faceId}` ? 'Saving…' : `Confirm ${personName}`}
+                    </button>
+                  {/if}
                   <CimmichUnknownPersonAction
                     busy={Boolean(savingId)}
                     faceId={item.faceId}

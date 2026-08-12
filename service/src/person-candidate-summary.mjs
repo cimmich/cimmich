@@ -35,11 +35,11 @@ export const createPersonCandidateSummary = (sql, { presentationRank }) =>
           max(nullif(claim.evidence_refs->>'best_score', '')::float8)::float8 AS best_score,
           max(nullif(claim.evidence_refs->>'margin', '')::float8)::float8 AS best_margin
         FROM identity_claim claim
-        -- Review claims against the exact evaluated pack that produced them.
-        -- Pack retirement removes generation authority, not review history.
+        -- Review claims only while the exact evaluated pack that produced
+        -- them remains active. Retired proposals remain superseded history.
         LEFT JOIN source_pack pack
           ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
-          AND pack.state IN ('active', 'retired')
+          AND pack.state = 'active'
           AND pack.evaluation_status = 'passed'
           AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
             claim.evidence_refs->>'policy_version'

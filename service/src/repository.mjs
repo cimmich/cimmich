@@ -5265,11 +5265,13 @@ export const createCimmichRepository = (
             CASE WHEN accepted.person_id = claim.person_id THEN 1 ELSE 0 END
         )::int AS same_photo_accepted_count
       FROM identity_claim claim
-      -- A retired pack must stop producing new matches, but the immutable
-      -- candidate claims it already produced remain a human review queue.
+      -- A machine proposal is reviewable only while the exact evaluated pack
+      -- that produced it remains active. Migration 0131 supersedes proposals
+      -- transactionally when their pack retires; this join is read-side
+      -- defense against impossible stale rows.
       LEFT JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
-        AND pack.state IN ('active', 'retired')
+        AND pack.state = 'active'
         AND pack.evaluation_status = 'passed'
         AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
           claim.evidence_refs->>'policy_version'

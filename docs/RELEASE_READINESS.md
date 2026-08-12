@@ -3,7 +3,7 @@
 Updated: 2026-08-11
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
-Current development source: migration-ledger schema 130/patch 1
+Current development source: migration-ledger schema 131/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
@@ -535,7 +535,11 @@ Schema 130 durably records both ranked-query and independent-verification
 frontiers on every identity-audit run. The owner surface reports partial audit
 coverage explicitly, and legacy runs state that they predate complete limit
 reporting rather than presenting a bounded queue as exhaustive.
-The Community Preview 8 release remains schema 128; schema 130 is current local
+Schema 131 transactionally supersedes Prime identity candidates whenever their
+SourcePack stops being active, rejects new candidates from stale or
+policy-mismatched packs, and requires the active pack at every review/accept
+read boundary. Historical proposals remain auditable but cannot stay actionable.
+The Community Preview 8 release remains schema 128; schema 131 is current local
 development source pending full lifecycle and live-runtime certification.
 
 ## Historical Public Beta Patch 6 certification

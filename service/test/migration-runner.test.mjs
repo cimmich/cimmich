@@ -1208,3 +1208,21 @@ test("schema 130 persists owner-visible identity audit truncation counts", async
   assert.match(source, /identity_audit_independence_verified_bound/);
   assert.match(source, /truncation_projection_complete/);
 });
+
+test("schema 131 retires stale SourcePack proposals at the database boundary", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0131_source_pack_candidate_freshness_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /source_pack_retires_candidates/);
+  assert.match(source, /identity_candidate_source_pack_freshness/);
+  assert.match(source, /FOR SHARE/);
+  assert.match(source, /source_pack_not_active/);
+  assert.match(source, /state = 'superseded'/);
+  assert.match(source, /coalesce\(pack\.state, 'missing'\) <> 'active'/);
+});

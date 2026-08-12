@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { samePhotoCollisionReview, type CimmichPersonReviewItem } from './same-photo-collision-review';
+import {
+  currentIdentityComparison,
+  samePhotoCollisionReview,
+  type CimmichPersonReviewItem,
+} from './same-photo-collision-review';
 
 const reviewItem = (faceId: string, assetId = 'asset-1'): CimmichPersonReviewItem => ({
   assetId,
@@ -48,5 +52,39 @@ describe('samePhotoCollisionReview', () => {
     const sidecar = { ...reviewItem('face-sidecar'), physicalFaceId: 'face-detector' };
 
     expect(samePhotoCollisionReview([detector, sidecar]).groups).toEqual([]);
+  });
+});
+
+describe('currentIdentityComparison', () => {
+  const match = (person_id: string, display_name: string, similarity: number, rank: number) => ({
+    accepted_example_count: 1,
+    current_identity: false,
+    display_name,
+    person_id,
+    prime_score: similarity,
+    rank,
+    reference_face_id: `face-${person_id}`,
+    score_kind: 'cosine_similarity' as const,
+    similarity,
+    unavailable_reason: null,
+  });
+
+  it('identifies a decisive live disagreement with the original proposal', () => {
+    const result = currentIdentityComparison(reviewItem('face-1'), [
+      match('person-hollie', 'Hollie', 0.999_999, 1),
+      match('person-chloe', 'Chloe', 0.8, 2),
+    ]);
+
+    expect(result.decisiveDisagreement).toBe(true);
+    expect(result.leader?.display_name).toBe('Hollie');
+  });
+
+  it('does not displace the original proposal for a narrow comparison lead', () => {
+    const result = currentIdentityComparison(reviewItem('face-1'), [
+      match('person-hollie', 'Hollie', 0.84, 1),
+      match('person-chloe', 'Chloe', 0.8, 2),
+    ]);
+
+    expect(result.decisiveDisagreement).toBe(false);
   });
 });

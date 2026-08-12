@@ -1,4 +1,8 @@
-import type { CimmichIdentityAuditItem, CimmichIdentityCandidate } from '$lib/services/cimmich.service';
+import type {
+  CimmichFaceOwnerReviewMatch,
+  CimmichIdentityAuditItem,
+  CimmichIdentityCandidate,
+} from '$lib/services/cimmich.service';
 
 export type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
   candidateClaimId?: string;
@@ -18,6 +22,28 @@ export const physicalReviewKey = (item: CimmichPersonReviewItem) => item.physica
 export type CimmichSamePhotoCollisionGroup = {
   assetId: string;
   items: CimmichPersonReviewItem[];
+};
+
+const comparisonScore = (match: CimmichFaceOwnerReviewMatch | undefined) =>
+  match?.similarity ?? match?.prime_score ?? null;
+
+export const currentIdentityComparison = (
+  item: CimmichPersonReviewItem,
+  matches: CimmichFaceOwnerReviewMatch[],
+  disagreementMargin = 0.08,
+) => {
+  const leader = matches[0];
+  const proposed = matches.find(({ person_id }) => person_id === item.suggestedPerson.personId);
+  const leaderScore = comparisonScore(leader);
+  const proposedScore = comparisonScore(proposed);
+  const decisiveDisagreement = Boolean(
+    leader &&
+    leader.person_id !== item.suggestedPerson.personId &&
+    leaderScore !== null &&
+    proposedScore !== null &&
+    leaderScore - proposedScore >= disagreementMargin,
+  );
+  return { decisiveDisagreement, leader, leaderScore, proposed, proposedScore };
 };
 
 export const retainedCollisionAssetIds = (

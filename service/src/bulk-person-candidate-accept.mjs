@@ -70,7 +70,7 @@ export const createBulkPersonCandidateAcceptor = ({
             ON physical.face_id = claim.face_id
           LEFT JOIN source_pack pack
             ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
-            AND pack.state IN ('active', 'retired')
+            AND pack.state = 'active'
             AND pack.evaluation_status = 'passed'
             AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
               claim.evidence_refs->>'policy_version'

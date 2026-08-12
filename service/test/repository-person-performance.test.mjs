@@ -3,7 +3,7 @@ import test from "node:test";
 import { createCimmichRepository } from "../src/repository.mjs";
 import { createFragmentAwareSql } from "./fixtures/fragment-aware-sql.mjs";
 
-test("Person candidate summary retains review claims from a retired passed SourcePack", async () => {
+test("Person candidate summary exposes only current active passed SourcePack claims", async () => {
   let statement = "";
   let boundValues = [];
   const sql = async (strings, ...values) => {
@@ -56,7 +56,8 @@ test("Person candidate summary retains review claims from a retired passed Sourc
     totalPeople: 2,
   });
   assert.match(statement, /JOIN source_pack pack/);
-  assert.match(statement, /pack\.state IN \('active', 'retired'\)/);
+  assert.match(statement, /pack\.state = 'active'/);
+  assert.doesNotMatch(statement, /pack\.state IN \('active', 'retired'\)/);
   assert.doesNotMatch(statement, /JOIN current_source_pack pack/);
   assert.match(statement, /cimmich_person_candidate_reviewable/);
   assert.match(statement, /claim\.state = 'candidate'/);
@@ -102,7 +103,7 @@ test("Person candidate summary cannot revive a retired Possible-people graph", a
   assert.doesNotMatch(source, /WHERE decided\.face_id = member\.face_id/);
 });
 
-test("Person candidate detail and acceptance retain the same passed-pack review boundary", async () => {
+test("Person candidate detail and acceptance require the same active passed-pack boundary", async () => {
   const { readFile } = await import("node:fs/promises");
   const [source, acceptanceSource] = await Promise.all([
     readFile(new URL("../src/repository.mjs", import.meta.url), "utf8"),
@@ -120,8 +121,9 @@ test("Person candidate detail and acceptance retain the same passed-pack review 
   ];
   for (const method of slices) {
     assert.match(method, /JOIN source_pack pack/);
-    assert.match(method, /pack\.state IN \('active', 'retired'\)/);
+    assert.match(method, /pack\.state = 'active'/);
     assert.match(method, /pack\.evaluation_status = 'passed'/);
+    assert.doesNotMatch(method, /pack\.state IN \('active', 'retired'\)/);
     assert.doesNotMatch(method, /JOIN current_source_pack pack/);
   }
 });

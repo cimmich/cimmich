@@ -114,7 +114,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('const cimmichPersonReviewItems');
     expect(source).toContain('const cimmichSamePhotoCollisionGroups');
     expect(source).toContain('Multiple matches in one photo');
-    expect(source).toContain('Closest known People');
+    expect(source).toContain('Current accepted-Face comparison');
+    expect(source).toContain('Similarity, not probability');
     expect(source).toContain('A collage or reflection can genuinely contain');
     expect(source).toContain('correction.preload(groups.flatMap');
     expect(source).toContain('getCimmichFaceMatchesBatch(');

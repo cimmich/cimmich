@@ -16,10 +16,12 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 130 without rewriting the schema-128
+Public Beta development continues on schema 131 without rewriting the schema-128
 Community Preview 8 release. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
-schema 130 makes bounded identity-audit coverage durable and owner-visible.
+schema 130 makes bounded identity-audit coverage durable and owner-visible;
+schema 131 prevents retired SourcePacks from leaving obsolete identity proposals
+actionable while preserving them as superseded review history.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

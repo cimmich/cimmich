@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 130. Schema 76 adds
+patch level 1. Current post-submission source is schema 131. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -213,6 +213,11 @@ Schema 130 records the eligible and admitted work at both identity-audit
 frontiers. Completed runs now project whether query ranking or independent
 image verification was bounded, and legacy runs explicitly request a fresh
 audit instead of silently presenting an incomplete queue as exhaustive.
+Schema 131 makes machine identity proposals lifecycle-current. When a
+SourcePack retires or is removed, every outstanding Prime candidate it produced
+is superseded with an auditable policy decision; the database rejects new
+candidates from an inactive, unevaluated or policy-mismatched pack, and review
+and bulk-accept reads require the exact active pack as defense in depth.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound
