@@ -23,4 +23,12 @@ describe('Cimmich navigation mode switch', () => {
       });
     },
   );
+
+  it('keeps Immich branding and Home behavior in the familiar companion experience', () => {
+    expect(cimmichModeSwitch('/cimmich/people', false, false)).toEqual({
+      cimmich: false,
+      href: '/photos',
+      label: 'Immich home',
+    });
+  });
 });

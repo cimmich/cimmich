@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 describe('Cimmich navigation shell contract', () => {
-  it('keeps Immich branding in Immich mode and exposes Cimmich branding as the mode switch', async () => {
+  it('offers the familiar nested shell by default and the dedicated Frontier Workspace by choice', async () => {
     const [navigation, layout, people, shell, cimmichSidebar, immichSidebar] = await Promise.all([
       readFile('src/lib/components/shared-components/navigation-bar/NavigationBar.svelte', 'utf8'),
       readFile('src/lib/components/layouts/UserPageLayout.svelte', 'utf8'),
@@ -11,7 +11,8 @@ describe('Cimmich navigation shell contract', () => {
       readFile('src/lib/components/shared-components/side-bar/ImmichSidebar.svelte', 'utf8'),
     ]);
 
-    expect(navigation).toContain('cimmichModeSwitch(page.url.pathname, libraryContext)');
+    expect(navigation).toContain("$cimmichExperience === 'frontier'");
+    expect(navigation).toContain('cimmichModeSwitch(');
     expect(navigation).toContain('<CimmichTopSearch />');
     expect(navigation).toContain('modeSwitch.cimmich ? Route.cimmichSmartSearch() : Route.search()');
     expect(navigation).toContain('src="/cimmich-logo.png"');
@@ -24,9 +25,10 @@ describe('Cimmich navigation shell contract', () => {
       'class:grid-cols-[--spacing(64)_auto]={sidebarStore.isOpen && mediaQueryManager.isFullSidebar}',
     );
     expect(people).not.toContain('initiallyExpanded');
+    expect(shell).toContain("$cimmichExperience === 'frontier'");
     expect(shell).toContain("isCimmichMode(page.url.pathname, page.url.searchParams.has('organise'))");
     expect(shell).toContain('<CimmichSidebar />');
-    expect(shell).toContain('<ImmichSidebar />');
+    expect(shell).toContain("<ImmichSidebar includeCimmich={$cimmichExperience === 'companion'} />");
     expect(cimmichSidebar).toContain('title="Home"');
     expect(cimmichSidebar).toContain('href={Route.cimmichHome()}');
     expect(cimmichSidebar).toContain('title="Library"');
@@ -36,7 +38,12 @@ describe('Cimmich navigation shell contract', () => {
     expect(cimmichSidebar).toContain('title="Settings"');
     expect(cimmichSidebar).not.toContain('title="Smart Search"');
     expect(cimmichSidebar).not.toContain('bind:expanded');
-    expect(immichSidebar).not.toContain('Cimmich');
-    expect(immichSidebar).not.toContain('Route.cimmich');
+    expect(immichSidebar).toContain('{#if includeCimmich}');
+    expect(immichSidebar).toContain('title="Cimmich"');
+    expect(immichSidebar).toContain('href={Route.cimmichHome()}');
+    expect(immichSidebar).toContain('bind:expanded={$cimmichCompanionDropdown}');
+    expect(immichSidebar).toContain("{ title: 'Smart Search', href: Route.cimmichSmartSearch()");
+    expect(immichSidebar).toContain("{ title: 'Review', href: Route.cimmichSteward()");
+    expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });

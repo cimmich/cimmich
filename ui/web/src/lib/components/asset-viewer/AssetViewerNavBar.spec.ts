@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getResizeObserverMock } from '$lib/__mocks__/resize-observer.mock';
 import { authManager } from '$lib/managers/auth-manager.svelte';
+import { cimmichLocalAiExperiment } from '$lib/stores/cimmich-experience.store';
 import { renderWithTooltips } from '$tests/helpers';
 import { assetFactory } from '@test-data/factories/asset-factory';
 import { preferencesFactory } from '@test-data/factories/preferences-factory';
@@ -65,6 +66,7 @@ describe('AssetViewerNavBar component', () => {
 
   afterEach(() => {
     authManager.reset();
+    cimmichLocalAiExperiment.set(false);
     appState.url = new URL('http://localhost/photos/asset-1');
   });
 
@@ -105,10 +107,23 @@ describe('AssetViewerNavBar component', () => {
     expect(source).not.toContain('Immich · All visible</span>');
   });
 
-  it('shows Local AI when Library opens a photo with the Cimmich organise marker', () => {
+  it('keeps Local AI hidden until the separate experiment is enabled', () => {
     const owner = userAdminFactory.build();
     authManager.setUser(owner);
     authManager.setPreferences(preferencesFactory.build({ cast: { gCastEnabled: false } }));
+    appState.url = new URL('http://localhost/photos/asset-1?organise=1');
+
+    const asset = assetFactory.build({ isTrashed: false, ownerId: owner.id, type: AssetTypeEnum.Image });
+    const { queryByLabelText } = renderWithTooltips(AssetViewerNavBar, { asset, ...additionalProps });
+
+    expect(queryByLabelText('Open Local AI review')).not.toBeInTheDocument();
+  });
+
+  it('shows Local AI when its experiment is enabled on a Cimmich photo surface', () => {
+    const owner = userAdminFactory.build();
+    authManager.setUser(owner);
+    authManager.setPreferences(preferencesFactory.build({ cast: { gCastEnabled: false } }));
+    cimmichLocalAiExperiment.set(true);
     appState.url = new URL('http://localhost/photos/asset-1?organise=1');
 
     const asset = assetFactory.build({ isTrashed: false, ownerId: owner.id, type: AssetTypeEnum.Image });

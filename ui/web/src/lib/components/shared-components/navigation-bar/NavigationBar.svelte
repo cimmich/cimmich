@@ -18,6 +18,7 @@
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { notificationManager } from '$lib/stores/notification-manager.svelte';
   import { sidebarStore } from '$lib/stores/sidebar.svelte';
+  import { cimmichExperience } from '$lib/stores/cimmich-experience.store';
   import { ActionButton, Button, IconButton, Logo } from '@immich/ui';
   import { mdiBellBadge, mdiBellOutline, mdiMagnify, mdiMenu, mdiTrayArrowUp } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -39,7 +40,7 @@
   let innerWidth: number = $state(0);
   const hasUnreadNotifications = $derived(notificationManager.notifications.length > 0);
   const libraryContext = $derived(page.url.searchParams.has('organise'));
-  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname, libraryContext));
+  const modeSwitch = $derived(cimmichModeSwitch(page.url.pathname, libraryContext, $cimmichExperience === 'frontier'));
   const showInlineBrand = $derived(mediaQueryManager.isFullSidebar && sidebarStore.isOpen);
 
   onMount(async () => {
@@ -182,7 +183,7 @@
           <ActionButton action={Cast} />
         </div>
 
-        {#if modeSwitch.cimmich && !page.url.pathname.includes('/admin')}
+        {#if ($cimmichExperience === 'companion' || modeSwitch.cimmich) && !page.url.pathname.includes('/admin')}
           <div class="ms-1 border-s border-gray-200 ps-1 dark:border-gray-700">
             <CimmichViewingMode />
           </div>

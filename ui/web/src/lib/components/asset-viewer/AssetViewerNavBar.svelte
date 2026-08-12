@@ -26,6 +26,7 @@
   import { getAlbumAssetActions } from '$lib/services/album.service';
   import { getGlobalActions } from '$lib/services/app.service';
   import { getAssetActions } from '$lib/services/asset.service';
+  import { cimmichLocalAiExperiment } from '$lib/stores/cimmich-experience.store';
   import { getSharedLink, withoutIcons } from '$lib/utils';
   import type { OnUndoDelete } from '$lib/utils/actions';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -129,7 +130,7 @@
           <span class="text-xs font-semibold"><span class="hidden md:inline">This </span>photo</span>
           <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />
         </div>
-        {#if isOwner && asset.type === AssetTypeEnum.Image}
+        {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
           <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
         {/if}
       {/if}

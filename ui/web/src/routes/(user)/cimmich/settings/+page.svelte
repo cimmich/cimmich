@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CimmichExperienceSettings from '$lib/components/cimmich/CimmichExperienceSettings.svelte';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { Route } from '$lib/route';
@@ -37,6 +38,8 @@
         Control Cimmich's library boundary and local intelligence without changing Immich's own settings.
       </p>
     </header>
+
+    <CimmichExperienceSettings />
 
     <section
       class="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"

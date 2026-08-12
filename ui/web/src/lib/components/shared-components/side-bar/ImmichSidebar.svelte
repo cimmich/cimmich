@@ -6,6 +6,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { Route } from '$lib/route';
+  import { cimmichCompanionDropdown } from '$lib/stores/cimmich-experience.store';
   import { recentAlbumsDropdown } from '$lib/stores/preferences.store';
   import { NavbarGroup, NavbarItem } from '@immich/ui';
   import {
@@ -15,6 +16,10 @@
     mdiAccountOutline,
     mdiArchiveArrowDown,
     mdiArchiveArrowDownOutline,
+    mdiCalendarBlankOutline,
+    mdiClipboardCheckOutline,
+    mdiCogOutline,
+    mdiFileDocumentOutline,
     mdiFolderOutline,
     mdiHeart,
     mdiHeartOutline,
@@ -27,6 +32,10 @@
     mdiMagnify,
     mdiMap,
     mdiMapOutline,
+    mdiPackageVariantClosed,
+    mdiPawOutline,
+    mdiShieldCheckOutline,
+    mdiTextSearch,
     mdiTagMultipleOutline,
     mdiToolbox,
     mdiToolboxOutline,
@@ -36,6 +45,12 @@
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { fly } from 'svelte/transition';
+
+  interface Props {
+    includeCimmich?: boolean;
+  }
+
+  let { includeCimmich = false }: Props = $props();
 
   const isOrganiseContext = () => page.url.searchParams.has('organise');
 </script>
@@ -59,6 +74,30 @@
 
   {#if authManager.preferences.people.enabled && authManager.preferences.people.sidebarWeb}
     <NavbarItem title={$t('people')} href={Route.people()} icon={mdiAccountOutline} activeIcon={mdiAccount} />
+  {/if}
+
+  {#if includeCimmich}
+    <NavbarItem
+      title="Cimmich"
+      href={Route.cimmichHome()}
+      icon={mdiAccountMultipleOutline}
+      activeIcon={mdiAccountMultiple}
+      isActive={() => isOrganiseContext() || page.url.pathname.startsWith(Route.cimmichHome())}
+      bind:expanded={$cimmichCompanionDropdown}
+      items={[
+        { title: 'Library', href: Route.cimmichLibrary(), icon: mdiImageMultipleOutline },
+        { title: 'People', href: Route.cimmichPeople(), icon: mdiAccountOutline, activeIcon: mdiAccount },
+        { title: 'Pets', href: Route.cimmichPets(), icon: mdiPawOutline },
+        { title: 'Places', href: Route.cimmichPlaces(), icon: mdiMapOutline, activeIcon: mdiMap },
+        { title: 'Things', href: Route.cimmichThings(), icon: mdiPackageVariantClosed },
+        { title: 'Events', href: Route.cimmichEvents(), icon: mdiCalendarBlankOutline },
+        { title: 'Documents', href: Route.cimmichDocuments(), icon: mdiFileDocumentOutline },
+        { title: 'Smart Search', href: Route.cimmichSmartSearch(), icon: mdiTextSearch },
+        { title: 'Review', href: Route.cimmichSteward(), icon: mdiClipboardCheckOutline },
+        { title: 'Archive Health', href: Route.cimmichArchiveIntegrity(), icon: mdiShieldCheckOutline },
+        { title: 'Settings', href: Route.cimmichSettings(), icon: mdiCogOutline },
+      ]}
+    />
   {/if}
 
   {#if authManager.preferences.sharedLinks.enabled && authManager.preferences.sharedLinks.sidebarWeb}
