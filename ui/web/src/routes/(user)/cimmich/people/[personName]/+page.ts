@@ -15,7 +15,12 @@ export const load = (async ({ params, url }) => {
     personId: url.searchParams.get('personId') || '',
     personName: decodeURIComponent(params.personName),
     mode:
-      mode === 'connections' || mode === 'details' || mode === 'documents' || mode === 'identity' || mode === 'setup'
+      mode === 'connections' ||
+      mode === 'details' ||
+      mode === 'documents' ||
+      mode === 'evidence' ||
+      mode === 'identity' ||
+      mode === 'setup'
         ? mode
         : 'photos',
     identityFilter:

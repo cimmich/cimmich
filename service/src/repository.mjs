@@ -46,6 +46,7 @@ import { loadFaceReviewComparisonBatch } from "./face-review-comparison-reposito
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
+import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
@@ -937,6 +938,10 @@ export const createCimmichRepository = (
     }
     return subject;
   };
+  const personEvidenceCoverage = createPersonEvidenceCoverageStore(sql, {
+    presentationRank,
+    requireVisibleSubject,
+  });
   const conditionConsensusReviewEnabled =
     options.conditionConsensusReviewEnabled === true;
   const allTrustedShortlistReviewEnabled =
@@ -10148,6 +10153,9 @@ export const createCimmichRepository = (
   Object.assign(repository, assetLabels);
   Object.assign(repository, bulkAlbumOperations);
   Object.assign(repository, exploreFacets);
+  Object.assign(repository, {
+    personEvidenceCoverage: personEvidenceCoverage.read,
+  });
   attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {
     petMatchImport: petMatching.importBatch,

@@ -343,6 +343,39 @@ test("Person connections are read before the generic Person route", async () => 
   ]);
 });
 
+test("Person evidence coverage is read before the generic Person route", async () => {
+  const calls = [];
+  const projection = {
+    person: { displayName: "Maya", personId: "person-maya" },
+    schemaVersion: "cimmich.person-evidence-coverage.v1",
+  };
+  const repository = {
+    personEvidenceCoverage: async (input) => {
+      calls.push(["evidence", input]);
+      return projection;
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/people/person-maya/evidence-coverage`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), projection);
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "people"],
+    ["evidence", { personId: "person-maya" }],
+  ]);
+});
+
 test("companion routes expose status, explicit visibility pages and exact assets", async () => {
   const calls = [];
   const immichCompanion = {

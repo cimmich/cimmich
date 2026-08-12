@@ -2,16 +2,16 @@
   import { page } from '$app/state';
   import CimmichExploreFilters from '$lib/components/cimmich/CimmichExploreFilters.svelte';
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
+  import CimmichPersonEvidenceCoverage from '$lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte';
+  import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
-  import { keyboardTabs } from '$lib/components/cimmich/keyboard-tabs';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
   import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
   import CimmichKnownPersonClusters from '$lib/components/cimmich/CimmichKnownPersonClusters.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
-  import CimmichIdentityWaitingBadges from '$lib/components/cimmich/CimmichIdentityWaitingBadges.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
@@ -106,6 +106,7 @@
     getCimmichPeople,
     getCimmichPersonByName,
     getCimmichPersonConnections,
+    getCimmichPersonEvidenceCoverage,
     getCimmichPersonCandidates,
     getCimmichPersonProfile,
     getCimmichPersonPresentation,
@@ -141,6 +142,7 @@
     type CimmichPersonContextConnection,
     type CimmichPersonDetailsDisplay,
     type CimmichPersonDetailsDisplayDefaults,
+    type CimmichPersonEvidenceCoverage as CimmichPersonEvidenceCoverageProjection,
     type CimmichPersonProfileDisplay,
     type CimmichPersonProfileDisplayDefaults,
     type CimmichPersonProfileFieldKey,
@@ -295,6 +297,9 @@
   let cimmichLoadError = $state('');
   let cimmichMode = $state<CimmichPersonMode>(data.mode as CimmichPersonMode);
   let cimmichPerson = $state<CimmichPerson>();
+  let cimmichEvidenceCoverage = $state<CimmichPersonEvidenceCoverageProjection>();
+  let cimmichEvidenceError = $state('');
+  let cimmichEvidenceLoading = $state(false);
   let cimmichPhotoSelectionPersonId = '';
   let cimmichTabsCanScrollRight = $state(false);
   let cimmichTabsScroller = $state<HTMLDivElement>();
@@ -2370,6 +2375,29 @@
     }
   };
 
+  const openCimmichEvidence = async (generation = personProjectionGeneration) => {
+    selectCimmichMode('evidence');
+    if (!cimmichPerson || cimmichEvidenceCoverage || cimmichEvidenceLoading) {
+      return;
+    }
+    cimmichEvidenceLoading = true;
+    cimmichEvidenceError = '';
+    try {
+      const coverage = await getCimmichPersonEvidenceCoverage(cimmichPerson.person_id);
+      if (generation === personProjectionGeneration) {
+        cimmichEvidenceCoverage = coverage;
+      }
+    } catch (error) {
+      if (generation === personProjectionGeneration) {
+        cimmichEvidenceError = error instanceof Error ? error.message : 'Unable to load Evidence & coverage';
+      }
+    } finally {
+      if (generation === personProjectionGeneration) {
+        cimmichEvidenceLoading = false;
+      }
+    }
+  };
+
   const openCimmichDetails = () => {
     selectCimmichMode('details');
     if (!cimmichPerson || cimmichProfile) {
@@ -2901,6 +2929,9 @@
       if (row.needs_holding || cimmichMode === 'identity') {
         void openCimmichIdentity(generation);
       }
+      if (cimmichMode === 'evidence') {
+        void openCimmichEvidence(generation);
+      }
 
       loadPersonSecondaryProjections({
         includePresentation: cimmichMode !== 'identity',
@@ -2928,6 +2959,9 @@
   $effect(() => {
     void cimmichVisibilityManager.version;
     const generation = ++personProjectionGeneration;
+    cimmichEvidenceCoverage = undefined;
+    cimmichEvidenceError = '';
+    cimmichEvidenceLoading = false;
     cimmichKnownClusterReview.cancelPending();
     const cached = readPersonWorkspaceCache<CachedPersonWorkspace>(cimmichWorkspaceCacheKey());
     const expectedExploreKey = untrack(() => cimmichExplore.key);
@@ -2951,9 +2985,15 @@
       cimmichSetupPeople = cached.setupPeople;
       cimmichIdentityLoading = false;
       cimmichLoadError = '';
+      if (untrack(() => cimmichMode) === 'evidence') {
+        void openCimmichEvidence(generation);
+      }
       return;
     }
     cimmichPerson = undefined;
+    cimmichEvidenceCoverage = undefined;
+    cimmichEvidenceError = '';
+    cimmichEvidenceLoading = false;
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
     cimmichDirectContextConnections = [];
@@ -3225,78 +3265,21 @@
           onscroll={updateCimmichTabsOverflow}
         >
           <div class="flex min-w-max items-stretch sm:min-w-full">
-            <div class="flex shrink-0" role="tablist" aria-label="Person content" use:keyboardTabs>
-              <button
-                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'photos' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-                data-person-tab="photos"
-                type="button"
-                role="tab"
-                aria-selected={cimmichMode === 'photos'}
-                tabindex={cimmichMode === 'photos' ? 0 : -1}
-                onclick={() => selectCimmichMode('photos')}
-              >
-                Photos
-                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray"
-                  >{cimmichPerson.asset_count.toLocaleString()}</span
-                >
-              </button>
-              {#if cimmichPerson.subject_kind === 'person'}
-                <button
-                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-                  data-person-tab="details"
-                  type="button"
-                  role="tab"
-                  aria-selected={cimmichMode === 'details'}
-                  tabindex={cimmichMode === 'details' ? 0 : -1}
-                  onclick={openCimmichDetails}
-                >
-                  Details
-                </button>
-                <button
-                  class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'connections' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-                  data-person-tab="connections"
-                  type="button"
-                  role="tab"
-                  aria-selected={cimmichMode === 'connections'}
-                  tabindex={cimmichMode === 'connections' ? 0 : -1}
-                  onclick={() => void openCimmichConnections()}
-                >
-                  Connections
-                  {#if cimmichPeopleConnections.length + cimmichPersonConnections.length > 0}
-                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-immich-dark-gray">
-                      {(cimmichPeopleConnections.length + cimmichPersonConnections.length).toLocaleString()}
-                    </span>
-                  {/if}
-                </button>
-              {/if}
-              <button
-                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'identity' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-                data-person-tab="identity"
-                type="button"
-                role="tab"
-                aria-selected={cimmichMode === 'identity'}
-                tabindex={cimmichMode === 'identity' ? 0 : -1}
-                onclick={() => void openCimmichIdentity()}
-              >
-                Identity
-                <CimmichIdentityWaitingBadges
-                  newMatches={cimmichAwaitingCounts.newMatches}
-                  possibleMistags={cimmichAwaitingCounts.possibleMistags}
-                  waitingHint={cimmichAwaitingCountHint}
-                />
-              </button>
-              <button
-                class={`inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold sm:px-4 ${cimmichMode === 'documents' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg'}`}
-                data-person-tab="documents"
-                type="button"
-                role="tab"
-                aria-selected={cimmichMode === 'documents'}
-                tabindex={cimmichMode === 'documents' ? 0 : -1}
-                onclick={() => selectCimmichMode('documents')}
-              >
-                Documents
-              </button>
-            </div>
+            <CimmichPersonPrimaryTabs
+              assetCount={cimmichPerson.asset_count}
+              connectionCount={cimmichPeopleConnections.length + cimmichPersonConnections.length}
+              mode={cimmichMode}
+              newMatches={cimmichAwaitingCounts.newMatches}
+              onconnections={() => void openCimmichConnections()}
+              ondetails={openCimmichDetails}
+              ondocuments={() => selectCimmichMode('documents')}
+              onevidence={() => void openCimmichEvidence()}
+              onidentity={() => void openCimmichIdentity()}
+              onphotos={() => selectCimmichMode('photos')}
+              possibleMistags={cimmichAwaitingCounts.possibleMistags}
+              subjectKind={cimmichPerson.subject_kind}
+              waitingHint={cimmichAwaitingCountHint}
+            />
 
             {#if cimmichMode === 'photos'}
               <div class="my-2 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></div>
@@ -3522,6 +3505,26 @@
             </p>
           {/if}
         </section>
+      {:else if cimmichMode === 'evidence'}
+        {#if cimmichEvidenceCoverage}
+          <CimmichPersonEvidenceCoverage
+            coverage={cimmichEvidenceCoverage}
+            onopenidentity={() => void openCimmichIdentity()}
+            onopenphotos={() => selectCimmichMode('photos')}
+          />
+        {:else if cimmichEvidenceError}
+          <CimmichStatePanel
+            description={cimmichEvidenceError}
+            tone="error"
+            title="Evidence & coverage is unavailable"
+          />
+        {:else}
+          <CimmichStatePanel
+            description="Reading accepted records…"
+            tone="loading"
+            title="Loading Evidence & coverage"
+          />
+        {/if}
       {:else if cimmichMode === 'connections'}
         <section class="grid gap-4" aria-label="Connections">
           {#if cimmichConnectionError}

@@ -13,7 +13,7 @@ const newFileLineLimit = 1_000;
 // a domain is extracted, and do not add new entries.
 const legacyCeilings = new Map([
   ["service/src/repository.mjs", 10_318],
-  ["ui/web/src/lib/components/cimmich/CimmichPhotoOverlay.svelte", 7_344],
+  ["ui/web/src/lib/components/cimmich/CimmichPhotoOverlay.svelte", 6_402],
   ["ui/web/src/lib/components/cimmich/CimmichContextBrowser.svelte", 6_511],
   ["ui/web/src/routes/(user)/cimmich/people/[personName]/+page.svelte", 5_875],
   ["service/src/context-entities.mjs", 4_484],

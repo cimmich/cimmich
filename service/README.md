@@ -333,6 +333,16 @@ Presence association. Future captures are excluded from the range and counted
 separately; undated images and non-image media affect neither. This is a read
 aggregate, not Profile persistence or source metadata repair.
 
+`GET /v1/people/:personId/evidence-coverage` exposes the read-only
+`cimmich.person-evidence-coverage.v1` projection. It counts only visible active
+assets and accepted Face, standalone Head, Body and Presence ledgers; persisted
+pose is counted only for an accepted Body. It also returns the accepted
+reference-role split, capture-year spread, up to six visible context entities
+per family, pending candidate/date/pose notes and at most six strong accepted
+Face sources from different years. The projection has no inference, write,
+source-mutation or automatic identity authority. See
+`docs/PERSON_EVIDENCE_COVERAGE.md`.
+
 Holding hints are separately bounded by
 `cimmich.person-holding-match-batch.v1`:
 

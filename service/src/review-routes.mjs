@@ -266,6 +266,21 @@ export const createReviewRoutes =
       );
       return true;
     }
+    const personEvidenceCoverageMatch = url.pathname.match(
+      /^\/v1\/people\/([^/]+)\/evidence-coverage$/,
+    );
+    if (request.method === "GET" && personEvidenceCoverageMatch) {
+      requireProjection("people");
+      sendJson(
+        response,
+        200,
+        await repository.personEvidenceCoverage({
+          personId: decodeURIComponent(personEvidenceCoverageMatch[1]),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
     if (
       request.method === "POST" &&
       url.pathname === "/v1/faces/matches:batch"

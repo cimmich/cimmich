@@ -5,6 +5,7 @@ import { createCimmichExploreClient } from './cimmich-explore.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
 import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-coverage.types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
 
@@ -22,6 +23,10 @@ export type {
 } from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 export type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
+export type {
+  CimmichPersonEvidenceCoverage,
+  CimmichPersonEvidenceCoverageContext,
+} from './cimmich-person-evidence-coverage.types';
 export type CimmichSummary = {
   accepted_presence: number;
   assets: number;
@@ -3678,6 +3683,9 @@ export const getCimmichPersonConnections = async (personId: string) => {
   }>(`/v1/people/${encodeURIComponent(personId)}/connections`);
   return result.items;
 };
+
+export const getCimmichPersonEvidenceCoverage = (personId: string) =>
+  request<CimmichPersonEvidenceCoverage>(`/v1/people/${encodeURIComponent(personId)}/evidence-coverage`);
 
 export const getCimmichXmpUnresolvedNames = (limit = 24) =>
   request<{
