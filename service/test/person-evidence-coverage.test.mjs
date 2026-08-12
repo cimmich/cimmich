@@ -27,6 +27,24 @@ const projectionRow = {
       entityKind: "event",
     },
   ],
+  co_subjects: [
+    {
+      assetCount: 6,
+      crop: { h: 0.4, w: 0.4, x: 0.3, y: 0.2 },
+      displayName: "Noah Chen",
+      sourceAssetId: "source-noah",
+      subjectId: "person-noah",
+      subjectKind: "person",
+    },
+    {
+      assetCount: 4,
+      crop: null,
+      displayName: "Juniper",
+      sourceAssetId: null,
+      subjectId: "pet-juniper",
+      subjectKind: "pet",
+    },
+  ],
   dated_asset_count: 11,
   display_name: "Maya Chen",
   face_asset_count: 9,
@@ -111,6 +129,24 @@ test("Person evidence coverage projects accepted evidence without mutation autho
       entityId: "place-bluewater",
     },
   ]);
+  assert.deepEqual(result.coSubjects, [
+    {
+      assetCount: 6,
+      crop: { h: 0.4, w: 0.4, x: 0.3, y: 0.2 },
+      displayName: "Noah Chen",
+      sourceAssetId: "source-noah",
+      subjectId: "person-noah",
+      subjectKind: "person",
+    },
+    {
+      assetCount: 4,
+      crop: null,
+      displayName: "Juniper",
+      sourceAssetId: null,
+      subjectId: "pet-juniper",
+      subjectKind: "pet",
+    },
+  ]);
   assert.equal(result.sourceSuggestions[0].qualityScore, 0.91);
   assert.equal(result.sourceSuggestions[0].sourceKind, "face");
   assert.deepEqual(result.sourceSuggestions[0].box, {
@@ -140,6 +176,10 @@ test("Person evidence coverage projects accepted evidence without mutation autho
   assert.match(statements[0], /body_pose_evidence/);
   assert.match(statements[0], /cimmich_visibility_asset_rank/);
   assert.match(statements[0], /cimmich_visibility_context_entity_rank/);
+  assert.match(statements[0], /co_subject_assets AS MATERIALIZED/);
+  assert.match(statements[0], /cimmich_visibility_subject_rank/);
+  assert.match(statements[0], /count\(DISTINCT asset_id\)::int AS asset_count/);
+  assert.match(statements[0], /subject\.position <= 6/);
   assert.match(statements[0], /source_assets AS MATERIALIZED/);
   assert.match(statements[0], /'photo'::text AS source_kind/);
   assert.match(

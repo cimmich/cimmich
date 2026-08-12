@@ -9,6 +9,7 @@
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccountCheckOutline,
+    mdiAccountGroupOutline,
     mdiAlertCircleOutline,
     mdiCalendarRange,
     mdiChevronDown,
@@ -16,6 +17,7 @@
     mdiImageMultipleOutline,
     mdiImageSearchOutline,
     mdiMapMarkerOutline,
+    mdiPawOutline,
     mdiRun,
     mdiTimelineClockOutline,
   } from '@mdi/js';
@@ -61,6 +63,7 @@
   const maximumContextCount = $derived(
     Math.max(1, ...contextGroups.flatMap(({ items }) => items.map(({ assetCount }) => assetCount))),
   );
+  const maximumCoSubjectCount = $derived(Math.max(1, ...coverage.coSubjects.map(({ assetCount }) => assetCount)));
   const evidenceRows = $derived([
     {
       count: coverage.assets.face,
@@ -144,6 +147,25 @@
     `${Math.max(8, Math.round((yearVolume(year) / maximumYearCount) * 100))}%`;
   const contextBarWidth = (item: CimmichPersonEvidenceCoverageContext) =>
     `${Math.max(5, Math.round((item.assetCount / maximumContextCount) * 100))}%`;
+  const coSubjectBarWidth = (assetCount: number) =>
+    `${Math.max(6, Math.round((assetCount / maximumCoSubjectCount) * 100))}%`;
+  const coSubjectHref = (subject: CimmichPersonEvidenceCoverage['coSubjects'][number]) =>
+    subject.subjectKind === 'pet'
+      ? Route.cimmichPet({ name: subject.displayName, petId: subject.subjectId })
+      : Route.cimmichPerson({ name: subject.displayName, personId: subject.subjectId });
+  const coSubjectStyle = (subject: CimmichPersonEvidenceCoverage['coSubjects'][number]) => {
+    if (!subject.sourceAssetId) {
+      return '';
+    }
+    const image = `background-image: url("${getAssetMediaUrl({ id: subject.sourceAssetId, size: AssetMediaSize.Thumbnail })}")`;
+    const crop = subject.crop;
+    if (!crop) {
+      return `${image}; background-size: cover; background-position: center`;
+    }
+    const positionX = crop.w >= 1 ? 50 : (crop.x / Math.max(0.0001, 1 - crop.w)) * 100;
+    const positionY = crop.h >= 1 ? 50 : (crop.y / Math.max(0.0001, 1 - crop.h)) * 100;
+    return `${image}; background-size: ${100 / crop.w}% ${100 / crop.h}%; background-position: ${positionX}% ${positionY}%`;
+  };
 </script>
 
 <section class="grid gap-6" aria-label="Identity overview">
@@ -207,13 +229,8 @@
     class="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
     aria-labelledby="coverage-timeline-title"
   >
-    <header class="flex flex-wrap items-end justify-between gap-3 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
-      <div>
-        <h2 id="coverage-timeline-title" class="text-xl font-semibold">Timeline evolution</h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          One photo from every represented year, chosen from what is visible in your current viewing mode.
-        </p>
-      </div>
+    <header class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+      <h2 id="coverage-timeline-title" class="text-xl font-semibold">Timeline evolution</h2>
       <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Scroll through time →</span>
     </header>
 
@@ -315,45 +332,97 @@
 
     <section
       class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-immich-dark-bg"
-      aria-labelledby="coverage-notes-title"
+      aria-labelledby="coverage-co-subjects-title"
     >
       <div class="flex items-center gap-2">
-        <span class="grid size-10 place-items-center rounded-full bg-amber-500/10 text-amber-600"
-          ><Icon icon={mdiAlertCircleOutline} size="21" /></span
+        <span class="grid size-10 place-items-center rounded-full bg-primary/10 text-primary"
+          ><Icon icon={mdiAccountGroupOutline} size="21" /></span
         >
         <div>
-          <h2 id="coverage-notes-title" class="text-xl font-semibold">Review queue</h2>
-          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-            Items where your decision would improve the library.
-          </p>
+          <h2 id="coverage-co-subjects-title" class="text-xl font-semibold">People & pets</h2>
+          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Most frequent</p>
         </div>
       </div>
-      <div class="mt-5 grid gap-3">
-        {#each actionableNotes as note (note.title)}
-          <article
-            class="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20"
+      <div class="mt-5 grid gap-2.5">
+        {#each coverage.coSubjects as subject (subject.subjectId)}
+          <a
+            class="group relative grid min-h-16 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-2xl bg-gray-50 p-2.5 transition hover:-translate-y-0.5 hover:shadow-sm dark:bg-immich-dark-gray"
+            href={coSubjectHref(subject)}
           >
-            <h3 class="font-semibold">{note.title}</h3>
-            <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-300">{note.detail}</p>
-            <button
-              class="mt-3 min-h-9 text-sm font-semibold text-primary hover:underline"
-              type="button"
-              onclick={() =>
-                note.action === 'candidates' ? onopenidentity('candidates') : onopenphotos({ futureDates: true })}
+            <span
+              class="absolute inset-y-0 left-0 bg-primary/10 transition group-hover:bg-primary/15"
+              style={`width: ${coSubjectBarWidth(subject.assetCount)}`}
+              aria-hidden="true"
+            ></span>
+            <span
+              class="relative grid size-12 place-items-center overflow-hidden rounded-full bg-gray-200 bg-cover bg-center text-gray-500 dark:bg-gray-700 dark:text-gray-300"
+              style={coSubjectStyle(subject)}
             >
-              {note.action === 'candidates' ? 'Review proposed Faces' : 'Show affected photos'}
-            </button>
-          </article>
+              {#if !subject.sourceAssetId}
+                <Icon icon={subject.subjectKind === 'pet' ? mdiPawOutline : mdiAccountGroupOutline} size="22" />
+              {/if}
+            </span>
+            <span class="relative min-w-0">
+              <strong class="block truncate text-sm">{subject.displayName}</strong>
+              <span class="mt-0.5 block text-xs text-gray-500 capitalize dark:text-gray-400">{subject.subjectKind}</span
+              >
+            </span>
+            <span class="relative pr-1 text-right">
+              <strong class="block text-base tabular-nums">{subject.assetCount.toLocaleString()}</strong>
+              <span class="block text-[11px] text-gray-500 dark:text-gray-400">photos</span>
+            </span>
+          </a>
         {:else}
-          <div
-            class="rounded-2xl bg-emerald-50 p-5 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-          >
-            Nothing needs review right now.
-          </div>
+          <p class="rounded-2xl bg-gray-50 p-5 text-sm text-gray-500 dark:bg-immich-dark-gray dark:text-gray-400">
+            No one else appears often enough yet.
+          </p>
         {/each}
       </div>
     </section>
   </div>
+
+  <section
+    class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-immich-dark-bg"
+    aria-labelledby="coverage-notes-title"
+  >
+    <div class="flex items-center gap-2">
+      <span class="grid size-10 place-items-center rounded-full bg-amber-500/10 text-amber-600"
+        ><Icon icon={mdiAlertCircleOutline} size="21" /></span
+      >
+      <div>
+        <h2 id="coverage-notes-title" class="text-xl font-semibold">Review queue</h2>
+        <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+          Items where your decision would improve the library.
+        </p>
+      </div>
+    </div>
+    <div class="mt-5 grid gap-3 lg:grid-cols-2">
+      {#each actionableNotes as note (note.title)}
+        <article
+          class="flex flex-col justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:flex-row sm:items-center dark:border-amber-900 dark:bg-amber-950/20"
+        >
+          <div>
+            <h3 class="font-semibold">{note.title}</h3>
+            <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-300">{note.detail}</p>
+          </div>
+          <button
+            class="min-h-10 shrink-0 rounded-full bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary/90"
+            type="button"
+            onclick={() =>
+              note.action === 'candidates' ? onopenidentity('candidates') : onopenphotos({ futureDates: true })}
+          >
+            {note.action === 'candidates' ? 'Review proposed Faces' : 'Show affected photos'}
+          </button>
+        </article>
+      {:else}
+        <div
+          class="rounded-2xl bg-emerald-50 p-5 text-sm text-emerald-800 lg:col-span-2 dark:bg-emerald-950/30 dark:text-emerald-200"
+        >
+          Nothing needs review right now.
+        </div>
+      {/each}
+    </div>
+  </section>
 
   <details
     class="group rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"

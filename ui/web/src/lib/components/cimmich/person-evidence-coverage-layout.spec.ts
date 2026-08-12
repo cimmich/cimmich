@@ -33,12 +33,15 @@ describe('Person identity overview', () => {
     expect(source).not.toContain('How Cimmich recognises');
     expect(source).not.toContain('Why do these numbers overlap?');
     expect(source).toContain('Timeline evolution');
-    expect(source).toContain('One photo from every represented year');
+    expect(source).not.toContain('One photo from every represented year');
     expect(source).toContain('Scroll through time →');
     expect(source).toContain('Library snapshot');
     expect(source).toContain('Years represented');
     expect(source).toContain('Places & stories');
+    expect(source).toContain('People & pets');
+    expect(source).toContain('coverage.coSubjects');
     expect(source).toContain('Review queue');
+    expect(source.indexOf('coverage-co-subjects-title')).toBeLessThan(source.indexOf('coverage-notes-title'));
     expect(source).toContain('Technical details');
     expect(source).toContain('What these terms mean');
     expect(source).toContain('Imported Body hint');
@@ -58,7 +61,7 @@ describe('Person identity overview', () => {
     expect(source).not.toContain("overlay: 'machinery'");
     expect(source).toContain('timelineSources');
     expect(source).toContain('yearVolume(year)');
-    expect(source).toContain('current viewing mode');
+    expect(source).not.toContain('current viewing mode');
     expect(source).toContain('contextHref(group.kind, item.entityId)');
     expect(source).toContain("onopenidentity('body')");
     expect(source).toContain("onopenidentity('candidates')");

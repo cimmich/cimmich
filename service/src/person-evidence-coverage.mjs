@@ -1,5 +1,5 @@
 export const personEvidenceCoverageSchemaVersion =
-  "cimmich.person-evidence-coverage.v2";
+  "cimmich.person-evidence-coverage.v3";
 
 const immutableAuthority = Object.freeze({
   automaticIdentityAuthority: "none",
@@ -36,6 +36,27 @@ export const projectPersonEvidenceCoverage = (row) => ({
     places: projectContext(row.contexts, "place"),
     things: projectContext(row.contexts, "object"),
   },
+  coSubjects: array(row.co_subjects).map((item) => ({
+    assetCount: number(item.assetCount),
+    crop:
+      item.crop &&
+      [item.crop.h, item.crop.w, item.crop.x, item.crop.y].every((value) =>
+        Number.isFinite(Number(value)),
+      )
+        ? {
+            h: Number(item.crop.h),
+            w: Number(item.crop.w),
+            x: Number(item.crop.x),
+            y: Number(item.crop.y),
+          }
+        : null,
+    displayName: String(item.displayName || ""),
+    sourceAssetId: item.sourceAssetId
+      ? String(item.sourceAssetId)
+      : null,
+    subjectId: String(item.subjectId || ""),
+    subjectKind: item.subjectKind === "pet" ? "pet" : "person",
+  })),
   observations: {
     body: number(row.body_observation_count),
     bodyHints: number(row.body_hint_observation_count),
@@ -318,6 +339,83 @@ export const createPersonEvidenceCoverageStore = (
                 context.entity_id
             ) AS position
           FROM context_counts context
+        ), co_subject_assets AS MATERIALIZED (
+          SELECT DISTINCT subject.person_id AS subject_id,
+            subject.subject_kind, subject.display_name,
+            association.asset_id
+          FROM visible_assets target_asset
+          JOIN person_assets association
+            ON association.asset_id = target_asset.asset_id
+            AND association.authority_state = 'accepted'
+          JOIN current_person subject
+            ON subject.person_id = association.person_id
+            AND subject.status = 'active'
+            AND subject.subject_kind IN ('person','pet')
+          WHERE subject.person_id <> ${id}
+            AND cimmich_visibility_subject_rank(
+              subject.subject_kind, subject.person_id
+            ) <= ${visibleRank}
+        ), co_subject_counts AS MATERIALIZED (
+          SELECT subject_id, subject_kind, display_name,
+            count(DISTINCT asset_id)::int AS asset_count
+          FROM co_subject_assets
+          GROUP BY subject_id, subject_kind, display_name
+        ), ranked_co_subjects AS MATERIALIZED (
+          SELECT subject.*,
+            row_number() OVER (
+              ORDER BY subject.asset_count DESC, lower(subject.display_name),
+                subject.subject_id
+            ) AS position
+          FROM co_subject_counts subject
+        ), co_subject_media AS MATERIALIZED (
+          SELECT subject.*, preview.source_asset_id, preview.crop
+          FROM ranked_co_subjects subject
+          LEFT JOIN LATERAL (
+            SELECT candidate.source_asset_id, candidate.crop
+            FROM (
+              SELECT projection.immich_asset_id AS source_asset_id,
+                presentation.crop, 0 AS priority,
+                media_asset.capture_time, media_asset.asset_id
+              FROM person_presentation_media presentation
+              JOIN asset media_asset ON media_asset.asset_id = presentation.asset_id
+                AND media_asset.state = 'active'
+              JOIN immich_asset_projection projection
+                ON projection.cimmich_asset_id = media_asset.asset_id
+                AND projection.state = 'active'
+              WHERE presentation.person_id = subject.subject_id
+                AND presentation.slot_kind = 'face'
+                AND cimmich_visibility_asset_rank(media_asset.asset_id)
+                  <= ${visibleRank}
+              UNION ALL
+              SELECT projection.immich_asset_id AS source_asset_id,
+                profile.cover_crop AS crop, 1 AS priority,
+                cover_asset.capture_time, cover_asset.asset_id
+              FROM current_person profile
+              JOIN asset cover_asset ON cover_asset.asset_id = profile.cover_asset_id
+                AND cover_asset.state = 'active'
+              JOIN immich_asset_projection projection
+                ON projection.cimmich_asset_id = cover_asset.asset_id
+                AND projection.state = 'active'
+              WHERE profile.person_id = subject.subject_id
+                AND cimmich_visibility_asset_rank(cover_asset.asset_id)
+                  <= ${visibleRank}
+              UNION ALL
+              SELECT projection.immich_asset_id AS source_asset_id,
+                NULL::jsonb AS crop, 2 AS priority,
+                shared_asset.capture_time, shared_asset.asset_id
+              FROM co_subject_assets shared
+              JOIN asset shared_asset ON shared_asset.asset_id = shared.asset_id
+                AND shared_asset.state = 'active'
+              JOIN immich_asset_projection projection
+                ON projection.cimmich_asset_id = shared_asset.asset_id
+                AND projection.state = 'active'
+              WHERE shared.subject_id = subject.subject_id
+            ) candidate
+            ORDER BY candidate.priority, candidate.capture_time DESC NULLS LAST,
+              candidate.asset_id
+            LIMIT 1
+          ) preview ON true
+          WHERE subject.position <= 6
         ), source_faces AS MATERIALIZED (
           SELECT DISTINCT ON (face.asset_id)
             face.face_id, face.asset_id, face.box_x, face.box_y,
@@ -450,6 +548,17 @@ export const createPersonEvidenceCoverageStore = (
             ) ORDER BY context.entity_kind, context.position)
             FROM ranked_contexts context WHERE context.position <= 6
           ), '[]'::jsonb) AS contexts,
+          coalesce((
+            SELECT jsonb_agg(jsonb_build_object(
+              'assetCount', subject.asset_count,
+              'crop', subject.crop,
+              'displayName', subject.display_name,
+              'sourceAssetId', subject.source_asset_id,
+              'subjectId', subject.subject_id,
+              'subjectKind', subject.subject_kind
+            ) ORDER BY subject.position)
+            FROM co_subject_media subject
+          ), '[]'::jsonb) AS co_subjects,
           coalesce((
             SELECT jsonb_agg(jsonb_build_object(
               'boxH', source.box_h, 'boxW', source.box_w,

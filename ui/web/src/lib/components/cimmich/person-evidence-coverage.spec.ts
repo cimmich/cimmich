@@ -11,11 +11,12 @@ const coverage = (): CimmichPersonEvidenceCoverage => ({
     sourceMutation: 'none',
   },
   context: { events: [], places: [], things: [] },
+  coSubjects: [],
   observations: { body: 8, bodyHints: 2, face: 12, head: 1, pose: 6, presence: 1 },
   person: { displayName: 'Maya', personId: 'person-maya' },
   references: { head: 1, lowQuality: 2, prime: 3, secondary: 6 },
   review: { bodyWithoutPose: 2, candidateFaces: 3, futureDates: 1 },
-  schemaVersion: 'cimmich.person-evidence-coverage.v2',
+  schemaVersion: 'cimmich.person-evidence-coverage.v3',
   sourceSuggestions: [
     {
       box: { h: 0.2, w: 0.2, x: 0.4, y: 0.3 },

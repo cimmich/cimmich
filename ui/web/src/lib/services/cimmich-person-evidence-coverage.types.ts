@@ -19,6 +19,14 @@ export type CimmichPersonEvidenceCoverage = {
     places: CimmichPersonEvidenceCoverageContext[];
     things: CimmichPersonEvidenceCoverageContext[];
   };
+  coSubjects: Array<{
+    assetCount: number;
+    crop: { h: number; w: number; x: number; y: number } | null;
+    displayName: string;
+    sourceAssetId: string | null;
+    subjectId: string;
+    subjectKind: 'person' | 'pet';
+  }>;
   observations: {
     body: number;
     bodyHints: number;
@@ -39,7 +47,7 @@ export type CimmichPersonEvidenceCoverage = {
     candidateFaces: number;
     futureDates: number;
   };
-  schemaVersion: 'cimmich.person-evidence-coverage.v2';
+  schemaVersion: 'cimmich.person-evidence-coverage.v3';
   sourceSuggestions: Array<{
     box: { h: number; w: number; x: number; y: number } | null;
     bucketKind: 'head' | 'lq' | 'prime' | 'secondary' | null;

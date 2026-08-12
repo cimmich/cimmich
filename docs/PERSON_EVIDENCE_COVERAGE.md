@@ -18,6 +18,8 @@ The projection answers four bounded questions:
    Person currently observed?
 4. Which privacy-visible photo best represents each capture year in a visual
    evolution timeline?
+5. Which visible People and Pets most frequently share accepted active photos
+   with this Person?
 
 Bars report the fraction of accepted Person photos on which a channel is
 observed. They are not identity confidence and are not combined into a
@@ -57,11 +59,21 @@ Person's current photo or Face totals. Archive Health reports source/inventory
 problems directly; the UI never infers a missing file by subtracting two
 different projections.
 
+## People and pets
+
+The Overview returns at most six other active People or Pets, ordered by the
+number of distinct accepted active photos they share with the current Person.
+Both subjects and preview media must pass the current viewing-mode ceiling.
+The count is literal co-appearance frequency, not an inferred relationship or
+identity-confidence score. Saved presentation media leads when available; a
+visible shared photo is the bounded fallback.
+
 ## Privacy and performance
 
 Every asset, Person and context read stays inside the current viewing-mode
 ceiling. The response contains stable IDs, bounded aggregate counts, at most
 six context rows per family and at most one timeline photo for each of 120
-years; it contains no vectors or source paths. The profile loads it only when
+years, plus at most six co-appearing People or Pets; it contains no vectors or
+source paths. The profile loads it only when
 Identity Overview is opened and retains it for that mounted Person/visibility
 generation.
