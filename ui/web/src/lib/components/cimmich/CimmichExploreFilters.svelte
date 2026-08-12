@@ -37,6 +37,7 @@
   );
 
   type ArrayKey = 'eventIds' | 'labelIds' | 'placeIds' | 'thingIds';
+  type SelectionKey = ArrayKey | 'privacyTiers';
   const update = (next: CimmichExploreFilters) => onchange(normalizeCimmichExploreFilters(next));
   const viewingModeRank = (mode: CimmichVisibilityTier) => (mode === 'standard' ? 0 : mode === 'personal' ? 1 : 2);
   const needsViewingMode = (tier: CimmichVisibilityTier) =>
@@ -59,7 +60,7 @@
       update({ ...filters, [key]: [...filters[key], value] });
     }
   };
-  const remove = (key: keyof CimmichExploreFilters, value: string) =>
+  const remove = (key: SelectionKey, value: string) =>
     update({ ...filters, [key]: filters[key].filter((item) => item !== value) });
   const facetName = (items: CimmichExploreFacet[], id: string) =>
     items.find((item) => item.id === id)?.displayName ?? id;
@@ -115,6 +116,15 @@
       class="flex flex-wrap gap-1.5 border-t border-gray-100 px-4 py-2 dark:border-white/10"
       aria-label="Active filters"
     >
+      {#if filters.futureDates}
+        <button
+          class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100"
+          type="button"
+          onclick={() => update({ ...filters, futureDates: false })}
+        >
+          Capture date after today <Icon icon={mdiClose} size="14" />
+        </button>
+      {/if}
       {#each filters.privacyTiers as tier (tier)}
         <button
           class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-950 dark:bg-violet-950 dark:text-violet-100"

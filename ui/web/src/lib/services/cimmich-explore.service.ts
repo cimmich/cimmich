@@ -6,6 +6,7 @@ import type {
 
 export type CimmichExploreFilters = {
   eventIds: string[];
+  futureDates: boolean;
   labelIds: string[];
   placeIds: string[];
   privacyTiers: CimmichVisibilityTier[];
@@ -72,6 +73,9 @@ export const createCimmichExploreClient = (request: Request, coalesce: Coalesce)
       for (const value of values ?? []) {
         search.append(key, value);
       }
+    }
+    if (filters?.futureDates) {
+      search.set('future', '1');
     }
     return request<CimmichPersonAssetPage>(`/v1/people/${encodeURIComponent(personId)}/assets?${search.toString()}`);
   },

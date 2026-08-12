@@ -1530,7 +1530,7 @@ test("Person projection pages are additive to legacy limit responses", async () 
       assert.deepEqual(await legacy.json(), { items: [] });
 
       const assets = await fetch(
-        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one&associationType=body`,
+        `${root}/v1/people/person-one/assets?pageSize=24&cursor=cursor-one&associationType=body&future=1`,
       );
       assert.deepEqual(await assets.json(), page);
 
@@ -1556,6 +1556,14 @@ test("Person projection pages are additive to legacy limit responses", async () 
       {
         associationType: "body",
         cursor: "cursor-one",
+        exploreFilters: {
+          eventIds: [],
+          futureDates: true,
+          labelIds: [],
+          placeIds: [],
+          privacyTiers: [],
+          thingIds: [],
+        },
         limit: null,
         pageSize: "24",
         personId: "person-one",

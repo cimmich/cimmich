@@ -1,7 +1,7 @@
 import type { CimmichPersonEvidenceCoverage } from '$lib/services/cimmich.service';
 
 export type PersonEvidenceCoverageNote = {
-  action: 'identity' | 'photos' | null;
+  action: 'candidates' | 'future-dates' | null;
   detail: string;
   kind: 'attention' | 'coverage' | 'ready';
   title: string;
@@ -14,7 +14,7 @@ export const evidenceCoverageNotes = (coverage: CimmichPersonEvidenceCoverage): 
   const notes: PersonEvidenceCoverageNote[] = [];
   if (coverage.review.futureDates > 0) {
     notes.push({
-      action: 'photos',
+      action: 'future-dates',
       detail: `${coverage.review.futureDates.toLocaleString()} accepted ${coverage.review.futureDates === 1 ? 'photo has' : 'photos have'} a capture date after today.`,
       kind: 'attention',
       title: 'Capture dates need review',
@@ -22,7 +22,7 @@ export const evidenceCoverageNotes = (coverage: CimmichPersonEvidenceCoverage): 
   }
   if (coverage.review.candidateFaces > 0) {
     notes.push({
-      action: 'identity',
+      action: 'candidates',
       detail: `${coverage.review.candidateFaces.toLocaleString()} proposed ${coverage.review.candidateFaces === 1 ? 'Face is' : 'Faces are'} still waiting for an owner decision.`,
       kind: 'attention',
       title: 'Identity proposals are waiting',
@@ -30,7 +30,7 @@ export const evidenceCoverageNotes = (coverage: CimmichPersonEvidenceCoverage): 
   }
   if (coverage.observations.body > 0 && coverage.review.bodyWithoutPose > 0) {
     notes.push({
-      action: 'identity',
+      action: null,
       detail: `${coverage.review.bodyWithoutPose.toLocaleString()} of ${coverage.observations.body.toLocaleString()} accepted Body observations do not yet have persisted pose geometry.`,
       kind: 'coverage',
       title: 'Pose coverage is partial',
@@ -38,7 +38,7 @@ export const evidenceCoverageNotes = (coverage: CimmichPersonEvidenceCoverage): 
   }
   if (coverage.observations.head === 0) {
     notes.push({
-      action: 'identity',
+      action: null,
       detail:
         'No accepted standalone Head observation is recorded. Head reference buckets can still contain face observations.',
       kind: 'coverage',

@@ -20,46 +20,74 @@
 
   interface Props {
     coverage: CimmichPersonEvidenceCoverage;
-    onopenidentity: () => void;
-    onopenphotos: () => void;
+    onopenidentity: (filter: 'all' | 'candidates') => void;
+    onopenphotos: (options?: { futureDates?: boolean }) => void;
+    profileAssetCount: number;
   }
 
-  let { coverage, onopenidentity, onopenphotos }: Props = $props();
+  let { coverage, onopenidentity, onopenphotos, profileAssetCount }: Props = $props();
 
   const notes = $derived(evidenceCoverageNotes(coverage));
+  const outsideEvidenceCount = $derived(Math.max(0, profileAssetCount - coverage.assets.total));
   const maximumYearCount = $derived(Math.max(1, ...coverage.time.years.map(({ assetCount }) => assetCount)));
-  const coverageRows = $derived([
+  const evidenceRows = $derived([
     {
-      detail: `${coverage.assets.face.toLocaleString()} photos`,
+      count: coverage.assets.face,
+      detail: `${coverage.observations.face.toLocaleString()} accepted observations`,
       icon: mdiAccountCheckOutline,
-      label: 'Face observed',
-      percent: evidenceCoveragePercent(coverage.assets.face, coverage.assets.total),
+      label: 'Face photos',
     },
     {
-      detail: `${coverage.assets.body.toLocaleString()} photos`,
+      count: coverage.assets.body,
+      detail: `${coverage.observations.body.toLocaleString()} accepted Body observations · ${coverage.observations.bodyHints.toLocaleString()} imported Body hints`,
       icon: mdiHumanGreeting,
-      label: 'Body observed',
-      percent: evidenceCoveragePercent(coverage.assets.body, coverage.assets.total),
+      label: 'Body photos',
     },
     {
-      detail: `${coverage.observations.pose.toLocaleString()} of ${coverage.observations.body.toLocaleString()} Bodies`,
+      count: coverage.assets.bodyOnly,
+      detail: 'Accepted Body without an accepted Face or Head',
+      icon: mdiHumanGreeting,
+      label: 'Body-only photos',
+    },
+    {
+      count: coverage.assets.head,
+      detail: `${coverage.observations.head.toLocaleString()} standalone Head observations`,
+      icon: mdiAccountCheckOutline,
+      label: 'Head photos',
+    },
+    {
+      count: coverage.assets.presence,
+      detail: `${coverage.observations.presence.toLocaleString()} accepted Presence records`,
+      icon: mdiHumanGreeting,
+      label: 'Presence photos',
+    },
+  ]);
+  const referenceRows = $derived([
+    { count: coverage.references.prime, label: 'Core references' },
+    { count: coverage.references.secondary, label: 'Supporting matcher refs' },
+    { count: coverage.references.lowQuality, label: 'Low-quality refs' },
+    { count: coverage.references.head, label: 'Head references' },
+  ]);
+  const processingRows = $derived([
+    {
+      detail: `${coverage.observations.pose.toLocaleString()} of ${coverage.observations.body.toLocaleString()} accepted Body observations`,
       icon: mdiRun,
       label: 'Pose geometry',
       percent: evidenceCoveragePercent(coverage.observations.pose, coverage.observations.body),
     },
     {
-      detail: `${coverage.assets.dated.toLocaleString()} photos`,
+      detail: `${coverage.assets.dated.toLocaleString()} of ${coverage.assets.total.toLocaleString()} accepted evidence photos`,
       icon: mdiCalendarRange,
-      label: 'Capture date',
+      label: 'Capture dates',
       percent: evidenceCoveragePercent(coverage.assets.dated, coverage.assets.total),
     },
   ]);
-  const referenceRows = $derived([
-    { count: coverage.references.prime, label: 'Core' },
-    { count: coverage.references.secondary, label: 'Supporting' },
-    { count: coverage.references.lowQuality, label: 'Low quality' },
-    { count: coverage.references.head, label: 'Head bucket' },
-  ]);
+
+  const contextHref = (kind: 'event' | 'object' | 'place', entityId: string) => {
+    const root =
+      kind === 'event' ? Route.cimmichEvents() : kind === 'object' ? Route.cimmichThings() : Route.cimmichPlaces();
+    return `${root}?entityId=${encodeURIComponent(entityId)}`;
+  };
 
   const sourceStyle = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) =>
     cimmichSquareCropBackgroundStyle({
@@ -79,13 +107,33 @@
     <p class="text-xs font-semibold tracking-[0.18em] text-primary uppercase">Accepted records</p>
     <h2 id="person-evidence-coverage-title" class="mt-2 text-2xl font-semibold">Evidence &amp; coverage</h2>
     <p class="mt-2 text-sm/6 text-gray-600 dark:text-gray-300">
-      A read-only map of what Cimmich has actually accepted for {coverage.person.displayName}. Bars show where evidence
-      is observed; they are not identity confidence or a completeness score.
+      A read-only map of what Cimmich has actually accepted for {coverage.person.displayName}. Counts distinguish
+      photos, observations and matcher references; none is an identity-confidence score.
     </p>
   </header>
 
-  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-    {#each coverageRows as row (row.label)}
+  <dl class="grid gap-3 rounded-2xl border border-gray-200 p-4 sm:grid-cols-3 dark:border-gray-700">
+    <div>
+      <dt class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">Profile photos</dt>
+      <dd class="mt-1 text-2xl font-semibold tabular-nums">{profileAssetCount.toLocaleString()}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
+        Accepted evidence photos
+      </dt>
+      <dd class="mt-1 text-2xl font-semibold tabular-nums">{coverage.assets.total.toLocaleString()}</dd>
+    </div>
+    <div>
+      <dt class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">Outside this map</dt>
+      <dd class="mt-1 text-2xl font-semibold tabular-nums">{outsideEvidenceCount.toLocaleString()}</dd>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Profile photos without accepted Face, Head, Body or Presence evidence.
+      </p>
+    </div>
+  </dl>
+
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    {#each evidenceRows as row (row.label)}
       <article class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-immich-dark-bg">
         <div class="flex items-center gap-2 text-sm font-semibold">
           <span class="grid size-8 place-items-center rounded-full bg-primary/10 text-primary"
@@ -93,16 +141,28 @@
           >
           {row.label}
         </div>
-        <div class="mt-5 flex items-end justify-between gap-3">
-          <strong class="text-2xl tabular-nums">{row.percent}%</strong>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{row.detail}</span>
+        <strong class="mt-5 block text-2xl tabular-nums">{row.count.toLocaleString()}</strong>
+        <span class="mt-1 block text-xs/5 text-gray-500 dark:text-gray-400">{row.detail}</span>
+      </article>
+    {/each}
+  </div>
+
+  <section class="grid gap-3 sm:grid-cols-2" aria-label="Processing coverage">
+    {#each processingRows as row (row.label)}
+      <article class="rounded-2xl border border-gray-200 p-4 dark:border-gray-700">
+        <div class="flex items-center gap-2 text-sm font-semibold">
+          <span class="grid size-8 place-items-center rounded-full bg-primary/10 text-primary"
+            ><Icon icon={row.icon} size="18" /></span
+          >
+          {row.label}
         </div>
-        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" aria-hidden="true">
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">{row.detail}</p>
+        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" aria-hidden="true">
           <span class="block h-full rounded-full bg-primary" style={`width: ${row.percent}%`}></span>
         </div>
       </article>
     {/each}
-  </div>
+  </section>
 
   <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
     <section
@@ -139,8 +199,11 @@
     >
       <div class="flex items-center gap-2">
         <Icon icon={mdiImageSearchOutline} size="21" />
-        <h3 id="coverage-reference-title" class="text-lg font-semibold">Reference roles</h3>
+        <h3 id="coverage-reference-title" class="text-lg font-semibold">Matcher reference gallery</h3>
       </div>
+      <p class="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
+        These are explicit gallery memberships, not every accepted Face shown as Supporting in Identity.
+      </p>
       <dl class="mt-5 grid grid-cols-2 gap-3">
         {#each referenceRows as row (row.label)}
           <div class="rounded-xl bg-gray-50 p-3 dark:bg-immich-dark-gray">
@@ -152,9 +215,9 @@
       <button
         class="mt-4 min-h-11 text-sm font-semibold text-primary hover:underline"
         type="button"
-        onclick={onopenidentity}
+        onclick={() => onopenidentity('all')}
       >
-        Open Identity evidence
+        Open all Identity evidence
       </button>
     </section>
   </div>
@@ -162,14 +225,18 @@
   <section aria-labelledby="coverage-sources-title">
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h3 id="coverage-sources-title" class="text-lg font-semibold">Source suggestions</h3>
+        <h3 id="coverage-sources-title" class="text-lg font-semibold">Representative evidence</h3>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          One strong accepted Face from different years, for covers or closer review.
+          One accepted Face from different years. Open a card to inspect its recorded Face and Body evidence.
         </p>
       </div>
-      <button class="min-h-11 text-sm font-semibold text-primary hover:underline" type="button" onclick={onopenphotos}
-        >Open all photos</button
+      <button
+        class="min-h-11 text-sm font-semibold text-primary hover:underline"
+        type="button"
+        onclick={() => onopenphotos()}
       >
+        View all person photos
+      </button>
     </div>
     <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {#each coverage.sourceSuggestions as source (source.faceId)}
@@ -211,14 +278,17 @@
         <Icon icon={mdiMapMarkerOutline} size="21" />
         <h3 id="coverage-context-title" class="text-lg font-semibold">Context observed</h3>
       </div>
-      {#each [{ items: coverage.context.places, label: 'Places' }, { items: coverage.context.events, label: 'Events' }, { items: coverage.context.things, label: 'Things' }] as group (group.label)}
+      {#each [{ items: coverage.context.places, kind: 'place' as const, label: 'Places' }, { items: coverage.context.events, kind: 'event' as const, label: 'Events' }, { items: coverage.context.things, kind: 'object' as const, label: 'Things' }] as group (group.label)}
         <div class="mt-4">
           <h4 class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">{group.label}</h4>
           <div class="mt-2 flex flex-wrap gap-2">
             {#each group.items as item (item.entityId)}
-              <span class="rounded-full bg-gray-100 px-3 py-1.5 text-sm dark:bg-immich-dark-gray">
+              <a
+                class="rounded-full bg-gray-100 px-3 py-1.5 text-sm transition hover:bg-primary/10 hover:text-primary dark:bg-immich-dark-gray"
+                href={contextHref(group.kind, item.entityId)}
+              >
                 {item.displayName} <span class="text-gray-500">{item.assetCount.toLocaleString()}</span>
-              </span>
+              </a>
             {:else}
               <span class="text-sm text-gray-500 dark:text-gray-400">None observed</span>
             {/each}
@@ -248,9 +318,10 @@
                   <button
                     class="mt-2 min-h-9 text-sm font-semibold text-primary hover:underline"
                     type="button"
-                    onclick={note.action === 'identity' ? onopenidentity : onopenphotos}
+                    onclick={() =>
+                      note.action === 'candidates' ? onopenidentity('candidates') : onopenphotos({ futureDates: true })}
                   >
-                    {note.action === 'identity' ? 'Review Identity' : 'Review photos'}
+                    {note.action === 'candidates' ? 'Review proposed Faces' : 'Show affected photos'}
                   </button>
                 {/if}
               </div>

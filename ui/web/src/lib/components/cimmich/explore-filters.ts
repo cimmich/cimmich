@@ -2,6 +2,7 @@ import type { CimmichExploreFilters, CimmichVisibilityTier } from '$lib/services
 
 export const emptyCimmichExploreFilters = (): CimmichExploreFilters => ({
   eventIds: [],
+  futureDates: false,
   labelIds: [],
   placeIds: [],
   privacyTiers: [],
@@ -12,6 +13,7 @@ const unique = (values: string[]) => [...new Set(values.map((value) => value.tri
 
 export const normalizeCimmichExploreFilters = (filters: CimmichExploreFilters): CimmichExploreFilters => ({
   eventIds: unique(filters.eventIds).slice(0, 12),
+  futureDates: filters.futureDates === true,
   labelIds: unique(filters.labelIds).slice(0, 12),
   placeIds: unique(filters.placeIds).slice(0, 12),
   privacyTiers: unique(filters.privacyTiers).filter((tier): tier is CimmichVisibilityTier =>
@@ -23,6 +25,7 @@ export const normalizeCimmichExploreFilters = (filters: CimmichExploreFilters): 
 export const cimmichExploreFiltersFromUrl = (url: URL): CimmichExploreFilters =>
   normalizeCimmichExploreFilters({
     eventIds: url.searchParams.getAll('event'),
+    futureDates: url.searchParams.get('future') === '1',
     labelIds: url.searchParams.getAll('label'),
     placeIds: url.searchParams.getAll('place'),
     privacyTiers: url.searchParams.getAll('privacy') as CimmichVisibilityTier[],
@@ -33,14 +36,22 @@ export const cimmichExploreFilterKey = (filters: CimmichExploreFilters) =>
   JSON.stringify(normalizeCimmichExploreFilters(filters));
 
 export const cimmichExploreFilterCount = (filters: CimmichExploreFilters) =>
-  Object.values(filters).reduce((count, values) => count + values.length, 0);
+  filters.eventIds.length +
+  filters.labelIds.length +
+  filters.placeIds.length +
+  filters.privacyTiers.length +
+  filters.thingIds.length +
+  Number(filters.futureDates);
 
 export const cimmichExploreFiltersUrl = (source: URL, filters: CimmichExploreFilters) => {
   const url = new URL(source);
-  for (const key of ['event', 'label', 'place', 'privacy', 'thing']) {
+  for (const key of ['event', 'future', 'label', 'place', 'privacy', 'thing']) {
     url.searchParams.delete(key);
   }
   const normalized = normalizeCimmichExploreFilters(filters);
+  if (normalized.futureDates) {
+    url.searchParams.set('future', '1');
+  }
   for (const [key, values] of [
     ['privacy', normalized.privacyTiers],
     ['label', normalized.labelIds],

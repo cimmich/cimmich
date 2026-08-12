@@ -33,6 +33,8 @@ describe('person identity workspace', () => {
 
     await expect(loadPersonAppearanceAssets('person-1')).resolves.toEqual({
       body: bodyItems,
+      bodyCandidate: 3,
+      bodyConfirmed: 54,
       bodyTotal: 57,
       presence: presenceItems,
       presenceTotal: 12,
@@ -44,7 +46,14 @@ describe('person identity workspace', () => {
   it('creates an independent empty appearance state', () => {
     const first = emptyPersonAppearanceAssets();
     const second = emptyPersonAppearanceAssets();
-    expect(first).toEqual({ body: [], bodyTotal: 0, presence: [], presenceTotal: 0 });
+    expect(first).toEqual({
+      body: [],
+      bodyCandidate: 0,
+      bodyConfirmed: 0,
+      bodyTotal: 0,
+      presence: [],
+      presenceTotal: 0,
+    });
     expect(first).not.toBe(second);
   });
 });

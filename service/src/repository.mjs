@@ -66,6 +66,7 @@ import {
   normalizeExploreFilters,
 } from "./explore-facets.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
+import * as personPage from "./person-page-projections.mjs";
 import {
   readAcceptedPhysicalFaceClaims,
   readVisibleCanonicalPhysicalFace,
@@ -6253,13 +6254,15 @@ export const createCimmichRepository = (
         SELECT projected_assets.*,
           (count(*) OVER ())::int AS total_count,
           (count(*) FILTER (
-            WHERE has_body AND NOT has_face AND NOT has_head
+            WHERE (has_body OR has_body_hint_face)
+              AND NOT has_face AND NOT has_head
           ) OVER ())::int AS confirmed_body_count,
           (count(*) FILTER (
             WHERE has_body_candidate
               AND NOT has_face
               AND NOT has_head
               AND NOT has_body
+              AND NOT has_body_hint_face
           ) OVER ())::int AS body_candidate_count,
           (count(*) FILTER (WHERE has_presence) OVER ())::int AS presence_count
         FROM projected_assets
@@ -6269,16 +6272,21 @@ export const createCimmichRepository = (
             OR (
               ${assetAssociation === "body"}
               AND (
-                (has_body AND NOT has_face AND NOT has_head)
+                ((has_body OR has_body_hint_face) AND NOT has_face AND NOT has_head)
                 OR (
                   has_body_candidate
                   AND NOT has_face
                   AND NOT has_head
                   AND NOT has_body
+                  AND NOT has_body_hint_face
                 )
               )
             )
             OR (${assetAssociation === "presence"} AND has_presence)
+          )
+          AND (
+            NOT ${filters.futureDates}
+            OR projected_assets.capture_time > now() + interval '24 hours'
           )
           AND (
             cardinality(${filters.privacyTiers}::text[]) = 0
@@ -6353,37 +6361,8 @@ export const createCimmichRepository = (
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map(
-        ({
-          body_candidate_count: _bodyCandidateCount,
-          confirmed_body_count: _confirmedBodyCount,
-          presence_count: _presenceCount,
-          total_count: _totalCount,
-          ...row
-        }) => ({
-          ...row,
-          association_types: [
-            ...(row.has_face ? ["face"] : []),
-            ...(row.has_head ? ["head"] : []),
-            ...(row.has_body && !row.has_face && !row.has_head ? ["body"] : []),
-            ...(row.has_body_candidate &&
-            !row.has_face &&
-            !row.has_head &&
-            !row.has_body
-              ? ["body_candidate"]
-              : []),
-            ...(row.has_presence &&
-            !row.has_face &&
-            !row.has_head &&
-            !row.has_body &&
-            !row.has_body_candidate
-              ? ["presence"]
-              : []),
-          ],
-          contexts: Array.isArray(row.contexts) ? row.contexts : [],
-          labels: Array.isArray(row.labels) ? row.labels : [],
-          ...bridgeFields(bridge, row.asset_id),
-        }),
+      const items = pageRows.map((row) =>
+        personPage.projectPersonAssetRow({ bridge, row }),
       );
       if (!paged) return items;
       const last = pageRows.at(-1);
@@ -6403,12 +6382,7 @@ export const createCimmichRepository = (
             : null,
         pageSize: boundedLimit,
         schemaVersion: personPageSchemaVersion,
-        summary: {
-          body: Number(pageRows[0]?.confirmed_body_count || 0),
-          bodyCandidate: Number(pageRows[0]?.body_candidate_count || 0),
-          presence: Number(pageRows[0]?.presence_count || 0),
-          total: Number(pageRows[0]?.total_count || 0),
-        },
+        summary: personPage.projectPersonAssetSummary(pageRows[0]),
       };
     },
 
@@ -7170,6 +7144,95 @@ export const createCimmichRepository = (
             WHERE identity.person_id = ${id}
               AND identity.state = 'accepted'
               AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+              AND NOT (
+                coalesce(
+                  face.quality_measurements->>'source_gallery_permission',
+                  ''
+                ) = 'never'
+                AND coalesce(
+                  face.quality_measurements->>'effective_gallery_permission',
+                  ''
+                ) = 'never'
+                AND NOT EXISTS (
+                  SELECT 1 FROM current_reference_gallery gallery
+                  WHERE gallery.person_id = identity.person_id
+                    AND gallery.face_id = identity.face_id
+                    AND gallery.membership_state = 'active'
+                    AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+                )
+                AND EXISTS (
+                  SELECT 1 FROM imported_identity_locator locator
+                  WHERE locator.person_id = identity.person_id
+                    AND locator.asset_id = face.asset_id
+                    AND locator.intended_tag_type = 'body'
+                    AND (
+                      locator.state = 'unresolved'
+                      OR (
+                        locator.state = 'resolved'
+                        AND locator.resolution_kind = 'stronger_existing_truth'
+                      )
+                    )
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM current_face_identity detected_identity
+                  JOIN face_observation detected
+                    ON detected.face_id = detected_identity.face_id
+                    AND detected.asset_id = face.asset_id
+                    AND detected.state = 'valid'
+                  CROSS JOIN LATERAL (
+                    SELECT
+                      greatest(
+                        0,
+                        least(
+                          face.box_x + face.box_w,
+                          detected.box_x + detected.box_w
+                        ) - greatest(face.box_x, detected.box_x)
+                      ) * greatest(
+                        0,
+                        least(
+                          face.box_y + face.box_h,
+                          detected.box_y + detected.box_h
+                        ) - greatest(face.box_y, detected.box_y)
+                      ) AS intersection
+                  ) overlap
+                  WHERE detected_identity.person_id = identity.person_id
+                    AND detected_identity.face_id <> identity.face_id
+                    AND detected_identity.state IN ('accepted', 'superseded')
+                    AND detected_identity.origin <> 'trusted_import'
+                    AND (
+                      overlap.intersection / greatest(
+                        0.000001,
+                        face.box_w * face.box_h
+                          + detected.box_w * detected.box_h
+                          - overlap.intersection
+                      ) >= 0.62
+                      OR (
+                        overlap.intersection / greatest(
+                          0.000001,
+                          least(
+                            face.box_w * face.box_h,
+                            detected.box_w * detected.box_h
+                          )
+                        ) >= 0.5
+                        AND abs(
+                          face.box_x + face.box_w / 2
+                            - detected.box_x - detected.box_w / 2
+                        ) / greatest(
+                          0.000001,
+                          least(face.box_w, detected.box_w)
+                        ) <= 0.45
+                        AND abs(
+                          face.box_y + face.box_h / 2
+                            - detected.box_y - detected.box_h / 2
+                        ) / greatest(
+                          0.000001,
+                          least(face.box_h, detected.box_h)
+                        ) <= 0.25
+                      )
+                    )
+                )
+              )
           ),
           classified_faces AS (
             SELECT accepted.face_id, main_bucket.bucket_kind
@@ -7209,6 +7272,95 @@ export const createCimmichRepository = (
         JOIN asset a ON a.asset_id = fo.asset_id AND a.state = 'active'
         WHERE cfi.person_id = ${id} AND cfi.state = 'accepted'
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
+          AND NOT (
+            coalesce(
+              fo.quality_measurements->>'source_gallery_permission',
+              ''
+            ) = 'never'
+            AND coalesce(
+              fo.quality_measurements->>'effective_gallery_permission',
+              ''
+            ) = 'never'
+            AND NOT EXISTS (
+              SELECT 1 FROM current_reference_gallery gallery
+              WHERE gallery.person_id = cfi.person_id
+                AND gallery.face_id = cfi.face_id
+                AND gallery.membership_state = 'active'
+                AND gallery.bucket_kind IN ('prime','secondary','lq','head')
+            )
+            AND EXISTS (
+              SELECT 1 FROM imported_identity_locator locator
+              WHERE locator.person_id = cfi.person_id
+                AND locator.asset_id = fo.asset_id
+                AND locator.intended_tag_type = 'body'
+                AND (
+                  locator.state = 'unresolved'
+                  OR (
+                    locator.state = 'resolved'
+                    AND locator.resolution_kind = 'stronger_existing_truth'
+                  )
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM current_face_identity detected_identity
+              JOIN face_observation detected
+                ON detected.face_id = detected_identity.face_id
+                AND detected.asset_id = fo.asset_id
+                AND detected.state = 'valid'
+              CROSS JOIN LATERAL (
+                SELECT
+                  greatest(
+                    0,
+                    least(
+                      fo.box_x + fo.box_w,
+                      detected.box_x + detected.box_w
+                    ) - greatest(fo.box_x, detected.box_x)
+                  ) * greatest(
+                    0,
+                    least(
+                      fo.box_y + fo.box_h,
+                      detected.box_y + detected.box_h
+                    ) - greatest(fo.box_y, detected.box_y)
+                  ) AS intersection
+              ) overlap
+              WHERE detected_identity.person_id = cfi.person_id
+                AND detected_identity.face_id <> cfi.face_id
+                AND detected_identity.state IN ('accepted', 'superseded')
+                AND detected_identity.origin <> 'trusted_import'
+                AND (
+                  overlap.intersection / greatest(
+                    0.000001,
+                    fo.box_w * fo.box_h
+                      + detected.box_w * detected.box_h
+                      - overlap.intersection
+                  ) >= 0.62
+                  OR (
+                    overlap.intersection / greatest(
+                      0.000001,
+                      least(
+                        fo.box_w * fo.box_h,
+                        detected.box_w * detected.box_h
+                      )
+                    ) >= 0.5
+                    AND abs(
+                      fo.box_x + fo.box_w / 2
+                        - detected.box_x - detected.box_w / 2
+                    ) / greatest(
+                      0.000001,
+                      least(fo.box_w, detected.box_w)
+                    ) <= 0.45
+                    AND abs(
+                      fo.box_y + fo.box_h / 2
+                        - detected.box_y - detected.box_h / 2
+                    ) / greatest(
+                      0.000001,
+                      least(fo.box_h, detected.box_h)
+                    ) <= 0.25
+                  )
+                )
+            )
+          )
           AND (
             ${bucketFilter} = ''
             OR (
@@ -7446,21 +7598,9 @@ export const createCimmichRepository = (
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map((row) => {
-        const mainBucket = row.buckets.find((bucket) =>
-          ["head", "lq", "prime", "secondary"].includes(bucket.bucket_kind),
-        );
-        return {
-          ...row,
-          // Evidence classification is exhaustive for the audit surface.
-          // A Face without a gallery bucket is still Supporting identity
-          // evidence; matcher membership remains an independent nullable fact.
-          main_evidence_tier: mainBucket?.bucket_kind || "secondary",
-          matching_reference_tier: mainBucket?.bucket_kind || null,
-          ...identityQcFields(row),
-          ...bridgeFields(bridge, row.asset_id),
-        };
-      });
+      const items = pageRows.map((row) =>
+        personPage.projectIdentityFaceRow({ bridge, identityQcFields, row }),
+      );
       if (!paged) return items;
       const last = pageRows.at(-1);
       const lastQuality = Number(last?.quality_measurements?.quality_score);

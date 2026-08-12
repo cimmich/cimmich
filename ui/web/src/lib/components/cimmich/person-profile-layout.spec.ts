@@ -68,10 +68,10 @@ describe('Person profile layout', () => {
     expect(source).toContain("label: 'Review'");
     expect(source).toContain('lg:border-l');
     expect(source).not.toContain('overflow-x-auto pb-1');
-    expect(source).toContain("{ id: 'presentation', label: 'Photos'");
+    expect(source).toMatch(/id: 'presentation',[\s\S]+label: 'Photos'/);
     expect(source).toContain('aria-label="Display photo choices"');
     expect(source).toContain("{ id: 'prime', label: 'Core matching set'");
-    expect(source).toContain("{ id: 'secondary', label: 'Supporting'");
+    expect(source).toMatch(/id: 'secondary',[\s\S]+label: 'Supporting Face evidence'/);
     expect(source).toContain('Use automatic');
     expect(source).toContain("'Not selected'");
     expect(source).toContain("cimmichIdentityFilter === 'candidates'");
@@ -148,7 +148,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('getCimmichIdentityFacesPage(personId, 120)');
     expect(source).toContain('cimmichExplore.getAssetsPage(personId)');
     expect(source).toContain('loadPersonAppearanceAssets(personId)');
-    expect(source).toContain('cimmichAppearanceAssets.bodyTotal.toLocaleString()');
+    expect(source).toContain('cimmichAppearanceAssets.bodyConfirmed.toLocaleString()');
+    expect(source).toContain('cimmichAppearanceAssets.bodyCandidate.toLocaleString()');
     expect(source).toContain('refreshCimmichIdentityAfterReview');
     expect(source).toContain('cimmichIdentityAuditProgress.completed');
     expect(source).toContain('Route.viewCimmichPersonAsset');
@@ -200,15 +201,14 @@ describe('Person profile layout', () => {
     expect(source).toContain(
       "{ id: 'presence', label: 'Presence', description: 'Known appearance without usable person geometry' }",
     );
-    expect(source).toContain(
-      "{ id: 'body', label: 'Body', count: cimmichAppearanceAssets.bodyTotal.toLocaleString() }",
-    );
-    expect(source).toContain(
-      "{ id: 'presence', label: 'Presence', count: cimmichAppearanceAssets.presenceTotal.toLocaleString() }",
+    expect(source).toContain("label: 'Body review'");
+    expect(source).toContain('accepted · ${cimmichAppearanceAssets.bodyCandidate.toLocaleString()} placement');
+    expect(source).toMatch(
+      /id: 'presence',[\s\S]+label: 'Presence',[\s\S]+cimmichIdentityCountLabel\(cimmichAppearanceAssets\.presenceTotal\)/,
     );
     expect(source).toContain("association_types.includes('body_candidate')");
     expect(source).toContain('Body placement needed');
-    expect(source).toContain('It moves to Face or Head only when that stronger evidence is confirmed for this person.');
+    expect(source).toContain('pre-Cimmich placement candidates are shown together');
     expect(source).toContain('Faces retained as identity evidence but excluded from matching.');
     expect(source).toContain('No Face-derived Head references');
     expect(source).toContain("const hasBody = asset.association_types.includes('body')");
@@ -250,8 +250,10 @@ describe('Person profile layout', () => {
     );
     expect(projection).toContain('void openCimmichIdentity(generation)');
     expect(source).toMatch(
-      /const openCimmichIdentity = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
+      /const loadCimmichIdentityReviewData = async[\s\S]*await getCimmichMachineSuggestions\(80, personId\)/,
     );
+    expect(source).toContain('void loadCimmichIdentityReviewData(personId, generation)');
+    expect(source).not.toContain("if (cimmichIdentityFilter === 'all') {\n        cimmichIdentityFilter = 'prime';");
   });
 
   it('keeps rapid review decisions independent and coalesces their projection refresh', async () => {

@@ -14,11 +14,16 @@ test("Explore filters normalize stable URL selections deterministically", () => 
     }),
     {
       eventIds: ["event-one", "event-two"],
+      futureDates: false,
       labelIds: ["label-two"],
       placeIds: [],
       privacyTiers: ["private"],
       thingIds: [],
     },
+  );
+  assert.equal(
+    normalizeExploreFilters({ futureDates: true }).futureDates,
+    true,
   );
   assert.throws(
     () => normalizeExploreFilters({ privacyTiers: ["most-private"] }),
@@ -61,6 +66,10 @@ test("Explore facets return exact counts and bounded Person matches", async () =
     { count: 4, displayName: "Restricted", id: "label-one" },
   ]);
   assert.match(calls[0].statement, /privacy_tier = ANY/);
+  assert.match(
+    calls[0].statement,
+    /capture_time > now\(\) \+ interval '24 hours'/,
+  );
   assert.match(calls[0].statement, /membership\.entity_kind = 'event'/);
   await store.exploreFacets({
     filters: { privacyTiers: ["private"] },

@@ -665,6 +665,8 @@ test("Person assets resolve scoped associations without expanding person_assets"
     /locator\.resolution_kind = 'stronger_existing_truth'/,
   );
   assert.match(statement, /'body_hint_face'::text/);
+  assert.match(statement, /has_body OR has_body_hint_face/);
+  assert.match(statement, /NOT has_body_hint_face/);
   assert.match(statement, /effective_gallery_permission/);
   assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
   assert.match(
@@ -672,6 +674,10 @@ test("Person assets resolve scoped associations without expanding person_assets"
     /detected_identity\.state IN \('accepted', 'superseded'\)/,
   );
   assert.match(statement, /FROM current_context_asset context_link/);
+  assert.match(
+    statement,
+    /projected_assets\.capture_time > now\(\) \+ interval '24 hours'/,
+  );
   assert.match(statement, /cimmich_visibility_context_entity_rank/);
   assert.match(
     statement,
@@ -1008,6 +1014,10 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
   );
   assert.match(statement, /cimmich_visibility_asset_rank/);
   assert.match(statement, /filtered_gallery\.bucket_kind =/);
+  assert.match(statement, /source_gallery_permission/);
+  assert.match(statement, /effective_gallery_permission/);
+  assert.match(statement, /resolution_kind = 'stronger_existing_truth'/);
+  assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
 });
 
 test("Holding match batches are Person-scoped, ordered and concurrency-bounded", async () => {

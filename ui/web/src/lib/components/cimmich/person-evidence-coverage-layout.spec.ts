@@ -20,18 +20,29 @@ describe('Person Evidence & coverage workspace', () => {
     expect(page).toContain('<CimmichPersonEvidenceCoverage');
   });
 
-  it('shows observed ratios, diverse source frames, context and review notes without a confidence score', async () => {
+  it('reconciles photo and observation populations with actionable context and exact review routes', async () => {
     const source = await readFile('src/lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte', 'utf8');
 
     expect(source).toContain('Evidence &amp; coverage');
-    expect(source).toContain('they are not identity confidence or a completeness score');
-    expect(source).toContain("label: 'Face observed'");
-    expect(source).toContain("label: 'Body observed'");
+    expect(source).toContain('none is an identity-confidence score');
+    expect(source).toContain('Profile photos');
+    expect(source).toContain('Accepted evidence photos');
+    expect(source).toContain('Outside this map');
+    expect(source).toContain("label: 'Face photos'");
+    expect(source).toContain("label: 'Body photos'");
+    expect(source).toContain("label: 'Body-only photos'");
+    expect(source).toContain("label: 'Head photos'");
+    expect(source).toContain("label: 'Presence photos'");
     expect(source).toContain("label: 'Pose geometry'");
-    expect(source).toContain('Source suggestions');
+    expect(source).toContain('Matcher reference gallery');
+    expect(source).toContain('Supporting matcher refs');
+    expect(source).toContain('Representative evidence');
     expect(source).toContain("overlay: 'machinery'");
+    expect(source).toContain('contextHref(group.kind, item.entityId)');
     expect(source).toContain('Context observed');
     expect(source).toContain('Coverage notes');
-    expect(source).not.toContain('confidence score:');
+    expect(source).toContain("onopenidentity('candidates')");
+    expect(source).toContain('onopenphotos({ futureDates: true })');
+    expect(source).not.toContain('for covers or closer review');
   });
 });

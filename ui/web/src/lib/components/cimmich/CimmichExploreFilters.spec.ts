@@ -10,6 +10,7 @@ import CimmichExploreFilters from './CimmichExploreFilters.svelte';
 
 const filters: CimmichExploreFilterState = {
   eventIds: [],
+  futureDates: false,
   labelIds: [],
   placeIds: [],
   privacyTiers: [],

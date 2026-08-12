@@ -11,7 +11,7 @@ const coverage = (): CimmichPersonEvidenceCoverage => ({
     sourceMutation: 'none',
   },
   context: { events: [], places: [], things: [] },
-  observations: { body: 8, face: 12, head: 1, pose: 6, presence: 1 },
+  observations: { body: 8, bodyHints: 2, face: 12, head: 1, pose: 6, presence: 1 },
   person: { displayName: 'Maya', personId: 'person-maya' },
   references: { head: 1, lowQuality: 2, prime: 3, secondary: 6 },
   review: { bodyWithoutPose: 2, candidateFaces: 3, futureDates: 1 },
@@ -45,6 +45,7 @@ describe('Person Evidence & coverage presentation', () => {
       ['attention', 'Identity proposals are waiting'],
       ['coverage', 'Pose coverage is partial'],
     ]);
+    expect(notes.map(({ action }) => action)).toEqual(['future-dates', 'candidates', null]);
   });
 
   it('does not confuse a Head reference bucket with standalone Head evidence', () => {

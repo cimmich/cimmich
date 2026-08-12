@@ -32,6 +32,7 @@ export const normalizeExploreFilters = (value = {}) => {
   }
   return {
     eventIds: cleanIds(value.eventIds, "eventIds"),
+    futureDates: value.futureDates === true,
     labelIds: cleanIds(value.labelIds, "labelIds"),
     placeIds: cleanIds(value.placeIds, "placeIds"),
     privacyTiers: privacy,
@@ -105,9 +106,10 @@ export const createExploreFacetStore = (
       ), scoped_assets AS MATERIALIZED (
         SELECT DISTINCT asset_id FROM scoped_person_assets
       ), asset_facts AS MATERIALIZED (
-        SELECT scoped.asset_id,
+        SELECT scoped.asset_id, asset.capture_time,
           coalesce(visibility.visibility_tier, 'standard') AS privacy_tier
         FROM scoped_assets scoped
+        JOIN asset ON asset.asset_id = scoped.asset_id
         LEFT JOIN cimmich_visibility_object visibility
           ON visibility.object_scope = 'asset'
           AND visibility.object_id = scoped.asset_id
@@ -129,6 +131,10 @@ export const createExploreFacetStore = (
           <= ${visibleRank}
       ), asset_flags AS MATERIALIZED (
         SELECT facts.*,
+          (
+            NOT ${filters.futureDates}
+            OR facts.capture_time > now() + interval '24 hours'
+          ) AS date_match,
           (
             cardinality(${filters.privacyTiers}::text[]) = 0
             OR facts.privacy_tier = ANY(${filters.privacyTiers}::text[])
@@ -163,11 +169,11 @@ export const createExploreFacetStore = (
         FROM asset_facts facts
       ), matching_assets AS MATERIALIZED (
         SELECT asset_id FROM asset_flags
-        WHERE privacy_match AND label_match AND place_match
+        WHERE date_match AND privacy_match AND label_match AND place_match
           AND event_match AND thing_match
       ), privacy_rows AS (
         SELECT tier.id, tier.display_name AS "displayName",
-          count(flags.asset_id) FILTER (WHERE flags.label_match
+          count(flags.asset_id) FILTER (WHERE flags.date_match AND flags.label_match
             AND flags.place_match AND flags.event_match
             AND flags.thing_match)::int AS count
         FROM (VALUES
@@ -180,7 +186,7 @@ export const createExploreFacetStore = (
         ORDER BY tier.position
       ), label_rows AS (
         SELECT label.label_id AS id, label.display_name AS "displayName",
-          count(DISTINCT flags.asset_id) FILTER (WHERE flags.privacy_match
+          count(DISTINCT flags.asset_id) FILTER (WHERE flags.date_match AND flags.privacy_match
             AND flags.place_match AND flags.event_match
             AND flags.thing_match)::int AS count
         FROM asset_label label
@@ -196,7 +202,7 @@ export const createExploreFacetStore = (
         SELECT membership.entity_id AS id, membership.entity_kind,
           membership.display_name AS "displayName",
           count(DISTINCT flags.asset_id) FILTER (
-            WHERE flags.privacy_match AND flags.label_match
+            WHERE flags.date_match AND flags.privacy_match AND flags.label_match
               AND (membership.entity_kind = 'place' OR flags.place_match)
               AND (membership.entity_kind = 'event' OR flags.event_match)
               AND (membership.entity_kind = 'object' OR flags.thing_match)

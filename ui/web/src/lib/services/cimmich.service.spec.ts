@@ -1048,7 +1048,14 @@ describe('Cimmich Person projection page client contract', () => {
     const facets = {
       availableAssets: 10,
       facets: { events: [], labels: [], places: [], privacy: [], things: [] },
-      filters: { eventIds: [], labelIds: ['label-one'], placeIds: [], privacyTiers: ['private'], thingIds: [] },
+      filters: {
+        eventIds: [],
+        futureDates: false,
+        labelIds: ['label-one'],
+        placeIds: [],
+        privacyTiers: ['private'],
+        thingIds: [],
+      },
       people: [],
       schemaVersion: 'cimmich.explore-facets.v1',
       scope: { kind: 'person', personId: 'person-one' },
@@ -1060,6 +1067,7 @@ describe('Cimmich Person projection page client contract', () => {
       .mockResolvedValueOnce(Response.json(facets));
     const filters: CimmichExploreFilters = {
       eventIds: [],
+      futureDates: false,
       labelIds: ['label-one'],
       placeIds: [],
       privacyTiers: ['private'],

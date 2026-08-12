@@ -38,6 +38,7 @@ export const projectPersonEvidenceCoverage = (row) => ({
   },
   observations: {
     body: number(row.body_observation_count),
+    bodyHints: number(row.body_hint_observation_count),
     face: number(row.face_observation_count),
     head: number(row.head_observation_count),
     pose: number(row.pose_observation_count),
@@ -119,7 +120,7 @@ export const createPersonEvidenceCoverageStore = (
           FROM current_person
           WHERE person_id = ${id} AND status = 'active'
             AND subject_kind = 'person'
-        ), accepted_faces AS MATERIALIZED (
+        ), all_accepted_faces AS MATERIALIZED (
           SELECT identity.face_id, face.asset_id, face.box_x, face.box_y,
             face.box_w, face.box_h, face.quality_measurements
           FROM current_face_identity identity
@@ -129,6 +130,114 @@ export const createPersonEvidenceCoverageStore = (
           JOIN asset ON asset.asset_id = face.asset_id AND asset.state = 'active'
           WHERE identity.state = 'accepted'
             AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+        ), same_person_detector_faces AS MATERIALIZED (
+          SELECT DISTINCT imported_identity.person_id, imported.face_id
+          FROM current_face_identity imported_identity
+          JOIN face_observation imported
+            ON imported.face_id = imported_identity.face_id
+          JOIN current_face_identity detected_identity
+            ON detected_identity.person_id = imported_identity.person_id
+            AND detected_identity.face_id <> imported_identity.face_id
+            AND detected_identity.state IN ('accepted', 'superseded')
+            AND detected_identity.origin <> 'trusted_import'
+          JOIN face_observation detected
+            ON detected.face_id = detected_identity.face_id
+            AND detected.asset_id = imported.asset_id
+            AND detected.state = 'valid'
+          CROSS JOIN LATERAL (
+            SELECT
+              greatest(
+                0,
+                least(
+                  imported.box_x + imported.box_w,
+                  detected.box_x + detected.box_w
+                ) - greatest(imported.box_x, detected.box_x)
+              ) * greatest(
+                0,
+                least(
+                  imported.box_y + imported.box_h,
+                  detected.box_y + detected.box_h
+                ) - greatest(imported.box_y, detected.box_y)
+              ) AS intersection
+          ) overlap
+          WHERE imported_identity.person_id = ${id}
+            AND imported_identity.state = 'accepted'
+            AND imported.state = 'valid'
+            AND (
+              overlap.intersection / greatest(
+                0.000001,
+                imported.box_w * imported.box_h
+                  + detected.box_w * detected.box_h
+                  - overlap.intersection
+              ) >= 0.62
+              OR (
+                overlap.intersection / greatest(
+                  0.000001,
+                  least(
+                    imported.box_w * imported.box_h,
+                    detected.box_w * detected.box_h
+                  )
+                ) >= 0.5
+                AND abs(
+                  imported.box_x + imported.box_w / 2
+                    - detected.box_x - detected.box_w / 2
+                ) / greatest(
+                  0.000001,
+                  least(imported.box_w, detected.box_w)
+                ) <= 0.45
+                AND abs(
+                  imported.box_y + imported.box_h / 2
+                    - detected.box_y - detected.box_h / 2
+                ) / greatest(
+                  0.000001,
+                  least(imported.box_h, detected.box_h)
+                ) <= 0.25
+              )
+            )
+        ), body_hint_faces AS MATERIALIZED (
+          SELECT DISTINCT face.face_id
+          FROM all_accepted_faces face
+          LEFT JOIN current_reference_gallery gallery
+            ON gallery.person_id = ${id}
+            AND gallery.face_id = face.face_id
+            AND gallery.membership_state = 'active'
+            AND gallery.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
+          LEFT JOIN same_person_detector_faces detected
+            ON detected.person_id = ${id}
+            AND detected.face_id = face.face_id
+          WHERE gallery.face_id IS NULL
+            AND detected.face_id IS NULL
+            AND coalesce(
+              face.quality_measurements->>'source_gallery_permission',
+              ''
+            ) = 'never'
+            AND coalesce(
+              face.quality_measurements->>'effective_gallery_permission',
+              ''
+            ) = 'never'
+            AND EXISTS (
+              SELECT 1
+              FROM imported_identity_locator locator
+              WHERE locator.person_id = ${id}
+                AND locator.asset_id = face.asset_id
+                AND locator.intended_tag_type = 'body'
+                AND (
+                  locator.state = 'unresolved'
+                  OR (
+                    locator.state = 'resolved'
+                    AND locator.resolution_kind = 'stronger_existing_truth'
+                  )
+                )
+            )
+        ), accepted_body_hints AS MATERIALIZED (
+          SELECT face.*
+          FROM all_accepted_faces face
+          JOIN body_hint_faces body_hint ON body_hint.face_id = face.face_id
+        ), accepted_faces AS MATERIALIZED (
+          SELECT face.*
+          FROM all_accepted_faces face
+          LEFT JOIN body_hint_faces body_hint ON body_hint.face_id = face.face_id
+          WHERE body_hint.face_id IS NULL
         ), accepted_bodies AS MATERIALIZED (
           SELECT tag.body_tag_id, body.body_id, body.asset_id,
             (pose.body_id IS NOT NULL) AS has_pose
@@ -158,6 +267,7 @@ export const createPersonEvidenceCoverageStore = (
             AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
         ), evidence_rows AS MATERIALIZED (
           SELECT asset_id, 'face'::text AS kind FROM accepted_faces
+          UNION ALL SELECT asset_id, 'body_hint' FROM accepted_body_hints
           UNION ALL SELECT asset_id, 'body' FROM accepted_bodies
           UNION ALL SELECT asset_id, 'head' FROM accepted_heads
           UNION ALL SELECT asset_id, 'presence' FROM accepted_presence
@@ -165,6 +275,7 @@ export const createPersonEvidenceCoverageStore = (
           SELECT evidence.asset_id,
             bool_or(evidence.kind = 'face') AS has_face,
             bool_or(evidence.kind = 'body') AS has_body,
+            bool_or(evidence.kind = 'body_hint') AS has_body_hint,
             bool_or(evidence.kind = 'head') AS has_head,
             bool_or(evidence.kind = 'presence') AS has_presence
           FROM evidence_rows evidence
@@ -266,15 +377,18 @@ export const createPersonEvidenceCoverageStore = (
           (SELECT count(*)::int FROM visible_assets) AS total_asset_count,
           (SELECT count(*)::int FROM visible_assets WHERE has_face) AS face_asset_count,
           (SELECT count(*)::int FROM visible_assets WHERE has_head) AS head_asset_count,
-          (SELECT count(*)::int FROM visible_assets WHERE has_body) AS body_asset_count,
+          (SELECT count(*)::int FROM visible_assets
+            WHERE has_body OR has_body_hint) AS body_asset_count,
           (SELECT count(*)::int FROM visible_assets WHERE has_presence) AS presence_asset_count,
           (SELECT count(*)::int FROM visible_assets
-            WHERE has_body AND NOT has_face AND NOT has_head) AS body_only_asset_count,
+            WHERE (has_body OR has_body_hint) AND NOT has_face AND NOT has_head)
+            AS body_only_asset_count,
           (SELECT count(*)::int FROM visible_assets
             WHERE capture_time IS NOT NULL) AS dated_asset_count,
           (SELECT count(*)::int FROM accepted_faces) AS face_observation_count,
           (SELECT count(*)::int FROM accepted_heads) AS head_observation_count,
           (SELECT count(*)::int FROM accepted_bodies) AS body_observation_count,
+          (SELECT count(*)::int FROM accepted_body_hints) AS body_hint_observation_count,
           (SELECT count(*)::int FROM accepted_bodies WHERE has_pose) AS pose_observation_count,
           (SELECT count(*)::int FROM accepted_presence) AS presence_observation_count,
           (SELECT count(*)::int FROM accepted_bodies WHERE NOT has_pose) AS body_without_pose_count,

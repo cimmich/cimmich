@@ -21,6 +21,7 @@ export type CimmichPersonEvidenceCoverage = {
   };
   observations: {
     body: number;
+    bodyHints: number;
     face: number;
     head: number;
     pose: number;

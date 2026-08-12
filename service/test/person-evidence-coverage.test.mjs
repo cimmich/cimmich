@@ -7,6 +7,7 @@ import {
 
 const projectionRow = {
   body_asset_count: 7,
+  body_hint_observation_count: 2,
   body_observation_count: 8,
   body_only_asset_count: 2,
   body_without_pose_count: 3,
@@ -95,6 +96,7 @@ test("Person evidence coverage projects accepted evidence without mutation autho
   });
   assert.deepEqual(result.observations, {
     body: 8,
+    bodyHints: 2,
     face: 12,
     head: 1,
     pose: 5,
@@ -116,6 +118,15 @@ test("Person evidence coverage projects accepted evidence without mutation autho
   });
   assert.equal(statements.length, 1);
   assert.match(statements[0], /current_face_identity/);
+  assert.match(statements[0], /all_accepted_faces AS MATERIALIZED/);
+  assert.match(statements[0], /same_person_detector_faces AS MATERIALIZED/);
+  assert.match(statements[0], /body_hint_faces AS MATERIALIZED/);
+  assert.match(statements[0], /body_hint\.face_id IS NULL/);
+  assert.match(statements[0], /accepted_body_hints AS MATERIALIZED/);
+  assert.match(statements[0], /has_body OR has_body_hint/);
+  assert.match(statements[0], /source_gallery_permission/);
+  assert.match(statements[0], /effective_gallery_permission/);
+  assert.match(statements[0], /resolution_kind = 'stronger_existing_truth'/);
   assert.match(statements[0], /current_body_tag/);
   assert.match(statements[0], /body_pose_evidence/);
   assert.match(statements[0], /cimmich_visibility_asset_rank/);
