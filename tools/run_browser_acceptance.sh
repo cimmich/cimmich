@@ -10,6 +10,9 @@ test -s "$STATE_ROOT/operator.env" || {
   exit 1
 }
 
-CIMMICH_E2E_BASE_URL="$BASE_URL" \
-  CIMMICH_E2E_STATE_ROOT="$STATE_ROOT" \
-  pnpm --dir "$ROOT/ui/web" run test:browser
+(
+  cd "$ROOT/ui"
+  CIMMICH_E2E_BASE_URL="$BASE_URL" \
+    CIMMICH_E2E_STATE_ROOT="$STATE_ROOT" \
+    pnpm --dir web run test:browser
+)

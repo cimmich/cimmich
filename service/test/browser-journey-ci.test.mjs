@@ -29,6 +29,7 @@ test("CI executes the six browser journeys against a disposable fictional demo",
     /if: always\(\)[\s\S]+tools\/public_demo\.sh destroy/u,
   );
   assert.doesNotMatch(workflow, /playwright test --list/u);
-  assert.match(runner, /pnpm --dir "\$ROOT\/ui\/web" run test:browser/u);
+  assert.match(runner, /cd "\$ROOT\/ui"/u);
+  assert.match(runner, /pnpm --dir web run test:browser/u);
   assert.equal(browserSpec.match(/^test\('/gmu)?.length, 6);
 });
