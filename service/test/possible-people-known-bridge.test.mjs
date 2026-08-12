@@ -19,6 +19,12 @@ test("known-Person classification is versioned, separated and never identity aut
 
   assert.match(classifier, /knownPersonScoreFloor: 0\.55/);
   assert.match(classifier, /knownPersonMarginFloor: 0\.1/);
+  assert.match(classifier, /clusterConsensusFloor: 0\.5/);
+  assert.match(classifier, /clusterMinimumVotes: 2/);
+  assert.match(classifier, /clusterSampleLimit: 12/);
+  assert.match(classifier, /distributed_member_consensus/);
+  assert.match(classifier, /ntile\(\$\{clusterSampleLimit\}\)/);
+  assert.match(classifier, /vote\.eligible_people = 1/);
   assert.match(classifier, /runnerPersonId/);
   assert.match(classifier, /referenceFaceId/);
   assert.match(classifier, /\$\{classificationVersion\}::text/);
