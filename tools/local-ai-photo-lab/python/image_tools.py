@@ -366,7 +366,7 @@ def enhance_vulkan(
             env={
                 # The API container is read-only. Keep the driver's optional
                 # shader cache inside its disposable tmpfs instead of letting
-                # it probe /home/node and emit a misleading failure warning.
+                # it probe the container account's home and emit a warning.
                 "HOME": "/tmp",
                 "LANG": os.environ.get("LANG", "C.UTF-8"),
                 "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
