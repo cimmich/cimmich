@@ -70,15 +70,18 @@ test('viewing mode menu opens through a real pointer interaction', async ({ page
 test('the familiar sidebar nests Cimmich beside ordinary library destinations', async ({ page }) => {
   const primaryNavigation = page.getByRole('navigation', { name: /primary/iu });
   await expect(primaryNavigation.getByRole('link', { name: 'Cimmich', exact: true })).toBeVisible();
-  for (const [name, pathname] of [
-    ['Photos', '/photos'],
-    ['Albums', '/albums'],
-    ['Library', '/cimmich/library'],
-    ['People', '/cimmich/people'],
-    ['Settings', '/cimmich/settings'],
+  for (const [name, href, pathname, organise] of [
+    ['Photos', '/photos', '/photos', false],
+    ['Albums', '/albums', '/albums', false],
+    ['Library', '/cimmich/library', '/photos', true],
+    ['People', '/cimmich/people', '/cimmich/people', false],
+    ['Settings', '/cimmich/settings', '/cimmich/settings', false],
   ] as const) {
-    await primaryNavigation.getByRole('link', { name, exact: true }).click();
+    const destination = primaryNavigation.getByRole('link', { name, exact: true });
+    await expect(destination).toHaveAttribute('href', href);
+    await destination.click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(pathname);
+    await expect.poll(() => new URL(page.url()).searchParams.has('organise')).toBe(organise);
     await expect(page.locator('main')).toBeVisible();
   }
 });
