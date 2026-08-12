@@ -223,9 +223,13 @@ export const validateConfig = (input) => {
   const endpoint = new URL(
     requiredText(sceneText.endpoint, "providers.sceneText.endpoint", 2048),
   );
-  if (!["127.0.0.1", "::1", "localhost"].includes(endpoint.hostname)) {
+  if (
+    endpoint.protocol !== "http:" ||
+    endpoint.port !== "11434" ||
+    !["127.0.0.1", "localhost"].includes(endpoint.hostname)
+  ) {
     throw typedError(
-      "Scene/Text endpoint must be loopback-only",
+      "Scene/Text endpoint must use the standard loopback Ollama origin",
       "LOCAL_AI_NETWORK_FORBIDDEN",
     );
   }

@@ -322,6 +322,23 @@ test("Local AI completes a bounded derived run and re-verifies the source before
       token: `${assetId}:quick`,
     });
     assert.deepEqual(artifact.bytes, artifactBytes);
+    const storedArtifactPath = join(
+      root,
+      "outputs",
+      "sets",
+      "test-set",
+      "runs",
+      "0001",
+      "artifacts",
+      `${assetId}-quick.png`,
+    );
+    await writeFile(storedArtifactPath, "tampered-preview");
+    await assert.rejects(
+      service.artifact({ jobId: started.jobId, token: `${assetId}:quick` }),
+      (error) =>
+        error.code === "LOCAL_AI_ARTIFACT_INVALID" && error.statusCode === 409,
+    );
+    await writeFile(storedArtifactPath, artifactBytes);
     fingerprintDigest = "0".repeat(64);
     await assert.rejects(
       service.artifact({ jobId: started.jobId, token: `${assetId}:quick` }),

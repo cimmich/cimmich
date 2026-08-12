@@ -207,10 +207,22 @@ const bodyManifestCheck = async ({ config, modelDigest, runtime }) => {
   }
 };
 
-const sceneCheck = async ({ config, timeoutMs }) => {
+const sceneCheck = async ({ config, fetchImpl = fetch, timeoutMs }) => {
   if (!config.enabled) return skipped("scene-text-loopback");
   try {
-    const response = await fetch(`${config.endpoint}/api/tags`, {
+    let endpoint;
+    if (
+      config.endpoint === "http://127.0.0.1:11434" ||
+      config.endpoint === "http://localhost:11434"
+    ) {
+      endpoint = "http://127.0.0.1:11434";
+    } else {
+      throw Object.assign(
+        new Error("configured local vision endpoint is unavailable"),
+        { code: "LOCAL_AI_NETWORK_FORBIDDEN" },
+      );
+    }
+    const response = await fetchImpl(`${endpoint}/api/tags`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
@@ -248,7 +260,7 @@ const sceneCheck = async ({ config, timeoutMs }) => {
   }
 };
 
-export const runDoctor = async ({ configInput }) => {
+export const runDoctor = async ({ configInput, sceneTextFetch }) => {
   const started = Date.now();
   const config = validateConfig(configInput);
   const timeoutMs = Math.min(config.limits.providerTimeoutMs, 30_000);
@@ -333,7 +345,11 @@ export const runDoctor = async ({ configInput }) => {
           }
         : { model: config.providers.enhance.modelPath },
     }),
-    sceneCheck({ config: config.providers.sceneText, timeoutMs }),
+    sceneCheck({
+      config: config.providers.sceneText,
+      fetchImpl: sceneTextFetch,
+      timeoutMs,
+    }),
   ]);
   const bodyManifest = await bodyManifestCheck({
     config: config.providers.bodies,

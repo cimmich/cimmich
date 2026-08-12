@@ -117,7 +117,10 @@ positive at `0.515`.
 Thresholds remain part of the bound runtime config, so future model changes
 must rerun the benchmark instead of inheriting this value blindly.
 
-The Scene/Text endpoint must be loopback (`127.0.0.1`, `::1`, or `localhost`).
+The Scene/Text endpoint must be the standard local Ollama origin on port
+`11434` (`http://127.0.0.1:11434` or `http://localhost:11434`). The doctor
+canonicalizes the request to `127.0.0.1`; configuration cannot redirect it to
+another local service or an external host.
 No provider may upload source media. Provider failures are represented as typed
 unavailable/failed operation results so other requested lanes can still finish.
 

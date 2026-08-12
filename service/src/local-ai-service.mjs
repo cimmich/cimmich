@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
   mkdir,
+  open,
   readFile,
   readdir,
   rm,
@@ -700,29 +701,54 @@ export const createLocalAiService = async ({
           "LOCAL_AI_SOURCE_CHANGED",
         );
       }
-      const info = await stat(artifact.path).catch(() => null);
-      if (!info?.isFile() || info.size < 1 || info.size > 256 * 1024 * 1024) {
+      const handle = await open(artifact.path, "r").catch(() => null);
+      if (!handle) {
         throw typedError(
           "Local AI artifact is unavailable",
           404,
           "LOCAL_AI_ARTIFACT_NOT_FOUND",
         );
       }
-      const bytes = await readFile(artifact.path);
-      const digest = createHash("sha256").update(bytes).digest("hex");
-      if (digest !== artifact.digest) {
-        throw typedError(
-          "Local AI artifact verification failed",
-          409,
-          "LOCAL_AI_ARTIFACT_INVALID",
-        );
+      try {
+        const info = await handle.stat();
+        if (!info.isFile() || info.size < 1 || info.size > 256 * 1024 * 1024) {
+          throw typedError(
+            "Local AI artifact is unavailable",
+            404,
+            "LOCAL_AI_ARTIFACT_NOT_FOUND",
+          );
+        }
+        const bytes = Buffer.alloc(info.size);
+        const { bytesRead } = await handle.read(bytes, 0, info.size, 0);
+        const finalInfo = await handle.stat();
+        if (
+          bytesRead !== info.size ||
+          finalInfo.size !== info.size ||
+          finalInfo.mtimeMs !== info.mtimeMs
+        ) {
+          throw typedError(
+            "Local AI artifact changed while it was being verified",
+            409,
+            "LOCAL_AI_ARTIFACT_INVALID",
+          );
+        }
+        const digest = createHash("sha256").update(bytes).digest("hex");
+        if (digest !== artifact.digest) {
+          throw typedError(
+            "Local AI artifact verification failed",
+            409,
+            "LOCAL_AI_ARTIFACT_INVALID",
+          );
+        }
+        return {
+          bytes,
+          disposition: "inline",
+          filename: `${token.split(":").at(-1)}.png`,
+          mimeType: "image/png",
+        };
+      } finally {
+        await handle.close();
       }
-      return {
-        bytes,
-        disposition: "inline",
-        filename: `${token.split(":").at(-1)}.png`,
-        mimeType: "image/png",
-      };
     },
     cancel(jobId) {
       const job = jobs.get(jobId);

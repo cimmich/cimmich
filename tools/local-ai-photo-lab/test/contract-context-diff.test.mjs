@@ -86,6 +86,9 @@ test("config accepts loopback, rejects remote endpoints, and expands full", () =
   assert.throws(() => validateConfig(config("https://example.com")), {
     code: "LOCAL_AI_NETWORK_FORBIDDEN",
   });
+  assert.throws(() => validateConfig(config("http://127.0.0.1:11435")), {
+    code: "LOCAL_AI_NETWORK_FORBIDDEN",
+  });
   assert.deepEqual(normalizeOperations("full"), [
     "faces",
     "bodies",
@@ -137,10 +140,14 @@ test("doctor rejects oversized loopback model inventory responses", async (conte
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   context.after(() => server.close());
-  const input = config(`http://127.0.0.1:${server.address().port}`);
+  const input = config();
   for (const [name, provider] of Object.entries(input.providers))
     provider.enabled = name === "sceneText";
-  const result = await runDoctor({ configInput: input });
+  const result = await runDoctor({
+    configInput: input,
+    sceneTextFetch: (_url, options) =>
+      fetch(`http://127.0.0.1:${server.address().port}/api/tags`, options),
+  });
   assert.equal(result.state, "failed");
   assert.equal(
     result.checks.find(({ checkId }) => checkId === "scene-text-loopback")
