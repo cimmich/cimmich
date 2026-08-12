@@ -67,21 +67,18 @@ test('viewing mode menu opens through a real pointer interaction', async ({ page
   await expect(dialog.getByRole('button', { name: 'Private' })).toBeVisible();
 });
 
-test('Organise preserves all four familiar library modes', async ({ page }) => {
-  await page.getByRole('link', { name: 'Organise', exact: true }).click();
+test('the familiar sidebar preserves all four ordinary library modes', async ({ page }) => {
+  const primaryNavigation = page.getByRole('navigation', { name: /primary/iu });
   for (const [name, pathname] of [
-    ['Timeline', '/photos'],
+    ['Photos', '/photos'],
     ['Folders', '/folders'],
     ['Tags', '/tags'],
     ['Albums', '/albums'],
   ] as const) {
-    await page.getByRole('navigation', { name: 'Organise by' }).getByRole('link', { name }).click();
+    await primaryNavigation.getByRole('link', { name, exact: true }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(pathname);
-    await expect.poll(() => new URL(page.url()).searchParams.get('organise')).toBe('1');
+    await expect.poll(() => new URL(page.url()).searchParams.has('organise')).toBe(false);
     await expect(page.locator('main')).toBeVisible();
-    if (name !== 'Albums') {
-      await page.getByRole('link', { name: 'Organise', exact: true }).click();
-    }
   }
 });
 
