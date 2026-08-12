@@ -3711,6 +3711,13 @@ export const getCimmichPersonAssets = async (personId: string, limit = 5000) => 
   return result.items;
 };
 
+export const getCimmichPersonAssetNeighbors = async (personId: string, sourceAssetId: string) => {
+  const result = await request<{ items: CimmichPersonAsset[] }>(
+    `/v1/people/${encodeURIComponent(personId)}/assets?neighborOf=${encodeURIComponent(sourceAssetId)}`,
+  );
+  return result.items;
+};
+
 export const getCimmichTagAssets = (
   tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>,
   pageSize = 120,

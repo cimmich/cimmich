@@ -70,6 +70,7 @@ const personAssetRequestFromUrl = (encodedPersonId, searchParams) => {
       cursor,
       ...(exploreFilters ? { exploreFilters } : {}),
       limit: searchParams.get("limit"),
+      neighborOf: searchParams.get("neighborOf") || "",
       pageSize,
       personId: decodeURIComponent(encodedPersonId),
     },

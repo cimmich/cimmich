@@ -38,6 +38,7 @@
     enableRouting: boolean;
     timelineManager?: TimelineManager;
     options?: TimelineManagerOptions;
+    directNavigationAssetIds?: string[];
     assetInteraction: AssetMultiSelectManager;
     removeAction?: AssetAction.UNARCHIVE | AssetAction.ARCHIVE | AssetAction.SET_VISIBILITY_TIMELINE | null;
     withStacked?: boolean;
@@ -70,6 +71,7 @@
     enableRouting,
     timelineManager = $bindable(),
     options,
+    directNavigationAssetIds,
     assetInteraction,
     removeAction = null,
     withStacked = false,
@@ -730,6 +732,7 @@
       bind:invisible
       {timelineManager}
       {directViewer}
+      {directNavigationAssetIds}
       {removeAction}
       {withStacked}
       {isShared}

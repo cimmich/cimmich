@@ -5864,14 +5864,18 @@ export const createCimmichRepository = (
       cursor = "",
       exploreFilters = {},
       limit = 1000,
+      neighborOf = "",
       pageSize = null,
       personId,
     }) {
       await requireVisibleSubject(personId);
       const paged = pageSize !== null || Boolean(cursor);
-      const boundedLimit = paged
-        ? cleanPageSize(pageSize)
-        : cleanLimit(limit, 1000, 5000);
+      const neighborAssetId = String(neighborOf || "").trim();
+      const boundedLimit = neighborAssetId
+        ? 3
+        : paged
+          ? cleanPageSize(pageSize)
+          : cleanLimit(limit, 1000, 5000);
       const id = String(personId || "");
       const assetAssociation = cleanPersonAssetAssociationType(associationType);
       const filters = normalizeExploreFilters(exploreFilters);
@@ -6321,23 +6325,53 @@ export const createCimmichRepository = (
                   <= ${visibleRank}
             )
           )
+      ), ranked_assets AS (
+        SELECT filtered_assets.*,
+          row_number() OVER (ORDER BY capture_time DESC NULLS LAST, asset_id) AS cimmich_asset_rank
+        FROM filtered_assets
+      ), neighbor_rank AS (
+        SELECT cimmich_asset_rank
+        FROM ranked_assets
+        WHERE asset_id = ${neighborAssetId}
+          OR EXISTS (
+            SELECT 1
+            FROM immich_asset_projection neighbor_projection
+            WHERE neighbor_projection.cimmich_asset_id = ranked_assets.asset_id
+              AND neighbor_projection.immich_asset_id = ${neighborAssetId}
+              AND neighbor_projection.state = 'active'
+          )
+        ORDER BY CASE WHEN asset_id = ${neighborAssetId} THEN 0 ELSE 1 END,
+          cimmich_asset_rank
+        LIMIT 1
       )
-      SELECT *
-      FROM filtered_assets
+      SELECT ranked_assets.*
+      FROM ranked_assets
+      LEFT JOIN neighbor_rank ON TRUE
       WHERE (
-          ${decodedCursor === null}
-          OR (
-            ${cursorCaptureTime !== null}
-            AND (
-              capture_time IS NULL
-              OR capture_time < ${cursorCaptureTime}
-              OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
-            )
+          (
+            ${Boolean(neighborAssetId)}
+            AND neighbor_rank.cimmich_asset_rank IS NOT NULL
+            AND ranked_assets.cimmich_asset_rank BETWEEN neighbor_rank.cimmich_asset_rank - 1
+              AND neighbor_rank.cimmich_asset_rank + 1
           )
           OR (
-            ${cursorCaptureTime === null}
-            AND capture_time IS NULL
-            AND asset_id > ${cursorAssetId}
+            ${!neighborAssetId}
+            AND (
+              ${decodedCursor === null}
+              OR (
+                ${cursorCaptureTime !== null}
+                AND (
+                  capture_time IS NULL
+                  OR capture_time < ${cursorCaptureTime}
+                  OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
+                )
+              )
+              OR (
+                ${cursorCaptureTime === null}
+                AND capture_time IS NULL
+                AND asset_id > ${cursorAssetId}
+              )
+            )
           )
         )
       ORDER BY capture_time DESC NULLS LAST, asset_id
