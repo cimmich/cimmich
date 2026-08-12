@@ -675,8 +675,9 @@ It also owns the Adaptive SourcePack boundary:
   project the exact nullable `reviewGateReceipt` plus a closed
   `reviewGateReceiptNullReason`. The service freezes the
   `best_individual_prime` score/margin policy on calibration evidence and
-  measures it on untouched known and identity-disjoint unknown evidence using
-  the accepted 98% precision, 2.5% false-accept and 100-unknown gate. The review
+  measures it on untouched known and identity-disjoint unknown evidence. Policy
+  selection requires a 99% calibration precision buffer before applying the
+  accepted 98% holdout precision, 2.5% false-accept and 100-unknown gate. The review
   write accepts only that byte-equivalent server projection. Callers cannot
   submit provider settings or invent matching thresholds;
 - Guided V2 publishes the same eight canonical operations with closed schemas,
