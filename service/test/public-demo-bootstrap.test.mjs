@@ -300,6 +300,15 @@ test("public demo stop and restart preserve state while destruction is explicit"
     compose,
     /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
   );
+  assert.match(
+    compose,
+    /group_add:\n\s+- \$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+  );
+  assert.match(source, /chmod 640 "\$GUIDED_TOKEN_FILE"/);
+  assert.match(
+    source,
+    /chmod 640 "\$STATE_ROOT\/immich-credential\.json" "\$GUIDED_TOKEN_FILE"/,
+  );
   assert.match(source, /destroy\)/);
   assert.match(source, /compose down --volumes --remove-orphans/);
   assert.match(source, /preflight_backup_databases/);

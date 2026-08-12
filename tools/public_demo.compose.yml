@@ -179,6 +179,10 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    # Read only the two group-owned runtime secrets from the owner-only host
+    # state without exposing the complete operator-state directory.
+    group_add:
+      - ${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
     volumes:
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/display-bridge.json:/demo-state/display-bridge.json:ro
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/immich-credential.json:/demo-state/immich-credential.json:ro

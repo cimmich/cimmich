@@ -231,7 +231,8 @@ write_operator_state() {
     random_hex
     printf '\n'
   } > "$GUIDED_TOKEN_FILE"
-  chmod 600 "$SENTINEL" "$OPERATOR_ENV" "$PRIVATE_PASSWORD_FILE" "$GUIDED_TOKEN_FILE"
+  chmod 600 "$SENTINEL" "$OPERATOR_ENV" "$PRIVATE_PASSWORD_FILE"
+  chmod 640 "$GUIDED_TOKEN_FILE"
   export IMMICH_DB_PASSWORD CIMMICH_DB_PASSWORD
 }
 
@@ -243,7 +244,7 @@ ensure_guided_token() {
       printf '\n'
     } > "$GUIDED_TOKEN_FILE"
   fi
-  chmod 600 "$GUIDED_TOKEN_FILE"
+  chmod 640 "$GUIDED_TOKEN_FILE"
 }
 
 write_bootstrap_environment() {
@@ -745,8 +746,9 @@ guided_token_file() {
   verify_sentinel
   load_environment
   ensure_guided_token
-  # Return only the mode-0600 local file path. A client reads the token locally
-  # and chooses what it may disclose; Cimmich never echoes it through HTTP/UI.
+  # Return only the owner/group-readable local file path. The dedicated runtime
+  # container receives the host group as a supplemental group; Cimmich never
+  # echoes the token through HTTP/UI.
   printf '%s\n' "$GUIDED_TOKEN_FILE"
 }
 
@@ -762,7 +764,7 @@ refresh_immich_companion() {
     -e CIMMICH_DEMO_IMMICH_CREDENTIAL_PATH=/demo-state/immich-credential.json \
     -v "$STATE_ROOT:/demo-state" \
     cimmich-bootstrap node bin/refresh-public-demo-immich-companion.mjs
-  chmod 600 "$STATE_ROOT/immich-credential.json"
+  chmod 640 "$STATE_ROOT/immich-credential.json"
   compose up -d --no-deps --force-recreate cimmich-api
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
   canonical_get /v1/onboarding/immich
@@ -886,7 +888,8 @@ up() {
     -v "$STATE_ROOT:/demo-state" \
     -v "$ARCHIVE_ROOT:/demo-archive:ro" \
     cimmich-bootstrap node bin/bootstrap-public-demo.mjs >/dev/null
-  chmod 600 "$STATE_ROOT/immich-map.json" "$STATE_ROOT/immich-credential.json"
+  chmod 600 "$STATE_ROOT/immich-map.json"
+  chmod 640 "$STATE_ROOT/immich-credential.json" "$GUIDED_TOKEN_FILE"
   chmod 644 "$STATE_ROOT/seed-receipt.json" "$STATE_ROOT/display-bridge.json"
   compose up -d --build cimmich-api public-demo-ui
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
