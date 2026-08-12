@@ -66,7 +66,8 @@ describe('human-first Library information architecture', () => {
     expect(source).toContain('cimmichSubjectId && !cimmichAssetId ? { assetFilter: cimmichSubjectAssetIds } : {}');
     expect(source).toContain('cimmichSubjectAssetIds = new Set(assetId ? [assetId] : [])');
     expect(source).toContain('cimmichSubjectAssetsReady = !subjectId || Boolean(assetId)');
-    expect(source).toContain('if (!subjectId || assetId)');
+    expect(source).toContain('getCimmichPersonAssetNeighbors(personId, assetId)');
+    expect(source).toContain(': getCimmichPersonAssets(personId)');
   });
 
   it('keeps the existing safeguarded engine behind a secondary route', async () => {

@@ -979,6 +979,51 @@ test("Person Body pages bind their filter into the cursor scope", async () => {
   );
 });
 
+test("Person photo neighbors resolve the Immich source ID into a bounded rank window", async () => {
+  let statement = "";
+  const rows = ["newest", "current", "oldest"].map((assetId, index) => ({
+    asset_head_evidence: false,
+    asset_id: assetId,
+    capture_time: new Date(Date.UTC(2026, 0, 3 - index)),
+    contexts: [],
+    has_body: false,
+    has_body_candidate: false,
+    has_face: true,
+    has_head: false,
+    has_linked_body: false,
+    has_presence: false,
+    height: 100,
+    media_kind: "image",
+    mime_type: "image/jpeg",
+    presence_evidence: false,
+    width: 100,
+  }));
+  const sql = async (strings) => {
+    statement = strings.join("?");
+    return rows;
+  };
+  const repository = createCimmichRepository(sql);
+
+  const neighbors = await repository.personAssets({
+    neighborOf: "current",
+    personId: "person-1",
+  });
+
+  assert.deepEqual(
+    neighbors.map(({ asset_id: assetId }) => assetId),
+    ["newest", "current", "oldest"],
+  );
+  assert.match(statement, /row_number\(\) OVER/);
+  assert.match(
+    statement,
+    /neighbor_projection\.cimmich_asset_id = ranked_assets\.asset_id/,
+  );
+  assert.match(statement, /neighbor_projection\.immich_asset_id = \?/);
+  assert.match(statement, /neighbor_projection\.state = 'active'/);
+  assert.match(statement, /BETWEEN neighbor_rank\.cimmich_asset_rank - 1/);
+  assert.match(statement, /LIMIT \?/);
+});
+
 test("Identity pages limit accepted faces before per-face enrichment", async () => {
   let statement = "";
   const sql = async (strings) => {

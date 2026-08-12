@@ -2592,6 +2592,8 @@ export const cimmichRequestContext = () => ({ apiRoot, headers: visibilityHeader
 const cimmichExploreClient = createCimmichExploreClient(request, coalesceCimmichRequest);
 export const getCimmichExploreFacets = cimmichExploreClient.getExploreFacets;
 export const getCimmichPersonAssetsPage = cimmichExploreClient.getPersonAssetsPage;
+export const getCimmichPersonAssets = cimmichExploreClient.getPersonAssets;
+export const getCimmichPersonAssetNeighbors = cimmichExploreClient.getPersonAssetNeighbors;
 export const getCimmichSummary = () => request<CimmichSummary>('/v1/summary');
 export const getCimmichIntegrationStatus = () => request<CimmichIntegrationStatus>('/v1/integrations/status');
 export const getCimmichEnhancedComponentStatus = () => request<CimmichEnhancedComponentStatus>('/v1/operator/enhanced');
@@ -3703,13 +3705,6 @@ export const resolveCimmichXmpUnresolvedName = (
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'POST',
   });
-
-export const getCimmichPersonAssets = async (personId: string, limit = 5000) => {
-  const result = await request<{ items: CimmichPersonAsset[] }>(
-    `/v1/people/${encodeURIComponent(personId)}/assets?limit=${Math.max(1, Math.min(5000, limit))}`,
-  );
-  return result.items;
-};
 
 export const getCimmichTagAssets = (
   tags: Array<{ entityId: string; family: CimmichTagAssetFamily }>,
