@@ -49,6 +49,7 @@
   let cimmichSubjectAssetsReady = $state(false);
   let cimmichSubjectAssetLoad = 0;
   let futureAssetCount = $state(0);
+  const cimmichAssetId = $derived(page.params.assetId || '');
   const cimmichPersonId = $derived(page.url.searchParams.get('cimmichPersonId') || '');
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
@@ -64,10 +65,11 @@
     const personId = cimmichPersonId;
     const petId = cimmichPetId;
     const subjectId = personId || petId;
+    const assetId = cimmichAssetId;
     const run = ++cimmichSubjectAssetLoad;
-    cimmichSubjectAssetIds = new Set();
-    cimmichSubjectAssetsReady = !subjectId;
-    if (!subjectId) {
+    cimmichSubjectAssetIds = new Set(assetId ? [assetId] : []);
+    cimmichSubjectAssetsReady = !subjectId || Boolean(assetId);
+    if (!subjectId || assetId) {
       return;
     }
     const request = personId ? getCimmichPersonAssets(personId) : getCimmichPetMedia(petId);

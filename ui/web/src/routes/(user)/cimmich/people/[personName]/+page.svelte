@@ -800,10 +800,7 @@
     }
   };
   const selectCimmichIdentitySection = (section: CimmichIdentitySection) => {
-    selectCimmichIdentityWorkspace(identitySectionDefaultFilter(section));
-    if (section === 'overview') {
-      void loadCimmichEvidence();
-    }
+    void openCimmichIdentityAt(identitySectionDefaultFilter(section));
   };
   const visibleCimmichIdentityFaces = $derived.by(() => {
     if (cimmichIdentityFilter === 'references') {
@@ -2240,7 +2237,8 @@
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
     selectCimmichMode('identity');
     if (cimmichIdentityFilter === 'overview') {
-      void loadCimmichEvidence(generation);
+      void untrack(() => loadCimmichEvidence(generation));
+      return;
     }
     if (!cimmichPerson || cimmichIdentityLoading) {
       return;
@@ -2302,9 +2300,8 @@
     }
   };
   const openCimmichDisplay = async () => {
-    await openCimmichIdentity();
     cimmichIdentityFilter = 'presentation';
-    syncCimmichWorkspaceUrl();
+    await openCimmichIdentity();
     cimmichPresentationPickerSlot = '';
     requestAnimationFrame(() =>
       document.querySelector('#cimmich-identity-workspace')?.scrollIntoView({
@@ -2973,6 +2970,7 @@
       cimmichAssetsNextCursor = cached.assetsNextCursor;
       cimmichCandidates = cached.candidates;
       cimmichIdentityCorrections = cached.corrections;
+      cimmichEvidenceCoverage = cached.evidenceCoverage;
       cimmichIdentityAuditItems = cached.identityAuditItems;
       cimmichIdentityAuditTotals = cached.identityAuditTotals;
       cimmichIdentityFaces = cached.identityFaces;
@@ -2988,7 +2986,7 @@
       cimmichIdentityReviewLoading = false;
       cimmichLoadError = '';
       if (untrack(() => cimmichMode) === 'identity' && untrack(() => cimmichIdentityFilter) === 'overview') {
-        void loadCimmichEvidence(generation);
+        void untrack(() => loadCimmichEvidence(generation));
       }
       return;
     }
@@ -3050,6 +3048,7 @@
       appearanceAssets: cimmichAppearanceAssets,
       candidates: cimmichCandidates,
       corrections: cimmichIdentityCorrections,
+      evidenceCoverage: cimmichEvidenceCoverage,
       exploreFilterKey: cimmichExplore.key,
       exploreResult: cimmichExplore.result,
       identityAuditItems: cimmichIdentityAuditItems,

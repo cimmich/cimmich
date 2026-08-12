@@ -59,6 +59,15 @@ describe('human-first Library information architecture', () => {
     expect(photos).toContain('choose Change date');
   });
 
+  it('does not fetch an entire Person library for an exact photo viewer route', async () => {
+    const source = await read('src/routes/(user)/photos/[[assetId=id]]/+page.svelte');
+
+    expect(source).toContain("const cimmichAssetId = $derived(page.params.assetId || '')");
+    expect(source).toContain('cimmichSubjectAssetIds = new Set(assetId ? [assetId] : [])');
+    expect(source).toContain('cimmichSubjectAssetsReady = !subjectId || Boolean(assetId)');
+    expect(source).toContain('if (!subjectId || assetId)');
+  });
+
   it('keeps the existing safeguarded engine behind a secondary route', async () => {
     const [switcher, bulk, legacyBulk, route, sorter] = await Promise.all([
       read('src/lib/components/cimmich/CimmichOrganiseModeSwitch.svelte'),

@@ -8,6 +8,7 @@ import type {
   CimmichMachineSuggestion,
   CimmichPerson,
   CimmichPersonAsset,
+  CimmichPersonEvidenceCoverage,
   CimmichPersonPresentation,
 } from '$lib/services/cimmich.service';
 import type { CimmichKnownPersonClusterSuggestion } from '$lib/services/possible-people.service';
@@ -19,6 +20,7 @@ export type CachedPersonWorkspace = {
   appearanceAssets: CimmichPersonAppearanceAssets;
   candidates: CimmichIdentityCandidate[];
   corrections: CimmichIdentityCorrectionDiscovery['items'];
+  evidenceCoverage?: CimmichPersonEvidenceCoverage;
   exploreFilterKey: string;
   exploreResult: CimmichExploreFacetResult | null;
   identityAuditItems: CimmichIdentityAuditItem[];
@@ -41,6 +43,7 @@ type CacheEntry = {
 
 const personWorkspaceCache = new Map<string, CacheEntry>();
 export const personWorkspaceCacheMaximumEntries = 6;
+export const personWorkspaceCacheTtlMs = 10 * 60_000;
 
 const prunePersonWorkspaceCache = (now: number) => {
   for (const [key, entry] of personWorkspaceCache) {
@@ -67,7 +70,7 @@ export const readPersonWorkspaceCache = <T>(key: string): T | undefined => {
   return entry.value as T;
 };
 
-export const writePersonWorkspaceCache = <T>(key: string, value: T, ttlMs = 60_000) => {
+export const writePersonWorkspaceCache = <T>(key: string, value: T, ttlMs = personWorkspaceCacheTtlMs) => {
   const now = Date.now();
   personWorkspaceCache.delete(key);
   personWorkspaceCache.set(key, {

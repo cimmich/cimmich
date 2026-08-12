@@ -279,9 +279,24 @@ describe('Person profile layout', () => {
 
     expect(source).toContain('readPersonWorkspaceCache<CachedPersonWorkspace>');
     expect(source).toContain('writePersonWorkspaceCache<CachedPersonWorkspace>');
+    expect(source).toContain('cimmichEvidenceCoverage = cached.evidenceCoverage');
+    expect(source).toContain('evidenceCoverage: cimmichEvidenceCoverage');
+    expect(source).toContain('void untrack(() => loadCimmichEvidence(generation))');
     expect(source).toContain("url.searchParams.set('returnScroll'");
     expect(source).toContain("url.searchParams.set('identityFilter', identityFilter)");
     expect(source).toContain('onOpen={storeCimmichReturnScroll}');
+  });
+
+  it('loads the light Overview projection before any full Identity workspace', async () => {
+    const source = await readPersonProfile();
+    const openStart = source.indexOf('const openCimmichIdentity = async');
+    const openEnd = source.indexOf('const openCimmichIdentityAt', openStart);
+    const openIdentity = source.slice(openStart, openEnd);
+
+    expect(openIdentity).toContain("if (cimmichIdentityFilter === 'overview')");
+    expect(openIdentity).toContain('void untrack(() => loadCimmichEvidence(generation))');
+    expect(openIdentity.indexOf('return;')).toBeLessThan(openIdentity.indexOf('loadPersonIdentityPrimary'));
+    expect(source).toContain('void openCimmichIdentityAt(identitySectionDefaultFilter(section))');
   });
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {

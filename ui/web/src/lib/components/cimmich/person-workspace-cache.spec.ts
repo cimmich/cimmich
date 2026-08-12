@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearPersonWorkspaceCache,
   personWorkspaceCacheMaximumEntries,
+  personWorkspaceCacheTtlMs,
   readPersonWorkspaceCache,
   writePersonWorkspaceCache,
 } from './person-workspace-cache';
@@ -15,6 +16,17 @@ describe('person workspace cache', () => {
   it('retains a loaded workspace across a viewer route round trip', () => {
     writePersonWorkspaceCache('person-1:standard', { filter: 'candidates', items: ['face-1'] });
     expect(readPersonWorkspaceCache('person-1:standard')).toEqual({ filter: 'candidates', items: ['face-1'] });
+  });
+
+  it('keeps the default workspace warm for a realistic viewer round trip', () => {
+    vi.useFakeTimers();
+    writePersonWorkspaceCache('person-1:standard', { items: ['face-1'] });
+
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(readPersonWorkspaceCache('person-1:standard')).toEqual({ items: ['face-1'] });
+
+    vi.advanceTimersByTime(personWorkspaceCacheTtlMs - 5 * 60_000 + 1);
+    expect(readPersonWorkspaceCache('person-1:standard')).toBeUndefined();
   });
 
   it('expires stale workspace projections', () => {
