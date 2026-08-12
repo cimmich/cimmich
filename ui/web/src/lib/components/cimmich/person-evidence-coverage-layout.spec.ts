@@ -20,29 +20,38 @@ describe('Person Evidence & coverage workspace', () => {
     expect(page).toContain('<CimmichPersonEvidenceCoverage');
   });
 
-  it('reconciles photo and observation populations with actionable context and exact review routes', async () => {
+  it('leads with photos and user questions while keeping machinery detail optional', async () => {
     const source = await readFile('src/lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte', 'utf8');
 
-    expect(source).toContain('Evidence &amp; coverage');
-    expect(source).toContain('none is an identity-confidence score');
-    expect(source).toContain('Profile photos');
-    expect(source).toContain('Accepted evidence photos');
-    expect(source).toContain('Outside this map');
+    expect(source).toContain('photos of {coverage.person.displayName}');
+    expect(source).toContain('not connected yet');
+    expect(source).toContain('Examples Cimmich recognises');
+    expect(source).toContain('How Cimmich recognises {coverage.person.displayName}');
+    expect(source).toContain('Why do these numbers overlap?');
+    expect(source).toContain('When these photos were taken');
+    expect(source).toContain('Where {coverage.person.displayName} appears');
+    expect(source).toContain('Needs your attention');
+    expect(source).toContain('Advanced evidence details');
+    expect(source).toContain('What these terms mean');
+    expect(source).toContain('Imported Body hint');
+    expect(source).not.toContain('none is an identity-confidence score');
+    expect(source).not.toContain('Outside this map');
+    expect(source).not.toContain('Coverage notes');
+    expect(source).not.toContain('Representative evidence');
+    expect(source).not.toContain('None observed');
     expect(source).toContain("label: 'Face photos'");
     expect(source).toContain("label: 'Body photos'");
     expect(source).toContain("label: 'Body-only photos'");
     expect(source).toContain("label: 'Head photos'");
     expect(source).toContain("label: 'Presence photos'");
     expect(source).toContain("label: 'Pose geometry'");
-    expect(source).toContain('Matcher reference gallery');
+    expect(source).toContain('Recognition reference gallery');
     expect(source).toContain('Supporting matcher refs');
-    expect(source).toContain('Representative evidence');
     expect(source).toContain("overlay: 'machinery'");
     expect(source).toContain('contextHref(group.kind, item.entityId)');
-    expect(source).toContain('Context observed');
-    expect(source).toContain('Coverage notes');
+    expect(source).toContain("onopenidentity('body')");
     expect(source).toContain("onopenidentity('candidates')");
     expect(source).toContain('onopenphotos({ futureDates: true })');
-    expect(source).not.toContain('for covers or closer review');
+    expect(source).toContain('actionableNotes');
   });
 });

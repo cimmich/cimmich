@@ -2270,7 +2270,7 @@
       }
     }
   };
-  const openCimmichIdentityAt = (filter: 'all' | 'candidates') => {
+  const openCimmichIdentityAt = (filter: 'all' | 'body' | 'candidates') => {
     cimmichIdentityFilter = filter;
     return openCimmichIdentity();
   };
