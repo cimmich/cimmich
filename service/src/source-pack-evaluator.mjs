@@ -7,12 +7,22 @@ import {
 
 export const sourcePackEvaluatorVersion = "cimmich-source-pack-evaluator-v1";
 export const sourcePackReviewGatePolicyVersion =
-  "cimmich-owner-open-set-gate-v1";
+  "cimmich-owner-open-set-gate-v2-calibration-buffer";
 
 const reviewGateThresholds = Object.freeze({
   maximumUnknownFalseAcceptRatePercent: 2.5,
   minimumDecisionPrecisionPercent: 98,
   minimumVerifiedUnknowns: 100,
+});
+
+// The activation gate remains 98% on untouched holdout. Selecting the operating
+// point at that same boundary on calibration overfits the last accepted error:
+// ordinary sampling drift can then turn a nominally passing calibration policy
+// into a sub-98% holdout policy. Require a one-point calibration buffer while
+// retaining the frozen holdout gate as the actual activation authority.
+export const sourcePackReviewGateContract = Object.freeze({
+  calibrationMinimumDecisionPrecisionPercent: 99,
+  ...reviewGateThresholds,
 });
 
 const rounded = (value) => Number(Number(value || 0).toFixed(6));
@@ -98,7 +108,7 @@ export const deriveSourcePackReviewGate = (
     ({ metrics }) =>
       metrics.correctKnown > 0 &&
       metrics.decisionPrecisionPercent >=
-        reviewGateThresholds.minimumDecisionPrecisionPercent &&
+        sourcePackReviewGateContract.calibrationMinimumDecisionPrecisionPercent &&
       metrics.unknownFalseAcceptRatePercent <=
         reviewGateThresholds.maximumUnknownFalseAcceptRatePercent,
   );
@@ -142,7 +152,12 @@ export const deriveSourcePackReviewGate = (
         },
         packId,
         schemaVersion: sourcePackGateSchemaVersion,
-        split: { ...split, operatingPolicy: sourcePackReviewGatePolicyVersion },
+        split: {
+          ...split,
+          calibrationMinimumDecisionPrecisionPercent:
+            sourcePackReviewGateContract.calibrationMinimumDecisionPrecisionPercent,
+          operatingPolicy: sourcePackReviewGatePolicyVersion,
+        },
         status:
           metrics.decisionPrecisionPercent >=
             reviewGateThresholds.minimumDecisionPrecisionPercent &&

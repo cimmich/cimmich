@@ -184,6 +184,43 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
             ) = ${options.laneIndex}
           ORDER BY member.face_id
           ${possibleRunId && options.limitFaces > 0 ? tx`LIMIT ${options.limitFaces}` : tx``}
+        ), accepted_physical_faces AS MATERIALIZED (
+          SELECT DISTINCT member.physical_face_id
+          FROM current_face_physical_member member
+          JOIN identity_claim accepted ON accepted.face_id = member.face_id
+            AND accepted.state = 'accepted'
+          WHERE ${possibleRunId}::text = ''
+        ), latest_face_reviews AS MATERIALIZED (
+          SELECT DISTINCT ON (review.subject_id)
+            review.subject_id AS face_id, review.reason_code
+          FROM decision review
+          WHERE ${possibleRunId}::text = ''
+            AND review.subject_type = 'face_review'
+          ORDER BY review.subject_id, review.created_at DESC, review.decision_id DESC
+        ), latest_machine_suggestion_decisions AS MATERIALIZED (
+          SELECT DISTINCT ON (review.subject_id)
+            review.subject_id, review.action
+          FROM decision review
+          WHERE ${possibleRunId}::text = ''
+            AND review.subject_type = 'machine_suggestion'
+            AND review.actor_kind = 'user'
+          ORDER BY review.subject_id, review.created_at DESC, review.decision_id DESC
+        ), face_contexts AS MATERIALIZED (
+          SELECT capture.face_id,
+            array_agg(capture.context_id ORDER BY capture.context_id) AS context_ids
+          FROM current_face_capture_context capture
+          GROUP BY capture.face_id
+        ), accepted_people_by_asset AS MATERIALIZED (
+          SELECT accepted_face.asset_id,
+            array_agg(DISTINCT accepted.person_id ORDER BY accepted.person_id) AS person_ids
+          FROM identity_claim accepted
+          JOIN current_face_physical_member accepted_member
+            ON accepted_member.face_id = accepted.face_id
+          JOIN face_observation accepted_face
+            ON accepted_face.face_id = accepted_member.canonical_face_id
+            AND accepted_face.state = 'valid'
+          WHERE ${possibleRunId}::text = '' AND accepted.state = 'accepted'
+          GROUP BY accepted_face.asset_id
         ), bounded AS MATERIALIZED (
           SELECT face.face_id, face.physical_face_id, face.asset_id,
             embedding.embedding::text AS embedding
@@ -196,35 +233,25 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
             AND embedding.config_digest = ${pack.config_digest}
           JOIN asset ON asset.asset_id = face.asset_id
             AND asset.state = 'active' AND asset.media_kind = 'image'
+          LEFT JOIN accepted_physical_faces accepted_physical
+            ON accepted_physical.physical_face_id = face.physical_face_id
+          LEFT JOIN latest_face_reviews face_review
+            ON face_review.face_id = face.face_id
+          LEFT JOIN latest_machine_suggestion_decisions dismissed
+            ON dismissed.subject_id = face.face_id || ':' ||
+              ${pack.model_version} || ':' || ${pack.config_digest} || ':' ||
+              ${pack.policy_version}
           WHERE cimmich_face_match_eligible(
               face.detection_confidence, face.box_w, face.box_h
             )
             ${
               possibleRunId
                 ? tx``
-                : tx`AND NOT EXISTS (
-              SELECT 1
-              FROM current_face_physical_member accepted_member
-              JOIN identity_claim accepted
-                ON accepted.face_id = accepted_member.face_id
-                AND accepted.state = 'accepted'
-              WHERE accepted_member.physical_face_id = face.physical_face_id
+                : tx`AND accepted_physical.physical_face_id IS NULL
+            AND coalesce(face_review.reason_code, '') NOT IN (
+              'face_review_unknown', 'face_review_later', 'face_review_geometry'
             )
-            AND coalesce((
-              SELECT review.reason_code FROM decision review
-              WHERE review.subject_type = 'face_review'
-                AND review.subject_id = face.face_id
-              ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1
-            ), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry')
-            AND coalesce((
-              SELECT dismissed.action FROM decision dismissed
-              WHERE dismissed.subject_type = 'machine_suggestion'
-                AND dismissed.subject_id = face.face_id || ':' ||
-                  ${pack.model_version} || ':' || ${pack.config_digest} || ':' ||
-                  ${pack.policy_version}
-                AND dismissed.actor_kind = 'user'
-              ORDER BY dismissed.created_at DESC, dismissed.decision_id DESC LIMIT 1
-            ), '') <> 'ignore'
+            AND coalesce(dismissed.action, '') <> 'ignore'
             `
             }
             AND (
@@ -244,25 +271,12 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
               : tx`coalesce(same_photo.person_ids, ARRAY[]::text[])`
           } AS excluded_person_ids
         FROM bounded
-        LEFT JOIN LATERAL (
-          SELECT array_agg(capture.context_id ORDER BY capture.context_id) AS context_ids
-          FROM current_face_capture_context capture
-          WHERE capture.face_id = bounded.face_id
-        ) context ON true
+        LEFT JOIN face_contexts context ON context.face_id = bounded.face_id
         ${
           possibleRunId
             ? tx``
-            : tx`LEFT JOIN LATERAL (
-          SELECT array_agg(DISTINCT accepted.person_id ORDER BY accepted.person_id) AS person_ids
-          FROM identity_claim accepted
-          JOIN current_face_physical_member accepted_member
-            ON accepted_member.face_id = accepted.face_id
-          JOIN face_observation accepted_face
-            ON accepted_face.face_id = accepted_member.canonical_face_id
-            AND accepted_face.state = 'valid'
-          WHERE accepted.state = 'accepted'
-            AND accepted_face.asset_id = bounded.asset_id
-        ) same_photo ON true
+            : tx`LEFT JOIN accepted_people_by_asset same_photo
+          ON same_photo.asset_id = bounded.asset_id
         `
         }
         ORDER BY bounded.face_id
@@ -370,11 +384,70 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
             LIMIT 100
           `
         : [];
+      const consensusClusters = possibleRunId
+        ? await tx`
+            WITH tiled_members AS MATERIALIZED (
+              SELECT cluster.cluster_id, cluster.representative_face_id,
+                member.face_id, member.rank,
+                ntile(12) OVER (
+                  PARTITION BY cluster.cluster_id ORDER BY member.rank
+                ) AS sample_tile
+              FROM face_cluster cluster
+              JOIN face_cluster_member member ON member.cluster_id = cluster.cluster_id
+              WHERE cluster.possible_person_run_id = ${possibleRunId}
+                AND cluster.status = 'open'
+            ), sampled_members AS MATERIALIZED (
+              SELECT DISTINCT ON (cluster_id, sample_tile)
+                cluster_id, face_id
+              FROM tiled_members
+              ORDER BY cluster_id, sample_tile,
+                (face_id = representative_face_id) DESC, rank, face_id
+            ), sample_counts AS MATERIALIZED (
+              SELECT cluster_id, count(*)::int AS sampled_face_count
+              FROM sampled_members GROUP BY cluster_id
+            ), votes AS MATERIALIZED (
+              SELECT sample.cluster_id, result.person_id,
+                count(*)::int AS matching_faces,
+                avg(result.score)::float8 AS average_score,
+                max(result.score)::float8 AS best_score
+              FROM sampled_members sample
+              JOIN cimmich_local_archive_match_result result
+                ON result.face_id = sample.face_id
+              GROUP BY sample.cluster_id, result.person_id
+            ), ranked AS MATERIALIZED (
+              SELECT votes.*,
+                row_number() OVER (
+                  PARTITION BY votes.cluster_id
+                  ORDER BY votes.matching_faces DESC, votes.best_score DESC,
+                    votes.person_id
+                ) AS vote_rank,
+                count(*) OVER (PARTITION BY votes.cluster_id)::int AS eligible_people
+              FROM votes
+            )
+            SELECT ranked.cluster_id, cluster.member_count,
+              ranked.person_id, person.display_name, ranked.matching_faces,
+              sample.sampled_face_count,
+              (ranked.matching_faces::float8 / sample.sampled_face_count)::float8
+                AS matching_fraction,
+              ranked.average_score, ranked.best_score, ranked.eligible_people
+            FROM ranked
+            JOIN sample_counts sample ON sample.cluster_id = ranked.cluster_id
+            JOIN face_cluster cluster ON cluster.cluster_id = ranked.cluster_id
+            JOIN current_person person ON person.person_id = ranked.person_id
+            WHERE ranked.vote_rank = 1 AND ranked.eligible_people = 1
+              AND ranked.matching_faces >= 2
+              AND ranked.matching_faces::float8 / sample.sampled_face_count >= 0.5
+            ORDER BY ranked.matching_faces DESC, ranked.best_score DESC,
+              ranked.cluster_id
+            LIMIT 100
+          `
+        : [];
       const base = {
         acceptedIdentityDelta: 0,
         automaticIdentityWrites: 0,
         compute: "local_numpy",
         clusters,
+        consensusClusters,
         elapsedMilliseconds: Date.now() - startedAt,
         execute: options.execute,
         laneCount: options.laneCount,
