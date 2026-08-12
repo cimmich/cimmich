@@ -8,13 +8,14 @@ export const runSchema = "cimmich.local-ai-photo-lab-run.v1";
 export const operationNames = [
   "faces",
   "bodies",
+  "poses",
   "context",
   "scene-text",
   "enhance-preview",
   "enhance",
 ];
 export const fullOperationNames = operationNames.filter(
-  (operation) => operation !== "enhance-preview",
+  (operation) => !["enhance-preview", "poses"].includes(operation),
 );
 
 const typedError = (message, code = "LOCAL_AI_INPUT_INVALID") =>
@@ -149,7 +150,7 @@ export const validateConfig = (input) => {
   };
   exactObject(
     input.providers,
-    ["bodies", "enhance", "faces", "sceneText"],
+    ["bodies", "enhance", "faces", "poses", "sceneText"],
     "config.providers",
   );
   const faces = providerCore(input.providers.faces, "providers.faces", [
@@ -193,6 +194,24 @@ export const validateConfig = (input) => {
   ]) {
     bodies[key] = resolve(
       requiredText(bodies[key], `providers.bodies.${key}`, 4096),
+    );
+  }
+
+  const poses = providerCore(input.providers.poses, "providers.poses", [
+    "enabled",
+    "manifestPath",
+    "modelPath",
+    "providerScriptPath",
+    "pythonPath",
+  ]);
+  for (const key of [
+    "manifestPath",
+    "modelPath",
+    "providerScriptPath",
+    "pythonPath",
+  ]) {
+    poses[key] = resolve(
+      requiredText(poses[key], `providers.poses.${key}`, 4096),
     );
   }
 
@@ -267,7 +286,7 @@ export const validateConfig = (input) => {
   return {
     contextPolicy,
     limits,
-    providers: { bodies, enhance, faces, sceneText },
+    providers: { bodies, enhance, faces, poses, sceneText },
     schemaVersion: configSchema,
   };
 };

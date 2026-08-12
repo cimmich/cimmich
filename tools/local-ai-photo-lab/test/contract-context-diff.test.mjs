@@ -60,6 +60,13 @@ const config = (endpoint = "http://127.0.0.1:11434") => ({
       pythonPath: "/py",
       scoreThreshold: 0.2,
     },
+    poses: {
+      enabled: true,
+      manifestPath: "/pose-manifest",
+      modelPath: "/pose-model",
+      providerScriptPath: "/pose-provider",
+      pythonPath: "/py",
+    },
     sceneText: { enabled: true, endpoint, model: "vision" },
   },
   schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
@@ -117,7 +124,7 @@ test("doctor returns a path-free limited receipt when every provider is disabled
   assert.deepEqual(result.summary, {
     failed: 0,
     passed: 0,
-    skipped: 8,
+    skipped: 10,
     warnings: 0,
   });
   assert.equal(JSON.stringify(result).includes("/py"), false);

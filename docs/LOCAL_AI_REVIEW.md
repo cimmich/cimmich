@@ -17,6 +17,8 @@ The owner can request:
   saved Face boxes;
 - **Look for missed Bodies** — available only with a separately configured
   Body provider;
+- **Inspect Body pose** — an exactly-one-photo COCO17 skeleton review that
+  requires both the Body and pose providers;
 - **Add Context** — available only for a small multi-photo set with that Body
   provider; and
 - **Read Scene & Text** — available only with a separately configured
@@ -122,6 +124,18 @@ unavailable unless explicitly enabled against a loopback endpoint. This
 document does not certify those optional models, biometric accuracy,
 demographic fairness or archive-wide performance.
 
+Pose is independently fail-closed. It stays unavailable unless
+`CIMMICH_LOCAL_AI_POSE_ENABLED=true` and both
+`CIMMICH_LOCAL_AI_POSE_MODEL_PATH` and
+`CIMMICH_LOCAL_AI_POSE_MANIFEST_PATH` resolve to deployment-owned local files.
+One request accepts exactly one photo, runs the pose checkpoint twice through
+one bounded resident process, rejects replay drift, and associates each
+skeleton to a fresh Body candidate only when overlap is at least 0.5 with a
+0.1 alternative margin. Ambiguous and unmatched skeletons remain visibly
+labelled review evidence. Saved quarter-turn presentation is applied during
+inference while boxes and keypoints return to immutable source coordinates.
+Pose never creates identity, writes archive evidence, or enables Context.
+
 Context has a second gate. A configured Body provider does not make Context
 ready unless `CIMMICH_LOCAL_AI_CONTEXT_ENABLED=true` is also deliberately set
 after a representative body-continuity validation. This prevents ordinary body
@@ -137,6 +151,10 @@ checkpoint and manifest remain deployment-owned and are not copied into the
 image or release source. The provider enforces the manifest's declared CPU
 thread budget; choose that budget from measured host acceptance rather than
 assuming one thread or all host CPUs is best.
+The same override can expose a separately supplied `body/yolo11n-pose.pt` and
+`body/yolo11n-pose-cpu.json`; neither checkpoint nor manifest enters the image
+or source release. Body and pose have independent capability flags even though
+they share the pinned CPU runtime.
 
 ## API surface
 

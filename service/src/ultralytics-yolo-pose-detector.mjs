@@ -209,6 +209,7 @@ export const createUltralyticsYoloPoseDetector = ({
     assetToken,
     bytes,
     inputRevision,
+    presentationRotationQuarterTurns = 0,
     runId,
     sourceContentDigest,
     timeoutMs: budget,
@@ -233,12 +234,23 @@ export const createUltralyticsYoloPoseDetector = ({
     const request = {
       assetToken: requiredDigest(assetToken, "assetToken"),
       inputRevision: requiredDigest(inputRevision, "inputRevision"),
-      schemaVersion: "cimmich.ultralytics-yolo-pose-resident-request.v1",
+      presentationRotationQuarterTurns,
+      schemaVersion: "cimmich.ultralytics-yolo-pose-resident-request.v2",
       sourceContentDigest: requiredDigest(
         sourceContentDigest,
         "sourceContentDigest",
       ),
     };
+    if (
+      !Number.isInteger(presentationRotationQuarterTurns) ||
+      presentationRotationQuarterTurns < 0 ||
+      presentationRotationQuarterTurns > 3
+    ) {
+      throw poseError(
+        "LOCAL_BODY_POSE_INPUT_INVALID",
+        "YOLO pose detector presentation rotation is invalid",
+      );
+    }
     if (
       createHash("sha256").update(bytes).digest("hex") !==
       request.sourceContentDigest

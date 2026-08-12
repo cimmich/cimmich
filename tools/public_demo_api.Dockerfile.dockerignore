@@ -32,6 +32,10 @@
 !providers/ultralytics-yolo-body/*.json
 !providers/ultralytics-yolo-body/*.md
 !providers/ultralytics-yolo-body/requirements-linux-cpu.txt
+!providers/ultralytics-yolo-pose/
+!providers/ultralytics-yolo-pose/*.py
+!providers/ultralytics-yolo-pose/*.json
+!providers/ultralytics-yolo-pose/*.md
 !tools/
 !tools/local-ai-photo-lab/
 !tools/local-ai-photo-lab/bin/

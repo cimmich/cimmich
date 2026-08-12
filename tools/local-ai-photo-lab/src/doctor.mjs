@@ -261,9 +261,11 @@ export const runDoctor = async ({ configInput }) => {
   const [
     faceRuntime,
     bodyRuntime,
+    poseRuntime,
     enhanceRuntime,
     faceArtifacts,
     bodyArtifacts,
+    poseArtifacts,
     enhanceArtifacts,
     scene,
   ] = await Promise.all([
@@ -279,6 +281,13 @@ export const runDoctor = async ({ configInput }) => {
       code: "import json,numpy,PIL,torch,ultralytics; print(json.dumps({'numpy':numpy.__version__,'pillow':PIL.__version__,'torch':torch.__version__,'ultralytics':ultralytics.__version__,'mps':bool(getattr(torch.backends,'mps',None) and torch.backends.mps.is_available())}))",
       enabled: config.providers.bodies.enabled,
       pythonPath: config.providers.bodies.pythonPath,
+      timeoutMs,
+    }),
+    pythonCheck({
+      checkId: "pose-runtime",
+      code: "import json,numpy,PIL,torch,ultralytics; print(json.dumps({'numpy':numpy.__version__,'pillow':PIL.__version__,'torch':torch.__version__,'ultralytics':ultralytics.__version__}))",
+      enabled: config.providers.poses.enabled,
+      pythonPath: config.providers.poses.pythonPath,
       timeoutMs,
     }),
     pythonCheck({
@@ -305,6 +314,15 @@ export const runDoctor = async ({ configInput }) => {
       },
     }),
     artifactCheck({
+      checkId: "pose-artifacts",
+      enabled: config.providers.poses.enabled,
+      paths: {
+        manifest: config.providers.poses.manifestPath,
+        model: config.providers.poses.modelPath,
+        providerScript: config.providers.poses.providerScriptPath,
+      },
+    }),
+    artifactCheck({
       checkId: "enhance-artifacts",
       enabled: config.providers.enhance.enabled,
       paths: vulkanEnhance
@@ -328,6 +346,8 @@ export const runDoctor = async ({ configInput }) => {
     bodyRuntime,
     bodyArtifacts,
     bodyManifest,
+    poseRuntime,
+    poseArtifacts,
     scene,
     enhanceRuntime,
     enhanceArtifacts,

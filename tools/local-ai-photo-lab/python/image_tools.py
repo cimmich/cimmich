@@ -781,6 +781,66 @@ def overlay(args: argparse.Namespace) -> None:
             draw.rectangle(points, outline=color, width=4)
             label = f"{kind[:-1].title()} {index + 1}"
             draw.text((points[0] + 4, max(0, points[1] - 14)), label, fill=color, font=font, stroke_width=2, stroke_fill="black")
+    pose_edges = (
+        ("left_shoulder", "right_shoulder"),
+        ("left_shoulder", "left_elbow"),
+        ("left_elbow", "left_wrist"),
+        ("right_shoulder", "right_elbow"),
+        ("right_elbow", "right_wrist"),
+        ("left_shoulder", "left_hip"),
+        ("right_shoulder", "right_hip"),
+        ("left_hip", "right_hip"),
+        ("left_hip", "left_knee"),
+        ("left_knee", "left_ankle"),
+        ("right_hip", "right_knee"),
+        ("right_knee", "right_ankle"),
+        ("nose", "left_eye"),
+        ("nose", "right_eye"),
+        ("left_eye", "left_ear"),
+        ("right_eye", "right_ear"),
+    )
+    pose_colors = {
+        "supported": "#56E39F",
+        "ambiguous": "#FFB454",
+        "unmatched": "#CBD5E1",
+    }
+    for index, pose in enumerate(request.get("poses", [])):
+        state = pose.get("association", {}).get("state", "unmatched")
+        color = pose_colors.get(state, pose_colors["unmatched"])
+        points = {
+            point["joint"]: (
+                round(float(point["x"]) * image.width),
+                round(float(point["y"]) * image.height),
+            )
+            for point in pose.get("keypoints", [])
+            if point.get("x") is not None and point.get("y") is not None
+        }
+        for start, end in pose_edges:
+            if start in points and end in points:
+                draw.line((points[start], points[end]), fill=color, width=3)
+        for point in points.values():
+            radius = 4
+            draw.ellipse(
+                (
+                    point[0] - radius,
+                    point[1] - radius,
+                    point[0] + radius,
+                    point[1] + radius,
+                ),
+                fill=color,
+                outline="black",
+                width=1,
+            )
+        if points:
+            anchor = min(points.values(), key=lambda point: point[1])
+            draw.text(
+                (anchor[0] + 6, max(0, anchor[1] - 14)),
+                f"Pose {index + 1} · {state}",
+                fill=color,
+                font=font,
+                stroke_width=2,
+                stroke_fill="black",
+            )
     if args.rotate_quarter_turns:
         image = image.rotate(-90 * args.rotate_quarter_turns, expand=True)
     output = Path(args.output).resolve()

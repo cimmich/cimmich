@@ -4,18 +4,21 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import hashlib
 import io
 import json
+import os
 import re
 import struct
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 
-REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-request.v1"
-RESIDENT_REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-resident-request.v1"
+REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-request.v2"
+RESIDENT_REQUEST_SCHEMA = "cimmich.ultralytics-yolo-pose-resident-request.v2"
 RESULT_SCHEMA = "cimmich.body-pose-result.v1"
 MAX_HEADER_BYTES = 4096
 MAX_RESIDENT_INPUT_BYTES = 128 * 1024 * 1024
@@ -23,6 +26,7 @@ MAX_RESIDENT_METADATA_BYTES = 64 * 1024
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
+MAX_RUNTIME_THREADS = 16
 JOINTS = [
     "nose", "left_eye", "right_eye", "left_ear", "right_ear",
     "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -102,13 +106,20 @@ def load_packet(raw: bytes, maximum: int) -> tuple[dict, bytes]:
         raise ProviderError("request header is invalid") from error
     exact_object(
         header,
-        {"assetToken", "inputRevision", "schemaVersion", "sourceContentDigest"},
+        {
+            "assetToken",
+            "inputRevision",
+            "presentationRotationQuarterTurns",
+            "schemaVersion",
+            "sourceContentDigest",
+        },
         "request",
     )
     if header["schemaVersion"] != REQUEST_SCHEMA:
         raise ProviderError("request schema is invalid")
     for field in ("assetToken", "inputRevision", "sourceContentDigest"):
         digest_string(header[field], field)
+    validate_quarter_turns(header["presentationRotationQuarterTurns"])
     image_bytes = raw[4 + header_size :]
     if not image_bytes or len(image_bytes) > maximum:
         raise ProviderError("source image size is invalid")
@@ -161,7 +172,7 @@ def load_manifest(path: Path, model_path: Path) -> dict:
     if execution["device"] not in {"auto", "cpu", "gpu"} or execution["network"] != "forbidden":
         raise ProviderError("provider network must be forbidden")
     public_id(execution["runtimeId"], "runtimeId")
-    bounded_integer(execution["threads"], 1, 64, "threads")
+    bounded_integer(execution["threads"], 1, MAX_RUNTIME_THREADS, "threads")
     if licensing["code"] != "declared" or licensing["model"] not in {"declared", "unknown"}:
         raise ProviderError("licensing declaration is invalid")
     if licensing["trainingData"] not in {"declared", "unknown"}:
@@ -193,8 +204,66 @@ def load_manifest(path: Path, model_path: Path) -> dict:
     return manifest
 
 
+def configure_runtime(manifest: dict, torch_module: Any = None) -> Any:
+    runtime_cache = str(Path(tempfile.gettempdir()) / "cimmich-ultralytics-pose")
+    os.environ.setdefault("YOLO_CONFIG_DIR", runtime_cache)
+    os.environ.setdefault("MPLCONFIGDIR", runtime_cache)
+    if torch_module is None:
+        import torch as torch_module
+
+    threads = manifest["execution"]["threads"]
+    torch_module.set_num_threads(threads)
+    try:
+        torch_module.set_num_interop_threads(min(threads, 4))
+    except RuntimeError:
+        pass
+    return torch_module
+
+
 def round6(value: float) -> float:
     return round(max(0.0, min(1.0, float(value))), 6)
+
+
+def validate_quarter_turns(value: Any) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 3:
+        raise ProviderError("presentation rotation is invalid")
+    return value
+
+
+def source_point(x: float, y: float, quarter_turns: int) -> tuple[float, float]:
+    """Map a point from corrected presentation coordinates back to source."""
+    if quarter_turns == 1:
+        return y, 1 - x
+    if quarter_turns == 2:
+        return 1 - x, 1 - y
+    if quarter_turns == 3:
+        return 1 - y, x
+    return x, y
+
+
+def source_box(box: dict, quarter_turns: int) -> dict:
+    x, y, width, height = box["x"], box["y"], box["w"], box["h"]
+    if quarter_turns == 1:
+        return {"x": y, "y": 1 - x - width, "w": height, "h": width}
+    if quarter_turns == 2:
+        return {"x": 1 - x - width, "y": 1 - y - height, "w": width, "h": height}
+    if quarter_turns == 3:
+        return {"x": 1 - y - height, "y": x, "w": height, "h": width}
+    return box
+
+
+def presentation_image(image: Any, quarter_turns: int) -> Any:
+    if quarter_turns == 0:
+        return image
+    try:
+        import numpy as np
+
+        return np.rot90(np.asarray(image), k=-quarter_turns).copy()
+    except (TypeError, ValueError) as error:
+        raise ProviderError(
+            "source media is not a readable image",
+            "ULTRALYTICS_POSE_SOURCE_UNREADABLE",
+        ) from error
 
 
 def project_result(
@@ -203,17 +272,21 @@ def project_result(
     manifest: dict,
     model: Any,
 ) -> dict:
+    quarter_turns = validate_quarter_turns(
+        request["presentationRotationQuarterTurns"]
+    )
     device = manifest["execution"]["device"]
     runtime_device = "mps" if device == "gpu" else device
-    results = model.predict(
-        image,
-        classes=[0],
-        conf=RAW_CONFIDENCE_FLOOR,
-        device=runtime_device,
-        imgsz=manifest["preprocessing"]["inputWidth"],
-        max_det=MAX_RAW_DETECTIONS,
-        verbose=False,
-    )
+    with redirect_stdout(sys.stderr):
+        results = model.predict(
+            presentation_image(image, quarter_turns),
+            classes=[0],
+            conf=RAW_CONFIDENCE_FLOOR,
+            device=runtime_device,
+            imgsz=manifest["preprocessing"]["inputWidth"],
+            max_det=MAX_RAW_DETECTIONS,
+            verbose=False,
+        )
     if len(results) != 1:
         raise ProviderError("provider returned an invalid result count")
     result = results[0]
@@ -248,24 +321,34 @@ def project_result(
         x1, y1, x2, y2 = coords
         if x2 <= x1 or y2 <= y1:
             raise ProviderError("pose result contains an invalid Body box")
-        left = round6(x1 / width)
-        top = round6(y1 / height)
-        right = round6(x2 / width)
-        bottom = round6(y2 / height)
-        box_width = round6(right - left)
-        box_height = round6(bottom - top)
+        source = source_box(
+            {
+                "h": (y2 - y1) / height,
+                "w": (x2 - x1) / width,
+                "x": x1 / width,
+                "y": y1 / height,
+            },
+            quarter_turns,
+        )
+        left = round6(source["x"])
+        top = round6(source["y"])
+        box_width = round6(source["w"])
+        box_height = round6(source["h"])
         if box_width <= 0 or box_height <= 0:
             continue
         keypoints = []
         for joint, point, score in zip(JOINTS, points[index], point_scores[index]):
             confidence_value = round6(score)
             visible = confidence_value >= manifest["pose"]["keypointThreshold"]
+            source_x, source_y = source_point(
+                point[0] / width, point[1] / height, quarter_turns
+            )
             keypoints.append(
                 {
                     "confidence": confidence_value,
                     "joint": joint,
-                    "x": round6(point[0] / width) if visible else None,
-                    "y": round6(point[1] / height) if visible else None,
+                    "x": round6(source_x) if visible else None,
+                    "y": round6(source_y) if visible else None,
                 }
             )
         detections.append(
@@ -300,7 +383,9 @@ def execute(
     image_decoder: Callable[[bytes], Any] | None = None,
 ) -> dict:
     if model_factory is None:
-        from ultralytics import YOLO
+        with redirect_stdout(sys.stderr):
+            configure_runtime(manifest)
+            from ultralytics import YOLO
 
         model_factory = YOLO
     if image_decoder is None:
@@ -311,7 +396,9 @@ def execute(
         image = image_decoder(image_bytes)
     except Exception as error:
         raise ProviderError("source image is invalid") from error
-    return project_result(request, image, manifest, model_factory(str(model_path)))
+    with redirect_stdout(sys.stderr):
+        model = model_factory(str(model_path))
+    return project_result(request, image, manifest, model)
 
 
 def load_resident_request(value: Any) -> dict:
@@ -320,6 +407,7 @@ def load_resident_request(value: Any) -> dict:
         {
             "assetToken",
             "inputRevision",
+            "presentationRotationQuarterTurns",
             "schemaVersion",
             "sourceContentDigest",
         },
@@ -329,6 +417,7 @@ def load_resident_request(value: Any) -> dict:
         raise ProviderError("resident request schema is invalid")
     for field in ("assetToken", "inputRevision", "sourceContentDigest"):
         digest_string(value[field], field)
+    validate_quarter_turns(value["presentationRotationQuarterTurns"])
     return value
 
 
@@ -386,9 +475,11 @@ def write_resident_result(value: dict) -> None:
 
 def serve(manifest_path: Path, model_path: Path) -> int:
     manifest = load_manifest(manifest_path.resolve(), model_path.resolve())
-    from ultralytics import YOLO
+    with redirect_stdout(sys.stderr):
+        configure_runtime(manifest)
+        from ultralytics import YOLO
 
-    model = YOLO(str(model_path.resolve()))
+        model = YOLO(str(model_path.resolve()))
     while True:
         try:
             frame = read_resident_frame()

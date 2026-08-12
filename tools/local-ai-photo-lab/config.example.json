@@ -23,6 +23,13 @@
       "manifestPath": "/absolute/path/to/body-manifest.json",
       "modelPath": "/absolute/path/to/body-model.pt"
     },
+    "poses": {
+      "enabled": false,
+      "pythonPath": "/absolute/path/to/python",
+      "providerScriptPath": "/absolute/path/to/providers/ultralytics-yolo-pose/provider.py",
+      "manifestPath": "/absolute/path/to/pose-manifest.json",
+      "modelPath": "/absolute/path/to/pose-model.pt"
+    },
     "sceneText": {
       "enabled": true,
       "endpoint": "http://127.0.0.1:11434",

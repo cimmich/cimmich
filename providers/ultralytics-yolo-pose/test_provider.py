@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import tempfile
 import unittest
@@ -45,6 +46,16 @@ class Model:
     def predict(self, *args, **kwargs):
         self.kwargs = kwargs
         return [Result()]
+
+
+class NoisyModel(Model):
+    def __init__(self, path):
+        print("first-run settings chatter")
+        super().__init__(path)
+
+    def predict(self, *args, **kwargs):
+        print("prediction chatter")
+        return super().predict(*args, **kwargs)
 
 
 class EdgeBoxes:
@@ -95,6 +106,7 @@ class ProviderTest(unittest.TestCase):
         request = {
             "assetToken": "a" * 64,
             "inputRevision": "b" * 64,
+            "presentationRotationQuarterTurns": 0,
             "schemaVersion": provider.REQUEST_SCHEMA,
             "sourceContentDigest": hashlib.sha256(b"image").hexdigest(),
         }
@@ -158,6 +170,34 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(image, b"image")
         with self.assertRaises(provider.ProviderError):
             provider.load_packet(packet[:-1] + b"x", 1024)
+
+    def test_presentation_geometry_maps_back_to_source_coordinates(self):
+        box = provider.source_box(
+            {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}, 1
+        )
+        self.assertAlmostEqual(box["x"], 0.2)
+        self.assertAlmostEqual(box["y"], 0.6)
+        self.assertAlmostEqual(box["w"], 0.4)
+        self.assertAlmostEqual(box["h"], 0.3)
+        x, y = provider.source_point(0.1, 0.2, 1)
+        self.assertAlmostEqual(x, 0.2)
+        self.assertAlmostEqual(y, 0.9)
+
+    def test_provider_chatter_never_enters_protocol_stdout(self):
+        manifest_path, model, request = self.fixture()
+        manifest = provider.load_manifest(manifest_path, model)
+        protocol = io.StringIO()
+        with provider.redirect_stdout(protocol):
+            result = provider.execute(
+                request,
+                b"image",
+                manifest,
+                model,
+                NoisyModel,
+                lambda _: object(),
+            )
+        self.assertEqual(protocol.getvalue(), "")
+        self.assertEqual(result["state"], "poses_detected")
 
 
 if __name__ == "__main__":

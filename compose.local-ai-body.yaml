@@ -11,6 +11,10 @@ services:
       CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH: /local-ai-models/body/yolo11n-cpu.json
       CIMMICH_LOCAL_AI_BODY_MODEL_PATH: /local-ai-models/body/yolo11n.pt
       CIMMICH_LOCAL_AI_BODY_PYTHON_PATH: /usr/bin/python3
+      CIMMICH_LOCAL_AI_POSE_ENABLED: "true"
+      CIMMICH_LOCAL_AI_POSE_MANIFEST_PATH: /local-ai-models/body/yolo11n-pose-cpu.json
+      CIMMICH_LOCAL_AI_POSE_MODEL_PATH: /local-ai-models/body/yolo11n-pose.pt
+      CIMMICH_LOCAL_AI_POSE_PYTHON_PATH: /usr/bin/python3
       # Context needs a separately validated body-continuity receipt. Enabling
       # Bodies alone must not silently turn it on.
       CIMMICH_LOCAL_AI_CONTEXT_ENABLED: "false"

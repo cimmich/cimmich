@@ -47,6 +47,13 @@ const configInput = {
       pythonPath: "/py",
       scoreThreshold: 0.2,
     },
+    poses: {
+      enabled: true,
+      manifestPath: "/pose-manifest",
+      modelPath: "/pose-model",
+      providerScriptPath: "/pose-provider",
+      pythonPath: "/py",
+    },
     sceneText: {
       enabled: true,
       endpoint: "http://localhost:11434",
@@ -101,6 +108,19 @@ const providerImplementations = {
       ],
       operation: "faces",
       state: "faces_detected",
+    };
+  },
+  async runPoses() {
+    return {
+      operation: "poses",
+      poses: [
+        {
+          box: { h: 0.8, w: 0.5, x: 0.2, y: 0.1 },
+          confidence: 0.9,
+          keypoints: [{ confidence: 0.9, joint: "nose", x: 0.4, y: 0.2 }],
+        },
+      ],
+      state: "poses_detected",
     };
   },
   async runSceneText() {
@@ -239,6 +259,75 @@ test("runner appends immutable receipts, strips paths/vectors, and diffs reruns"
     "context",
     "enhance-preview",
   ]);
+
+  const poseReview = await runPhotoLab({
+    configInput,
+    operationsInput: "poses",
+    outputRoot: join(root, "pose-review"),
+    providerImplementations,
+    setInput: {
+      assets: [{ acceptedSubjects: [], assetId: "pose", path: paths[0] }],
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "pose-review",
+    },
+  });
+  assert.deepEqual(poseReview.result.executedOperations, ["bodies", "poses"]);
+  assert.equal(
+    poseReview.result.assets[0].operations.poses.poses[0].association.state,
+    "supported",
+  );
+  assert.equal(
+    poseReview.result.assets[0].operations.poses.poses[0].reliableKeypointCount,
+    1,
+  );
+  assert.match(
+    poseReview.result.assets[0].artifacts.overlay.path,
+    /review-overlay\.png$/,
+  );
+  await assert.rejects(
+    runPhotoLab({
+      configInput,
+      operationsInput: "poses",
+      outputRoot: join(root, "pose-too-many"),
+      providerImplementations,
+      setInput,
+    }),
+    { code: "LOCAL_AI_POSE_ASSETS_INVALID" },
+  );
+
+  const ambiguousPose = await runPhotoLab({
+    configInput,
+    operationsInput: "poses",
+    outputRoot: join(root, "pose-ambiguous"),
+    providerImplementations: {
+      ...providerImplementations,
+      async runBodies({ asset }) {
+        const duplicate = {
+          appearanceFeature: [1, 0],
+          box: { h: 0.8, w: 0.5, x: 0.2, y: 0.1 },
+        };
+        return {
+          bodies: [
+            { ...duplicate, bodyId: `body-a-${asset.assetId}` },
+            { ...duplicate, bodyId: `body-b-${asset.assetId}` },
+          ],
+          operation: "bodies",
+          state: "bodies_detected",
+        };
+      },
+    },
+    setInput: {
+      assets: [{ acceptedSubjects: [], assetId: "ambiguous", path: paths[0] }],
+      contextKind: "none",
+      schemaVersion: "cimmich.local-ai-photo-set.v1",
+      setId: "pose-ambiguous",
+    },
+  });
+  assert.equal(
+    ambiguousPose.result.assets[0].operations.poses.poses[0].association.state,
+    "ambiguous",
+  );
 
   const disagreementProviders = {
     ...providerImplementations,

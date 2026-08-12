@@ -87,6 +87,7 @@ export const createLocalYoloPoseProvider = ({
       assetToken,
       bytes,
       inputRevision,
+      presentationRotationQuarterTurns = 0,
       runId,
       sourceContentDigest,
     }) {
@@ -102,13 +103,23 @@ export const createLocalYoloPoseProvider = ({
       const header = {
         assetToken: requiredDigest(assetToken, "assetToken"),
         inputRevision: requiredDigest(inputRevision, "inputRevision"),
-        schemaVersion: "cimmich.ultralytics-yolo-pose-request.v1",
+        presentationRotationQuarterTurns,
+        schemaVersion: "cimmich.ultralytics-yolo-pose-request.v2",
         sourceContentDigest: requiredDigest(
           sourceContentDigest,
           "sourceContentDigest",
         ),
       };
       const normalizedRunId = requiredRunId(runId);
+      if (
+        !Number.isInteger(presentationRotationQuarterTurns) ||
+        presentationRotationQuarterTurns < 0 ||
+        presentationRotationQuarterTurns > 3
+      )
+        throw providerError(
+          "LOCAL_BODY_POSE_INPUT_INVALID",
+          "presentationRotationQuarterTurns must be 0-3",
+        );
       if (
         createHash("sha256").update(bytes).digest("hex") !==
         header.sourceContentDigest

@@ -14,7 +14,7 @@ import {
   validatePhotoSet,
 } from "./contract.mjs";
 import { inferContext } from "./context.mjs";
-import { diffObservations, diffRunResults } from "./diff.mjs";
+import { diffObservations, diffRunResults, iou } from "./diff.mjs";
 import * as defaultProviders from "./providers.mjs";
 import { renderReport } from "./report.mjs";
 import { buildSetSummary } from "./summary.mjs";
@@ -78,6 +78,53 @@ const sanitizeFailure = (operation) => {
     operation: operation.operation,
     state: "failed",
   };
+};
+
+const associatePoses = (operation, bodies) => {
+  if (!operation?.poses || operation.state === "failed") return operation;
+  const claimed = new Set();
+  const ranked = operation.poses
+    .map((pose, index) => {
+      const matches = bodies
+        .map((body, bodyIndex) => ({
+          body,
+          bodyIndex,
+          overlap: iou(pose.box, body.box),
+        }))
+        .sort((left, right) => right.overlap - left.overlap);
+      return { index, matches, pose };
+    })
+    .sort(
+      (left, right) =>
+        (right.matches[0]?.overlap ?? 0) - (left.matches[0]?.overlap ?? 0),
+    );
+  const associated = new Array(operation.poses.length);
+  for (const { index, matches, pose } of ranked) {
+    const best = matches[0];
+    const alternative = matches[1];
+    const supported =
+      best &&
+      best.overlap >= 0.5 &&
+      best.overlap - (alternative?.overlap ?? 0) >= 0.1 &&
+      !claimed.has(best.bodyIndex);
+    if (supported) claimed.add(best.bodyIndex);
+    associated[index] = {
+      ...pose,
+      association: {
+        bodyId: supported ? best.body.bodyId : null,
+        iou: Number((best?.overlap ?? 0).toFixed(6)),
+        state: supported
+          ? "supported"
+          : best?.overlap >= 0.5
+            ? "ambiguous"
+            : "unmatched",
+      },
+      reliableKeypointCount: pose.keypoints.filter(
+        (point) => point.x !== null && point.y !== null,
+      ).length,
+    };
+  }
+  return { ...operation, poses: associated };
 };
 
 const timed = async (callback) => {
@@ -190,8 +237,14 @@ export const runPhotoLab = async ({
     config.limits,
   );
   const requestedOperations = normalizeOperations(operationsInput);
+  if (requestedOperations.includes("poses") && photoSet.assets.length !== 1) {
+    throw Object.assign(new Error("pose review accepts exactly one photo"), {
+      code: "LOCAL_AI_POSE_ASSETS_INVALID",
+    });
+  }
   const executedOperations =
-    requestedOperations.includes("context") &&
+    (requestedOperations.includes("context") ||
+      requestedOperations.includes("poses")) &&
     !requestedOperations.includes("bodies")
       ? [...requestedOperations, "bodies"].sort(
           (left, right) =>
@@ -207,6 +260,11 @@ export const runPhotoLab = async ({
     ...config.providers.bodies,
     appearancePythonPath: config.providers.bodies.pythonPath,
     maxInputPixels: config.limits.maxInputPixels,
+    timeoutMs: config.limits.providerTimeoutMs,
+  };
+  const posesConfig = {
+    ...config.providers.poses,
+    maxInputBytes: config.limits.maxInputBytes,
     timeoutMs: config.limits.providerTimeoutMs,
   };
   const sceneTextConfig = {
@@ -313,6 +371,17 @@ export const runPhotoLab = async ({
               }),
             );
       }
+      if (executedOperations.includes("poses")) {
+        operations.poses = associatePoses(
+          await timed(() =>
+            providerImplementations.runPoses({
+              asset: assetInput,
+              config: posesConfig,
+            }),
+          ),
+          operations.bodies?.bodies ?? [],
+        );
+      }
       if (executedOperations.includes("scene-text")) {
         operations.sceneText = await timed(() =>
           providerImplementations.runSceneText({
@@ -360,10 +429,11 @@ export const runPhotoLab = async ({
       const artifacts = {};
       const faces = operations.faces?.faces ?? [];
       const bodies = operations.bodies?.bodies ?? [];
-      if (faces.length || bodies.length) {
+      const poses = operations.poses?.poses ?? [];
+      if (faces.length || bodies.length || poses.length) {
         const dataPath = join(reserved.runDir, `.${name}-overlay-input.json`);
         const outputPath = join(artifactRoot, `${name}-review-overlay.png`);
-        await atomicJson(dataPath, { bodies, faces });
+        await atomicJson(dataPath, { bodies, faces, poses });
         const overlay = await providerImplementations.renderOverlay({
           asset: assetInput,
           bodies,
@@ -373,6 +443,7 @@ export const runPhotoLab = async ({
           },
           dataPath,
           faces,
+          poses,
           outputPath,
         });
         await unlink(dataPath).catch(() => undefined);

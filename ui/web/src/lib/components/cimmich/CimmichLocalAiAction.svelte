@@ -66,6 +66,15 @@
       detail: 'Runs the high-detail local detector and compares it with saved Body boxes.',
     },
     {
+      id: 'poses' as const,
+      available: selectionAllowed && (status?.capabilities.poses ?? false) && sourceAssetIds.length === 1,
+      title: 'Inspect Body pose',
+      detail:
+        sourceAssetIds.length === 1
+          ? 'Draws review-only COCO17 skeletons and checks each one against a fresh Body candidate.'
+          : 'Open one photo to inspect Body pose.',
+    },
+    {
       id: 'scene-text' as const,
       available: selectionAllowed && (status?.capabilities.sceneText ?? false),
       title: 'Read Scene & Text',
@@ -109,6 +118,13 @@
     const added = assets.reduce((sum, asset) => sum + (asset.baselineComparison?.bodies?.added?.length ?? 0), 0);
     const failed = assets.some((asset) => asset.operations?.bodies?.state === 'failed');
     return { added, detected, failed };
+  });
+  const poseSummary = $derived.by(() => {
+    const poses = (job?.result?.assets ?? []).flatMap((asset) => asset.operations?.poses?.poses ?? []);
+    const supported = poses.filter((pose) => pose.association?.state === 'supported').length;
+    const keypoints = poses.reduce((sum, pose) => sum + (pose.reliableKeypointCount ?? 0), 0);
+    const failed = (job?.result?.assets ?? []).some((asset) => asset.operations?.poses?.state === 'failed');
+    return { detected: poses.length, failed, keypoints, supported };
   });
 
   const revokeArtifacts = () => {
@@ -313,6 +329,18 @@
               <span role="alert">Body detection did not complete. No detections were accepted; run it again.</span>
             {:else}
               <span>{bodySummary.detected} detected · {bodySummary.added} not in the saved Body boxes</span>
+            {/if}
+          {/if}
+          {#if job.operation === 'poses' && finished && job.result}
+            {#if poseSummary.failed}
+              <span role="alert"
+                >Pose inspection did not complete. No skeleton evidence was accepted; run it again.</span
+              >
+            {:else}
+              <span>
+                {poseSummary.detected} skeleton{poseSummary.detected === 1 ? '' : 's'} · {poseSummary.supported} matched to
+                Body candidates · {poseSummary.keypoints} reliable keypoints
+              </span>
             {/if}
           {/if}
           {#if job.result?.summary?.text && job.operation === 'context'}

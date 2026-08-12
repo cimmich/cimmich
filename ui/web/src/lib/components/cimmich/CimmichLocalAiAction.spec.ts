@@ -46,7 +46,15 @@ const completedFaceJob = {
 describe('Cimmich Local AI review action', () => {
   beforeEach(() => {
     mocks.status.mockReset().mockResolvedValue({
-      capabilities: { best: true, bodies: false, context: false, faces: true, quick: true, sceneText: false },
+      capabilities: {
+        best: true,
+        bodies: false,
+        context: false,
+        faces: true,
+        poses: false,
+        quick: true,
+        sceneText: false,
+      },
       enabled: true,
       limits: {
         maxAssets: 12,
@@ -133,7 +141,15 @@ describe('Cimmich Local AI review action', () => {
   it('shows detected and new Body counts for review', async () => {
     mocks.status.mockResolvedValueOnce({
       ...(await mocks.status()),
-      capabilities: { best: true, bodies: true, context: false, faces: true, quick: true, sceneText: false },
+      capabilities: {
+        best: true,
+        bodies: true,
+        context: false,
+        faces: true,
+        poses: false,
+        quick: true,
+        sceneText: false,
+      },
     });
     mocks.start.mockResolvedValueOnce({
       ...completedFaceJob,
@@ -160,7 +176,15 @@ describe('Cimmich Local AI review action', () => {
   it('does not report zero Bodies when the detector failed', async () => {
     mocks.status.mockResolvedValueOnce({
       ...(await mocks.status()),
-      capabilities: { best: true, bodies: true, context: false, faces: true, quick: true, sceneText: false },
+      capabilities: {
+        best: true,
+        bodies: true,
+        context: false,
+        faces: true,
+        poses: false,
+        quick: true,
+        sceneText: false,
+      },
     });
     mocks.start.mockResolvedValueOnce({
       ...completedFaceJob,
@@ -193,5 +217,50 @@ describe('Cimmich Local AI review action', () => {
       'Body detection did not complete. No detections were accepted; run it again.',
     );
     expect(rendered.queryByText(/0 detected/)).not.toBeInTheDocument();
+  });
+
+  it('shows review-only pose counts and Body association truth', async () => {
+    mocks.status.mockResolvedValueOnce({
+      ...(await mocks.status()),
+      capabilities: {
+        best: true,
+        bodies: true,
+        context: false,
+        faces: true,
+        poses: true,
+        quick: true,
+        sceneText: false,
+      },
+    });
+    mocks.start.mockResolvedValueOnce({
+      ...completedFaceJob,
+      operation: 'poses',
+      result: {
+        ...completedFaceJob.result,
+        assets: [
+          {
+            assetId: completedFaceJob.sourceAssetIds[0],
+            operations: {
+              bodies: { bodies: [{}, {}], state: 'bodies_detected' },
+              poses: {
+                poses: [
+                  { association: { state: 'supported' }, reliableKeypointCount: 17 },
+                  { association: { state: 'unmatched' }, reliableKeypointCount: 11 },
+                ],
+                state: 'poses_detected',
+              },
+            },
+          },
+        ],
+      },
+    });
+    const rendered = render(CimmichLocalAiAction, { sourceAssetIds: completedFaceJob.sourceAssetIds });
+    await fireEvent.click(rendered.getByRole('button', { name: 'Open Local AI review' }));
+    await fireEvent.click(await rendered.findByRole('radio', { name: /Inspect Body pose/ }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Run locally' }));
+
+    expect(
+      await rendered.findByText('2 skeletons · 1 matched to Body candidates · 28 reliable keypoints'),
+    ).toBeInTheDocument();
   });
 });

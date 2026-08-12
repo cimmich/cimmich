@@ -33,6 +33,7 @@ COPY providers/opencv-sface /app/providers/opencv-sface
 COPY providers/insightface-user-supplied /app/providers/insightface-user-supplied
 COPY providers/perceptual-dhash /app/providers/perceptual-dhash
 COPY providers/ultralytics-yolo-body /app/providers/ultralytics-yolo-body
+COPY providers/ultralytics-yolo-pose /app/providers/ultralytics-yolo-pose
 COPY tools/local-ai-photo-lab /app/tools/local-ai-photo-lab
 COPY migrations /app/migrations
 

@@ -43,6 +43,9 @@ export const renderReport = ({ result, diff }) => {
       operationLine("Body candidates", asset.operations.bodies, "bodies"),
     );
     lines.push(
+      operationLine("Pose skeletons", asset.operations.poses, "poses"),
+    );
+    lines.push(
       operationLine("Scene/Text", asset.operations.sceneText, "proposal"),
     );
     lines.push(

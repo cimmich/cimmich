@@ -28,6 +28,7 @@ test("Local AI is fail-closed by default", async () => {
     bodies: false,
     context: false,
     faces: false,
+    poses: false,
     quick: false,
     sceneText: false,
   });
@@ -95,6 +96,30 @@ test("Body activation does not implicitly activate unvalidated Context", async (
     });
     assert.equal(bodyOnly.status().capabilities.bodies, true);
     assert.equal(bodyOnly.status().capabilities.context, false);
+    assert.equal(bodyOnly.status().capabilities.poses, false);
+
+    const poseModel = join(root, "pose.pt");
+    const poseManifest = join(root, "pose.json");
+    await writeFile(poseModel, "private-pose-model");
+    await writeFile(poseManifest, "{}");
+    const poseReview = await createLocalAiService({
+      environment: {
+        ...baseEnvironment,
+        CIMMICH_LOCAL_AI_POSE_ENABLED: "true",
+        CIMMICH_LOCAL_AI_POSE_MANIFEST_PATH: poseManifest,
+        CIMMICH_LOCAL_AI_POSE_MODEL_PATH: poseModel,
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(poseReview.status().capabilities.poses, true);
+    await assert.rejects(
+      poseReview.start({
+        operation: "poses",
+        sourceAssetIds: [assetId, "f94379f1-9300-4b07-8480-cf4e492efd90"],
+      }),
+      (error) => error.code === "LOCAL_AI_POSE_ASSETS_INVALID",
+    );
 
     const explicitlyValidatedContext = await createLocalAiService({
       environment: {

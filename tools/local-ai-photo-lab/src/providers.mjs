@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createUltralyticsYoloPoseDetector } from "../../../service/src/ultralytics-yolo-pose-detector.mjs";
 import { digest, fileDigest } from "./contract.mjs";
 import { trackedSpawn } from "./processes.mjs";
 
@@ -458,6 +459,72 @@ export const runBodiesBatch = async ({ assets, config }) => {
   return results;
 };
 
+export const runPoses = async ({ asset, config }) => {
+  if (!config.enabled)
+    return {
+      operation: "poses",
+      state: "unavailable",
+      reason: "provider_disabled",
+    };
+  let detector;
+  try {
+    const [manifest, bytes, manifestDigest, modelDigest] = await Promise.all([
+      readFile(config.manifestPath, "utf8").then(JSON.parse),
+      readFile(asset.path),
+      fileDigest(config.manifestPath),
+      fileDigest(config.modelPath),
+    ]);
+    detector = createUltralyticsYoloPoseDetector({
+      manifest,
+      manifestPath: config.manifestPath,
+      maxInputBytes: config.maxInputBytes,
+      modelPath: config.modelPath,
+      pythonPath: config.pythonPath,
+      scriptPath: config.providerScriptPath,
+      timeoutMs: Math.min(config.timeoutMs, manifest.resources.maxRuntimeMs),
+    });
+    const request = {
+      assetToken: digest({ assetId: asset.assetId }),
+      bytes,
+      inputRevision: digest({
+        presentationRotationQuarterTurns:
+          asset.presentationRotationQuarterTurns,
+        sourceContentDigest: asset.sourceContentDigest,
+      }),
+      presentationRotationQuarterTurns: asset.presentationRotationQuarterTurns,
+      sourceContentDigest: asset.sourceContentDigest,
+    };
+    const first = await detector.detect({ ...request, runId: "pose-review-a" });
+    const second = await detector.detect({
+      ...request,
+      runId: "pose-review-b",
+    });
+    if (digest(first.result) !== digest(second.result)) {
+      throw Object.assign(new Error("pose replay drifted"), {
+        code: "LOCAL_AI_POSE_REPLAY_DRIFT",
+      });
+    }
+    return {
+      operation: "poses",
+      poses: first.result.detections,
+      poseConfigDigest: first.result.poseConfigDigest,
+      provider: {
+        activationAuthority: "none",
+        executionMode: "resident-replay",
+        manifestDigest,
+        modelDigest,
+        network: "forbidden",
+        replayRuns: 2,
+      },
+      state: first.result.state,
+    };
+  } catch (error) {
+    return providerFailure("poses", error);
+  } finally {
+    await detector?.close().catch(() => undefined);
+  }
+};
+
 const sceneSchema = {
   type: "object",
   additionalProperties: false,
@@ -703,6 +770,7 @@ export const renderOverlay = async ({
   asset,
   bodies,
   faces,
+  poses,
   config,
   dataPath,
   outputPath,

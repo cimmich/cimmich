@@ -17,6 +17,7 @@ const operationMap = new Map([
   ["quick", "enhance-preview"],
   ["best", "enhance"],
   ["bodies", "bodies"],
+  ["poses", "poses"],
   ["context", "context"],
   ["scene-text", "scene-text"],
 ]);
@@ -120,6 +121,21 @@ const providerConfig = ({ enabled, environment, modelPaths }) => {
         pythonPath:
           environment.CIMMICH_LOCAL_AI_BODY_PYTHON_PATH || "/usr/bin/python3",
       },
+      poses: {
+        enabled:
+          enabled &&
+          environment.CIMMICH_LOCAL_AI_POSE_ENABLED === "true" &&
+          Boolean(modelPaths.poseModel && modelPaths.poseManifest),
+        manifestPath:
+          modelPaths.poseManifest || "/local-ai-models/pose-disabled.json",
+        modelPath:
+          modelPaths.poseModel || "/local-ai-models/pose-disabled.onnx",
+        providerScriptPath:
+          environment.CIMMICH_LOCAL_AI_POSE_PROVIDER_SCRIPT ||
+          "/app/providers/ultralytics-yolo-pose/provider.py",
+        pythonPath:
+          environment.CIMMICH_LOCAL_AI_POSE_PYTHON_PATH || "/usr/bin/python3",
+      },
       enhance: {
         device: enhanceDevice,
         enabled:
@@ -174,12 +190,14 @@ const publicCapabilities = (config, enabled, environment) => {
   const faces = enabled && config.providers.faces.enabled;
   const enhance = enabled && config.providers.enhance.enabled;
   const bodies = enabled && config.providers.bodies.enabled;
+  const poses = enabled && bodies && config.providers.poses.enabled;
   const sceneText = enabled && config.providers.sceneText.enabled;
   return {
     best: enhance,
     bodies,
     context: bodies && environment.CIMMICH_LOCAL_AI_CONTEXT_ENABLED === "true",
     faces,
+    poses,
     quick: enabled,
     sceneText,
   };
@@ -396,6 +414,10 @@ export const createLocalAiService = async ({
       environment.CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH,
     ),
     bodyModel: await existingFile(environment.CIMMICH_LOCAL_AI_BODY_MODEL_PATH),
+    poseManifest: await existingFile(
+      environment.CIMMICH_LOCAL_AI_POSE_MANIFEST_PATH,
+    ),
+    poseModel: await existingFile(environment.CIMMICH_LOCAL_AI_POSE_MODEL_PATH),
     enhance: await existingFile(
       enhanceDevice === "vulkan"
         ? requestedVulkanModelPath
@@ -745,6 +767,16 @@ export const createLocalAiService = async ({
       if (!enabled)
         throw typedError("Local AI is disabled", 503, "LOCAL_AI_DISABLED");
       const normalized = exactJobInput(input, config.limits.maxAssets);
+      if (
+        normalized.operation === "poses" &&
+        normalized.sourceAssetIds.length !== 1
+      ) {
+        throw typedError(
+          "Pose review accepts exactly one selected photo",
+          400,
+          "LOCAL_AI_POSE_ASSETS_INVALID",
+        );
+      }
       if (
         !capabilities[
           normalized.operation === "scene-text"

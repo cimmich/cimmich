@@ -1,6 +1,6 @@
 import { CimmichServiceError, cimmichRequestContext, request } from './cimmich.service';
 
-export type CimmichLocalAiOperation = 'best' | 'bodies' | 'context' | 'faces' | 'quick' | 'scene-text';
+export type CimmichLocalAiOperation = 'best' | 'bodies' | 'context' | 'faces' | 'poses' | 'quick' | 'scene-text';
 
 export type CimmichLocalAiStatus = {
   capabilities: {
@@ -8,6 +8,7 @@ export type CimmichLocalAiStatus = {
     bodies: boolean;
     context: boolean;
     faces: boolean;
+    poses: boolean;
     quick: boolean;
     sceneText: boolean;
   };
@@ -55,6 +56,15 @@ export type CimmichLocalAiJob = {
       operations?: {
         bodies?: { bodies?: unknown[]; errorCode?: string; message?: string; state: string };
         faces?: { faces?: unknown[]; errorCode?: string; message?: string; state: string };
+        poses?: {
+          errorCode?: string;
+          message?: string;
+          poses?: Array<{
+            association?: { state?: 'ambiguous' | 'supported' | 'unmatched' };
+            reliableKeypointCount?: number;
+          }>;
+          state: string;
+        };
       };
     }>;
     originalsUnchanged: boolean;

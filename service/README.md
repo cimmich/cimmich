@@ -1022,6 +1022,13 @@ two local provider invocations under an allowlisted process environment. That
 environment removes ambient credentials but is not an operating-system network
 or filesystem sandbox; operators must trust provider code or add external
 container isolation.
+The owner-only Local AI surface can also expose an exactly-one-photo pose
+review when the Body and pose model/manifest pairs are both configured. That
+path runs a fresh Body pass, requires two identical pose replays, projects
+saved presentation rotation back to source coordinates, and labels skeletons
+as supported, ambiguous or unmatched. Its PNG overlay and minimized result are
+derived review artifacts only: they do not invoke the repository writer or
+grant Person, Face, Context or matching authority.
 The bundled `ultralytics-yolo-pose` reference pack is optional and ships no
 weights. COCO-17 projection requires at least seven keypoints clearing the
 manifest threshold; a caller cannot lower that floor. One isolated
