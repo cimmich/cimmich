@@ -22,22 +22,24 @@ describe('Person identity overview', () => {
     expect(page).toContain('<CimmichPersonEvidenceCoverage');
   });
 
-  it('leads with photos and user questions while keeping machinery detail optional', async () => {
+  it('presents a visual timeline and useful dashboard while keeping machinery detail optional', async () => {
     const source = await readFile('src/lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte', 'utf8');
 
-    expect(source).toContain('{coverage.person.displayName} in Cimmich');
-    expect(source).toContain('{coverage.assets.total.toLocaleString()} available photos');
+    expect(source).not.toContain('{coverage.person.displayName} in Cimmich');
     expect(source).not.toContain('missingSourceCount');
     expect(source).not.toContain('source files missing');
     expect(source).not.toContain('not connected yet');
-    expect(source).toContain('Recognition examples');
-    expect(source).toContain('shown oldest first');
-    expect(source).toContain('How Cimmich recognises {coverage.person.displayName}');
-    expect(source).toContain('Why do these numbers overlap?');
-    expect(source).toContain('When these photos were taken');
-    expect(source).toContain('Where {coverage.person.displayName} appears');
-    expect(source).toContain('Needs your attention');
-    expect(source).toContain('Advanced evidence details');
+    expect(source).not.toContain('Recognition examples');
+    expect(source).not.toContain('How Cimmich recognises');
+    expect(source).not.toContain('Why do these numbers overlap?');
+    expect(source).toContain('Timeline evolution');
+    expect(source).toContain('One photo from every represented year');
+    expect(source).toContain('Scroll through time →');
+    expect(source).toContain('Library snapshot');
+    expect(source).toContain('Years represented');
+    expect(source).toContain('Places & stories');
+    expect(source).toContain('Review queue');
+    expect(source).toContain('Technical details');
     expect(source).toContain('What these terms mean');
     expect(source).toContain('Imported Body hint');
     expect(source).not.toContain('none is an identity-confidence score');
@@ -53,7 +55,10 @@ describe('Person identity overview', () => {
     expect(source).toContain("label: 'Pose geometry'");
     expect(source).toContain('Recognition reference gallery');
     expect(source).toContain('Supporting matcher refs');
-    expect(source).toContain("overlay: 'machinery'");
+    expect(source).not.toContain("overlay: 'machinery'");
+    expect(source).toContain('timelineSources');
+    expect(source).toContain('yearVolume(year)');
+    expect(source).toContain('current viewing mode');
     expect(source).toContain('contextHref(group.kind, item.entityId)');
     expect(source).toContain("onopenidentity('body')");
     expect(source).toContain("onopenidentity('candidates')");

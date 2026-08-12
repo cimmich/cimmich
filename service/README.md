@@ -334,13 +334,15 @@ separately; undated images and non-image media affect neither. This is a read
 aggregate, not Profile persistence or source metadata repair.
 
 `GET /v1/people/:personId/evidence-coverage` exposes the read-only
-`cimmich.person-evidence-coverage.v1` projection. It counts only visible active
+`cimmich.person-evidence-coverage.v2` projection. It counts only visible active
 assets and accepted Face, standalone Head, Body and Presence ledgers; persisted
 pose is counted only for an accepted Body. It also returns the accepted
 reference-role split, capture-year spread, up to six visible context entities
-per family, pending candidate/date/pose notes and at most six strong accepted
-Face sources from different years. The projection has no inference, write,
-source-mutation or automatic identity authority. See
+per family, pending candidate/date/pose notes and one privacy-filtered display
+photo for each represented capture year (up to 120 years). A best available
+accepted Face leads each year; years without one fall back to another accepted
+Person photo. The projection has no inference, write, source-mutation or
+automatic identity authority. See
 `docs/PERSON_EVIDENCE_COVERAGE.md`.
 
 Holding hints are separately bounded by

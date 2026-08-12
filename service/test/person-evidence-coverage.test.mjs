@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createPersonEvidenceCoverageStore,
   personEvidenceCoverageSchemaVersion,
+  projectPersonEvidenceCoverage,
 } from "../src/person-evidence-coverage.mjs";
 
 const projectionRow = {
@@ -55,6 +56,7 @@ const projectionRow = {
       filename: "maya.jpg",
       qualityScore: 0.91,
       sourceAssetId: "source-maya",
+      sourceKind: "face",
     },
   ],
   total_asset_count: 11,
@@ -110,6 +112,13 @@ test("Person evidence coverage projects accepted evidence without mutation autho
     },
   ]);
   assert.equal(result.sourceSuggestions[0].qualityScore, 0.91);
+  assert.equal(result.sourceSuggestions[0].sourceKind, "face");
+  assert.deepEqual(result.sourceSuggestions[0].box, {
+    h: 0.3,
+    w: 0.2,
+    x: 0.4,
+    y: 0.2,
+  });
   assert.deepEqual(result.authority, {
     automaticIdentityAuthority: "none",
     inference: "none",
@@ -131,7 +140,36 @@ test("Person evidence coverage projects accepted evidence without mutation autho
   assert.match(statements[0], /body_pose_evidence/);
   assert.match(statements[0], /cimmich_visibility_asset_rank/);
   assert.match(statements[0], /cimmich_visibility_context_entity_rank/);
-  assert.match(statements[0], /LIMIT 6/);
+  assert.match(statements[0], /source_assets AS MATERIALIZED/);
+  assert.match(statements[0], /'photo'::text AS source_kind/);
+  assert.match(
+    statements[0],
+    /PARTITION BY extract\(year FROM source\.capture_time\)/,
+  );
+  assert.match(statements[0], /LIMIT 120/);
+});
+
+test("Person evidence coverage preserves a full-photo yearly fallback", () => {
+  const result = projectPersonEvidenceCoverage({
+    ...projectionRow,
+    source_suggestions: [
+      {
+        boxH: null,
+        boxW: null,
+        boxX: null,
+        boxY: null,
+        captureTime: "2019-04-03T00:00:00.000Z",
+        faceId: null,
+        filename: "maya-body.jpg",
+        sourceAssetId: "source-body",
+        sourceKind: "photo",
+      },
+    ],
+  });
+
+  assert.equal(result.sourceSuggestions[0].faceId, null);
+  assert.equal(result.sourceSuggestions[0].box, null);
+  assert.equal(result.sourceSuggestions[0].sourceKind, "photo");
 });
 
 test("Person evidence coverage rejects Pets before the projection query", async () => {

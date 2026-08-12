@@ -16,8 +16,8 @@ The projection answers four bounded questions:
 2. How much accepted Body evidence has persisted pose geometry?
 3. Across which capture years and accepted Place/Event/Thing links is the
    Person currently observed?
-4. Which accepted Face sources provide a strong, year-diverse starting point
-   for cover selection or closer inspection?
+4. Which privacy-visible photo best represents each capture year in a visual
+   evolution timeline?
 
 Bars report the fraction of accepted Person photos on which a channel is
 observed. They are not identity confidence and are not combined into a
@@ -38,15 +38,17 @@ Candidate Face claims and future capture dates are shown as genuine review
 work. Missing pose and standalone Head observations are neutral coverage notes.
 Context counts are descriptive, not a demand to tag every photo.
 
-## Source suggestions
+## Timeline photos
 
-Suggestions are accepted Face observations only. Cimmich chooses the strongest
-visible source per capture year, ranks Core then Supporting references ahead of
-unclassified/low-quality/head roles, excludes future-dated sources from the
-front of the selection, and returns at most six. The profile labels these
-Recognition examples and displays the selected set chronologically. Opening a
-suggestion enters the existing machinery overlay; the suggestion itself has no
-write authority.
+The projection returns one photo for every represented capture year, bounded
+to 120 distinct years. Selection happens after the current viewing-mode
+ceiling. A best available accepted Face leads a year because it gives the
+clearest Person-centred crop; when that year has no accepted Face, another
+accepted Person photo is used as a full-photo fallback. Future-dated years stay
+visible with an explicit date-review marker instead of silently distorting the
+credible year range. Timeline cards display chronologically with each year's
+photo count and open as ordinary Cimmich photos without forcing the machinery
+overlay. Selection itself has no write or identity authority.
 
 The Person profile and Overview use the same population: visible accepted
 associations on active assets. Active assets are labelled **available photos**.
@@ -58,7 +60,8 @@ different projections.
 ## Privacy and performance
 
 Every asset, Person and context read stays inside the current viewing-mode
-ceiling. The response contains stable IDs, bounded aggregate counts and at most
-six source/context rows per family; it contains no vectors or source paths. The
-profile loads it only when Identity Overview is opened and retains it for that
-mounted Person/visibility generation.
+ceiling. The response contains stable IDs, bounded aggregate counts, at most
+six context rows per family and at most one timeline photo for each of 120
+years; it contains no vectors or source paths. The profile loads it only when
+Identity Overview is opened and retains it for that mounted Person/visibility
+generation.

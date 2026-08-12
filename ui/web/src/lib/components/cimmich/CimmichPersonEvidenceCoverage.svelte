@@ -1,5 +1,8 @@
 <script lang="ts">
-  import type { CimmichPersonEvidenceCoverage } from '$lib/services/cimmich.service';
+  import type {
+    CimmichPersonEvidenceCoverage,
+    CimmichPersonEvidenceCoverageContext,
+  } from '$lib/services/cimmich.service';
   import { Route } from '$lib/route';
   import { getAssetMediaUrl } from '$lib/utils';
   import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
@@ -10,6 +13,7 @@
     mdiCalendarRange,
     mdiChevronDown,
     mdiHumanGreeting,
+    mdiImageMultipleOutline,
     mdiImageSearchOutline,
     mdiMapMarkerOutline,
     mdiRun,
@@ -26,9 +30,10 @@
 
   let { coverage, onopenidentity, onopenphotos }: Props = $props();
 
+  const currentYear = new Date().getUTCFullYear();
   const notes = $derived(evidenceCoverageNotes(coverage));
   const actionableNotes = $derived(notes.filter((note) => note.action !== null));
-  const orderedSourceSuggestions = $derived(
+  const timelineSources = $derived(
     [...coverage.sourceSuggestions].sort((left, right) => {
       if (!left.captureTime) {
         return 1;
@@ -36,10 +41,26 @@
       if (!right.captureTime) {
         return -1;
       }
-      return left.captureTime.localeCompare(right.captureTime) || left.faceId.localeCompare(right.faceId);
+      return left.captureTime.localeCompare(right.captureTime) || left.sourceAssetId.localeCompare(right.sourceAssetId);
     }),
   );
+  const credibleYears = $derived(coverage.time.years.filter(({ year }) => year <= currentYear));
+  const firstYear = $derived(credibleYears.at(0)?.year ?? null);
+  const lastYear = $derived(credibleYears.at(-1)?.year ?? null);
+  const yearRange = $derived(
+    firstYear === null ? 'Dates unavailable' : firstYear === lastYear ? `${firstYear}` : `${firstYear}–${lastYear}`,
+  );
+  const yearCounts = $derived(new Map(coverage.time.years.map(({ assetCount, year }) => [year, assetCount])));
   const maximumYearCount = $derived(Math.max(1, ...coverage.time.years.map(({ assetCount }) => assetCount)));
+  const facePercent = $derived(evidenceCoveragePercent(coverage.assets.face, coverage.assets.total));
+  const contextGroups = $derived([
+    { icon: mdiMapMarkerOutline, items: coverage.context.places, kind: 'place' as const, label: 'Places' },
+    { icon: mdiCalendarRange, items: coverage.context.events, kind: 'event' as const, label: 'Events' },
+    { icon: mdiImageMultipleOutline, items: coverage.context.things, kind: 'object' as const, label: 'Things' },
+  ]);
+  const maximumContextCount = $derived(
+    Math.max(1, ...contextGroups.flatMap(({ items }) => items.map(({ assetCount }) => assetCount))),
+  );
   const evidenceRows = $derived([
     {
       count: coverage.assets.face,
@@ -99,241 +120,246 @@
     return `${root}?entityId=${encodeURIComponent(entityId)}`;
   };
 
-  const sourceStyle = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) =>
-    cimmichSquareCropBackgroundStyle({
+  const sourceStyle = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) => {
+    const url = getAssetMediaUrl({ id: source.sourceAssetId, size: AssetMediaSize.Thumbnail });
+    if (!source.box) {
+      return `background-image: url("${url}"); background-position: center;`;
+    }
+    return cimmichSquareCropBackgroundStyle({
       boxH: source.box.h,
       boxW: source.box.w,
       boxX: source.box.x,
       boxY: source.box.y,
       height: source.height,
-      padding: 2.2,
-      url: getAssetMediaUrl({ id: source.sourceAssetId, size: AssetMediaSize.Thumbnail }),
+      padding: 2.6,
+      url,
       width: source.width,
     });
-
-  const sourceYear = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) => {
-    if (!source.captureTime) {
-      return 'Date unknown';
-    }
-    return new Date(source.captureTime).getUTCFullYear().toString();
   };
+
+  const sourceYear = (source: CimmichPersonEvidenceCoverage['sourceSuggestions'][number]) =>
+    source.captureTime ? new Date(source.captureTime).getUTCFullYear() : null;
+  const yearVolume = (year: number | null) => (year === null ? 0 : (yearCounts.get(year) ?? 0));
+  const yearBarHeight = (year: number | null) =>
+    `${Math.max(8, Math.round((yearVolume(year) / maximumYearCount) * 100))}%`;
+  const contextBarWidth = (item: CimmichPersonEvidenceCoverageContext) =>
+    `${Math.max(5, Math.round((item.assetCount / maximumContextCount) * 100))}%`;
 </script>
 
-<section class="grid gap-8" aria-labelledby="person-evidence-coverage-title">
-  <header class="flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <h2 id="person-evidence-coverage-title" class="text-2xl font-semibold">
-        {coverage.person.displayName} in Cimmich
-      </h2>
-      <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500 dark:text-gray-400">
-        <span>{coverage.assets.total.toLocaleString()} available photos</span>
-      </p>
-    </div>
-    <button
-      class="min-h-11 text-sm font-semibold text-primary hover:underline"
-      type="button"
-      onclick={() => onopenphotos()}
-    >
-      View all photos
-    </button>
-  </header>
+<section class="grid gap-6" aria-label="Identity overview">
+  <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Library snapshot">
+    <article class="relative overflow-hidden rounded-3xl bg-primary p-5 text-white shadow-sm">
+      <div class="absolute -top-6 -right-6 size-28 rounded-full bg-white/10"></div>
+      <div class="flex items-center gap-2 text-sm font-semibold text-white/80">
+        <Icon icon={mdiImageMultipleOutline} size="19" /> Photos
+      </div>
+      <strong class="mt-5 block text-4xl tabular-nums">{coverage.assets.total.toLocaleString()}</strong>
+      <button
+        class="mt-3 min-h-10 text-sm font-semibold underline decoration-white/50 underline-offset-4"
+        type="button"
+        onclick={() => onopenphotos()}
+      >
+        View all photos
+      </button>
+    </article>
 
-  <section aria-labelledby="coverage-examples-title">
-    <div class="mb-3">
-      <h3 id="coverage-examples-title" class="text-xl font-semibold">Recognition examples</h3>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        One strong accepted Face from each available year, shown oldest first.
-      </p>
-    </div>
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {#each orderedSourceSuggestions as source (source.faceId)}
+    <article
+      class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+    >
+      <div class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiTimelineClockOutline} size="19" /> Years represented
+      </div>
+      <strong class="mt-5 block text-4xl tabular-nums">{credibleYears.length.toLocaleString()}</strong>
+      <span class="mt-2 block text-sm text-gray-500 dark:text-gray-400">{yearRange}</span>
+    </article>
+
+    <button
+      class="rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
+      type="button"
+      onclick={() => onopenidentity('all')}
+    >
+      <span class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiAccountCheckOutline} size="19" /> Face visible
+      </span>
+      <span class="mt-5 flex items-end justify-between gap-3">
+        <strong class="text-4xl tabular-nums">{coverage.assets.face.toLocaleString()}</strong>
+        <span class="pb-1 text-sm font-semibold text-primary">{facePercent}%</span>
+      </span>
+      <span class="mt-3 block h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700" aria-hidden="true">
+        <span class="block h-full rounded-full bg-primary" style={`width: ${facePercent}%`}></span>
+      </span>
+    </button>
+
+    <button
+      class="rounded-3xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
+      type="button"
+      onclick={() => onopenidentity('body')}
+    >
+      <span class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+        <Icon icon={mdiHumanGreeting} size="19" /> Body-only photos
+      </span>
+      <strong class="mt-5 block text-4xl tabular-nums">{coverage.assets.bodyOnly.toLocaleString()}</strong>
+      <span class="mt-2 block text-sm font-semibold text-primary">Open this set</span>
+    </button>
+  </section>
+
+  <section
+    class="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+    aria-labelledby="coverage-timeline-title"
+  >
+    <header class="flex flex-wrap items-end justify-between gap-3 px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+      <div>
+        <h2 id="coverage-timeline-title" class="text-xl font-semibold">Timeline evolution</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          One photo from every represented year, chosen from what is visible in your current viewing mode.
+        </p>
+      </div>
+      <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Scroll through time →</span>
+    </header>
+
+    <div
+      class="flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-6 sm:px-6"
+      aria-label="One photo per represented year"
+    >
+      {#each timelineSources as source (source.sourceAssetId)}
+        {@const year = sourceYear(source)}
         <a
-          class="group overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-bg"
+          class="group w-36 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-gray-700 dark:bg-immich-dark-gray"
           href={Route.viewCimmichPersonAsset({
-            faceId: source.faceId,
             id: source.sourceAssetId,
-            overlay: 'machinery',
             personId: coverage.person.personId,
             personName: coverage.person.displayName,
           })}
         >
-          <span
-            class="block aspect-square bg-gray-200 bg-cover bg-no-repeat dark:bg-gray-800"
-            style={sourceStyle(source)}
-          ></span>
-          <span class="block p-3">
-            <span class="block text-xs font-semibold">{sourceYear(source)}</span>
-            <span class="mt-1 block truncate text-xs text-gray-500 dark:text-gray-400">{source.filename}</span>
+          <span class="relative block aspect-4/5 overflow-hidden bg-gray-200 dark:bg-gray-800">
+            <span
+              class="absolute inset-0 bg-cover bg-no-repeat transition duration-300 group-hover:scale-[1.03]"
+              style={sourceStyle(source)}
+            ></span>
+            {#if year !== null && year > currentYear}
+              <span
+                class="absolute top-2 right-2 rounded-full bg-amber-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm"
+                >Check date</span
+              >
+            {/if}
+          </span>
+          <span class="grid grid-cols-[1fr_1.25rem] gap-2 p-3">
+            <span>
+              <strong class="block text-base tabular-nums">{year ?? 'Unknown'}</strong>
+              <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400"
+                >{yearVolume(year).toLocaleString()} photos</span
+              >
+            </span>
+            <span class="flex h-9 items-end rounded-full bg-gray-200 px-1 dark:bg-gray-700" aria-hidden="true">
+              <span class="block w-full rounded-full bg-primary/80" style={`height: ${yearBarHeight(year)}`}></span>
+            </span>
           </span>
         </a>
       {:else}
         <p
-          class="col-span-full rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
+          class="w-full rounded-2xl border border-dashed border-gray-300 p-5 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
         >
-          No example photo is available yet.
+          No dated photo is available for the timeline yet.
         </p>
       {/each}
     </div>
   </section>
 
-  <section aria-labelledby="coverage-recognition-title">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h3 id="coverage-recognition-title" class="text-xl font-semibold">
-          How Cimmich recognises {coverage.person.displayName}
-        </h3>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Face is strongest. Body keeps useful photos when a clear face is not available.
-        </p>
-      </div>
-      <button
-        class="min-h-11 text-sm font-semibold text-primary hover:underline"
-        type="button"
-        onclick={() => onopenidentity('all')}
-      >
-        See recognition evidence
-      </button>
-    </div>
-    <div class="mt-4 grid gap-3 sm:grid-cols-2">
-      <article class="rounded-2xl border border-gray-200 p-5 dark:border-gray-700">
-        <div class="flex items-center gap-2 font-semibold">
-          <span class="grid size-9 place-items-center rounded-full bg-primary/10 text-primary"
-            ><Icon icon={mdiAccountCheckOutline} size="20" /></span
-          >
-          Face visible
-        </div>
-        <strong class="mt-5 block text-3xl tabular-nums">{coverage.assets.face.toLocaleString()}</strong>
-        <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">photos</span>
-      </article>
-      <article class="rounded-2xl border border-gray-200 p-5 dark:border-gray-700">
-        <div class="flex items-center gap-2 font-semibold">
-          <span class="grid size-9 place-items-center rounded-full bg-primary/10 text-primary"
-            ><Icon icon={mdiHumanGreeting} size="20" /></span
-          >
-          Body connected
-        </div>
-        <div class="mt-5 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <strong class="block text-3xl tabular-nums">{coverage.assets.body.toLocaleString()}</strong>
-            <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">photos</span>
-          </div>
-          <div class="text-right">
-            <strong class="block text-xl tabular-nums">{coverage.assets.bodyOnly.toLocaleString()}</strong>
-            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">Body only</span>
-          </div>
-        </div>
-        <button
-          class="mt-4 min-h-11 text-sm font-semibold text-primary hover:underline"
-          type="button"
-          onclick={() => onopenidentity('body')}
-        >
-          Review Body evidence
-        </button>
-      </article>
-    </div>
-    <details class="mt-3 text-sm text-gray-600 dark:text-gray-300">
-      <summary class="min-h-11 cursor-pointer py-3 font-medium text-primary">Why do these numbers overlap?</summary>
-      <p class="max-w-2xl pb-2 text-sm/6">
-        A photo can show both a face and a body. “Body only” is the smaller set connected without an accepted Face or
-        Head.
-      </p>
-    </details>
-  </section>
-
-  <section
-    class="rounded-2xl border border-gray-200 p-5 dark:border-gray-700"
-    aria-labelledby="coverage-timeline-title"
-  >
-    <div class="flex items-center gap-2">
-      <Icon icon={mdiTimelineClockOutline} size="21" />
-      <h3 id="coverage-timeline-title" class="text-xl font-semibold">When these photos were taken</h3>
-    </div>
-    <div class="mt-5 grid gap-x-8 gap-y-2 xl:grid-cols-2">
-      {#each coverage.time.years as year (year.year)}
-        <div class="grid grid-cols-[3.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-          <span class="font-medium tabular-nums">{year.year}</span>
-          <span class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
-            <span
-              class="block h-full rounded-full bg-primary/75"
-              style={`width: ${Math.max(2, Math.round((year.assetCount / maximumYearCount) * 100))}%`}
-            ></span>
-          </span>
-          <span class="text-right text-gray-500 tabular-nums dark:text-gray-400"
-            >{year.assetCount.toLocaleString()}</span
-          >
-        </div>
-      {:else}
-        <p class="text-sm text-gray-500 dark:text-gray-400">No photo has a capture date yet.</p>
-      {/each}
-    </div>
-  </section>
-
-  <div class="grid gap-6 lg:grid-cols-2">
+  <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
     <section
-      class="rounded-2xl border border-gray-200 p-5 dark:border-gray-700"
+      class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-immich-dark-bg"
       aria-labelledby="coverage-context-title"
     >
       <div class="flex items-center gap-2">
-        <Icon icon={mdiMapMarkerOutline} size="21" />
-        <h3 id="coverage-context-title" class="text-xl font-semibold">Where {coverage.person.displayName} appears</h3>
+        <span class="grid size-10 place-items-center rounded-full bg-primary/10 text-primary"
+          ><Icon icon={mdiMapMarkerOutline} size="21" /></span
+        >
+        <div>
+          <h2 id="coverage-context-title" class="text-xl font-semibold">Places & stories</h2>
+          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">The strongest connections across these photos.</p>
+        </div>
       </div>
-      {#each [{ items: coverage.context.places, kind: 'place' as const, label: 'Places' }, { items: coverage.context.events, kind: 'event' as const, label: 'Events' }, { items: coverage.context.things, kind: 'object' as const, label: 'Things' }] as group (group.label)}
-        {#if group.items.length > 0}
-          <div class="mt-4">
-            <h4 class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
+
+      <div class="mt-5 grid gap-6 md:grid-cols-3">
+        {#each contextGroups as group (group.label)}
+          <section>
+            <h3
+              class="flex items-center gap-2 text-xs font-bold tracking-wide text-gray-500 uppercase dark:text-gray-400"
+            >
+              <Icon icon={group.icon} size="16" />
               {group.label}
-            </h4>
-            <div class="mt-2 flex flex-wrap gap-2">
+            </h3>
+            <div class="mt-3 grid gap-2">
               {#each group.items as item (item.entityId)}
                 <a
-                  class="rounded-full bg-gray-100 px-3 py-1.5 text-sm transition hover:bg-primary/10 hover:text-primary dark:bg-immich-dark-gray"
+                  class="group relative overflow-hidden rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-immich-dark-gray"
                   href={contextHref(group.kind, item.entityId)}
                 >
-                  {item.displayName} <span class="text-gray-500">{item.assetCount.toLocaleString()}</span>
+                  <span
+                    class="absolute inset-y-0 left-0 bg-primary/10 transition group-hover:bg-primary/20"
+                    style={`width: ${contextBarWidth(item)}`}
+                  ></span>
+                  <span class="relative flex items-center justify-between gap-3 text-sm">
+                    <span class="truncate font-medium">{item.displayName}</span>
+                    <strong class="tabular-nums">{item.assetCount.toLocaleString()}</strong>
+                  </span>
                 </a>
+              {:else}
+                <span class="text-sm text-gray-400">Nothing linked yet</span>
               {/each}
             </div>
-          </div>
-        {/if}
-      {/each}
+          </section>
+        {/each}
+      </div>
     </section>
 
-    <section class="rounded-2xl border border-gray-200 p-5 dark:border-gray-700" aria-labelledby="coverage-notes-title">
+    <section
+      class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-immich-dark-bg"
+      aria-labelledby="coverage-notes-title"
+    >
       <div class="flex items-center gap-2">
-        <Icon icon={mdiAlertCircleOutline} size="21" />
-        <h3 id="coverage-notes-title" class="text-xl font-semibold">Needs your attention</h3>
+        <span class="grid size-10 place-items-center rounded-full bg-amber-500/10 text-amber-600"
+          ><Icon icon={mdiAlertCircleOutline} size="21" /></span
+        >
+        <div>
+          <h2 id="coverage-notes-title" class="text-xl font-semibold">Review queue</h2>
+          <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+            Items where your decision would improve the library.
+          </p>
+        </div>
       </div>
-      <div class="mt-4 grid gap-3">
+      <div class="mt-5 grid gap-3">
         {#each actionableNotes as note (note.title)}
-          <article class="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-            <div class="flex gap-3">
-              <Icon icon={mdiAlertCircleOutline} size="19" class="text-amber-600" />
-              <div class="min-w-0">
-                <h4 class="font-semibold">{note.title}</h4>
-                <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-300">{note.detail}</p>
-                <button
-                  class="mt-2 min-h-9 text-sm font-semibold text-primary hover:underline"
-                  type="button"
-                  onclick={() =>
-                    note.action === 'candidates' ? onopenidentity('candidates') : onopenphotos({ futureDates: true })}
-                >
-                  {note.action === 'candidates' ? 'Review proposed Faces' : 'Show affected photos'}
-                </button>
-              </div>
-            </div>
+          <article
+            class="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900 dark:bg-amber-950/20"
+          >
+            <h3 class="font-semibold">{note.title}</h3>
+            <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-300">{note.detail}</p>
+            <button
+              class="mt-3 min-h-9 text-sm font-semibold text-primary hover:underline"
+              type="button"
+              onclick={() =>
+                note.action === 'candidates' ? onopenidentity('candidates') : onopenphotos({ futureDates: true })}
+            >
+              {note.action === 'candidates' ? 'Review proposed Faces' : 'Show affected photos'}
+            </button>
           </article>
         {:else}
-          <p class="rounded-xl bg-primary/5 p-4 text-sm text-gray-700 dark:text-gray-200">
+          <div
+            class="rounded-2xl bg-emerald-50 p-5 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+          >
             Nothing needs review right now.
-          </p>
+          </div>
         {/each}
       </div>
     </section>
   </div>
 
-  <details class="group rounded-2xl border border-gray-200 dark:border-gray-700">
+  <details
+    class="group rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+  >
     <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold">
-      Advanced evidence details
+      Technical details
       <Icon icon={mdiChevronDown} size="20" class="transition-transform group-open:rotate-180" />
     </summary>
     <div class="grid gap-6 border-t border-gray-200 p-5 dark:border-gray-700">

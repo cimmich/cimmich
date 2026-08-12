@@ -39,16 +39,17 @@ export type CimmichPersonEvidenceCoverage = {
     candidateFaces: number;
     futureDates: number;
   };
-  schemaVersion: 'cimmich.person-evidence-coverage.v1';
+  schemaVersion: 'cimmich.person-evidence-coverage.v2';
   sourceSuggestions: Array<{
-    box: { h: number; w: number; x: number; y: number };
+    box: { h: number; w: number; x: number; y: number } | null;
     bucketKind: 'head' | 'lq' | 'prime' | 'secondary' | null;
     captureTime: string | null;
-    faceId: string;
+    faceId: string | null;
     filename: string;
     height: number;
     qualityScore: number | null;
     sourceAssetId: string;
+    sourceKind: 'face' | 'photo';
     width: number;
   }>;
   time: {

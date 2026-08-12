@@ -347,7 +347,7 @@ test("Person evidence coverage is read before the generic Person route", async (
   const calls = [];
   const projection = {
     person: { displayName: "Maya", personId: "person-maya" },
-    schemaVersion: "cimmich.person-evidence-coverage.v1",
+    schemaVersion: "cimmich.person-evidence-coverage.v2",
   };
   const repository = {
     personEvidenceCoverage: async (input) => {

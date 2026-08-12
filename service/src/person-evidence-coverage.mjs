@@ -1,5 +1,5 @@
 export const personEvidenceCoverageSchemaVersion =
-  "cimmich.person-evidence-coverage.v1";
+  "cimmich.person-evidence-coverage.v2";
 
 const immutableAuthority = Object.freeze({
   automaticIdentityAuthority: "none",
@@ -61,15 +61,21 @@ export const projectPersonEvidenceCoverage = (row) => ({
   },
   schemaVersion: personEvidenceCoverageSchemaVersion,
   sourceSuggestions: array(row.source_suggestions).map((item) => ({
-    box: {
-      h: Number(item.boxH),
-      w: Number(item.boxW),
-      x: Number(item.boxX),
-      y: Number(item.boxY),
-    },
+    box:
+      item.boxH === null ||
+      item.boxW === null ||
+      item.boxX === null ||
+      item.boxY === null
+        ? null
+        : {
+            h: Number(item.boxH),
+            w: Number(item.boxW),
+            x: Number(item.boxX),
+            y: Number(item.boxY),
+          },
     bucketKind: item.bucketKind || null,
     captureTime: item.captureTime || null,
-    faceId: String(item.faceId || ""),
+    faceId: item.faceId ? String(item.faceId) : null,
     filename: String(item.filename || ""),
     height: number(item.height),
     qualityScore:
@@ -77,6 +83,7 @@ export const projectPersonEvidenceCoverage = (row) => ({
         ? null
         : Number(item.qualityScore),
     sourceAssetId: String(item.sourceAssetId || ""),
+    sourceKind: item.sourceKind === "face" ? "face" : "photo",
     width: number(item.width),
   })),
   time: {
@@ -343,6 +350,29 @@ export const createPersonEvidenceCoverageStore = (
           ORDER BY face.asset_id, bucket_rank,
             quality_score DESC NULLS LAST, face.box_w * face.box_h DESC,
             face.face_id
+        ), source_assets AS MATERIALIZED (
+          SELECT face.face_id, face.asset_id, face.box_x, face.box_y,
+            face.box_w, face.box_h, face.capture_time, face.width, face.height,
+            face.source_asset_id, face.filename, face.quality_score,
+            face.bucket_kind, face.bucket_rank, 'face'::text AS source_kind
+          FROM source_faces face
+          UNION ALL
+          SELECT NULL::text AS face_id, evidence.asset_id,
+            NULL::float8 AS box_x, NULL::float8 AS box_y,
+            NULL::float8 AS box_w, NULL::float8 AS box_h,
+            asset.capture_time, asset.width, asset.height,
+            projection.immich_asset_id AS source_asset_id,
+            projection.original_file_name AS filename,
+            NULL::float8 AS quality_score, NULL::text AS bucket_kind,
+            5 AS bucket_rank, 'photo'::text AS source_kind
+          FROM visible_assets evidence
+          JOIN asset ON asset.asset_id = evidence.asset_id
+          JOIN immich_asset_projection projection
+            ON projection.cimmich_asset_id = evidence.asset_id
+            AND projection.state = 'active'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM source_faces face WHERE face.asset_id = evidence.asset_id
+          )
         ), diverse_sources AS MATERIALIZED (
           SELECT source.*,
             row_number() OVER (
@@ -350,14 +380,14 @@ export const createPersonEvidenceCoverageStore = (
               ORDER BY source.bucket_rank, source.quality_score DESC NULLS LAST,
                 source.box_w * source.box_h DESC, source.face_id
             ) AS year_position
-          FROM source_faces source
+          FROM source_assets source
           WHERE source.source_asset_id IS NOT NULL
+            AND source.capture_time IS NOT NULL
         ), source_suggestions AS MATERIALIZED (
           SELECT * FROM diverse_sources
           WHERE year_position = 1
-          ORDER BY (capture_time > now() + interval '24 hours'), bucket_rank,
-            quality_score DESC NULLS LAST, capture_time DESC NULLS LAST, face_id
-          LIMIT 6
+          ORDER BY capture_time, face_id NULLS LAST, asset_id
+          LIMIT 120
         ), year_counts AS MATERIALIZED (
           SELECT extract(year FROM capture_time)::int AS year,
             count(*)::int AS asset_count
@@ -430,10 +460,10 @@ export const createPersonEvidenceCoverageStore = (
               'height', source.height,
               'qualityScore', source.quality_score,
               'sourceAssetId', source.source_asset_id,
+              'sourceKind', source.source_kind,
               'width', source.width
-            ) ORDER BY (source.capture_time > now() + interval '24 hours'),
-              source.bucket_rank, source.quality_score DESC NULLS LAST,
-              source.capture_time DESC NULLS LAST, source.face_id)
+            ) ORDER BY source.capture_time, source.face_id NULLS LAST,
+              source.asset_id)
             FROM source_suggestions source
           ), '[]'::jsonb) AS source_suggestions
         FROM target_person person

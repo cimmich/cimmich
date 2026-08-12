@@ -15,7 +15,7 @@ const coverage = (): CimmichPersonEvidenceCoverage => ({
   person: { displayName: 'Maya', personId: 'person-maya' },
   references: { head: 1, lowQuality: 2, prime: 3, secondary: 6 },
   review: { bodyWithoutPose: 2, candidateFaces: 3, futureDates: 1 },
-  schemaVersion: 'cimmich.person-evidence-coverage.v1',
+  schemaVersion: 'cimmich.person-evidence-coverage.v2',
   sourceSuggestions: [
     {
       box: { h: 0.2, w: 0.2, x: 0.4, y: 0.3 },
@@ -26,6 +26,7 @@ const coverage = (): CimmichPersonEvidenceCoverage => ({
       height: 1200,
       qualityScore: 0.91,
       sourceAssetId: 'source-maya',
+      sourceKind: 'face',
       width: 1600,
     },
   ],
