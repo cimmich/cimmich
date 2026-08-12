@@ -326,6 +326,9 @@ export const isCimmichViewingSurface = (url: URL) =>
   Boolean(getCimmichPersonPhotoContext(url)) ||
   Boolean(getCimmichPetPhotoContext(url));
 
+export const shouldDeferCimmichExactPhotoTimeline = (url: URL, assetId: string | undefined) =>
+  Boolean(assetId?.trim()) && url.pathname.startsWith('/photos/') && isCimmichViewingSurface(url);
+
 export const matchesCimmichPersonPhotoContext = (
   context: CimmichPersonPhotoContext | undefined,
   personName: string | undefined,

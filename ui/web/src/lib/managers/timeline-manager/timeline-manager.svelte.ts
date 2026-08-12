@@ -92,6 +92,7 @@ export class TimelineManager extends VirtualScrollManager {
   static #INIT_OPTIONS = {};
   #websocketSupport: WebsocketSupport | undefined;
   #options: TimelineManagerOptions = TimelineManager.#INIT_OPTIONS;
+  #deferInit = false;
   #updatingViewportProximities = false;
   #scrollableElement: HTMLElement | undefined = $state();
   #showAssetOwners = new PersistedLocalStorage<boolean>('album-show-asset-owners', false);
@@ -266,7 +267,8 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async updateOptions(options: TimelineManagerOptions) {
-    if (options.deferInit) {
+    this.#deferInit = options.deferInit === true;
+    if (this.#deferInit) {
       return;
     }
     if (this.#options !== TimelineManager.#INIT_OPTIONS && isEqual(this.#options, options)) {
@@ -329,7 +331,7 @@ export class TimelineManager extends VirtualScrollManager {
       return;
     }
 
-    if (!this.initTask.executed) {
+    if (!this.initTask.executed && !this.#deferInit) {
       await (this.initTask.loading ? this.initTask.waitUntilCompletion() : this.#init(this.#options));
     }
 

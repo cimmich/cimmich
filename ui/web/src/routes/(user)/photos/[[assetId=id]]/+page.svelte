@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import CimmichOrganiseModeSwitch from '$lib/components/cimmich/CimmichOrganiseModeSwitch.svelte';
+  import { shouldDeferCimmichExactPhotoTimeline } from '$lib/components/cimmich/photo-viewer-presentation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/ButtonContextMenu.svelte';
   import EmptyPlaceholder from '$lib/components/shared-components/EmptyPlaceholder.svelte';
@@ -54,10 +55,12 @@
   const cimmichPetId = $derived(page.url.searchParams.get('cimmichPetId') || '');
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
   const cimmichSubjectId = $derived(cimmichPersonId || cimmichPetId);
+  const directCimmichViewer = $derived(shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId));
   const options = $derived({
     visibility: AssetVisibility.Timeline,
     withStacked: true,
     withPartners: true,
+    ...(directCimmichViewer ? { deferInit: true } : {}),
     ...(cimmichSubjectId && !cimmichAssetId ? { assetFilter: cimmichSubjectAssetIds } : {}),
   });
 

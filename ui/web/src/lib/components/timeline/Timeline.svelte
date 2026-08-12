@@ -88,7 +88,8 @@
 
   timelineManager = new TimelineManager();
   onDestroy(() => timelineManager.destroy());
-  $effect(() => options && void timelineManager.updateOptions(options));
+  const directViewer = $derived(options?.deferInit === true);
+  $effect.pre(() => options && void timelineManager.updateOptions(options));
 
   let presentationVersion = cimmichVisibilityManager.version;
   $effect(() => {
@@ -514,6 +515,9 @@
   });
 
   $effect(() => {
+    if (directViewer) {
+      return;
+    }
     if (assetViewerManager.asset && assetViewerManager.isViewing) {
       const { localDateTime } = getTimes(assetViewerManager.asset.fileCreatedAt, DateTime.local().offset / 60);
       void timelineManager.loadTimelineMonth({ year: localDateTime.year, month: localDateTime.month });
@@ -722,7 +726,16 @@
 
 <Portal target="body">
   {#if assetViewerManager.isViewing}
-    <TimelineAssetViewer bind:invisible {timelineManager} {removeAction} {withStacked} {isShared} {album} {person} />
+    <TimelineAssetViewer
+      bind:invisible
+      {timelineManager}
+      {directViewer}
+      {removeAction}
+      {withStacked}
+      {isShared}
+      {album}
+      {person}
+    />
   {/if}
 </Portal>
 

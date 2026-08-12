@@ -105,6 +105,19 @@ describe('TimelineManager', () => {
     });
   });
 
+  it('does not initialize time buckets when the caller defers the timeline', async () => {
+    const timelineManager = new TimelineManager();
+
+    await timelineManager.updateOptions({ deferInit: true, visibility: AssetVisibility.Timeline });
+    await timelineManager.updateViewport({ width: 1588, height: 1000 });
+    await tick();
+
+    expect(sdkMock.getTimeBuckets).not.toHaveBeenCalled();
+    expect(timelineManager.months).toEqual([]);
+    expect(timelineManager.isInitialized).toBe(false);
+    timelineManager.destroy();
+  });
+
   describe('loadTimelineMonth', () => {
     let timelineManager: TimelineManager;
     const bucketAssets: Record<string, TimelineAsset[]> = {

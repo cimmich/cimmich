@@ -20,6 +20,7 @@ import {
   projectPhotoOverlayZoomStyle,
   projectNamedPhotoPresence,
   projectTypedManualTagSummary,
+  shouldDeferCimmichExactPhotoTimeline,
   stopPhotoViewerShortcutPropagation,
 } from './photo-viewer-presentation';
 
@@ -125,6 +126,23 @@ describe('photo viewer presentation context', () => {
   it('does not let arbitrary photo query parameters turn Immich into Cimmich', () => {
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=0'))).toBe(false);
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=unexpected'))).toBe(false);
+  });
+
+  it('defers the full timeline only for an exact Cimmich photo viewer', () => {
+    expect(
+      shouldDeferCimmichExactPhotoTimeline(
+        new URL('http://localhost/photos/asset-1?cimmichPersonId=person-1&cimmichPersonName=Maya+Chen'),
+        'asset-1',
+      ),
+    ).toBe(true);
+    expect(
+      shouldDeferCimmichExactPhotoTimeline(
+        new URL('http://localhost/photos/asset-1?cimmichOverlay=machinery'),
+        'asset-1',
+      ),
+    ).toBe(true);
+    expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos/asset-1'), 'asset-1')).toBe(false);
+    expect(shouldDeferCimmichExactPhotoTimeline(new URL('http://localhost/photos?organise=1'), undefined)).toBe(false);
   });
 
   it('recognises Pet viewer context without treating it as a Person highlight', () => {

@@ -23,6 +23,20 @@ describe('app-wide Cimmich photo presentation boundary', () => {
     expect(viewer).toContain('presentationAllowed && assetViewerManager.isShowCimmichOverlay');
   });
 
+  it('keeps exact Cimmich viewers out of the full timeline and adjacent-asset path', () => {
+    const photos = source('src/routes/(user)/photos/[[assetId=id]]/+page.svelte');
+    const timeline = source('src/lib/components/timeline/Timeline.svelte');
+    const timelineViewer = source('src/lib/components/timeline/TimelineAssetViewer.svelte');
+
+    expect(photos).toContain('shouldDeferCimmichExactPhotoTimeline(page.url, cimmichAssetId)');
+    expect(photos).toContain('directCimmichViewer ? { deferInit: true } : {}');
+    expect(timeline).toContain('const directViewer = $derived(options?.deferInit === true)');
+    expect(timeline).toContain('<TimelineAssetViewer');
+    expect(timeline).toContain('{directViewer}');
+    expect(timelineViewer).toContain('if (!directViewer) {');
+    expect(timelineViewer).toContain('onRandom={directViewer ? undefined : handleRandom}');
+  });
+
   it('does not leave Private merely because the user opens a non-Cimmich route', () => {
     const viewingMode = source('src/lib/components/cimmich/CimmichViewingMode.svelte');
     expect(viewingMode).not.toContain('isCimmichViewingSurface(new URL(globalThis.location.href))');
