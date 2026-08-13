@@ -1,11 +1,12 @@
 export const possiblePeopleClassificationContract = Object.freeze({
-  classificationVersion: "cimmich-possible-people-known-person-v2-consensus",
+  classificationVersion:
+    "cimmich-possible-people-known-person-v3-production-source-pack",
   clusterConsensusFloor: 0.5,
   clusterMinimumVotes: 2,
   clusterSampleLimit: 12,
-  knownPersonMarginFloor: 0.1,
-  knownPersonScoreFloor: 0.55,
+  matcherPolicyVersion: "cimmich-best-prime-v1",
   referenceNeighbourLimit: 64,
+  scorer: "best_individual_prime",
 });
 
 const typedError = (message, statusCode, code) =>
@@ -17,9 +18,9 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
     clusterConsensusFloor,
     clusterMinimumVotes,
     clusterSampleLimit,
-    knownPersonMarginFloor,
-    knownPersonScoreFloor,
+    matcherPolicyVersion,
     referenceNeighbourLimit,
+    scorer,
   } = possiblePeopleClassificationContract;
   await sql.begin(async (tx) => {
     const [run] = await tx`
@@ -39,6 +40,37 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
       run.classification_version === classificationVersion
     )
       return;
+    const packs = await tx`
+      SELECT pack.pack_id, pack.model_family, pack.model_version,
+        pack.config_digest,
+        (pack.evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8
+          AS score_floor,
+        (pack.evaluation_summary->'matcherPolicy'->>'marginFloor')::float8
+          AS margin_floor
+      FROM current_source_pack pack
+      WHERE pack.evaluation_status = 'passed'
+        AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion'
+          = ${matcherPolicyVersion}
+        AND pack.evaluation_summary->'matcherPolicy'->>'scorer' = ${scorer}
+        AND jsonb_typeof(
+          pack.evaluation_summary->'matcherPolicy'->'scoreFloor'
+        ) = 'number'
+        AND jsonb_typeof(
+          pack.evaluation_summary->'matcherPolicy'->'marginFloor'
+        ) = 'number'
+      ORDER BY pack.pack_id
+      FOR SHARE
+    `;
+    if (packs.length !== 1) {
+      throw typedError(
+        `Possible people classification requires exactly one active passed production SourcePack; found ${packs.length}`,
+        409,
+        "POSSIBLE_PEOPLE_SOURCE_PACK_UNAVAILABLE",
+      );
+    }
+    const pack = packs[0];
+    const knownPersonScoreFloor = Number(pack.score_floor);
+    const knownPersonMarginFloor = Number(pack.margin_floor);
     await tx`
       UPDATE possible_person_run
       SET classification_state = 'running',
@@ -61,27 +93,26 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
       INSERT INTO possible_person_reference_match (
         person_id, display_name, face_id, embedding
       )
-      SELECT DISTINCT ON (gallery.person_id, physical.physical_face_id)
-        gallery.person_id, person.display_name, physical.canonical_face_id AS face_id,
-        embedding.embedding::vector(512)
-      FROM current_reference_gallery gallery
-      JOIN current_person person ON person.person_id = gallery.person_id
+      SELECT reference.person_id, person.display_name, reference.face_id,
+        reference.embedding::vector(512)
+      FROM source_pack_reference reference
+      JOIN current_person person ON person.person_id = reference.person_id
         AND person.status = 'active'
-      JOIN current_face_physical_member physical
-        ON physical.face_id = gallery.face_id
-        AND physical.reconciliation_state <> 'conflict'
-      JOIN face_embedding embedding ON embedding.face_id = physical.canonical_face_id
-        AND embedding.state = 'active' AND embedding.dimension = 512
-      WHERE gallery.membership_state = 'active'
-        AND gallery.bucket_kind = ANY (
-          ARRAY['prime','secondary','lq','head']::text[]
+        AND person.subject_kind = 'person'
+      WHERE reference.pack_id = ${pack.pack_id}
+        AND reference.bucket_kind = 'prime'
+        AND reference.reference_kind = 'face'
+        AND reference.routing_state = 'eligible'
+        AND reference.dimension = 512
+        AND reference.model_family = ${pack.model_family}
+        AND reference.model_version = ${pack.model_version}
+        AND reference.config_digest = ${pack.config_digest}
+        AND NOT EXISTS (
+          SELECT 1 FROM current_person_category category
+          WHERE category.person_id = person.person_id
+            AND category.slug IN ('sort', 'holding')
         )
-      ORDER BY gallery.person_id, physical.physical_face_id,
-        CASE gallery.bucket_kind
-          WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1
-          WHEN 'lq' THEN 2 ELSE 3
-        END,
-        gallery.face_id
+      ORDER BY reference.person_id, reference.face_id
     `;
     const [{ reference_count: referenceCount }] =
       await tx`SELECT count(*)::int AS reference_count FROM possible_person_reference_match`;
@@ -127,6 +158,9 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
           JOIN face_embedding embedding
             ON embedding.face_id = sample.face_id
             AND embedding.state = 'active' AND embedding.dimension = 512
+            AND embedding.model_family = ${pack.model_family}
+            AND embedding.model_version = ${pack.model_version}
+            AND embedding.config_digest = ${pack.config_digest}
         ), nearest AS MATERIALIZED (
           SELECT query.cluster_id, query.face_id, reference.person_id,
             max(reference.similarity)::float8 AS best_score,
@@ -212,6 +246,9 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
         SET suggested_person_id = eligible.lead_person_id,
           suggestion_evidence = cluster.suggestion_evidence || jsonb_build_object(
             'classificationVersion', ${classificationVersion}::text,
+            'sourcePackId', ${pack.pack_id}::text,
+            'matcherPolicyVersion', ${matcherPolicyVersion}::text,
+            'scorer', ${scorer}::text,
             'leadScore', eligible.average_score,
             'bestScore', eligible.best_score,
             'margin', eligible.average_margin,

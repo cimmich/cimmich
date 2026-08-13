@@ -17,8 +17,16 @@ test("known-Person classification is versioned, separated and never identity aut
     readSource("possible-people-projection.mjs"),
   ]);
 
-  assert.match(classifier, /knownPersonScoreFloor: 0\.55/);
-  assert.match(classifier, /knownPersonMarginFloor: 0\.1/);
+  assert.match(classifier, /known-person-v3-production-source-pack/);
+  assert.match(classifier, /matcherPolicyVersion: "cimmich-best-prime-v1"/);
+  assert.match(classifier, /scorer: "best_individual_prime"/);
+  assert.match(classifier, /FROM current_source_pack pack/);
+  assert.match(classifier, /FROM source_pack_reference reference/);
+  assert.match(classifier, /reference\.pack_id = \$\{pack\.pack_id\}/);
+  assert.match(classifier, /reference\.bucket_kind = 'prime'/);
+  assert.match(classifier, /reference\.reference_kind = 'face'/);
+  assert.match(classifier, /reference\.routing_state = 'eligible'/);
+  assert.doesNotMatch(classifier, /ARRAY\['prime','secondary','lq','head'\]/);
   assert.match(classifier, /clusterConsensusFloor: 0\.5/);
   assert.match(classifier, /clusterMinimumVotes: 2/);
   assert.match(classifier, /clusterSampleLimit: 12/);
@@ -31,6 +39,7 @@ test("known-Person classification is versioned, separated and never identity aut
   assert.match(classifier, /\$\{referenceNeighbourLimit\}::int/);
   assert.match(classifier, /\$\{knownPersonScoreFloor\}::float8/);
   assert.match(classifier, /\$\{knownPersonMarginFloor\}::float8/);
+  assert.match(classifier, /'sourcePackId', \$\{pack\.pack_id\}::text/);
   assert.match(classifier, /rejectedPersonIds/);
   assert.doesNotMatch(classifier, /INSERT INTO identity_claim/);
   assert.doesNotMatch(classifier, /state\s*=\s*'accepted'/);
