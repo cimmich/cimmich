@@ -49,6 +49,7 @@ import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
 import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
+import { createSmartSplitRecommendationStore } from "./smart-split-recommendations.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -861,6 +862,10 @@ export const createCimmichRepository = (
     return subject;
   };
   const personEvidenceCoverage = createPersonEvidenceCoverageStore(sql, {
+    presentationRank,
+    requireVisibleSubject,
+  });
+  const smartSplitRecommendations = createSmartSplitRecommendationStore(sql, {
     presentationRank,
     requireVisibleSubject,
   });
@@ -10276,6 +10281,7 @@ export const createCimmichRepository = (
   Object.assign(repository, exploreFacets);
   Object.assign(repository, {
     personEvidenceCoverage: personEvidenceCoverage.read,
+    smartSplitRecommendations: smartSplitRecommendations.recommendations,
   });
   attachAssetCorrections(repository, sql, bridge, presentationRank);
   Object.assign(repository, {

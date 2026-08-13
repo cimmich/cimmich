@@ -1600,6 +1600,48 @@ test("Person projection pages are additive to legacy limit responses", async () 
   ]);
 });
 
+test("Smart split recommendations are a visibility-scoped read with no identity command", async () => {
+  const calls = [];
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    {
+      smartSplitRecommendations: async (input) => {
+        calls.push(["recommend", input]);
+        return {
+          automaticIdentityAuthority: "none",
+          available: true,
+          groups: [
+            {
+              faceIds: ["face-one"],
+              groupId: "smart-unclear",
+              kind: "unclear",
+            },
+          ],
+          personId: input.personId,
+          schemaVersion: "cimmich.smart-split-recommendations.v1",
+        };
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/people/person%2Fmixed/identity/split-recommendations`,
+      );
+      assert.equal(response.status, 200);
+      const result = await response.json();
+      assert.equal(result.automaticIdentityAuthority, "none");
+      assert.equal(result.personId, "person/mixed");
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "person_review"],
+    ["recommend", { personId: "person/mixed" }],
+  ]);
+});
+
 test("Cimmich tag asset search routes multi-family intersections to the repository", async () => {
   const calls = [];
   const result = {

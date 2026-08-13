@@ -2,15 +2,18 @@
   import {
     getCimmichIdentityFaces,
     getCimmichPeople,
+    getCimmichSmartSplitRecommendations,
     setCimmichFaceIdentitiesBatch,
     type CimmichIdentityFace,
     type CimmichPerson,
+    type CimmichSmartSplitGroup,
+    type CimmichSmartSplitRecommendations,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { personPhotoGridClass } from './person-photo-gallery';
   import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
-  import { mdiArrowLeft, mdiCheckCircleOutline, mdiSelectAll } from '@mdi/js';
+  import { mdiArrowLeft, mdiAutoFix, mdiCheckCircleOutline, mdiSelectAll } from '@mdi/js';
   import { Icon } from '@immich/ui';
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -36,14 +39,23 @@
   let saving = $state(false);
   let search = $state('');
   let selectedFaceIds = $state<string[]>([]);
+  let smartGroupId = $state('all');
+  let smartLoading = $state(false);
+  let smartRecommendations = $state<CimmichSmartSplitRecommendations | null>(null);
+  let smartSplitError = $state('');
 
   const filteredFaces = $derived.by(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) {
-      return faces;
-    }
-    return faces.filter((face) =>
-      [face.filename, face.capture_time ?? '', face.main_evidence_tier].join(' ').toLocaleLowerCase().includes(query),
+    const smartGroup = smartRecommendations?.groups.find(({ groupId }) => groupId === smartGroupId);
+    const recommendedFaceIds = smartGroup ? new Set(smartGroup.faceIds) : null;
+    return faces.filter(
+      (face) =>
+        (!recommendedFaceIds || recommendedFaceIds.has(face.face_id)) &&
+        (!query ||
+          [face.filename, face.capture_time ?? '', face.main_evidence_tier]
+            .join(' ')
+            .toLocaleLowerCase()
+            .includes(query)),
     );
   });
   const moveOptions = $derived.by(() => {
@@ -109,6 +121,32 @@
       : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
+  const recommendationReason = (group: CimmichSmartSplitGroup) => {
+    if (group.kind === 'unclear') {
+      return 'Ambiguous, isolated or missing reliable match evidence';
+    }
+    if (group.reason === 'same_photo_separation') {
+      return `${group.samePhotoSeparations.toLocaleString()} same-photo separation${group.samePhotoSeparations === 1 ? '' : 's'}`;
+    }
+    return 'Strongly separated face-match group';
+  };
+
+  const recommendationFace = (group: CimmichSmartSplitGroup) =>
+    faces.find(({ face_id: faceId }) => faceId === group.representativeFaceId);
+
+  const loadSmartSplit = async () => {
+    smartLoading = true;
+    smartSplitError = '';
+    try {
+      smartRecommendations = await getCimmichSmartSplitRecommendations(person.person_id);
+      smartGroupId = smartRecommendations.groups.find(({ kind }) => kind === 'clear')?.groupId ?? 'smart-unclear';
+    } catch (loadError) {
+      smartSplitError = loadError instanceof Error ? loadError.message : 'Unable to analyse this Person';
+    } finally {
+      smartLoading = false;
+    }
+  };
+
   const toggleFace = (faceId: string) => {
     if (saving) {
       return;
@@ -167,6 +205,8 @@
         const destination = result.assigned[0]?.personName ?? selectedMovePerson?.display_name ?? name;
         notice = `${result.assignedCount.toLocaleString()} ${result.assignedCount === 1 ? 'face' : 'faces'} ${action === 'create' ? `moved to new Person ${destination}` : `moved to ${destination}`}.`;
         onchanged();
+        smartRecommendations = null;
+        smartGroupId = 'all';
       }
       if (result.failureCount > 0) {
         const selectedFailure = result.failures[0];
@@ -220,6 +260,90 @@
       {notice}
     </p>
   {/if}
+
+  <section
+    class="rounded-3xl border border-violet-200 bg-white p-4 sm:p-5 dark:border-violet-900 dark:bg-immich-dark-bg"
+    aria-labelledby="smart-split-title"
+  >
+    <div class="flex flex-wrap items-start gap-3">
+      <div class="mr-auto max-w-3xl">
+        <h3 id="smart-split-title" class="text-lg font-semibold">Smart split</h3>
+        <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-300">
+          Find only clearly separated face-match groups. Anything ambiguous stays together in Unclear. Recommendations
+          never move a face by themselves.
+        </p>
+      </div>
+      <button
+        class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+        type="button"
+        disabled={loading || smartLoading || faces.length === 0}
+        onclick={() => void loadSmartSplit()}
+      >
+        <Icon icon={mdiAutoFix} size="19" />
+        {smartLoading ? 'Analysing matches…' : smartRecommendations ? 'Analyse again' : 'Smart split'}
+      </button>
+    </div>
+    {#if smartSplitError}
+      <p class="mt-3 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{smartSplitError}</p>
+    {/if}
+    {#if smartRecommendations}
+      <div class="mt-4 flex flex-wrap gap-2" role="group" aria-label="Smart split groups">
+        <button
+          class="min-h-11 rounded-xl border px-3 text-left text-sm transition"
+          class:border-violet-500={smartGroupId === 'all'}
+          class:bg-violet-50={smartGroupId === 'all'}
+          class:dark:bg-violet-950={smartGroupId === 'all'}
+          class:border-gray-200={smartGroupId !== 'all'}
+          class:dark:border-gray-700={smartGroupId !== 'all'}
+          type="button"
+          aria-pressed={smartGroupId === 'all'}
+          onclick={() => (smartGroupId = 'all')}
+        >
+          <strong class="block">All faces</strong>
+          <span class="text-xs text-gray-500">{faces.length.toLocaleString()}</span>
+        </button>
+        {#each smartRecommendations.groups as group (group.groupId)}
+          {@const representative = recommendationFace(group)}
+          <button
+            class={[
+              'grid min-h-16 min-w-52 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 rounded-xl border p-2 text-left transition',
+              smartGroupId === group.groupId
+                ? group.kind === 'unclear'
+                  ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30'
+                  : 'border-violet-500 bg-violet-50 dark:bg-violet-950/30'
+                : 'border-gray-200 hover:border-violet-300 dark:border-gray-700',
+            ]}
+            type="button"
+            aria-pressed={smartGroupId === group.groupId}
+            disabled={group.faceIds.length === 0}
+            onclick={() => (smartGroupId = group.groupId)}
+          >
+            <span
+              class="block aspect-square rounded-lg bg-gray-200 bg-cover bg-no-repeat dark:bg-gray-800"
+              style={representative ? faceStyle(representative) : ''}
+              aria-hidden="true"
+            ></span>
+            <span class="min-w-0">
+              <strong class="block truncate">{group.label}</strong>
+              <span class="block text-xs text-gray-500"
+                >{group.faceIds.length.toLocaleString()} faces · {recommendationReason(group)}</span
+              >
+            </span>
+          </button>
+        {/each}
+      </div>
+      <p class="mt-3 text-xs text-gray-500">
+        Showing {smartRecommendations.summary.clearGroupCount.toLocaleString()} clear
+        {smartRecommendations.summary.clearGroupCount === 1 ? 'group' : 'groups'}; choose one above, inspect every face,
+        then use Select shown. Unclear is deliberately not guessed.
+      </p>
+      {#if !smartRecommendations.available}
+        <p class="mt-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+          Safe automatic grouping is unavailable for this record; all faces remain in Unclear.
+        </p>
+      {/if}
+    {/if}
+  </section>
 
   <section
     class="sticky top-2 z-20 rounded-3xl border border-gray-200 bg-white/95 p-4 shadow-lg backdrop-blur-md dark:border-gray-700 dark:bg-immich-dark-bg/95"

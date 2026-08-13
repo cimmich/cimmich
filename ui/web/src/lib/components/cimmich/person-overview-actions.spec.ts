@@ -46,6 +46,10 @@ describe('Person overview actions and split workspace', () => {
     );
     expect(component).not.toContain('mergeCimmichPeople');
     expect(component).not.toContain('setCimmichPersonCategory');
+    expect(component).toContain('Smart split');
+    expect(component).toContain('getCimmichSmartSplitRecommendations');
+    expect(component).toContain('Anything ambiguous stays together in Unclear');
+    expect(component).toContain("smartRecommendations.groups.find(({ kind }) => kind === 'clear')");
   });
 
   it('keeps Needs attention one-click while Holding remains guarded', async () => {

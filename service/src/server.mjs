@@ -3330,6 +3330,21 @@ export const createCimmichServer = ({
         );
         return;
       }
+      const personSmartSplitMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/identity\/split-recommendations$/,
+      );
+      if (request.method === "GET" && personSmartSplitMatch) {
+        requireProjection("person_review");
+        sendJson(
+          response,
+          200,
+          await repository.smartSplitRecommendations({
+            personId: decodeURIComponent(personSmartSplitMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       const headRescanMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/identity\/head:rescan$/,
       );
