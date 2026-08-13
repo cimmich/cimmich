@@ -24,13 +24,17 @@ test("Smart split recommends separated groups and keeps outliers in Unclear", ()
     nodes: [
       node("a1", "shared-1"),
       node("a2", "asset-a2"),
+      node("a3", "asset-a3"),
       node("b1", "shared-1"),
       node("b2", "asset-b2"),
+      node("b3", "asset-b3"),
       node("x", "asset-x", false),
     ],
     edges: [
       edge("a1", "a2", 0.81),
+      edge("a2", "a3", 0.78),
       edge("b1", "b2", 0.79),
+      edge("b2", "b3", 0.76),
       edge("a1", "b1", 0.61, true),
       edge("a2", "b2", 0.2),
     ],
@@ -40,8 +44,8 @@ test("Smart split recommends separated groups and keeps outliers in Unclear", ()
   assert.deepEqual(
     result.groups.map((group) => [group.kind, group.faceIds.length]),
     [
-      ["clear", 2],
-      ["clear", 2],
+      ["clear", 3],
+      ["clear", 3],
       ["unclear", 1],
     ],
   );
@@ -55,12 +59,16 @@ test("same-photo constraints prevent a high-similarity bridge from fusing people
     nodes: [
       node("a1", "shared"),
       node("a2", "asset-a"),
+      node("a3", "asset-a3"),
       node("b1", "shared"),
       node("b2", "asset-b"),
+      node("b3", "asset-b3"),
     ],
     edges: [
       edge("a1", "a2", 0.8),
+      edge("a2", "a3", 0.77),
       edge("b1", "b2", 0.78),
+      edge("b2", "b3", 0.76),
       edge("a1", "b1", 0.75, true),
     ],
   });
@@ -87,12 +95,16 @@ test("distance-only recommendations require conservative cohesion and separation
     nodes: [
       node("a1", "a1"),
       node("a2", "a2"),
+      node("a3", "a3"),
       node("b1", "b1"),
       node("b2", "b2"),
+      node("b3", "b3"),
     ],
     edges: [
       edge("a1", "a2", 0.76),
+      edge("a2", "a3", 0.73),
       edge("b1", "b2", 0.74),
+      edge("b2", "b3", 0.71),
       edge("a1", "b1", 0.44),
     ],
   });

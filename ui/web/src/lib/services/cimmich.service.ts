@@ -1219,6 +1219,7 @@ export type CimmichSmartSplitRecommendations = {
     clearDistanceMargin: number;
     edgeEvidenceFloor: number;
     minimumGroupSize: number;
+    pairGroupCohesionFloor: number;
     strongLinkFloor: number;
   };
   schemaVersion: 'cimmich.smart-split-recommendations.v1';

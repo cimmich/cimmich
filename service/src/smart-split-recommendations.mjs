@@ -2,7 +2,8 @@ const policy = Object.freeze({
   clearDistanceCeiling: 0.5,
   clearDistanceMargin: 0.15,
   edgeEvidenceFloor: 0.42,
-  minimumGroupSize: 2,
+  minimumGroupSize: 3,
+  pairGroupCohesionFloor: 0.72,
   strongLinkFloor: 0.65,
 });
 
@@ -132,8 +133,10 @@ export const buildSmartSplitRecommendations = ({
   }
 
   const componentMembers = new Map();
+  const componentRootByNode = new Map();
   for (const node of embeddedNodes) {
     const root = union.find(node.physicalFaceId);
+    componentRootByNode.set(node.physicalFaceId, root);
     if (!componentMembers.has(root)) componentMembers.set(root, new Set());
     componentMembers.get(root).add(node.physicalFaceId);
   }
@@ -150,14 +153,21 @@ export const buildSmartSplitRecommendations = ({
     const externalIds = embeddedNodes
       .map((node) => node.physicalFaceId)
       .filter((candidateId) => !memberIds.has(candidateId));
-    const nearestOtherSimilarity = Math.max(
-      -1,
-      ...memberArray.flatMap((memberId) =>
-        externalIds.map(
-          (otherId) => similarities.get(pairKey(memberId, otherId)) ?? -1,
-        ),
-      ),
+    const externalPairs = memberArray.flatMap((memberId) =>
+      externalIds.map((otherId) => ({
+        memberId,
+        otherId,
+        similarity: similarities.get(pairKey(memberId, otherId)) ?? -1,
+      })),
     );
+    const nearestOther = externalPairs.sort(
+      (left, right) =>
+        right.similarity - left.similarity ||
+        pairKey(left.memberId, left.otherId).localeCompare(
+          pairKey(right.memberId, right.otherId),
+        ),
+    )[0] ?? { otherId: null, similarity: -1 };
+    const nearestOtherSimilarity = nearestOther.similarity;
     const samePhotoSeparations = memberArray.reduce(
       (count, memberId) =>
         count +
@@ -169,10 +179,30 @@ export const buildSmartSplitRecommendations = ({
     const cohesionFloor = Math.min(...bestInternal);
     const cohesionMedian = median(bestInternal);
     const separationMargin = cohesionFloor - nearestOtherSimilarity;
+    const nearestOtherRoot = nearestOther.otherId
+      ? componentRootByNode.get(nearestOther.otherId)
+      : null;
+    const nearestCompetitorSamePhotoSeparations = nearestOtherRoot
+      ? memberArray.reduce(
+          (count, memberId) =>
+            count +
+            externalIds.filter(
+              (otherId) =>
+                componentRootByNode.get(otherId) === nearestOtherRoot &&
+                sameAssetPairs.has(pairKey(memberId, otherId)),
+            ).length,
+          0,
+        )
+      : 0;
+    const enoughMembers =
+      memberIds.size >= policy.minimumGroupSize ||
+      (memberIds.size === 2 &&
+        cohesionFloor >= policy.pairGroupCohesionFloor &&
+        nearestCompetitorSamePhotoSeparations > 0);
     const clear =
-      memberIds.size >= policy.minimumGroupSize &&
+      enoughMembers &&
       cohesionFloor >= policy.strongLinkFloor &&
-      (samePhotoSeparations > 0 ||
+      (nearestCompetitorSamePhotoSeparations > 0 ||
         (nearestOtherSimilarity < policy.clearDistanceCeiling &&
           separationMargin >= policy.clearDistanceMargin));
     return {
@@ -180,6 +210,7 @@ export const buildSmartSplitRecommendations = ({
       cohesionFloor,
       cohesionMedian,
       memberIds,
+      nearestCompetitorSamePhotoSeparations,
       nearestOtherSimilarity,
       representativePhysicalFaceId: medoid(memberIds, similarities),
       samePhotoSeparations,
@@ -223,7 +254,7 @@ export const buildSmartSplitRecommendations = ({
           : component.nearestOtherSimilarity,
       physicalFaceCount: component.memberIds.size,
       reason:
-        component.samePhotoSeparations > 0
+        component.nearestCompetitorSamePhotoSeparations > 0
           ? "same_photo_separation"
           : "embedding_separation",
       representativeFaceId: representative.faceIds[0],
