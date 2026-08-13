@@ -1226,3 +1226,25 @@ test("schema 131 retires stale SourcePack proposals at the database boundary", a
   assert.match(source, /state = 'superseded'/);
   assert.match(source, /coalesce\(pack\.state, 'missing'\) <> 'active'/);
 });
+
+test("schema 132 trusts accepted aliases of the same physical face during SourcePack activation", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0132_source_pack_physical_face_activation_guard_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /current_face_physical_member reference_member/);
+  assert.match(source, /current_face_physical_member identity_member/);
+  assert.match(
+    source,
+    /identity_member\.physical_face_id = reference_member\.physical_face_id/,
+  );
+  assert.match(source, /reference_member\.face_id = member\.face_id/);
+  assert.match(source, /identity\.state = 'accepted'/);
+  assert.match(source, /identity\.person_id = reference\.person_id/);
+  assert.match(source, /lifecycle\.vector_digest = reference\.vector_digest/);
+});

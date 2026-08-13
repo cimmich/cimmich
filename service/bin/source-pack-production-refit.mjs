@@ -13,6 +13,10 @@ const value = (name, fallback = "") =>
     ?.slice(name.length + 3) || fallback;
 const evaluationPackId = value("evaluation-pack-id");
 const pythonPath = value("python");
+const excludedPersonIds = value("exclude-person-ids")
+  .split(",")
+  .map((personId) => personId.trim())
+  .filter(Boolean);
 if (!evaluationPackId || !pythonPath) {
   throw new Error(
     "Production refit requires --evaluation-pack-id and --python",
@@ -25,6 +29,7 @@ const sql = postgres(
 try {
   const result = await buildSourcePackProductionRefit(sql, {
     evaluationPackId,
+    excludedPersonIds,
     pythonPath,
     scriptPath: fileURLToPath(
       new URL("../../providers/source-pack-numpy/score.py", import.meta.url),

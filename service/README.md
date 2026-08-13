@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 131. Schema 76 adds
+patch level 1. Current post-submission source is schema 132. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -218,6 +218,12 @@ SourcePack retires or is removed, every outstanding Prime candidate it produced
 is superseded with an auditable policy decision; the database rejects new
 candidates from an inactive, unevaluated or policy-mismatched pack, and review
 and bulk-accept reads require the exact active pack as defense in depth.
+Schema 132 makes SourcePack activation follow the canonical physical Face.
+An accepted trusted-import or owner decision may live on a preserved source
+alias while the best detector embedding lives on its canonical Face; activation
+accepts that evidence only when both are current members of the same physical
+Face, the Person agrees, and manual observations retain exact lifecycle and
+vector proof.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

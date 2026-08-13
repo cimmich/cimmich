@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   normalizeSourcePackArchiveMatcherOptions,
   sourcePackArchiveMatcherContract,
+  sourcePackArchiveMatcherRunawayPolicy,
 } from "../src/source-pack-archive-matcher.mjs";
 
 test("archive matcher options are bounded and dry-run by default", () => {
@@ -38,6 +39,14 @@ test("archive matcher options are bounded and dry-run by default", () => {
   );
 });
 
+test("archive matcher fails closed on catastrophic per-Person suggestion fanout", () => {
+  assert.deepEqual(sourcePackArchiveMatcherRunawayPolicy, {
+    absoluteSuggestionFloor: 500,
+    maximumAcceptedFaceMultiplier: 10,
+    policyVersion: "cimmich-source-pack-runaway-fanout-v1",
+  });
+});
+
 test("archive matcher restores per-Face SourcePack scoring without identity authority", async () => {
   const source = await readFile(
     new URL("../src/source-pack-archive-matcher.mjs", import.meta.url),
@@ -54,6 +63,8 @@ test("archive matcher restores per-Face SourcePack scoring without identity auth
   assert.match(source, /reference\.reference_kind = 'face'/);
   assert.match(source, /score >= \$\{Number\(pack\.score_floor\)\}/);
   assert.match(source, /score - coalesce\(next_score, -1\) >=/);
+  assert.match(source, /fallback_score_floor/);
+  assert.match(source, /fallback_margin_floor/);
   assert.match(source, /'automatic_acceptance', false/);
   assert.match(source, /'automatic_identity_acceptance', false/);
   assert.match(source, /pack\.state !== "active"/);
@@ -91,11 +102,17 @@ test("Mac-local archive scoring is bounded, physical-Face aware and review-only"
   assert.match(local, /query\.cursor\(batchSize\)/);
   assert.match(local, /current_matchable_physical_face/);
   assert.match(local, /current_face_physical_member/);
+  assert.match(local, /refuses runaway suggestion fanout/);
+  assert.match(
+    local,
+    /least\(1::float8, greatest\(0::float8, result\.score\)\)/,
+  );
   assert.match(local, /'automatic_acceptance', false/);
   assert.match(local, /'automatic_identity_acceptance', false/);
   assert.match(scorer, /providerSubprocessEnvironment/);
   assert.match(scorer, /shell: false/);
   assert.match(provider, /query_matrix @ self\.gallery\.T/);
+  assert.match(provider, /np\.clip\(/);
   assert.match(provider, /np\.maximum\.at/);
   assert.doesNotMatch(local, /SET state = 'accepted'/);
 });

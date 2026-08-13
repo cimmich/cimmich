@@ -6,6 +6,12 @@ export const sourcePackArchiveMatcherContract = Object.freeze({
   scorer: "best_individual_prime",
 });
 
+export const sourcePackArchiveMatcherRunawayPolicy = Object.freeze({
+  absoluteSuggestionFloor: 500,
+  maximumAcceptedFaceMultiplier: 10,
+  policyVersion: "cimmich-source-pack-runaway-fanout-v1",
+});
+
 const boundedInteger = (value, fallback, minimum, maximum, label) => {
   const parsed = value == null || value === "" ? fallback : Number(value);
   if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
@@ -48,6 +54,10 @@ const selectPack = async (tx, { execute, packId }) => {
         AS score_floor,
       (pack.evaluation_summary->'matcherPolicy'->>'marginFloor')::float8
         AS margin_floor,
+      (pack.evaluation_summary->'matcherPolicy'->>'fallbackScoreFloor')::float8
+        AS fallback_score_floor,
+      (pack.evaluation_summary->'matcherPolicy'->>'fallbackMarginFloor')::float8
+        AS fallback_margin_floor,
       pack.evaluation_summary->'matcherPolicy'->>'policyVersion'
         AS policy_version,
       pack.evaluation_summary->'matcherPolicy'->>'scorer' AS scorer
@@ -246,8 +256,12 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
         reference_face_id, reference_asset_id
       FROM ranked
       WHERE candidate_rank = 1
-        AND score >= ${Number(pack.score_floor)}
-        AND score - coalesce(next_score, -1) >= ${Number(pack.margin_floor)}
+        AND (
+          (score >= ${Number(pack.score_floor)}
+            AND score - coalesce(next_score, -1) >= ${Number(pack.margin_floor)})
+          OR (score >= ${Number(pack.fallback_score_floor ?? pack.score_floor)}
+            AND score - coalesce(next_score, -1) >= ${Number(pack.fallback_margin_floor ?? pack.margin_floor)})
+        )
         AND NOT cimmich_probable_same_photo_derivative(
           ${pack.pack_id}, asset_id, reference_asset_id
         )
@@ -265,6 +279,27 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
         max(margin)::float8 AS maximum_margin
       FROM cimmich_archive_match_result
     `;
+    const runawayPeople = await tx`
+      WITH accepted AS (
+        SELECT person_id, count(DISTINCT physical_face_id)::int AS face_count
+        FROM current_physical_face_identity
+        WHERE state = 'accepted'
+        GROUP BY person_id
+      )
+      SELECT result.person_id, person.display_name,
+        count(*)::int AS suggestion_count,
+        coalesce(accepted.face_count, 0)::int AS accepted_face_count
+      FROM cimmich_archive_match_result result
+      JOIN current_person person ON person.person_id = result.person_id
+      LEFT JOIN accepted ON accepted.person_id = result.person_id
+      GROUP BY result.person_id, person.display_name, accepted.face_count
+      HAVING count(*) > greatest(
+        ${sourcePackArchiveMatcherRunawayPolicy.absoluteSuggestionFloor},
+        coalesce(accepted.face_count, 0) *
+          ${sourcePackArchiveMatcherRunawayPolicy.maximumAcceptedFaceMultiplier}
+      )
+      ORDER BY suggestion_count DESC, result.person_id
+    `;
     if (!execute) {
       return {
         acceptedIdentityDelta: 0,
@@ -275,6 +310,14 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
         laneIndex,
         matcher: {
           marginFloor: Number(pack.margin_floor),
+          fallbackMarginFloor:
+            pack.fallback_margin_floor == null
+              ? null
+              : Number(pack.fallback_margin_floor),
+          fallbackScoreFloor:
+            pack.fallback_score_floor == null
+              ? null
+              : Number(pack.fallback_score_floor),
           packId: pack.pack_id,
           packState: pack.state,
           policyVersion: pack.policy_version,
@@ -284,11 +327,18 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
         nextStep:
           "activate_successor_then_persist_before_possible_people_refresh",
         queryLimit: limitFaces || null,
+        runawayPeople,
+        runawayPolicy: sourcePackArchiveMatcherRunawayPolicy,
         schemaVersion,
         scored,
         sourceMediaWrite: "none",
         state: "dry_run_complete",
       };
+    }
+    if (runawayPeople.length > 0) {
+      throw new Error(
+        `Archive matcher refuses runaway suggestion fanout for ${runawayPeople.map((row) => row.person_id).join(", ")}`,
+      );
     }
 
     await tx`
@@ -314,14 +364,14 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
           'sha256'
         ), 'hex'),
         result.face_id, result.person_id, 'prime_match', 'candidate',
-        result.score,
+        least(1::float8, greatest(0::float8, result.score)),
         jsonb_build_object(
           'algorithm', ${sourcePackArchiveMatcherContract.scorer}::text,
           'assignment_decision', 'source_pack_prime_match',
           'authority', 'human_review_only',
           'automatic_acceptance', false,
           'automatic_identity_acceptance', false,
-          'best_score', result.score,
+          'best_score', least(1::float8, greatest(-1::float8, result.score)),
           'margin', result.margin,
           'physical_face_id', result.physical_face_id,
           'policy_version', ${pack.policy_version}::text,
@@ -371,6 +421,14 @@ export const runSourcePackArchiveMatcher = async (sql, input = {}) => {
       laneIndex,
       matcher: {
         marginFloor: Number(pack.margin_floor),
+        fallbackMarginFloor:
+          pack.fallback_margin_floor == null
+            ? null
+            : Number(pack.fallback_margin_floor),
+        fallbackScoreFloor:
+          pack.fallback_score_floor == null
+            ? null
+            : Number(pack.fallback_score_floor),
         packId: pack.pack_id,
         packState: pack.state,
         policyVersion: pack.policy_version,

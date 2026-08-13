@@ -14,89 +14,43 @@ export const loadSourcePackFaces = async (
   } = {},
 ) => {
   const rows = await sql`
-    SELECT cfi.identity_claim_id, cfi.person_id, cfi.origin AS identity_origin,
-      cfi.state AS identity_state, d.actor_kind AS decision_actor_kind,
-      fo.face_id, fo.asset_id, fo.observation_origin, a.capture_time,
-      round(a.width * fo.box_w)::int AS face_pixel_width,
-      round(a.height * fo.box_h)::int AS face_pixel_height,
-      fo.detection_confidence::float8 AS detection,
-      CASE WHEN fo.observation_origin = 'manual_user'
-        THEN manual_evidence.quality_score
-        ELSE coalesce((fo.quality_measurements->>'quality_score')::float8, 0)
-      END AS quality,
-      coalesce(fo.quality_measurements->>'effective_gallery_permission', 'unknown') AS gallery_permission,
-      coalesce(fo.quality_measurements->>'source_instance_suffix', '') AS source_instance_suffix,
-      fe.model_family, fe.model_version, fe.config_digest, fe.dimension,
-      fe.embedding::text AS embedding, fe.vector_digest,
-      manual_evidence.evidence_tier AS manual_evidence_tier,
-      competitor.max_other_prime_similarity,
-      gallery.bucket_kind AS current_bucket_kind,
-      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'prime', false) AS pinned_prime,
-      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'secondary', false) AS user_pinned_secondary,
-      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'lq', false) AS user_pinned_lq,
-      coalesce(user_override.blocked, false) AS blocked_prime,
-      coalesce(modifiers.items, '[]'::jsonb) AS face_modifiers,
-      coalesce(contexts.items, '[]'::jsonb) AS capture_contexts,
-      coalesce(review.needs_sort, false) AS person_needs_sort,
-      jsonb_strip_nulls(jsonb_build_object(
-        'blur_score', fo.quality_measurements->'blur_score',
-        'frontal_score', fo.quality_measurements->'frontal_score',
-        'quality_bucket', fo.quality_measurements->'quality_bucket'
-      )) AS condition_features
-    FROM current_face_identity cfi
-    JOIN current_person subject ON subject.person_id = cfi.person_id AND subject.subject_kind = 'person'
-    JOIN identity_claim ic ON ic.identity_claim_id = cfi.identity_claim_id
-    JOIN face_observation fo ON fo.face_id = cfi.face_id AND fo.state = 'valid'
-    JOIN asset a ON a.asset_id = fo.asset_id
-    JOIN face_embedding fe ON fe.face_id = fo.face_id AND fe.state = 'active'
-    LEFT JOIN current_manual_face_matching_evidence manual_evidence
-      ON manual_evidence.face_id = fo.face_id
-      AND manual_evidence.identity_claim_id = cfi.identity_claim_id
-      AND manual_evidence.model_family = fe.model_family
-      AND manual_evidence.model_version = fe.model_version
-      AND manual_evidence.config_digest = fe.config_digest
-      AND manual_evidence.embedding_id = fe.embedding_id
-      AND manual_evidence.vector_digest = fe.vector_digest
-    LEFT JOIN LATERAL (
-      SELECT max(1 - (fe.embedding <=> other.embedding))::float8 AS max_other_prime_similarity
-      FROM current_reference_prototype other
-      WHERE other.person_id <> cfi.person_id
-        AND other.model_family = fe.model_family
-        AND other.model_version = fe.model_version
-        AND other.config_digest = fe.config_digest
-    ) competitor ON true
-    LEFT JOIN decision d ON d.decision_id = ic.decision_id
-    LEFT JOIN current_person_review_state review ON review.person_id = cfi.person_id
-    LEFT JOIN LATERAL (
-      SELECT g.bucket_kind, g.actor_kind, g.latest_action
-      FROM current_reference_gallery g
-      WHERE g.person_id = cfi.person_id AND g.face_id = fo.face_id
-        AND g.bucket_kind IN ('prime','secondary','lq') AND g.membership_state = 'active'
-      ORDER BY CASE g.bucket_kind WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1 ELSE 2 END
-      LIMIT 1
-    ) gallery ON true
-    LEFT JOIN LATERAL (
-      SELECT true AS blocked
-      WHERE NOT coalesce(gallery.bucket_kind = 'prime' AND gallery.latest_action = 'pin', false)
-        AND (
-          EXISTS (
-            SELECT 1
-            FROM bucket_membership_event e
-            JOIN reference_bucket b ON b.bucket_id = e.bucket_id
-            WHERE b.person_id = cfi.person_id AND e.face_id = fo.face_id
-              AND b.bucket_kind IN ('prime','secondary','lq','head') AND e.actor_kind = 'user'
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM current_reference_gallery head
-            WHERE head.person_id = cfi.person_id AND head.face_id = fo.face_id
-              AND head.bucket_kind = 'head' AND head.membership_state = 'active'
-          )
-        )
-      LIMIT 1
-    ) user_override ON true
-    LEFT JOIN LATERAL (
-      SELECT jsonb_agg(
+    WITH accepted_physical_identity AS MATERIALIZED (
+      SELECT DISTINCT ON (member.physical_face_id, identity.person_id)
+        member.physical_face_id, member.canonical_face_id,
+        identity.face_id AS claim_face_id, identity.person_id,
+        identity.origin, identity.identity_claim_id
+      FROM current_face_identity identity
+      JOIN current_face_physical_member member ON member.face_id = identity.face_id
+      WHERE identity.state = 'accepted'
+      ORDER BY member.physical_face_id, identity.person_id,
+        identity.identity_claim_id
+    ), gallery_state AS MATERIALIZED (
+      SELECT DISTINCT ON (member.physical_face_id, gallery.person_id)
+        member.physical_face_id, gallery.person_id, gallery.bucket_kind,
+        gallery.actor_kind, gallery.latest_action
+      FROM current_reference_gallery gallery
+      JOIN current_face_physical_member member ON member.face_id = gallery.face_id
+      WHERE gallery.bucket_kind IN ('prime','secondary','lq')
+        AND gallery.membership_state = 'active'
+      ORDER BY member.physical_face_id, gallery.person_id,
+        CASE gallery.bucket_kind
+          WHEN 'prime' THEN 0 WHEN 'secondary' THEN 1 ELSE 2
+        END
+    ), user_bucket_override AS MATERIALIZED (
+      SELECT DISTINCT member.physical_face_id, bucket.person_id
+      FROM bucket_membership_event event
+      JOIN reference_bucket bucket ON bucket.bucket_id = event.bucket_id
+      JOIN current_face_physical_member member ON member.face_id = event.face_id
+      WHERE bucket.bucket_kind IN ('prime','secondary','lq','head')
+        AND event.actor_kind = 'user'
+    ), head_override AS MATERIALIZED (
+      SELECT DISTINCT member.physical_face_id, gallery.person_id
+      FROM current_reference_gallery gallery
+      JOIN current_face_physical_member member ON member.face_id = gallery.face_id
+      WHERE gallery.bucket_kind = 'head'
+        AND gallery.membership_state = 'active'
+    ), face_modifiers AS MATERIALIZED (
+      SELECT modifier.face_id, jsonb_agg(
         jsonb_build_object(
           'key', modifier.modifier_key,
           'label', modifier.modifier_label,
@@ -107,10 +61,9 @@ export const loadSourcePackFaces = async (
         ) ORDER BY modifier.modifier_key
       ) AS items
       FROM current_face_modifier modifier
-      WHERE modifier.face_id = fo.face_id
-    ) modifiers ON true
-    LEFT JOIN LATERAL (
-      SELECT jsonb_agg(
+      GROUP BY modifier.face_id
+    ), face_contexts AS MATERIALIZED (
+      SELECT context.face_id, jsonb_agg(
         jsonb_build_object(
           'contextId', context.context_id,
           'contextKind', context.context_kind,
@@ -122,10 +75,86 @@ export const loadSourcePackFaces = async (
         ) ORDER BY context.context_kind, context.context_id
       ) AS items
       FROM current_face_capture_context context
-      WHERE context.face_id = fo.face_id
-    ) contexts ON true
-    WHERE cfi.state = 'accepted'
-      AND (fo.observation_origin <> 'manual_user'
+      GROUP BY context.face_id
+    )
+    SELECT cfi.identity_claim_id, cfi.person_id, cfi.origin AS identity_origin,
+      'accepted'::text AS identity_state, d.actor_kind AS decision_actor_kind,
+      fo.face_id, fo.asset_id, fo.observation_origin, a.capture_time,
+      round(a.width * fo.box_w)::int AS face_pixel_width,
+      round(a.height * fo.box_h)::int AS face_pixel_height,
+      fo.detection_confidence::float8 AS detection,
+      CASE WHEN fo.observation_origin = 'manual_user'
+        THEN manual_evidence.quality_score
+        WHEN nullif(fo.quality_measurements->>'quality_score', '') IS NOT NULL
+        THEN (fo.quality_measurements->>'quality_score')::float8
+        ELSE least(
+          greatest(coalesce(fo.detection_confidence, 0), 0),
+          least(
+            1,
+            least(a.width * fo.box_w, a.height * fo.box_h) / 96::float8
+          )
+        )
+      END AS quality,
+      CASE WHEN fo.observation_origin = 'manual_user' THEN 'manual_evidence'
+        WHEN nullif(fo.quality_measurements->>'quality_score', '') IS NOT NULL
+          THEN 'measured'
+        ELSE 'detector_geometry_proxy'
+      END AS quality_source,
+      coalesce(fo.quality_measurements->>'effective_gallery_permission', 'unknown') AS gallery_permission,
+      coalesce(fo.quality_measurements->>'source_instance_suffix', '') AS source_instance_suffix,
+      fe.model_family, fe.model_version, fe.config_digest, fe.dimension,
+      fe.embedding::text AS embedding, fe.vector_digest,
+      manual_evidence.evidence_tier AS manual_evidence_tier,
+      gallery.bucket_kind AS current_bucket_kind,
+      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'prime', false) AS pinned_prime,
+      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'secondary', false) AS user_pinned_secondary,
+      coalesce(gallery.actor_kind = 'user' AND gallery.latest_action = 'pin' AND gallery.bucket_kind = 'lq', false) AS user_pinned_lq,
+      (
+        NOT coalesce(
+          gallery.bucket_kind = 'prime' AND gallery.latest_action = 'pin',
+          false
+        )
+        AND (
+          user_override.physical_face_id IS NOT NULL
+          OR head.physical_face_id IS NOT NULL
+        )
+      ) AS blocked_prime,
+      coalesce(modifiers.items, '[]'::jsonb) AS face_modifiers,
+      coalesce(contexts.items, '[]'::jsonb) AS capture_contexts,
+      coalesce(review.needs_sort, false) AS person_needs_sort,
+      jsonb_strip_nulls(jsonb_build_object(
+        'blur_score', fo.quality_measurements->'blur_score',
+        'frontal_score', fo.quality_measurements->'frontal_score',
+        'quality_bucket', fo.quality_measurements->'quality_bucket'
+      )) AS condition_features
+    FROM accepted_physical_identity cfi
+    JOIN current_person subject ON subject.person_id = cfi.person_id AND subject.subject_kind = 'person'
+    JOIN identity_claim ic ON ic.identity_claim_id = cfi.identity_claim_id
+    JOIN face_observation fo ON fo.face_id = cfi.canonical_face_id AND fo.state = 'valid'
+    JOIN asset a ON a.asset_id = fo.asset_id
+    JOIN face_embedding fe ON fe.face_id = fo.face_id AND fe.state = 'active'
+    LEFT JOIN current_manual_face_matching_evidence manual_evidence
+      ON manual_evidence.face_id = cfi.claim_face_id
+      AND manual_evidence.identity_claim_id = cfi.identity_claim_id
+      AND manual_evidence.model_family = fe.model_family
+      AND manual_evidence.model_version = fe.model_version
+      AND manual_evidence.config_digest = fe.config_digest
+      AND manual_evidence.embedding_id = fe.embedding_id
+      AND manual_evidence.vector_digest = fe.vector_digest
+    LEFT JOIN decision d ON d.decision_id = ic.decision_id
+    LEFT JOIN current_person_review_state review ON review.person_id = cfi.person_id
+    LEFT JOIN gallery_state gallery
+      ON gallery.physical_face_id = cfi.physical_face_id
+      AND gallery.person_id = cfi.person_id
+    LEFT JOIN user_bucket_override user_override
+      ON user_override.physical_face_id = cfi.physical_face_id
+      AND user_override.person_id = cfi.person_id
+    LEFT JOIN head_override head
+      ON head.physical_face_id = cfi.physical_face_id
+      AND head.person_id = cfi.person_id
+    LEFT JOIN face_modifiers modifiers ON modifiers.face_id = fo.face_id
+    LEFT JOIN face_contexts contexts ON contexts.face_id = fo.face_id
+    WHERE (fo.observation_origin <> 'manual_user'
         OR manual_evidence.recognition_evidence_id IS NOT NULL)
       AND NOT EXISTS (
         SELECT 1 FROM current_person_category category
@@ -137,6 +166,34 @@ export const loadSourcePackFaces = async (
       AND (${String(configDigest)} = '' OR fe.config_digest = ${String(configDigest)})
     ORDER BY cfi.person_id, fe.model_family, fe.model_version, fe.config_digest, fo.face_id
   `;
+  const bodyRows = rows.filter(
+    (row) => String(row.source_instance_suffix || "") === "2",
+  );
+  const competitors = bodyRows.length
+    ? await sql`
+        WITH target(face_id, person_id) AS (
+          SELECT * FROM unnest(
+            ${bodyRows.map((row) => row.face_id)}::text[],
+            ${bodyRows.map((row) => row.person_id)}::text[]
+          )
+        )
+        SELECT target.face_id,
+          max(1 - (embedding.embedding <=> other.embedding))::float8
+            AS max_other_prime_similarity
+        FROM target
+        JOIN face_embedding embedding ON embedding.face_id = target.face_id
+          AND embedding.state = 'active'
+        JOIN current_reference_prototype other
+          ON other.person_id <> target.person_id
+          AND other.model_family = embedding.model_family
+          AND other.model_version = embedding.model_version
+          AND other.config_digest = embedding.config_digest
+        GROUP BY target.face_id
+      `
+    : [];
+  const competitorByFace = new Map(
+    competitors.map((row) => [row.face_id, row.max_other_prime_similarity]),
+  );
   return rows.map((row) => ({
     assetId: row.asset_id,
     blockedPrime:
@@ -159,12 +216,13 @@ export const loadSourcePackFaces = async (
     identityState: row.identity_state,
     modelFamily: row.model_family,
     modelVersion: row.model_version,
-    maxOtherPrimeSimilarity: row.max_other_prime_similarity,
+    maxOtherPrimeSimilarity: competitorByFace.get(row.face_id) ?? null,
     personId: row.person_id,
     personNeedsSort: row.person_needs_sort,
     pinnedPrime:
       row.observation_origin === "manual_user" ? false : row.pinned_prime,
     quality: row.quality,
+    qualitySource: row.quality_source,
     sourceInstanceSuffix: row.source_instance_suffix,
     sourceTierHint:
       row.observation_origin === "manual_user"

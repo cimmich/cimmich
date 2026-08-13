@@ -162,6 +162,7 @@ const faceReference = (
   memberFaceIds: [],
   personId: face.personId,
   provenance: {
+    qualitySource: face.qualitySource || "unknown",
     ...provenance,
     identityReviewState: face.personNeedsSort ? "sort" : "trusted",
   },
@@ -554,6 +555,7 @@ export const compileSourcePack = (
       facePixelHeight: face.facePixelHeight || 0,
       facePixelWidth: face.facePixelWidth || 0,
       lowQualityReasons: face.lowQualityReasons || [],
+      qualitySource: face.qualitySource || "unknown",
       modifiers: face.modifiers || [],
       captureContexts: face.captureContexts || [],
       vectorDigest: face.vectorDigest,

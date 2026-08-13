@@ -3,6 +3,7 @@ import { parseVector } from "./prime-curator.mjs";
 import {
   normalizeSourcePackArchiveMatcherOptions,
   sourcePackArchiveMatcherContract,
+  sourcePackArchiveMatcherRunawayPolicy,
 } from "./source-pack-archive-matcher.mjs";
 import { createSourcePackNumpyScorer } from "./source-pack-numpy-scorer.mjs";
 
@@ -67,6 +68,8 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
           pack.model_family, pack.model_version, pack.config_digest,
           (pack.evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8 AS score_floor,
           (pack.evaluation_summary->'matcherPolicy'->>'marginFloor')::float8 AS margin_floor,
+          (pack.evaluation_summary->'matcherPolicy'->>'fallbackScoreFloor')::float8 AS fallback_score_floor,
+          (pack.evaluation_summary->'matcherPolicy'->>'fallbackMarginFloor')::float8 AS fallback_margin_floor,
           pack.evaluation_summary->'matcherPolicy'->>'policyVersion' AS policy_version,
           pack.evaluation_summary->'matcherPolicy'->>'scorer' AS scorer
         FROM source_pack pack
@@ -157,9 +160,13 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
         ORDER BY reference.person_id, reference.face_id
       `;
       const scoreFloor =
-        referenceMode !== "source_pack" ? 0.55 : Number(pack.score_floor);
-      const marginFloor =
-        referenceMode !== "source_pack" ? 0.1 : Number(pack.margin_floor);
+        referenceMode !== "source_pack"
+          ? 0.55
+          : Math.min(
+              Number(pack.score_floor),
+              Number(pack.fallback_score_floor ?? pack.score_floor),
+            );
+      const marginFloor = referenceMode !== "source_pack" ? 0.1 : 0;
       await scorer.initialize(
         galleryRows.map((row) => ({
           assetId: row.asset_id,
@@ -324,9 +331,14 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
       if (referenceMode === "source_pack")
         await tx`
         DELETE FROM cimmich_local_archive_match_result result
-        WHERE cimmich_probable_same_photo_derivative(
-          ${pack.pack_id}, result.asset_id, result.reference_asset_id
-        )
+        WHERE NOT (
+          (result.score >= ${Number(pack.score_floor)}
+            AND result.margin >= ${Number(pack.margin_floor)})
+          OR (result.score >= ${Number(pack.fallback_score_floor ?? pack.score_floor)}
+            AND result.margin >= ${Number(pack.fallback_margin_floor ?? pack.margin_floor)})
+        ) OR cimmich_probable_same_photo_derivative(
+            ${pack.pack_id}, result.asset_id, result.reference_asset_id
+          )
       `;
       const [scored] = await tx`
         SELECT count(*)::int AS qualified_faces,
@@ -338,6 +350,30 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
           max(margin)::float8 AS maximum_margin
         FROM cimmich_local_archive_match_result
       `;
+      const runawayPeople = possibleRunId
+        ? []
+        : await tx`
+            WITH accepted AS (
+              SELECT person_id,
+                count(DISTINCT physical_face_id)::int AS face_count
+              FROM current_physical_face_identity
+              WHERE state = 'accepted'
+              GROUP BY person_id
+            )
+            SELECT result.person_id, person.display_name,
+              count(*)::int AS suggestion_count,
+              coalesce(accepted.face_count, 0)::int AS accepted_face_count
+            FROM cimmich_local_archive_match_result result
+            JOIN current_person person ON person.person_id = result.person_id
+            LEFT JOIN accepted ON accepted.person_id = result.person_id
+            GROUP BY result.person_id, person.display_name, accepted.face_count
+            HAVING count(*) > greatest(
+              ${sourcePackArchiveMatcherRunawayPolicy.absoluteSuggestionFloor},
+              coalesce(accepted.face_count, 0) *
+                ${sourcePackArchiveMatcherRunawayPolicy.maximumAcceptedFaceMultiplier}
+            )
+            ORDER BY suggestion_count DESC, result.person_id
+          `;
       const people = await tx`
         SELECT result.person_id, person.display_name, count(*)::int AS face_count
         FROM cimmich_local_archive_match_result result
@@ -453,12 +489,26 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
         laneCount: options.laneCount,
         laneIndex: options.laneIndex,
         matcher: {
-          marginFloor,
+          marginFloor:
+            referenceMode === "source_pack"
+              ? Number(pack.margin_floor)
+              : marginFloor,
+          fallbackMarginFloor:
+            pack.fallback_margin_floor == null
+              ? null
+              : Number(pack.fallback_margin_floor),
+          fallbackScoreFloor:
+            pack.fallback_score_floor == null
+              ? null
+              : Number(pack.fallback_score_floor),
           packId: pack.pack_id,
           packState: pack.state,
           policyVersion: pack.policy_version,
           referenceMode,
-          scoreFloor,
+          scoreFloor:
+            referenceMode === "source_pack"
+              ? Number(pack.score_floor)
+              : scoreFloor,
           scorer: pack.scorer,
         },
         people,
@@ -466,6 +516,8 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
         referenceCount: galleryRows.length,
         queriedFaces,
         queryLimit: options.limitFaces || null,
+        runawayPeople,
+        runawayPolicy: sourcePackArchiveMatcherRunawayPolicy,
         schemaVersion,
         scored,
         sourceMediaWrite: "none",
@@ -478,6 +530,11 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
             "activate_successor_then_persist_before_possible_people_refresh",
           state: "dry_run_complete",
         };
+      }
+      if (runawayPeople.length > 0) {
+        throw new Error(
+          `Archive matcher refuses runaway suggestion fanout for ${runawayPeople.map((row) => row.person_id).join(", ")}`,
+        );
       }
       const receiptId = `receipt_sourcepack_archive_match_${randomUUID().replaceAll("-", "")}`;
       await tx`
@@ -500,14 +557,15 @@ export const runLocalSourcePackArchiveMatcher = async (sql, input = {}) => {
               result.person_id || ':' || ${pack.policy_version}::text,
             'sha256'
           ), 'hex'),
-          result.face_id, result.person_id, 'prime_match', 'candidate', result.score,
+          result.face_id, result.person_id, 'prime_match', 'candidate',
+          least(1::float8, greatest(0::float8, result.score)),
           jsonb_build_object(
             'algorithm', ${scorerName}::text,
             'assignment_decision', 'source_pack_prime_match',
             'authority', 'human_review_only',
             'automatic_acceptance', false,
             'automatic_identity_acceptance', false,
-            'best_score', result.score,
+            'best_score', least(1::float8, greatest(-1::float8, result.score)),
             'margin', result.margin,
             'physical_face_id', result.physical_face_id,
             'policy_version', ${pack.policy_version}::text,

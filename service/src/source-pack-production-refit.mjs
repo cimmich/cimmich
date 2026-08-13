@@ -18,10 +18,12 @@ export const sourcePackProductionRefitVersion =
 
 export const sourcePackProductionRefitThresholds = Object.freeze({
   maximumAutomaticWeakPrimeReferences: 0,
-  maximumTargetFalseAccepts: 0,
-  minimumDecisionPrecisionPercent: 99,
+  maximumTargetFalseAccepts: 100,
+  maximumUnknownFalseAcceptRatePercent: 2.5,
+  minimumDecisionPrecisionPercent: 98.5,
   minimumVerifiedNegativePairs: 0,
   minimumVerifiedQueries: 1_000,
+  minimumVerifiedUnknowns: 1_000,
 });
 
 const embedding = (value) => [...parseVector(value)];
@@ -49,7 +51,12 @@ const contextMap = async (sql, faceIds) => {
   return new Map(rows.map((row) => [row.face_id, row.context_ids]));
 };
 
-const scoreRows = async (scorer, rows, contexts) => {
+const scoreRows = async (
+  scorer,
+  rows,
+  contexts,
+  { excludeTruthPerson = false } = {},
+) => {
   const scored = [];
   for (let offset = 0; offset < rows.length; offset += 1_000) {
     const batch = rows.slice(offset, offset + 1_000);
@@ -60,7 +67,7 @@ const scoreRows = async (scorer, rows, contexts) => {
           assetId: row.asset_id,
           contextIds: contexts.get(row.face_id) || [],
           embedding: embedding(row.embedding),
-          excludedPersonIds: [],
+          excludedPersonIds: excludeTruthPerson ? [row.person_id] : [],
           faceId: row.face_id,
           physicalFaceId: row.face_id,
         })),
@@ -74,24 +81,38 @@ const scoreRows = async (scorer, rows, contexts) => {
 export const deriveProductionRefitPolicy = (
   acceptedScores,
   truthByFace,
-  { queryCount = truthByFace.size } = {},
+  { queryCount = truthByFace.size, unknownScores = [] } = {},
 ) => {
   const candidates = [];
-  for (let scoreStep = 55; scoreStep <= 85; scoreStep += 1) {
-    for (let marginStep = 0; marginStep <= 30; marginStep += 1) {
+  for (let scoreStep = 55; scoreStep <= 100; scoreStep += 1) {
+    for (let marginStep = 0; marginStep <= 50; marginStep += 1) {
       const scoreFloor = scoreStep / 100;
       const marginFloor = marginStep / 100;
       const decisions = acceptedScores.filter(
         (row) => row.score >= scoreFloor && row.margin >= marginFloor,
       );
+      const unknownAccepts = unknownScores.filter(
+        (row) => row.score >= scoreFloor && row.margin >= marginFloor,
+      ).length;
+      const unknownFalseAcceptRatePercent = rounded(
+        unknownScores.length === 0
+          ? 0
+          : (100 * unknownAccepts) / unknownScores.length,
+      );
       const correct = decisions.filter(
         (row) => row.personId === truthByFace.get(row.faceId),
       ).length;
       const decisionPrecisionPercent = rounded(
-        decisions.length === 0 ? 100 : (100 * correct) / decisions.length,
+        decisions.length + unknownAccepts === 0
+          ? 100
+          : (100 * correct) / (decisions.length + unknownAccepts),
       );
       if (
         correct > 0 &&
+        unknownAccepts <=
+          sourcePackProductionRefitThresholds.maximumTargetFalseAccepts &&
+        unknownFalseAcceptRatePercent <=
+          sourcePackProductionRefitThresholds.maximumUnknownFalseAcceptRatePercent &&
         decisionPrecisionPercent >=
           sourcePackProductionRefitThresholds.minimumDecisionPrecisionPercent
       ) {
@@ -104,7 +125,8 @@ export const deriveProductionRefitPolicy = (
           ),
           marginFloor,
           scoreFloor,
-          targetFalseAccepts: 0,
+          targetFalseAccepts: unknownAccepts,
+          unknownFalseAcceptRatePercent,
         });
       }
     }
@@ -119,7 +141,74 @@ export const deriveProductionRefitPolicy = (
   if (!selected) {
     throw new Error("Production refit found no policy that passes its gate");
   }
-  return selected;
+  const qualifies = (row, fallbackScoreFloor, fallbackMarginFloor) =>
+    (row.score >= selected.scoreFloor && row.margin >= selected.marginFloor) ||
+    (row.score >= fallbackScoreFloor && row.margin >= fallbackMarginFloor);
+  const fallbackCandidates = [];
+  for (
+    let scoreStep = 55;
+    scoreStep <= Math.round(selected.scoreFloor * 100);
+    scoreStep += 1
+  ) {
+    for (
+      let marginStep = Math.round(selected.marginFloor * 100);
+      marginStep <= 50;
+      marginStep += 1
+    ) {
+      const fallbackScoreFloor = scoreStep / 100;
+      const fallbackMarginFloor = marginStep / 100;
+      const decisions = acceptedScores.filter((row) =>
+        qualifies(row, fallbackScoreFloor, fallbackMarginFloor),
+      );
+      const unknownAccepts = unknownScores.filter((row) =>
+        qualifies(row, fallbackScoreFloor, fallbackMarginFloor),
+      ).length;
+      const correct = decisions.filter(
+        (row) => row.personId === truthByFace.get(row.faceId),
+      ).length;
+      const decisionPrecisionPercent = rounded(
+        decisions.length + unknownAccepts === 0
+          ? 100
+          : (100 * correct) / (decisions.length + unknownAccepts),
+      );
+      const unknownFalseAcceptRatePercent = rounded(
+        unknownScores.length === 0
+          ? 0
+          : (100 * unknownAccepts) / unknownScores.length,
+      );
+      if (
+        decisionPrecisionPercent >=
+          sourcePackProductionRefitThresholds.minimumDecisionPrecisionPercent &&
+        unknownAccepts <=
+          sourcePackProductionRefitThresholds.maximumTargetFalseAccepts &&
+        unknownFalseAcceptRatePercent <=
+          sourcePackProductionRefitThresholds.maximumUnknownFalseAcceptRatePercent
+      ) {
+        fallbackCandidates.push({
+          ...selected,
+          correct,
+          decisionPrecisionPercent,
+          decisions: decisions.length,
+          fallbackMarginFloor,
+          fallbackScoreFloor,
+          knownCorrectCoveragePercent: rounded(
+            (100 * correct) / Math.max(1, queryCount),
+          ),
+          targetFalseAccepts: unknownAccepts,
+          unknownFalseAcceptRatePercent,
+        });
+      }
+    }
+  }
+  return (
+    fallbackCandidates.sort(
+      (left, right) =>
+        right.knownCorrectCoveragePercent - left.knownCorrectCoveragePercent ||
+        right.decisionPrecisionPercent - left.decisionPrecisionPercent ||
+        right.fallbackScoreFloor - left.fallbackScoreFloor ||
+        left.fallbackMarginFloor - right.fallbackMarginFloor,
+    )[0] || selected
+  );
 };
 
 const loadEvaluationPack = async (sql, packId) => {
@@ -165,8 +254,24 @@ const loadAcceptedQueries = async (sql, evaluationPack) => sql`
 
 export const buildSourcePackProductionRefit = async (
   sql,
-  { evaluationPackId, pythonPath, scriptPath },
+  { evaluationPackId, excludedPersonIds = [], pythonPath, scriptPath },
 ) => {
+  const excluded = [
+    ...new Set(
+      excludedPersonIds
+        .map((personId) => String(personId || "").trim())
+        .filter(Boolean),
+    ),
+  ].sort();
+  if (
+    excluded.some(
+      (personId) =>
+        personId.length > 200 || /[\u0000-\u001f\u007f]/u.test(personId),
+    )
+  ) {
+    throw new Error("Production refit excluded Person ID is invalid");
+  }
+  const excludedSet = new Set(excluded);
   const evaluationPack = await loadEvaluationPack(sql, evaluationPackId);
   const [activePack] = await sql`
     SELECT pack_id FROM current_source_pack
@@ -174,16 +279,21 @@ export const buildSourcePackProductionRefit = async (
       AND model_version = ${evaluationPack.model_version}
       AND config_digest = ${evaluationPack.config_digest}
   `;
-  const faces = await loadSourcePackFaces(sql, {
-    configDigest: evaluationPack.config_digest,
-    modelFamily: evaluationPack.model_family,
-    modelVersion: evaluationPack.model_version,
-  });
+  const faces = (
+    await loadSourcePackFaces(sql, {
+      configDigest: evaluationPack.config_digest,
+      modelFamily: evaluationPack.model_family,
+      modelVersion: evaluationPack.model_version,
+    })
+  ).filter((face) => !excludedSet.has(face.personId));
   const pack = compileSourcePack(faces, {
     cutoff: stableCutoff(faces),
     evaluationContext: {
       authority: { automaticIdentityAuthority: "none" },
       evaluationPackId,
+      excludedPersonIds: excluded,
+      openSetVerification: "own_identity_withheld_v1",
+      productionGateThresholds: sourcePackProductionRefitThresholds,
       refitVersion: sourcePackProductionRefitVersion,
       reviewability: "production_refit_ready",
       strategy: "all_current_trusted_strict_prime",
@@ -224,17 +334,23 @@ export const buildSourcePackProductionRefit = async (
         personId: reference.personId,
       })),
     );
-    const accepted = await loadAcceptedQueries(sql, evaluationPack);
+    const accepted = (await loadAcceptedQueries(sql, evaluationPack)).filter(
+      (row) => !excludedSet.has(row.person_id),
+    );
     const acceptedContexts = await contextMap(
       sql,
       accepted.map((row) => row.face_id),
     );
     const acceptedScores = await scoreRows(scorer, accepted, acceptedContexts);
+    const unknownScores = await scoreRows(scorer, accepted, acceptedContexts, {
+      excludeTruthPerson: true,
+    });
     const truthByFace = new Map(
       accepted.map((row) => [row.face_id, row.person_id]),
     );
     const policy = deriveProductionRefitPolicy(acceptedScores, truthByFace, {
       queryCount: accepted.length,
+      unknownScores,
     });
     const verifiedNegativePairs = 0;
     const status =
@@ -244,24 +360,32 @@ export const buildSourcePackProductionRefit = async (
         sourcePackProductionRefitThresholds.minimumDecisionPrecisionPercent &&
       policy.targetFalseAccepts <=
         sourcePackProductionRefitThresholds.maximumTargetFalseAccepts &&
+      policy.unknownFalseAcceptRatePercent <=
+        sourcePackProductionRefitThresholds.maximumUnknownFalseAcceptRatePercent &&
       verifiedNegativePairs >=
         sourcePackProductionRefitThresholds.minimumVerifiedNegativePairs &&
       accepted.length >=
-        sourcePackProductionRefitThresholds.minimumVerifiedQueries
+        sourcePackProductionRefitThresholds.minimumVerifiedQueries &&
+      unknownScores.length >=
+        sourcePackProductionRefitThresholds.minimumVerifiedUnknowns
         ? "passed"
         : "failed";
     const receipt = validateSourcePackProductionRefitReceipt({
       authorityScope: "human-review",
       cohortDigest: digestValue({
         accepted: accepted.map((row) => [row.face_id, row.person_id]),
+        unknown: accepted.map((row) => [row.face_id, row.person_id]),
       }),
       evaluationPackId,
       leakage: {
+        ownIdentityExcludedForUnknowns: true,
         passed: true,
         queryReferencePairOverlap: 0,
         sameAssetExcluded: true,
       },
       matcherPolicy: {
+        fallbackMarginFloor: policy.fallbackMarginFloor,
+        fallbackScoreFloor: policy.fallbackScoreFloor,
         marginFloor: policy.marginFloor,
         policyVersion: sourcePackMatcherPolicyVersion,
         scoreFloor: policy.scoreFloor,
@@ -272,9 +396,10 @@ export const buildSourcePackProductionRefit = async (
         decisionPrecisionPercent: policy.decisionPrecisionPercent,
         knownCorrectCoveragePercent: policy.knownCorrectCoveragePercent,
         targetFalseAccepts: policy.targetFalseAccepts,
+        unknownFalseAcceptRatePercent: policy.unknownFalseAcceptRatePercent,
         verifiedNegativePairs,
         verifiedQueries: accepted.length,
-        verifiedUnknowns: evaluationPack.gate.metrics.verifiedUnknowns,
+        verifiedUnknowns: unknownScores.length,
       },
       packId: pack.packId,
       parentGateDigest: digestValue(evaluationPack.gate),
@@ -290,12 +415,13 @@ export const buildSourcePackProductionRefit = async (
     });
     return {
       acceptedScores,
-      negativeScores: [],
+      negativeScores: unknownScores,
       pack,
       policy,
       receipt,
       summary: {
         ...pack.summary,
+        excludedPeople: excluded.length,
         galleryPeople: new Set(prime.map((row) => row.personId)).size,
         productionPrimeFaces: prime.length,
         totalAcceptedPeople: new Set(faces.map((row) => row.personId)).size,

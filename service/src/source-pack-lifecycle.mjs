@@ -208,6 +208,15 @@ export const validateSourcePackProductionRefitReceipt = (
       receipt?.metrics?.targetFalseAccepts,
       "metrics.targetFalseAccepts",
     ),
+    unknownFalseAcceptRatePercent:
+      receipt?.metrics?.unknownFalseAcceptRatePercent == null
+        ? receipt?.metrics?.targetFalseAccepts === 0
+          ? 0
+          : 100
+        : percentage(
+            receipt.metrics.unknownFalseAcceptRatePercent,
+            "metrics.unknownFalseAcceptRatePercent",
+          ),
     verifiedNegativePairs: integer(
       receipt?.metrics?.verifiedNegativePairs,
       "metrics.verifiedNegativePairs",
@@ -232,6 +241,13 @@ export const validateSourcePackProductionRefitReceipt = (
       receipt?.thresholds?.maximumTargetFalseAccepts,
       "thresholds.maximumTargetFalseAccepts",
     ),
+    maximumUnknownFalseAcceptRatePercent:
+      receipt?.thresholds?.maximumUnknownFalseAcceptRatePercent == null
+        ? 100
+        : percentage(
+            receipt.thresholds.maximumUnknownFalseAcceptRatePercent,
+            "thresholds.maximumUnknownFalseAcceptRatePercent",
+          ),
     minimumDecisionPrecisionPercent: percentage(
       receipt?.thresholds?.minimumDecisionPrecisionPercent,
       "thresholds.minimumDecisionPrecisionPercent",
@@ -245,8 +261,30 @@ export const validateSourcePackProductionRefitReceipt = (
       "thresholds.minimumVerifiedQueries",
       { minimum: 1 },
     ),
+    minimumVerifiedUnknowns:
+      receipt?.thresholds?.minimumVerifiedUnknowns == null
+        ? 1
+        : integer(
+            receipt.thresholds.minimumVerifiedUnknowns,
+            "thresholds.minimumVerifiedUnknowns",
+            { minimum: 1 },
+          ),
   };
   const matcherPolicy = {
+    fallbackMarginFloor:
+      receipt?.matcherPolicy?.fallbackMarginFloor == null
+        ? null
+        : finite(
+            receipt.matcherPolicy.fallbackMarginFloor,
+            "matcherPolicy.fallbackMarginFloor",
+          ),
+    fallbackScoreFloor:
+      receipt?.matcherPolicy?.fallbackScoreFloor == null
+        ? null
+        : finite(
+            receipt.matcherPolicy.fallbackScoreFloor,
+            "matcherPolicy.fallbackScoreFloor",
+          ),
     marginFloor: finite(
       receipt?.matcherPolicy?.marginFloor,
       "matcherPolicy.marginFloor",
@@ -264,7 +302,14 @@ export const validateSourcePackProductionRefitReceipt = (
     matcherPolicy.scoreFloor < 0 ||
     matcherPolicy.scoreFloor > 1 ||
     matcherPolicy.marginFloor < 0 ||
-    matcherPolicy.marginFloor > 1
+    matcherPolicy.marginFloor > 1 ||
+    (matcherPolicy.fallbackScoreFloor == null) !==
+      (matcherPolicy.fallbackMarginFloor == null) ||
+    (matcherPolicy.fallbackScoreFloor != null &&
+      (matcherPolicy.fallbackScoreFloor < 0 ||
+        matcherPolicy.fallbackScoreFloor > matcherPolicy.scoreFloor ||
+        matcherPolicy.fallbackMarginFloor < matcherPolicy.marginFloor ||
+        matcherPolicy.fallbackMarginFloor > 1))
   ) {
     throw new Error("Production refit requires the supported matcher policy");
   }
@@ -274,8 +319,11 @@ export const validateSourcePackProductionRefitReceipt = (
     metrics.decisionPrecisionPercent >=
       thresholds.minimumDecisionPrecisionPercent &&
     metrics.targetFalseAccepts <= thresholds.maximumTargetFalseAccepts &&
+    metrics.unknownFalseAcceptRatePercent <=
+      thresholds.maximumUnknownFalseAcceptRatePercent &&
     metrics.verifiedNegativePairs >= thresholds.minimumVerifiedNegativePairs &&
-    metrics.verifiedQueries >= thresholds.minimumVerifiedQueries;
+    metrics.verifiedQueries >= thresholds.minimumVerifiedQueries &&
+    metrics.verifiedUnknowns >= thresholds.minimumVerifiedUnknowns;
   if ((receipt.status === "passed") !== passed) {
     throw new Error(
       "Production refit status contradicts its frozen thresholds",

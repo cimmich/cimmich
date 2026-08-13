@@ -66,7 +66,7 @@ class Scorer:
         if not 0 <= score_floor <= 1 or not 0 <= margin_floor <= 1:
             fail("invalid policy floors")
         query_matrix = matrix([row.get("embedding") for row in queries], "query")
-        scores = query_matrix @ self.gallery.T
+        scores = np.clip(query_matrix @ self.gallery.T, -1.0, 1.0)
         results = []
         for query_index, query in enumerate(queries):
             face_id = bounded_text(query.get("faceId"), "faceId")
