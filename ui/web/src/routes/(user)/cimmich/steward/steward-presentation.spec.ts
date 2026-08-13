@@ -33,6 +33,7 @@ describe('Memory Steward presentation', () => {
     ['compile_source_pack', 'Build reference library'],
     ['evaluate_source_pack', 'Check reference library'],
     ['record_operator_review', 'Review safety result'],
+    ['prepare_production_refit', 'Review production refit'],
     ['activate_source_pack', 'Review reference library'],
   ] as const)('routes %s to a concrete next action', (action, actionLabel) => {
     expect(emptyReviewPresentation(statusAt(action))).toMatchObject({ actionLabel });

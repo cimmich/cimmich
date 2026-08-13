@@ -20,6 +20,19 @@ import {
 
 export const faceMatchingOperatorSchemaVersion =
   "cimmich.face-matching-operator.v1";
+export const faceMatchingOperatorActions = Object.freeze([
+  "activate_source_pack",
+  "await_more_evidence",
+  "compile_source_pack",
+  "configure_provider",
+  "enable_enhanced",
+  "evaluate_source_pack",
+  "hold_source_pack",
+  "prepare_production_refit",
+  "record_operator_review",
+  "review_suggestions",
+  "run_recognition",
+]);
 export const ownerSourcePackPlanSchemaVersion =
   "cimmich.owner-source-pack-plan.v2";
 const ownerPlanMinimumKnownQueriesPerSplit = 100;
@@ -366,8 +379,14 @@ export const deriveSourcePackReviewNext = (latestPack) => {
     latestPack.evaluation.reason === null
   ) {
     return {
-      action: "activate_source_pack",
-      reason: "SOURCE_PACK_READY_FOR_ACTIVATION",
+      action:
+        latestPack.reviewability.state === "production_refit_ready"
+          ? "activate_source_pack"
+          : "prepare_production_refit",
+      reason:
+        latestPack.reviewability.state === "production_refit_ready"
+          ? "SOURCE_PACK_READY_FOR_ACTIVATION"
+          : "SOURCE_PACK_PRODUCTION_REFIT_REQUIRED",
     };
   }
   return {

@@ -111,7 +111,7 @@ test("successor routing holds a passed pack when known coverage materially regre
     },
     reviewability: {
       reason: null,
-      state: "balanced_open_set_holdout_ready",
+      state: "production_refit_ready",
     },
     state: "proposed",
   });
@@ -138,6 +138,23 @@ test("successor routing holds a passed pack when known coverage materially regre
   assert.equal(
     deriveSourcePackSuccessorNext(reviewedPack(55.882353)).action,
     "activate_source_pack",
+  );
+});
+
+test("a passed historical evaluation must be production-refit before activation", () => {
+  assert.deepEqual(
+    deriveSourcePackReviewNext({
+      evaluation: { reason: null, status: "passed" },
+      reviewability: {
+        reason: null,
+        state: "balanced_open_set_holdout_ready",
+      },
+      state: "proposed",
+    }),
+    {
+      action: "prepare_production_refit",
+      reason: "SOURCE_PACK_PRODUCTION_REFIT_REQUIRED",
+    },
   );
 });
 
@@ -441,6 +458,7 @@ test("open-set operating-point selection keeps a calibration precision buffer", 
     sourcePackReviewGateContract.minimumDecisionPrecisionPercent,
     98,
   );
+  assert.equal(sourcePackReviewGateContract.minimumScoreFloor, 0.55);
 });
 
 test("review receipt projection is immutable, server-derived and closed when unavailable", () => {
@@ -456,6 +474,7 @@ test("review receipt projection is immutable, server-derived and closed when una
   const derived = deriveSourcePackReviewGate(openSetRows(), gateContext);
   assert.equal(derived.reason, null);
   assert.equal(derived.receipt.status, "passed");
+  assert.equal(derived.receipt.matcherPolicy.scoreFloor >= 0.55, true);
   assert.deepEqual(derived.receipt.thresholds, {
     maximumUnknownFalseAcceptRatePercent: 2.5,
     minimumDecisionPrecisionPercent: 98,

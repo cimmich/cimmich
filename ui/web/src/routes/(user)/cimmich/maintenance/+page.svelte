@@ -649,6 +649,12 @@
                   {faceMatchingReviewHoldCopy(reviewGate.reason)} This reference library remains inactive, and accepted names
                   are unchanged.
                 </p>
+              {:else if faceOperator?.next.action === 'prepare_production_refit'}
+                <div class="mt-4 flex items-center gap-2 text-xs/5 font-medium">
+                  <Icon icon={mdiLockOutline} size="17" />
+                  The dated test gallery remains inactive. Run the production refit on owner compute to rebuild from all current
+                  clean evidence.
+                </div>
               {:else if faceOperator?.next.action === 'await_more_evidence'}
                 <div class="mt-4 flex items-center gap-2 text-xs/5 font-medium">
                   <Icon icon={mdiLockOutline} size="17" />
@@ -709,7 +715,9 @@
                     : '1 proposal safely held'
                   : faceOperator?.next.action === 'activate_source_pack'
                     ? '1 reviewed proposal ready'
-                    : faceMatching.awaitingReviewLabel}
+                    : faceOperator?.next.action === 'prepare_production_refit'
+                      ? '1 evaluated build awaiting current refit'
+                      : faceMatching.awaitingReviewLabel}
               </dd>
             </div>
             <div class="col-span-2 rounded-2xl bg-gray-50 p-4 dark:bg-immich-dark-gray/40">

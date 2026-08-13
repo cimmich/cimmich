@@ -22,6 +22,7 @@ const reviewGateThresholds = Object.freeze({
 // retaining the frozen holdout gate as the actual activation authority.
 export const sourcePackReviewGateContract = Object.freeze({
   calibrationMinimumDecisionPrecisionPercent: 99,
+  minimumScoreFloor: 0.55,
   ...reviewGateThresholds,
 });
 
@@ -96,7 +97,11 @@ export const deriveSourcePackReviewGate = (
   }
 
   const candidates = [];
-  for (let scoreStep = 0; scoreStep <= 100; scoreStep += 1) {
+  for (
+    let scoreStep = sourcePackReviewGateContract.minimumScoreFloor * 100;
+    scoreStep <= 100;
+    scoreStep += 1
+  ) {
     for (let marginStep = 0; marginStep <= 25; marginStep += 1) {
       const scoreFloor = scoreStep / 100;
       const marginFloor = marginStep / 100;

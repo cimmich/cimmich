@@ -161,24 +161,11 @@ export const curatePrimeSet = (
         face.quality >= minQuality &&
         face.detection >= minDetection),
   );
-  const fallback = normalizedFaces
-    .filter(
-      (face) =>
-        !face.blockedPrime &&
-        face.primeEligible !== false &&
-        face.galleryPermission !== "never",
-    )
-    .sort(
-      (left, right) =>
-        sourceTierPrior(right) - sourceTierPrior(left) ||
-        right.quality - left.quality ||
-        right.detection - left.detection ||
-        left.faceId.localeCompare(right.faceId),
-    );
-  const eligibleSeed =
-    allowed.length >= Math.min(minPrime, fallback.length)
-      ? allowed
-      : fallback.slice(0, Math.max(minPrime, allowed.length));
+  // Prime is biometric authority, not a coverage quota. If a Person has no
+  // clean reference, abstain until clean evidence or an explicit user Prime
+  // pin exists. Filling minPrime from sub-threshold evidence can turn one bad
+  // import into every future suggestion for that Person.
+  const eligibleSeed = allowed;
   if (eligibleSeed.length === 0) {
     return {
       prototype: null,

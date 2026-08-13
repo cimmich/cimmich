@@ -2190,6 +2190,7 @@ export type CimmichFaceMatchingOperatorStatus = CimmichIntegrationStatus['faceMa
       | 'activate_source_pack'
       | 'await_more_evidence'
       | 'hold_source_pack'
+      | 'prepare_production_refit'
       | 'record_operator_review'
       | 'review_suggestions'
       | 'run_recognition';

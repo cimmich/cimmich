@@ -2,6 +2,8 @@ import { digestValue } from "./source-pack.mjs";
 
 export const sourcePackGateSchemaVersion =
   "cimmich.source-pack-gate-evaluation.v1";
+export const sourcePackProductionRefitSchemaVersion =
+  "cimmich.source-pack-production-refit-gate.v1";
 export const sourcePackLifecycleVersion = "cimmich-source-pack-lifecycle-v1";
 export const sourcePackMatcherPolicyVersion = "cimmich-best-prime-v1";
 export const sourcePackConditionRejectionVersion =
@@ -149,6 +151,150 @@ export const validateSourcePackGateReceipt = (receipt, expectedPackId = "") => {
     thresholds,
   };
 };
+
+export const validateSourcePackProductionRefitReceipt = (
+  receipt,
+  expectedPackId = "",
+) => {
+  if (receipt?.schemaVersion !== sourcePackProductionRefitSchemaVersion) {
+    throw new Error(
+      `Production refit schema must be ${sourcePackProductionRefitSchemaVersion}`,
+    );
+  }
+  const packId = String(receipt.packId || "").trim();
+  const evaluationPackId = String(receipt.evaluationPackId || "").trim();
+  if (
+    !packId ||
+    !evaluationPackId ||
+    (expectedPackId && packId !== expectedPackId)
+  ) {
+    throw new Error("Production refit receipt targets the wrong pack");
+  }
+  for (const [label, value] of [
+    ["cohortDigest", receipt.cohortDigest],
+    ["parentGateDigest", receipt.parentGateDigest],
+    ["referenceDigest", receipt.referenceDigest],
+  ]) {
+    if (!sha256Pattern.test(String(value || ""))) {
+      throw new Error(`Production refit ${label} must be SHA-256`);
+    }
+  }
+  if (receipt.authorityScope !== "human-review") {
+    throw new Error(
+      "Production refit cannot carry automatic identity authority",
+    );
+  }
+  if (
+    receipt?.leakage?.sameAssetExcluded !== true ||
+    receipt?.leakage?.queryReferencePairOverlap !== 0
+  ) {
+    throw new Error("Production refit is not same-asset leakage-safe");
+  }
+  const metrics = {
+    automaticWeakPrimeReferences: integer(
+      receipt?.metrics?.automaticWeakPrimeReferences,
+      "metrics.automaticWeakPrimeReferences",
+    ),
+    decisionPrecisionPercent: percentage(
+      receipt?.metrics?.decisionPrecisionPercent,
+      "metrics.decisionPrecisionPercent",
+    ),
+    knownCorrectCoveragePercent: percentage(
+      receipt?.metrics?.knownCorrectCoveragePercent,
+      "metrics.knownCorrectCoveragePercent",
+    ),
+    targetFalseAccepts: integer(
+      receipt?.metrics?.targetFalseAccepts,
+      "metrics.targetFalseAccepts",
+    ),
+    verifiedNegativePairs: integer(
+      receipt?.metrics?.verifiedNegativePairs,
+      "metrics.verifiedNegativePairs",
+    ),
+    verifiedQueries: integer(
+      receipt?.metrics?.verifiedQueries,
+      "metrics.verifiedQueries",
+      { minimum: 1 },
+    ),
+    verifiedUnknowns: integer(
+      receipt?.metrics?.verifiedUnknowns,
+      "metrics.verifiedUnknowns",
+      { minimum: 1 },
+    ),
+  };
+  const thresholds = {
+    maximumAutomaticWeakPrimeReferences: integer(
+      receipt?.thresholds?.maximumAutomaticWeakPrimeReferences,
+      "thresholds.maximumAutomaticWeakPrimeReferences",
+    ),
+    maximumTargetFalseAccepts: integer(
+      receipt?.thresholds?.maximumTargetFalseAccepts,
+      "thresholds.maximumTargetFalseAccepts",
+    ),
+    minimumDecisionPrecisionPercent: percentage(
+      receipt?.thresholds?.minimumDecisionPrecisionPercent,
+      "thresholds.minimumDecisionPrecisionPercent",
+    ),
+    minimumVerifiedNegativePairs: integer(
+      receipt?.thresholds?.minimumVerifiedNegativePairs,
+      "thresholds.minimumVerifiedNegativePairs",
+    ),
+    minimumVerifiedQueries: integer(
+      receipt?.thresholds?.minimumVerifiedQueries,
+      "thresholds.minimumVerifiedQueries",
+      { minimum: 1 },
+    ),
+  };
+  const matcherPolicy = {
+    marginFloor: finite(
+      receipt?.matcherPolicy?.marginFloor,
+      "matcherPolicy.marginFloor",
+    ),
+    policyVersion: sourcePackMatcherPolicyVersion,
+    scoreFloor: finite(
+      receipt?.matcherPolicy?.scoreFloor,
+      "matcherPolicy.scoreFloor",
+    ),
+    scorer: "best_individual_prime",
+  };
+  if (
+    receipt?.matcherPolicy?.policyVersion !== sourcePackMatcherPolicyVersion ||
+    receipt?.matcherPolicy?.scorer !== matcherPolicy.scorer ||
+    matcherPolicy.scoreFloor < 0 ||
+    matcherPolicy.scoreFloor > 1 ||
+    matcherPolicy.marginFloor < 0 ||
+    matcherPolicy.marginFloor > 1
+  ) {
+    throw new Error("Production refit requires the supported matcher policy");
+  }
+  const passed =
+    metrics.automaticWeakPrimeReferences <=
+      thresholds.maximumAutomaticWeakPrimeReferences &&
+    metrics.decisionPrecisionPercent >=
+      thresholds.minimumDecisionPrecisionPercent &&
+    metrics.targetFalseAccepts <= thresholds.maximumTargetFalseAccepts &&
+    metrics.verifiedNegativePairs >= thresholds.minimumVerifiedNegativePairs &&
+    metrics.verifiedQueries >= thresholds.minimumVerifiedQueries;
+  if ((receipt.status === "passed") !== passed) {
+    throw new Error(
+      "Production refit status contradicts its frozen thresholds",
+    );
+  }
+  return {
+    ...receipt,
+    matcherPolicy,
+    metrics,
+    packId,
+    schemaVersion: sourcePackProductionRefitSchemaVersion,
+    status: passed ? "passed" : "failed",
+    thresholds,
+  };
+};
+
+const validateActivatableSourcePackReceipt = (receipt, packId) =>
+  receipt?.schemaVersion === sourcePackProductionRefitSchemaVersion
+    ? validateSourcePackProductionRefitReceipt(receipt, packId)
+    : validateSourcePackGateReceipt(receipt, packId);
 
 export const validateSourcePackConditionRejection = (receipt) => {
   if (
@@ -407,7 +553,16 @@ export const activateSourcePack = async (
     if (candidate.evaluation_status !== "passed") {
       throw new Error("SourcePack activation requires a passed gate receipt");
     }
-    validateSourcePackGateReceipt(candidate.evaluation_summary, packId);
+    if (
+      candidate.evaluation_summary?.schemaVersion ===
+        sourcePackGateSchemaVersion &&
+      candidate.manifest?.evaluationContext?.calibrationEnd
+    ) {
+      throw new Error(
+        "Historical evaluation packs require a current-evidence production refit before activation",
+      );
+    }
+    validateActivatableSourcePackReceipt(candidate.evaluation_summary, packId);
     const active = await tx`
       SELECT pack_id FROM source_pack
       WHERE state = 'active' AND model_family = ${candidate.model_family}
@@ -419,6 +574,17 @@ export const activateSourcePack = async (
       if (row.pack_id !== packId) {
         await tx`UPDATE source_pack SET state = 'retired' WHERE pack_id = ${row.pack_id}`;
       }
+    }
+    if (
+      candidate.evaluation_summary?.schemaVersion ===
+        sourcePackProductionRefitSchemaVersion &&
+      candidate.evaluation_summary.evaluationPackId !== packId
+    ) {
+      await tx`
+        UPDATE source_pack SET state = 'shadow'
+        WHERE pack_id = ${candidate.evaluation_summary.evaluationPackId}
+          AND state = 'proposed'
+      `;
     }
     await tx`UPDATE source_pack SET state = 'active' WHERE pack_id = ${packId}`;
     return {
@@ -455,7 +621,7 @@ export const rollbackSourcePack = async (
     if (!predecessor || predecessor.evaluation_status !== "passed") {
       throw new Error("SourcePack predecessor is not rollback-eligible");
     }
-    validateSourcePackGateReceipt(
+    validateActivatableSourcePackReceipt(
       predecessor.evaluation_summary,
       predecessor.pack_id,
     );

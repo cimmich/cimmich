@@ -3,6 +3,7 @@ import {
   mediaOperatorEnvelopeJsonSchema,
 } from "./media-operator-contract.mjs";
 import { contextEntityContract } from "./context-entities.mjs";
+import { faceMatchingOperatorActions } from "./face-matching-operator.mjs";
 
 export const guidedBootstrapSchemaVersion = "cimmich.guided-bootstrap.v2";
 export const guidedRouteCatalogSchemaVersion =
@@ -1031,17 +1032,7 @@ const definitions = [
           additionalProperties: false,
           properties: {
             action: {
-              enum: [
-                "await_more_evidence",
-                "configure_provider",
-                "enable_enhanced",
-                "run_recognition",
-                "compile_source_pack",
-                "evaluate_source_pack",
-                "record_operator_review",
-                "activate_source_pack",
-                "review_suggestions",
-              ],
+              enum: faceMatchingOperatorActions,
               type: "string",
             },
             reason: boundedString(120),

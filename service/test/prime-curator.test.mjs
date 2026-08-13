@@ -85,6 +85,24 @@ test("curator keeps one clean anchor instead of filling Prime with a weak fallba
   assert.equal(result.metrics.eligibleCount, 1);
 });
 
+test("curator abstains when every automatic reference is below the biometric floor", () => {
+  const rows = [
+    face("quality_zero_import", [1, 0, 0, 0], 0, "old_import", {
+      detection: 0,
+      sourceTierHint: "prime",
+    }),
+    face("weak_detection", [0.99, 0.02, 0, 0], 0.8, "weak_photo", {
+      detection: 0.49,
+      sourceTierHint: "prime",
+    }),
+  ];
+  const result = curatePrimeSet(rows);
+  assert.deepEqual(result.selected, []);
+  assert.equal(result.prototype, null);
+  assert.equal(result.metrics.eligibleCount, 0);
+  assert.equal(result.metrics.sourceCount, 2);
+});
+
 test("curation routes automatic low-quality evidence outside Prime while preserving a manual override", () => {
   const common = {
     configDigest: "config",
@@ -302,13 +320,16 @@ test("capture-context siblings cannot manufacture independent Prime gain", () =>
   );
 });
 
-test("curator retains an explicit larger minimum only when a caller requests it", () => {
+test("an explicit larger minimum cannot pull weak evidence into Prime", () => {
   const rows = [
     face("clean_anchor", [1, 0, 0, 0], 0.9),
     face("weak_fallback", [0.1, 0.99, 0, 0], 0.67),
   ];
   const result = curatePrimeSet(rows, { minPrime: 2 });
-  assert.equal(result.selected.length, 2);
+  assert.deepEqual(
+    result.selected.map((row) => row.faceId),
+    ["clean_anchor"],
+  );
 });
 
 test("future-dated evidence cannot remain in Core even when previously preserved", () => {

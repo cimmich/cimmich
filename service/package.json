@@ -44,6 +44,7 @@
     "rebuild-source-pack": "node bin/run-source-pack-rebuild-worker.mjs",
     "secondary-routing-gate": "node bin/secondary-routing-gate.mjs",
     "source-pack-lifecycle": "node bin/source-pack-lifecycle.mjs",
+    "source-pack-production-refit": "node bin/source-pack-production-refit.mjs",
     "start": "node bin/start.mjs",
     "storage-budget-preflight": "node ../tools/storage_budget_preflight.mjs",
     "format": "prettier --check \"{acceptance,bin,src,test}/**/*.mjs\" \"package*.json\"",

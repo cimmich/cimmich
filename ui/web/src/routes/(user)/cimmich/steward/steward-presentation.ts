@@ -65,6 +65,14 @@ const presentations: Record<CimmichFaceMatchingOperatorStatus['next']['action'],
       'The current reviewed library remains active. Cimmich held its proposed replacement because the candidate recognised materially fewer verified people.',
     title: 'A weaker matching update was safely held.',
   },
+  prepare_production_refit: {
+    actionLabel: 'Review production refit',
+    anchor: 'face-matching',
+    state: 'setup',
+    summary:
+      'The historical safety test passed. Cimmich must now rebuild the usable library from all current clean evidence on owner compute.',
+    title: 'A production refit is waiting.',
+  },
   record_operator_review: {
     actionLabel: 'Review safety result',
     anchor: 'face-matching',

@@ -236,6 +236,28 @@ describe('Face matching owner presentation', () => {
     });
   });
 
+  it('keeps a passed historical test gallery inactive until current-evidence refit', () => {
+    const status = {
+      latestPack: { packId: 'historical-test-pack' },
+      next: {
+        action: 'prepare_production_refit',
+        reason: 'SOURCE_PACK_PRODUCTION_REFIT_REQUIRED',
+      },
+      provider: { configured: true },
+      sourcePack: { activePassed: 1, awaitingReview: 1 },
+      state: 'needs_operator_review',
+    } as CimmichFaceMatchingOperatorStatus;
+    expect(faceMatchingPresentation(status)).toMatchObject({
+      label: 'Production refit needed',
+      ready: false,
+    });
+    expect(referenceLibraryJourney(status)).toMatchObject({
+      activeIndex: 4,
+      complete: false,
+      headline: 'Historical check passed — current-evidence refit required',
+    });
+  });
+
   it('marks every journey step complete once the reviewed library is in use', () => {
     expect(
       referenceLibraryJourney({
