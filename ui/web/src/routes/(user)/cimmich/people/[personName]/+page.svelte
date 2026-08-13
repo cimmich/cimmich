@@ -78,6 +78,18 @@
   } from '$lib/components/cimmich/person-candidate-selection';
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
   import {
+    bucketLabel,
+    cimmichQcLabel,
+    clampPercent,
+    countRows,
+    nameInList,
+    normalizeName,
+    personNamesForPhoto,
+    photoEvidenceLabels,
+    sameName,
+    unresolvedFaceCount,
+  } from '$lib/components/cimmich/person-page-display';
+  import {
     groupPersonPhotos,
     personFaceCropStyle,
     personPhotoDateLabel,
@@ -204,12 +216,11 @@
     mdiViewGridOutline,
   } from '@mdi/js';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
-  import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
+  import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PageData } from './$types';
   interface Props {
     data: PageData;
   }
-  type CountRow = { count: number; label: string };
   type CimmichMoveMode = 'existing' | 'new';
   type PhotoFilter = 'all' | 'body' | 'face' | 'needs';
   type PersonTab = 'identity' | 'maintenance' | 'photos' | 'places' | 'signals' | 'story' | 'with';
@@ -995,94 +1006,6 @@
       .map<CimmichHeroField>(({ fieldKey }) => ({ fieldKey, label: labels[fieldKey], value: values[fieldKey] }));
   });
 
-  const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
-
-  const cimmichQcLabel = (face: CimmichIdentityFace, flag: CimmichIdentityFace['qc_flags'][number]) => {
-    if (flag === 'tiny_face') {
-      return `${Math.min(face.face_pixel_width, face.face_pixel_height)}px`;
-    }
-    if (flag === 'low_detection_confidence') {
-      return 'Low confidence';
-    }
-    if (flag === 'low_quality') {
-      return 'Low quality';
-    }
-    if (flag === 'nearby_face') {
-      return face.nearby_face_count > 1 ? `${face.nearby_face_count} nearby faces` : 'Nearby face';
-    }
-    return `Imported #${face.source_instance_suffix}`;
-  };
-
-  const countRows = (counts: Record<string, number>, limit = 8): CountRow[] =>
-    Object.entries(counts)
-      .map(([label, count]) => ({ count, label }))
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-      .slice(0, limit);
-
-  const bucketLabel = (bucket: string) =>
-    bucket
-      .replace(/^face_/, '')
-      .replace(/^reject_/, '')
-      .replaceAll('_', ' ');
-  const normalizeName = (value: string | undefined) => (value ?? '').trim().replaceAll(/\s+/g, ' ');
-  const sameName = (left: string | undefined, right: string | undefined) =>
-    normalizeName(left).toLowerCase() === normalizeName(right).toLowerCase();
-  const nameInList = (names: string[] | undefined, name: string | undefined) =>
-    (names ?? []).some((row) => sameName(row, name));
-
-  const personNamesForPhoto = (photo: CimmichPersonPhoto) => {
-    const names = new SvelteSet<string>();
-    for (const name of photo.evidence.summary?.sourcePeople ?? []) {
-      names.add(name);
-    }
-    for (const name of photo.evidence.summary?.candidatePeople ?? []) {
-      names.add(name);
-    }
-    for (const face of photo.evidence.faceOverlays ?? []) {
-      if (face.status === 'named') {
-        names.add(face.name);
-      }
-    }
-    for (const body of photo.evidence.bodyOverlays ?? []) {
-      if (body.status === 'linked') {
-        names.add(body.linkedName);
-      }
-    }
-    return [...names].filter((name) => name && name !== person?.name);
-  };
-
-  const unresolvedFaceCount = (photo: CimmichPersonPhoto) =>
-    photo.evidence.faceOverlays?.filter((face) => face.status === 'sidecar_only' || face.status === 'untagged')
-      .length ?? 0;
-
-  const photoEvidenceLabels = (photo: CimmichPersonPhoto) => {
-    const labels: string[] = [];
-    const isSource = photo.evidence.summary?.sourcePeople?.includes(person?.name ?? '');
-    const isCandidate = photo.evidence.summary?.candidatePeople?.includes(person?.name ?? '');
-    const bodyObservationCount = photo.evidence.bodyOverlays?.length ?? 0;
-    if (photo.faceOverlays.length > 0) {
-      labels.push(`${photo.faceOverlays.length} face`);
-    }
-    if (photo.bodyLinks.length > 0) {
-      labels.push(`${photo.bodyLinks.length} body`);
-    } else if (bodyObservationCount > 0) {
-      labels.push(`${bodyObservationCount} body obs`);
-    }
-    if (isSource) {
-      labels.push('source');
-    } else if (isCandidate) {
-      labels.push('candidate');
-    }
-    if (photo.qcStatus && photo.qcStatus !== 'ready_for_cimmich') {
-      labels.push(photo.qcStatus.replaceAll('_', ' '));
-    }
-    const unresolved = unresolvedFaceCount(photo);
-    if (unresolved > 0) {
-      labels.push(`${unresolved} unresolved`);
-    }
-    return labels;
-  };
-
   const filteredPhotos = $derived.by(() => {
     const photos = person?.photos ?? [];
     if (photoFilter === 'face') {
@@ -1110,7 +1033,7 @@
   const peopleWith = $derived.by(() => {
     const counts: Record<string, number> = {};
     for (const photo of person?.photos ?? []) {
-      for (const name of personNamesForPhoto(photo)) {
+      for (const name of personNamesForPhoto(photo, person?.name)) {
         counts[name] = (counts[name] ?? 0) + 1;
       }
     }
@@ -5732,7 +5655,7 @@
                     class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 via-black/55 to-transparent px-2 pt-10 pb-2 text-left text-white"
                   >
                     <span class="block truncate text-[11px]/4 font-semibold"
-                      >{photoEvidenceLabels(photo).slice(0, 3).join(' · ') || 'context'}</span
+                      >{photoEvidenceLabels(photo, person?.name).slice(0, 3).join(' · ') || 'context'}</span
                     >
                     <span class="mt-0.5 line-clamp-2 block text-[11px]/4 text-white/85">
                       {photo.normalCaption || photo.enhancedCaption || photo.filename}

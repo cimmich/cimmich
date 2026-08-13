@@ -9,12 +9,14 @@ import type { CimmichPersonAssetProjection } from './cimmich-person-asset.types'
 import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-coverage.types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
+import type { CimmichSmartSplitRecommendations } from './cimmich-smart-split.types';
 
 export * from './cimmich-asset-correction.service';
 export * from './cimmich-asset-label.service';
 export * from './cimmich-bulk-album-operation.service';
 export * from './cimmich-local-ai.service';
 export * from './cimmich-deferred-face-review';
+export type { CimmichSmartSplitGroup, CimmichSmartSplitRecommendations } from './cimmich-smart-split.types';
 export type { CimmichExploreFacet, CimmichExploreFacetResult, CimmichExploreFilters } from './cimmich-explore.service';
 
 export type {
@@ -1192,47 +1194,6 @@ export type CimmichIdentityFaceSummary = {
 
 export type CimmichIdentityFacePage = CimmichPersonProjectionPage<CimmichIdentityFace> & {
   summary: CimmichIdentityFaceSummary;
-};
-
-export type CimmichSmartSplitGroup = {
-  cohesionFloor: number | null;
-  cohesionMedian: number | null;
-  faceIds: string[];
-  groupId: string;
-  kind: 'clear' | 'unclear';
-  label: string;
-  nearestOtherSimilarity: number | null;
-  physicalFaceCount: number;
-  reason: 'conservative_abstention' | 'embedding_separation' | 'same_photo_separation';
-  representativeFaceId: string | null;
-  samePhotoSeparations: number;
-  separationMargin: number | null;
-};
-
-export type CimmichSmartSplitRecommendations = {
-  automaticIdentityAuthority: 'none';
-  available: boolean;
-  groups: CimmichSmartSplitGroup[];
-  personId: string;
-  policy: {
-    clearDistanceCeiling: number;
-    clearDistanceMargin: number;
-    edgeEvidenceFloor: number;
-    minimumGroupSize: number;
-    minimumSamePhotoSeparations: number;
-    pairGroupCohesionFloor: number;
-    samePhotoSeparationRatio: number;
-    strongLinkFloor: number;
-  };
-  schemaVersion: 'cimmich.smart-split-recommendations.v1';
-  sourcePackId?: string;
-  summary: {
-    clearGroupCount: number;
-    embeddedPhysicalFaceCount: number;
-    physicalFaceCount: number;
-    unclearFaceCount: number;
-  };
-  unavailableReason: 'safe_size_limit' | 'source_pack_unavailable' | null;
 };
 
 export type CimmichMergePreview = {
