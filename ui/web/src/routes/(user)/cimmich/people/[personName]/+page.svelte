@@ -597,6 +597,9 @@
   };
   const visibleCimmichCandidates = $derived(preparePersonCandidates(cimmichCandidates));
   const cimmichIdentityAuditFaceIds = $derived(new Set(cimmichIdentityAuditItems.map(({ faceId }) => faceId)));
+  const cimmichIdentityAuditPhysicalFaceIds = $derived(
+    new Set(cimmichIdentityAuditItems.map(({ physicalFaceId }) => physicalFaceId)),
+  );
   const cimmichCandidateReviewItems = $derived(personCandidateReviewItems(visibleCimmichCandidates));
   const cimmichPersonReviewItems = $derived.by<CimmichPersonReviewItem[]>(() => {
     const merged = new SvelteMap<string, CimmichPersonReviewItem>(
@@ -628,11 +631,15 @@
   const cimmichSamePhotoCollisionCount = $derived(cimmichSamePhotoCollisionFaceIds.size);
   const visibleCimmichMachineSuggestions = $derived(
     machineSuggestionsForPerson(cimmichMachineSuggestions, cimmichPerson?.person_id ?? '', cimmichCandidates).filter(
-      ({ face_id }) => !cimmichIdentityAuditFaceIds.has(face_id),
+      ({ face_id, physical_face_id }) =>
+        !cimmichIdentityAuditFaceIds.has(face_id) &&
+        (!physical_face_id || !cimmichIdentityAuditPhysicalFaceIds.has(physical_face_id)),
     ),
   );
   const cimmichCandidateOnlyReviewItems = $derived(
-    cimmichCandidateReviewItems.filter(({ faceId }) => !cimmichIdentityAuditFaceIds.has(faceId)),
+    cimmichCandidateReviewItems.filter(
+      ({ physicalFaceId }) => !cimmichIdentityAuditPhysicalFaceIds.has(physicalFaceId),
+    ),
   );
   const cimmichKnownClusterPhotoCount = $derived(
     cimmichKnownClusterSuggestions.reduce((total, item) => total + item.evidence.photoCount, 0),

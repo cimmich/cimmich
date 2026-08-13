@@ -113,6 +113,9 @@ describe('Person profile layout', () => {
     expect(source).toContain("title: isNewMatch ? 'New matches' : 'Possible mistags'");
     expect(source).toContain('const cimmichCandidateReviewItems');
     expect(source).toContain('const cimmichPersonReviewItems');
+    expect(source).toContain('const cimmichIdentityAuditPhysicalFaceIds');
+    expect(source).toContain('!cimmichIdentityAuditPhysicalFaceIds.has(physicalFaceId)');
+    expect(source).toContain('!cimmichIdentityAuditPhysicalFaceIds.has(physical_face_id)');
     expect(source).toContain('const cimmichSamePhotoCollisionGroups');
     expect(source).toContain('Multiple matches in one photo');
     expect(source).toContain('Current accepted-Face comparison');
