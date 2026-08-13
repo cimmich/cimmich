@@ -23,10 +23,10 @@ test("Smart split recommends separated groups and keeps outliers in Unclear", ()
     personId: "mixed-person",
     nodes: [
       node("a1", "shared-1"),
-      node("a2", "asset-a2"),
+      node("a2", "shared-2"),
       node("a3", "asset-a3"),
       node("b1", "shared-1"),
-      node("b2", "asset-b2"),
+      node("b2", "shared-2"),
       node("b3", "asset-b3"),
       node("x", "asset-x", false),
     ],
@@ -36,7 +36,7 @@ test("Smart split recommends separated groups and keeps outliers in Unclear", ()
       edge("b1", "b2", 0.79),
       edge("b2", "b3", 0.76),
       edge("a1", "b1", 0.61, true),
-      edge("a2", "b2", 0.2),
+      edge("a2", "b2", 0.58, true),
     ],
   });
   assert.equal(result.automaticIdentityAuthority, "none");
@@ -58,10 +58,10 @@ test("same-photo constraints prevent a high-similarity bridge from fusing people
     personId: "lookalikes",
     nodes: [
       node("a1", "shared"),
-      node("a2", "asset-a"),
+      node("a2", "shared-2"),
       node("a3", "asset-a3"),
       node("b1", "shared"),
-      node("b2", "asset-b"),
+      node("b2", "shared-2"),
       node("b3", "asset-b3"),
     ],
     edges: [
@@ -70,6 +70,7 @@ test("same-photo constraints prevent a high-similarity bridge from fusing people
       edge("b1", "b2", 0.78),
       edge("b2", "b3", 0.76),
       edge("a1", "b1", 0.75, true),
+      edge("a2", "b2", 0.7, true),
     ],
   });
   assert.equal(result.summary.clearGroupCount, 2);

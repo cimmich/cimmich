@@ -1219,7 +1219,9 @@ export type CimmichSmartSplitRecommendations = {
     clearDistanceMargin: number;
     edgeEvidenceFloor: number;
     minimumGroupSize: number;
+    minimumSamePhotoSeparations: number;
     pairGroupCohesionFloor: number;
+    samePhotoSeparationRatio: number;
     strongLinkFloor: number;
   };
   schemaVersion: 'cimmich.smart-split-recommendations.v1';
