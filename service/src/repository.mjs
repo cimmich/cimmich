@@ -3043,7 +3043,8 @@ export const createCimmichRepository = (
           AND accepted_face.state = 'valid'
         WHERE accepted.state = 'accepted'
       ), query_inventory AS MATERIALIZED (
-        SELECT fo.face_id, fo.asset_id, fo.box_x, fo.box_y, fo.box_w, fo.box_h,
+        SELECT fo.face_id, query_physical.physical_face_id, fo.asset_id,
+          fo.box_x, fo.box_y, fo.box_w, fo.box_h,
           fo.detection_confidence::float8, fo.quality_measurements,
           asset.capture_time, asset.media_kind, asset.width, asset.height,
           embedding.embedding_id,
@@ -3063,6 +3064,9 @@ export const createCimmichRepository = (
           coalesce(query_context.context_ids, ARRAY[]::text[]) AS query_context_ids,
           coalesce(nullif(fo.quality_measurements->>'quality_score', '')::float8, 0) AS quality_score
         FROM face_observation fo
+        JOIN current_face_physical_member query_physical
+          ON query_physical.face_id = fo.face_id
+          AND query_physical.reconciliation_state <> 'conflict'
         JOIN current_source_pack pack
           ON pack.evaluation_status = 'passed'
           AND pack.model_family = ${matchingProvider.modelFamily}
@@ -3250,7 +3254,8 @@ export const createCimmichRepository = (
           individual.individual_top3
         FROM prime_face_scores individual
       ), person_scores AS MATERIALIZED (
-        SELECT query.face_id, query.asset_id, query.box_x, query.box_y, query.box_w, query.box_h,
+        SELECT query.face_id, query.physical_face_id, query.asset_id,
+          query.box_x, query.box_y, query.box_w, query.box_h,
           query.detection_confidence, query.quality_measurements, query.quality_score,
           query.capture_time, query.media_kind, query.width, query.height,
           query.config_digest, query.policy_margin_floor, query.policy_score_floor,
@@ -3323,6 +3328,7 @@ export const createCimmichRepository = (
               capture_time: row.capture_time,
               detection_confidence: Number(row.detection_confidence),
               face_id: row.face_id,
+              physical_face_id: row.physical_face_id,
               height: row.height,
               media_kind: row.media_kind,
               provider_config_digest: row.config_digest,

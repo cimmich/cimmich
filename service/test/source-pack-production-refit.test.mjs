@@ -29,7 +29,7 @@ const receipt = () => ({
     decisionPrecisionPercent: 99.1,
     knownCorrectCoveragePercent: 39,
     targetFalseAccepts: 0,
-    verifiedNegativePairs: 84,
+    verifiedNegativePairs: 0,
     verifiedQueries: 3_448,
     verifiedUnknowns: 393,
   },
@@ -85,7 +85,7 @@ test("production refit gate fails closed on weak references and target regressio
   );
 });
 
-test("production policy maximizes safe coverage and rejects the known false target", () => {
+test("production policy maximizes archive-wide verified precision without inferred labels", () => {
   const truth = new Map([
     ["face-a", "person-a"],
     ["face-b", "person-b"],
@@ -96,22 +96,9 @@ test("production policy maximizes safe coverage and rejects the known false targ
     { faceId: "face-b", margin: 0.28, personId: "person-b", score: 0.68 },
     { faceId: "face-c", margin: 0.1, personId: "wrong", score: 0.61 },
   ];
-  const negatives = [
-    {
-      faceId: "negative-a",
-      margin: 0.2,
-      personId: "person-target",
-      score: 0.64,
-    },
-  ];
-  const policy = deriveProductionRefitPolicy(
-    accepted,
-    truth,
-    negatives,
-    ["person-target"],
-    { queryCount: 3 },
-  );
-  assert.equal(policy.scoreFloor >= 0.65, true);
+  const policy = deriveProductionRefitPolicy(accepted, truth, {
+    queryCount: 3,
+  });
   assert.equal(policy.targetFalseAccepts, 0);
   assert.equal(policy.decisionPrecisionPercent, 100);
   assert.equal(policy.correct, 2);

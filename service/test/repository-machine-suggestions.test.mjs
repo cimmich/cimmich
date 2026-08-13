@@ -286,6 +286,8 @@ test("simultaneous machine review consumers share one best-Prime scoring snapsho
   );
   assert.match(statement, /runtime_recognized_at IS NOT NULL/);
   assert.match(statement, /visible_active_assets AS MATERIALIZED/);
+  assert.match(statement, /JOIN current_face_physical_member query_physical/);
+  assert.match(statement, /query\.physical_face_id/);
   assert.match(statement, /accepted_people_by_asset AS MATERIALIZED/);
   assert.match(statement, /query_frontier AS MATERIALIZED/);
   assert.match(
@@ -416,6 +418,7 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
     detection_confidence: 0.9 - index * 0.01,
     display_name: `Person ${index}`,
     face_id: `face-${index}`,
+    physical_face_id: `physical-face-${index}`,
     height: 1000,
     individual_top3: 0.8,
     lead_can_suggest: true,
@@ -479,6 +482,7 @@ test("machine suggestion limits truncate one stable ranked projection shared wit
     large.slice(0, 3).map((item) => item.face_id),
   );
   assert.equal(large.length, 4);
+  assert.equal(large[0].physical_face_id, "physical-face-1");
   assert.deepEqual(
     personTwo.map((item) => item.face_id),
     ["face-2"],

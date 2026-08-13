@@ -30,8 +30,6 @@ const {
   clusterConsensusFloor,
   clusterMinimumVotes,
   clusterSampleLimit,
-  knownPersonMarginFloor,
-  knownPersonScoreFloor,
 } = possiblePeopleClassificationContract;
 
 const typedError = (message, statusCode, code, details) =>
@@ -485,9 +483,17 @@ export const createPossiblePeopleStore = (
           409,
           "POSSIBLE_PEOPLE_SNAPSHOT_EMPTY",
         );
+      const [activePack] = await tx`
+        SELECT pack_id FROM current_source_pack
+        WHERE evaluation_status = 'passed'
+        ORDER BY pack_id LIMIT 1
+      `;
+      const classificationBinding = activePack
+        ? `${classificationVersion}:${activePack.pack_id}`
+        : classificationVersion;
       if (
         run.classification_state === "completed" &&
-        run.classification_version === classificationVersion
+        run.classification_version === classificationBinding
       ) {
         return completeCommand(tx, stableCommandId, {
           changed: false,
@@ -930,8 +936,6 @@ export const possiblePeopleContract = Object.freeze({
   clusterConsensusFloor,
   clusterMinimumVotes,
   clusterSampleLimit,
-  knownPersonMarginFloor,
-  knownPersonScoreFloor,
   neighbourLimit,
   schemaVersion,
   seedLimit,

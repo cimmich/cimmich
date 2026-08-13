@@ -35,11 +35,6 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
         "POSSIBLE_PEOPLE_RUN_NOT_FOUND",
       );
     }
-    if (
-      run.classification_state === "completed" &&
-      run.classification_version === classificationVersion
-    )
-      return;
     const packs = await tx`
       SELECT pack.pack_id, pack.model_family, pack.model_version,
         pack.config_digest,
@@ -69,12 +64,18 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
       );
     }
     const pack = packs[0];
+    const classificationBinding = `${classificationVersion}:${pack.pack_id}`;
+    if (
+      run.classification_state === "completed" &&
+      run.classification_version === classificationBinding
+    )
+      return;
     const knownPersonScoreFloor = Number(pack.score_floor);
     const knownPersonMarginFloor = Number(pack.margin_floor);
     await tx`
       UPDATE possible_person_run
       SET classification_state = 'running',
-        classification_version = ${classificationVersion},
+        classification_version = ${classificationBinding},
         classification_started_at = now(),
         classification_completed_at = NULL,
         classification_error_code = NULL,
@@ -123,7 +124,7 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
           'rejectedPersonIds',
           coalesce(suggestion_evidence->'rejectedPersonIds', '[]'::jsonb)
         ),
-        classification_version = ${classificationVersion}, classified_at = now()
+        classification_version = ${classificationBinding}, classified_at = now()
       WHERE possible_person_run_id = ${runId} AND status = 'open'
     `;
     if (Number(referenceCount) > 0) {
@@ -266,7 +267,7 @@ export const classifyPossiblePeopleRun = async (sql, runId) => {
             'clusterSampleLimit', ${clusterSampleLimit}::int,
             'classificationMode', 'distributed_member_consensus'
           ),
-          classification_version = ${classificationVersion}, classified_at = now()
+          classification_version = ${classificationBinding}, classified_at = now()
         FROM eligible
         WHERE cluster.cluster_id = eligible.cluster_id
       `;

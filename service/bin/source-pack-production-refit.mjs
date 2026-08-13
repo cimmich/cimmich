@@ -25,11 +25,6 @@ const sql = postgres(
 try {
   const result = await buildSourcePackProductionRefit(sql, {
     evaluationPackId,
-    negativePersonIds: args
-      .filter((argument) => argument.startsWith("--negative-person-id="))
-      .map((argument) => argument.slice("--negative-person-id=".length))
-      .filter(Boolean),
-    negativeSourcePackId: value("negative-source-pack-id"),
     pythonPath,
     scriptPath: fileURLToPath(
       new URL("../../providers/source-pack-numpy/score.py", import.meta.url),

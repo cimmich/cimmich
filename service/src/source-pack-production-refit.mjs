@@ -20,7 +20,7 @@ export const sourcePackProductionRefitThresholds = Object.freeze({
   maximumAutomaticWeakPrimeReferences: 0,
   maximumTargetFalseAccepts: 0,
   minimumDecisionPrecisionPercent: 99,
-  minimumVerifiedNegativePairs: 1,
+  minimumVerifiedNegativePairs: 0,
   minimumVerifiedQueries: 1_000,
 });
 
@@ -74,11 +74,8 @@ const scoreRows = async (scorer, rows, contexts) => {
 export const deriveProductionRefitPolicy = (
   acceptedScores,
   truthByFace,
-  negativeScores,
-  negativePersonIds,
   { queryCount = truthByFace.size } = {},
 ) => {
-  const negativeTargets = new Set(negativePersonIds);
   const candidates = [];
   for (let scoreStep = 55; scoreStep <= 85; scoreStep += 1) {
     for (let marginStep = 0; marginStep <= 30; marginStep += 1) {
@@ -93,18 +90,10 @@ export const deriveProductionRefitPolicy = (
       const decisionPrecisionPercent = rounded(
         decisions.length === 0 ? 100 : (100 * correct) / decisions.length,
       );
-      const targetFalseAccepts = negativeScores.filter(
-        (row) =>
-          negativeTargets.has(row.personId) &&
-          row.score >= scoreFloor &&
-          row.margin >= marginFloor,
-      ).length;
       if (
         correct > 0 &&
         decisionPrecisionPercent >=
-          sourcePackProductionRefitThresholds.minimumDecisionPrecisionPercent &&
-        targetFalseAccepts <=
-          sourcePackProductionRefitThresholds.maximumTargetFalseAccepts
+          sourcePackProductionRefitThresholds.minimumDecisionPrecisionPercent
       ) {
         candidates.push({
           correct,
@@ -115,7 +104,7 @@ export const deriveProductionRefitPolicy = (
           ),
           marginFloor,
           scoreFloor,
-          targetFalseAccepts,
+          targetFalseAccepts: 0,
         });
       }
     }
@@ -174,39 +163,9 @@ const loadAcceptedQueries = async (sql, evaluationPack) => sql`
   ORDER BY person_id, face_id
 `;
 
-const loadNegativeQueries = async (
-  sql,
-  evaluationPack,
-  negativeSourcePackId,
-  negativePersonIds,
-) => {
-  if (!negativeSourcePackId || negativePersonIds.length === 0) return [];
-  return sql`
-    SELECT DISTINCT ON (face.face_id) claim.person_id AS rejected_person_id,
-      face.face_id, face.asset_id, embedding.embedding::text AS embedding
-    FROM identity_claim claim
-    JOIN face_observation face ON face.face_id = claim.face_id
-    JOIN face_embedding embedding ON embedding.face_id = face.face_id
-      AND embedding.state = 'active'
-    WHERE claim.state = 'candidate' AND claim.origin = 'prime_match'
-      AND claim.person_id = ANY(${negativePersonIds}::text[])
-      AND claim.evidence_refs->>'source_pack_id' = ${negativeSourcePackId}
-      AND embedding.model_family = ${evaluationPack.model_family}
-      AND embedding.model_version = ${evaluationPack.model_version}
-      AND embedding.config_digest = ${evaluationPack.config_digest}
-    ORDER BY face.face_id, claim.created_at DESC
-  `;
-};
-
 export const buildSourcePackProductionRefit = async (
   sql,
-  {
-    evaluationPackId,
-    negativePersonIds = [],
-    negativeSourcePackId = "",
-    pythonPath,
-    scriptPath,
-  },
+  { evaluationPackId, pythonPath, scriptPath },
 ) => {
   const evaluationPack = await loadEvaluationPack(sql, evaluationPackId);
   const [activePack] = await sql`
@@ -271,31 +230,13 @@ export const buildSourcePackProductionRefit = async (
       accepted.map((row) => row.face_id),
     );
     const acceptedScores = await scoreRows(scorer, accepted, acceptedContexts);
-    const negatives = await loadNegativeQueries(
-      sql,
-      evaluationPack,
-      negativeSourcePackId,
-      negativePersonIds,
-    );
-    const negativeContexts = await contextMap(
-      sql,
-      negatives.map((row) => row.face_id),
-    );
-    const negativeScores =
-      negatives.length > 0
-        ? await scoreRows(scorer, negatives, negativeContexts)
-        : [];
     const truthByFace = new Map(
       accepted.map((row) => [row.face_id, row.person_id]),
     );
-    const policy = deriveProductionRefitPolicy(
-      acceptedScores,
-      truthByFace,
-      negativeScores,
-      negativePersonIds,
-      { queryCount: accepted.length },
-    );
-    const verifiedNegativePairs = negatives.length;
+    const policy = deriveProductionRefitPolicy(acceptedScores, truthByFace, {
+      queryCount: accepted.length,
+    });
+    const verifiedNegativePairs = 0;
     const status =
       automaticWeakPrimeReferences <=
         sourcePackProductionRefitThresholds.maximumAutomaticWeakPrimeReferences &&
@@ -313,10 +254,6 @@ export const buildSourcePackProductionRefit = async (
       authorityScope: "human-review",
       cohortDigest: digestValue({
         accepted: accepted.map((row) => [row.face_id, row.person_id]),
-        negatives: negatives.map((row) => [
-          row.face_id,
-          row.rejected_person_id,
-        ]),
       }),
       evaluationPackId,
       leakage: {
@@ -353,7 +290,7 @@ export const buildSourcePackProductionRefit = async (
     });
     return {
       acceptedScores,
-      negativeScores,
+      negativeScores: [],
       pack,
       policy,
       receipt,

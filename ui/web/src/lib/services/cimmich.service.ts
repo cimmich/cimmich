@@ -1692,6 +1692,7 @@ export type CimmichMachineSuggestion = {
   height: number;
   margin: number | null;
   media_kind: 'image' | 'video';
+  physical_face_id?: string;
   quality_measurements: Record<string, number | string>;
   quality_score: number;
   review_reason: 'close_alternatives' | 'strong_lead' | 'weak_face';

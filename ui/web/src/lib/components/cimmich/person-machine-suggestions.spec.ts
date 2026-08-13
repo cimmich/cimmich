@@ -28,6 +28,7 @@ const suggestion = (
   height: 1000,
   margin: 0.3,
   media_kind: 'image',
+  physical_face_id: `physical-${faceId}`,
   quality_measurements: {},
   quality_score: 0.9,
   review_reason: 'strong_lead',
@@ -55,7 +56,9 @@ describe('person machine suggestions', () => {
 
   it('shows only lead matches for this Person and removes persisted duplicates', () => {
     expect(
-      machineSuggestionsForPerson(suggestions, 'person-maya', [{ face_id: 'face-3' }]).map((item) => item.face_id),
+      machineSuggestionsForPerson(suggestions, 'person-maya', [
+        { face_id: 'face-alias', physical_face_id: 'physical-face-3' },
+      ]).map((item) => item.face_id),
     ).toEqual(['face-1']);
   });
 });

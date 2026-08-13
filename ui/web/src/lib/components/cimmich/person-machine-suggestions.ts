@@ -14,10 +14,14 @@ export const machineSuggestionCountsByLead = (suggestions: CimmichMachineSuggest
 export const machineSuggestionsForPerson = (
   suggestions: CimmichMachineSuggestion[],
   personId: string,
-  candidates: Pick<CimmichIdentityCandidate, 'face_id'>[] = [],
+  candidates: Pick<CimmichIdentityCandidate, 'face_id' | 'physical_face_id'>[] = [],
 ) => {
   const persistedFaceIds = new Set(candidates.map((candidate) => candidate.face_id));
+  const persistedPhysicalFaceIds = new Set(candidates.map((candidate) => candidate.physical_face_id));
   return suggestions.filter(
-    (suggestion) => suggestion.candidates[0]?.person_id === personId && !persistedFaceIds.has(suggestion.face_id),
+    (suggestion) =>
+      suggestion.candidates[0]?.person_id === personId &&
+      !persistedFaceIds.has(suggestion.face_id) &&
+      (!suggestion.physical_face_id || !persistedPhysicalFaceIds.has(suggestion.physical_face_id)),
   );
 };
