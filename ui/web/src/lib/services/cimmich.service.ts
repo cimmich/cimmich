@@ -2839,7 +2839,8 @@ export const getCimmichPeople = async (limit = 500, query = '', options: { prese
   if (options.presentation !== undefined) {
     search.set('presentation', options.presentation ? '1' : '0');
   }
-  const result = await request<{ items: CimmichPerson[] }>(`/v1/people?${search.toString()}`);
+  const path = `/v1/people?${search.toString()}`;
+  const result = await coalesceCimmichRequest(path, () => request<{ items: CimmichPerson[] }>(path));
   return result.items;
 };
 
@@ -3718,7 +3719,9 @@ export const getCimmichPersonCandidates = async (personId: string, limit = 5000)
 };
 
 export const getCimmichPersonCandidateSummary = () =>
-  request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary');
+  coalesceCimmichRequest('/v1/people/candidate-summary', () =>
+    request<CimmichPersonCandidateSummary>('/v1/people/candidate-summary'),
+  );
 const writeCimmichPersonCandidates = <T>(personId: string, claimIds: string[], action: 'accept' | 'reject') =>
   request<T>(
     `/v1/people/${encodeURIComponent(personId)}/candidates/bulk-${action}`,

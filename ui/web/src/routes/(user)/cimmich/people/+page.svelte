@@ -21,6 +21,7 @@
     type PeopleSortState,
     type PeopleViewMode,
   } from '$lib/components/cimmich/people-presentation';
+  import { readPeopleWorkspaceCache, writePeopleWorkspaceCache } from '$lib/components/cimmich/people-workspace-cache';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { Route } from '$lib/route';
@@ -333,29 +334,47 @@
   const cimmichPresentationFaceCropStyle = (media: NonNullable<CimmichPerson['presentationFace']>) =>
     cimmichPresentationSquareCropStyle(media, 1);
 
-  const loadCimmichReview = async () => {
+  const peopleWorkspaceCacheKey = () => cimmichVisibilityManager.viewingMode;
+
+  const persistPeopleWorkspace = () =>
+    writePeopleWorkspaceCache(peopleWorkspaceCacheKey(), {
+      candidateSummary: cimmichCandidateSummary,
+      candidates: cimmichCandidates,
+      people: cimmichPeople,
+    });
+
+  const loadCimmichReview = async (preserveCurrent = false) => {
     const generation = ++cimmichLoadGeneration;
-    cimmichLoaded = false;
-    cimmichCandidates = [];
-    cimmichCandidateSummary = null;
-    cimmichPeople = [];
+    if (!preserveCurrent) {
+      cimmichLoaded = false;
+      cimmichCandidates = [];
+      cimmichCandidateSummary = null;
+      cimmichPeople = [];
+    }
     try {
-      const [candidates, candidateSummary, identities] = await Promise.all([
-        getCimmichIdentityCandidates(5),
-        getCimmichPersonCandidateSummary(),
-        getCimmichPeople(500, '', { presentation: true }),
-      ]);
+      const identities = await getCimmichPeople(500, '', { presentation: true });
       if (generation !== cimmichLoadGeneration) {
         return;
       }
-      cimmichCandidates = candidates;
-      cimmichCandidateSummary = candidateSummary;
       cimmichPeople = identities.filter((identity) => identity.subject_kind === 'person');
       if (!initialViewChosen) {
         viewMode = chooseInitialPeopleView(cimmichPeople);
         initialViewChosen = true;
       }
       cimmichError = '';
+      persistPeopleWorkspace();
+      void Promise.all([getCimmichIdentityCandidates(5), getCimmichPersonCandidateSummary()])
+        .then(([candidates, candidateSummary]) => {
+          if (generation === cimmichLoadGeneration) {
+            cimmichCandidates = candidates;
+            cimmichCandidateSummary = candidateSummary;
+            persistPeopleWorkspace();
+          }
+        })
+        .catch(() => {
+          // The People grid is independently useful. Review counts can retry
+          // on the next visit without holding or replacing the primary view.
+        });
     } catch (error) {
       if (generation !== cimmichLoadGeneration) {
         return;
@@ -420,13 +439,33 @@
 
   $effect(() => {
     void cimmichVisibilityManager.version;
+    const cached = readPeopleWorkspaceCache(peopleWorkspaceCacheKey());
+    if (cached) {
+      cimmichPeople = cached.people;
+      cimmichCandidates = cached.candidates;
+      cimmichCandidateSummary = cached.candidateSummary;
+      cimmichLoaded = true;
+      cimmichError = '';
+      if (!initialViewChosen) {
+        viewMode = chooseInitialPeopleView(cimmichPeople);
+        initialViewChosen = true;
+      }
+      void loadCimmichReview(true);
+      return;
+    }
     void loadCimmichReview();
   });
 
   $effect(() => {
     void cimmichVisibilityManager.version;
     void cimmichExploreFilterKey(exploreFilters);
-    void loadExploreFacets();
+    if (cimmichExploreFilterCount(exploreFilters) > 0) {
+      void loadExploreFacets();
+    } else {
+      exploreResult = null;
+      exploreError = '';
+      exploreLoading = false;
+    }
   });
 </script>
 
@@ -544,6 +583,7 @@
         filters={exploreFilters}
         loading={exploreLoading}
         onchange={setExploreFilters}
+        onexpand={() => void loadExploreFacets()}
         result={exploreResult}
       />
     {/if}
@@ -723,7 +763,9 @@
                           ? cimmichPresentationFaceCropStyle(person.presentationFace)
                           : cimmichPersonCropStyle(person)}
                         alt={person.display_name}
+                        decoding="async"
                         draggable="false"
+                        loading="lazy"
                       />
                     {:else}
                       <span
@@ -758,7 +800,9 @@
                           ? cimmichPresentationBodyCropStyle(person.presentationBody)
                           : cimmichBodyPreviewCropStyle(person.bodyPreview!)}
                         alt=""
+                        decoding="async"
                         draggable="false"
+                        loading="lazy"
                       />
                     </span>
                   {/if}

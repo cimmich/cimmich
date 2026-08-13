@@ -7,6 +7,7 @@ import {
   type CimmichPersonAssetPage,
 } from '$lib/services/cimmich.service';
 import {
+  cimmichExploreFilterCount,
   cimmichExploreFilterKey,
   cimmichExploreFiltersFromUrl,
   cimmichExploreFiltersUrl,
@@ -17,6 +18,7 @@ type ApplyAssets = (page: CimmichPersonAssetPage) => void;
 
 export class CimmichPersonExploreController {
   error = $state('');
+  facetsLoading = $state(false);
   filters = $state<CimmichExploreFilters>(emptyCimmichExploreFilters());
   loadedKey = $state('');
   loading = $state(false);
@@ -43,16 +45,15 @@ export class CimmichPersonExploreController {
     this.loading = true;
     this.error = '';
     try {
-      const [result, assetsPage] = await Promise.all([
-        getCimmichExploreFacets(filters, personId),
-        getCimmichPersonAssetsPage(personId, 120, undefined, undefined, filters),
-      ]);
+      const assetsPage = await getCimmichPersonAssetsPage(personId, 120, undefined, undefined, filters);
       if (generation !== this.#generation || filterKey !== this.key) {
         return;
       }
-      this.result = result;
       this.#applyAssets(assetsPage);
       this.loadedKey = filterKey;
+      if (cimmichExploreFilterCount(filters) > 0) {
+        void this.loadFacets(personId);
+      }
     } catch (error) {
       if (generation === this.#generation) {
         this.error = error instanceof Error ? error.message : 'Unable to filter this Person';
@@ -60,6 +61,27 @@ export class CimmichPersonExploreController {
     } finally {
       if (generation === this.#generation) {
         this.loading = false;
+      }
+    }
+  };
+
+  loadFacets = async (personId: string) => {
+    const generation = this.#generation;
+    const filters = this.filters;
+    const filterKey = cimmichExploreFilterKey(filters);
+    this.facetsLoading = true;
+    try {
+      const result = await getCimmichExploreFacets(filters, personId);
+      if (generation === this.#generation && filterKey === this.key) {
+        this.result = result;
+      }
+    } catch (error) {
+      if (generation === this.#generation) {
+        this.error = error instanceof Error ? error.message : 'Unable to load Explore options';
+      }
+    } finally {
+      if (generation === this.#generation) {
+        this.facetsLoading = false;
       }
     }
   };

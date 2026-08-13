@@ -676,6 +676,7 @@ test("Person assets resolve scoped associations without expanding person_assets"
     },
   ]);
   assert.match(statement, /associations AS MATERIALIZED/);
+  assert.match(statement, /selected_assets AS MATERIALIZED/);
   assert.match(statement, /active_heads AS MATERIALIZED/);
   assert.match(statement, /active_face_buckets AS MATERIALIZED/);
   assert.match(statement, /same_person_detector_faces AS MATERIALIZED/);
@@ -702,6 +703,16 @@ test("Person assets resolve scoped associations without expanding person_assets"
     /detected_identity\.state IN \('accepted', 'superseded'\)/,
   );
   assert.match(statement, /FROM current_context_asset context_link/);
+  assert.ok(
+    statement.lastIndexOf("FROM current_asset_label_membership") >
+      statement.indexOf("selected_assets AS MATERIALIZED"),
+    "label enrichment must run after the bounded page is selected",
+  );
+  assert.ok(
+    statement.lastIndexOf("FROM current_context_asset context_link") >
+      statement.indexOf("selected_assets AS MATERIALIZED"),
+    "context enrichment must run after the bounded page is selected",
+  );
   assert.match(
     statement,
     /projected_assets\.capture_time > now\(\) \+ interval '24 hours'/,

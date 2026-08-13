@@ -3411,8 +3411,9 @@
           <CimmichExploreFilters
             error={cimmichExplore.error}
             filters={cimmichExplore.filters}
-            loading={cimmichExplore.loading}
+            loading={cimmichExplore.loading || cimmichExplore.facetsLoading}
             onchange={cimmichExplore.setFilters}
+            onexpand={() => cimmichPerson && void cimmichExplore.loadFacets(cimmichPerson.person_id)}
             result={cimmichExplore.result}
           />
           {#if cimmichPhotoSelectionMode}

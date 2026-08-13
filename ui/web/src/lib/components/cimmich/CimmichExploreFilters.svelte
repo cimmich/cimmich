@@ -20,10 +20,19 @@
     initiallyExpanded?: boolean;
     loading?: boolean;
     onchange: (filters: CimmichExploreFilters) => void;
+    onexpand?: () => void;
     result?: CimmichExploreFacetResult | null;
   }
 
-  let { error = '', filters, initiallyExpanded = false, loading = false, onchange, result = null }: Props = $props();
+  let {
+    error = '',
+    filters,
+    initiallyExpanded = false,
+    loading = false,
+    onchange,
+    onexpand,
+    result = null,
+  }: Props = $props();
   let expanded = $state(initiallyExpanded);
   let pendingMode = $state<CimmichVisibilityTier | null>(null);
   let pendingFilters = $state<CimmichExploreFilters | null>(null);
@@ -39,6 +48,12 @@
   type ArrayKey = 'eventIds' | 'labelIds' | 'placeIds' | 'thingIds';
   type SelectionKey = ArrayKey | 'privacyTiers';
   const update = (next: CimmichExploreFilters) => onchange(normalizeCimmichExploreFilters(next));
+  const toggleExpanded = () => {
+    expanded = !expanded;
+    if (expanded && !result) {
+      onexpand?.();
+    }
+  };
   const viewingModeRank = (mode: CimmichVisibilityTier) => (mode === 'standard' ? 0 : mode === 'personal' ? 1 : 2);
   const needsViewingMode = (tier: CimmichVisibilityTier) =>
     viewingModeRank(tier) > viewingModeRank(cimmichVisibilityManager.viewingMode);
@@ -90,7 +105,7 @@
       class="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-immich-fg transition hover:bg-gray-100 dark:text-immich-dark-fg dark:hover:bg-white/10"
       type="button"
       aria-expanded={expanded}
-      onclick={() => (expanded = !expanded)}
+      onclick={toggleExpanded}
     >
       <Icon icon={mdiFilterVariant} size="18" /> Explore
       {#if activeCount > 0}

@@ -6112,16 +6112,6 @@ export const createCimmichRepository = (
       ), projected_assets AS MATERIALIZED (
         SELECT a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time,
           coalesce(visibility.visibility_tier, 'standard') AS privacy_tier,
-          coalesce((
-            SELECT jsonb_agg(jsonb_build_object(
-              'labelId', label.label_id,
-              'displayName', label.display_name
-            ) ORDER BY lower(label.display_name), label.label_id)
-            FROM current_asset_label_membership membership
-            JOIN asset_label label ON label.label_id = membership.label_id
-              AND label.status = 'active'
-            WHERE membership.asset_id = a.asset_id
-          ), '[]'::jsonb) AS labels,
           (
             bool_or(association.association_type = 'face')
             OR same_photo_face.asset_id IS NOT NULL
@@ -6134,27 +6124,7 @@ export const createCimmichRepository = (
           bool_or(association.association_type = 'presence') AS has_presence,
           bool_or(association.association_type = 'head' AND association.geometry_id IS NULL) AS asset_head_evidence,
           bool_or(association.association_type = 'presence') AS presence_evidence,
-          face_crop.face_crop,
-          coalesce((
-            SELECT jsonb_agg(
-              jsonb_build_object(
-                'entityId', entity.entity_id,
-                'entityKind', entity.entity_kind,
-                'typeKind', CASE entity.entity_kind
-                  WHEN 'place' THEN entity.place_kind
-                  WHEN 'object' THEN entity.object_kind
-                  WHEN 'event' THEN entity.event_kind
-                END,
-                'displayName', entity.display_name
-              )
-              ORDER BY entity.entity_kind, lower(entity.display_name), entity.entity_id
-            )
-            FROM current_context_asset context_link
-            JOIN context_entity entity ON entity.entity_id = context_link.entity_id
-            WHERE context_link.asset_id = a.asset_id
-              AND entity.status = 'active'
-              AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
-          ), '[]'::jsonb) AS contexts
+          face_crop.face_crop
         FROM associations association
         JOIN asset a ON a.asset_id = association.asset_id
         LEFT JOIN cimmich_visibility_object visibility
@@ -6292,39 +6262,73 @@ export const createCimmichRepository = (
         ORDER BY CASE WHEN asset_id = ${neighborAssetId} THEN 0 ELSE 1 END,
           cimmich_asset_rank
         LIMIT 1
-      )
-      SELECT ranked_assets.*
-      FROM ranked_assets
-      LEFT JOIN neighbor_rank ON TRUE
-      WHERE (
-          (
-            ${Boolean(neighborAssetId)}
-            AND neighbor_rank.cimmich_asset_rank IS NOT NULL
-            AND ranked_assets.cimmich_asset_rank BETWEEN neighbor_rank.cimmich_asset_rank - 1
-              AND neighbor_rank.cimmich_asset_rank + 1
-          )
-          OR (
-            ${!neighborAssetId}
-            AND (
-              ${decodedCursor === null}
-              OR (
-                ${cursorCaptureTime !== null}
-                AND (
-                  capture_time IS NULL
-                  OR capture_time < ${cursorCaptureTime}
-                  OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
+      ), selected_assets AS MATERIALIZED (
+        SELECT ranked_assets.*
+        FROM ranked_assets
+        LEFT JOIN neighbor_rank ON TRUE
+        WHERE (
+            (
+              ${Boolean(neighborAssetId)}
+              AND neighbor_rank.cimmich_asset_rank IS NOT NULL
+              AND ranked_assets.cimmich_asset_rank BETWEEN neighbor_rank.cimmich_asset_rank - 1
+                AND neighbor_rank.cimmich_asset_rank + 1
+            )
+            OR (
+              ${!neighborAssetId}
+              AND (
+                ${decodedCursor === null}
+                OR (
+                  ${cursorCaptureTime !== null}
+                  AND (
+                    capture_time IS NULL
+                    OR capture_time < ${cursorCaptureTime}
+                    OR (capture_time = ${cursorCaptureTime} AND asset_id > ${cursorAssetId})
+                  )
                 )
-              )
-              OR (
-                ${cursorCaptureTime === null}
-                AND capture_time IS NULL
-                AND asset_id > ${cursorAssetId}
+                OR (
+                  ${cursorCaptureTime === null}
+                  AND capture_time IS NULL
+                  AND asset_id > ${cursorAssetId}
+                )
               )
             )
           )
-        )
+        ORDER BY capture_time DESC NULLS LAST, asset_id
+        LIMIT ${boundedLimit + (paged ? 1 : 0)}
+      )
+      SELECT selected_assets.*,
+        coalesce((
+          SELECT jsonb_agg(jsonb_build_object(
+            'labelId', label.label_id,
+            'displayName', label.display_name
+          ) ORDER BY lower(label.display_name), label.label_id)
+          FROM current_asset_label_membership membership
+          JOIN asset_label label ON label.label_id = membership.label_id
+            AND label.status = 'active'
+          WHERE membership.asset_id = selected_assets.asset_id
+        ), '[]'::jsonb) AS labels,
+        coalesce((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'entityId', entity.entity_id,
+              'entityKind', entity.entity_kind,
+              'typeKind', CASE entity.entity_kind
+                WHEN 'place' THEN entity.place_kind
+                WHEN 'object' THEN entity.object_kind
+                WHEN 'event' THEN entity.event_kind
+              END,
+              'displayName', entity.display_name
+            )
+            ORDER BY entity.entity_kind, lower(entity.display_name), entity.entity_id
+          )
+          FROM current_context_asset context_link
+          JOIN context_entity entity ON entity.entity_id = context_link.entity_id
+          WHERE context_link.asset_id = selected_assets.asset_id
+            AND entity.status = 'active'
+            AND cimmich_visibility_context_entity_rank(entity.entity_id) <= ${visibleRank}
+        ), '[]'::jsonb) AS contexts
+      FROM selected_assets
       ORDER BY capture_time DESC NULLS LAST, asset_id
-      LIMIT ${boundedLimit + (paged ? 1 : 0)}
     `;
 
       const hasMore = paged && rows.length > boundedLimit;
