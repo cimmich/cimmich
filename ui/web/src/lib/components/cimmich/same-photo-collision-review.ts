@@ -19,6 +19,12 @@ export type CimmichPersonReviewItem = CimmichIdentityAuditItem & {
 
 export const physicalReviewKey = (item: CimmichPersonReviewItem) => item.physicalFaceId || item.faceId;
 
+export const comparePersonReviewLikelihood = (left: CimmichPersonReviewItem, right: CimmichPersonReviewItem) =>
+  right.suggestedPerson.score - left.suggestedPerson.score ||
+  right.margin - left.margin ||
+  right.detectionConfidence - left.detectionConfidence ||
+  physicalReviewKey(left).localeCompare(physicalReviewKey(right));
+
 export type CimmichSamePhotoCollisionGroup = {
   assetId: string;
   items: CimmichPersonReviewItem[];
@@ -163,7 +169,9 @@ export const personIdentityAuditGroups = ({
         ? `Previously untagged faces the matcher thinks may be ${personName}.`
         : 'Existing identity tags the matcher disputes because it sees a stronger match to a different person.',
       id: isNewMatch ? 'new-matches' : 'possible-mistags',
-      items: reviewItems.filter((item) => item.kind === kind && !collisionFaceIds.has(item.faceId)),
+      items: reviewItems
+        .filter((item) => item.kind === kind && !collisionFaceIds.has(item.faceId))
+        .sort(comparePersonReviewLikelihood),
       kind,
       title: isNewMatch ? 'New matches' : 'Possible mistags',
       total: Math.max(

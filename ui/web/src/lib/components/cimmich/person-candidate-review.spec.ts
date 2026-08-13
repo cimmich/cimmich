@@ -28,7 +28,7 @@ const candidate = (
   }) as CimmichIdentityCandidate;
 
 describe('Person candidate review presentation', () => {
-  it('keeps separated candidates ordered by margin then score', () => {
+  it('keeps separated candidates ordered by match score then margin', () => {
     const candidates = [
       candidate('zero-margin', 1.2, 0),
       candidate('strong', 0.83, 0.2),
@@ -36,8 +36,8 @@ describe('Person candidate review presentation', () => {
     ];
 
     expect(preparePersonCandidates(candidates).map(({ identity_claim_id }) => identity_claim_id)).toEqual([
-      'strong',
       'close',
+      'strong',
     ]);
     expect(hasUsefulCandidateSeparation(candidates[0])).toBe(false);
   });

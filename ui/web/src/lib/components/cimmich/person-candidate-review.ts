@@ -16,8 +16,8 @@ export const preparePersonCandidates = (candidates: CimmichIdentityCandidate[]) 
     .sort(
       (left, right) =>
         candidateLane(left) - candidateLane(right) ||
-        finite(right.source_margin) - finite(left.source_margin) ||
         finite(right.match_score) - finite(left.match_score) ||
+        finite(right.source_margin) - finite(left.source_margin) ||
         right.detection_confidence - left.detection_confidence ||
         left.identity_claim_id.localeCompare(right.identity_claim_id),
     )

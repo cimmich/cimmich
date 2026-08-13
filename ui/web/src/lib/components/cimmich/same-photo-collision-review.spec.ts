@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  comparePersonReviewLikelihood,
   currentIdentityComparison,
+  personIdentityAuditGroups,
   samePhotoCollisionReview,
   type CimmichPersonReviewItem,
 } from './same-photo-collision-review';
@@ -52,6 +54,36 @@ describe('samePhotoCollisionReview', () => {
     const sidecar = { ...reviewItem('face-sidecar'), physicalFaceId: 'face-detector' };
 
     expect(samePhotoCollisionReview([detector, sidecar]).groups).toEqual([]);
+  });
+});
+
+describe('New matches ordering', () => {
+  it('orders merged audit and persisted candidates by match score, then separation', () => {
+    const lowerScore = { ...reviewItem('face-lower'), margin: 0.4 };
+    lowerScore.suggestedPerson = { ...lowerScore.suggestedPerson, score: 0.71 };
+    const higherScoreLowMargin = { ...reviewItem('face-higher-low-margin'), margin: 0.05 };
+    higherScoreLowMargin.suggestedPerson = { ...higherScoreLowMargin.suggestedPerson, score: 0.84 };
+    const higherScoreHighMargin = { ...reviewItem('face-higher-high-margin'), margin: 0.2 };
+    higherScoreHighMargin.suggestedPerson = { ...higherScoreHighMargin.suggestedPerson, score: 0.84 };
+
+    expect(
+      [lowerScore, higherScoreLowMargin, higherScoreHighMargin]
+        .sort(comparePersonReviewLikelihood)
+        .map(({ faceId }) => faceId),
+    ).toEqual(['face-higher-high-margin', 'face-higher-low-margin', 'face-lower']);
+
+    const [newMatches] = personIdentityAuditGroups({
+      auditTotals: { accepted_contradiction: 0, untagged_match: 3 },
+      candidateOnlyItems: [],
+      collisionFaceIds: new Set(),
+      personName: 'Chloe',
+      reviewItems: [lowerScore, higherScoreLowMargin, higherScoreHighMargin],
+    });
+    expect(newMatches?.items.map(({ faceId }) => faceId)).toEqual([
+      'face-higher-high-margin',
+      'face-higher-low-margin',
+      'face-lower',
+    ]);
   });
 });
 
