@@ -466,6 +466,55 @@ export const persistSourcePackProductionRefit = async (
       ) ON CONFLICT (producer_receipt_id)
       DO UPDATE SET completed_at = excluded.completed_at
     `;
+    const excludedPersonIds = [
+      ...new Set(
+        (pack.manifest?.evaluationContext?.excludedPersonIds || [])
+          .map((personId) => String(personId || "").trim())
+          .filter(Boolean),
+      ),
+    ].sort();
+    if (excludedPersonIds.length > 0) {
+      const [sortCategory] = await tx`
+        SELECT category_id FROM person_category
+        WHERE slug = 'sort' AND state = 'active'
+        LIMIT 1 FOR SHARE
+      `;
+      if (!sortCategory) {
+        throw new Error(
+          "Production refit exclusions require the Sort workflow category",
+        );
+      }
+      const excludedPeople = await tx`
+        SELECT person_id FROM person
+        WHERE person_id = ANY(${excludedPersonIds}::text[])
+          AND status = 'active' AND subject_kind = 'person'
+        ORDER BY person_id FOR SHARE
+      `;
+      if (excludedPeople.length !== excludedPersonIds.length) {
+        throw new Error(
+          "Production refit excluded Person is not active and reviewable",
+        );
+      }
+      for (const { person_id: personId } of excludedPeople) {
+        const [existingSort] = await tx`
+          SELECT 1 FROM current_person_category
+          WHERE person_id = ${personId} AND category_id = ${sortCategory.category_id}
+        `;
+        if (existingSort) {
+          continue;
+        }
+        await tx`
+          INSERT INTO person_category_membership_event (
+            membership_event_id, person_id, category_id, action, actor_kind,
+            actor_id, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${`categoryevent_refit_exclusion_${digestValue(`${pack.packId}\u001f${personId}`).slice(0, 32)}`},
+            ${personId}, ${sortCategory.category_id}, 'add', 'system',
+            'cimmich-source-pack-production-refit', ${receiptId}, 'private'
+          ) ON CONFLICT (membership_event_id) DO NOTHING
+        `;
+      }
+    }
     const inserted = await tx`
       INSERT INTO source_pack_evaluation (
         evaluation_id, pack_id, evaluator_version, split_definition,

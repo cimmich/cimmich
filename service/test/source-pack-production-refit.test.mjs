@@ -165,4 +165,11 @@ test("production refit source keeps explicit Person exclusions in the governed p
   assert.match(source, /excludedPersonIds: excluded/);
   assert.match(source, /!excludedSet\.has\(face\.personId\)/);
   assert.match(source, /!excludedSet\.has\(row\.person_id\)/);
+  assert.match(
+    source,
+    /pack\.manifest\?\.evaluationContext\?\.excludedPersonIds/,
+  );
+  assert.match(source, /WHERE slug = 'sort' AND state = 'active'/);
+  assert.match(source, /categoryevent_refit_exclusion_/);
+  assert.match(source, /'cimmich-source-pack-production-refit'/);
 });
