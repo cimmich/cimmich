@@ -36,6 +36,8 @@ describe('Person overview actions and split workspace', () => {
     expect(component).toContain('setCimmichFaceIdentitiesBatch');
     expect(component).toContain('getCimmichIdentityFaces(person.person_id, 5000)');
     expect(component).toContain("getCimmichPeople(500, '', { presentation: false })");
+    expect(component).toContain("personPhotoGridClass('medium')");
+    expect(component).not.toContain('lg:grid-cols-6 xl:grid-cols-8');
     expect(component).toContain('const selectionLimit = 100');
     expect(component).toContain('row.person_id !== person.person_id');
     expect(component).toContain('!row.needs_holding');

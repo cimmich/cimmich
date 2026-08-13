@@ -7,6 +7,7 @@
     type CimmichPerson,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
+  import { personPhotoGridClass } from './person-photo-gallery';
   import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import { mdiArrowLeft, mdiCheckCircleOutline, mdiSelectAll } from '@mdi/js';
@@ -366,10 +367,7 @@
       >
     </div>
   {:else}
-    <div
-      class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8"
-      aria-label="Faces to split"
-    >
+    <div class={personPhotoGridClass('medium')} aria-label="Faces to split">
       {#each filteredFaces as face (face.face_id)}
         {@const selected = selectedFaceIds.includes(face.face_id)}
         <button
