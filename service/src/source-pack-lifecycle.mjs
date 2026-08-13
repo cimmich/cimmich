@@ -185,6 +185,7 @@ export const validateSourcePackProductionRefitReceipt = (
     );
   }
   if (
+    receipt?.leakage?.passed !== true ||
     receipt?.leakage?.sameAssetExcluded !== true ||
     receipt?.leakage?.queryReferencePairOverlap !== 0
   ) {

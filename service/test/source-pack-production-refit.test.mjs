@@ -13,7 +13,11 @@ const receipt = () => ({
   authorityScope: "human-review",
   cohortDigest: "a".repeat(64),
   evaluationPackId: "sourcepack-evaluation",
-  leakage: { queryReferencePairOverlap: 0, sameAssetExcluded: true },
+  leakage: {
+    passed: true,
+    queryReferencePairOverlap: 0,
+    sameAssetExcluded: true,
+  },
   matcherPolicy: {
     marginFloor: 0.25,
     policyVersion: "cimmich-best-prime-v1",
@@ -71,7 +75,11 @@ test("production refit gate fails closed on weak references and target regressio
     () =>
       validateSourcePackProductionRefitReceipt({
         ...receipt(),
-        leakage: { queryReferencePairOverlap: 1, sameAssetExcluded: true },
+        leakage: {
+          passed: true,
+          queryReferencePairOverlap: 1,
+          sameAssetExcluded: true,
+        },
       }),
     /not same-asset leakage-safe/,
   );

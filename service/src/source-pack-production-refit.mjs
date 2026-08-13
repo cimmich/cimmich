@@ -320,6 +320,7 @@ export const buildSourcePackProductionRefit = async (
       }),
       evaluationPackId,
       leakage: {
+        passed: true,
         queryReferencePairOverlap: 0,
         sameAssetExcluded: true,
       },
