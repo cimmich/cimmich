@@ -143,7 +143,6 @@ const typedError = (message, statusCode, code, details) =>
     statusCode,
     ...(details ? { details } : {}),
   });
-const personPageSchemaVersion = "cimmich.person-projection-page.v1";
 const cleanPersonAssetAssociationType = (value) => {
   const associationType = String(value || "all")
     .trim()
@@ -158,59 +157,6 @@ const cleanPersonAssetAssociationType = (value) => {
     );
   }
   return associationType;
-};
-const cleanPageSize = (value, fallback = 120, maximum = 250) => {
-  if (value === null || value === undefined || String(value).trim() === "") {
-    return fallback;
-  }
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
-    throw typedError(
-      `pageSize must be an integer from 1 to ${maximum}`,
-      400,
-      "PERSON_PAGE_SIZE_INVALID",
-    );
-  }
-  return parsed || fallback;
-};
-const encodePersonPageCursor = (payload) =>
-  Buffer.from(JSON.stringify({ ...payload, v: 1 }), "utf8").toString(
-    "base64url",
-  );
-const decodePersonPageCursor = (value, { kind, personId, visibleRank }) => {
-  if (!value) return null;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(String(value), "base64url").toString("utf8"),
-    );
-    if (
-      payload?.v !== 1 ||
-      payload?.kind !== kind ||
-      payload?.personId !== personId ||
-      payload?.visibleRank !== visibleRank
-    ) {
-      throw new Error("cursor scope mismatch");
-    }
-    const captureTimeValid =
-      payload.captureTime === null ||
-      (typeof payload.captureTime === "string" &&
-        Number.isFinite(Date.parse(payload.captureTime)));
-    const keyValid = kind.startsWith("assets")
-      ? typeof payload.assetId === "string" && payload.assetId.length > 0
-      : typeof payload.faceId === "string" &&
-        payload.faceId.length > 0 &&
-        (payload.quality === null || Number.isFinite(payload.quality));
-    if (!captureTimeValid || !keyValid) {
-      throw new Error("cursor key invalid");
-    }
-    return payload;
-  } catch {
-    throw typedError(
-      "Person projection cursor is invalid for this Person or viewing mode",
-      400,
-      "PERSON_PAGE_CURSOR_INVALID",
-    );
-  }
 };
 const cleanCommandId = (value) => {
   const commandId = String(value || "").trim();
@@ -5849,7 +5795,7 @@ export const createCimmichRepository = (
       const boundedLimit = neighborAssetId
         ? 3
         : paged
-          ? cleanPageSize(pageSize)
+          ? personPage.cleanPageSize(pageSize)
           : cleanLimit(limit, 1000, 5000);
       const id = String(personId || "");
       const assetAssociation = cleanPersonAssetAssociationType(associationType);
@@ -5863,7 +5809,7 @@ export const createCimmichRepository = (
           ? `assets:${filterKey}`
           : `assets:${assetAssociation}:${filterKey}`;
       const visibleRank = presentationRank();
-      const decodedCursor = decodePersonPageCursor(cursor, {
+      const decodedCursor = personPage.decodeCursor(cursor, {
         kind: cursorKind,
         personId: id,
         visibleRank,
@@ -6386,7 +6332,7 @@ export const createCimmichRepository = (
         items,
         nextCursor:
           hasMore && last
-            ? encodePersonPageCursor({
+            ? personPage.encodeCursor({
                 assetId: last.asset_id,
                 captureTime: last.capture_time
                   ? new Date(last.capture_time).toISOString()
@@ -6397,7 +6343,7 @@ export const createCimmichRepository = (
               })
             : null,
         pageSize: boundedLimit,
-        schemaVersion: personPageSchemaVersion,
+        schemaVersion: personPage.schemaVersion,
         summary: personPage.projectPersonAssetSummary(pageRows[0]),
       };
     },
@@ -7141,11 +7087,11 @@ export const createCimmichRepository = (
       }
       const paged = pageSize !== null || Boolean(cursor);
       const boundedLimit = paged
-        ? cleanPageSize(pageSize, 24, 120)
+        ? personPage.cleanPageSize(pageSize, 24, 120)
         : cleanLimit(limit, 1000, 5000);
       const id = String(personId || "");
       const visibleRank = presentationRank();
-      const decodedCursor = decodePersonPageCursor(cursor, {
+      const decodedCursor = personPage.decodeCursor(cursor, {
         kind: bucketFilter ? `identity:${bucketFilter}` : "identity",
         personId: id,
         visibleRank,
@@ -7633,7 +7579,7 @@ export const createCimmichRepository = (
         items,
         nextCursor:
           hasMore && last
-            ? encodePersonPageCursor({
+            ? personPage.encodeCursor({
                 captureTime: last.capture_time
                   ? new Date(last.capture_time).toISOString()
                   : null,
@@ -7645,7 +7591,7 @@ export const createCimmichRepository = (
               })
             : null,
         pageSize: boundedLimit,
-        schemaVersion: personPageSchemaVersion,
+        schemaVersion: personPage.schemaVersion,
         summary: {
           all: Number(summaryRow?.all_count || 0),
           head: Number(summaryRow?.head_count || 0),

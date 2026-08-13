@@ -5,7 +5,7 @@ import { createCimmichExploreClient } from './cimmich-explore.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
 import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
-import type { CimmichPersonAssetContext, CimmichPersonAssetFaceCrop } from './cimmich-person-asset.types';
+import type { CimmichPersonAssetProjection } from './cimmich-person-asset.types';
 import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-coverage.types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
@@ -1216,24 +1216,7 @@ export type CimmichMergePreview = {
   };
 };
 
-export type CimmichPersonAsset = {
-  asset_id: string;
-  asset_head_evidence: boolean;
-  association_types: Array<'body' | 'body_candidate' | 'face' | 'head' | 'presence'>;
-  capture_time: string | null;
-  contexts: CimmichPersonAssetContext<CimmichContextTypeKind>[];
-  face_crop?: CimmichPersonAssetFaceCrop | null;
-  labels?: Array<{ displayName: string; labelId: string }>;
-  filename: string;
-  height: number;
-  has_linked_body: boolean;
-  media_kind: 'image' | 'video';
-  mime_type: string;
-  presence_evidence: boolean;
-  privacy_tier?: CimmichVisibilityTier;
-  sourceAssetId: string;
-  width: number;
-};
+export type CimmichPersonAsset = CimmichPersonAssetProjection<CimmichContextTypeKind, CimmichVisibilityTier>;
 
 export type CimmichFaceBucket = {
   bucket_id: string;
