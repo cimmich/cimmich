@@ -25,11 +25,27 @@
 
   interface Props {
     coverage: CimmichPersonEvidenceCoverage;
+    needsAttention: boolean;
+    needsAttentionDisabled?: boolean;
+    needsAttentionSaving?: boolean;
+    onmerge: () => void;
+    onneedsattention: () => void;
     onopenidentity: (filter: 'all' | 'appearance' | 'body' | 'candidates' | 'presence') => void;
     onopenphotos: (options?: { futureDates?: boolean }) => void;
+    onsplit: () => void;
   }
 
-  let { coverage, onopenidentity, onopenphotos }: Props = $props();
+  let {
+    coverage,
+    needsAttention,
+    needsAttentionDisabled = false,
+    needsAttentionSaving = false,
+    onmerge,
+    onneedsattention,
+    onopenidentity,
+    onopenphotos,
+    onsplit,
+  }: Props = $props();
 
   const currentYear = new Date().getUTCFullYear();
   const notes = $derived(evidenceCoverageNotes(coverage));
@@ -416,6 +432,59 @@
           Nothing needs review right now.
         </div>
       {/each}
+    </div>
+  </section>
+
+  <section
+    class="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-immich-dark-bg"
+    aria-labelledby="person-actions-title"
+  >
+    <div>
+      <h2 id="person-actions-title" class="text-xl font-semibold">Organise this person</h2>
+      <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+        Flag the record for review, combine a duplicate, or separate mixed identities.
+      </p>
+    </div>
+    <div class="mt-5 grid gap-3 sm:grid-cols-3">
+      <button
+        class={[
+          'min-h-24 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60',
+          needsAttention
+            ? 'border-amber-400 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100'
+            : 'border-gray-200 hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-sm dark:border-gray-700',
+        ]}
+        type="button"
+        aria-pressed={needsAttention}
+        disabled={needsAttentionDisabled || needsAttentionSaving}
+        onclick={onneedsattention}
+      >
+        <span class="block font-semibold">Needs attention</span>
+        <span class="mt-1 block text-sm opacity-75">
+          {needsAttentionSaving
+            ? 'Saving…'
+            : needsAttentionDisabled
+              ? 'On via Holding'
+              : needsAttention
+                ? 'On · click to remove'
+                : 'Keep visible for review'}
+        </span>
+      </button>
+      <button
+        class="min-h-24 rounded-2xl border border-gray-200 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-sm dark:border-gray-700"
+        type="button"
+        onclick={onmerge}
+      >
+        <span class="block font-semibold">Merge</span>
+        <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">Combine a duplicate into this person</span>
+      </button>
+      <button
+        class="min-h-24 rounded-2xl border border-gray-200 p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-sm dark:border-gray-700"
+        type="button"
+        onclick={onsplit}
+      >
+        <span class="block font-semibold">Split</span>
+        <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">Bulk move selected faces elsewhere</span>
+      </button>
     </div>
   </section>
 

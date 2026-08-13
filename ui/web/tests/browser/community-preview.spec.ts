@@ -160,6 +160,33 @@ test('Cimmich Person viewer moves between photos by keyboard and pointer', async
   await expect.poll(() => new URL(page.url()).pathname).toBe(firstPhotoPath);
 });
 
+test('Person Overview exposes Needs attention, Merge and bulk Split without hidden setup hunting', async ({ page }) => {
+  await page.goto('/cimmich/people');
+  await page
+    .getByRole('link', { name: /Maya Chen/u })
+    .first()
+    .click();
+  await page.getByRole('tab', { name: /Identity/u }).click();
+
+  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible();
+  const actions = page.getByRole('heading', { name: 'Organise this person' }).locator('..').locator('..');
+  await expect(actions.getByRole('button', { name: /Needs attention/u })).toBeVisible();
+  await expect(actions.getByRole('button', { name: /Merge/u })).toBeVisible();
+  await actions.getByRole('button', { name: /Split/u }).click();
+
+  await expect(page).toHaveURL(/mode=split/u);
+  await expect(page.getByRole('heading', { name: /Split Maya Chen/u })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create New', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Move to', exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Faces to split')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Back to overview' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Organise this person' })).toBeVisible();
+  await page.getByRole('button', { name: /Merge/u }).click();
+  await expect(page).toHaveURL(/mode=setup/u);
+  await expect(page.getByRole('heading', { name: 'Merge identities' })).toBeVisible();
+});
+
 test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/cimmich/home');

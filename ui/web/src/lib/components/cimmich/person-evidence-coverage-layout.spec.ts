@@ -51,6 +51,9 @@ describe('Person identity overview', () => {
     expect(source).toContain('People & pets');
     expect(source).toContain('coverage.coSubjects');
     expect(source).toContain('Review queue');
+    expect(source).toContain('Organise this person');
+    expect(source.indexOf('coverage-notes-title')).toBeLessThan(source.indexOf('person-actions-title'));
+    expect(source.indexOf('person-actions-title')).toBeLessThan(source.indexOf('Technical details'));
     expect(source.indexOf('coverage-co-subjects-title')).toBeLessThan(source.indexOf('coverage-notes-title'));
     expect(source).toContain('Technical details');
     expect(source).toContain('What these terms mean');

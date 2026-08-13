@@ -3,6 +3,7 @@
   import CimmichExploreFilters from '$lib/components/cimmich/CimmichExploreFilters.svelte';
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
   import CimmichPersonEvidenceCoverage from '$lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte';
+  import CimmichPersonSplitWorkspace from '$lib/components/cimmich/CimmichPersonSplitWorkspace.svelte';
   import CimmichPersonAppearanceGallery from '$lib/components/cimmich/CimmichPersonAppearanceGallery.svelte';
   import CimmichPersonIdentityNavigation from '$lib/components/cimmich/CimmichPersonIdentityNavigation.svelte';
   import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
@@ -310,6 +311,7 @@
   let cimmichEvidenceCoverage = $state<CimmichPersonEvidenceCoverageProjection>();
   let cimmichEvidenceError = $state('');
   let cimmichEvidenceLoading = $state(false);
+  let cimmichOverviewActionSaving = $state(false);
   let cimmichPhotoSelectionPersonId = '';
   let cimmichTabsCanScrollRight = $state(false);
   let cimmichTabsScroller = $state<HTMLDivElement>();
@@ -2408,6 +2410,64 @@
     }
   };
 
+  const toggleCimmichNeedsAttention = async () => {
+    if (!cimmichPerson || cimmichOverviewActionSaving || (cimmichPerson.needs_holding && cimmichPerson.needs_sort)) {
+      return;
+    }
+    const personId = cimmichPerson.person_id;
+    cimmichOverviewActionSaving = true;
+    cimmichIdentityError = '';
+    try {
+      const setup = await getCimmichPersonSetup(personId);
+      const sortCategory = setup.category_catalog.find(({ slug }) => slug === 'sort');
+      if (!sortCategory) {
+        throw new Error('Needs attention is unavailable for this Person');
+      }
+      const result = await setCimmichPersonCategory(personId, sortCategory.category_id, !cimmichPerson.needs_sort);
+      if (cimmichPerson?.person_id !== personId) {
+        return;
+      }
+      cimmichPerson = {
+        ...cimmichPerson,
+        categories: result.selected
+          ? [
+              ...cimmichPerson.categories.filter(({ category_id }) => category_id !== result.category.category_id),
+              result.category,
+            ]
+          : cimmichPerson.categories.filter(({ category_id }) => category_id !== result.category.category_id),
+        needs_sort: result.selected,
+      };
+    } catch (error) {
+      toastManager.danger(error instanceof Error ? error.message : 'Unable to update Needs attention');
+    } finally {
+      cimmichOverviewActionSaving = false;
+    }
+  };
+
+  const openCimmichMerge = async () => {
+    await openCimmichSetup();
+    requestAnimationFrame(() =>
+      document.querySelector('#cimmich-merge-identities')?.scrollIntoView({
+        behavior: mediaQueryManager.reducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      }),
+    );
+  };
+
+  const openCimmichSplit = () => selectCimmichMode('split');
+
+  const refreshAfterCimmichSplit = async () => {
+    if (!cimmichPerson) {
+      return;
+    }
+    const refreshed = await getCimmichPersonByName(cimmichPerson.display_name, cimmichPerson.person_id);
+    if (refreshed) {
+      cimmichPerson = refreshed;
+    }
+    cimmichEvidenceCoverage = undefined;
+    void loadCimmichEvidence();
+  };
+
   const loadCimmichEvidence = async (generation = personProjectionGeneration) => {
     if (!cimmichPerson || cimmichEvidenceCoverage || cimmichEvidenceLoading) {
       return;
@@ -3668,6 +3728,12 @@
           heading=""
           subject={{ id: cimmichPerson.person_id, kind: cimmichPerson.subject_kind, name: cimmichPerson.display_name }}
         />
+      {:else if cimmichMode === 'split'}
+        <CimmichPersonSplitWorkspace
+          onback={() => void openCimmichIdentityAt('overview')}
+          onchanged={() => void refreshAfterCimmichSplit()}
+          person={cimmichPerson}
+        />
       {:else if cimmichMode === 'details'}
         {#if cimmichProfile && cimmichProfileDefaults && cimmichProfileDisplay && cimmichDetailsDefaults && cimmichDetailsDisplay}
           <CimmichPersonDetails
@@ -3854,8 +3920,14 @@
             {#if cimmichEvidenceCoverage}
               <CimmichPersonEvidenceCoverage
                 coverage={cimmichEvidenceCoverage}
+                needsAttention={cimmichPerson.needs_sort}
+                needsAttentionDisabled={cimmichPerson.needs_holding}
+                needsAttentionSaving={cimmichOverviewActionSaving}
+                onmerge={() => void openCimmichMerge()}
+                onneedsattention={() => void toggleCimmichNeedsAttention()}
                 onopenidentity={(filter) => void openCimmichIdentityAt(filter)}
                 onopenphotos={openCimmichPhotos}
+                onsplit={openCimmichSplit}
               />
             {:else if cimmichEvidenceError}
               <CimmichStatePanel
@@ -5211,35 +5283,11 @@
                 {/each}
               </div>
               <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">No relationship selected appears in Others.</p>
-              {#each cimmichSetup.category_catalog.filter((category) => category.slug === 'sort') as category (category.category_id)}
-                {@const selected = cimmichSetup.categories.some((item) => item.category_id === category.category_id)}
-                {@const holdingSelected = cimmichSetup.categories.some((item) => item.slug === 'holding')}
-                <button
-                  class={[
-                    'mt-4 flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
-                    selected
-                      ? 'border-amber-400 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100'
-                      : 'border-gray-200 hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray',
-                  ]}
-                  type="button"
-                  aria-pressed={selected}
-                  disabled={Boolean(cimmichSetupSaving) || (selected && holdingSelected)}
-                  onclick={() => void toggleSetupCategory(category.category_id)}
-                >
-                  <span>
-                    <span class="block font-semibold">Needs sorting</span>
-                    <span class="block text-xs opacity-70"
-                      >Keep matches visible, but treat this identity as review-only.</span
-                    >
-                  </span>
-                  <span class="font-semibold">{selected ? 'On' : 'Off'}</span>
-                </button>
-              {/each}
               {#each cimmichSetup.category_catalog.filter((category) => category.slug === 'holding') as category (category.category_id)}
                 {@const selected = cimmichSetup.categories.some((item) => item.category_id === category.category_id)}
                 <button
                   class={[
-                    'mt-2 ml-4 flex w-[calc(100%-1rem)] items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
+                    'mt-4 flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
                     selected
                       ? 'border-violet-400 bg-violet-50 text-violet-950 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100'
                       : 'border-gray-200 hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray',

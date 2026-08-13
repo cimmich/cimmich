@@ -13,7 +13,7 @@ export type CimmichIdentityFilter =
   | 'references'
   | 'secondary';
 
-export type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup';
+export type CimmichPersonMode = 'connections' | 'details' | 'documents' | 'identity' | 'photos' | 'setup' | 'split';
 
 const workspaceUrl = (mode: CimmichPersonMode, identityFilter: CimmichIdentityFilter) => {
   const url = new URL(globalThis.location.href);

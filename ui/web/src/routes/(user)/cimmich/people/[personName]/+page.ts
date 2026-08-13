@@ -21,7 +21,8 @@ export const load = (async ({ params, url }) => {
       resolvedMode === 'details' ||
       resolvedMode === 'documents' ||
       resolvedMode === 'identity' ||
-      resolvedMode === 'setup'
+      resolvedMode === 'setup' ||
+      resolvedMode === 'split'
         ? resolvedMode
         : 'photos',
     identityFilter:
