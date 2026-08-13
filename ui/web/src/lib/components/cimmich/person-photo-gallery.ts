@@ -1,9 +1,11 @@
 import type { CimmichPersonAsset } from '$lib/services/cimmich.service';
+import { cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
 
 export type PersonPhotoRelationFilter = 'all' | 'presence' | 'visible';
 export type PersonPhotoSort = 'filename' | 'newest' | 'oldest';
 export type PersonPhotoGroup = 'event' | 'none' | 'object' | 'place' | 'year';
 export type PersonPhotoSize = 'large' | 'medium' | 'small';
+export type PersonPhotoView = 'face' | 'photo';
 export type PersonPhotoDateStatus = 'known' | 'needs-review' | 'unknown';
 
 export type PersonPhotoGroupResult = {
@@ -145,6 +147,21 @@ export const personPhotoGridClass = (size: PersonPhotoSize) => {
     return 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3';
   }
   return 'grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5';
+};
+
+export const personFaceCropStyle = (asset: CimmichPersonAsset) => {
+  if (!asset.face_crop) {
+    return '';
+  }
+  return cimmichSquareObservationStyle({
+    boxH: asset.face_crop.box_h,
+    boxW: asset.face_crop.box_w,
+    boxX: asset.face_crop.box_x,
+    boxY: asset.face_crop.box_y,
+    height: asset.height,
+    padding: 2.4,
+    width: asset.width,
+  });
 };
 
 export const personPhotoDateLabel = (asset: CimmichPersonAsset, now = Date.now()) => {

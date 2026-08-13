@@ -5,6 +5,7 @@ import { createCimmichExploreClient } from './cimmich-explore.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
 import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+import type { CimmichPersonAssetContext, CimmichPersonAssetFaceCrop } from './cimmich-person-asset.types';
 import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-coverage.types';
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
@@ -1220,12 +1221,8 @@ export type CimmichPersonAsset = {
   asset_head_evidence: boolean;
   association_types: Array<'body' | 'body_candidate' | 'face' | 'head' | 'presence'>;
   capture_time: string | null;
-  contexts: Array<{
-    displayName: string;
-    entityId: string;
-    entityKind: 'event' | 'object' | 'place';
-    typeKind: CimmichContextTypeKind;
-  }>;
+  contexts: CimmichPersonAssetContext<CimmichContextTypeKind>[];
+  face_crop?: CimmichPersonAssetFaceCrop | null;
   labels?: Array<{ displayName: string; labelId: string }>;
   filename: string;
   height: number;

@@ -870,6 +870,52 @@ test("Person assets keep face-linked geometry out of standalone Body and Presenc
   assert.deepEqual(assets[0].association_types, ["face"]);
 });
 
+test("Person assets expose one accepted face crop for photo auditing", async () => {
+  let statement = "";
+  const sql = async (strings) => {
+    statement = strings.join("?");
+    return [
+      {
+        asset_head_evidence: false,
+        asset_id: "asset-face",
+        capture_time: null,
+        contexts: [],
+        face_crop: {
+          box_h: 0.2,
+          box_w: 0.1,
+          box_x: 0.4,
+          box_y: 0.3,
+          face_id: "face-1",
+        },
+        has_body: false,
+        has_body_candidate: false,
+        has_face: true,
+        has_head: false,
+        has_linked_body: false,
+        has_presence: false,
+        height: 100,
+        media_kind: "image",
+        mime_type: "image/jpeg",
+        presence_evidence: false,
+        width: 200,
+      },
+    ];
+  };
+  const repository = createCimmichRepository(sql);
+
+  const [asset] = await repository.personAssets({
+    limit: 100,
+    personId: "person-1",
+  });
+
+  assert.equal(asset.face_crop.face_id, "face-1");
+  assert.match(statement, /face_crops AS MATERIALIZED/);
+  assert.match(
+    statement,
+    /face_association\.association_type IN \('face', 'head'\)/,
+  );
+});
+
 test("Person asset pages return an opaque subject-bound continuation", async () => {
   const rows = ["asset-1", "asset-2", "asset-3"].map((assetId, index) => ({
     asset_head_evidence: false,

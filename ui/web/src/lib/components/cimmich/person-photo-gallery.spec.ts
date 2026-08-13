@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CimmichPersonAsset } from '$lib/services/cimmich.service';
 import {
   groupPersonPhotos,
+  personFaceCropStyle,
   personPhotoDateLabel,
   personPhotoDateStatus,
   personPhotoGridClass,
@@ -21,6 +22,7 @@ const photo = (
   association_types,
   capture_time,
   contexts,
+  face_crop: null,
   filename,
   has_linked_body: association_types.includes('body'),
   height: 100,
@@ -86,6 +88,21 @@ describe('person photo gallery', () => {
     expect(personPhotoGridClass('small')).toContain('lg:grid-cols-8');
     expect(personPhotoGridClass('large')).toContain('lg:grid-cols-3');
     expect(personPhotoDateLabel(photos[0])).toContain('2023');
+  });
+
+  it('frames accepted Face geometry without changing the photo collection', () => {
+    const acceptedFace = {
+      ...photo('face-crop', ['face'], '2024-01-01T00:00:00Z'),
+      face_crop: { box_h: 0.2, box_w: 0.1, box_x: 0.75, box_y: 0.3, face_id: 'face-1' },
+      height: 1000,
+      width: 2000,
+    };
+    const presenceOnly = photo('presence', ['presence'], '2024-01-02T00:00:00Z');
+
+    expect(personFaceCropStyle(acceptedFace)).toContain('position: absolute');
+    expect(personFaceCropStyle(acceptedFace)).toContain('max-width: none');
+    expect(personFaceCropStyle(presenceOnly)).toBe('');
+    expect(preparePersonPhotos([acceptedFace, presenceOnly], 'all', 'newest')).toHaveLength(2);
   });
 
   it('groups one photo under every visible context and retains ungrouped photos', () => {

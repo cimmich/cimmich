@@ -13,6 +13,7 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte', 'utf8'),
     readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
   ]);
   return sources.join('\n');
@@ -227,6 +228,10 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('Tagged appearances');
     expect(source).not.toContain('Filter tagged appearances');
     expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
+    expect(source).toContain('aria-label="Thumbnail view"');
+    expect(source).toContain('<CimmichPersonPhotoViewToggle');
+    expect(source).toContain("cimmichPhotoView === 'face' && asset.face_crop");
+    expect(source).toContain('No face crop');
     expect(source).toContain("{cimmichFuturePhotoDateCount === 1 ? 'date needs' : 'dates need'} review");
     expect(source).toContain('date.getTime() > Date.now()');
   });

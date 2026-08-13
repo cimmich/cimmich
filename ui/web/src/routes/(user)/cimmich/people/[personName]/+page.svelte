@@ -6,6 +6,7 @@
   import CimmichPersonAppearanceGallery from '$lib/components/cimmich/CimmichPersonAppearanceGallery.svelte';
   import CimmichPersonIdentityNavigation from '$lib/components/cimmich/CimmichPersonIdentityNavigation.svelte';
   import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
+  import CimmichPersonPhotoViewToggle from '$lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
@@ -77,12 +78,14 @@
   import { machineSuggestionsForPerson } from '$lib/components/cimmich/person-machine-suggestions';
   import {
     groupPersonPhotos,
+    personFaceCropStyle,
     personPhotoDateLabel,
     personPhotoGridClass,
     preparePersonPhotos,
     type PersonPhotoGroup,
     type PersonPhotoSize,
     type PersonPhotoSort,
+    type PersonPhotoView,
   } from '$lib/components/cimmich/person-photo-gallery';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
@@ -224,6 +227,7 @@
   let cimmichPhotoGroup = $state<PersonPhotoGroup>('none');
   let cimmichPhotoSize = $state<PersonPhotoSize>('medium');
   let cimmichPhotoSort = $state<PersonPhotoSort>('newest');
+  let cimmichPhotoView = $state<PersonPhotoView>('photo');
   let cimmichAssets = $state<CimmichPersonAsset[]>([]);
   let cimmichAppearanceAssets = $state(emptyPersonAppearanceAssets());
   let cimmichPhotoSelectionMode = $state(false);
@@ -3315,6 +3319,7 @@
                 class="ml-auto flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
                 aria-label="Photo view options"
               >
+                <CimmichPersonPhotoViewToggle view={cimmichPhotoView} onchange={(view) => (cimmichPhotoView = view)} />
                 <button
                   class="inline-flex min-h-10 items-center gap-2 px-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                   class:text-primary={cimmichPhotoSelectionMode}
@@ -3468,12 +3473,29 @@
                           toggleCimmichPhotoSelection(asset.asset_id),
                         )}
                     >
-                      <img
-                        src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
-                        alt={asset.filename}
-                        class="size-full object-cover transition-transform group-hover:scale-[1.02]"
-                        loading="lazy"
-                      />
+                      {#if cimmichPhotoView === 'face' && asset.face_crop}
+                        <img
+                          src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
+                          alt={`${cimmichPerson.display_name} face in ${asset.filename}`}
+                          class="max-w-none transition-transform group-hover:scale-[1.02]"
+                          style={personFaceCropStyle(asset)}
+                          loading="lazy"
+                        />
+                      {:else}
+                        <img
+                          src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
+                          alt={asset.filename}
+                          class="size-full object-cover transition-transform group-hover:scale-[1.02]"
+                          class:opacity-55={cimmichPhotoView === 'face'}
+                          loading="lazy"
+                        />
+                      {/if}
+                      {#if cimmichPhotoView === 'face' && !asset.face_crop}
+                        <span
+                          class="pointer-events-none absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-sm"
+                          >No face crop</span
+                        >
+                      {/if}
                       <span
                         class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/75 to-transparent px-3 pt-10 pb-2 text-xs font-medium text-white opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
                       >

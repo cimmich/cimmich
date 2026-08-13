@@ -122,7 +122,27 @@ test('Cimmich Person viewer moves between photos by keyboard and pointer', async
     .getByRole('link', { name: /Maya Chen/u })
     .first()
     .click();
-  const photoLink = page.locator('a[href^="/photos/"][href*="cimmichPersonId"]').first();
+  const photoLinks = page.locator('a[href^="/photos/"][href*="cimmichPersonId"]');
+  await expect(photoLinks.first()).toBeVisible();
+  const photoCount = await photoLinks.count();
+  const thumbnailView = page.getByRole('group', { name: 'Thumbnail view' });
+  await thumbnailView.getByRole('button', { name: 'Face', exact: true }).click();
+  await expect(thumbnailView.getByRole('button', { name: 'Face', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  const faceCrop = page.getByRole('img', { name: /Maya Chen face in/u }).first();
+  await expect(faceCrop).toBeVisible();
+  await expect(faceCrop).toHaveAttribute('style', /position: absolute/u);
+  expect(await photoLinks.count()).toBe(photoCount);
+  await thumbnailView.getByRole('button', { name: 'Photo', exact: true }).click();
+  await expect(thumbnailView.getByRole('button', { name: 'Photo', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('img', { name: /Maya Chen face in/u })).toHaveCount(0);
+
+  const photoLink = photoLinks.first();
   await expect(photoLink).toBeVisible();
   await photoLink.click();
 

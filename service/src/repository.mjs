@@ -30,6 +30,7 @@ import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.m
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
+import { normalizeMatchingProvider } from "./matching-provider.mjs";
 import { projectBodyPose, stripBodyPoseStorage } from "./body-pose.mjs";
 import { createPersonProfileStore } from "./person-profile.mjs";
 import { createPersonDetailsDisplayStore } from "./person-details-display.mjs";
@@ -82,7 +83,6 @@ const decisionReceiptId = "receipt_cimmich_local_review_service_v1";
 const userCommandReceiptId = "receipt_cimmich_local_identity_commands_v1";
 const petManualReceiptId = "receipt_cimmich_pet_manual_management_v1";
 const machineMatcherPolicyVersion = "cimmich-best-prime-v1";
-const sha256Pattern = /^[0-9a-f]{64}$/;
 // One fixed scorer frontier backs Summary, People and Steward. It preserves the
 // established 24-item review surface's 2x candidate budget while allowing every
 // caller limit to be an output-only truncation.
@@ -95,31 +95,6 @@ const allTrustedShortlistBatchLimit = 1;
 const allTrustedShortlistConcurrency = 1;
 const allTrustedShortlistStatementTimeoutMs = 4_000;
 const allTrustedShortlistTransactionTimeoutMs = 12_000;
-const normalizeMatchingProvider = (value) => {
-  if (value == null) return null;
-  const boundedId = (input, label, maximum = 160) => {
-    const normalized = String(input || "").trim();
-    if (
-      !normalized ||
-      normalized.length > maximum ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(normalized)
-    ) {
-      throw new Error(`Matching provider ${label} is invalid`);
-    }
-    return normalized;
-  };
-  const configDigest = String(value.configDigest || "").trim();
-  if (!sha256Pattern.test(configDigest)) {
-    throw new Error("Matching provider configDigest is invalid");
-  }
-  return Object.freeze({
-    configDigest,
-    modelFamily: boundedId(value.modelFamily, "modelFamily"),
-    modelVersion: boundedId(value.modelVersion, "modelVersion"),
-    providerId: boundedId(value.providerId, "providerId"),
-    vectorSpaceId: boundedId(value.vectorSpaceId, "vectorSpaceId", 192),
-  });
-};
 const cleanLimit = (value, fallback, maximum) =>
   Math.min(
     maximum,
@@ -6163,6 +6138,25 @@ export const createCimmichRepository = (
               AND locator.resolution_kind = 'stronger_existing_truth'
             )
           )
+      ), face_crops AS MATERIALIZED (
+        SELECT DISTINCT ON (face_association.asset_id)
+          face_association.asset_id,
+          jsonb_build_object(
+            'face_id', face.face_id,
+            'box_x', face.box_x,
+            'box_y', face.box_y,
+            'box_w', face.box_w,
+            'box_h', face.box_h
+          ) AS face_crop
+        FROM associations face_association
+        JOIN face_observation face
+          ON face.face_id = face_association.geometry_id
+          AND face.state = 'valid'
+        WHERE face_association.person_id = ${id}
+          AND face_association.association_type IN ('face', 'head')
+        ORDER BY face_association.asset_id,
+          (face_association.association_type = 'head') DESC,
+          face.box_w * face.box_h DESC, face.face_id
       ), projected_assets AS MATERIALIZED (
         SELECT a.asset_id, a.media_kind, a.mime_type, a.width, a.height, a.capture_time,
           coalesce(visibility.visibility_tier, 'standard') AS privacy_tier,
@@ -6188,6 +6182,7 @@ export const createCimmichRepository = (
           bool_or(association.association_type = 'presence') AS has_presence,
           bool_or(association.association_type = 'head' AND association.geometry_id IS NULL) AS asset_head_evidence,
           bool_or(association.association_type = 'presence') AS presence_evidence,
+          face_crop.face_crop,
           coalesce((
             SELECT jsonb_agg(
               jsonb_build_object(
@@ -6215,11 +6210,13 @@ export const createCimmichRepository = (
           AND visibility.object_id = a.asset_id
         LEFT JOIN same_photo_usable_face_assets same_photo_face
           ON same_photo_face.asset_id = a.asset_id
+        LEFT JOIN face_crops face_crop ON face_crop.asset_id = a.asset_id
         WHERE association.person_id = ${id}
           AND a.state = 'active'
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
         GROUP BY a.asset_id, a.media_kind, a.mime_type, a.width, a.height,
-          a.capture_time, visibility.visibility_tier, same_photo_face.asset_id
+          a.capture_time, visibility.visibility_tier, same_photo_face.asset_id,
+          face_crop.face_crop
       ), filtered_assets AS (
         SELECT projected_assets.*,
           (count(*) OVER ())::int AS total_count,
