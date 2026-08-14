@@ -233,40 +233,52 @@ export const createPersonMatchRefresher = ({
       await tx`
         CREATE TEMP TABLE cimmich_person_match_refresh_competitor
         ON COMMIT DROP AS
-        SELECT gallery.person_id, gallery.face_id,
+        SELECT bucket.person_id, latest.face_id,
           reference_face.asset_id,
           reference_embedding.embedding::vector(512) AS embedding,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-        FROM current_reference_gallery gallery
-        JOIN current_person other_person
-          ON other_person.person_id = gallery.person_id
+        FROM reference_bucket bucket
+        JOIN person other_person
+          ON other_person.person_id = bucket.person_id
           AND other_person.status = 'active'
           AND other_person.subject_kind = 'person'
+        JOIN LATERAL (
+          SELECT DISTINCT ON (event.face_id)
+            event.face_id, event.action
+          FROM bucket_membership_event event
+          WHERE event.bucket_id = bucket.bucket_id
+          ORDER BY event.face_id, event.created_at DESC,
+            event.membership_event_id DESC
+        ) latest ON latest.action IN ('activate', 'pin', 'unpin')
         JOIN face_observation reference_face
-          ON reference_face.face_id = gallery.face_id
+          ON reference_face.face_id = latest.face_id
           AND reference_face.state = 'valid'
         JOIN face_embedding reference_embedding
-          ON reference_embedding.face_id = gallery.face_id
+          ON reference_embedding.face_id = latest.face_id
           AND reference_embedding.state = 'active'
           AND reference_embedding.model_family = ${pack.model_family}
           AND reference_embedding.model_version = ${pack.model_version}
           AND reference_embedding.config_digest = ${pack.config_digest}
-        JOIN current_face_identity accepted
-          ON accepted.face_id = gallery.face_id
-          AND accepted.person_id = gallery.person_id
-          AND accepted.state = 'accepted'
+        JOIN LATERAL (
+          SELECT claim.state
+          FROM identity_claim claim
+          WHERE claim.face_id = latest.face_id
+            AND claim.person_id = bucket.person_id
+          ORDER BY claim.created_at DESC, claim.identity_claim_id DESC
+          LIMIT 1
+        ) accepted ON accepted.state = 'accepted'
         LEFT JOIN LATERAL (
           SELECT array_agg(capture.context_id ORDER BY capture.context_id)
             AS context_ids
           FROM current_face_capture_context capture
-          WHERE capture.face_id = gallery.face_id
+          WHERE capture.face_id = latest.face_id
         ) context ON true
-        WHERE gallery.person_id <> ${id}
-          AND gallery.membership_state = 'active'
-          AND gallery.bucket_kind = 'prime'
+        WHERE bucket.person_id <> ${id}
+          AND bucket.state IN ('candidate', 'active')
+          AND bucket.bucket_kind = 'prime'
           AND NOT EXISTS (
             SELECT 1 FROM current_person_category category
-            WHERE category.person_id = gallery.person_id
+            WHERE category.person_id = bucket.person_id
               AND category.slug IN ('sort', 'holding')
           )
       `;
@@ -276,6 +288,38 @@ export const createPersonMatchRefresher = ({
         USING ivfflat (embedding vector_cosine_ops) WITH (lists = 64)
       `;
       await tx`ANALYZE cimmich_person_match_refresh_competitor`;
+      // The physical-identity view is otherwise expanded independently by
+      // several anti-joins below. Materialize it once per bounded refresh and
+      // index the exact lookup shape instead of rescanning the archive for
+      // every rule.
+      await tx`
+        CREATE TEMP TABLE cimmich_person_match_refresh_physical_identity
+        ON COMMIT DROP AS
+        SELECT physical_face_id, canonical_face_id, person_id, state
+        FROM current_physical_face_identity
+      `;
+      await tx`
+        CREATE INDEX cimmich_person_match_refresh_physical_identity_lookup
+        ON cimmich_person_match_refresh_physical_identity (
+          physical_face_id, state, person_id
+        )
+      `;
+      await tx`ANALYZE cimmich_person_match_refresh_physical_identity`;
+      await tx`
+        CREATE TEMP TABLE cimmich_person_match_refresh_target_accepted_asset
+        ON COMMIT DROP AS
+        SELECT DISTINCT accepted_face.asset_id
+        FROM cimmich_person_match_refresh_physical_identity accepted
+        JOIN current_matchable_physical_face accepted_face
+          ON accepted_face.physical_face_id = accepted.physical_face_id
+        WHERE accepted.person_id = ${id}
+          AND accepted.state = 'accepted'
+      `;
+      await tx`
+        CREATE UNIQUE INDEX cimmich_person_match_refresh_target_asset_key
+        ON cimmich_person_match_refresh_target_accepted_asset (asset_id)
+      `;
+      await tx`ANALYZE cimmich_person_match_refresh_target_accepted_asset`;
 
       const [before] = await tx`
         SELECT count(*) FILTER (WHERE state = 'accepted')::int
@@ -335,7 +379,8 @@ export const createPersonMatchRefresher = ({
               face.detection_confidence, face.box_w, face.box_h
             )
             AND NOT EXISTS (
-              SELECT 1 FROM current_physical_face_identity target_identity
+              SELECT 1
+              FROM cimmich_person_match_refresh_physical_identity target_identity
               WHERE target_identity.physical_face_id =
                   query_face.physical_face_id
                 AND target_identity.person_id = ${id}
@@ -343,13 +388,14 @@ export const createPersonMatchRefresher = ({
             )
             AND (
               NOT EXISTS (
-                SELECT 1 FROM current_physical_face_identity accepted
+                SELECT 1
+                FROM cimmich_person_match_refresh_physical_identity accepted
                 WHERE accepted.physical_face_id = query_face.physical_face_id
                   AND accepted.state = 'accepted'
               )
               OR EXISTS (
                 SELECT 1
-                FROM current_physical_face_identity accepted
+                FROM cimmich_person_match_refresh_physical_identity accepted
                 JOIN current_person_category attention
                   ON attention.person_id = accepted.person_id
                   AND attention.slug = 'sort'
@@ -397,12 +443,8 @@ export const createPersonMatchRefresher = ({
             )
             AND NOT EXISTS (
               SELECT 1
-              FROM current_physical_face_identity same_photo
-              JOIN current_matchable_physical_face accepted_face
-                ON accepted_face.physical_face_id = same_photo.physical_face_id
-              WHERE same_photo.person_id = ${id}
-                AND same_photo.state = 'accepted'
-                AND accepted_face.asset_id = nearest.asset_id
+              FROM cimmich_person_match_refresh_target_accepted_asset same_photo
+              WHERE same_photo.asset_id = nearest.asset_id
             )
           ORDER BY nearest.face_id, nearest.target_score DESC,
             nearest.reference_face_id
@@ -464,7 +506,7 @@ export const createPersonMatchRefresher = ({
         FROM cimmich_person_match_refresh_result result
         CROSS JOIN LATERAL (
           SELECT count(DISTINCT physical_face_id)::int AS face_count
-          FROM current_physical_face_identity
+          FROM cimmich_person_match_refresh_physical_identity
           WHERE person_id = ${id} AND state = 'accepted'
         ) accepted
         GROUP BY accepted.face_count
