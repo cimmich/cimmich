@@ -13,6 +13,10 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
   import { keyboardTabs } from '$lib/components/cimmich/keyboard-tabs';
+  import {
+    reclassifyIdentityAuditEvidence,
+    type CimmichAuditEvidenceKind,
+  } from '$lib/components/cimmich/identity-audit-evidence-reclassification';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
@@ -260,6 +264,20 @@
       await refillAfterDecision();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'The audit item could not be dismissed.';
+    } finally {
+      busyFaceId = '';
+    }
+  };
+
+  const reclassify = async (item: CimmichIdentityAuditItem, evidenceKind: CimmichAuditEvidenceKind) => {
+    busyFaceId = item.faceId;
+    error = '';
+    try {
+      await reclassifyIdentityAuditEvidence(item, evidenceKind);
+      removeItem(item);
+      await refillAfterDecision();
+    } catch (error_) {
+      error = error_ instanceof Error ? error_.message : `The box could not be saved as ${evidenceKind}.`;
     } finally {
       busyFaceId = '';
     }
@@ -658,51 +676,88 @@
                 {/if}
               </div>
               <div
-                class={`flex min-w-0 gap-2 ${
-                  reviewMode === 'focus' ? 'justify-end' : 'sm:col-span-2 lg:col-span-1 lg:justify-end'
+                class={`flex min-w-0 flex-col gap-2 ${
+                  reviewMode === 'focus' ? 'items-end' : 'sm:col-span-2 sm:items-end lg:col-span-1'
                 }`}
               >
-                <button
-                  type="button"
-                  class="flex min-w-0 items-center rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
-                  disabled={Boolean(busyFaceId)}
-                  aria-label={item.assignedPerson
-                    ? `Keep current tag ${item.assignedPerson.displayName}`
-                    : `Reject match with ${item.suggestedPerson.displayName}`}
-                  onclick={() => void dismiss(item)}
-                >
-                  <span class="truncate">
-                    {item.assignedPerson ? 'Keep current' : `Not ${item.suggestedPerson.displayName}`}
-                  </span>
-                </button>
-                {#if item.evidenceRoute === 'own_cluster_outlier' && item.assignedPerson}
-                  <a
-                    class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 dark:bg-immich-dark-primary"
-                    href={Route.cimmichPerson({
-                      identityReviewCount: 1,
-                      name: item.assignedPerson.displayName,
-                      personId: item.assignedPerson.personId,
-                    })}
-                  >
-                    Review and reassign
-                  </a>
+                {#if item.assignedPerson}
+                  <div class="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Keep {item.assignedPerson.displayName}; this box is
+                    </span>
+                    <button
+                      type="button"
+                      class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
+                      disabled={Boolean(busyFaceId)}
+                      aria-label={`Keep ${item.assignedPerson.displayName} as Face`}
+                      onclick={() => void dismiss(item)}
+                    >
+                      Face
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
+                      disabled={Boolean(busyFaceId)}
+                      aria-label={`Keep ${item.assignedPerson.displayName} as Head`}
+                      onclick={() => void reclassify(item, 'head')}
+                    >
+                      Head
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
+                      disabled={Boolean(busyFaceId)}
+                      aria-label={`Keep ${item.assignedPerson.displayName} as Body`}
+                      onclick={() => void reclassify(item, 'body')}
+                    >
+                      Body
+                    </button>
+                  </div>
+                  {#if item.evidenceRoute === 'own_cluster_outlier'}
+                    <a
+                      class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 dark:bg-immich-dark-primary"
+                      href={Route.cimmichPerson({
+                        identityReviewCount: 1,
+                        name: item.assignedPerson.displayName,
+                        personId: item.assignedPerson.personId,
+                      })}
+                    >
+                      Review and reassign
+                    </a>
+                  {:else}
+                    <button
+                      type="button"
+                      class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50 dark:bg-immich-dark-primary"
+                      disabled={Boolean(busyFaceId)}
+                      aria-label={`Change tag to ${item.suggestedPerson.displayName}`}
+                      onclick={() => void accept(item)}
+                    >
+                      <Icon icon={mdiCheck} size="15" class="shrink-0" />
+                      <span class="truncate">
+                        {busyFaceId === item.faceId ? 'Saving…' : `Use ${item.suggestedPerson.displayName}`}
+                      </span>
+                    </button>
+                  {/if}
                 {:else}
+                  <button
+                    type="button"
+                    class="flex min-w-0 items-center rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-immich-dark-gray dark:text-gray-300 dark:hover:bg-gray-900"
+                    disabled={Boolean(busyFaceId)}
+                    aria-label={`Reject match with ${item.suggestedPerson.displayName}`}
+                    onclick={() => void dismiss(item)}
+                  >
+                    <span class="truncate">Not {item.suggestedPerson.displayName}</span>
+                  </button>
                   <button
                     type="button"
                     class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50 dark:bg-immich-dark-primary"
                     disabled={Boolean(busyFaceId)}
-                    aria-label={item.assignedPerson
-                      ? `Change tag to ${item.suggestedPerson.displayName}`
-                      : `Confirm match with ${item.suggestedPerson.displayName}`}
+                    aria-label={`Confirm match with ${item.suggestedPerson.displayName}`}
                     onclick={() => void accept(item)}
                   >
                     <Icon icon={mdiCheck} size="15" class="shrink-0" />
                     <span class="truncate">
-                      {busyFaceId === item.faceId
-                        ? 'Saving…'
-                        : item.assignedPerson
-                          ? `Use ${item.suggestedPerson.displayName}`
-                          : `Tag as ${item.suggestedPerson.displayName}`}
+                      {busyFaceId === item.faceId ? 'Saving…' : `Tag as ${item.suggestedPerson.displayName}`}
                     </span>
                   </button>
                 {/if}
