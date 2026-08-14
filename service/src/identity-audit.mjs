@@ -4,6 +4,12 @@ import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { persistIdentityAuditScoredRows } from "./identity-audit-persistence.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
+import {
+  identityAuditScoringConcurrency,
+  reportIdentityAuditFrontierTruncation,
+  scoreIdentityAuditShards,
+} from "./identity-audit-scoring.mjs";
+export { identityAuditScoringConcurrency } from "./identity-audit-scoring.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -13,14 +19,9 @@ export const identityAuditIndependenceScoreFloor = 0.75;
 // exact float equality (which failed whole audit runs on last-bit replays).
 export const identityAuditSimilarityEpsilon = 1e-6;
 // The full audit scores every eligible query Face against the whole prime
-// gallery in one statement, which is O(queries x gallery). Keep one
-// deterministic, production-sized query frontier. Larger libraries retain
+// gallery in one statement, which is O(queries x gallery). Larger libraries retain
 // their strongest eligible queries and emit a structured truncation warning.
 export const identityAuditQueryFrontierLimit = 5_000;
-// X1 has eight physical cores. A full audit is an explicit bounded background
-// job, so let its two pure scoring statements request six workers while
-// leaving host capacity for interactive reads and the rest of the stack.
-export const identityAuditParallelWorkers = 6;
 // Independent-evidence verification runs two provider comparisons per
 // candidate. Bound the normal owner run to 100 strongest candidates (200
 // provider comparisons); controlled diagnostics may supply another limit.
@@ -126,16 +127,12 @@ const auditSql = async (
     identityAuditQueryFrontierLimit,
   );
   const reportFrontierTruncation = (auditKind, eligibleQueries) => {
-    if (eligibleQueries <= frontierLimit) return;
-    console.warn(
-      JSON.stringify({
-        auditKind,
-        code: "IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED",
-        eligibleQueries,
-        queryFrontierLimit: frontierLimit,
-        runId,
-      }),
-    );
+    reportIdentityAuditFrontierTruncation({
+      auditKind,
+      eligibleQueries,
+      frontierLimit,
+      runId,
+    });
   };
   // One definition of the visible prime reference gallery shared across both
   // transactions used by the untagged and accepted-contradiction audits.
@@ -165,16 +162,8 @@ const auditSql = async (
         )
       ORDER BY reference.person_id, physical.physical_face_id,
         reference.face_id`;
-  await sql.begin(async (tx) => {
-    await tx`
-      SELECT set_config('statement_timeout',
-          ${String(identityAuditStatementTimeoutMs)}, true),
-        set_config('transaction_timeout',
-          ${String(identityAuditTransactionTimeoutMs)}, true),
-        set_config('max_parallel_workers_per_gather',
-          ${String(identityAuditParallelWorkers)}, true)
-    `;
-    if (incremental) {
+  if (incremental) {
+    await sql.begin(async (tx) => {
       await tx`
         INSERT INTO identity_audit_item (
           audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
@@ -224,8 +213,15 @@ const auditSql = async (
             ))
           )
       `;
-    }
-    const untaggedScored = await tx`
+    });
+  }
+  const untaggedScored = await scoreIdentityAuditShards(
+    sql,
+    {
+      statementTimeoutMs: identityAuditStatementTimeoutMs,
+      transactionTimeoutMs: identityAuditTransactionTimeoutMs,
+    },
+    async (tx, shardIndex) => tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -346,7 +342,7 @@ const auditSql = async (
               )
             )
         )
-      ), queries AS NOT MATERIALIZED (
+      ), frontier AS MATERIALIZED (
         -- Bounded comparison frontier: deterministic quality-first ranking,
         -- mirroring the machineSuggestions frontier policy in repository.mjs.
         SELECT eligible.face_id, eligible.physical_face_id,
@@ -356,6 +352,15 @@ const auditSql = async (
         ORDER BY eligible.quality_score DESC,
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
+      ), queries AS NOT MATERIALIZED (
+        SELECT frontier.face_id, frontier.physical_face_id,
+          frontier.asset_id, frontier.embedding, frontier.context_ids
+        FROM frontier
+        WHERE (
+          (hashtextextended(frontier.face_id, 0) %
+            ${identityAuditScoringConcurrency}) +
+          ${identityAuditScoringConcurrency}
+        ) % ${identityAuditScoringConcurrency} = ${shardIndex}
       ), gallery AS NOT MATERIALIZED (
         ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
@@ -406,7 +411,9 @@ const auditSql = async (
         SELECT count(*)::int AS eligible_queries FROM eligible_queries
       ) summary
       LEFT JOIN candidate_rows candidate ON true
-    `;
+    `,
+  );
+  await sql.begin(async (tx) => {
     const untaggedEligible = await persistIdentityAuditScoredRows(tx, {
       kind: "untagged_match",
       packId,
@@ -476,16 +483,13 @@ const auditSql = async (
     return;
   }
 
-  await sql.begin(async (tx) => {
-    await tx`
-      SELECT set_config('statement_timeout',
-          ${String(identityAuditStatementTimeoutMs)}, true),
-        set_config('transaction_timeout',
-          ${String(identityAuditTransactionTimeoutMs)}, true),
-        set_config('max_parallel_workers_per_gather',
-          ${String(identityAuditParallelWorkers)}, true)
-    `;
-    const contradictionScored = await tx`
+  const contradictionScored = await scoreIdentityAuditShards(
+    sql,
+    {
+      statementTimeoutMs: identityAuditStatementTimeoutMs,
+      transactionTimeoutMs: identityAuditTransactionTimeoutMs,
+    },
+    async (tx, shardIndex) => tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -521,7 +525,7 @@ const auditSql = async (
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE claim.state = 'accepted'
-      ), queries AS NOT MATERIALIZED (
+      ), frontier AS MATERIALIZED (
         -- Bounded comparison frontier: deterministic quality-first ranking,
         -- mirroring the machineSuggestions frontier policy in repository.mjs.
         SELECT eligible.face_id, eligible.asset_id,
@@ -531,6 +535,16 @@ const auditSql = async (
         ORDER BY eligible.quality_score DESC,
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
+      ), queries AS NOT MATERIALIZED (
+        SELECT frontier.face_id, frontier.asset_id,
+          frontier.assigned_person_id, frontier.embedding,
+          frontier.context_ids
+        FROM frontier
+        WHERE (
+          (hashtextextended(frontier.face_id, 0) %
+            ${identityAuditScoringConcurrency}) +
+          ${identityAuditScoringConcurrency}
+        ) % ${identityAuditScoringConcurrency} = ${shardIndex}
       ), gallery AS NOT MATERIALIZED (
         ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
@@ -594,7 +608,9 @@ const auditSql = async (
         SELECT count(*)::int AS eligible_queries FROM eligible_queries
       ) summary
       LEFT JOIN candidate_rows candidate ON true
-    `;
+    `,
+  );
+  await sql.begin(async (tx) => {
     const contradictionEligible = await persistIdentityAuditScoredRows(tx, {
       kind: "accepted_contradiction",
       packId,

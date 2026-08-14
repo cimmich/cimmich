@@ -5,8 +5,8 @@ import {
   carryForwardIdentityAuditDismissals,
   createIdentityAudit,
   identityAuditIndependenceComparisonLimit,
-  identityAuditParallelWorkers,
   identityAuditQueryFrontierLimit,
+  identityAuditScoringConcurrency,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
 import { persistIdentityAuditScoredRows } from "../src/identity-audit-persistence.mjs";
@@ -60,7 +60,7 @@ test("accepted contradiction audit uses one canonical Face per physical identity
   assert.doesNotMatch(contradiction, /FROM current_face_identity claim/);
 });
 
-test("expensive identity audit scoring stays parallel-safe before persistence", async () => {
+test("expensive identity audit scoring uses six serial database shards before persistence", async () => {
   const auditSource = await readFile(
     new URL("../src/identity-audit.mjs", import.meta.url),
     "utf8",
@@ -69,24 +69,32 @@ test("expensive identity audit scoring stays parallel-safe before persistence", 
     new URL("../src/identity-audit-persistence.mjs", import.meta.url),
     "utf8",
   );
+  const scoringSource = await readFile(
+    new URL("../src/identity-audit-scoring.mjs", import.meta.url),
+    "utf8",
+  );
   const scoring = auditSource.slice(
     auditSource.indexOf("const untaggedScored"),
     auditSource.indexOf("const untaggedEligible"),
   );
 
   assert.match(scoring, /candidate_rows AS MATERIALIZED/);
+  assert.match(scoring, /frontier AS MATERIALIZED/);
   assert.match(scoring, /queries AS NOT MATERIALIZED/);
+  assert.match(scoring, /hashtextextended\(frontier\.face_id, 0\)/);
   assert.match(scoring, /gallery AS NOT MATERIALIZED/);
   assert.doesNotMatch(scoring, /INSERT INTO identity_audit_item/);
   assert.doesNotMatch(scoring, /cimmich_probable_same_photo_derivative/);
   assert.match(persistenceSource, /INSERT INTO identity_audit_item/);
   assert.match(persistenceSource, /jsonb_to_recordset/);
   assert.match(persistenceSource, /cimmich_probable_same_photo_derivative/);
-  assert.equal(identityAuditParallelWorkers, 6);
+  assert.equal(identityAuditScoringConcurrency, 6);
+  assert.match(scoringSource, /await Promise\.all/);
   assert.equal(
-    auditSource.match(/max_parallel_workers_per_gather/g)?.length,
-    2,
+    scoringSource.match(/max_parallel_workers_per_gather/g)?.length,
+    1,
   );
+  assert.equal(auditSource.match(/frontier AS MATERIALIZED/g)?.length, 2);
   assert.equal(auditSource.match(/queries AS NOT MATERIALIZED/g)?.length, 2);
   assert.equal(auditSource.match(/gallery AS NOT MATERIALIZED/g)?.length, 2);
 });
@@ -678,6 +686,10 @@ test("full audit bounds both comparison frontiers deterministically and reports 
     new URL("../src/identity-audit.mjs", import.meta.url),
     "utf8",
   );
+  const scoringSource = await readFile(
+    new URL("../src/identity-audit-scoring.mjs", import.meta.url),
+    "utf8",
+  );
   // Both full-audit statements (untagged_match and accepted_contradiction)
   // rank their eligible queries and cap them with one shared frontier limit.
   assert.equal((source.match(/LIMIT \$\{frontierLimit\}/g) || []).length, 2);
@@ -701,7 +713,7 @@ test("full audit bounds both comparison frontiers deterministically and reports 
   );
   // Truncation is observable, never silent, and the default is a finite
   // production frontier rather than a diagnostic-scale near-unbounded scan.
-  assert.match(source, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
+  assert.match(scoringSource, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
   assert.equal(identityAuditQueryFrontierLimit, 5_000);
   assert.equal(identityAuditIndependenceComparisonLimit, 100);
 });
