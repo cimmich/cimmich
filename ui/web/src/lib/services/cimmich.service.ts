@@ -4,6 +4,8 @@ import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 import { createCimmichExploreClient } from './cimmich-explore.service';
 import {
   createCimmichFaceIdentityBatchClient,
+  createCimmichPersonCandidatesClient,
+  createCimmichPersonMatchRefreshClient,
   type CimmichFaceIdentitySelector,
 } from './cimmich-face-identity-batch.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
@@ -3711,12 +3713,8 @@ export const getCimmichTagAssets = (
     method: 'POST',
   });
 
-export const getCimmichPersonCandidates = async (personId: string, limit = 5000) => {
-  const result = await request<{ items: CimmichIdentityCandidate[] }>(
-    `/v1/people/${encodeURIComponent(personId)}/candidates?limit=${Math.max(1, Math.min(5000, limit))}`,
-  );
-  return result.items;
-};
+export const getCimmichPersonCandidates = createCimmichPersonCandidatesClient(request);
+export const refreshCimmichPersonMatches = createCimmichPersonMatchRefreshClient(request);
 
 export const getCimmichPersonCandidateSummary = () =>
   coalesceCimmichRequest('/v1/people/candidate-summary', () =>

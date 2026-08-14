@@ -14,6 +14,7 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonMatchRefresh.svelte', 'utf8'),
     readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
   ]);
   return sources.join('\n');
@@ -107,6 +108,13 @@ describe('Person profile layout', () => {
     expect(source).toContain('Supporting matcher reference');
     expect(source).toContain('face.matching_reference_tier');
     expect(source).toContain('Awaiting confirmation');
+    expect(source).toContain('Refresh matching');
+    expect(source).toContain('Refresh matches');
+    expect(source).toContain('refreshCimmichPersonMatches(requestedPersonId)');
+    expect(source).toContain('Update matcher photos from confirmed Faces');
+    expect(source).toContain('People marked');
+    expect(source).toMatch(/Needs attention\s+for more likely matches/);
+    expect(source).toContain('Nothing was confirmed.');
     expect(source).toContain('const cimmichAwaitingCountHint');
     expect(source).toContain('Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)');
     expect(source).toContain('{waitingHint.toLocaleString()} waiting');

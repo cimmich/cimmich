@@ -4,6 +4,7 @@ import { curatePrimeSet } from "../src/prime-curator.mjs";
 import {
   buildPrimeCurations,
   mainMembershipsToRemoveBeforePrime,
+  qualityForPrimeCuration,
 } from "../src/prime-curator-repository.mjs";
 import { applyBiometricAuthority } from "../src/biometric-authority.mjs";
 
@@ -24,6 +25,14 @@ const face = (faceId, vector, quality = 0.9, assetId = faceId, extra = {}) => ({
   quality,
   vector: normalized(vector),
   ...extra,
+});
+
+test("unmeasured archive quality is distinct from an explicit zero", () => {
+  assert.equal(qualityForPrimeCuration(null), 0.68);
+  assert.equal(qualityForPrimeCuration(undefined), 0.68);
+  assert.equal(qualityForPrimeCuration(""), 0.68);
+  assert.equal(qualityForPrimeCuration(0), 0);
+  assert.equal(qualityForPrimeCuration(0.91), 0.91);
 });
 
 test("curator selects a clean matching gallery and rejects a biometric outlier", () => {

@@ -61,6 +61,7 @@ import {
   lockCimmichPrivateMode,
   createCimmichPerson,
   mergeCimmichPeople,
+  refreshCimmichPersonMatches,
   rescanCimmichHeadEvidence,
   markCimmichBodyNotBody,
   markCimmichFaceNotFace,
@@ -221,6 +222,45 @@ describe('Cimmich durable bulk review client contract', () => {
 
     try {
       const request = setCimmichFaceIdentitiesBatch([{ faceId: 'face-1', personId: 'person-1' }]);
+      await vi.advanceTimersByTimeAsync(13_000);
+      await expect(request).resolves.toEqual(response);
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps an explicit Person matcher refresh attached beyond the ordinary timeout', async () => {
+    vi.useFakeTimers();
+    const response = {
+      acceptedIdentityDelta: 0,
+      automaticIdentityWrites: 0,
+      candidateCount: 4,
+      matcherPhotoCount: 2,
+      personId: 'person-1',
+      personName: 'Cedar Quinn',
+      referenceSetDigest: 'a'.repeat(64),
+      runId: 'personmatch-1',
+      schemaVersion: 'cimmich.person-match-refresh.v1',
+      state: 'complete',
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((resolve, reject) => {
+          const completion = globalThis.setTimeout(() => resolve(Response.json(response)), 13_000);
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              globalThis.clearTimeout(completion);
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    try {
+      const request = refreshCimmichPersonMatches('person-1');
       await vi.advanceTimersByTimeAsync(13_000);
       await expect(request).resolves.toEqual(response);
     } finally {

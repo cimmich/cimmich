@@ -13,6 +13,16 @@ import { applyBiometricAuthority } from "./biometric-authority.mjs";
 
 const receiptId = "receipt_cimmich_prime_biometric_curator_v1";
 const eventId = () => `membership_${randomUUID().replaceAll("-", "")}`;
+export const qualityForPrimeCuration = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    // Much of the archive predates quality measurement. Unknown is not poor:
+    // admit it at the conservative floor, then let detection, geometry,
+    // centrality, duplicate suppression, and competitor checks do their jobs.
+    return 0.68;
+  }
+  const quality = Number(value);
+  return Number.isFinite(quality) ? quality : 0.68;
+};
 const prototypeId = (curation, memberFaceIds) =>
   `prototype_${createHash("sha256")
     .update(
@@ -36,7 +46,7 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
       round(a.width * fo.box_w)::int AS face_pixel_width,
       round(a.height * fo.box_h)::int AS face_pixel_height,
       fo.detection_confidence::float8 AS detection,
-      coalesce((fo.quality_measurements->>'quality_score')::float8, 0) AS quality,
+      (fo.quality_measurements->>'quality_score')::float8 AS quality,
       coalesce(fo.quality_measurements->>'effective_gallery_permission', 'unknown') AS gallery_permission,
       coalesce(fo.quality_measurements->>'source_instance_suffix', '') AS source_instance_suffix,
       fe.model_family, fe.model_version, fe.config_digest, fe.dimension, fe.embedding::text AS embedding,
@@ -114,11 +124,12 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
     ORDER BY cfi.person_id, fe.model_family, fe.model_version, fe.config_digest, fo.face_id
   `;
   return rows.map((row) => {
+    const quality = qualityForPrimeCuration(row.quality);
     const autoLowQuality = isLowQualityEvidence({
       detection: row.detection,
       facePixelHeight: row.face_pixel_height,
       facePixelWidth: row.face_pixel_width,
-      quality: row.quality,
+      quality,
     });
     return {
       assetId: row.asset_id,
@@ -139,7 +150,7 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
       maxOtherPrimeSimilarity: row.max_other_prime_similarity,
       personId: row.person_id,
       pinnedPrime: row.pinned_prime,
-      quality: row.quality,
+      quality,
       sourceTierHint:
         row.source_instance_suffix === "" ||
         row.source_instance_suffix === "blank"

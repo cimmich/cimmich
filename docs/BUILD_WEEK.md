@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 132 without rewriting the schema-128
+Public Beta development continues on schema 133 without rewriting the schema-128
 Community Preview 8 release. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
@@ -24,7 +24,12 @@ schema 131 prevents retired SourcePacks from leaving obsolete identity proposals
 actionable while preserving them as superseded review history; schema 132 lets
 SourcePack activation follow trusted accepted identity evidence across preserved
 aliases of the same canonical physical Face without weakening manual-evidence
-or Person-consistency checks.
+or Person-consistency checks; schema 133 adds current-Prime Person refresh runs
+that can update matcher photos and propose more archive Faces—including Faces
+inside People marked Needs attention—for human review without accepting
+identity. Unmeasured legacy quality remains distinct from an explicit poor
+quality score, so a newly split Person can regain conservative Prime matcher
+photos from confirmed archive Faces.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

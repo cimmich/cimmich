@@ -8,6 +8,7 @@
   import CimmichPersonIdentityNavigation from '$lib/components/cimmich/CimmichPersonIdentityNavigation.svelte';
   import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
   import CimmichPersonPhotoViewToggle from '$lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte';
+  import CimmichPersonMatchRefresh from '$lib/components/cimmich/CimmichPersonMatchRefresh.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
@@ -3869,23 +3870,22 @@
             <p class="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading matching evidence…</p>
           {:else if cimmichIdentityFilter === 'candidates'}
             <section class="grid gap-6" aria-label="Awaiting confirmation">
-              <nav class="flex flex-wrap gap-2" aria-label="Check type">
-                {#each [{ id: 'new', label: 'New matches', count: Math.max(0, cimmichAwaitingCounts.newMatches - cimmichSamePhotoCollisionCount) }, { id: 'multiple', label: 'Multiple in one photo', count: cimmichSamePhotoCollisionCount }, { id: 'mistags', label: 'Possible mistags', count: cimmichAwaitingCounts.possibleMistags }] as check (check.id)}
-                  <button
-                    class={[
-                      'inline-flex min-h-10 items-center gap-2 rounded-full border px-3 text-sm font-semibold',
-                      cimmichChecksView === check.id
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-gray-200 bg-white hover:border-gray-400 dark:border-gray-700 dark:bg-immich-dark-bg',
-                    ]}
-                    type="button"
-                    aria-pressed={cimmichChecksView === check.id}
-                    onclick={() => (cimmichChecksView = check.id as typeof cimmichChecksView)}
-                  >
-                    {check.label}<span class="text-xs opacity-70">{check.count.toLocaleString()}</span>
-                  </button>
-                {/each}
-              </nav>
+              <CimmichPersonMatchRefresh
+                counts={{
+                  mistags: cimmichAwaitingCounts.possibleMistags,
+                  multiple: cimmichSamePhotoCollisionCount,
+                  new: Math.max(0, cimmichAwaitingCounts.newMatches - cimmichSamePhotoCollisionCount),
+                }}
+                onerror={(message) => (cimmichIdentityError = message)}
+                onmessage={(message) => (cimmichIdentityMessage = message)}
+                onreload={async () => {
+                  cimmichIdentityLoaded = false;
+                  await openCimmichIdentity();
+                }}
+                onviewchange={(view) => (cimmichChecksView = view)}
+                personId={cimmichPerson.person_id}
+                view={cimmichChecksView}
+              />
               {#if cimmichIdentityReviewLoading}
                 <p
                   class="rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"

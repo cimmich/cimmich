@@ -1,6 +1,22 @@
 export const createReviewRoutes =
   (repository, requireProjection, readJsonBody, sendJson) =>
   async (request, response, url, allowedOrigin) => {
+    const personMatchRefreshMatch = url.pathname.match(
+      /^\/v1\/people\/([^/]+)\/matching\/refresh$/,
+    );
+    if (request.method === "POST" && personMatchRefreshMatch) {
+      requireProjection("person_review");
+      sendJson(
+        response,
+        200,
+        await repository.refreshPersonMatches({
+          actorId: request.headers["x-cimmich-actor"],
+          personId: decodeURIComponent(personMatchRefreshMatch[1]),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
     if (
       request.method === "GET" &&
       url.pathname === "/v1/archive-integrity/exact-duplicates"

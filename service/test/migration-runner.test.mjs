@@ -1248,3 +1248,23 @@ test("schema 132 trusts accepted aliases of the same physical face during Source
   assert.match(source, /identity\.person_id = reference\.person_id/);
   assert.match(source, /lifecycle\.vector_digest = reference\.vector_digest/);
 });
+
+test("schema 133 makes targeted Person matcher refreshes fresh and review-only", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0133_person_match_refresh_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /person_match_refresh_run/);
+  assert.match(source, /person_match_refresh_reference/);
+  assert.match(source, /person_refresh_prime_match/);
+  assert.match(source, /person_match_refresh_one_active/);
+  assert.match(source, /cimmich_supersede_person_refresh_candidates/);
+  assert.match(source, /person_refresh_not_active/);
+  assert.match(source, /NEW\.origin = 'person_refresh_match'/);
+  assert.match(source, /run\.state = 'active'/);
+});

@@ -47,10 +47,10 @@ import { loadFaceReviewComparisonBatch } from "./face-review-comparison-reposito
 import { createObservationCorrectionStore } from "./observation-correction.mjs";
 import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
+import { createPersonMatchRefreshStore } from "./person-match-refresh-repository.mjs";
 import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createSmartSplitRecommendationStore } from "./smart-split-recommendations.mjs";
-import { bulkReassignFaceIdentities } from "./bulk-face-identity-reassignment.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -960,6 +960,14 @@ export const createCimmichRepository = (
   });
   const machineSuggestionSnapshot = createMachineSuggestionSnapshot();
   const invalidateMachineSuggestions = machineSuggestionSnapshot.invalidate;
+  const personMatchRefresh = createPersonMatchRefreshStore({
+    cleanActor,
+    invalidateMachineSuggestions,
+    maintenanceSql,
+    reassign: (input) => repository.reassignFaceIdentity(input),
+    requireVisibleSubject,
+    sql,
+  });
   const bulkAcceptPersonCandidates = createBulkPersonCandidateAcceptor({
     cleanActor,
     deferPrimeAfterCommand: (_interactiveSql, personId) =>
@@ -5261,6 +5269,8 @@ export const createCimmichRepository = (
     },
 
     personCandidateSummary,
+
+    refreshPersonMatches: personMatchRefresh.refreshPersonMatches,
 
     bulkAcceptPersonCandidates,
 
@@ -10187,18 +10197,7 @@ export const createCimmichRepository = (
       };
     },
 
-    async bulkReassignFaceIdentities({ actorId, items }) {
-      const actor = cleanActor(actorId);
-      if (!actor)
-        throw Object.assign(new Error("Missing Cimmich actor"), {
-          statusCode: 400,
-        });
-      return bulkReassignFaceIdentities({
-        actorId: actor,
-        items,
-        reassign: (input) => repository.reassignFaceIdentity(input),
-      });
-    },
+    bulkReassignFaceIdentities: personMatchRefresh.bulkReassignFaceIdentities,
   };
   Object.assign(repository, observationCorrections);
   Object.assign(repository, archiveIntegrity);

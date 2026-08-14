@@ -218,7 +218,13 @@
       );
       if (result.assignedCount > 0) {
         const destination = result.assigned[0]?.personName ?? selectedMovePerson?.display_name ?? name;
-        notice = `${result.assignedCount.toLocaleString()} ${result.assignedCount === 1 ? 'face' : 'faces'} ${action === 'create' ? `moved to new Person ${destination}` : `moved to ${destination}`}.`;
+        const matcherRefresh = result.matcherRefreshes?.find(
+          ({ personId }) => personId === result.assigned[0]?.personId,
+        );
+        const matcherRefreshFailure = result.matcherRefreshFailures?.find(
+          ({ personId }) => personId === result.assigned[0]?.personId,
+        );
+        notice = `${result.assignedCount.toLocaleString()} ${result.assignedCount === 1 ? 'face' : 'faces'} ${action === 'create' ? `moved to new Person ${destination}` : `moved to ${destination}`}.${matcherRefresh ? ` Updated ${matcherRefresh.matcherPhotoCount.toLocaleString()} matcher ${matcherRefresh.matcherPhotoCount === 1 ? 'photo' : 'photos'} and found ${matcherRefresh.candidateCount.toLocaleString()} new ${matcherRefresh.candidateCount === 1 ? 'match' : 'matches'} to check.` : ''}${matcherRefreshFailure ? ' The Person was created, but matching needs to be refreshed from their Checks section.' : ''}`;
         onchanged();
         if (smartRecommendations) {
           smartRecommendations = smartSplitRecommendationsAfterBatch(

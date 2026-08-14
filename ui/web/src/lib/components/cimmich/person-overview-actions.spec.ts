@@ -50,6 +50,9 @@ describe('Person overview actions and split workspace', () => {
     expect(component).toContain('getCimmichSmartSplitRecommendations');
     expect(component).toContain('Anything ambiguous stays together in Unclear');
     expect(component).toContain("smartRecommendations.groups.find(({ kind }) => kind === 'clear')");
+    expect(component).toContain('result.matcherRefreshes?.find');
+    expect(component).toContain('Updated ${matcherRefresh.matcherPhotoCount.toLocaleString()} matcher');
+    expect(component).toContain('matching needs to be refreshed from their Checks section');
   });
 
   it('keeps Needs attention one-click while Holding remains guarded', async () => {

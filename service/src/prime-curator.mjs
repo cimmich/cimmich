@@ -3,7 +3,7 @@ const clamp = (value, minimum = 0, maximum = 1) =>
 const requiredPrime = (face) => face.pinnedPrime || face.preservedPrime;
 
 export const primeCuratorPolicyVersion =
-  "cimmich-prime-biometric-v7-usable-lq-anchor";
+  "cimmich-prime-biometric-v8-unmeasured-quality";
 
 const sourceTierPrior = (face) => {
   if (face.sourceTierHint === "prime") return 1;
