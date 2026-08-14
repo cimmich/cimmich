@@ -18,6 +18,9 @@
   import CimmichSamePhotoCollisionReview from '$lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte';
   import CimmichKnownPersonClusters from '$lib/components/cimmich/CimmichKnownPersonClusters.svelte';
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
+  import CimmichAcceptedMistagActions from '$lib/components/cimmich/CimmichAcceptedMistagActions.svelte';
+  import CimmichMistagCorrectionFooter from '$lib/components/cimmich/CimmichMistagCorrectionFooter.svelte';
+  import { markAcceptedMistagUnknown } from '$lib/components/cimmich/accepted-mistag-actions';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import {
@@ -1941,6 +1944,23 @@
       finishCimmichAuditDecision(item);
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to mark this region as not a Face';
+    } finally {
+      finishCimmichIdentityAuditFaceSave(item.faceId);
+    }
+  };
+
+  const markCimmichAuditPersonUnknown = async (item: CimmichPersonReviewItem) => {
+    if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
+      return;
+    }
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      await markAcceptedMistagUnknown(item);
+      cimmichIdentityMessage = 'Identity removed. This Face is marked as an unknown person.';
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : 'Unable to mark this Face as an unknown person';
     } finally {
       finishCimmichIdentityAuditFaceSave(item.faceId);
     }
@@ -4186,42 +4206,18 @@
                                     >
                                   </div>
                                 {/if}
-                                <div
-                                  class="col-span-2 grid min-w-0 grid-cols-3 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-black/10"
-                                >
-                                  <p class="col-span-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                                    Keep {item.assignedPerson?.displayName ?? cimmichPerson.display_name}; this box is
-                                  </p>
-                                  <button
-                                    class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600 dark:bg-immich-dark-gray"
-                                    type="button"
-                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
-                                    onclick={() =>
-                                      void confirmCimmichAuditPerson(item, { evidenceKind: 'face', refresh: false })}
-                                  >
-                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Face'}
-                                  </button>
-                                  <button
-                                    class="min-h-10 min-w-0 rounded-md border border-cyan-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal text-cyan-800 disabled:opacity-40 dark:border-cyan-800 dark:bg-immich-dark-gray dark:text-cyan-200"
-                                    type="button"
-                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
-                                    onclick={() => void reclassifyCimmichAuditItem(item, 'head')}
-                                  >
-                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Head'}
-                                  </button>
-                                  <button
-                                    class="min-h-10 min-w-0 rounded-md border border-cyan-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal text-cyan-800 disabled:opacity-40 dark:border-cyan-800 dark:bg-immich-dark-gray dark:text-cyan-200"
-                                    type="button"
-                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId) ||
-                                      typeof item.currentRevision !== 'number'}
-                                    title={typeof item.currentRevision === 'number'
-                                      ? 'Keep this Person, save the same box as Body evidence, and retire the mistaken Face'
-                                      : 'Reload this review before saving the box as Body'}
-                                    onclick={() => void reclassifyCimmichAuditItem(item, 'body')}
-                                  >
-                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Body'}
-                                  </button>
-                                </div>
+                                <CimmichAcceptedMistagActions
+                                  busy={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                  {item}
+                                  onBody={() => void reclassifyCimmichAuditItem(item, 'body')}
+                                  onFace={() =>
+                                    void confirmCimmichAuditPerson(item, { evidenceKind: 'face', refresh: false })}
+                                  onHead={() => void reclassifyCimmichAuditItem(item, 'head')}
+                                  onNotFace={() => void markCimmichAuditFaceNotFace(item)}
+                                  onUnknown={() => void markCimmichAuditPersonUnknown(item)}
+                                  personName={cimmichPerson.display_name}
+                                  saving={cimmichIdentityAuditFaceSaving(item.faceId)}
+                                />
                               {:else}
                                 <button
                                   class="col-span-2 min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
@@ -4311,17 +4307,17 @@
                                   {:else if cimmichIdentityAuditCorrection.query(item).trim()}
                                     <p class="text-xs text-gray-500">No matching Person. Try another spelling.</p>
                                   {/if}
-                                  <div
-                                    class="flex items-center justify-end border-t border-gray-200 pt-2 dark:border-gray-700"
-                                  >
-                                    <button
-                                      class="min-h-9 rounded-md px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-                                      type="button"
-                                      onclick={() => toggleCimmichIdentityAuditCorrection(item)}
-                                    >
-                                      {item.kind === 'accepted_contradiction' ? 'Close' : 'Cancel'}
-                                    </button>
-                                  </div>
+                                  <CimmichMistagCorrectionFooter
+                                    accepted={item.kind === 'accepted_contradiction'}
+                                    busy={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                    label={cimmichIdentityAuditCorrection.decision(item).label}
+                                    onClose={() => toggleCimmichIdentityAuditCorrection(item)}
+                                    onSubmit={() => void changeCimmichAuditPerson(item)}
+                                    saving={cimmichIdentityAuditFaceSaving(item.faceId)}
+                                    targetSelected={Boolean(
+                                      cimmichIdentityAuditCorrection.decision(item).targetPersonId,
+                                    )}
+                                  />
                                   {#if cimmichIdentityAuditCorrection.loading(item)}
                                     <p class="text-[11px] text-gray-500 dark:text-gray-400">
                                       Loading the closest matches…

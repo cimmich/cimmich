@@ -1778,6 +1778,7 @@ export type CimmichIdentityAuditItem = {
   assetId: string;
   assignedPerson: null | {
     displayName: string;
+    identityClaimId?: string | null;
     personId: string;
     reference: CimmichIdentityAuditReference | null;
     score: number;

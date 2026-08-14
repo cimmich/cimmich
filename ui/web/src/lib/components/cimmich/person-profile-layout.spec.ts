@@ -14,6 +14,9 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichAcceptedMistagActions.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichMistagCorrectionFooter.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/accepted-mistag-actions.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonMatchRefresh.svelte', 'utf8'),
     readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
@@ -176,7 +179,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('Route.viewCimmichPersonAsset');
     expect(source).toContain("overlay: 'people'");
     expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
-    expect(source).toContain('Keep {item.assignedPerson?.displayName ?? cimmichPerson.display_name}; this box is');
+    expect(source).toContain('Keep {item.assignedPerson?.displayName ?? personName}; this box is');
     expect(source).toContain("reclassifyCimmichAuditItem(item, 'head')");
     expect(source).toContain("reclassifyCimmichAuditItem(item, 'body')");
     expect(source).toContain("decideSelectedCimmichAuditItems(auditGroup.kind, 'head')");
@@ -186,6 +189,13 @@ describe('Person profile layout', () => {
       /cimmichIdentityAuditCorrection\.decision\(item\)\.targetPersonId ===[\s\n]+cimmichPerson\.person_id[\s\S]+\? 'bg-immich-primary'[\s\n]+: 'bg-amber-600'/,
     );
     expect(source).toContain('onclick={() => void changeCimmichAuditPerson(item)}');
+    expect(source).toContain('markCimmichAuditPersonUnknown(item)');
+    expect(source).toContain('markCimmichAuditFaceNotFace(item)');
+    expect(source).toContain("'Unknown person'");
+    expect(source).toContain("'Not a face'");
+    expect(source).toMatch(
+      /\{#if item\.kind === 'accepted_contradiction'\}[\s\S]+cimmichIdentityAuditCorrection\.decision\(item\)\.label/,
+    );
     expect(source).toContain('aria-label={`Choose a different person for ${item.filename}`}');
     expect(source).toContain("item.kind === 'untagged_match'");
     expect(source).toContain("[item.faceId]: ''");

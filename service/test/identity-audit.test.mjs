@@ -639,6 +639,27 @@ test("owner Unknown decisions suppress untagged audit generation, cards, totals 
   );
 });
 
+test("accepted contradiction cards expose the exact accepted claim for governed correction", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /assigned_claim\.identity_claim_id AS assigned_identity_claim_id/,
+  );
+  assert.match(
+    source,
+    /accepted_member\.physical_face_id = item_member\.physical_face_id/,
+  );
+  assert.match(source, /current_identity\.state = 'accepted'/);
+  assert.match(
+    source,
+    /current_identity\.person_id = item\.assigned_person_id/,
+  );
+  assert.match(source, /identityClaimId: row\.assigned_identity_claim_id/);
+});
+
 test("independent evidence suppresses only replay-consistent same-photo candidates", async () => {
   const digest = (character) => character.repeat(64);
   const candidates = [

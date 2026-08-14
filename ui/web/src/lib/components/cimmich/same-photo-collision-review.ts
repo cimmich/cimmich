@@ -70,6 +70,7 @@ export const personCandidateReviewItems = (candidates: CimmichIdentityCandidate[
       candidate.current_person_id && candidate.current_person_name
         ? {
             displayName: candidate.current_person_name,
+            identityClaimId: candidate.current_claim_id ?? null,
             personId: candidate.current_person_id,
             reference: null,
             score: 1,
@@ -168,7 +169,7 @@ export const personIdentityAuditGroups = ({
     return {
       description: isNewMatch
         ? `Previously untagged faces the matcher thinks may be ${personName}.`
-        : 'Existing tags that look unlike their Person or match someone else. Keep the Person and classify Face, Head or Body—or assign the correct Person.',
+        : 'Existing tags that look unlike their Person or match someone else. Assign the correct Person, mark Unknown or Not a face, or keep the Person and classify Face, Head or Body.',
       id: isNewMatch ? 'new-matches' : 'possible-mistags',
       items: reviewItems
         .filter((item) => item.kind === kind && !collisionFaceIds.has(item.faceId))

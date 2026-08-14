@@ -1299,6 +1299,7 @@ export const createIdentityAudit = (
         face.current_revision, face.current_decision_id,
         asset.capture_time, asset.media_kind, asset.width, asset.height,
         assigned.display_name AS assigned_display_name,
+        assigned_claim.identity_claim_id AS assigned_identity_claim_id,
         suggested.display_name AS suggested_display_name,
         assigned_reference.face_id AS assigned_reference_face_id,
         assigned_reference.asset_id AS assigned_reference_asset_id,
@@ -1334,6 +1335,22 @@ export const createIdentityAudit = (
         AND query_embedding.config_digest = item_pack.config_digest
       LEFT JOIN current_person assigned
         ON assigned.person_id = item.assigned_person_id
+      LEFT JOIN LATERAL (
+        SELECT current_identity.identity_claim_id
+        FROM current_face_physical_member item_member
+        JOIN current_face_physical_member accepted_member
+          ON accepted_member.physical_face_id = item_member.physical_face_id
+        JOIN identity_claim current_identity
+          ON current_identity.face_id = accepted_member.face_id
+          AND current_identity.state = 'accepted'
+          AND current_identity.person_id = item.assigned_person_id
+        WHERE item_member.face_id = item.face_id
+        ORDER BY
+          (current_identity.face_id = item.face_id) DESC,
+          current_identity.created_at DESC,
+          current_identity.identity_claim_id DESC
+        LIMIT 1
+      ) assigned_claim ON item.audit_kind = 'accepted_contradiction'
       JOIN current_person suggested
         ON suggested.person_id = item.suggested_person_id
       LEFT JOIN LATERAL (
@@ -1536,6 +1553,7 @@ export const createIdentityAudit = (
             ? null
             : {
                 displayName: row.assigned_display_name,
+                identityClaimId: row.assigned_identity_claim_id,
                 personId: row.assigned_person_id,
                 reference: projectReference(row, "assigned"),
                 score: Number(row.comparison_score),
