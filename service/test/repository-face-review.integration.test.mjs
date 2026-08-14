@@ -53,6 +53,9 @@ integrationTest(
           ('face_review_alex', 'asset_face_review_alex',
             0.1, 0.1, 0.3, 0.3, 0.9, 'valid',
             'receipt_cimmich_pet_matching_v1'),
+          ('face_review_alex_canonical', 'asset_face_review_alex',
+            0.1, 0.1, 0.3, 0.3, 0.9, 'valid',
+            'receipt_cimmich_pet_matching_v1'),
           ('face_review_maya', 'asset_face_review_maya',
             0.1, 0.1, 0.3, 0.3, 0.9, 'valid',
             'receipt_cimmich_pet_matching_v1')
@@ -99,6 +102,30 @@ integrationTest(
           ('claim_face_review_maya', 'face_review_maya',
             'person_face_review_maya', 'user', 'accepted', 1,
             'decision_face_review_maya', 'receipt_cimmich_pet_matching_v1')
+      `;
+      await sql`
+        INSERT INTO physical_face (
+          physical_face_id, asset_id, canonical_face_id, state, member_count,
+          accepted_person_count, policy_version, evidence,
+          producer_receipt_id
+        ) VALUES (
+          'physical_face_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          'asset_face_review_alex', 'face_review_alex_canonical', 'active', 2,
+          1, 'integration-test', '{}'::jsonb,
+          'receipt_cimmich_physical_face_reconciliation_v1'
+        )
+      `;
+      await sql`
+        INSERT INTO physical_face_member (
+          physical_face_id, face_id, is_canonical, geometry_iou,
+          source_priority, producer_receipt_id
+        ) VALUES
+          ('physical_face_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'face_review_alex_canonical', true, 1, 0,
+            'receipt_cimmich_physical_face_reconciliation_v1'),
+          ('physical_face_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'face_review_alex', false, 1, 1,
+            'receipt_cimmich_physical_face_reconciliation_v1')
       `;
 
       const repository = createCimmichRepository(sql, new Map(), {
@@ -148,6 +175,38 @@ integrationTest(
           AND state = 'active'
       `;
       assert.ok(secondary.bucket_id);
+
+      const canonicalMoved = await repository.setFaceBucket({
+        actorId: "integration-test",
+        bucketKind: "head",
+        faceId: "face_review_alex_canonical",
+        personId: "person_face_review_alex",
+      });
+      assert.equal(canonicalMoved.changed, true);
+      const [canonicalHead] = await sql`
+        SELECT gallery.face_id
+        FROM current_reference_gallery gallery
+        WHERE gallery.person_id = 'person_face_review_alex'
+          AND gallery.face_id = 'face_review_alex'
+          AND gallery.bucket_kind = 'head'
+          AND gallery.membership_state = 'active'
+      `;
+      assert.equal(canonicalHead.face_id, "face_review_alex");
+      await repository.setFaceBucket({
+        actorId: "integration-test",
+        bucketKind: "secondary",
+        faceId: "face_review_alex_canonical",
+        personId: "person_face_review_alex",
+      });
+      await sql`
+        DELETE FROM physical_face
+        WHERE physical_face_id =
+          'physical_face_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      `;
+      await sql`
+        DELETE FROM face_observation
+        WHERE face_id = 'face_review_alex_canonical'
+      `;
     } finally {
       await sql.end({ timeout: 5 });
     }

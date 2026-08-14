@@ -162,5 +162,6 @@ describe('IdentityAuditPanel', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Keep Spencer Gilbert as Head' }));
     await waitFor(() => expect(mocks.reclassify).toHaveBeenCalledWith(contradiction, 'head'));
+    expect(mocks.getItems).toHaveBeenCalledTimes(2);
   });
 });

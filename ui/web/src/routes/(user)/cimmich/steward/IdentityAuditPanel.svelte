@@ -235,19 +235,12 @@
     focusIndex = Math.max(0, Math.min(focusIndex, items.length - 1));
   };
 
-  const refillAfterDecision = async () => {
-    if (hasMore) {
-      await loadItems(kind, true);
-    }
-  };
-
   const accept = async (item: CimmichIdentityAuditItem) => {
     busyFaceId = item.faceId;
     error = '';
     try {
       await acceptCimmichMachineSuggestion(item.faceId, item.suggestedPerson.personId);
       removeItem(item);
-      await refillAfterDecision();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'The identity could not be saved.';
     } finally {
@@ -261,7 +254,6 @@
     try {
       await dismissCimmichIdentityAuditItem(item.kind, item.faceId);
       removeItem(item);
-      await refillAfterDecision();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'The audit item could not be dismissed.';
     } finally {
@@ -275,7 +267,6 @@
     try {
       await reclassifyIdentityAuditEvidence(item, evidenceKind);
       removeItem(item);
-      await refillAfterDecision();
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : `The box could not be saved as ${evidenceKind}.`;
     } finally {

@@ -169,7 +169,13 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
         winner_person_id: "person-current",
       }));
     }
-    if (statement.includes("FROM identity_claim ic")) {
+    if (statement.includes("FROM current_face_physical_member target")) {
+      return [{ claim_face_id: "face-accepted", identity_claim_id: "claim-1" }];
+    }
+    if (
+      statement.includes("FROM identity_claim") &&
+      statement.includes("FOR UPDATE")
+    ) {
       return [{ identity_claim_id: "claim-1" }];
     }
     if (
@@ -235,7 +241,15 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
   assert.equal(begins, 1);
   assert.equal(
     txStatements.filter((statement) =>
-      statement.includes("FROM identity_claim ic"),
+      statement.includes("FROM current_face_physical_member target"),
+    ).length,
+    2,
+  );
+  assert.equal(
+    txStatements.filter(
+      (statement) =>
+        statement.includes("FROM identity_claim") &&
+        statement.includes("FOR UPDATE"),
     ).length,
     2,
   );

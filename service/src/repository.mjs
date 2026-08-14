@@ -1169,26 +1169,45 @@ export const createCimmichRepository = (
     tx,
     { actor, bucketKind, faceId, personId },
   ) => {
+    // Audit rows use the canonical physical Face, while accepted identity can
+    // live on an equivalent imported/detected observation. Authorise the
+    // bucket move from current accepted identity anywhere in that physical
+    // group, then write membership against that accepted observation so the
+    // database's matching-ready identity invariant remains exact.
     const [identity] = await tx`
-        SELECT ic.identity_claim_id
-        FROM identity_claim ic
-        JOIN person subject ON subject.person_id = ic.person_id
-          AND subject.status = 'active' AND subject.subject_kind = 'person'
-        WHERE ic.face_id = ${faceId} AND ic.person_id = ${personId} AND ic.state = 'accepted'
-        LIMIT 1
-        FOR UPDATE
-      `;
+      SELECT current.identity_claim_id, claimant.face_id AS claim_face_id
+      FROM current_face_physical_member target
+      JOIN current_face_physical_member claimant
+        ON claimant.physical_face_id = target.physical_face_id
+      JOIN current_face_identity current
+        ON current.face_id = claimant.face_id
+        AND current.person_id = ${personId}
+        AND current.state = 'accepted'
+      JOIN person subject ON subject.person_id = current.person_id
+        AND subject.status = 'active' AND subject.subject_kind = 'person'
+      WHERE target.face_id = ${faceId}
+      ORDER BY (claimant.face_id = target.face_id) DESC,
+        current.identity_claim_id DESC
+      LIMIT 1
+    `;
     if (!identity) {
       throw Object.assign(new Error("Accepted face identity not found"), {
         statusCode: 404,
       });
     }
+    await tx`
+      SELECT identity_claim_id
+      FROM identity_claim
+      WHERE identity_claim_id = ${identity.identity_claim_id}
+      FOR UPDATE
+    `;
+    const membershipFaceId = identity.claim_face_id;
 
     const current = await tx`
     SELECT g.bucket_id, g.bucket_kind
     FROM current_reference_gallery g
     WHERE g.person_id = ${personId}
-      AND g.face_id = ${faceId}
+      AND g.face_id = ${membershipFaceId}
       AND g.bucket_kind IN ('prime', 'secondary', 'lq', 'head')
       AND g.membership_state = 'active'
     ORDER BY g.bucket_kind
@@ -1216,7 +1235,7 @@ export const createCimmichRepository = (
       decision_id, subject_type, subject_id, action, actor_kind, actor_id,
       reason_code, note, producer_receipt_id, privacy_class
     ) VALUES (
-      ${decisionId}, 'face_bucket_membership', ${`${personId}:${faceId}`},
+      ${decisionId}, 'face_bucket_membership', ${`${personId}:${membershipFaceId}`},
       ${bucketKind === "prime" ? "promote" : "demote"}, 'user', ${actor},
       'identity_workspace', ${
         bucketKind === "head"
@@ -1235,7 +1254,7 @@ export const createCimmichRepository = (
       const specialty = await tx`
       SELECT g.bucket_id
       FROM current_reference_gallery g
-      WHERE g.person_id = ${personId} AND g.face_id = ${faceId}
+      WHERE g.person_id = ${personId} AND g.face_id = ${membershipFaceId}
         AND g.bucket_kind = 'specialty' AND g.membership_state = 'active'
     `;
       for (const row of specialty) {
@@ -1244,7 +1263,7 @@ export const createCimmichRepository = (
           membership_event_id, bucket_id, face_id, action, actor_kind,
           reason_code, reason_text, producer_receipt_id, privacy_class
         ) VALUES (
-          ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
+          ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${membershipFaceId},
           'remove', 'user', 'identity_workspace_head', 'Head evidence cannot train Specialty matching',
           ${userCommandReceiptId}, 'sensitive-biometric'
         )
@@ -1261,7 +1280,7 @@ export const createCimmichRepository = (
         membership_event_id, bucket_id, face_id, action, actor_kind,
         reason_code, reason_text, producer_receipt_id, privacy_class
       ) VALUES (
-        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${faceId},
+        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${row.bucket_id}, ${membershipFaceId},
         'remove', 'user', 'identity_workspace', 'Moved or removed by user',
         ${userCommandReceiptId}, 'sensitive-biometric'
       )
@@ -1316,7 +1335,7 @@ export const createCimmichRepository = (
         membership_event_id, bucket_id, face_id, action, actor_kind,
         reason_code, reason_text, producer_receipt_id, privacy_class
       ) VALUES (
-        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${target.bucket_id}, ${faceId},
+        ${`membership_${randomUUID().replaceAll("-", "")}`}, ${target.bucket_id}, ${membershipFaceId},
         'pin', 'user', 'identity_workspace', 'Selected by user',
         ${userCommandReceiptId}, 'sensitive-biometric'
       )

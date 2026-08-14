@@ -1,16 +1,63 @@
 import {
   attachCimmichManualSubjectTag,
+  bulkAcceptCimmichPersonCandidates,
+  bulkRejectCimmichPersonCandidates,
   createCimmichManualSubjectTagCommandId,
   createCimmichObservationCorrectionCommandId,
   decideCimmichIdentityCandidate,
   dismissCimmichIdentityAuditItem,
+  dismissCimmichIdentityAuditItemsBatch,
   markCimmichFaceNotFace,
   setCimmichFaceBucket,
+  setCimmichFaceIdentitiesBatch,
   undoCimmichManualSubjectTag,
+  type CimmichIdentityFace,
+  type CimmichIdentityFaceSummary,
 } from '$lib/services/cimmich.service';
 import type { CimmichPersonReviewItem } from './same-photo-collision-review';
 
 export type CimmichAuditEvidenceKind = 'body' | 'head';
+export type CimmichAuditDecisionPresentation = {
+  evidenceKind?: CimmichAuditEvidenceKind | 'face';
+  refresh?: boolean;
+};
+
+export const reconcileCimmichAuditEvidence = (
+  faces: CimmichIdentityFace[],
+  summary: CimmichIdentityFaceSummary,
+  faceId: string,
+  evidenceKind?: CimmichAuditDecisionPresentation['evidenceKind'],
+): { faces: CimmichIdentityFace[]; summary: CimmichIdentityFaceSummary } => {
+  const loadedFace = faces.find(({ face_id }) => face_id === faceId);
+  if (evidenceKind === 'face') {
+    return { faces, summary };
+  }
+  if (evidenceKind !== 'head' || !loadedFace) {
+    const nextFaces = faces.filter(({ face_id }) => face_id !== faceId);
+    if (evidenceKind !== 'body' || !loadedFace) {
+      return { faces: nextFaces, summary };
+    }
+    const previousKey = loadedFace.main_evidence_tier === 'lq' ? 'lowQuality' : loadedFace.main_evidence_tier;
+    return {
+      faces: nextFaces,
+      summary: {
+        ...summary,
+        all: Math.max(0, summary.all - 1),
+        [previousKey]: Math.max(0, summary[previousKey] - 1),
+      },
+    };
+  }
+  const previousKey = loadedFace.main_evidence_tier === 'lq' ? 'lowQuality' : loadedFace.main_evidence_tier;
+  return {
+    faces: faces.map((face) =>
+      face.face_id === faceId ? { ...face, main_evidence_tier: 'head', matching_reference_tier: 'head' } : face,
+    ),
+    summary:
+      previousKey === 'head'
+        ? summary
+        : { ...summary, [previousKey]: Math.max(0, summary[previousKey] - 1), head: summary.head + 1 },
+  };
+};
 
 export type ReclassificationDependencies = {
   attachManualTag: typeof attachCimmichManualSubjectTag;
@@ -151,4 +198,83 @@ export const reclassifyIdentityAuditEvidenceBatch = async (
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, total || 1)) }, worker));
   return { completed, failures };
+};
+
+export type CimmichAuditBatchAction = 'accept' | 'body' | 'dismiss' | 'head';
+
+export const decideCimmichIdentityAuditEvidenceBatch = async (
+  personId: string,
+  items: CimmichPersonReviewItem[],
+  action: CimmichAuditBatchAction,
+  onProgress: (completed: number, total: number) => void,
+) => {
+  const completedFaceIds: string[] = [];
+  let message = '';
+  try {
+    if (action === 'head' || action === 'body') {
+      const batch = await reclassifyIdentityAuditEvidenceBatch(items, action, onProgress);
+      completedFaceIds.push(...batch.completed.map((result) => result.faceId));
+      message = `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'region' : 'regions'} kept with the current ${completedFaceIds.length === 1 ? 'Person' : 'People'} and saved as ${action === 'head' ? 'Head' : 'Body'} evidence.`;
+      if (batch.failures.length > 0) {
+        throw new Error(
+          `${batch.failures.length} ${batch.failures.length === 1 ? 'region' : 'regions'} could not be saved: ${batch.failures[0].error}`,
+        );
+      }
+    } else {
+      const candidateItems = items.filter((item): item is CimmichPersonReviewItem & { candidateClaimId: string } =>
+        Boolean(item.candidateClaimId),
+      );
+      const auditItems = items.filter((item) => !item.candidateClaimId);
+      if (action === 'accept' && candidateItems.length > 0) {
+        await bulkAcceptCimmichPersonCandidates(
+          personId,
+          candidateItems.map((item) => item.candidateClaimId),
+        );
+        completedFaceIds.push(...candidateItems.map((item) => item.faceId));
+        onProgress(completedFaceIds.length, items.length);
+      }
+      const remainingItems = action === 'accept' ? auditItems : items;
+      if (action === 'accept' && remainingItems.length > 0) {
+        const batch = await setCimmichFaceIdentitiesBatch(
+          remainingItems.map((item) => ({ faceId: item.faceId, personId: item.suggestedPerson.personId })),
+        );
+        completedFaceIds.push(...batch.assigned.map((result) => result.faceId));
+        onProgress(completedFaceIds.length, items.length);
+        if (batch.failureCount > 0) {
+          throw new Error(
+            `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
+          );
+        }
+      } else if (action === 'dismiss') {
+        const candidates = remainingItems.filter(
+          (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
+        );
+        const audits = remainingItems.filter((item) => !item.candidateClaimId);
+        if (candidates.length > 0) {
+          await bulkRejectCimmichPersonCandidates(
+            personId,
+            candidates.map((item) => item.candidateClaimId),
+          );
+          completedFaceIds.push(...candidates.map((item) => item.faceId));
+          onProgress(completedFaceIds.length, items.length);
+        }
+        if (audits.length > 0) {
+          await dismissCimmichIdentityAuditItemsBatch(audits.map((item) => ({ faceId: item.faceId, kind: item.kind })));
+          completedFaceIds.push(...audits.map((item) => item.faceId));
+          onProgress(completedFaceIds.length, items.length);
+        }
+      }
+      message =
+        action === 'accept'
+          ? `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'match' : 'matches'} confirmed.`
+          : `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} dismissed.`;
+    }
+    return { completedFaceIds, message };
+  } catch (error) {
+    return {
+      completedFaceIds,
+      error: error instanceof Error ? error.message : 'Unable to finish the selected identity decisions',
+      message,
+    };
+  }
 };

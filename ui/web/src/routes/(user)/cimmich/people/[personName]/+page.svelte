@@ -21,8 +21,10 @@
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
   import {
+    decideCimmichIdentityAuditEvidenceBatch,
+    reconcileCimmichAuditEvidence,
     reclassifyIdentityAuditEvidence,
-    reclassifyIdentityAuditEvidenceBatch,
+    type CimmichAuditDecisionPresentation,
     type CimmichAuditEvidenceKind,
   } from '$lib/components/cimmich/identity-audit-evidence-reclassification';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
@@ -114,8 +116,6 @@
   import { getCimmichPersonSetup } from '$lib/services/cimmich-person-names.service';
   import {
     acceptCimmichMachineSuggestion,
-    bulkAcceptCimmichPersonCandidates,
-    bulkRejectCimmichPersonCandidates,
     CimmichServiceError,
     createCimmichContextCommandId,
     createCimmichIdentityCorrectionCommandId,
@@ -125,7 +125,6 @@
     decideCimmichIdentityCandidate,
     detachCimmichContextRelations,
     dismissCimmichIdentityAuditItem,
-    dismissCimmichIdentityAuditItemsBatch,
     getCimmichFaceMatches,
     getCimmichHoldingMatchesBatch,
     getCimmichIdentityFacesPage,
@@ -1771,7 +1770,10 @@
     cimmichIdentityAuditSavingFaceIds = cimmichIdentityAuditSavingFaceIds.filter((id) => id !== faceId);
   };
 
-  const finishCimmichAuditDecision = (item: CimmichPersonReviewItem) => {
+  const finishCimmichAuditDecision = (
+    item: CimmichPersonReviewItem,
+    { evidenceKind, refresh = true }: CimmichAuditDecisionPresentation = {},
+  ) => {
     if (!cimmichPerson) {
       return;
     }
@@ -1784,7 +1786,14 @@
       ({ faceId, kind }) => faceId === item.faceId && kind === item.kind,
     );
     cimmichIdentityAuditItems = cimmichIdentityAuditItems.filter(({ faceId }) => faceId !== item.faceId);
-    cimmichIdentityFaces = cimmichIdentityFaces.filter(({ face_id }) => face_id !== item.faceId);
+    const reconciled = reconcileCimmichAuditEvidence(
+      cimmichIdentityFaces,
+      cimmichIdentityFaceSummary,
+      item.faceId,
+      evidenceKind,
+    );
+    cimmichIdentityFaces = reconciled.faces;
+    cimmichIdentityFaceSummary = reconciled.summary;
     if (wasAuditItem) {
       cimmichIdentityAuditTotals = {
         ...cimmichIdentityAuditTotals,
@@ -1798,10 +1807,15 @@
     }
     cimmichIdentityAuditSelection = cimmichIdentityAuditSelection.filter((faceId) => faceId !== item.faceId);
     cimmichIdentityAuditCorrection.finish(item);
-    scheduleCimmichIdentityReviewRefresh();
+    if (refresh) {
+      scheduleCimmichIdentityReviewRefresh();
+    }
   };
 
-  const confirmCimmichAuditPerson = async (item: CimmichPersonReviewItem) => {
+  const confirmCimmichAuditPerson = async (
+    item: CimmichPersonReviewItem,
+    presentation?: CimmichAuditDecisionPresentation,
+  ) => {
     if (!cimmichPerson || !beginCimmichIdentityAuditFaceSave(item.faceId)) {
       return;
     }
@@ -1816,7 +1830,7 @@
           ? dismissCimmichIdentityAuditItem(item.kind, item.faceId)
           : acceptCimmichMachineSuggestion(item.faceId, personId));
       cimmichIdentityMessage = `Confirmed this face as ${personName}.`;
-      finishCimmichAuditDecision(item);
+      finishCimmichAuditDecision(item, presentation);
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : 'Unable to save this identity decision';
     } finally {
@@ -1877,7 +1891,7 @@
       cimmichIdentityMessage = `${personName} kept; this region is now ${evidenceKind === 'head' ? 'Head' : 'Body'} evidence.${
         result.reviewFinalized ? '' : ' The review queue will reconcile on refresh.'
       }`;
-      finishCimmichAuditDecision(item);
+      finishCimmichAuditDecision(item, { evidenceKind, refresh: false });
     } catch (error) {
       cimmichIdentityError = error instanceof Error ? error.message : `Unable to save this region as ${evidenceKind}`;
     } finally {
@@ -1958,96 +1972,32 @@
     cimmichIdentityMessage = '';
     const completedFaceIds: string[] = [];
     try {
+      const result = await decideCimmichIdentityAuditEvidenceBatch(
+        cimmichPerson.person_id,
+        selectedItems,
+        action,
+        (completed, total) => (cimmichIdentityAuditProgress = { completed, total }),
+      );
+      completedFaceIds.push(...result.completedFaceIds);
+      cimmichIdentityMessage = result.message;
       if (action === 'head' || action === 'body') {
-        const batch = await reclassifyIdentityAuditEvidenceBatch(
-          selectedItems,
-          action,
-          (completed, total) => (cimmichIdentityAuditProgress = { completed, total }),
-        );
-        completedFaceIds.push(...batch.completed.map((result) => result.faceId));
-        cimmichIdentityMessage = `${completedFaceIds.length} selected ${
-          completedFaceIds.length === 1 ? 'region' : 'regions'
-        } kept with the current ${completedFaceIds.length === 1 ? 'Person' : 'People'} and saved as ${
-          action === 'head' ? 'Head' : 'Body'
-        } evidence.`;
-        if (batch.failures.length > 0) {
-          throw new Error(
-            `${batch.failures.length} ${batch.failures.length === 1 ? 'region' : 'regions'} could not be saved: ${batch.failures[0].error}`,
-          );
-        }
-      } else {
-        const candidateItems = selectedItems.filter(
-          (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
-        );
-        const auditItems = selectedItems.filter((item) => !item.candidateClaimId);
-
-        if (action === 'accept' && candidateItems.length > 0) {
-          await bulkAcceptCimmichPersonCandidates(
-            cimmichPerson.person_id,
-            candidateItems.map((item) => item.candidateClaimId),
-          );
-          completedFaceIds.push(...candidateItems.map((item) => item.faceId));
-          cimmichIdentityAuditProgress = {
-            completed: completedFaceIds.length,
-            total: selectedItems.length,
-          };
-        }
-
-        const remainingItems = action === 'accept' ? auditItems : selectedItems;
-        if (action === 'accept' && remainingItems.length > 0) {
-          const batch = await setCimmichFaceIdentitiesBatch(
-            remainingItems.map((item) => ({ faceId: item.faceId, personId: item.suggestedPerson.personId })),
-          );
-          completedFaceIds.push(...batch.assigned.map((result) => result.faceId));
-          cimmichIdentityAuditProgress = {
-            completed: completedFaceIds.length,
-            total: selectedItems.length,
-          };
-          if (batch.failureCount > 0) {
-            throw new Error(
-              `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
-            );
-          }
-        } else if (action === 'dismiss') {
-          const candidateRejectItems = remainingItems.filter(
-            (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
-          );
-          const dismissItems = remainingItems.filter((item) => !item.candidateClaimId);
-          if (candidateRejectItems.length > 0) {
-            await bulkRejectCimmichPersonCandidates(
-              cimmichPerson.person_id,
-              candidateRejectItems.map((item) => item.candidateClaimId),
-            );
-            completedFaceIds.push(...candidateRejectItems.map((item) => item.faceId));
-            cimmichIdentityAuditProgress = {
-              completed: completedFaceIds.length,
-              total: selectedItems.length,
-            };
-          }
-          if (dismissItems.length > 0) {
-            await dismissCimmichIdentityAuditItemsBatch(
-              dismissItems.map((item) => ({ faceId: item.faceId, kind: item.kind })),
-            );
-            completedFaceIds.push(...dismissItems.map((item) => item.faceId));
-            cimmichIdentityAuditProgress = {
-              completed: completedFaceIds.length,
-              total: selectedItems.length,
-            };
+        for (const item of selectedItems) {
+          if (completedFaceIds.includes(item.faceId)) {
+            finishCimmichAuditDecision(item, { evidenceKind: action, refresh: false });
           }
         }
-        cimmichIdentityMessage =
-          action === 'accept'
-            ? `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'match' : 'matches'} confirmed.`
-            : `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} dismissed.`;
       }
-      if (action !== 'dismiss') {
+      if (action === 'accept') {
         await refreshCimmichIdentityAfterReview();
+      }
+      if (result.error) {
+        throw new Error(result.error);
       }
     } catch (error) {
       cimmichIdentityError =
         error instanceof Error ? error.message : 'Unable to finish the selected identity decisions';
     } finally {
-      if (completedFaceIds.length > 0) {
+      if (completedFaceIds.length > 0 && action !== 'head' && action !== 'body') {
         try {
           const [candidates] = await Promise.all([
             getCimmichPersonCandidates(cimmichPerson.person_id),
@@ -4246,7 +4196,8 @@
                                     class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600 dark:bg-immich-dark-gray"
                                     type="button"
                                     disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
-                                    onclick={() => void confirmCimmichAuditPerson(item)}
+                                    onclick={() =>
+                                      void confirmCimmichAuditPerson(item, { evidenceKind: 'face', refresh: false })}
                                   >
                                     {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Face'}
                                   </button>

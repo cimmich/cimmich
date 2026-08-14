@@ -6,6 +6,7 @@ const readPersonProfile = async () => {
     readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichSamePhotoCollisionReview.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/identity-audit-correction-controller.svelte.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/identity-audit-evidence-reclassification.ts', 'utf8'),
     readFile('src/lib/components/cimmich/same-photo-collision-review.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-workspace-navigation.ts', 'utf8'),
     readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
