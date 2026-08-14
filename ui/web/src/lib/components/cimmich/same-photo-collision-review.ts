@@ -185,10 +185,21 @@ export const personAwaitingCounts = (
   auditTotals: Record<'accepted_contradiction' | 'untagged_match', number>,
   candidateOnlyItems: CimmichPersonReviewItem[],
   machineSuggestionCount: number,
+  reviewItems: CimmichPersonReviewItem[] = [],
+  collisionFaceIds: ReadonlySet<string> = new Set(),
 ) => {
   const candidates = (kind: CimmichPersonReviewItem['kind']) =>
     candidateOnlyItems.filter((item) => item.kind === kind).length;
-  const newMatches = auditTotals.untagged_match + candidates('untagged_match') + machineSuggestionCount;
-  const possibleMistags = auditTotals.accepted_contradiction + candidates('accepted_contradiction');
-  return { newMatches, possibleMistags, total: newMatches + possibleMistags };
+  const collisions = (kind: CimmichPersonReviewItem['kind']) =>
+    reviewItems.filter((item) => item.kind === kind && collisionFaceIds.has(item.faceId)).length;
+  const newMatches = Math.max(
+    0,
+    auditTotals.untagged_match + candidates('untagged_match') + machineSuggestionCount - collisions('untagged_match'),
+  );
+  const possibleMistags = Math.max(
+    0,
+    auditTotals.accepted_contradiction + candidates('accepted_contradiction') - collisions('accepted_contradiction'),
+  );
+  const multiple = collisionFaceIds.size;
+  return { multiple, newMatches, possibleMistags, total: multiple + newMatches + possibleMistags };
 };

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   comparePersonReviewLikelihood,
   currentIdentityComparison,
+  personAwaitingCounts,
   personIdentityAuditGroups,
   samePhotoCollisionReview,
   type CimmichPersonReviewItem,
@@ -84,6 +85,32 @@ describe('New matches ordering', () => {
       'face-higher-low-margin',
       'face-lower',
     ]);
+  });
+});
+
+describe('personAwaitingCounts', () => {
+  it('counts same-photo collisions only in Multiple, not again as possible mistags', () => {
+    const newCollision = reviewItem('face-new');
+    const mistagCollision = {
+      ...reviewItem('face-mistag'),
+      assignedPerson: {
+        displayName: 'Amy',
+        personId: 'person-amy',
+        reference: null,
+        score: 1,
+      },
+      kind: 'accepted_contradiction' as const,
+    };
+
+    expect(
+      personAwaitingCounts(
+        { accepted_contradiction: 1, untagged_match: 2 },
+        [],
+        0,
+        [newCollision, mistagCollision],
+        new Set(['face-new', 'face-mistag']),
+      ),
+    ).toEqual({ multiple: 2, newMatches: 1, possibleMistags: 0, total: 3 });
   });
 });
 

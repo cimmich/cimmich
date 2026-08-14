@@ -660,6 +660,8 @@
       cimmichIdentityAuditTotals,
       cimmichCandidateOnlyReviewItems,
       visibleCimmichMachineSuggestions.length,
+      cimmichPersonReviewItems,
+      cimmichSamePhotoCollisionFaceIds,
     );
     return {
       ...base,
@@ -3837,8 +3839,8 @@
               <CimmichPersonMatchRefresh
                 counts={{
                   mistags: cimmichAwaitingCounts.possibleMistags,
-                  multiple: cimmichSamePhotoCollisionCount,
-                  new: Math.max(0, cimmichAwaitingCounts.newMatches - cimmichSamePhotoCollisionCount),
+                  multiple: cimmichAwaitingCounts.multiple,
+                  new: cimmichAwaitingCounts.newMatches,
                 }}
                 onerror={(message) => (cimmichIdentityError = message)}
                 onmessage={(message) => (cimmichIdentityMessage = message)}
