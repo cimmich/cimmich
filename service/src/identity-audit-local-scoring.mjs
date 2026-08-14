@@ -76,7 +76,7 @@ export const scoreIdentityAuditLocally = async (
       reference.person_id, reference.face_id, face.asset_id,
       reference.embedding::text AS embedding,
       coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-    FROM source_pack_matching_gallery reference
+    FROM source_pack_reference reference
     JOIN current_face_physical_member physical
       ON physical.face_id = reference.face_id
     JOIN current_person person
@@ -93,6 +93,7 @@ export const scoreIdentityAuditLocally = async (
       WHERE capture.face_id = reference.face_id
     ) context ON true
     WHERE reference.pack_id = ${packId}
+      AND reference.routing_state = 'eligible'
       AND reference.bucket_kind = 'prime'
       AND reference.reference_kind = 'face'
       AND NOT EXISTS (
@@ -192,7 +193,6 @@ export const scoreIdentityAuditLocally = async (
       JOIN source_pack pack
         ON pack.pack_id = claim.evidence_refs->>'source_pack_id'
         AND pack.pack_id = ${packId}
-        AND pack.state = 'active'
         AND pack.evaluation_status = 'passed'
         AND pack.evaluation_summary->'matcherPolicy'->>'policyVersion' =
           claim.evidence_refs->>'policy_version'

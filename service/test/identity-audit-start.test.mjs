@@ -49,7 +49,7 @@ test("the reconcile sweep thresholds on last progress, derived from the transact
       reconcileValues = values;
       return [];
     }
-    if (query.includes("FROM current_source_pack")) return [];
+    if (query.includes("FROM source_pack")) return [];
     if (query.includes("SELECT * FROM identity_audit_run")) return [];
     throw new Error(`Unexpected query: ${query}`);
   };
@@ -78,7 +78,7 @@ test("the reconcile sweep re-arms after its cadence instead of memoizing forever
       sweeps += 1;
       return [];
     }
-    if (query.includes("FROM current_source_pack")) return [];
+    if (query.includes("FROM source_pack")) return [];
     if (query.includes("SELECT * FROM identity_audit_run")) return [];
     throw new Error(`Unexpected query: ${query}`);
   };
@@ -106,7 +106,7 @@ test("incremental start gates staleness on the base run's start, inclusively", a
     const query = strings.join("?");
     if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
     if (query.includes("matcherPolicy")) return [packRow];
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("SELECT * FROM identity_audit_run")) {
@@ -155,7 +155,7 @@ test("a concurrent start returns the winning run instead of a raw unique violati
     const query = strings.join("?");
     if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
     if (query.includes("matcherPolicy")) return [packRow];
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("INSERT INTO identity_audit_run")) {
@@ -183,7 +183,7 @@ test("production can require the paired Mac worker without starting database sco
   const sql = async (strings) => {
     const query = strings.join("?");
     if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       queriedPack = true;
       return [];
     }
@@ -211,7 +211,7 @@ test("an audit failure stores a stable label, logs the error, and guards its rec
     const query = strings.join("?");
     if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
     if (query.includes("matcherPolicy")) return [packRow];
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("INSERT INTO identity_audit_run")) {
@@ -271,7 +271,7 @@ test("a failing recovery write is contained instead of escaping the process", as
     const query = strings.join("?");
     if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
     if (query.includes("matcherPolicy")) return [packRow];
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("INSERT INTO identity_audit_run")) {

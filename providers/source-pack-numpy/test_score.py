@@ -116,6 +116,27 @@ class IdentityAuditOwnClusterTest(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["evidenceRoute"], "own_cluster_outlier")
 
+    def test_same_photo_person_remains_a_cross_person_mistag_winner(self):
+        results = self.scorer.audit(
+            {
+                "auditKind": "accepted_contradiction",
+                "queries": [
+                    {
+                        "assetId": "query-asset-same-photo",
+                        "assignedPersonId": "person-a",
+                        "contextIds": [],
+                        "embedding": vector((3, 1)),
+                        "excludedPersonIds": ["person-b"],
+                        "faceId": "same-photo-contradiction",
+                    }
+                ],
+            }
+        )["results"]
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["evidenceRoute"], "cross_person_match")
+        self.assertEqual(results[0]["personId"], "person-b")
+
 
 if __name__ == "__main__":
     unittest.main()

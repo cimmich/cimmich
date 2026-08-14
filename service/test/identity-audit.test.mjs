@@ -166,7 +166,7 @@ test("own-cluster review references use accepted-only indexed support", async ()
   );
   assert.match(
     source,
-    /WHERE reference\.pack_id = item_run\.pack_id\s+AND item\.evidence_route = 'cross_person_match'/,
+    /WHERE reference\.pack_id = item_run\.pack_id\s+AND reference\.routing_state = 'eligible'\s+AND item\.evidence_route = 'cross_person_match'/,
   );
 });
 
@@ -225,7 +225,7 @@ test("an interrupted audit is failed once when the service resumes", async () =>
       state = "failed";
       return [];
     }
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("SELECT * FROM identity_audit_run")) {
@@ -270,7 +270,7 @@ test("a failed interrupted-run reconcile retries instead of pinning every audit 
       if (updateAttempts === 1) throw new Error("connection lost");
       return [];
     }
-    if (query.includes("FROM current_source_pack")) {
+    if (query.includes("FROM source_pack")) {
       return [{ pack_id: "pack.active" }];
     }
     if (query.includes("SELECT * FROM identity_audit_run")) return [];
@@ -295,11 +295,11 @@ test("a failed interrupted-run reconcile retries instead of pinning every audit 
   assert.match(source, /make_interval\(/);
 });
 
-test("a completed audit is stale when no passed SourcePack remains active", async () => {
+test("a completed audit is stale when no passed immutable SourcePack remains", async () => {
   const sql = async (strings) => {
     const query = strings.join(" ");
     if (query.includes("UPDATE identity_audit_run")) return [];
-    if (query.includes("FROM current_source_pack")) return [];
+    if (query.includes("FROM source_pack")) return [];
     if (query.includes("SELECT * FROM identity_audit_run")) {
       return [
         {
@@ -446,7 +446,8 @@ test("audit items expose the exact trusted references needed for visual review",
     result.items[0].suggestedPerson.reference.sourceAssetId,
     "immich.asset.suggested-reference",
   );
-  assert.match(itemQuery, /source_pack_matching_gallery/);
+  assert.match(itemQuery, /source_pack_reference/);
+  assert.match(itemQuery, /reference\.routing_state = 'eligible'/);
   assert.match(itemQuery, /current_face_capture_context/);
   assert.match(itemQuery, /item\.suggested_person_id/);
   assert.match(itemQuery, /item\.assigned_person_id/);

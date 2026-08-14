@@ -305,7 +305,16 @@ class Scorer:
                     valid[gallery_index] = False
                 elif contexts and self.contexts[gallery_index] & contexts:
                     valid[gallery_index] = False
-                elif person_id in excluded_people:
+                # A same-photo accepted Person is a useful collision warning,
+                # not grounds to hide a strong contradiction. Two appearances
+                # in one asset (collage, reflection, duplicate import, or a
+                # bad existing tag) are exactly the cases an owner must still
+                # be able to review. Keep this exclusion only for untagged
+                # auto-suggestions; accepted mistags retain the real winner.
+                elif (
+                    audit_kind == "untagged_match"
+                    and person_id in excluded_people
+                ):
                     valid[gallery_index] = False
             person_scores = np.full(self.person_count, -np.inf, dtype=np.float32)
             np.maximum.at(

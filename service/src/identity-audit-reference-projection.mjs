@@ -16,7 +16,7 @@ export const identityAuditSuggestedReferenceSql = (presentationRankInput) => {
       reference_asset.width, reference_asset.height,
       (1 - (reference.embedding <=> query_embedding.embedding))::float8
         AS score
-    FROM source_pack_matching_gallery reference
+    FROM source_pack_reference reference
     JOIN face_observation reference_face
       ON reference_face.face_id = reference.face_id
       AND reference_face.state = 'valid'
@@ -28,6 +28,7 @@ export const identityAuditSuggestedReferenceSql = (presentationRankInput) => {
         <= ${presentationRank}
     WHERE item.evidence_route = 'cross_person_match'
       AND reference.pack_id = item_run.pack_id
+      AND reference.routing_state = 'eligible'
       AND reference.person_id = item.suggested_person_id
       AND reference.bucket_kind = 'prime'
       AND reference.reference_kind = 'face'

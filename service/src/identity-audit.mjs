@@ -102,7 +102,7 @@ const auditSql = async (
         reference.person_id, reference.face_id,
         face.asset_id, reference.embedding,
         coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-      FROM source_pack_matching_gallery reference
+      FROM source_pack_reference reference
       JOIN current_face_physical_member physical
         ON physical.face_id = reference.face_id
       JOIN current_person person
@@ -114,6 +114,7 @@ const auditSql = async (
         ON face.face_id = reference.face_id AND face.state = 'valid'
       LEFT JOIN face_contexts context ON context.face_id = reference.face_id
       WHERE reference.pack_id = ${packId}
+        AND reference.routing_state = 'eligible'
         AND reference.bucket_kind = 'prime'
         AND reference.reference_kind = 'face'
         AND NOT EXISTS (
@@ -149,7 +150,8 @@ const auditSql = async (
         WHERE prior.audit_run_id = ${baseRunId}
           AND prior.face_id <> ALL(${incrementalFaceIds})
           AND (prior.audit_kind <> 'untagged_match' OR cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h))
-          AND NOT EXISTS (
+          AND (
+            prior.audit_kind <> 'untagged_match' OR NOT EXISTS (
             SELECT 1
             FROM current_face_identity same_photo_identity JOIN face_observation same_photo_face
               ON same_photo_face.face_id = same_photo_identity.face_id
@@ -158,6 +160,7 @@ const auditSql = async (
               AND same_photo_identity.person_id = prior.suggested_person_id
               AND same_photo_face.asset_id = prior.asset_id
               AND same_photo_face.face_id <> prior.face_id
+            )
           )
           AND (
             (prior.audit_kind = 'untagged_match' AND NOT EXISTS (
@@ -469,13 +472,6 @@ const auditSql = async (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
         GROUP BY face_id
-      ), accepted_people_by_asset AS MATERIALIZED (
-        SELECT DISTINCT face.asset_id, claim.person_id
-        FROM current_physical_face_identity claim
-        JOIN current_matchable_physical_face face
-          ON face.physical_face_id = claim.physical_face_id
-          AND face.state = 'valid'
-        WHERE claim.state = 'accepted'
       ), eligible_queries AS MATERIALIZED (
         SELECT face.face_id, face.asset_id,
           claim.person_id AS assigned_person_id, embedding.embedding,
@@ -535,11 +531,6 @@ const auditSql = async (
           ON gallery.face_id <> query.face_id
           AND gallery.asset_id <> query.asset_id
           AND NOT (gallery.context_ids && query.context_ids)
-        LEFT JOIN accepted_people_by_asset same_photo_person
-          ON same_photo_person.asset_id = query.asset_id
-          AND same_photo_person.person_id = gallery.person_id
-          AND gallery.person_id <> query.assigned_person_id
-        WHERE same_photo_person.person_id IS NULL
         GROUP BY query.face_id, query.asset_id, query.assigned_person_id,
           gallery.person_id
       ), assigned AS MATERIALIZED (
@@ -609,7 +600,7 @@ const auditSql = async (
         count(*)::int AS embedded_faces,
         count(*) FILTER (WHERE EXISTS (
           SELECT 1
-          FROM source_pack_matching_gallery gallery
+          FROM source_pack_reference gallery
           JOIN current_person gallery_person
             ON gallery_person.person_id = gallery.person_id
             AND gallery_person.status = 'active'
@@ -621,6 +612,7 @@ const auditSql = async (
             AND reference.state = 'valid'
             AND reference.asset_id <> face.asset_id
           WHERE gallery.pack_id = ${packId}
+            AND gallery.routing_state = 'eligible'
             AND gallery.bucket_kind = 'prime'
             AND gallery.reference_kind = 'face'
             AND gallery.person_id = claim.person_id
@@ -949,9 +941,10 @@ export const createIdentityAudit = (
     await reconcileInterruptedRun();
     const [currentPack] = await sql`
       SELECT pack_id
-      FROM current_source_pack
+      FROM source_pack
       WHERE evaluation_status = 'passed'
-      ORDER BY created_at DESC, pack_id DESC
+        AND state IN ('active', 'retired')
+      ORDER BY (state = 'active') DESC, created_at DESC, pack_id DESC
       LIMIT 1
     `;
     const [row] = await sql`
@@ -977,8 +970,9 @@ export const createIdentityAudit = (
         evaluation_summary->'matcherPolicy'->>'policyVersion' AS policy_version,
         (evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8 AS score_floor,
         (evaluation_summary->'matcherPolicy'->>'marginFloor')::float8 AS margin_floor
-      FROM current_source_pack
+      FROM source_pack
       WHERE evaluation_status = 'passed'
+        AND state IN ('active', 'retired')
         AND evaluation_summary->'matcherPolicy'->>'policyVersion'
           = ${identityAuditPolicyVersion}
         AND evaluation_summary->'matcherPolicy'->>'scorer'
@@ -987,13 +981,13 @@ export const createIdentityAudit = (
           = 'number'
         AND jsonb_typeof(evaluation_summary->'matcherPolicy'->'marginFloor')
           = 'number'
-      ORDER BY created_at DESC, pack_id DESC
+      ORDER BY (state = 'active') DESC, created_at DESC, pack_id DESC
       LIMIT 1
     `;
     if (!pack) {
       throw Object.assign(
         new Error(
-          "Activate a passed SourcePack before running an identity audit",
+          "A passed SourcePack is required before running an identity audit",
         ),
         { code: "IDENTITY_AUDIT_SOURCE_PACK_UNAVAILABLE", statusCode: 409 },
       );
@@ -1247,7 +1241,8 @@ export const createIdentityAudit = (
           cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
         )
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
-        AND NOT EXISTS (
+        AND (
+          item.audit_kind <> 'untagged_match' OR NOT EXISTS (
           SELECT 1
           FROM identity_claim same_photo_identity
           JOIN current_face_physical_member same_photo_member
@@ -1259,6 +1254,7 @@ export const createIdentityAudit = (
             AND same_photo_identity.person_id = item.suggested_person_id
             AND same_photo_face.asset_id = item.asset_id
             AND same_photo_member.physical_face_id <> item.physical_face_id
+          )
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
@@ -1346,7 +1342,7 @@ export const createIdentityAudit = (
           reference_face.box_w, reference_face.box_h,
           reference_asset.width, reference_asset.height,
           (1 - (reference.embedding <=> query_embedding.embedding))::float8 AS score
-        FROM source_pack_matching_gallery reference
+        FROM source_pack_reference reference
         JOIN face_observation reference_face
           ON reference_face.face_id = reference.face_id
           AND reference_face.state = 'valid'
@@ -1357,6 +1353,7 @@ export const createIdentityAudit = (
           AND cimmich_visibility_asset_rank(reference_asset.asset_id)
             <= ${presentationRank()}
         WHERE reference.pack_id = item_run.pack_id
+          AND reference.routing_state = 'eligible'
           AND reference.person_id = item.assigned_person_id
           AND reference.bucket_kind = 'prime'
           AND reference.reference_kind = 'face'
@@ -1400,7 +1397,7 @@ export const createIdentityAudit = (
                   reference.embedding <=> query_embedding.embedding
                 ))::float8
               ) AS score
-            FROM source_pack_matching_gallery reference
+            FROM source_pack_reference reference
             JOIN face_observation reference_face
               ON reference_face.face_id = reference.face_id
               AND reference_face.state = 'valid'
@@ -1416,6 +1413,7 @@ export const createIdentityAudit = (
               WHERE context.face_id = reference.face_id
             ) reference_context ON true
             WHERE reference.pack_id = item_run.pack_id
+              AND reference.routing_state = 'eligible'
               AND item.evidence_route = 'cross_person_match'
               AND reference.person_id = item.suggested_person_id
               AND reference.bucket_kind = 'prime'
@@ -1452,7 +1450,8 @@ export const createIdentityAudit = (
           OR cimmich_face_match_eligible(face.detection_confidence, face.box_w, face.box_h)
         )
         AND (item.audit_kind <> 'untagged_match' OR coalesce((SELECT review.reason_code FROM decision review WHERE review.subject_type = 'face_review' AND review.subject_id = face.face_id ORDER BY review.created_at DESC, review.decision_id DESC LIMIT 1), '') NOT IN ('face_review_unknown', 'face_review_later', 'face_review_geometry'))
-        AND NOT EXISTS (
+        AND (
+          item.audit_kind <> 'untagged_match' OR NOT EXISTS (
           SELECT 1
           FROM identity_claim same_photo_identity
           JOIN current_face_physical_member same_photo_member
@@ -1464,6 +1463,7 @@ export const createIdentityAudit = (
             AND same_photo_identity.person_id = item.suggested_person_id
             AND same_photo_face.asset_id = item.asset_id
             AND same_photo_member.physical_face_id <> item.physical_face_id
+          )
         )
         AND (
           (item.audit_kind = 'untagged_match' AND NOT EXISTS (
