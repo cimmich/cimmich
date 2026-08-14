@@ -3,7 +3,7 @@
 Updated: 2026-08-14
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
-Current development source: migration-ledger schema 136/patch 1
+Current development source: migration-ledger schema 137/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
@@ -13,6 +13,8 @@ The Mac-local scorer first preserves the stronger-different-Person route, then
 checks an accepted Face against the current Person's full confirmed Face set,
 including low-quality support. A low absolute score alone is insufficient: the
 Face must also fall beneath that Person's conservative lower-tail baseline.
+Schema 137 projects that evidence route through the canonical physical-Face
+audit view so the review API can render the new rows instead of failing closed.
 
 ## Community Preview release contract
 

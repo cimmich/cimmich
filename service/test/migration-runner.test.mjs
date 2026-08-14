@@ -1326,3 +1326,22 @@ test("schema 136 records own-cluster identity outliers as review-only evidence",
   assert.match(source, /audit_kind = 'accepted_contradiction'/);
   assert.doesNotMatch(source, /UPDATE\s+identity_claim/i);
 });
+
+test("schema 137 projects the evidence route through physical-Face audit reads", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0137_identity_audit_evidence_route_projection_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    source,
+    /CREATE OR REPLACE VIEW current_physical_identity_audit_item/,
+  );
+  assert.match(source, /ranked\.physical_rank, ranked\.evidence_route/);
+  assert.match(source, /FROM identity_audit_item item/);
+  assert.doesNotMatch(source, /UPDATE\s+identity_claim/i);
+});
