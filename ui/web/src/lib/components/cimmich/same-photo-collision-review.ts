@@ -168,7 +168,7 @@ export const personIdentityAuditGroups = ({
     return {
       description: isNewMatch
         ? `Previously untagged faces the matcher thinks may be ${personName}.`
-        : 'Existing identity tags the matcher disputes because it sees a stronger match to a different person.',
+        : 'Existing tags that look unlike their Person or match someone else. Keep the Person and classify Face, Head or Body—or assign the correct Person.',
       id: isNewMatch ? 'new-matches' : 'possible-mistags',
       items: reviewItems
         .filter((item) => item.kind === kind && !collisionFaceIds.has(item.faceId))

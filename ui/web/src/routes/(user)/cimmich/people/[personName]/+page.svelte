@@ -20,6 +20,11 @@
   import CimmichReviewPhotoMedia from '$lib/components/cimmich/CimmichReviewPhotoMedia.svelte';
   import CimmichUnknownPersonAction from '$lib/components/cimmich/CimmichUnknownPersonAction.svelte';
   import { CimmichIdentityAuditCorrectionController } from '$lib/components/cimmich/identity-audit-correction-controller.svelte';
+  import {
+    reclassifyIdentityAuditEvidence,
+    reclassifyIdentityAuditEvidenceBatch,
+    type CimmichAuditEvidenceKind,
+  } from '$lib/components/cimmich/identity-audit-evidence-reclassification';
   import { fitIdentityReviewCrop } from '$lib/components/cimmich/identity-review-crop';
   import { CimmichPersonExploreController } from '$lib/components/cimmich/person-explore-controller.svelte';
   import {
@@ -255,7 +260,7 @@
   let cimmichIdentityError = $state('');
   let cimmichIdentityAuditEvidenceExpanded = $state<string[]>([]);
   let cimmichIdentityCollisionAssetIds = $state<string[]>([]);
-  let cimmichIdentityAuditConfirmAction = $state<'' | 'accept' | 'dismiss'>('');
+  let cimmichIdentityAuditConfirmAction = $state<'' | 'accept' | 'body' | 'dismiss' | 'head'>('');
   let cimmichIdentityAuditItems = $state<CimmichIdentityAuditItem[]>([]);
   let cimmichIdentityAuditLoadingKind = $state<CimmichIdentityAuditItem['kind'] | ''>('');
   let cimmichIdentityAuditProgress = $state({ completed: 0, total: 0 });
@@ -1860,6 +1865,26 @@
     }
   };
 
+  const reclassifyCimmichAuditItem = async (item: CimmichPersonReviewItem, evidenceKind: CimmichAuditEvidenceKind) => {
+    if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
+      return;
+    }
+    cimmichIdentityError = '';
+    cimmichIdentityMessage = '';
+    try {
+      const result = await reclassifyIdentityAuditEvidence(item, evidenceKind);
+      const personName = item.assignedPerson?.displayName ?? cimmichPerson?.display_name ?? 'the current Person';
+      cimmichIdentityMessage = `${personName} kept; this region is now ${evidenceKind === 'head' ? 'Head' : 'Body'} evidence.${
+        result.reviewFinalized ? '' : ' The review queue will reconcile on refresh.'
+      }`;
+      finishCimmichAuditDecision(item);
+    } catch (error) {
+      cimmichIdentityError = error instanceof Error ? error.message : `Unable to save this region as ${evidenceKind}`;
+    } finally {
+      finishCimmichIdentityAuditFaceSave(item.faceId);
+    }
+  };
+
   const deferCimmichAuditBoxFix = async (item: CimmichPersonReviewItem) => {
     if (!beginCimmichIdentityAuditFaceSave(item.faceId)) {
       return;
@@ -1909,7 +1934,7 @@
 
   const decideSelectedCimmichAuditItems = async (
     kind: CimmichIdentityAuditItem['kind'],
-    action: 'accept' | 'dismiss',
+    action: 'accept' | 'body' | 'dismiss' | 'head',
   ) => {
     const selectedItems = cimmichPersonReviewItems.filter(
       (item) => item.kind === kind && cimmichIdentityAuditSelection.includes(item.faceId),
@@ -1933,70 +1958,89 @@
     cimmichIdentityMessage = '';
     const completedFaceIds: string[] = [];
     try {
-      const candidateItems = selectedItems.filter(
-        (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
-      );
-      const auditItems = selectedItems.filter((item) => !item.candidateClaimId);
-
-      if (action === 'accept' && candidateItems.length > 0) {
-        await bulkAcceptCimmichPersonCandidates(
-          cimmichPerson.person_id,
-          candidateItems.map((item) => item.candidateClaimId),
+      if (action === 'head' || action === 'body') {
+        const batch = await reclassifyIdentityAuditEvidenceBatch(
+          selectedItems,
+          action,
+          (completed, total) => (cimmichIdentityAuditProgress = { completed, total }),
         );
-        completedFaceIds.push(...candidateItems.map((item) => item.faceId));
-        cimmichIdentityAuditProgress = {
-          completed: completedFaceIds.length,
-          total: selectedItems.length,
-        };
-      }
-
-      const remainingItems = action === 'accept' ? auditItems : selectedItems;
-      if (action === 'accept' && remainingItems.length > 0) {
-        const batch = await setCimmichFaceIdentitiesBatch(
-          remainingItems.map((item) => ({ faceId: item.faceId, personId: item.suggestedPerson.personId })),
-        );
-        completedFaceIds.push(...batch.assigned.map((result) => result.faceId));
-        cimmichIdentityAuditProgress = {
-          completed: completedFaceIds.length,
-          total: selectedItems.length,
-        };
-        if (batch.failureCount > 0) {
+        completedFaceIds.push(...batch.completed.map((result) => result.faceId));
+        cimmichIdentityMessage = `${completedFaceIds.length} selected ${
+          completedFaceIds.length === 1 ? 'region' : 'regions'
+        } kept with the current ${completedFaceIds.length === 1 ? 'Person' : 'People'} and saved as ${
+          action === 'head' ? 'Head' : 'Body'
+        } evidence.`;
+        if (batch.failures.length > 0) {
           throw new Error(
-            `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
+            `${batch.failures.length} ${batch.failures.length === 1 ? 'region' : 'regions'} could not be saved: ${batch.failures[0].error}`,
           );
         }
-      } else if (action === 'dismiss') {
-        const candidateRejectItems = remainingItems.filter(
+      } else {
+        const candidateItems = selectedItems.filter(
           (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
         );
-        const dismissItems = remainingItems.filter((item) => !item.candidateClaimId);
-        if (candidateRejectItems.length > 0) {
-          await bulkRejectCimmichPersonCandidates(
+        const auditItems = selectedItems.filter((item) => !item.candidateClaimId);
+
+        if (action === 'accept' && candidateItems.length > 0) {
+          await bulkAcceptCimmichPersonCandidates(
             cimmichPerson.person_id,
-            candidateRejectItems.map((item) => item.candidateClaimId),
+            candidateItems.map((item) => item.candidateClaimId),
           );
-          completedFaceIds.push(...candidateRejectItems.map((item) => item.faceId));
+          completedFaceIds.push(...candidateItems.map((item) => item.faceId));
           cimmichIdentityAuditProgress = {
             completed: completedFaceIds.length,
             total: selectedItems.length,
           };
         }
-        if (dismissItems.length > 0) {
-          await dismissCimmichIdentityAuditItemsBatch(
-            dismissItems.map((item) => ({ faceId: item.faceId, kind: item.kind })),
+
+        const remainingItems = action === 'accept' ? auditItems : selectedItems;
+        if (action === 'accept' && remainingItems.length > 0) {
+          const batch = await setCimmichFaceIdentitiesBatch(
+            remainingItems.map((item) => ({ faceId: item.faceId, personId: item.suggestedPerson.personId })),
           );
-          completedFaceIds.push(...dismissItems.map((item) => item.faceId));
+          completedFaceIds.push(...batch.assigned.map((result) => result.faceId));
           cimmichIdentityAuditProgress = {
             completed: completedFaceIds.length,
             total: selectedItems.length,
           };
+          if (batch.failureCount > 0) {
+            throw new Error(
+              `${batch.failureCount} ${batch.failureCount === 1 ? 'match' : 'matches'} could not be confirmed: ${batch.failures[0].error}`,
+            );
+          }
+        } else if (action === 'dismiss') {
+          const candidateRejectItems = remainingItems.filter(
+            (item): item is CimmichPersonReviewItem & { candidateClaimId: string } => Boolean(item.candidateClaimId),
+          );
+          const dismissItems = remainingItems.filter((item) => !item.candidateClaimId);
+          if (candidateRejectItems.length > 0) {
+            await bulkRejectCimmichPersonCandidates(
+              cimmichPerson.person_id,
+              candidateRejectItems.map((item) => item.candidateClaimId),
+            );
+            completedFaceIds.push(...candidateRejectItems.map((item) => item.faceId));
+            cimmichIdentityAuditProgress = {
+              completed: completedFaceIds.length,
+              total: selectedItems.length,
+            };
+          }
+          if (dismissItems.length > 0) {
+            await dismissCimmichIdentityAuditItemsBatch(
+              dismissItems.map((item) => ({ faceId: item.faceId, kind: item.kind })),
+            );
+            completedFaceIds.push(...dismissItems.map((item) => item.faceId));
+            cimmichIdentityAuditProgress = {
+              completed: completedFaceIds.length,
+              total: selectedItems.length,
+            };
+          }
         }
+        cimmichIdentityMessage =
+          action === 'accept'
+            ? `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'match' : 'matches'} confirmed.`
+            : `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} dismissed.`;
       }
-      cimmichIdentityMessage =
-        action === 'accept'
-          ? `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'match' : 'matches'} confirmed.`
-          : `${completedFaceIds.length} selected ${completedFaceIds.length === 1 ? 'suggestion' : 'suggestions'} dismissed.`;
-      if (action === 'accept') {
+      if (action !== 'dismiss') {
         await refreshCimmichIdentityAfterReview();
       }
     } catch (error) {
@@ -3933,6 +3977,42 @@
                             disabled={Boolean(cimmichIdentityAuditSavingId)}
                             onclick={clearCimmichAuditSelection}>Clear</button
                           >
+                          {#if auditGroup.kind === 'accepted_contradiction'}
+                            <button
+                              class={[
+                                'min-h-10 rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-40',
+                                cimmichIdentityAuditConfirmAction === 'head'
+                                  ? 'border-cyan-700 bg-cyan-700 text-white'
+                                  : 'border-cyan-300 text-cyan-800 dark:border-cyan-800 dark:text-cyan-200',
+                              ]}
+                              type="button"
+                              disabled={Boolean(cimmichIdentityAuditSavingId)}
+                              onclick={() => void decideSelectedCimmichAuditItems(auditGroup.kind, 'head')}
+                            >
+                              {cimmichIdentityAuditSavingId === 'bulk:head'
+                                ? `Saving ${cimmichIdentityAuditProgress.completed} of ${cimmichIdentityAuditProgress.total}…`
+                                : cimmichIdentityAuditConfirmAction === 'head'
+                                  ? `Confirm ${cimmichAuditSelectionCount(auditGroup.kind)} as Head`
+                                  : `Head (${cimmichAuditSelectionCount(auditGroup.kind)})`}
+                            </button>
+                            <button
+                              class={[
+                                'min-h-10 rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-40',
+                                cimmichIdentityAuditConfirmAction === 'body'
+                                  ? 'border-cyan-700 bg-cyan-700 text-white'
+                                  : 'border-cyan-300 text-cyan-800 dark:border-cyan-800 dark:text-cyan-200',
+                              ]}
+                              type="button"
+                              disabled={Boolean(cimmichIdentityAuditSavingId)}
+                              onclick={() => void decideSelectedCimmichAuditItems(auditGroup.kind, 'body')}
+                            >
+                              {cimmichIdentityAuditSavingId === 'bulk:body'
+                                ? `Saving ${cimmichIdentityAuditProgress.completed} of ${cimmichIdentityAuditProgress.total}…`
+                                : cimmichIdentityAuditConfirmAction === 'body'
+                                  ? `Confirm ${cimmichAuditSelectionCount(auditGroup.kind)} as Body`
+                                  : `Body (${cimmichAuditSelectionCount(auditGroup.kind)})`}
+                            </button>
+                          {/if}
                           <button
                             class={[
                               'min-h-10 rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-40',
@@ -4156,16 +4236,41 @@
                                     >
                                   </div>
                                 {/if}
-                                <button
-                                  class="col-span-2 min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
-                                  type="button"
-                                  disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
-                                  onclick={() => void confirmCimmichAuditPerson(item)}
+                                <div
+                                  class="col-span-2 grid min-w-0 grid-cols-3 gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-black/10"
                                 >
-                                  {cimmichIdentityAuditFaceSaving(item.faceId)
-                                    ? 'Saving…'
-                                    : `Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`}
-                                </button>
+                                  <p class="col-span-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                                    Keep {item.assignedPerson?.displayName ?? cimmichPerson.display_name}; this box is
+                                  </p>
+                                  <button
+                                    class="min-h-10 min-w-0 rounded-md border border-gray-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600 dark:bg-immich-dark-gray"
+                                    type="button"
+                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                    onclick={() => void confirmCimmichAuditPerson(item)}
+                                  >
+                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Face'}
+                                  </button>
+                                  <button
+                                    class="min-h-10 min-w-0 rounded-md border border-cyan-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal text-cyan-800 disabled:opacity-40 dark:border-cyan-800 dark:bg-immich-dark-gray dark:text-cyan-200"
+                                    type="button"
+                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                    onclick={() => void reclassifyCimmichAuditItem(item, 'head')}
+                                  >
+                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Head'}
+                                  </button>
+                                  <button
+                                    class="min-h-10 min-w-0 rounded-md border border-cyan-300 bg-white p-2 text-sm/5 font-semibold whitespace-normal text-cyan-800 disabled:opacity-40 dark:border-cyan-800 dark:bg-immich-dark-gray dark:text-cyan-200"
+                                    type="button"
+                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId) ||
+                                      typeof item.currentRevision !== 'number'}
+                                    title={typeof item.currentRevision === 'number'
+                                      ? 'Keep this Person, save the same box as Body evidence, and retire the mistaken Face'
+                                      : 'Reload this review before saving the box as Body'}
+                                    onclick={() => void reclassifyCimmichAuditItem(item, 'body')}
+                                  >
+                                    {cimmichIdentityAuditFaceSaving(item.faceId) ? 'Saving…' : 'Body'}
+                                  </button>
+                                </div>
                               {:else}
                                 <button
                                   class="col-span-2 min-h-10 min-w-0 rounded-md bg-immich-primary p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"

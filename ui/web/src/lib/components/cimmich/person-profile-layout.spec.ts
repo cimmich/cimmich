@@ -175,7 +175,11 @@ describe('Person profile layout', () => {
     expect(source).toContain('Route.viewCimmichPersonAsset');
     expect(source).toContain("overlay: 'people'");
     expect(source).toContain('`Confirm ${cimmichPerson.display_name}`');
-    expect(source).toContain('`Leave as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}`');
+    expect(source).toContain('Keep {item.assignedPerson?.displayName ?? cimmichPerson.display_name}; this box is');
+    expect(source).toContain("reclassifyCimmichAuditItem(item, 'head')");
+    expect(source).toContain("reclassifyCimmichAuditItem(item, 'body')");
+    expect(source).toContain("decideSelectedCimmichAuditItems(auditGroup.kind, 'head')");
+    expect(source).toContain("decideSelectedCimmichAuditItems(auditGroup.kind, 'body')");
     expect(source).toContain('cimmichIdentityAuditCorrection.decision(item).label');
     expect(source).toMatch(
       /cimmichIdentityAuditCorrection\.decision\(item\)\.targetPersonId ===[\s\n]+cimmichPerson\.person_id[\s\S]+\? 'bg-immich-primary'[\s\n]+: 'bg-amber-600'/,
