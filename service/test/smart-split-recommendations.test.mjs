@@ -78,6 +78,27 @@ test("same-photo constraints prevent a high-similarity bridge from fusing people
   assert.equal(result.groups[1].samePhotoSeparations > 0, true);
 });
 
+test("one internally strong group is suggested while unrelated faces remain Unclear", () => {
+  const result = buildSmartSplitRecommendations({
+    personId: "person-with-outliers",
+    nodes: [
+      node("a1", "asset-a1"),
+      node("a2", "asset-a2"),
+      node("a3", "asset-a3"),
+      node("x", "asset-x"),
+    ],
+    edges: [
+      edge("a1", "a2", 0.84),
+      edge("a2", "a3", 0.82),
+      edge("a1", "x", 0.62),
+    ],
+  });
+
+  assert.equal(result.summary.clearGroupCount, 1);
+  assert.deepEqual(result.groups[0].faceIds, ["face-a1", "face-a2", "face-a3"]);
+  assert.deepEqual(result.groups[1].faceIds, ["face-x"]);
+});
+
 test("one coherent component is not presented as a split recommendation", () => {
   const result = buildSmartSplitRecommendations({
     personId: "one-person",

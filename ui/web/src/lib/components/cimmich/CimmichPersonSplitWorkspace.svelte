@@ -14,6 +14,7 @@
   import {
     isUncertainSplitBatchFailure,
     replaceSplitSelectionWithShown,
+    smartSplitRecommendationsAfterBatch,
     splitSelectionAfterBatch,
   } from './person-split-selection';
   import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
@@ -219,8 +220,13 @@
         const destination = result.assigned[0]?.personName ?? selectedMovePerson?.display_name ?? name;
         notice = `${result.assignedCount.toLocaleString()} ${result.assignedCount === 1 ? 'face' : 'faces'} ${action === 'create' ? `moved to new Person ${destination}` : `moved to ${destination}`}.`;
         onchanged();
-        smartRecommendations = null;
-        smartGroupId = 'all';
+        if (smartRecommendations) {
+          smartRecommendations = smartSplitRecommendationsAfterBatch(
+            smartRecommendations,
+            result.assigned.map(({ faceId }) => faceId),
+          );
+          smartGroupId = smartRecommendations.groups.find(({ kind }) => kind === 'clear')?.groupId ?? 'smart-unclear';
+        }
       }
       if (result.failureCount > 0) {
         const selectedFailure = result.failures[0];

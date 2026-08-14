@@ -26,6 +26,7 @@ export type CimmichSmartSplitRecommendations = {
     minimumSamePhotoSeparations: number;
     pairGroupCohesionFloor: number;
     samePhotoSeparationRatio: number;
+    strongInternalMedianFloor: number;
     strongLinkFloor: number;
   };
   schemaVersion: 'cimmich.smart-split-recommendations.v1';

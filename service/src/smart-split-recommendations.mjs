@@ -6,6 +6,7 @@ const policy = Object.freeze({
   minimumSamePhotoSeparations: 2,
   pairGroupCohesionFloor: 0.72,
   samePhotoSeparationRatio: 0.05,
+  strongInternalMedianFloor: 0.8,
   strongLinkFloor: 0.65,
 });
 
@@ -186,7 +187,8 @@ export const buildSmartSplitRecommendations = ({
     const clear =
       enoughMembers &&
       cohesionFloor >= policy.strongLinkFloor &&
-      (robustSamePhotoEvidence ||
+      (cohesionMedian >= policy.strongInternalMedianFloor ||
+        robustSamePhotoEvidence ||
         (nearestOtherSimilarity < policy.clearDistanceCeiling &&
           separationMargin >= policy.clearDistanceMargin));
     return {
