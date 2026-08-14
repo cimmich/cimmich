@@ -33,7 +33,7 @@ const providerRoot = path.resolve(
   serviceDirectory,
   "../providers/perceptual-dhash",
 );
-const manifestPath = path.join(providerRoot, "provider-manifest.json");
+const manifestPath = path.join(providerRoot, "provider-manifest-mac.json");
 const pythonPath = value("python", "/usr/bin/python3");
 const scorer = createSourcePackNumpyScorer({
   pythonPath,

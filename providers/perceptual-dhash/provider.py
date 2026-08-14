@@ -19,9 +19,18 @@ from PIL import Image, ImageOps, __version__ as PILLOW_VERSION
 
 PROVIDER_SCHEMA = "cimmich.asset-similarity-provider.v1"
 MAX_PIXELS = 200_000_000
-REQUIRED_PILLOW_VERSION = "12.3.0"
-REQUIRED_NUMPY_VERSION = "2.4.6"
-REQUIRED_OPENCV_VERSION = "5.0.0"
+SUPPORTED_RUNTIMES = {
+    "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4": (
+        "12.3.0",
+        "4.11.0",
+        "1.26.4",
+    ),
+    "python-pillow-12.3.0-opencv-5.0.0-numpy-2.4.6": (
+        "12.3.0",
+        "5.0.0",
+        "2.4.6",
+    ),
+}
 
 
 def canonical_json(value: object) -> str:
@@ -58,16 +67,12 @@ def validate_manifest(value: dict[str, Any], script_path: Path) -> None:
         raise ValueError("asset-similarity manifest is invalid")
     if value.get("execution", {}).get("network") != "forbidden":
         raise ValueError("asset-similarity networking must be forbidden")
-    if (
-        value.get("execution", {}).get("runtimeId")
-        != "python-pillow-12.3.0-opencv-5.0.0-numpy-2.4.6"
-    ):
+    runtime_id = value.get("execution", {}).get("runtimeId")
+    if runtime_id not in SUPPORTED_RUNTIMES:
         raise ValueError("asset-similarity runtime identity is invalid")
-    if (
-        PILLOW_VERSION != REQUIRED_PILLOW_VERSION
-        or cv2.__version__ != REQUIRED_OPENCV_VERSION
-        or np.__version__ != REQUIRED_NUMPY_VERSION
-    ):
+    if (PILLOW_VERSION, cv2.__version__, np.__version__) != SUPPORTED_RUNTIMES[
+        runtime_id
+    ]:
         raise ValueError("asset-similarity image runtime does not match")
     if value.get("privacy") != {
         "externalUpload": "none",

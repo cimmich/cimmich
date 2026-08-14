@@ -2,7 +2,7 @@
   "execution": {
     "device": "cpu",
     "network": "forbidden",
-    "runtimeId": "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4",
+    "runtimeId": "python-pillow-12.3.0-opencv-5.0.0-numpy-2.4.6",
     "threads": 1
   },
   "licensing": {
@@ -36,5 +36,5 @@
     "scoreSemantics": "symmetric_unit_similarity"
   },
   "featureSpaceId": "feature_space_b1ca5d2e2e83b459a0c07f439eb7bde6b13ef257d16b46dcf424555c06875d0d",
-  "providerConfigDigest": "0a37711d05cb5a6f3927cad553b6ee91e824ada63be93732866919803057610b"
+  "providerConfigDigest": "00dac84b430a5c76b368639239842debe5a693271fa2e165991178a9341f8127"
 }
