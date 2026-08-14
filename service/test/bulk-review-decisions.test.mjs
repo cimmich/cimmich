@@ -305,8 +305,9 @@ test("batch face reassignment reports partial failures and reuses a created Pers
   assert.equal(result.failures[0].code, "FACE_OBSERVATION_NOT_FOUND");
   // The second same-new-name item must reuse the Person the first one created
   // instead of racing a duplicate CREATE.
-  assert.equal(calls[1].personId, "person-created");
-  assert.equal(Object.hasOwn(calls[1], "newPersonName"), false);
+  const reusedPerson = calls.find(({ faceId }) => faceId === "face-2");
+  assert.equal(reusedPerson.personId, "person-created");
+  assert.equal(Object.hasOwn(reusedPerson, "newPersonName"), false);
 });
 
 test("batch face reassignment validates shape, bounds and duplicate faces", async () => {

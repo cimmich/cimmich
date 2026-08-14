@@ -11,12 +11,16 @@
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { personPhotoGridClass } from './person-photo-gallery';
+  import {
+    isUncertainSplitBatchFailure,
+    replaceSplitSelectionWithShown,
+    splitSelectionAfterBatch,
+  } from './person-split-selection';
   import { cimmichSquareCropBackgroundStyle } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import { mdiArrowLeft, mdiAutoFix, mdiCheckCircleOutline, mdiSelectAll } from '@mdi/js';
   import { Icon } from '@immich/ui';
   import { onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
 
   interface Props {
     onback: () => void;
@@ -137,6 +141,7 @@
   const loadSmartSplit = async () => {
     smartLoading = true;
     smartSplitError = '';
+    selectedFaceIds = [];
     try {
       smartRecommendations = await getCimmichSmartSplitRecommendations(person.person_id);
       smartGroupId = smartRecommendations.groups.find(({ kind }) => kind === 'clear')?.groupId ?? 'smart-unclear';
@@ -145,6 +150,12 @@
     } finally {
       smartLoading = false;
     }
+  };
+
+  const showSmartGroup = (groupId: string) => {
+    smartGroupId = groupId;
+    selectedFaceIds = [];
+    error = '';
   };
 
   const toggleFace = (faceId: string) => {
@@ -164,14 +175,12 @@
   };
 
   const selectShown = () => {
-    const selected = new SvelteSet(selectedFaceIds);
-    for (const face of filteredFaces) {
-      if (selected.size >= selectionLimit) {
-        break;
-      }
-      selected.add(face.face_id);
-    }
-    selectedFaceIds = [...selected];
+    // A Smart Split group represents one proposed destination Person. Replace
+    // hidden selections from the previous group instead of combining People.
+    selectedFaceIds = replaceSplitSelectionWithShown(
+      filteredFaces.map(({ face_id: faceId }) => faceId),
+      selectionLimit,
+    );
     error = filteredFaces.length > selectionLimit ? `Selected the first ${selectionLimit} shown faces.` : '';
   };
 
@@ -200,7 +209,12 @@
       );
       const assignedIds = new Set(result.assigned.map(({ faceId }) => faceId));
       faces = faces.filter(({ face_id: faceId }) => !assignedIds.has(faceId));
-      selectedFaceIds = selectedFaceIds.filter((faceId) => !assignedIds.has(faceId));
+      // Keep only explicit failures. Successful or canonicalized Face IDs must
+      // never leak into the next Person's selection.
+      selectedFaceIds = splitSelectionAfterBatch(
+        faces.map(({ face_id: faceId }) => faceId),
+        result.failures.map(({ faceId }) => faceId),
+      );
       if (result.assignedCount > 0) {
         const destination = result.assigned[0]?.personName ?? selectedMovePerson?.display_name ?? name;
         notice = `${result.assignedCount.toLocaleString()} ${result.assignedCount === 1 ? 'face' : 'faces'} ${action === 'create' ? `moved to new Person ${destination}` : `moved to ${destination}`}.`;
@@ -217,7 +231,17 @@
         void loadPeople();
       }
     } catch (submitError) {
-      error = submitError instanceof Error ? submitError.message : 'Unable to split the selected faces';
+      const message = submitError instanceof Error ? submitError.message : 'Unable to split the selected faces';
+      if (isUncertainSplitBatchFailure(message)) {
+        // A disconnected browser cannot infer rollback: the server may still
+        // finish. Force a fresh recommendation before another identity write.
+        selectedFaceIds = [];
+        smartRecommendations = null;
+        smartGroupId = 'all';
+        error = `${message}. The selection was cleared because the server may still complete it; wait for the faces to refresh before trying another group.`;
+      } else {
+        error = message;
+      }
     } finally {
       saving = false;
     }
@@ -297,7 +321,7 @@
           class:dark:border-gray-700={smartGroupId !== 'all'}
           type="button"
           aria-pressed={smartGroupId === 'all'}
-          onclick={() => (smartGroupId = 'all')}
+          onclick={() => showSmartGroup('all')}
         >
           <strong class="block">All faces</strong>
           <span class="text-xs text-gray-500">{faces.length.toLocaleString()}</span>
@@ -316,7 +340,7 @@
             type="button"
             aria-pressed={smartGroupId === group.groupId}
             disabled={group.faceIds.length === 0}
-            onclick={() => (smartGroupId = group.groupId)}
+            onclick={() => showSmartGroup(group.groupId)}
           >
             <span
               class="block aspect-square rounded-lg bg-gray-200 bg-cover bg-no-repeat dark:bg-gray-800"

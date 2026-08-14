@@ -50,6 +50,7 @@ import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
 import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createSmartSplitRecommendationStore } from "./smart-split-recommendations.mjs";
+import { bulkReassignFaceIdentities } from "./bulk-face-identity-reassignment.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
 import { createXmpSidecarReviewStore } from "./xmp-sidecar-review.mjs";
 import { createVisualCandidateSetRepository } from "./visual-candidate-set.mjs";
@@ -10003,7 +10004,7 @@ export const createCimmichRepository = (
                 AND person_id = ${targetPersonId}
                 AND cimmich_visibility_person_rank(person_id) <= ${presentationRank()}
               LIMIT 1
-              FOR UPDATE
+              FOR SHARE
             `
               : await tx`
               SELECT person_id, display_name
@@ -10050,7 +10051,7 @@ export const createCimmichRepository = (
                 WHERE person_id = ${target.person_id}
                   AND status = 'active' AND subject_kind = 'person'
                   AND cimmich_visibility_person_rank(person_id) <= ${presentationRank()}
-                FOR UPDATE
+                FOR SHARE
               `;
             if (!lockedTarget) {
               throw typedError(
@@ -10192,86 +10193,11 @@ export const createCimmichRepository = (
         throw Object.assign(new Error("Missing Cimmich actor"), {
           statusCode: 400,
         });
-      if (!Array.isArray(items)) {
-        throw Object.assign(new Error("items must be an array"), {
-          statusCode: 400,
-        });
-      }
-      if (items.length === 0) {
-        throw Object.assign(new Error("Select at least one Face"), {
-          statusCode: 400,
-        });
-      }
-      if (items.length > 100) {
-        throw Object.assign(
-          new Error("Assign no more than 100 Faces at once"),
-          { statusCode: 400 },
-        );
-      }
-      const seenFaceIds = new Set();
-      for (const item of items) {
-        const faceId = String(item?.faceId || "").trim();
-        if (!faceId) {
-          throw Object.assign(new Error("Every item requires a faceId"), {
-            statusCode: 400,
-          });
-        }
-        if (seenFaceIds.has(faceId)) {
-          throw Object.assign(
-            new Error("Selection contains the same Face more than once"),
-            {
-              details: { faceId },
-              statusCode: 409,
-            },
-          );
-        }
-        seenFaceIds.add(faceId);
-      }
-
-      // Each assignment keeps the single-command transaction semantics; the
-      // batch exists to replace serial per-item HTTP loops with one request
-      // that reports partial failures instead of stopping at the first one.
-      // A new Person created for one item is reused for later items carrying
-      // the same new name, so one batch cannot create duplicate People.
-      const createdPersonIdByName = new Map();
-      const assigned = [];
-      const failures = [];
-      for (const item of items) {
-        const faceId = String(item.faceId).trim();
-        const input = { actorId, faceId };
-        for (const key of ["personId", "personName", "newPersonName"]) {
-          if (Object.hasOwn(item, key)) input[key] = item[key];
-        }
-        const normalizedNewName =
-          typeof input.newPersonName === "string"
-            ? input.newPersonName.trim().toLowerCase()
-            : "";
-        if (normalizedNewName && createdPersonIdByName.has(normalizedNewName)) {
-          delete input.newPersonName;
-          input.personId = createdPersonIdByName.get(normalizedNewName);
-        }
-        try {
-          const result = await repository.reassignFaceIdentity(input);
-          if (result.createdPerson && normalizedNewName) {
-            createdPersonIdByName.set(normalizedNewName, result.personId);
-          }
-          assigned.push(result);
-        } catch (error) {
-          failures.push({
-            code: error?.code || null,
-            error: String(error?.message || error).slice(0, 300),
-            faceId,
-            statusCode: error?.statusCode || 500,
-          });
-        }
-      }
-      return {
-        assigned,
-        assignedCount: assigned.length,
-        changed: assigned.some((result) => result.changed),
-        failureCount: failures.length,
-        failures,
-      };
+      return bulkReassignFaceIdentities({
+        actorId: actor,
+        items,
+        reassign: (input) => repository.reassignFaceIdentity(input),
+      });
     },
   };
   Object.assign(repository, observationCorrections);

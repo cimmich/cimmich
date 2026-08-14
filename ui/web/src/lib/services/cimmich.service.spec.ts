@@ -200,6 +200,34 @@ describe('Cimmich durable bulk review client contract', () => {
       vi.useRealTimers();
     }
   });
+
+  it('keeps a Face identity batch attached beyond the ordinary timeout', async () => {
+    vi.useFakeTimers();
+    const response = { assigned: [], assignedCount: 0, changed: false, failureCount: 0, failures: [] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((resolve, reject) => {
+          const completion = globalThis.setTimeout(() => resolve(Response.json(response)), 13_000);
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              globalThis.clearTimeout(completion);
+              reject(new DOMException('The operation was aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    try {
+      const request = setCimmichFaceIdentitiesBatch([{ faceId: 'face-1', personId: 'person-1' }]);
+      await vi.advanceTimersByTimeAsync(13_000);
+      await expect(request).resolves.toEqual(response);
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('Cimmich Immich Person resolution owner contract', () => {

@@ -2,6 +2,10 @@ import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 import { createCimmichExploreClient } from './cimmich-explore.service';
+import {
+  createCimmichFaceIdentityBatchClient,
+  type CimmichFaceIdentitySelector,
+} from './cimmich-face-identity-batch.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
 import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
@@ -25,6 +29,10 @@ export type {
   CimmichFaceOwnerReviewMatchBatch,
 } from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+export type {
+  CimmichFaceIdentityBatchResult,
+  CimmichFaceIdentitySelector,
+} from './cimmich-face-identity-batch.service';
 export type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 export type {
   CimmichPersonEvidenceCoverage,
@@ -1660,16 +1668,6 @@ export type CimmichFaceIdentityResult = {
   personName: string;
   previousPersonId: string | null;
   state: 'accepted';
-};
-
-export type CimmichFaceIdentitySelector = { newPersonName: string } | { personId: string } | { personName: string };
-
-export type CimmichFaceIdentityBatchResult = {
-  assigned: CimmichFaceIdentityResult[];
-  assignedCount: number;
-  changed: boolean;
-  failureCount: number;
-  failures: Array<{ code: string | null; error: string; faceId: string; statusCode: number }>;
 };
 
 export type CimmichHoldingMatchBatch = {
@@ -4284,12 +4282,7 @@ export const setCimmichFaceIdentity = (faceId: string, selector: CimmichFaceIden
     method: 'POST',
   });
 
-export const setCimmichFaceIdentitiesBatch = (items: Array<{ faceId: string } & CimmichFaceIdentitySelector>) =>
-  request<CimmichFaceIdentityBatchResult>('/v1/faces/identity:batch', {
-    body: JSON.stringify({ items }),
-    headers: { 'x-cimmich-actor': 'local-operator' },
-    method: 'POST',
-  });
+export const setCimmichFaceIdentitiesBatch = createCimmichFaceIdentityBatchClient(request);
 
 export const moveCimmichIdentityFace = (
   sourcePersonId: string,
