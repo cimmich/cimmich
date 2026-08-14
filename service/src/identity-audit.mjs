@@ -3,7 +3,7 @@ import { createIdentityAuditDecisions } from "./identity-audit-decisions.mjs";
 import { carryForwardIdentityAuditDismissals } from "./identity-audit-dismissals.mjs";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { persistIdentityAuditScoredRows } from "./identity-audit-persistence.mjs";
-import { scoreIdentityAuditLocally } from "./identity-audit-local-scoring.mjs";
+import * as localAudit from "./identity-audit-local-scoring.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
 import {
@@ -67,17 +67,6 @@ const cleanKind = (value) =>
   value === "accepted_contradiction"
     ? "accepted_contradiction"
     : "untagged_match";
-const cleanDetectorConfigDigest = (value) => {
-  const digest = String(value || "").trim();
-  if (!digest) return "";
-  if (!/^[0-9a-f]{64}$/.test(digest)) {
-    throw Object.assign(
-      new Error("Identity audit detector configuration is invalid"),
-      { code: "IDENTITY_AUDIT_DETECTOR_INVALID", statusCode: 400 },
-    );
-  }
-  return digest;
-};
 const auditSql = async (
   sql,
   runId,
@@ -187,7 +176,7 @@ const auditSql = async (
     });
   }
   const localScores = localScorer
-    ? await scoreIdentityAuditLocally(sql, {
+    ? await localAudit.scoreIdentityAuditLocally(sql, {
         frontierLimit,
         packId,
         presentationRank,
@@ -897,6 +886,7 @@ export const createIdentityAudit = (
   {
     bridgeFields = () => ({}),
     companion,
+    databaseScoringEnabled = true,
     derivativeProvider,
     independenceComparisonLimit = identityAuditIndependenceComparisonLimit,
     independenceConcurrency = identityAuditIndependenceConcurrency,
@@ -975,8 +965,12 @@ export const createIdentityAudit = (
     await reconcileInterruptedRun();
     const existing = await latest();
     if (existing?.state === "running") return existing;
+    localAudit.requireIdentityAuditScoringRoute(
+      localScorer,
+      databaseScoringEnabled,
+    );
     const exactDetectorConfigDigest =
-      cleanDetectorConfigDigest(detectorConfigDigest);
+      localAudit.cleanIdentityAuditDetectorDigest(detectorConfigDigest);
     const [pack] = await sql`
       SELECT pack_id,
         evaluation_summary->'matcherPolicy'->>'policyVersion' AS policy_version,

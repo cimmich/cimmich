@@ -178,6 +178,31 @@ test("a concurrent start returns the winning run instead of a raw unique violati
   assert.equal(result.auditRunId, "identity-audit.existing");
 });
 
+test("production can require the paired Mac worker without starting database scoring", async () => {
+  let queriedPack = false;
+  const sql = async (strings) => {
+    const query = strings.join("?");
+    if (query.includes("IDENTITY_AUDIT_INTERRUPTED")) return [];
+    if (query.includes("FROM current_source_pack")) {
+      queriedPack = true;
+      return [];
+    }
+    if (query.includes("SELECT * FROM identity_audit_run")) return [];
+    throw new Error(`Unexpected query: ${query}`);
+  };
+  const audit = createIdentityAudit(sql, { databaseScoringEnabled: false });
+
+  await assert.rejects(
+    audit.start(),
+    (error) =>
+      error.code === "IDENTITY_AUDIT_LOCAL_WORKER_REQUIRED" &&
+      error.statusCode === 409 &&
+      error.message.includes("paired Mac worker"),
+  );
+
+  assert.equal(queriedPack, true, "latest() may read the active pack");
+});
+
 test("an audit failure stores a stable label, logs the error, and guards its recovery write", async () => {
   let recoveryValues = null;
   let recoveryQuery = "";

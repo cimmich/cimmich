@@ -45,7 +45,11 @@ const scorer = createSourcePackNumpyScorer({
 });
 const sql = postgres(
   process.env.DATABASE_URL || "postgres://cimmich@postgres:5432/cimmich",
-  { max: 2, prepare: true },
+  {
+    connection: { application_name: "cimmich-mac-identity-audit" },
+    max: 2,
+    prepare: true,
+  },
 );
 
 try {

@@ -941,6 +941,7 @@ export const createCimmichRepository = (
   const identityAudit = createIdentityAudit(sql, {
     bridgeFields: (assetId) => bridgeFields(bridge, assetId),
     companion: options.immichCompanion,
+    databaseScoringEnabled: false,
     derivativeProvider: options.identityAuditDerivativeProvider,
     independenceComparisonLimit:
       options.identityAuditIndependenceComparisonLimit,

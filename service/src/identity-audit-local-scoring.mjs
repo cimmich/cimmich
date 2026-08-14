@@ -2,6 +2,34 @@ import { parseVector } from "./prime-curator.mjs";
 
 const embedding = (value) => [...parseVector(value)];
 
+export const cleanIdentityAuditDetectorDigest = (value) => {
+  const digest = String(value || "").trim();
+  if (!digest) return "";
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw Object.assign(
+      new Error("Identity audit detector configuration is invalid"),
+      { code: "IDENTITY_AUDIT_DETECTOR_INVALID", statusCode: 400 },
+    );
+  }
+  return digest;
+};
+
+export const requireIdentityAuditScoringRoute = (
+  localScorer,
+  databaseScoringEnabled,
+) => {
+  if (localScorer || databaseScoringEnabled) return;
+  throw Object.assign(
+    new Error(
+      "Run the identity audit from the paired Mac worker; X1 database scoring is disabled",
+    ),
+    {
+      code: "IDENTITY_AUDIT_LOCAL_WORKER_REQUIRED",
+      statusCode: 409,
+    },
+  );
+};
+
 const scoreBatches = async (scorer, kind, rows, eligibleQueries) => {
   const scored = [];
   let comparableQueries = 0;
