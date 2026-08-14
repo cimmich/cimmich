@@ -203,6 +203,72 @@ test("suggestion confirm requires a live asset and a lifecycle-visible Pet", asy
   );
 });
 
+test("Unknown assignment records an explicit owner species correction", async () => {
+  const jsonValues = [];
+  const tx = async (strings) => {
+    const statement = strings.join("?");
+    if (statement.includes("FROM pet_match_command")) return [];
+    if (statement.includes("FROM pet_match_observation observation")) {
+      return [
+        {
+          asset_id: "asset_wrong_species_0001",
+          box_h: 0.4,
+          box_w: 0.4,
+          box_x: 0.2,
+          box_y: 0.2,
+          detection_confidence: 0.88,
+          lane: "face",
+          observation_id: "petobservation_wrong_species_0001",
+          species_kind: "dog",
+          state: "unknown",
+        },
+      ];
+    }
+    if (statement.includes("FROM current_person")) {
+      return [
+        {
+          display_name: "Freya",
+          person_id: "person_freya_0001",
+          species_kind: "cat",
+        },
+      ];
+    }
+    if (statement.includes("SELECT asset_id FROM asset")) {
+      return [{ asset_id: "asset_wrong_species_0001" }];
+    }
+    return [];
+  };
+  tx.json = (value) => {
+    jsonValues.push(value);
+    return value;
+  };
+  const sql = async () => {
+    throw new Error("Review must run inside one transaction");
+  };
+  sql.begin = (callback) => callback(tx);
+  const store = createPetMatchingStore(sql);
+
+  const result = await store.resolveUnknown({
+    action: "assign",
+    actorId: "owner-test",
+    commandId: "petmatchspeciescorrection_0001",
+    observationId: "petobservation_wrong_species_0001",
+    petId: "person_freya_0001",
+    speciesKind: "cat",
+  });
+
+  assert.equal(result.detectedSpeciesKind, "dog");
+  assert.equal(result.assignedSpeciesKind, "cat");
+  assert.equal(result.speciesCorrected, true);
+  assert.ok(
+    jsonValues.some(
+      (value) =>
+        value?.petMatching?.detectedSpeciesKind === "dog" &&
+        value?.petMatching?.assignedSpeciesKind === "cat",
+    ),
+  );
+});
+
 test("import batches observations and suggestions as two multi-row inserts", async () => {
   const statements = [];
   const bindings = [];

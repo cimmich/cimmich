@@ -850,13 +850,11 @@ export type CimmichPetMatchUnknown = {
   vectorSpaceId: string;
 };
 
-export type CimmichPetMatchUnknownReviewResult = {
-  action: 'assign' | 'reject';
+type CimmichPetMatchRealizationResult = {
   changed: boolean;
   decisionId: string;
   lane?: 'face' | 'whole_animal';
   observationId: string;
-  petId?: string;
   petName?: string;
   realizedAssociationId?: string;
   realizedObservationId?: string;
@@ -864,18 +862,17 @@ export type CimmichPetMatchUnknownReviewResult = {
   schemaVersion: 'cimmich.pet-matching.v1';
 };
 
-export type CimmichPetMatchReviewResult = {
+export type CimmichPetMatchUnknownReviewResult = CimmichPetMatchRealizationResult & {
+  action: 'assign' | 'reject';
+  assignedSpeciesKind?: CimmichPetSpeciesKind;
+  detectedSpeciesKind?: CimmichPetSpeciesKind;
+  petId?: string;
+  speciesCorrected?: boolean;
+};
+
+export type CimmichPetMatchReviewResult = CimmichPetMatchRealizationResult & {
   action: 'confirm' | 'reject';
-  changed: boolean;
-  decisionId: string;
-  lane?: 'face' | 'whole_animal';
-  observationId: string;
   petId: string;
-  petName?: string;
-  realizedAssociationId?: string;
-  realizedObservationId?: string;
-  replayed?: boolean;
-  schemaVersion: 'cimmich.pet-matching.v1';
   suggestionId: string;
 };
 
@@ -3584,11 +3581,12 @@ export const reviewCimmichPetMatchUnknown = (
   action: 'assign' | 'reject',
   commandId: string,
   petId?: string,
+  speciesKind?: CimmichPetSpeciesKind,
 ) =>
   request<CimmichPetMatchUnknownReviewResult>(
     `/v1/pets/matching/unknown/${encodeURIComponent(observationId)}/${action}`,
     {
-      body: JSON.stringify({ commandId, petId }),
+      body: JSON.stringify({ commandId, petId, speciesKind }),
       headers: { 'x-cimmich-actor': 'local-operator' },
       method: 'POST',
     },

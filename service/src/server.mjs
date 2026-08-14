@@ -1781,11 +1781,10 @@ export const createCimmichServer = ({
           response,
           200,
           await repository.resolvePetMatchUnknown({
+            ...body,
             action: petMatchUnknownReview[2],
             actorId: request.headers["x-cimmich-actor"],
-            commandId: body.commandId,
             observationId: decodeURIComponent(petMatchUnknownReview[1]),
-            petId: body.petId,
           }),
           allowedOrigin,
         );

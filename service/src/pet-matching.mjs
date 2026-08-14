@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  classifyUnknownAssignmentSpecies,
+  cleanUnknownAssignmentSpecies,
+  loadUnknownAssignmentTarget,
+  unknownAssignmentDecisionNote,
+  unknownAssignmentEvidence,
+  unknownAssignmentMetadata,
+} from "./pet-matching-unknown.mjs";
+
 export const petMatchingSchemaVersion = "cimmich.pet-matching.v1";
 
 const receiptId = "receipt_cimmich_pet_matching_v1";
@@ -664,7 +673,14 @@ export const createPetMatchingStore = (
       };
     },
 
-    async resolveUnknown({ action, actorId, commandId, observationId, petId }) {
+    async resolveUnknown({
+      action,
+      actorId,
+      commandId,
+      observationId,
+      petId,
+      speciesKind,
+    }) {
       const actor = cleanActor(actorId);
       const id = cleanSafeId(observationId, "observationId");
       if (!["assign", "reject"].includes(action)) {
@@ -676,13 +692,17 @@ export const createPetMatchingStore = (
       }
       const selectedPetId =
         action === "assign" ? cleanSafeId(petId, "petId") : null;
+      const selectedSpeciesKind =
+        action === "assign" && speciesKind != null
+          ? cleanUnknownAssignmentSpecies(speciesKind)
+          : null;
       const commandKind = action === "assign" ? "confirm" : "reject";
       return sql.begin(async (tx) => {
         const command = await beginCommand(tx, {
           actorId: actor,
           commandId,
           commandKind,
-          suggestionId: `${id}:${selectedPetId || "not-pet"}`,
+          suggestionId: `${id}:${selectedPetId || "not-pet"}:${selectedSpeciesKind || "detected-species"}`,
         });
         if (command.replay) return command.replay;
         const [observation] = await tx`
@@ -711,42 +731,20 @@ export const createPetMatchingStore = (
           );
         }
 
+        const species = classifyUnknownAssignmentSpecies(
+          observation.species_kind,
+          selectedSpeciesKind,
+        );
+
         let pet = null;
         if (action === "assign") {
-          [pet] = await tx`
-            SELECT person_id, display_name, species_kind
-            FROM current_person
-            WHERE person_id = ${selectedPetId}
-              AND subject_kind = 'pet'
-              AND status = ANY(${matchablePetStatuses})
-          `;
-          if (!pet) {
-            throw typedError(
-              "Selected Pet not found",
-              404,
-              "PET_MATCH_PET_NOT_FOUND",
-            );
-          }
-          if (pet.species_kind !== observation.species_kind) {
-            throw typedError(
-              "Selected Pet must use the observation species",
-              409,
-              "PET_MATCH_SPECIES_CONFLICT",
-            );
-          }
-          const [asset] = await tx`
-            SELECT asset_id FROM asset
-            WHERE asset_id = ${observation.asset_id} AND state = 'active'
-            FOR SHARE
-          `;
-          if (!asset) {
-            throw typedError(
-              "One or more active Cimmich assets were not found",
-              404,
-              "PET_MATCH_ASSET_NOT_FOUND",
-              { missingAssetIds: [observation.asset_id] },
-            );
-          }
+          pet = await loadUnknownAssignmentTarget({
+            assetId: observation.asset_id,
+            matchablePetStatuses,
+            petId: selectedPetId,
+            species,
+            tx,
+          });
         }
 
         const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
@@ -758,7 +756,7 @@ export const createPetMatchingStore = (
             ${decisionId}, 'pet_match_observation', ${id},
             ${action === "assign" ? "accept" : "reject"}, 'user', ${actor},
             ${action === "assign" ? "unknown_pet_assigned" : "not_a_pet"},
-            ${action === "assign" ? "Assigned Unknown Pet" : "Not a Pet"},
+            ${unknownAssignmentDecisionNote(action, species)},
             ${receiptId}, 'private'
           )
         `;
@@ -799,11 +797,7 @@ export const createPetMatchingStore = (
               ${observation.box_w}, ${observation.box_h},
               ${observation.detection_confidence},
               ${tx.json({
-                petMatching: {
-                  lane: "face",
-                  observationId: id,
-                  ownerClassified: true,
-                },
+                petMatching: unknownAssignmentMetadata("face", id, species),
               })},
               'valid', ${receiptId}, 'sensitive-biometric'
             )
@@ -816,12 +810,7 @@ export const createPetMatchingStore = (
             ) VALUES (
               ${realizedAssociationId}, ${realizedObservationId},
               ${selectedPetId}, 'user', 'accepted',
-              ${tx.json([
-                {
-                  observationId: id,
-                  type: "owner_classified_unknown_pet",
-                },
-              ])},
+              ${tx.json(unknownAssignmentEvidence(id, species))},
               ${decisionId}, ${receiptId}, 'sensitive-biometric'
             )
           `;
@@ -837,11 +826,11 @@ export const createPetMatchingStore = (
               ${observation.box_w}, ${observation.box_h},
               ${tx.json({
                 detectionConfidence: Number(observation.detection_confidence),
-                petMatching: {
-                  lane: "whole_animal",
-                  observationId: id,
-                  ownerClassified: true,
-                },
+                petMatching: unknownAssignmentMetadata(
+                  "whole_animal",
+                  id,
+                  species,
+                ),
               })},
               'valid', ${receiptId}, 'private'
             )
@@ -873,6 +862,7 @@ export const createPetMatchingStore = (
           observationId: id,
           petId: selectedPetId,
           petName: pet.display_name,
+          ...species,
           realizedAssociationId,
           realizedObservationId,
           schemaVersion: petMatchingSchemaVersion,

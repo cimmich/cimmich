@@ -5026,6 +5026,14 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
       calls.push(["unknown", input]);
       return { items: [], schemaVersion: "cimmich.pet-matching.v1" };
     },
+    resolvePetMatchUnknown: async (input) => {
+      calls.push(["resolve", input]);
+      return {
+        action: "assign",
+        changed: true,
+        schemaVersion: "cimmich.pet-matching.v1",
+      };
+    },
   };
   const visibility = {
     requireProjection: (surface) => calls.push(["visibility", surface]),
@@ -5040,12 +5048,40 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
         (await response.json()).schemaVersion,
         "cimmich.pet-matching.v1",
       );
+      const resolved = await fetch(
+        `${root}/v1/pets/matching/unknown/petobservation_wrong_species/assign`,
+        {
+          body: JSON.stringify({
+            commandId: "petmatch_species_route_0001",
+            petId: "person_freya_0001",
+            speciesKind: "cat",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner-test",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(resolved.status, 200);
     },
     { visibility },
   );
   assert.deepEqual(calls, [
     ["visibility", "pets"],
     ["unknown", { limit: "10" }],
+    ["visibility", "pets"],
+    [
+      "resolve",
+      {
+        action: "assign",
+        actorId: "owner-test",
+        commandId: "petmatch_species_route_0001",
+        observationId: "petobservation_wrong_species",
+        petId: "person_freya_0001",
+        speciesKind: "cat",
+      },
+    ],
   ]);
 });
 

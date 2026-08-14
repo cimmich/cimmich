@@ -18,7 +18,7 @@ integrationTest(
         started_at, completed_at, observed_asset_count, state
       ) VALUES (
         'snapshot_petmatch_test', 'test.v1', ${"c".repeat(64)}, 'test-root',
-        now(), now(), 3, 'complete'
+        now(), now(), 4, 'complete'
       )
     `;
       await sql`
@@ -30,6 +30,8 @@ integrationTest(
           'snapshot_petmatch_test', 'active'),
         ('asset_petmatch_unknown_dog', 'unknown-dog.jpg', 'image', 'image/jpeg', 900, 900,
           'snapshot_petmatch_test', 'active'),
+        ('asset_petmatch_wrong_species', 'wrong-species.jpg', 'image', 'image/jpeg', 900, 900,
+          'snapshot_petmatch_test', 'active'),
         ('asset_petmatch_not_dog', 'not-dog.jpg', 'image', 'image/jpeg', 900, 900,
           'snapshot_petmatch_test', 'active')
     `;
@@ -39,7 +41,9 @@ integrationTest(
         subject_kind, species_kind
       ) VALUES
         ('person_petmatch_cafe', 'Café', 'active',
-          'receipt_cimmich_pet_matching_v1', 'pet', 'dog')
+          'receipt_cimmich_pet_matching_v1', 'pet', 'dog'),
+        ('person_petmatch_freya', 'Freya', 'active',
+          'receipt_cimmich_pet_matching_v1', 'pet', 'cat')
     `;
 
       const store = createPetMatchingStore(sql, {
@@ -77,6 +81,15 @@ integrationTest(
               speciesKind: "dog",
             },
             {
+              assetId: "asset_petmatch_wrong_species",
+              box: { h: 0.5, w: 0.5, x: 0.25, y: 0.25 },
+              candidates: [],
+              detectionConfidence: 0.75,
+              embeddingDigest: "f".repeat(64),
+              observationId: "petobservation_wrong_species_test",
+              speciesKind: "dog",
+            },
+            {
               assetId: "asset_petmatch_not_dog",
               box: { h: 0.4, w: 0.4, x: 0.3, y: 0.3 },
               candidates: [],
@@ -99,8 +112,8 @@ integrationTest(
           schemaVersion: "cimmich.pet-matching.v1",
         },
       });
-      assert.equal(imported.observationCount, 3);
-      assert.equal((await store.status()).unknown, 2);
+      assert.equal(imported.observationCount, 4);
+      assert.equal((await store.status()).unknown, 3);
 
       const queue = await store.suggestions({
         limit: 20,
@@ -155,6 +168,18 @@ integrationTest(
           petId: "person_petmatch_cafe",
         },
       );
+      const speciesCorrected = await store.resolveUnknown({
+        action: "assign",
+        actorId: "integration-test",
+        commandId: "petmatchunknownspecies_test_0001",
+        observationId: "petobservation_wrong_species_test",
+        petId: "person_petmatch_freya",
+        speciesKind: "cat",
+      });
+      assert.equal(speciesCorrected.petId, "person_petmatch_freya");
+      assert.equal(speciesCorrected.detectedSpeciesKind, "dog");
+      assert.equal(speciesCorrected.assignedSpeciesKind, "cat");
+      assert.equal(speciesCorrected.speciesCorrected, true);
       const rejected = await store.resolveUnknown({
         action: "reject",
         actorId: "integration-test",
