@@ -2,7 +2,7 @@
   "execution": {
     "device": "cpu",
     "network": "forbidden",
-    "runtimeId": "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4",
+    "runtimeId": "python-pillow-12.3.0-opencv-5.0.0-numpy-2.4.6",
     "threads": 1
   },
   "licensing": {
@@ -30,11 +30,11 @@
   },
   "schemaVersion": "cimmich.asset-similarity-provider.v1",
   "similarity": {
-    "artifactDigest": "7ea0c9e8246666852a8fe015c597eec2cae31a5de527aa783177e5afa555bda0",
+    "artifactDigest": "84a632f6d9a69d27b11fcbd60541de65b3b0f316bdd3ba4c6782a4f7bddd23ae",
     "modelId": "dhash-orb-sift-correspondence",
     "modelVersionId": "v3",
     "scoreSemantics": "symmetric_unit_similarity"
   },
-  "featureSpaceId": "feature_space_e25781ae19e0c5848e171faa72c1a86a4e6373095027b51b8bc08e9ceb1b7847",
-  "providerConfigDigest": "99ef2bc108cd7acfb73677dc68df267c1bf0cfd240166508a7cd698cc2a63b01"
+  "featureSpaceId": "feature_space_6671499605bd596a12fd31495b6c0ef25c414211619f6a524e2fe1925848a6fc",
+  "providerConfigDigest": "90dbfb95b68f468b04c303b52acd9b88a0318448974668897aa94d37b0023673"
 }

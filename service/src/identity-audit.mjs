@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createIdentityAuditDecisions } from "./identity-audit-decisions.mjs";
+import { carryForwardIdentityAuditDismissals } from "./identity-audit-dismissals.mjs";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { persistIdentityAuditScoredRows } from "./identity-audit-persistence.mjs";
+import { scoreIdentityAuditLocally } from "./identity-audit-local-scoring.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
 import {
@@ -10,6 +12,7 @@ import {
   scoreIdentityAuditShards,
 } from "./identity-audit-scoring.mjs";
 export { identityAuditScoringConcurrency } from "./identity-audit-scoring.mjs";
+export { carryForwardIdentityAuditDismissals } from "./identity-audit-dismissals.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
 export const identityAuditPolicyVersion = "cimmich-best-prime-v1";
 export const identityAuditIndependenceScoreFloor = 0.75;
@@ -75,43 +78,6 @@ const cleanDetectorConfigDigest = (value) => {
   }
   return digest;
 };
-export const carryForwardIdentityAuditDismissals = async (
-  sql,
-  { kind, runId } = {},
-) => {
-  const auditKind = cleanKind(kind);
-  await sql`
-    WITH previous AS (
-      SELECT DISTINCT ON (current.face_id)
-        current.face_id, prior.reviewed_at, prior.reviewed_by
-      FROM identity_audit_item current
-      JOIN identity_audit_item prior
-        ON prior.audit_run_id <> current.audit_run_id
-        AND prior.audit_kind = current.audit_kind
-        AND prior.face_id = current.face_id
-        AND prior.suggested_person_id = current.suggested_person_id
-        AND prior.assigned_person_id IS NOT DISTINCT FROM
-          current.assigned_person_id
-        AND prior.review_state = 'dismissed'
-      JOIN identity_audit_run prior_run
-        ON prior_run.audit_run_id = prior.audit_run_id
-        AND prior_run.state = 'completed'
-      WHERE current.audit_run_id = ${runId}
-        AND current.audit_kind = ${auditKind}
-        AND current.review_state = 'open'
-      ORDER BY current.face_id, prior.reviewed_at DESC, prior.audit_run_id DESC
-    )
-    UPDATE identity_audit_item current
-    SET review_state = 'dismissed',
-      reviewed_at = previous.reviewed_at,
-      reviewed_by = previous.reviewed_by
-    FROM previous
-    WHERE current.audit_run_id = ${runId}
-      AND current.audit_kind = ${auditKind}
-      AND current.face_id = previous.face_id
-      AND current.review_state = 'open'
-  `;
-};
 const auditSql = async (
   sql,
   runId,
@@ -119,7 +85,12 @@ const auditSql = async (
   presentationRank,
   scoreFloor,
   marginFloor,
-  { baseRunId = "", incrementalFaceIds = [], queryFrontierLimit } = {},
+  {
+    baseRunId = "",
+    incrementalFaceIds = [],
+    localScorer = null,
+    queryFrontierLimit,
+  } = {},
 ) => {
   const incremental = incrementalFaceIds.length > 0;
   const frontierLimit = cleanFrontierLimit(
@@ -215,13 +186,23 @@ const auditSql = async (
       `;
     });
   }
-  const untaggedScored = await scoreIdentityAuditShards(
-    sql,
-    {
-      statementTimeoutMs: identityAuditStatementTimeoutMs,
-      transactionTimeoutMs: identityAuditTransactionTimeoutMs,
-    },
-    async (tx, shardIndex) => tx`
+  const localScores = localScorer
+    ? await scoreIdentityAuditLocally(sql, {
+        frontierLimit,
+        packId,
+        presentationRank,
+        scorer: localScorer,
+      })
+    : null;
+  const untaggedScored =
+    localScores?.untagged ||
+    (await scoreIdentityAuditShards(
+      sql,
+      {
+        statementTimeoutMs: identityAuditStatementTimeoutMs,
+        transactionTimeoutMs: identityAuditTransactionTimeoutMs,
+      },
+      async (tx, shardIndex) => tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -412,7 +393,7 @@ const auditSql = async (
       ) summary
       LEFT JOIN candidate_rows candidate ON true
     `,
-  );
+    ));
   await sql.begin(async (tx) => {
     const untaggedEligible = await persistIdentityAuditScoredRows(tx, {
       kind: "untagged_match",
@@ -425,7 +406,9 @@ const auditSql = async (
       kind: "untagged_match",
       runId,
     });
-    const [coverage] = await tx`
+    const [coverage] = localScores
+      ? [{ embedded_faces: localScores.untaggedEligible }]
+      : await tx`
       SELECT count(*)::int AS embedded_faces
       FROM face_observation face
       JOIN source_pack pack ON pack.pack_id = ${packId}
@@ -483,13 +466,15 @@ const auditSql = async (
     return;
   }
 
-  const contradictionScored = await scoreIdentityAuditShards(
-    sql,
-    {
-      statementTimeoutMs: identityAuditStatementTimeoutMs,
-      transactionTimeoutMs: identityAuditTransactionTimeoutMs,
-    },
-    async (tx, shardIndex) => tx`
+  const contradictionScored =
+    localScores?.contradiction ||
+    (await scoreIdentityAuditShards(
+      sql,
+      {
+        statementTimeoutMs: identityAuditStatementTimeoutMs,
+        transactionTimeoutMs: identityAuditTransactionTimeoutMs,
+      },
+      async (tx, shardIndex) => tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -609,7 +594,7 @@ const auditSql = async (
       ) summary
       LEFT JOIN candidate_rows candidate ON true
     `,
-  );
+    ));
   await sql.begin(async (tx) => {
     const contradictionEligible = await persistIdentityAuditScoredRows(tx, {
       kind: "accepted_contradiction",
@@ -622,7 +607,14 @@ const auditSql = async (
       kind: "accepted_contradiction",
       runId,
     });
-    const [coverage] = await tx`
+    const [coverage] = localScores
+      ? [
+          {
+            comparable_faces: localScores.contradictionComparable,
+            embedded_faces: localScores.contradictionEligible,
+          },
+        ]
+      : await tx`
       SELECT
         count(*)::int AS embedded_faces,
         count(*) FILTER (WHERE EXISTS (
@@ -908,6 +900,7 @@ export const createIdentityAudit = (
     derivativeProvider,
     independenceComparisonLimit = identityAuditIndependenceComparisonLimit,
     independenceConcurrency = identityAuditIndependenceConcurrency,
+    localScorer = null,
     presentationRank = () => 0,
     queryFrontierLimit = identityAuditQueryFrontierLimit,
     sourceId = "",
@@ -1142,6 +1135,7 @@ export const createIdentityAudit = (
       {
         baseRunId,
         incrementalFaceIds,
+        localScorer,
         queryFrontierLimit: storedQueryFrontierLimit,
       },
     )
@@ -1639,5 +1633,10 @@ export const createIdentityAudit = (
     sql,
   });
 
-  return { dismiss, dismissBatch, items, latest, leads, start };
+  const wait = async () => {
+    if (runningPromise) await runningPromise;
+    return latest();
+  };
+
+  return { dismiss, dismissBatch, items, latest, leads, start, wait };
 };

@@ -13,6 +13,7 @@
   "scripts": {
     "archive-mobility-conformance": "node acceptance/archive-mobility-journey.mjs",
     "archive-match": "node bin/run-source-pack-archive-matcher.mjs",
+    "identity-audit-local": "node bin/run-local-identity-audit.mjs",
     "bind-verified-content": "node bin/bind-verified-content.mjs",
     "asset-similarity-conformance": "node acceptance/asset-similarity-provider-journey.mjs",
     "bootstrap-public-demo": "node bin/bootstrap-public-demo.mjs",

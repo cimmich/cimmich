@@ -119,6 +119,25 @@ export const createSourcePackNumpyScorer = ({
       }
       return response.results;
     },
+    async audit({ kind, queries }) {
+      const response = await request({
+        kind: "audit",
+        auditKind: kind,
+        queries,
+      });
+      if (
+        response?.kind !== "audit_scores" ||
+        !Array.isArray(response.results)
+      ) {
+        throw scorerError(
+          "SourcePack local scorer returned an invalid identity-audit batch",
+        );
+      }
+      return {
+        comparableQueries: Number(response.comparableQueries || 0),
+        results: response.results,
+      };
+    },
     stop() {
       stopped = true;
       lines.close();

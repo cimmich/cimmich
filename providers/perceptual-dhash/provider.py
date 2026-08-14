@@ -20,8 +20,8 @@ from PIL import Image, ImageOps, __version__ as PILLOW_VERSION
 PROVIDER_SCHEMA = "cimmich.asset-similarity-provider.v1"
 MAX_PIXELS = 200_000_000
 REQUIRED_PILLOW_VERSION = "12.3.0"
-REQUIRED_NUMPY_VERSION = "1.26.4"
-REQUIRED_OPENCV_VERSION = "4.11.0"
+REQUIRED_NUMPY_VERSION = "2.4.6"
+REQUIRED_OPENCV_VERSION = "5.0.0"
 
 
 def canonical_json(value: object) -> str:
@@ -60,7 +60,7 @@ def validate_manifest(value: dict[str, Any], script_path: Path) -> None:
         raise ValueError("asset-similarity networking must be forbidden")
     if (
         value.get("execution", {}).get("runtimeId")
-        != "python-pillow-12.3.0-opencv-4.11.0-numpy-1.26.4"
+        != "python-pillow-12.3.0-opencv-5.0.0-numpy-2.4.6"
     ):
         raise ValueError("asset-similarity runtime identity is invalid")
     if (
