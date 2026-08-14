@@ -9,6 +9,7 @@ import {
   identityAuditScoringConcurrency,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
+import { identityAuditSuggestedReferenceSql } from "../src/identity-audit-reference-projection.mjs";
 import { persistIdentityAuditScoredRows } from "../src/identity-audit-persistence.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -139,6 +140,34 @@ test("scored identity audit rows persist in one bounded batch", async () => {
   assert.match(query, /candidate\.assigned_person_id/);
   assert.match(query, /candidate\.evidence_route/);
   assert.match(query, /cimmich_probable_same_photo_derivative/);
+});
+
+test("own-cluster review references use accepted-only indexed support", async () => {
+  const referenceSql = identityAuditSuggestedReferenceSql(2);
+  assert.match(referenceSql, /FROM identity_claim support_claim/);
+  assert.match(referenceSql, /support_claim\.state = 'accepted'/);
+  assert.match(
+    referenceSql,
+    /support_claim\.person_id = item\.assigned_person_id/,
+  );
+  assert.match(
+    referenceSql,
+    /support_face\.asset_id = item\.suggested_reference_asset_id/,
+  );
+  assert.doesNotMatch(referenceSql, /current_physical_face_identity/);
+
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /assigned_reference ON item\.assigned_person_id IS NOT NULL\s+AND item\.evidence_route = 'cross_person_match'/,
+  );
+  assert.match(
+    source,
+    /WHERE reference\.pack_id = item_run\.pack_id\s+AND item\.evidence_route = 'cross_person_match'/,
+  );
 });
 
 test("incremental audit carries its completed base and scopes expensive work", async () => {

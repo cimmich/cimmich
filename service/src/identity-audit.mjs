@@ -1372,6 +1372,7 @@ export const createIdentityAudit = (
         ORDER BY score DESC, reference.face_id
         LIMIT 1
       ) assigned_reference ON item.assigned_person_id IS NOT NULL
+        AND item.evidence_route = 'cross_person_match'
       LEFT JOIN LATERAL (
         ${
           typeof sql.unsafe === "function"
@@ -1415,6 +1416,7 @@ export const createIdentityAudit = (
               WHERE context.face_id = reference.face_id
             ) reference_context ON true
             WHERE reference.pack_id = item_run.pack_id
+              AND item.evidence_route = 'cross_person_match'
               AND reference.person_id = item.suggested_person_id
               AND reference.bucket_kind = 'prime'
               AND reference.reference_kind = 'face'

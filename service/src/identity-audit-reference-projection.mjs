@@ -52,9 +52,12 @@ export const identityAuditSuggestedReferenceSql = (presentationRankInput) => {
       (1 - (
         support_embedding.embedding <=> query_embedding.embedding
       ))::float8 AS score
-    FROM current_physical_face_identity support_claim
-    JOIN current_matchable_physical_face support_face
-      ON support_face.physical_face_id = support_claim.physical_face_id
+    FROM identity_claim support_claim
+    JOIN current_face_physical_member support_member
+      ON support_member.face_id = support_claim.face_id
+      AND support_member.reconciliation_state <> 'conflict'
+    JOIN face_observation support_face
+      ON support_face.face_id = support_member.canonical_face_id
       AND support_face.state = 'valid'
     JOIN face_embedding support_embedding
       ON support_embedding.face_id = support_face.face_id
