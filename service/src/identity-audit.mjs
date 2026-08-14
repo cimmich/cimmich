@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createIdentityAuditDecisions } from "./identity-audit-decisions.mjs";
 import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
+import { persistIdentityAuditScoredRows } from "./identity-audit-persistence.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
 import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
 export const identityAuditSchemaVersion = "cimmich.identity-audit.v2";
@@ -218,7 +219,7 @@ const auditSql = async (
           )
       `;
     }
-    const [untaggedFrontier] = await tx`
+    const untaggedScored = await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -379,34 +380,34 @@ const auditSql = async (
             ORDER BY score.score DESC, score.person_id
           ) AS next_score
         FROM person_scores score
-      ), inserted AS (
-        INSERT INTO identity_audit_item (
-          audit_run_id, audit_kind, face_id, asset_id, suggested_person_id,
-          suggested_score, comparison_score, margin,
-          suggested_reference_asset_id
-        )
+      ), candidate_rows AS MATERIALIZED (
         -- margin mirrors matcherPolicyMargin (source-pack-evaluator.mjs), the
         -- definition the SourcePack marginFloor gates were tuned against.
-        SELECT ${runId}, 'untagged_match', face_id, asset_id, person_id,
-          score, next_score,
-          greatest(0, score - coalesce(next_score, -1)),
-          reference_asset_id
+        SELECT face_id, asset_id, person_id AS suggested_person_id,
+          score AS suggested_score, next_score AS comparison_score,
+          greatest(0, score - coalesce(next_score, -1)) AS margin,
+          reference_asset_id AS suggested_reference_asset_id
         FROM ranked
         WHERE candidate_rank = 1
           AND score >= ${scoreFloor}
           AND greatest(0, score - coalesce(next_score, -1)) >= ${marginFloor}
-          AND NOT cimmich_probable_same_photo_derivative(
-            ${packId}, asset_id, reference_asset_id
-          )
-        RETURNING face_id
       )
-      SELECT (SELECT count(*) FROM eligible_queries)::int AS eligible_queries,
-        (SELECT count(*) FROM inserted)::int AS inserted_items
+      SELECT summary.eligible_queries, candidate.face_id, candidate.asset_id,
+        candidate.suggested_person_id, candidate.suggested_score,
+        candidate.comparison_score, candidate.margin,
+        candidate.suggested_reference_asset_id
+      FROM (
+        SELECT count(*)::int AS eligible_queries FROM eligible_queries
+      ) summary
+      LEFT JOIN candidate_rows candidate ON true
     `;
-    reportFrontierTruncation(
-      "untagged_match",
-      Number(untaggedFrontier?.eligible_queries || 0),
-    );
+    const untaggedEligible = await persistIdentityAuditScoredRows(tx, {
+      kind: "untagged_match",
+      packId,
+      rows: untaggedScored,
+      runId,
+    });
+    reportFrontierTruncation("untagged_match", untaggedEligible);
     await carryForwardIdentityAuditDismissals(tx, {
       kind: "untagged_match",
       runId,
@@ -435,7 +436,7 @@ const auditSql = async (
       UPDATE identity_audit_run
       SET last_progress_at = now(),
         untagged_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
-        untagged_queries_eligible = ${Number(untaggedFrontier?.eligible_queries || 0)},
+        untagged_queries_eligible = ${untaggedEligible},
         untagged_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}
@@ -476,7 +477,7 @@ const auditSql = async (
         set_config('transaction_timeout',
           ${String(identityAuditTransactionTimeoutMs)}, true)
     `;
-    const [contradictionFrontier] = await tx`
+    const contradictionScored = await tx`
       WITH face_contexts AS MATERIALIZED (
         SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
         FROM current_face_capture_context
@@ -564,35 +565,35 @@ const auditSql = async (
           WHERE person_id <> assigned_person_id
         ) candidate
         WHERE alternative_rank = 1
-      ), inserted AS (
-        INSERT INTO identity_audit_item (
-          audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
-          suggested_person_id, suggested_score, comparison_score, margin,
-          suggested_reference_asset_id
-        )
-        SELECT ${runId}, 'accepted_contradiction', assigned.face_id,
-          assigned.asset_id, assigned.assigned_person_id,
-          alternatives.alternative_person_id, alternatives.alternative_score,
-          assigned.assigned_score,
-          alternatives.alternative_score - assigned.assigned_score,
-          alternatives.alternative_reference_asset_id
+      ), candidate_rows AS MATERIALIZED (
+        SELECT assigned.face_id, assigned.asset_id,
+          assigned.assigned_person_id,
+          alternatives.alternative_person_id AS suggested_person_id,
+          alternatives.alternative_score AS suggested_score,
+          assigned.assigned_score AS comparison_score,
+          alternatives.alternative_score - assigned.assigned_score AS margin,
+          alternatives.alternative_reference_asset_id AS suggested_reference_asset_id
         FROM assigned
         JOIN alternatives USING (face_id)
         WHERE alternatives.alternative_score >= 0.35
           AND alternatives.alternative_score - assigned.assigned_score >= 0.21
-          AND NOT cimmich_probable_same_photo_derivative(
-            ${packId}, assigned.asset_id,
-            alternatives.alternative_reference_asset_id
-          )
-        RETURNING face_id
       )
-      SELECT (SELECT count(*) FROM eligible_queries)::int AS eligible_queries,
-        (SELECT count(*) FROM inserted)::int AS inserted_items
+      SELECT summary.eligible_queries, candidate.face_id, candidate.asset_id,
+        candidate.assigned_person_id, candidate.suggested_person_id,
+        candidate.suggested_score, candidate.comparison_score,
+        candidate.margin, candidate.suggested_reference_asset_id
+      FROM (
+        SELECT count(*)::int AS eligible_queries FROM eligible_queries
+      ) summary
+      LEFT JOIN candidate_rows candidate ON true
     `;
-    reportFrontierTruncation(
-      "accepted_contradiction",
-      Number(contradictionFrontier?.eligible_queries || 0),
-    );
+    const contradictionEligible = await persistIdentityAuditScoredRows(tx, {
+      kind: "accepted_contradiction",
+      packId,
+      rows: contradictionScored,
+      runId,
+    });
+    reportFrontierTruncation("accepted_contradiction", contradictionEligible);
     await carryForwardIdentityAuditDismissals(tx, {
       kind: "accepted_contradiction",
       runId,
@@ -652,7 +653,7 @@ const auditSql = async (
       SET last_progress_at = now(),
         accepted_embedded_faces = ${Number(coverage?.embedded_faces || 0)},
         accepted_comparable_faces = ${Number(coverage?.comparable_faces || 0)},
-        contradiction_queries_eligible = ${Number(contradictionFrontier?.eligible_queries || 0)},
+        contradiction_queries_eligible = ${contradictionEligible},
         contradiction_candidates = (
           SELECT count(*)::int FROM identity_audit_item
           WHERE audit_run_id = ${runId}

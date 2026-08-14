@@ -8,6 +8,7 @@ import {
   identityAuditQueryFrontierLimit,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
+import { persistIdentityAuditScoredRows } from "../src/identity-audit-persistence.mjs";
 import { readFile } from "node:fs/promises";
 
 test("untagged audit suppresses weaker duplicate detections before matching", async () => {
@@ -56,6 +57,61 @@ test("accepted contradiction audit uses one canonical Face per physical identity
     /face\.physical_face_id = claim\.physical_face_id/,
   );
   assert.doesNotMatch(contradiction, /FROM current_face_identity claim/);
+});
+
+test("expensive identity audit scoring stays parallel-safe before persistence", async () => {
+  const auditSource = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  const persistenceSource = await readFile(
+    new URL("../src/identity-audit-persistence.mjs", import.meta.url),
+    "utf8",
+  );
+  const scoring = auditSource.slice(
+    auditSource.indexOf("const untaggedScored"),
+    auditSource.indexOf("const untaggedEligible"),
+  );
+
+  assert.match(scoring, /candidate_rows AS MATERIALIZED/);
+  assert.doesNotMatch(scoring, /INSERT INTO identity_audit_item/);
+  assert.doesNotMatch(scoring, /cimmich_probable_same_photo_derivative/);
+  assert.match(persistenceSource, /INSERT INTO identity_audit_item/);
+  assert.match(persistenceSource, /jsonb_to_recordset/);
+  assert.match(persistenceSource, /cimmich_probable_same_photo_derivative/);
+});
+
+test("scored identity audit rows persist in one bounded batch", async () => {
+  let query = "";
+  const tx = async (strings) => {
+    query = strings.join(" ");
+    return [];
+  };
+  tx.json = (value) => value;
+
+  const eligible = await persistIdentityAuditScoredRows(tx, {
+    kind: "accepted_contradiction",
+    packId: "pack.active",
+    rows: [
+      {
+        asset_id: "asset.query",
+        assigned_person_id: "person.current",
+        comparison_score: "0.12",
+        eligible_queries: 5000,
+        face_id: "face.query",
+        margin: "0.44",
+        suggested_person_id: "person.other",
+        suggested_reference_asset_id: "asset.reference",
+        suggested_score: "0.56",
+      },
+    ],
+    runId: "audit.parallel",
+  });
+
+  assert.equal(eligible, 5000);
+  assert.match(query, /jsonb_to_recordset/);
+  assert.match(query, /candidate\.assigned_person_id/);
+  assert.match(query, /cimmich_probable_same_photo_derivative/);
 });
 
 test("incremental audit carries its completed base and scopes expensive work", async () => {
