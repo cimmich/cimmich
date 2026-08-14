@@ -346,7 +346,7 @@ const auditSql = async (
               )
             )
         )
-      ), queries AS MATERIALIZED (
+      ), queries AS NOT MATERIALIZED (
         -- Bounded comparison frontier: deterministic quality-first ranking,
         -- mirroring the machineSuggestions frontier policy in repository.mjs.
         SELECT eligible.face_id, eligible.physical_face_id,
@@ -356,7 +356,7 @@ const auditSql = async (
         ORDER BY eligible.quality_score DESC,
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
-      ), gallery AS MATERIALIZED (
+      ), gallery AS NOT MATERIALIZED (
         ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
         SELECT query.face_id, query.asset_id, gallery.person_id,
@@ -521,7 +521,7 @@ const auditSql = async (
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank}
         LEFT JOIN face_contexts context ON context.face_id = face.face_id
         WHERE claim.state = 'accepted'
-      ), queries AS MATERIALIZED (
+      ), queries AS NOT MATERIALIZED (
         -- Bounded comparison frontier: deterministic quality-first ranking,
         -- mirroring the machineSuggestions frontier policy in repository.mjs.
         SELECT eligible.face_id, eligible.asset_id,
@@ -531,7 +531,7 @@ const auditSql = async (
         ORDER BY eligible.quality_score DESC,
           eligible.detection_confidence DESC, eligible.face_id
         LIMIT ${frontierLimit}
-      ), gallery AS MATERIALIZED (
+      ), gallery AS NOT MATERIALIZED (
         ${primeReferenceGallery(tx)}
       ), person_scores AS MATERIALIZED (
         SELECT query.face_id, query.asset_id, query.assigned_person_id,

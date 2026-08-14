@@ -75,6 +75,8 @@ test("expensive identity audit scoring stays parallel-safe before persistence", 
   );
 
   assert.match(scoring, /candidate_rows AS MATERIALIZED/);
+  assert.match(scoring, /queries AS NOT MATERIALIZED/);
+  assert.match(scoring, /gallery AS NOT MATERIALIZED/);
   assert.doesNotMatch(scoring, /INSERT INTO identity_audit_item/);
   assert.doesNotMatch(scoring, /cimmich_probable_same_photo_derivative/);
   assert.match(persistenceSource, /INSERT INTO identity_audit_item/);
@@ -85,6 +87,8 @@ test("expensive identity audit scoring stays parallel-safe before persistence", 
     auditSource.match(/max_parallel_workers_per_gather/g)?.length,
     2,
   );
+  assert.equal(auditSource.match(/queries AS NOT MATERIALIZED/g)?.length, 2);
+  assert.equal(auditSource.match(/gallery AS NOT MATERIALIZED/g)?.length, 2);
 });
 
 test("scored identity audit rows persist in one bounded batch", async () => {
