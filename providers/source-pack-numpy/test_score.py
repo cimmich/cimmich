@@ -73,6 +73,49 @@ class IdentityAuditOwnClusterTest(unittest.TestCase):
     def test_keeps_difficult_face_that_matches_low_quality_support(self):
         self.assertEqual(self.audit("difficult-but-supported", self.low_quality_a), [])
 
+    def test_streamed_support_produces_the_same_outlier_result(self):
+        scorer = Scorer(
+            {
+                "gallery": [
+                    face("person-a", "prime-a", self.prime_a),
+                    face("person-b", "prime-b", vector((3, 1))),
+                ]
+            }
+        )
+        scorer.append_support(
+            [
+                face("person-a", "stream-prime", self.prime_a),
+                face("person-a", "stream-near-1", vector((0, 0.999), (4, 0.04))),
+                face("person-a", "stream-near-2", vector((0, 0.998), (5, 0.06))),
+            ]
+        )
+        scorer.append_support(
+            [
+                face("person-a", "stream-near-3", vector((0, 0.997), (6, 0.08))),
+                face("person-a", "stream-low", self.low_quality_a),
+            ]
+        )
+        diagnostics = scorer.finalize_support()
+        self.assertEqual(diagnostics["supportFaces"], 5)
+        self.assertEqual(diagnostics["ownClusterPeople"], 1)
+        results = scorer.audit(
+            {
+                "auditKind": "accepted_contradiction",
+                "queries": [
+                    {
+                        "assetId": "stream-query-asset",
+                        "assignedPersonId": "person-a",
+                        "contextIds": [],
+                        "embedding": vector((2, 1)),
+                        "excludedPersonIds": [],
+                        "faceId": "stream-outlier",
+                    }
+                ],
+            }
+        )["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["evidenceRoute"], "own_cluster_outlier")
+
 
 if __name__ == "__main__":
     unittest.main()

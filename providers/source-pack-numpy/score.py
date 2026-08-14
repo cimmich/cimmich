@@ -63,16 +63,18 @@ class Scorer:
             self.gallery_person_indexes, dtype=np.int32
         )
         self.person_count = len(self.person_ids)
-        self._initialize_support(request.get("supportGallery") or [])
+        self.support_entries_by_person = {}
+        self.support_count = 0
+        self.support_finalized = False
+        if "supportGallery" in request:
+            self.append_support(request.get("supportGallery") or [])
+            self.finalize_support()
 
-    def _initialize_support(self, support_gallery):
-        if not isinstance(support_gallery, list) or len(support_gallery) > 250000:
+    def append_support(self, support_gallery):
+        if not isinstance(support_gallery, list) or len(support_gallery) > 4096:
             fail("invalid support gallery")
-        self.support_by_person = {}
-        self.own_cluster_floors = {}
-        if not support_gallery:
-            return
-        grouped = {}
+        if self.support_finalized or self.support_count + len(support_gallery) > 250000:
+            fail("invalid support state")
         for row in support_gallery:
             person_id = bounded_text(row.get("personId"), "support personId")
             entry = {
@@ -83,8 +85,15 @@ class Scorer:
             }
             if len(entry["contexts"]) > 64:
                 fail("invalid support contexts")
-            grouped.setdefault(person_id, []).append(entry)
-        for person_id, entries in grouped.items():
+            self.support_entries_by_person.setdefault(person_id, []).append(entry)
+        self.support_count += len(support_gallery)
+
+    def finalize_support(self):
+        if self.support_finalized:
+            fail("invalid support state")
+        self.support_by_person = {}
+        self.own_cluster_floors = {}
+        for person_id, entries in self.support_entries_by_person.items():
             embeddings = matrix(
                 [entry["embedding"] for entry in entries], "support"
             )
@@ -102,6 +111,12 @@ class Scorer:
             floor = self._own_cluster_floor(support)
             if floor is not None:
                 self.own_cluster_floors[person_id] = floor
+        self.support_entries_by_person = {}
+        self.support_finalized = True
+        return {
+            "ownClusterPeople": len(self.own_cluster_floors),
+            "supportFaces": self.support_count,
+        }
 
     @staticmethod
     def _valid_support(support, face_id, asset_id, contexts):
@@ -395,10 +410,18 @@ def serve():
             kind = request.get("kind")
             if kind == "initialize" and scorer is None:
                 scorer = Scorer(request)
-                response = {"kind": "ready"}
-            elif kind == "score" and scorer is not None:
+                response = {"kind": "gallery_ready"}
+            elif kind == "support_chunk" and scorer is not None:
+                scorer.append_support(request.get("rows"))
+                response = {"kind": "support_received"}
+            elif kind == "support_finalize" and scorer is not None:
+                response = {
+                    "kind": "ready",
+                    "diagnostics": scorer.finalize_support(),
+                }
+            elif kind == "score" and scorer is not None and scorer.support_finalized:
                 response = scorer.score(request)
-            elif kind == "audit" and scorer is not None:
+            elif kind == "audit" and scorer is not None and scorer.support_finalized:
                 response = scorer.audit(request)
             else:
                 fail("invalid request state")

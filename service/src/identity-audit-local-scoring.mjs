@@ -104,19 +104,28 @@ export const scoreIdentityAuditLocally = async (
       reference.face_id
   `;
   const supportGallery = await sql`
-    WITH face_contexts AS MATERIALIZED (
-      SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
-      FROM current_face_capture_context
-      GROUP BY face_id
+    WITH asset_contexts AS MATERIALIZED (
+      SELECT asset_id,
+        array_agg(context_id ORDER BY context_id) AS context_ids
+      FROM current_capture_context_member
+      GROUP BY asset_id
+    ), accepted_physical AS MATERIALIZED (
+      SELECT DISTINCT ON (member.physical_face_id, claim.person_id)
+        member.physical_face_id, member.canonical_face_id, claim.person_id
+      FROM identity_claim claim
+      JOIN current_face_physical_member member ON member.face_id = claim.face_id
+      WHERE claim.state = 'accepted'
+        AND member.reconciliation_state <> 'conflict'
+      ORDER BY member.physical_face_id, claim.person_id,
+        claim.identity_claim_id
     )
     SELECT DISTINCT ON (claim.person_id, claim.physical_face_id)
       claim.person_id, face.face_id, face.asset_id,
       embedding.embedding::text AS embedding,
       coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-    FROM current_physical_face_identity claim
-    JOIN current_matchable_physical_face face
-      ON face.physical_face_id = claim.physical_face_id
-      AND face.state = 'valid'
+    FROM accepted_physical claim
+    JOIN face_observation face
+      ON face.face_id = claim.canonical_face_id AND face.state = 'valid'
     JOIN source_pack pack ON pack.pack_id = ${packId}
     JOIN face_embedding embedding
       ON embedding.face_id = face.face_id
@@ -129,9 +138,8 @@ export const scoreIdentityAuditLocally = async (
       AND person.status = 'active'
       AND person.subject_kind = 'person'
       AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank}
-    LEFT JOIN face_contexts context ON context.face_id = face.face_id
-    WHERE claim.state = 'accepted'
-      AND NOT EXISTS (
+    LEFT JOIN asset_contexts context ON context.asset_id = face.asset_id
+    WHERE NOT EXISTS (
         SELECT 1 FROM current_person_category category
         WHERE category.person_id = person.person_id
           AND category.slug IN ('sort', 'holding')

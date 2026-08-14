@@ -7,6 +7,8 @@ const scorerError = (message) =>
     code: "SOURCE_PACK_LOCAL_SCORER_FAILED",
   });
 
+const supportChunkSize = 512;
+
 const requiredPath = (value, label) => {
   const normalized = String(value || "").trim();
   if (
@@ -104,11 +106,26 @@ export const createSourcePackNumpyScorer = ({
       const response = await request({
         gallery,
         kind: "initialize",
-        supportGallery,
       });
-      if (response?.kind !== "ready")
+      if (response?.kind !== "gallery_ready")
         throw scorerError("SourcePack local scorer did not initialize");
-      return response.diagnostics || null;
+      for (
+        let offset = 0;
+        offset < supportGallery.length;
+        offset += supportChunkSize
+      ) {
+        const supportResponse = await request({
+          kind: "support_chunk",
+          rows: supportGallery.slice(offset, offset + supportChunkSize),
+        });
+        if (supportResponse?.kind !== "support_received") {
+          throw scorerError("SourcePack local scorer rejected support input");
+        }
+      }
+      const ready = await request({ kind: "support_finalize" });
+      if (ready?.kind !== "ready")
+        throw scorerError("SourcePack local scorer did not finalize support");
+      return ready.diagnostics || null;
     },
     async score({ marginFloor, queries, scoreFloor }) {
       const response = await request({
