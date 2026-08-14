@@ -12,6 +12,21 @@ test("repository exposes the extracted maintenance idle barrier", async () => {
   await repository.whenMaintenanceIdle();
 });
 
+test("Prime maintenance prices the outside-Person competitor only for imported body evidence", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../src/prime-curator-repository.mjs", import.meta.url),
+      "utf8",
+    ),
+  );
+  const competitor = source.slice(
+    source.indexOf("LEFT JOIN LATERAL (\n      SELECT max(1 -"),
+    source.indexOf("LEFT JOIN LATERAL (\n      SELECT g.bucket_kind"),
+  );
+  assert.match(competitor, /source_instance_suffix/);
+  assert.match(competitor, /\) = '2'\s+AND other\.person_id/);
+});
+
 test("deferred Prime maintenance coalesces queued rebuilds per Person", async () => {
   let runs = 0;
   let active = 0;

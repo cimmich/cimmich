@@ -1152,6 +1152,13 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
   assert.match(statement, /effective_gallery_permission/);
   assert.match(statement, /resolution_kind = 'stronger_existing_truth'/);
   assert.match(statement, /detected_identity\.origin <> 'trusted_import'/);
+  assert.match(statement, /FROM face_observation detected/);
+  assert.match(statement, /JOIN LATERAL \(\s*SELECT claim\.state/);
+  assert.match(statement, /claim\.person_id = cfi\.person_id/);
+  assert.doesNotMatch(
+    statement,
+    /FROM current_face_identity detected_identity/,
+  );
 });
 
 test("Holding match batches are Person-scoped, ordered and concurrency-bounded", async () => {

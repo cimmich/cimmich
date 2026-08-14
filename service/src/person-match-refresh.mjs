@@ -11,6 +11,31 @@ export const personMatchRefreshContract = Object.freeze({
 const typedError = (message, statusCode, code) =>
   Object.assign(new Error(message), { code, statusCode });
 
+const calibratedMatcher = async (sql) => {
+  const { matcherPolicyVersion, scorer } = sourcePackArchiveMatcherContract;
+  const [pack] = await sql`
+    SELECT pack_id, model_family, model_version, config_digest, dimension,
+      (evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8
+        AS score_floor,
+      (evaluation_summary->'matcherPolicy'->>'marginFloor')::float8
+        AS margin_floor
+    FROM source_pack
+    WHERE evaluation_status = 'passed'
+      AND evaluation_summary->'matcherPolicy'->>'policyVersion' =
+        ${matcherPolicyVersion}
+      AND evaluation_summary->'matcherPolicy'->>'scorer' = ${scorer}
+      AND jsonb_typeof(
+        evaluation_summary->'matcherPolicy'->'scoreFloor'
+      ) = 'number'
+      AND jsonb_typeof(
+        evaluation_summary->'matcherPolicy'->'marginFloor'
+      ) = 'number'
+    ORDER BY (state = 'active') DESC, created_at DESC, pack_id DESC
+    LIMIT 1
+  `;
+  return pack;
+};
+
 export const createPersonMatchRefresher = ({
   cleanActor,
   refreshPrime,
@@ -32,10 +57,29 @@ export const createPersonMatchRefresher = ({
       );
     }
 
+    // A Person refresh builds a fresh target reference set and persists its
+    // own freshness proof. A retired SourcePack therefore remains valid as the
+    // immutable calibrated model/policy contract; its stale identity members
+    // are never reused below. Check this cheap contract before doing derived
+    // Prime maintenance so an unavailable matcher fails immediately.
+    const pack = await calibratedMatcher(sql);
+    if (!pack) {
+      throw typedError(
+        "The calibrated matcher is not ready",
+        503,
+        "PERSON_MATCH_REFRESH_MATCHER_UNAVAILABLE",
+      );
+    }
+    if (Number(pack.dimension) !== 512) {
+      throw typedError(
+        "Person matcher refresh requires the production 512-dimension face space",
+        503,
+        "PERSON_MATCH_REFRESH_DIMENSION_UNAVAILABLE",
+      );
+    }
     await refreshPrime(id);
     const runId = `personmatch_${randomUUID().replaceAll("-", "")}`;
     const receiptId = `receipt_${runId}`;
-    const { matcherPolicyVersion, scorer } = sourcePackArchiveMatcherContract;
     const result = await sql.begin(async (tx) => {
       await tx`
         SELECT set_config('statement_timeout', '60000', true),
@@ -52,36 +96,6 @@ export const createPersonMatchRefresher = ({
       if (!person) {
         throw typedError("Active Person not found", 404, "PERSON_NOT_FOUND");
       }
-      const [pack] = await tx`
-        SELECT pack_id, model_family, model_version, config_digest, dimension,
-          (evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8
-            AS score_floor,
-          (evaluation_summary->'matcherPolicy'->>'marginFloor')::float8
-            AS margin_floor,
-          evaluation_summary->'matcherPolicy'->>'policyVersion'
-            AS matcher_policy_version,
-          evaluation_summary->'matcherPolicy'->>'scorer' AS scorer
-        FROM current_source_pack
-        WHERE evaluation_status = 'passed'
-          AND evaluation_summary->'matcherPolicy'->>'policyVersion' =
-            ${matcherPolicyVersion}
-          AND evaluation_summary->'matcherPolicy'->>'scorer' = ${scorer}
-      `;
-      if (!pack) {
-        throw typedError(
-          "The calibrated matcher is not ready",
-          503,
-          "PERSON_MATCH_REFRESH_MATCHER_UNAVAILABLE",
-        );
-      }
-      if (Number(pack.dimension) !== 512) {
-        throw typedError(
-          "Person matcher refresh requires the production 512-dimension face space",
-          503,
-          "PERSON_MATCH_REFRESH_DIMENSION_UNAVAILABLE",
-        );
-      }
-
       const references = await tx`
         SELECT DISTINCT ON (physical.physical_face_id)
           physical.canonical_face_id AS face_id, face.asset_id,
@@ -221,9 +235,9 @@ export const createPersonMatchRefresher = ({
         ON COMMIT DROP AS
         SELECT gallery.person_id, gallery.face_id,
           reference_face.asset_id,
-          gallery.embedding::vector(512) AS embedding,
+          reference_embedding.embedding::vector(512) AS embedding,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-        FROM source_pack_reference gallery
+        FROM current_reference_gallery gallery
         JOIN current_person other_person
           ON other_person.person_id = gallery.person_id
           AND other_person.status = 'active'
@@ -231,17 +245,25 @@ export const createPersonMatchRefresher = ({
         JOIN face_observation reference_face
           ON reference_face.face_id = gallery.face_id
           AND reference_face.state = 'valid'
+        JOIN face_embedding reference_embedding
+          ON reference_embedding.face_id = gallery.face_id
+          AND reference_embedding.state = 'active'
+          AND reference_embedding.model_family = ${pack.model_family}
+          AND reference_embedding.model_version = ${pack.model_version}
+          AND reference_embedding.config_digest = ${pack.config_digest}
+        JOIN current_face_identity accepted
+          ON accepted.face_id = gallery.face_id
+          AND accepted.person_id = gallery.person_id
+          AND accepted.state = 'accepted'
         LEFT JOIN LATERAL (
           SELECT array_agg(capture.context_id ORDER BY capture.context_id)
             AS context_ids
           FROM current_face_capture_context capture
           WHERE capture.face_id = gallery.face_id
         ) context ON true
-        WHERE gallery.pack_id = ${pack.pack_id}
-          AND gallery.person_id <> ${id}
+        WHERE gallery.person_id <> ${id}
+          AND gallery.membership_state = 'active'
           AND gallery.bucket_kind = 'prime'
-          AND gallery.reference_kind = 'face'
-          AND gallery.routing_state = 'eligible'
           AND NOT EXISTS (
             SELECT 1 FROM current_person_category category
             WHERE category.person_id = gallery.person_id

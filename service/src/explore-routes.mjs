@@ -4,12 +4,27 @@ const isExploreFacetRead = (request) =>
   request.method === "POST" &&
   String(request.url || "").split("?", 1)[0] === exploreFacetPath;
 
+const visibilitySessionPaths = new Set([
+  "/v1/visibility/lock",
+  "/v1/visibility/mode",
+  "/v1/visibility/unlock",
+]);
+
+const isVisibilitySessionCommand = (request) =>
+  request.method === "POST" &&
+  visibilitySessionPaths.has(String(request.url || "").split("?", 1)[0]);
+
 const attachProjectionSnapshotInvalidation = ({
   repository,
   request,
   response,
 }) => {
-  if (request.method === "GET" || isExploreFacetRead(request)) return;
+  if (
+    request.method === "GET" ||
+    isExploreFacetRead(request) ||
+    isVisibilitySessionCommand(request)
+  )
+    return;
   response.on("finish", () => {
     if (response.statusCode >= 400) return;
     repository.clearPeopleHotSnapshot?.();

@@ -64,7 +64,10 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
     LEFT JOIN LATERAL (
       SELECT max(1 - (fe.embedding <=> other.embedding))::float8 AS max_other_prime_similarity
       FROM current_reference_prototype other
-      WHERE other.person_id <> cfi.person_id
+      WHERE coalesce(
+          fo.quality_measurements->>'source_instance_suffix', ''
+        ) = '2'
+        AND other.person_id <> cfi.person_id
         AND other.model_family = fe.model_family
         AND other.model_version = fe.model_version
         AND other.config_digest = fe.config_digest

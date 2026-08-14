@@ -977,7 +977,6 @@ export const createCimmichRepository = (
     maintenanceSql,
     reassign: (input) => repository.reassignFaceIdentity(input),
     requireVisibleSubject,
-    sql,
   });
   const bulkAcceptPersonCandidates = createBulkPersonCandidateAcceptor({
     cleanActor,
@@ -6934,11 +6933,16 @@ export const createCimmichRepository = (
                 )
                 AND NOT EXISTS (
                   SELECT 1
-                  FROM current_face_identity detected_identity
-                  JOIN face_observation detected
-                    ON detected.face_id = detected_identity.face_id
-                    AND detected.asset_id = face.asset_id
-                    AND detected.state = 'valid'
+                  FROM face_observation detected
+                  JOIN LATERAL (
+                    SELECT claim.state, claim.origin
+                    FROM identity_claim claim
+                    WHERE claim.face_id = detected.face_id
+                      AND claim.person_id = identity.person_id
+                    ORDER BY claim.created_at DESC,
+                      claim.identity_claim_id DESC
+                    LIMIT 1
+                  ) detected_identity ON true
                   CROSS JOIN LATERAL (
                     SELECT
                       greatest(
@@ -6955,8 +6959,9 @@ export const createCimmichRepository = (
                         ) - greatest(face.box_y, detected.box_y)
                       ) AS intersection
                   ) overlap
-                  WHERE detected_identity.person_id = identity.person_id
-                    AND detected_identity.face_id <> identity.face_id
+                  WHERE detected.asset_id = face.asset_id
+                    AND detected.state = 'valid'
+                    AND detected.face_id <> identity.face_id
                     AND detected_identity.state IN ('accepted', 'superseded')
                     AND detected_identity.origin <> 'trusted_import'
                     AND (
@@ -7062,11 +7067,16 @@ export const createCimmichRepository = (
             )
             AND NOT EXISTS (
               SELECT 1
-              FROM current_face_identity detected_identity
-              JOIN face_observation detected
-                ON detected.face_id = detected_identity.face_id
-                AND detected.asset_id = fo.asset_id
-                AND detected.state = 'valid'
+              FROM face_observation detected
+              JOIN LATERAL (
+                SELECT claim.state, claim.origin
+                FROM identity_claim claim
+                WHERE claim.face_id = detected.face_id
+                  AND claim.person_id = cfi.person_id
+                ORDER BY claim.created_at DESC,
+                  claim.identity_claim_id DESC
+                LIMIT 1
+              ) detected_identity ON true
               CROSS JOIN LATERAL (
                 SELECT
                   greatest(
@@ -7083,8 +7093,9 @@ export const createCimmichRepository = (
                     ) - greatest(fo.box_y, detected.box_y)
                   ) AS intersection
               ) overlap
-              WHERE detected_identity.person_id = cfi.person_id
-                AND detected_identity.face_id <> cfi.face_id
+              WHERE detected.asset_id = fo.asset_id
+                AND detected.state = 'valid'
+                AND detected.face_id <> cfi.face_id
                 AND detected_identity.state IN ('accepted', 'superseded')
                 AND detected_identity.origin <> 'trusted_import'
                 AND (

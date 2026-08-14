@@ -11,7 +11,6 @@ export const createPersonMatchRefreshStore = ({
   maintenanceSql,
   reassign,
   requireVisibleSubject,
-  sql,
 }) => {
   const refresher = createPersonMatchRefresher({
     cleanActor,
@@ -20,7 +19,10 @@ export const createPersonMatchRefreshStore = ({
         throwOnFailure: true,
       }),
     requireVisibleSubject,
-    sql,
+    // A refresh can scan the full face embedding frontier. Keep that work on
+    // the single-connection maintenance lane so Person/People reads retain
+    // the interactive pool while the refresh is running.
+    sql: maintenanceSql,
   });
 
   return {

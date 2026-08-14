@@ -5144,6 +5144,7 @@ test("mutations clear People and Explore snapshots; reads and failures keep them
   const visibility = {
     requireProjection: () => {},
     runRequest: (_request, _response, run) => run(),
+    setMode: async ({ viewingMode }) => ({ viewingMode }),
   };
   await withServer(
     repository,
@@ -5159,6 +5160,15 @@ test("mutations clear People and Explore snapshots; reads and failures keep them
         method: "POST",
       });
       assert.equal(exploreRead.status, 200);
+      assert.equal(peopleClears, 0);
+      assert.equal(exploreClears, 0);
+
+      const mode = await fetch(`${root}/v1/visibility/mode`, {
+        body: JSON.stringify({ intentSequence: 1, viewingMode: "private" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(mode.status, 200);
       assert.equal(peopleClears, 0);
       assert.equal(exploreClears, 0);
 
