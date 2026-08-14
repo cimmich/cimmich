@@ -5048,6 +5048,10 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
         (await response.json()).schemaVersion,
         "cimmich.pet-matching.v1",
       );
+      const ignored = await fetch(
+        `${root}/v1/pets/matching/unknown?limit=20&state=ignored`,
+      );
+      assert.equal(ignored.status, 200);
       const resolved = await fetch(
         `${root}/v1/pets/matching/unknown/petobservation_wrong_species/assign`,
         {
@@ -5064,12 +5068,26 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
         },
       );
       assert.equal(resolved.status, 200);
+      const ignoredDecision = await fetch(
+        `${root}/v1/pets/matching/unknown/petobservation_ignore_me/ignore`,
+        {
+          body: JSON.stringify({ commandId: "petmatch_ignore_route_0001" }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner-test",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(ignoredDecision.status, 200);
     },
     { visibility },
   );
   assert.deepEqual(calls, [
     ["visibility", "pets"],
-    ["unknown", { limit: "10" }],
+    ["unknown", { limit: "10", state: null }],
+    ["visibility", "pets"],
+    ["unknown", { limit: "20", state: "ignored" }],
     ["visibility", "pets"],
     [
       "resolve",
@@ -5080,6 +5098,16 @@ test("Pet matching routes require the enforced Pets visibility projection", asyn
         observationId: "petobservation_wrong_species",
         petId: "person_freya_0001",
         speciesKind: "cat",
+      },
+    ],
+    ["visibility", "pets"],
+    [
+      "resolve",
+      {
+        action: "ignore",
+        actorId: "owner-test",
+        commandId: "petmatch_ignore_route_0001",
+        observationId: "petobservation_ignore_me",
       },
     ],
   ]);

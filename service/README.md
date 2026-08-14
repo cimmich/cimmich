@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 133. Schema 76 adds
+patch level 1. Current post-submission source is schema 134. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -234,6 +234,10 @@ conservative Prime quality floor instead of being misclassified as measured
 zero-quality evidence; explicit low scores still fail the same floor.
 Replacing a refresh generation supersedes its prior proposals; no refresh can
 accept identity or alter source media.
+Schema 134 adds a reversible owner-ignored Pet-match state. Unknown detections
+can be assigned, ignored for later, or terminally marked as False Matches;
+ignored detections remain visible in their own queue and can be restored without
+rewriting detector species evidence.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

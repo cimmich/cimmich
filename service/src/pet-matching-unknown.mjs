@@ -24,6 +24,17 @@ export const cleanUnknownAssignmentSpecies = (value) => {
   return normalized;
 };
 
+export const cleanUnknownReviewState = (value) => {
+  const state = String(value || "unknown").trim();
+  if (!["ignored", "unknown"].includes(state)) {
+    throw Object.assign(new Error("state must be unknown or ignored"), {
+      code: "PET_MATCH_REVIEW_STATE_INVALID",
+      statusCode: 400,
+    });
+  }
+  return state;
+};
+
 export const classifyUnknownAssignmentSpecies = (
   detectedSpeciesKind,
   selectedSpeciesKind,
@@ -35,11 +46,29 @@ export const classifyUnknownAssignmentSpecies = (
 });
 
 export const unknownAssignmentDecisionNote = (action, species) => {
-  if (action !== "assign") return "Not a Pet";
+  if (action === "ignore") return "Ignored unknown Pet detection";
+  if (action === "restore") return "Restored ignored Pet detection";
+  if (action === "reject") return "False Pet match";
   return species.speciesCorrected
     ? `Assigned Unknown Pet; corrected detector species ${species.detectedSpeciesKind} to ${species.assignedSpeciesKind}`
     : "Assigned Unknown Pet";
 };
+
+export const unknownReviewDecision = (action) => ({
+  decisionAction: {
+    assign: "accept",
+    ignore: "ignore",
+    reject: "reject",
+    restore: "restore",
+  }[action],
+  reasonCode: {
+    assign: "unknown_pet_assigned",
+    ignore: "unknown_pet_ignored",
+    reject: "pet_match_false_match",
+    restore: "unknown_pet_restored",
+  }[action],
+  state: { ignore: "ignored", reject: "rejected", restore: "unknown" }[action],
+});
 
 export const unknownAssignmentMetadata = (lane, observationId, species) => ({
   ...species,

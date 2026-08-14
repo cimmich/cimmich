@@ -1268,3 +1268,20 @@ test("schema 133 makes targeted Person matcher refreshes fresh and review-only",
   assert.match(source, /NEW\.origin = 'person_refresh_match'/);
   assert.match(source, /run\.state = 'active'/);
 });
+
+test("schema 134 separates reversible ignored Pet matches from terminal False Matches", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0134_pet_match_ignored_review_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /pet_match_observation_state_check/);
+  assert.match(source, /'ignored'/);
+  assert.match(source, /pet_match_observation_ignored/);
+  assert.match(source, /reversible/);
+  assert.match(source, /terminal False Match/);
+});

@@ -158,6 +158,7 @@
   let petMatches = $state<CimmichPetMatchSuggestion[]>([]);
   let petMatchesLoaded = $state(false);
   let petMatchReviewing = $state('');
+  let petIgnored = $state<CimmichPetMatchUnknown[]>([]);
   let petUnknown = $state<CimmichPetMatchUnknown[]>([]);
   let petUnknownError = $state<CimmichServiceError | null>(null);
   let petUnknownLoaded = $state(false);
@@ -187,10 +188,11 @@
   let showCreate = $state(false);
   let showEdit = $state(false);
   let showMediaPicker = $state(false);
-  type PetViewMode = 'pets' | 'unknown';
+  type PetViewMode = 'ignored' | 'pets' | 'unknown';
   const petViewModes: Array<{ id: PetViewMode; label: string }> = [
     { id: 'pets', label: 'Pets' },
     { id: 'unknown', label: 'Unknown' },
+    { id: 'ignored', label: 'Ignored' },
   ];
   // Unknown is a sibling view, never a panel stacked above the collection —
   // an unbounded review queue must not displace the owner's own Pets.
@@ -782,11 +784,15 @@
     petUnknownLoaded = false;
     petUnknownError = null;
     try {
-      const result = await getCimmichPetMatchUnknown(200);
+      const [unknownResult, ignoredResult] = await Promise.all([
+        getCimmichPetMatchUnknown(200, 'unknown'),
+        getCimmichPetMatchUnknown(200, 'ignored'),
+      ]);
       if (generation !== petUnknownLoadGeneration) {
         return;
       }
-      petUnknown = result.items;
+      petUnknown = unknownResult.items;
+      petIgnored = ignoredResult.items;
     } catch (error_) {
       if (generation !== petUnknownLoadGeneration) {
         return;
@@ -1385,7 +1391,13 @@
               >
                 {mode.label}
                 <span class="text-xs opacity-65">
-                  {mode.id === 'pets' ? pets.length : petUnknownLoaded ? petUnknown.length : ''}
+                  {mode.id === 'pets'
+                    ? pets.length
+                    : petUnknownLoaded
+                      ? mode.id === 'unknown'
+                        ? petUnknown.length
+                        : petIgnored.length
+                      : ''}
                 </span>
               </button>
               {#if mode.id === 'pets'}
@@ -2475,20 +2487,29 @@
         </div>
       </section>
     {:else}
-      {#if petViewMode === 'unknown'}
-        <CimmichPetUnknownReview
-          error={petUnknownError}
-          items={petUnknown}
-          loaded={petUnknownLoaded}
-          {pets}
-          {petVisualStyle}
-          onReload={loadUnknownPets}
-          onItemsChanged={(items) => (petUnknown = items)}
-          onPetsChanged={(items) => {
-            pets = items;
-            void loadPetPreviews(items, petsLoadGeneration);
-          }}
-        />
+      {#if petViewMode === 'unknown' || petViewMode === 'ignored'}
+        {#key petViewMode}
+          <CimmichPetUnknownReview
+            error={petUnknownError}
+            items={petViewMode === 'unknown' ? petUnknown : petIgnored}
+            loaded={petUnknownLoaded}
+            {pets}
+            {petVisualStyle}
+            queueState={petViewMode}
+            onReload={loadUnknownPets}
+            onItemsChanged={(items) => {
+              if (petViewMode === 'unknown') {
+                petUnknown = items;
+              } else {
+                petIgnored = items;
+              }
+            }}
+            onPetsChanged={(items) => {
+              pets = items;
+              void loadPetPreviews(items, petsLoadGeneration);
+            }}
+          />
+        {/key}
       {:else if !loaded}
         <CimmichStatePanel
           tone="loading"

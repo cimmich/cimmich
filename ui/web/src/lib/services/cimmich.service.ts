@@ -827,6 +827,7 @@ export type CimmichPetMatchSuggestion = {
 
 export type CimmichPetMatchStatus = {
   confirmed: number;
+  ignored: number;
   pending: number;
   rejected: number;
   runs: number;
@@ -863,7 +864,7 @@ type CimmichPetMatchRealizationResult = {
 };
 
 export type CimmichPetMatchUnknownReviewResult = CimmichPetMatchRealizationResult & {
-  action: 'assign' | 'reject';
+  action: 'assign' | 'ignore' | 'reject' | 'restore';
   assignedSpeciesKind?: CimmichPetSpeciesKind;
   detectedSpeciesKind?: CimmichPetSpeciesKind;
   petId?: string;
@@ -3571,14 +3572,14 @@ export const getCimmichPetMatchSuggestions = (petId: string, limit = 100) =>
 
 export const getCimmichPetMatchStatus = () => request<CimmichPetMatchStatus>('/v1/pets/matching/status');
 
-export const getCimmichPetMatchUnknown = (limit = 100) =>
+export const getCimmichPetMatchUnknown = (limit = 100, state: 'unknown' | 'ignored' = 'unknown') =>
   request<{ items: CimmichPetMatchUnknown[]; schemaVersion: 'cimmich.pet-matching.v1' }>(
-    `/v1/pets/matching/unknown?limit=${Math.max(1, Math.min(200, limit))}`,
+    `/v1/pets/matching/unknown?limit=${Math.max(1, Math.min(200, limit))}&state=${state}`,
   );
 
 export const reviewCimmichPetMatchUnknown = (
   observationId: string,
-  action: 'assign' | 'reject',
+  action: 'assign' | 'ignore' | 'reject' | 'restore',
   commandId: string,
   petId?: string,
   speciesKind?: CimmichPetSpeciesKind,

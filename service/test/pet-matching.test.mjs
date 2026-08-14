@@ -5,6 +5,7 @@ import {
   petMatchingSchemaVersion,
   validatePetMatchImport,
 } from "../src/pet-matching.mjs";
+import { unknownReviewDecision } from "../src/pet-matching-unknown.mjs";
 
 const digest = "a".repeat(64);
 const packet = (overrides = {}) => ({
@@ -37,6 +38,20 @@ const packet = (overrides = {}) => ({
   runId: "petmatchrun_0001",
   schemaVersion: petMatchingSchemaVersion,
   ...overrides,
+});
+
+test("keeps Ignore reversible and False Match terminal", () => {
+  assert.deepEqual(unknownReviewDecision("ignore"), {
+    decisionAction: "ignore",
+    reasonCode: "unknown_pet_ignored",
+    state: "ignored",
+  });
+  assert.deepEqual(unknownReviewDecision("restore"), {
+    decisionAction: "restore",
+    reasonCode: "unknown_pet_restored",
+    state: "unknown",
+  });
+  assert.equal(unknownReviewDecision("reject").state, "rejected");
 });
 
 test("validates a bounded Pet matching packet", () => {
@@ -113,7 +128,7 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
   );
 
   const unknown = statements.find((statement) =>
-    statement.includes("WHERE observation.state = 'unknown'"),
+    statement.includes("WHERE observation.state = ?"),
   );
   assert.match(
     unknown,
@@ -123,6 +138,7 @@ test("read surfaces scope suggestions, unknowns and counts to visible active evi
     unknown,
     /cimmich_visibility_asset_rank\(observation\.asset_id\)\s+<=/,
   );
+  assert.ok(values.flat().includes("unknown"));
 
   const counts = statements.find((statement) =>
     statement.includes("count(*) FILTER"),

@@ -3,10 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   classifyUnknownAssignmentSpecies,
   cleanUnknownAssignmentSpecies,
+  cleanUnknownReviewState,
   loadUnknownAssignmentTarget,
   unknownAssignmentDecisionNote,
   unknownAssignmentEvidence,
   unknownAssignmentMetadata,
+  unknownReviewDecision,
 } from "./pet-matching-unknown.mjs";
 
 export const petMatchingSchemaVersion = "cimmich.pet-matching.v1";
@@ -595,6 +597,7 @@ export const createPetMatchingStore = (
           count(*) FILTER (WHERE observation.state = 'pending')::int AS pending,
           count(*) FILTER (WHERE observation.state = 'unknown')::int AS unknown,
           count(*) FILTER (WHERE observation.state = 'confirmed')::int AS confirmed,
+          count(*) FILTER (WHERE observation.state = 'ignored')::int AS ignored,
           count(*) FILTER (WHERE observation.state = 'rejected')::int AS rejected,
           count(DISTINCT run.run_id) FILTER (WHERE run.state = 'complete')::int AS runs
         FROM pet_match_observation observation
@@ -607,6 +610,7 @@ export const createPetMatchingStore = (
       `;
       return {
         confirmed: Number(counts?.confirmed || 0),
+        ignored: Number(counts?.ignored || 0),
         pending: Number(counts?.pending || 0),
         rejected: Number(counts?.rejected || 0),
         runs: Number(counts?.runs || 0),
@@ -631,7 +635,8 @@ export const createPetMatchingStore = (
       };
     },
 
-    async unknown({ limit }) {
+    async unknown({ limit, state = "unknown" }) {
+      const reviewState = cleanUnknownReviewState(state);
       const rows = await sql`
         SELECT observation.observation_id, observation.asset_id,
           observation.species_kind, observation.box_x, observation.box_y,
@@ -643,7 +648,7 @@ export const createPetMatchingStore = (
         JOIN pet_match_run run ON run.run_id = observation.run_id
         JOIN asset ON asset.asset_id = observation.asset_id
           AND asset.state = 'active'
-        WHERE observation.state = 'unknown' AND run.state = 'complete'
+        WHERE observation.state = ${reviewState} AND run.state = 'complete'
           AND cimmich_visibility_asset_rank(observation.asset_id)
             <= ${presentationRank()}
         ORDER BY observation.created_at DESC, observation.observation_id
@@ -683,9 +688,9 @@ export const createPetMatchingStore = (
     }) {
       const actor = cleanActor(actorId);
       const id = cleanSafeId(observationId, "observationId");
-      if (!["assign", "reject"].includes(action)) {
+      if (!["assign", "ignore", "reject", "restore"].includes(action)) {
         throw typedError(
-          "action must be assign or reject",
+          "action must be assign, ignore, reject or restore",
           400,
           "PET_MATCH_UNKNOWN_ACTION_INVALID",
         );
@@ -697,12 +702,13 @@ export const createPetMatchingStore = (
           ? cleanUnknownAssignmentSpecies(speciesKind)
           : null;
       const commandKind = action === "assign" ? "confirm" : "reject";
+      const reviewDecision = unknownReviewDecision(action);
       return sql.begin(async (tx) => {
         const command = await beginCommand(tx, {
           actorId: actor,
           commandId,
           commandKind,
-          suggestionId: `${id}:${selectedPetId || "not-pet"}:${selectedSpeciesKind || "detected-species"}`,
+          suggestionId: `${id}:${action}:${selectedPetId || "no-pet"}:${selectedSpeciesKind || "detected-species"}`,
         });
         if (command.replay) return command.replay;
         const [observation] = await tx`
@@ -723,9 +729,10 @@ export const createPetMatchingStore = (
             "PET_MATCH_UNKNOWN_NOT_FOUND",
           );
         }
-        if (observation.state !== "unknown") {
+        const expectedState = action === "restore" ? "ignored" : "unknown";
+        if (observation.state !== expectedState) {
           throw typedError(
-            "Unknown Pet observation has already been reviewed",
+            "Pet observation is no longer in the requested review queue",
             409,
             "PET_MATCH_ALREADY_REVIEWED",
           );
@@ -754,16 +761,16 @@ export const createPetMatchingStore = (
             reason_code, note, producer_receipt_id, privacy_class
           ) VALUES (
             ${decisionId}, 'pet_match_observation', ${id},
-            ${action === "assign" ? "accept" : "reject"}, 'user', ${actor},
-            ${action === "assign" ? "unknown_pet_assigned" : "not_a_pet"},
+            ${reviewDecision.decisionAction}, 'user', ${actor},
+            ${reviewDecision.reasonCode},
             ${unknownAssignmentDecisionNote(action, species)},
             ${receiptId}, 'private'
           )
         `;
 
-        if (action === "reject") {
+        if (action !== "assign") {
           await tx`
-            UPDATE pet_match_observation SET state = 'rejected'
+            UPDATE pet_match_observation SET state = ${reviewDecision.state}
             WHERE observation_id = ${id}
           `;
           const response = {

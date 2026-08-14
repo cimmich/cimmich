@@ -13,7 +13,7 @@
   import { AssetMediaSize } from '@immich/sdk';
   import { mdiCheck, mdiImageOffOutline, mdiMagnify, mdiPawOutline, mdiPlus } from '@mdi/js';
   import { Field, Icon, Input, Modal, ModalBody, ModalFooter, Select, Textarea } from '@immich/ui';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichStatePanel from './CimmichStatePanel.svelte';
   import { getPetPresentation } from './pet-presentation';
 
@@ -29,12 +29,14 @@
     onReload: () => Promise<void> | void;
     pets: CimmichPet[];
     petVisualStyle: (pet: CimmichPet) => string;
+    queueState: 'ignored' | 'unknown';
   };
 
-  let { error, items, loaded, onItemsChanged, onPetsChanged, onReload, pets, petVisualStyle }: Props = $props();
+  let { error, items, loaded, onItemsChanged, onPetsChanged, onReload, pets, petVisualStyle, queueState }: Props =
+    $props();
 
   let assignmentMode = $state<AssignmentMode>('existing');
-  let assignmentObservation = $state<CimmichPetMatchUnknown | null>(null);
+  let assignmentObservations = $state<CimmichPetMatchUnknown[]>([]);
   let assignmentPetId = $state('');
   let assignmentQuery = $state('');
   let assignmentSearchInput = $state<HTMLInputElement | null>(null);
@@ -48,11 +50,18 @@
   let createSpeciesLabel = $state('');
   let formError = $state('');
   let isCreating = $state(false);
-  let reviewCommand = $state<RetryCommand>(null);
   let reviewError = $state<CimmichServiceError | null>(null);
   let reviewing = $state('');
 
   const unreadableObservations = new SvelteSet<string>();
+  const selectedIds = new SvelteSet<string>();
+  const reviewCommands = new SvelteMap<string, RetryCommand>();
+  const selectionLimit = 100;
+  const assignmentObservation = $derived(assignmentObservations[0] ?? null);
+  const selectedItems = $derived(items.filter((item) => selectedIds.has(item.observationId)));
+  const allShownSelected = $derived(
+    items.length > 0 && items.slice(0, selectionLimit).every((item) => selectedIds.has(item.observationId)),
+  );
   const speciesOptions = [
     { label: 'Not set', value: '' },
     { label: 'Dog', value: 'dog' },
@@ -109,7 +118,7 @@
         return 'That animal detection was already reviewed. The current queue has been refreshed.';
       }
       case 'PET_MATCH_UNKNOWN_NOT_FOUND': {
-        return 'That animal detection is no longer in the Unknown queue.';
+        return 'That animal detection is no longer in this review queue.';
       }
       case 'PET_MATCH_PET_NOT_FOUND': {
         return 'That Pet is no longer available. Choose another Pet or create a new one.';
@@ -137,25 +146,27 @@
     createCommand = null;
   };
 
-  const openAssignment = (observation: CimmichPetMatchUnknown) => {
-    assignmentObservation = observation;
+  const openAssignment = (observations: CimmichPetMatchUnknown[]) => {
+    if (observations.length === 0) {
+      return;
+    }
+    assignmentObservations = observations;
     assignmentMode = 'existing';
     assignmentPetId = '';
     assignmentQuery = '';
-    reviewCommand = null;
     reviewError = null;
     formError = '';
-    resetCreateFields(observation.speciesKind);
+    const detectedSpecies = new Set(observations.map((item) => item.speciesKind));
+    resetCreateFields(detectedSpecies.size === 1 ? observations[0].speciesKind : '');
   };
 
   const closeAssignment = (force = false) => {
     if (!force && (isCreating || reviewing)) {
       return;
     }
-    assignmentObservation = null;
+    assignmentObservations = [];
     assignmentPetId = '';
     assignmentQuery = '';
-    reviewCommand = null;
     reviewError = null;
     formError = '';
   };
@@ -170,46 +181,88 @@
     }
   };
 
-  const reviewUnknown = async (
-    observation: CimmichPetMatchUnknown,
-    action: 'assign' | 'reject',
+  const reviewItems = async (
+    observations: CimmichPetMatchUnknown[],
+    action: 'assign' | 'ignore' | 'reject' | 'restore',
     petId?: string,
     speciesKind?: CimmichPetSpeciesKind,
   ): Promise<boolean> => {
-    if (reviewing) {
+    if (reviewing || observations.length === 0) {
       return false;
     }
-    const payload = {
-      action,
-      observationId: observation.observationId,
-      petId: petId ?? null,
-      speciesKind: speciesKind ?? null,
-    };
-    reviewCommand = commandFor(reviewCommand, `pet-unknown-${action}`, payload);
-    reviewing = observation.observationId;
+    reviewing = action;
     reviewError = null;
+    const succeeded = new SvelteSet<string>();
+    let firstError: CimmichServiceError | null = null;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < observations.length) {
+        const observation = observations[cursor++];
+        const payload = {
+          action,
+          observationId: observation.observationId,
+          petId: petId ?? null,
+          speciesKind: speciesKind ?? null,
+        };
+        const command = commandFor(
+          reviewCommands.get(observation.observationId) ?? null,
+          `pet-unknown-${action}`,
+          payload,
+        );
+        reviewCommands.set(observation.observationId, command);
+        try {
+          await reviewCimmichPetMatchUnknown(observation.observationId, action, command.id, petId, speciesKind);
+          succeeded.add(observation.observationId);
+        } catch (error_) {
+          firstError ??= asServiceError(error_);
+        }
+      }
+    };
     try {
-      await reviewCimmichPetMatchUnknown(observation.observationId, action, reviewCommand.id, petId, speciesKind);
-      reviewCommand = null;
-      onItemsChanged(items.filter((item) => item.observationId !== observation.observationId));
-      if (action === 'assign') {
+      await Promise.all(Array.from({ length: Math.min(4, observations.length) }, worker));
+      for (const observationId of succeeded) {
+        selectedIds.delete(observationId);
+      }
+      if (succeeded.size === observations.length) {
+        for (const observation of observations) {
+          reviewCommands.delete(observation.observationId);
+        }
+      }
+      onItemsChanged(items.filter((item) => !succeeded.has(item.observationId)));
+      reviewError = firstError;
+      if (action === 'assign' && succeeded.size > 0) {
         onPetsChanged(await getCimmichPets({ limit: 500 }));
       }
-      return true;
-    } catch (error_) {
-      reviewError = asServiceError(error_);
-      if (reviewError.code === 'PET_MATCH_ALREADY_REVIEWED' || reviewError.code === 'PET_MATCH_UNKNOWN_NOT_FOUND') {
-        await onReload();
-      }
-      return false;
+      await onReload();
+      return succeeded.size === observations.length;
     } finally {
       reviewing = '';
     }
   };
 
+  const toggleSelection = (observationId: string) => {
+    if (selectedIds.has(observationId)) {
+      selectedIds.delete(observationId);
+    } else if (selectedItems.length < selectionLimit) {
+      selectedIds.add(observationId);
+    }
+  };
+
+  const toggleAllShown = () => {
+    const shown = items.slice(0, selectionLimit);
+    if (allShownSelected) {
+      selectedIds.clear();
+      return;
+    }
+    selectedIds.clear();
+    for (const item of shown) {
+      selectedIds.add(item.observationId);
+    }
+  };
+
   const submitAssignment = async () => {
-    const observation = assignmentObservation;
-    if (!observation || reviewing || isCreating) {
+    const observations = assignmentObservations;
+    if (!assignmentObservation || observations.length === 0 || reviewing || isCreating) {
       return;
     }
     formError = '';
@@ -223,7 +276,7 @@
         formError = `Choose an existing ${createSpeciesKind.replace('_', ' ')} Pet first.`;
         return;
       }
-      if (await reviewUnknown(observation, 'assign', selectedPet.petId, createSpeciesKind)) {
+      if (await reviewItems(observations, 'assign', selectedPet.petId, createSpeciesKind)) {
         closeAssignment();
       }
       return;
@@ -242,7 +295,7 @@
       return;
     }
     createCommand = commandFor(createCommand, 'create-from-unknown', {
-      observationId: observation.observationId,
+      observationIds: observations.map((item) => item.observationId).sort(),
       ...payload,
     });
     isCreating = true;
@@ -254,7 +307,7 @@
           left.displayName.localeCompare(right.displayName),
         ),
       );
-      if (await reviewUnknown(observation, 'assign', result.pet.petId, createSpeciesKind)) {
+      if (await reviewItems(observations, 'assign', result.pet.petId, createSpeciesKind)) {
         createCommand = null;
         closeAssignment(true);
       }
@@ -268,47 +321,121 @@
 
 <section
   class="grid gap-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4 sm:p-5 dark:border-immich-dark-gray dark:bg-immich-dark-bg/50"
-  aria-labelledby="unknown-pets-heading"
+  aria-labelledby="pet-review-heading"
 >
   <header class="flex flex-wrap items-end justify-between gap-3">
     <div>
-      <h2 id="unknown-pets-heading" class="text-xl font-semibold">Unknown pets</h2>
+      <h2 id="pet-review-heading" class="text-xl font-semibold">
+        {queueState === 'unknown' ? 'Unknown pets' : 'Ignored pets'}
+      </h2>
       <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-        The detector found an animal, but matching did not find a safe identity. Assign only the ones you know.
+        {queueState === 'unknown'
+          ? 'Assign known animals, temporarily ignore uncertain ones, or mark detector errors as False Matches.'
+          : 'Ignored detections stay out of the review queue until you restore or mark them as False Matches.'}
       </p>
     </div>
     {#if loaded && items.length > 0}
-      <p class="text-sm font-medium text-gray-500 dark:text-gray-400">{items.length.toLocaleString()} to review</p>
+      <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+        {items.length.toLocaleString()}
+        {queueState === 'unknown' ? 'to review' : 'ignored'}
+      </p>
     {/if}
   </header>
 
   {#if error}
-    <CimmichStatePanel tone="error" title="Unknown pets could not be updated" description={errorCopy(error)}>
+    <CimmichStatePanel tone="error" title="Pet review could not be updated" description={errorCopy(error)}>
       {#snippet action()}
         <button
           class="rounded-md border border-current px-3 py-1.5 text-sm font-semibold"
           type="button"
-          onclick={onReload}>Refresh unknown pets</button
+          onclick={onReload}>Refresh Pet review</button
         >
       {/snippet}
     </CimmichStatePanel>
   {:else if !loaded}
     <CimmichStatePanel
       tone="loading"
-      title="Loading unknown pets"
-      description="Reading animal detections that did not clear the identity threshold."
+      title={queueState === 'unknown' ? 'Loading unknown pets' : 'Loading ignored pets'}
+      description="Reading owner-reviewable animal detections."
     />
   {:else if items.length === 0}
     <CimmichStatePanel
-      title="No unknown pets waiting"
-      description="Every imported animal detection has been classified or dismissed."
+      title={queueState === 'unknown' ? 'No unknown pets waiting' : 'No ignored pets'}
+      description={queueState === 'unknown'
+        ? 'Every imported animal detection has been assigned, ignored, or marked as a False Match.'
+        : 'Ignored detections will appear here and can be restored at any time.'}
     />
   {:else}
+    <div
+      class="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+      role="toolbar"
+      aria-label={`${queueState === 'unknown' ? 'Unknown' : 'Ignored'} Pet bulk actions`}
+    >
+      <label class="mr-auto inline-flex min-h-10 items-center gap-2 px-1 text-sm font-semibold">
+        <input type="checkbox" checked={allShownSelected} onchange={toggleAllShown} />
+        {allShownSelected ? 'Clear all' : `Select ${Math.min(items.length, selectionLimit)}`}
+      </label>
+      <span class="text-sm text-gray-500 dark:text-gray-400" aria-live="polite">
+        {selectedItems.length.toLocaleString()} selected
+      </span>
+      {#if queueState === 'unknown'}
+        <button
+          class="min-h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white disabled:opacity-45"
+          type="button"
+          disabled={selectedItems.length === 0 || Boolean(reviewing)}
+          onclick={() => openAssignment(selectedItems)}>Assign</button
+        >
+        <button
+          class="min-h-10 rounded-xl border border-gray-300 px-3 text-sm font-semibold disabled:opacity-45 dark:border-immich-dark-gray"
+          type="button"
+          disabled={selectedItems.length === 0 || Boolean(reviewing)}
+          onclick={() => void reviewItems(selectedItems, 'ignore')}>Ignore</button
+        >
+      {:else}
+        <button
+          class="min-h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white disabled:opacity-45"
+          type="button"
+          disabled={selectedItems.length === 0 || Boolean(reviewing)}
+          onclick={() => void reviewItems(selectedItems, 'restore')}>Restore</button
+        >
+      {/if}
+      <button
+        class="min-h-10 rounded-xl border border-red-300 px-3 text-sm font-semibold text-red-700 disabled:opacity-45 dark:border-red-900 dark:text-red-300"
+        type="button"
+        disabled={selectedItems.length === 0 || Boolean(reviewing)}
+        onclick={() => void reviewItems(selectedItems, 'reject')}>False Match</button
+      >
+    </div>
+
+    {#if reviewError}
+      <p
+        class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
+        role="alert"
+      >
+        {errorCopy(reviewError)}
+      </p>
+    {/if}
+
     <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {#each items as observation (observation.observationId)}
         <article
-          class="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+          class={[
+            'relative min-w-0 overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-immich-dark-bg',
+            selectedIds.has(observation.observationId)
+              ? 'border-primary ring-2 ring-primary/30'
+              : 'border-gray-200 dark:border-immich-dark-gray',
+          ]}
         >
+          <label
+            class="absolute top-3 right-3 z-10 flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/65 text-white backdrop-blur-sm"
+          >
+            <input
+              type="checkbox"
+              checked={selectedIds.has(observation.observationId)}
+              aria-label={`Select ${observation.filename || 'Pet detection'}`}
+              onchange={() => toggleSelection(observation.observationId)}
+            />
+          </label>
           <a
             class="group relative block aspect-4/3 overflow-hidden bg-gray-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary dark:bg-immich-dark-gray"
             href={`/photos/${observation.sourceAssetId}`}
@@ -343,25 +470,52 @@
               <p class="truncate font-semibold" title={observation.filename || 'Photo'}>
                 {observation.filename || 'Photo'}
               </p>
-              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">No identity cleared the matching threshold</p>
-              <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">Choose an existing Pet or create a new one.</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {queueState === 'unknown' ? 'No identity cleared the matching threshold' : 'Ignored by you'}
+              </p>
+              <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                {queueState === 'unknown'
+                  ? 'Assign, ignore for later, or mark this detector result as a False Match.'
+                  : 'Restore this detection to Unknown when you are ready to review it.'}
+              </p>
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <button
-                class="min-h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
-                type="button"
-                disabled={Boolean(reviewing)}
-                onclick={() => openAssignment(observation)}
-                >{reviewing === observation.observationId ? 'Saving…' : 'Assign pet'}</button
-              >
-              <button
-                class="min-h-10 rounded-xl border border-gray-300 px-3 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-60 dark:border-immich-dark-gray"
-                type="button"
-                disabled={Boolean(reviewing)}
-                onclick={() => void reviewUnknown(observation, 'reject')}
-                >Not a {observation.speciesKind.replace('_', ' ')}</button
-              >
-            </div>
+            {#if queueState === 'unknown'}
+              <div class="grid grid-cols-3 gap-2">
+                <button
+                  class="min-h-10 rounded-xl bg-primary px-2 text-sm font-semibold text-white disabled:opacity-60"
+                  type="button"
+                  disabled={Boolean(reviewing)}
+                  onclick={() => openAssignment([observation])}>Assign</button
+                >
+                <button
+                  class="min-h-10 rounded-xl border border-gray-300 px-2 text-sm font-semibold disabled:opacity-60 dark:border-immich-dark-gray"
+                  type="button"
+                  disabled={Boolean(reviewing)}
+                  onclick={() => void reviewItems([observation], 'ignore')}>Ignore</button
+                >
+                <button
+                  class="min-h-10 rounded-xl border border-red-300 px-2 text-sm font-semibold text-red-700 disabled:opacity-60 dark:border-red-900 dark:text-red-300"
+                  type="button"
+                  disabled={Boolean(reviewing)}
+                  onclick={() => void reviewItems([observation], 'reject')}>False Match</button
+                >
+              </div>
+            {:else}
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  class="min-h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white disabled:opacity-60"
+                  type="button"
+                  disabled={Boolean(reviewing)}
+                  onclick={() => void reviewItems([observation], 'restore')}>Restore</button
+                >
+                <button
+                  class="min-h-10 rounded-xl border border-red-300 px-3 text-sm font-semibold text-red-700 disabled:opacity-60 dark:border-red-900 dark:text-red-300"
+                  type="button"
+                  disabled={Boolean(reviewing)}
+                  onclick={() => void reviewItems([observation], 'reject')}>False Match</button
+                >
+              </div>
+            {/if}
           </div>
         </article>
       {/each}
@@ -371,7 +525,9 @@
 
 {#if assignmentObservation}
   <Modal
-    title={`Assign possible ${assignmentObservation.speciesKind.replace('_', ' ')}`}
+    title={assignmentObservations.length === 1
+      ? `Assign possible ${assignmentObservation.speciesKind.replace('_', ' ')}`
+      : `Assign ${assignmentObservations.length.toLocaleString()} detections`}
     icon={mdiPawOutline}
     size="medium"
     onOpenAutoFocus={(event) => {
@@ -406,14 +562,18 @@
               {assignmentObservation.filename || 'Photo'}
             </p>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              The detector found a {assignmentObservation.speciesKind.replace('_', ' ')}. You decide the identity.
+              {assignmentObservations.length === 1
+                ? `The detector found a ${assignmentObservation.speciesKind.replace('_', ' ')}. You decide the identity.`
+                : `This preview represents ${assignmentObservations.length.toLocaleString()} selected detections. They will all be assigned to the same Pet.`}
             </p>
           </div>
         </div>
 
         <Field
           label="Species"
-          description={`Detected as ${assignmentObservation.speciesKind.replace('_', ' ')} · change this if the detector is wrong`}
+          description={assignmentObservations.length === 1
+            ? `Detected as ${assignmentObservation.speciesKind.replace('_', ' ')} · change this if the detector is wrong`
+            : 'Choose the owner-correct species for every selected detection'}
         >
           <Select bind:value={createSpeciesKind} options={speciesOptions} />
         </Field>
@@ -508,7 +668,7 @@
                   title={assignmentQuery ? 'No matching pets' : 'No compatible pets yet'}
                   description={assignmentQuery
                     ? 'Try another name or switch to Create new.'
-                    : `Create the first ${(createSpeciesKind || assignmentObservation.speciesKind).replace('_', ' ')} Pet for this photo.`}
+                    : `Create the first ${(createSpeciesKind || assignmentObservation.speciesKind).replace('_', ' ')} Pet for this selection.`}
                 />
               {/each}
             </div>
@@ -565,7 +725,15 @@
         onclick={() => void submitAssignment()}
       >
         <Icon icon={assignmentMode === 'existing' ? mdiCheck : mdiPlus} size="18" />
-        {isCreating || reviewing ? 'Saving…' : assignmentMode === 'existing' ? 'Assign pet' : 'Create and assign'}
+        {isCreating || reviewing
+          ? 'Saving…'
+          : assignmentMode === 'existing'
+            ? assignmentObservations.length === 1
+              ? 'Assign'
+              : `Assign ${assignmentObservations.length}`
+            : assignmentObservations.length === 1
+              ? 'Create and assign'
+              : `Create and assign ${assignmentObservations.length}`}
       </button>
     </ModalFooter>
   </Modal>

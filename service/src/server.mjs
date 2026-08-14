@@ -1766,13 +1766,14 @@ export const createCimmichServer = ({
           200,
           await repository.petMatchUnknown({
             limit: url.searchParams.get("limit"),
+            state: url.searchParams.get("state"),
           }),
           allowedOrigin,
         );
         return;
       }
       const petMatchUnknownReview = url.pathname.match(
-        /^\/v1\/pets\/matching\/unknown\/([^/]+)\/(assign|reject)$/,
+        /^\/v1\/pets\/matching\/unknown\/([^/]+)\/(assign|ignore|reject|restore)$/,
       );
       if (request.method === "POST" && petMatchUnknownReview) {
         requireProjection("pets");

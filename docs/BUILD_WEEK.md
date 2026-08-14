@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 133 without rewriting the schema-128
+Public Beta development continues on schema 134 without rewriting the schema-128
 Community Preview 8 release. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
@@ -30,6 +30,8 @@ inside People marked Needs attention—for human review without accepting
 identity. Unmeasured legacy quality remains distinct from an explicit poor
 quality score, so a newly split Person can regain conservative Prime matcher
 photos from confirmed archive Faces.
+Schema 134 separates reversible owner Ignore from terminal Pet False Match and
+keeps ignored detections in a dedicated restorable review queue.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

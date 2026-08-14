@@ -180,6 +180,23 @@ integrationTest(
       assert.equal(speciesCorrected.detectedSpeciesKind, "dog");
       assert.equal(speciesCorrected.assignedSpeciesKind, "cat");
       assert.equal(speciesCorrected.speciesCorrected, true);
+      const ignored = await store.resolveUnknown({
+        action: "ignore",
+        actorId: "integration-test",
+        commandId: "petmatchunknownignore_test_0001",
+        observationId: "petobservation_not_dog_test",
+      });
+      assert.equal(ignored.action, "ignore");
+      assert.equal((await store.status()).ignored, 1);
+      assert.equal((await store.unknown({ state: "ignored" })).items.length, 1);
+      const restored = await store.resolveUnknown({
+        action: "restore",
+        actorId: "integration-test",
+        commandId: "petmatchunknownrestore_test_0001",
+        observationId: "petobservation_not_dog_test",
+      });
+      assert.equal(restored.action, "restore");
+      assert.equal((await store.status()).ignored, 0);
       const rejected = await store.resolveUnknown({
         action: "reject",
         actorId: "integration-test",
