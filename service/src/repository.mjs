@@ -74,6 +74,7 @@ import {
 } from "./explore-facets.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
 import * as personPage from "./person-page-projections.mjs";
+import { createPersonNameStore } from "./person-names.mjs";
 import {
   readAcceptedPhysicalFaceClaims,
   readVisibleCanonicalPhysicalFace,
@@ -958,6 +959,15 @@ export const createCimmichRepository = (
   const exploreFacets = createExploreFacetStore(sql, {
     presentationRank,
     requireVisibleSubject,
+  });
+  const personNames = createPersonNameStore({
+    cleanActor,
+    cleanAliasKind,
+    cleanPersonName,
+    ensureUserCommandReceipt,
+    requireVisibleSubject,
+    sql,
+    userCommandReceiptId,
   });
   const machineSuggestionSnapshot = createMachineSuggestionSnapshot();
   const invalidateMachineSuggestions = machineSuggestionSnapshot.invalidate;
@@ -4187,274 +4197,6 @@ export const createCimmichRepository = (
         });
       }
       return projectPersonPresentation(bridge, row);
-    },
-
-    async personSetup({ personId }) {
-      await requireVisibleSubject(personId);
-      const [person] = await sql`
-      SELECT person_id, display_name, status, aliases, subject_kind, current_revision
-      FROM current_person
-      WHERE person_id = ${String(personId || "")}
-      LIMIT 1
-    `;
-      if (!person)
-        throw Object.assign(new Error("Cimmich identity not found"), {
-          statusCode: 404,
-        });
-      const aliases = await sql`
-      SELECT alias_id, label, alias_kind, source_system, source_subject_id, created_at
-      FROM person_alias
-      WHERE person_id = ${person.person_id} AND state = 'active'
-      ORDER BY created_at, alias_id
-    `;
-      const merges = await sql`
-      SELECT operation.merge_operation_id, operation.source_person_id,
-        source.display_name AS source_display_name, operation.created_at
-      FROM person_merge_operation operation
-      JOIN person source ON source.person_id = operation.source_person_id
-      WHERE operation.target_person_id = ${person.person_id} AND operation.state = 'active'
-      ORDER BY operation.created_at DESC, operation.merge_operation_id DESC
-    `;
-      const categories = await sql`
-      SELECT category_id, slug, name, category_kind, sort_order
-      FROM current_person_category
-      WHERE person_id = ${person.person_id}
-      ORDER BY sort_order, name
-    `;
-      const categoryCatalog = await sql`
-      SELECT category_id, slug, name, category_kind, sort_order
-      FROM person_category
-      WHERE state = 'active'
-      ORDER BY sort_order, name
-    `;
-      return {
-        ...person,
-        alias_items: aliases,
-        categories,
-        category_catalog: categoryCatalog,
-        merges,
-      };
-    },
-
-    async setPersonCategory({ actorId, categoryId, personId, selected }) {
-      await requireVisibleSubject(personId);
-      const actor = cleanActor(actorId);
-      if (!actor)
-        throw Object.assign(new Error("Missing Cimmich actor"), {
-          statusCode: 400,
-        });
-      const result = await sql.begin(async (tx) => {
-        const [person] = await tx`
-        SELECT person_id, subject_kind FROM person
-        WHERE person_id = ${String(personId || "")} AND status = 'active'
-        FOR UPDATE
-      `;
-        if (!person)
-          throw Object.assign(new Error("Active Cimmich identity not found"), {
-            statusCode: 404,
-          });
-        const [category] = await tx`
-        SELECT category_id, slug, name, category_kind, sort_order
-        FROM person_category
-        WHERE category_id = ${String(categoryId || "")} AND state = 'active'
-      `;
-        if (!category)
-          throw Object.assign(new Error("Active Person category not found"), {
-            statusCode: 404,
-          });
-        if (category.slug === "holding" && person.subject_kind !== "person") {
-          throw Object.assign(
-            new Error("Only a human identity can be placed in Holding"),
-            {
-              statusCode: 409,
-            },
-          );
-        }
-        const [current] = await tx`
-        SELECT category_id FROM current_person_category
-        WHERE person_id = ${person.person_id} AND category_id = ${category.category_id}
-      `;
-        const shouldSelect = selected === true;
-        if (category.slug === "sort" && !shouldSelect) {
-          const [holding] = await tx`
-          SELECT category_id FROM current_person_category
-          WHERE person_id = ${person.person_id} AND slug = 'holding'
-          LIMIT 1
-        `;
-          if (holding) {
-            throw Object.assign(
-              new Error("Remove Holding before removing Sort"),
-              {
-                statusCode: 409,
-              },
-            );
-          }
-        }
-        if (Boolean(current) === shouldSelect) {
-          return {
-            category,
-            changed: false,
-            personId: person.person_id,
-            selected: shouldSelect,
-          };
-        }
-        await ensureUserCommandReceipt(tx);
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        const membershipEventId = `categoryevent_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-        INSERT INTO decision (
-          decision_id, subject_type, subject_id, action, actor_kind, actor_id,
-          reason_code, note, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${decisionId}, 'person_category', ${membershipEventId}, ${shouldSelect ? "pin" : "demote"},
-          'user', ${actor}, ${
-            category.slug === "holding"
-              ? "identity_holding_workflow"
-              : category.slug === "sort"
-                ? "identity_sort_trust"
-                : "identity_relationship_category"
-          },
-          ${`${shouldSelect ? "Add" : "Remove"} ${category.name} category`},
-          ${userCommandReceiptId}, 'private'
-        )
-      `;
-        await tx`
-        INSERT INTO person_category_membership_event (
-          membership_event_id, person_id, category_id, action, actor_kind, actor_id,
-          decision_id, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${membershipEventId}, ${person.person_id}, ${category.category_id},
-          ${shouldSelect ? "add" : "remove"}, 'user', ${actor}, ${decisionId},
-          ${userCommandReceiptId}, 'private'
-        )
-      `;
-        await tx`UPDATE person SET current_revision = current_revision + 1 WHERE person_id = ${person.person_id}`;
-        return {
-          category,
-          changed: true,
-          decisionId,
-          personId: person.person_id,
-          selected: shouldSelect,
-        };
-      });
-      const maintenancePending =
-        result.changed && result.category.slug === "holding" && !result.selected
-          ? await refreshPrimeAfterCommand(sql, result.personId)
-          : false;
-      return { ...result, maintenancePending };
-    },
-
-    async addPersonAlias({
-      actorId,
-      aliasKind,
-      label,
-      personId,
-      sourceSubjectId = "",
-      sourceSystem = "",
-    }) {
-      const actor = cleanActor(actorId);
-      if (!actor)
-        throw Object.assign(new Error("Missing Cimmich actor"), {
-          statusCode: 400,
-        });
-      const cleanLabel = cleanPersonName(label);
-      const kind = cleanAliasKind(aliasKind);
-      return sql.begin(async (tx) => {
-        const [person] = await tx`
-        SELECT person_id, display_name FROM person
-        WHERE person_id = ${String(personId || "")} AND status = 'active'
-        FOR UPDATE
-      `;
-        if (!person)
-          throw Object.assign(new Error("Active Cimmich identity not found"), {
-            statusCode: 404,
-          });
-        const [existing] = await tx`
-        SELECT alias_id, label, alias_kind
-        FROM person_alias
-        WHERE person_id = ${person.person_id} AND state = 'active' AND lower(label) = lower(${cleanLabel})
-        LIMIT 1
-      `;
-        if (
-          existing ||
-          String(person.display_name || "").toLowerCase() ===
-            cleanLabel.toLowerCase()
-        ) {
-          return {
-            alias: existing || null,
-            changed: false,
-            personId: person.person_id,
-          };
-        }
-        await ensureUserCommandReceipt(tx);
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        const aliasId = `alias_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-        INSERT INTO decision (
-          decision_id, subject_type, subject_id, action, actor_kind, actor_id,
-          reason_code, note, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${decisionId}, 'person_alias', ${aliasId}, 'rename', 'user', ${actor},
-          'identity_setup_alias_add', ${`Add ${kind} alias ${cleanLabel}`},
-          ${userCommandReceiptId}, 'private'
-        )
-      `;
-        const [alias] = await tx`
-        INSERT INTO person_alias (
-          alias_id, person_id, label, alias_kind, state, source_system,
-          source_subject_id, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${aliasId}, ${person.person_id}, ${cleanLabel}, ${kind}, 'active',
-          ${String(sourceSystem || "").trim() || null}, ${String(sourceSubjectId || "").trim() || null},
-          ${userCommandReceiptId}, 'private'
-        )
-        RETURNING alias_id, label, alias_kind, source_system, source_subject_id, created_at
-      `;
-        await tx`UPDATE person SET current_revision = current_revision + 1 WHERE person_id = ${person.person_id}`;
-        return { alias, changed: true, decisionId, personId: person.person_id };
-      });
-    },
-
-    async removePersonAlias({ actorId, aliasId, personId }) {
-      const actor = cleanActor(actorId);
-      if (!actor)
-        throw Object.assign(new Error("Missing Cimmich actor"), {
-          statusCode: 400,
-        });
-      return sql.begin(async (tx) => {
-        const [alias] = await tx`
-        SELECT alias_id, label FROM person_alias
-        WHERE alias_id = ${String(aliasId || "")} AND person_id = ${String(personId || "")} AND state = 'active'
-        FOR UPDATE
-      `;
-        if (!alias) return { aliasId, changed: false, personId };
-        const [person] =
-          await tx`SELECT person_id FROM person WHERE person_id = ${personId} AND status = 'active' FOR UPDATE`;
-        if (!person)
-          throw Object.assign(new Error("Active Cimmich identity not found"), {
-            statusCode: 404,
-          });
-        await ensureUserCommandReceipt(tx);
-        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
-        await tx`
-        INSERT INTO decision (
-          decision_id, subject_type, subject_id, action, actor_kind, actor_id,
-          reason_code, note, producer_receipt_id, privacy_class
-        ) VALUES (
-          ${decisionId}, 'person_alias', ${alias.alias_id}, 'rename', 'user', ${actor},
-          'identity_setup_alias_remove', ${`Remove alias ${alias.label}`},
-          ${userCommandReceiptId}, 'private'
-        )
-      `;
-        await tx`UPDATE person_alias SET state = 'removed' WHERE alias_id = ${alias.alias_id}`;
-        await tx`UPDATE person SET current_revision = current_revision + 1 WHERE person_id = ${person.person_id}`;
-        return {
-          aliasId: alias.alias_id,
-          changed: true,
-          decisionId,
-          personId: person.person_id,
-        };
-      });
     },
 
     async setPersonSubjectKind({ actorId, personId, subjectKind }) {
@@ -10201,6 +9943,7 @@ export const createCimmichRepository = (
     bulkReassignFaceIdentities: personMatchRefresh.bulkReassignFaceIdentities,
   };
   Object.assign(repository, observationCorrections);
+  Object.assign(repository, personNames);
   Object.assign(repository, archiveIntegrity);
   Object.assign(repository, assetLabels);
   Object.assign(repository, bulkAlbumOperations);

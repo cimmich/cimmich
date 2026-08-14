@@ -3744,9 +3744,6 @@ export const bulkRejectCimmichPersonCandidates = (personId: string, claimIds: st
     rejectedCount: number;
   }>(personId, claimIds, 'reject');
 
-export const getCimmichPersonSetup = (personId: string) =>
-  request<CimmichPersonSetup>(`/v1/people/${encodeURIComponent(personId)}/setup`);
-
 export const getCimmichPersonProfile = (personId: string) =>
   request<CimmichPersonProfileProjection>(`/v1/people/${encodeURIComponent(personId)}/profile`);
 
@@ -3878,30 +3875,6 @@ export const patchCimmichPersonDetailsDisplay = (
     headers: { 'x-cimmich-actor': 'local-operator' },
     method: 'PATCH',
   });
-
-export const addCimmichPersonAlias = (
-  personId: string,
-  label: string,
-  aliasKind: 'former_name' | 'imported' | 'nickname',
-) =>
-  request<{ alias: CimmichPersonAlias; changed: boolean; personId: string }>(
-    `/v1/people/${encodeURIComponent(personId)}/aliases`,
-    {
-      body: JSON.stringify({ aliasKind, label }),
-      headers: { 'x-cimmich-actor': 'local-operator' },
-      method: 'POST',
-    },
-  );
-
-export const removeCimmichPersonAlias = (personId: string, aliasId: string) =>
-  request<{ aliasId: string; changed: boolean; personId: string }>(
-    `/v1/people/${encodeURIComponent(personId)}/aliases/${encodeURIComponent(aliasId)}/remove`,
-    {
-      body: '{}',
-      headers: { 'x-cimmich-actor': 'local-operator' },
-      method: 'POST',
-    },
-  );
 
 export const setCimmichPersonSubjectKind = (personId: string, subjectKind: 'person' | 'pet') =>
   request<{ changed: boolean; personId: string; subjectKind: 'person' | 'pet' }>(

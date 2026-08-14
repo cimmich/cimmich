@@ -14,6 +14,7 @@ import {
   personAssetRequestFromUrl,
 } from "./explore-routes.mjs";
 import { matchPossiblePeopleRoutes } from "./possible-people-routes.mjs";
+import { routePersonNames } from "./person-name-routes.mjs";
 import {
   enforceOwnerGatewayRequest,
   handleOwnerSessionAuthRequest,
@@ -2882,56 +2883,18 @@ export const createCimmichServer = ({
         );
         return;
       }
-      const personSetupMatch = url.pathname.match(
-        /^\/v1\/people\/([^/]+)\/setup$/,
-      );
-      if (request.method === "GET" && personSetupMatch) {
-        sendJson(
-          response,
-          200,
-          await repository.personSetup({
-            personId: decodeURIComponent(personSetupMatch[1]),
-          }),
+      if (
+        await routePersonNames({
           allowedOrigin,
-        );
-        return;
-      }
-      const personAliasesMatch = url.pathname.match(
-        /^\/v1\/people\/([^/]+)\/aliases$/,
-      );
-      if (request.method === "POST" && personAliasesMatch) {
-        const body = await readJsonBody(request);
-        sendJson(
+          readJsonBody,
+          repository,
+          request,
           response,
-          200,
-          await repository.addPersonAlias({
-            actorId: request.headers["x-cimmich-actor"],
-            aliasKind: body.aliasKind,
-            label: body.label,
-            personId: decodeURIComponent(personAliasesMatch[1]),
-            sourceSubjectId: body.sourceSubjectId,
-            sourceSystem: body.sourceSystem,
-          }),
-          allowedOrigin,
-        );
+          sendJson,
+          url,
+        })
+      )
         return;
-      }
-      const personAliasRemoveMatch = url.pathname.match(
-        /^\/v1\/people\/([^/]+)\/aliases\/([^/]+)\/remove$/,
-      );
-      if (request.method === "POST" && personAliasRemoveMatch) {
-        sendJson(
-          response,
-          200,
-          await repository.removePersonAlias({
-            actorId: request.headers["x-cimmich-actor"],
-            aliasId: decodeURIComponent(personAliasRemoveMatch[2]),
-            personId: decodeURIComponent(personAliasRemoveMatch[1]),
-          }),
-          allowedOrigin,
-        );
-        return;
-      }
       const personKindMatch = url.pathname.match(
         /^\/v1\/people\/([^/]+)\/subject-kind$/,
       );

@@ -9,6 +9,7 @@
   import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
   import CimmichPersonPhotoViewToggle from '$lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte';
   import CimmichPersonMatchRefresh from '$lib/components/cimmich/CimmichPersonMatchRefresh.svelte';
+  import CimmichPersonNamesEditor from '$lib/components/cimmich/CimmichPersonNamesEditor.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
@@ -105,9 +106,9 @@
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { Route } from '$lib/route';
+  import { getCimmichPersonSetup } from '$lib/services/cimmich-person-names.service';
   import {
     acceptCimmichMachineSuggestion,
-    addCimmichPersonAlias,
     bulkAcceptCimmichPersonCandidates,
     bulkRejectCimmichPersonCandidates,
     CimmichServiceError,
@@ -134,13 +135,11 @@
     getCimmichPersonEvidenceCoverage,
     getCimmichPersonCandidates,
     getCimmichPersonProfile,
-    getCimmichPersonSetup,
     mergeCimmichPeople,
     markCimmichFaceNotFace,
     moveCimmichIdentityFace,
     rejectCimmichAcceptedIdentity,
     rescanCimmichHeadEvidence,
-    removeCimmichPersonAlias,
     setCimmichFaceBucket,
     setCimmichFaceIdentitiesBatch,
     setCimmichFaceModifier,
@@ -372,8 +371,6 @@
   let cimmichConnectionUndoDecisionId = $state('');
   let cimmichProfileError = $state('');
   let cimmichSetup = $state<CimmichPersonSetup>();
-  let cimmichSetupAliasDraft = $state('');
-  let cimmichSetupAliasKind = $state<'former_name' | 'imported' | 'nickname'>('nickname');
   let cimmichSetupError = $state('');
   let cimmichSetupLoading = $state(false);
   let cimmichSetupMergePersonId = $state('');
@@ -2460,39 +2457,6 @@
       if (generation === personProjectionGeneration) {
         cimmichConnectionError = error instanceof Error ? error.message : 'Unable to load connections';
       }
-    }
-  };
-
-  const addSetupAlias = async () => {
-    if (!cimmichPerson || !cimmichSetupAliasDraft.trim()) {
-      return;
-    }
-    cimmichSetupSaving = 'alias:add';
-    cimmichSetupError = '';
-    try {
-      await addCimmichPersonAlias(cimmichPerson.person_id, cimmichSetupAliasDraft, cimmichSetupAliasKind);
-      cimmichSetupAliasDraft = '';
-      await refreshCimmichSetup();
-    } catch (error) {
-      cimmichSetupError = error instanceof Error ? error.message : 'Unable to add name';
-    } finally {
-      cimmichSetupSaving = '';
-    }
-  };
-
-  const removeSetupAlias = async (aliasId: string) => {
-    if (!cimmichPerson) {
-      return;
-    }
-    cimmichSetupSaving = `alias:${aliasId}`;
-    cimmichSetupError = '';
-    try {
-      await removeCimmichPersonAlias(cimmichPerson.person_id, aliasId);
-      await refreshCimmichSetup();
-    } catch (error) {
-      cimmichSetupError = error instanceof Error ? error.message : 'Unable to remove name';
-    } finally {
-      cimmichSetupSaving = '';
     }
   };
 
@@ -5130,61 +5094,12 @@
                 />
               {/if}
             </article>
-            <article class="rounded-lg border border-gray-200 p-4 dark:border-immich-dark-gray">
-              <h2 class="text-lg font-semibold">Names</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Keep one display name and every name this identity is known by.
-              </p>
-
-              <div class="mt-4 flex flex-wrap gap-2">
-                <span
-                  class="rounded-full bg-gray-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-gray-100 dark:text-black"
-                >
-                  {cimmichSetup.display_name} · display
-                </span>
-                {#each cimmichSetup.alias_items as alias (alias.alias_id)}
-                  <span
-                    class="inline-flex items-center gap-1 rounded-full bg-gray-100 py-1 pr-1 pl-3 text-sm dark:bg-immich-dark-gray"
-                  >
-                    <span>{alias.label} · {alias.alias_kind.replace('_', ' ')}</span>
-                    <button
-                      class="rounded-full px-2 py-0.5 text-gray-500 hover:bg-red-100 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950 dark:hover:text-red-200"
-                      type="button"
-                      aria-label={`Remove ${alias.label}`}
-                      disabled={Boolean(cimmichSetupSaving)}
-                      onclick={() => void removeSetupAlias(alias.alias_id)}>×</button
-                    >
-                  </span>
-                {/each}
-              </div>
-
-              <div class="mt-4 grid gap-2 sm:grid-cols-[1fr_150px_auto]">
-                <input
-                  class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-immich-dark-gray dark:bg-immich-dark-gray"
-                  placeholder="Add another name"
-                  bind:value={cimmichSetupAliasDraft}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter') {
-                      void addSetupAlias();
-                    }
-                  }}
-                />
-                <select
-                  class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary dark:border-immich-dark-gray dark:bg-immich-dark-gray"
-                  bind:value={cimmichSetupAliasKind}
-                >
-                  <option value="nickname">Nickname</option>
-                  <option value="former_name">Former name</option>
-                  <option value="imported">Imported name</option>
-                </select>
-                <button
-                  class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-50 dark:bg-gray-100 dark:text-black"
-                  type="button"
-                  disabled={!cimmichSetupAliasDraft.trim() || Boolean(cimmichSetupSaving)}
-                  onclick={() => void addSetupAlias()}>{cimmichSetupSaving === 'alias:add' ? 'Adding…' : 'Add'}</button
-                >
-              </div>
-            </article>
+            <CimmichPersonNamesEditor
+              disabled={Boolean(cimmichSetupSaving)}
+              onchanged={refreshCimmichSetup}
+              personId={cimmichPerson.person_id}
+              setup={cimmichSetup}
+            />
 
             <article class="rounded-lg border border-gray-200 p-4 dark:border-immich-dark-gray">
               <h2 class="text-lg font-semibold">Categories</h2>
