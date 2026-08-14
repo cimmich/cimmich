@@ -53,7 +53,9 @@ export class CimmichIdentityAuditCorrectionController {
       })),
     ];
     return options.filter(
-      ({ personId }, index) => options.findIndex((option) => option.personId === personId) === index,
+      ({ personId }, index) =>
+        options.findIndex((option) => option.personId === personId) === index &&
+        !(item.evidenceRoute === 'own_cluster_outlier' && personId === item.assignedPerson?.personId),
     );
   }
 

@@ -196,6 +196,9 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('max-h-[75vh]');
     expect(source).not.toContain('onclick={() => void dismissCimmichAuditMatch(item)}');
     expect(source).toContain('aria-label="Likely identity matches"');
+    expect(source).toMatch(
+      /item\.evidenceRoute === 'own_cluster_outlier'[\s\S]+personId === item\.assignedPerson\?\.personId/,
+    );
     expect(source).toContain('placeholder="Type a name"');
     expect(source).toContain('cimmichIdentityAuditCorrection.searchResults(item)');
     expect(source).toContain('<CimmichUnknownPersonAction');
