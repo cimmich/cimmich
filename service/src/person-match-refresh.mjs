@@ -310,10 +310,17 @@ export const createPersonMatchRefresher = ({
         ON COMMIT DROP AS
         SELECT DISTINCT accepted_face.asset_id
         FROM cimmich_person_match_refresh_physical_identity accepted
-        JOIN current_matchable_physical_face accepted_face
-          ON accepted_face.physical_face_id = accepted.physical_face_id
+        JOIN face_observation accepted_face
+          ON accepted_face.face_id = accepted.canonical_face_id
+          AND accepted_face.state = 'valid'
+        LEFT JOIN physical_face_member reconciliation_member
+          ON reconciliation_member.face_id = accepted.canonical_face_id
+        LEFT JOIN physical_face reconciliation
+          ON reconciliation.physical_face_id =
+            reconciliation_member.physical_face_id
         WHERE accepted.person_id = ${id}
           AND accepted.state = 'accepted'
+          AND coalesce(reconciliation.state, 'singleton') <> 'conflict'
       `;
       await tx`
         CREATE UNIQUE INDEX cimmich_person_match_refresh_target_asset_key

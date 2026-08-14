@@ -40,6 +40,10 @@ test("Person matcher refresh is bounded and human-review-only", async () => {
   assert.match(source, /claim\.person_id = bucket\.person_id/);
   assert.match(source, /cimmich_person_match_refresh_physical_identity/);
   assert.match(source, /cimmich_person_match_refresh_target_accepted_asset/);
+  assert.doesNotMatch(
+    source,
+    /JOIN current_matchable_physical_face accepted_face/,
+  );
   assert.match(source, /'search_pool', 'unassigned_or_needs_attention'/);
   assert.match(source, /category\.slug IN \('sort', 'holding'\)/);
   assert.match(source, /target_score >= \$\{Number\(pack\.score_floor\)\}/);
