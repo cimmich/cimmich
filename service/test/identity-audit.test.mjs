@@ -722,7 +722,7 @@ test("full audit bounds both comparison frontiers deterministically and reports 
   // Truncation is observable, never silent, and the default is a finite
   // production frontier rather than a diagnostic-scale near-unbounded scan.
   assert.match(scoringSource, /IDENTITY_AUDIT_QUERY_FRONTIER_TRUNCATED/);
-  assert.equal(identityAuditQueryFrontierLimit, 5_000);
+  assert.equal(identityAuditQueryFrontierLimit, 1_000);
   assert.equal(identityAuditIndependenceComparisonLimit, 100);
 });
 

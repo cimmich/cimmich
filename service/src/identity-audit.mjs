@@ -21,7 +21,7 @@ export const identityAuditSimilarityEpsilon = 1e-6;
 // The full audit scores every eligible query Face against the whole prime
 // gallery in one statement, which is O(queries x gallery). Larger libraries retain
 // their strongest eligible queries and emit a structured truncation warning.
-export const identityAuditQueryFrontierLimit = 5_000;
+export const identityAuditQueryFrontierLimit = 1_000;
 // Independent-evidence verification runs two provider comparisons per
 // candidate. Bound the normal owner run to 100 strongest candidates (200
 // provider comparisons); controlled diagnostics may supply another limit.
