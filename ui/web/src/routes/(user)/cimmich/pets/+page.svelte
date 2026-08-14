@@ -109,6 +109,7 @@
 
   type RetryCommand = { id: string; payload: string } | null;
   type UndoReceipt = { decisionId: string; petName: string } | null;
+  type UnknownAssignmentMode = 'existing' | 'new';
   type PetPresentationFrame = { centerX: number; centerY: number; zoom: number };
   type PetPresentationDrag = {
     pointerId: number;
@@ -161,8 +162,14 @@
   let petMatchesLoaded = $state(false);
   let petMatchReviewing = $state('');
   let petUnknown = $state<CimmichPetMatchUnknown[]>([]);
+  let petUnknownAssignmentMode = $state<UnknownAssignmentMode>('existing');
+  let petUnknownAssignmentObservation = $state<CimmichPetMatchUnknown | null>(null);
+  let petUnknownAssignmentPetId = $state('');
+  let petUnknownAssignmentQuery = $state('');
+  let petUnknownAssignmentSearchInput = $state<HTMLInputElement | null>(null);
   let petUnknownError = $state<CimmichServiceError | null>(null);
   let petUnknownLoaded = $state(false);
+  let petUnknownReviewCommand = $state<RetryCommand>(null);
   let petUnknownReviewing = $state('');
   let petPresentation = $state<CimmichPetPresentation>();
   let petPresentationDrag = $state<PetPresentationDrag>();
@@ -252,6 +259,18 @@
           (!value || [pet.displayName, pet.description, ...pet.aliases].join(' ').toLocaleLowerCase().includes(value)),
       ),
       sortMode,
+    );
+  });
+
+  const compatibleUnknownPets = $derived.by(() => {
+    if (!petUnknownAssignmentObservation) {
+      return [];
+    }
+    const value = petUnknownAssignmentQuery.trim().toLocaleLowerCase();
+    return pets.filter(
+      (pet) =>
+        pet.speciesKind === petUnknownAssignmentObservation?.speciesKind &&
+        (!value || [pet.displayName, pet.breedLabel, ...pet.aliases].join(' ').toLocaleLowerCase().includes(value)),
     );
   });
 
@@ -410,6 +429,15 @@
       }
       case 'PET_MATCH_SUGGESTION_NOT_FOUND': {
         return 'That suggestion is no longer in the review queue.';
+      }
+      case 'PET_MATCH_UNKNOWN_NOT_FOUND': {
+        return 'That animal detection is no longer in the Unknown queue.';
+      }
+      case 'PET_MATCH_PET_NOT_FOUND': {
+        return 'That Pet is no longer available. Choose another Pet or create a new one.';
+      }
+      case 'PET_MATCH_SPECIES_CONFLICT': {
+        return 'Choose a Pet with the same detected species. If the detector is wrong, dismiss this detection instead.';
       }
       default: {
         return `The local service declined this action (${value.code}).`;
@@ -799,19 +827,21 @@
     }
   };
 
-  const reviewUnknownPet = async (observation: CimmichPetMatchUnknown, action: 'assign' | 'reject', petId?: string) => {
+  const reviewUnknownPet = async (
+    observation: CimmichPetMatchUnknown,
+    action: 'assign' | 'reject',
+    petId?: string,
+  ): Promise<boolean> => {
     if (petUnknownReviewing) {
-      return;
+      return false;
     }
+    const payload = { action, observationId: observation.observationId, petId: petId ?? null };
+    petUnknownReviewCommand = commandFor(petUnknownReviewCommand, `pet-unknown-${action}`, payload);
     petUnknownReviewing = observation.observationId;
     petUnknownError = null;
     try {
-      await reviewCimmichPetMatchUnknown(
-        observation.observationId,
-        action,
-        createCimmichCommandId(`pet-unknown-${action}`),
-        petId,
-      );
+      await reviewCimmichPetMatchUnknown(observation.observationId, action, petUnknownReviewCommand.id, petId);
+      petUnknownReviewCommand = null;
       petUnknown = petUnknown.filter((item) => item.observationId !== observation.observationId);
       if (action === 'assign' && petId) {
         const pet = pets.find((item) => item.petId === petId);
@@ -821,6 +851,7 @@
           void loadPetPreviews(nextPets, petsLoadGeneration);
         }
       }
+      return true;
     } catch (error_) {
       petUnknownError = asServiceError(error_);
       if (
@@ -829,8 +860,99 @@
       ) {
         await loadUnknownPets();
       }
+      return false;
     } finally {
       petUnknownReviewing = '';
+    }
+  };
+
+  const resetCreateFields = (speciesKind: CimmichPetSpeciesKind | '' = '') => {
+    createName = '';
+    createBreedLabel = '';
+    createSpeciesKind = speciesKind;
+    createSpeciesLabel = '';
+    createAliases = '';
+    createDescription = '';
+    createCommand = null;
+  };
+
+  const openUnknownAssignment = (observation: CimmichPetMatchUnknown) => {
+    petUnknownAssignmentObservation = observation;
+    petUnknownAssignmentMode = 'existing';
+    petUnknownAssignmentPetId = '';
+    petUnknownAssignmentQuery = '';
+    petUnknownReviewCommand = null;
+    petUnknownError = null;
+    resetCreateFields(observation.speciesKind);
+  };
+
+  const closeUnknownAssignment = (force = false) => {
+    if (!force && (isCreating || petUnknownReviewing)) {
+      return;
+    }
+    petUnknownAssignmentObservation = null;
+    petUnknownAssignmentPetId = '';
+    petUnknownAssignmentQuery = '';
+    petUnknownReviewCommand = null;
+    petUnknownError = null;
+  };
+
+  const selectUnknownAssignmentMode = (mode: UnknownAssignmentMode) => {
+    petUnknownAssignmentMode = mode;
+    petUnknownAssignmentPetId = '';
+    petUnknownError = null;
+    if (mode === 'new' && petUnknownAssignmentObservation) {
+      resetCreateFields(petUnknownAssignmentObservation.speciesKind);
+    }
+  };
+
+  const submitUnknownAssignment = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const observation = petUnknownAssignmentObservation;
+    if (!observation || petUnknownReviewing || isCreating) {
+      return;
+    }
+
+    if (petUnknownAssignmentMode === 'existing') {
+      if (!petUnknownAssignmentPetId) {
+        return;
+      }
+      if (await reviewUnknownPet(observation, 'assign', petUnknownAssignmentPetId)) {
+        closeUnknownAssignment();
+      }
+      return;
+    }
+
+    const payload = {
+      aliases: parseLabels(createAliases),
+      breedLabel: createBreedLabel.trim() || null,
+      description: createDescription.trim(),
+      displayName: createName.trim(),
+      speciesKind: observation.speciesKind,
+      speciesLabel: null,
+    };
+    if (!payload.displayName) {
+      return;
+    }
+    createCommand = commandFor(createCommand, 'create-from-unknown', {
+      observationId: observation.observationId,
+      ...payload,
+    });
+    isCreating = true;
+    petUnknownError = null;
+    try {
+      const result = await createCimmichPet({ ...payload, commandId: createCommand.id });
+      pets = [...pets.filter((pet) => pet.petId !== result.pet.petId), result.pet].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName),
+      );
+      if (await reviewUnknownPet(observation, 'assign', result.pet.petId)) {
+        createCommand = null;
+        closeUnknownAssignment(true);
+      }
+    } catch (error_) {
+      petUnknownError = asServiceError(error_);
+    } finally {
+      isCreating = false;
     }
   };
 
@@ -934,13 +1056,7 @@
   };
 
   const beginCreate = () => {
-    createName = '';
-    createBreedLabel = '';
-    createSpeciesKind = '';
-    createSpeciesLabel = '';
-    createAliases = '';
-    createDescription = '';
-    createCommand = null;
+    resetCreateFields();
     error = null;
     showCreate = true;
   };
@@ -2596,23 +2712,24 @@
                       <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                         No identity cleared the matching threshold
                       </p>
+                      <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Choose an existing {observation.speciesKind.replace('_', ' ')} or create a new Pet.
+                      </p>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                      {#each pets.filter((pet) => pet.speciesKind === observation.speciesKind) as pet (pet.petId)}
-                        <button
-                          class="min-h-10 flex-1 rounded-xl bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
-                          type="button"
-                          disabled={Boolean(petUnknownReviewing)}
-                          onclick={() => reviewUnknownPet(observation, 'assign', pet.petId)}
-                        >
-                          {petUnknownReviewing === observation.observationId ? 'Saving…' : `This is ${pet.displayName}`}
-                        </button>
-                      {/each}
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        class="min-h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
+                        type="button"
+                        disabled={Boolean(petUnknownReviewing)}
+                        onclick={() => openUnknownAssignment(observation)}
+                      >
+                        {petUnknownReviewing === observation.observationId ? 'Saving…' : 'Assign pet'}
+                      </button>
                       <button
                         class="min-h-10 rounded-xl border border-gray-300 px-3 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-60 dark:border-immich-dark-gray"
                         type="button"
                         disabled={Boolean(petUnknownReviewing)}
-                        onclick={() => reviewUnknownPet(observation, 'reject')}
+                        onclick={() => void reviewUnknownPet(observation, 'reject')}
                       >
                         Not a {observation.speciesKind.replace('_', ' ')}
                       </button>
@@ -2963,6 +3080,219 @@
           {/each}
         </div>
       </ModalBody>
+    </Modal>
+  {/if}
+
+  {#if petUnknownAssignmentObservation}
+    <Modal
+      title={`Assign possible ${petUnknownAssignmentObservation.speciesKind.replace('_', ' ')}`}
+      icon={mdiPawOutline}
+      size="medium"
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        requestAnimationFrame(() => petUnknownAssignmentSearchInput?.focus());
+      }}
+      onClose={closeUnknownAssignment}
+    >
+      <form onsubmit={submitUnknownAssignment}>
+        <ModalBody>
+          <div class="grid gap-5 py-4">
+            <div
+              class="grid gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-3 sm:grid-cols-[9rem_minmax(0,1fr)] dark:border-immich-dark-gray dark:bg-immich-dark-gray/35"
+            >
+              <a
+                class="relative block aspect-4/3 overflow-hidden rounded-xl bg-gray-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-gray-800"
+                href={`/photos/${petUnknownAssignmentObservation.sourceAssetId}`}
+                aria-label={`Open ${petUnknownAssignmentObservation.filename || 'unknown Pet photo'}`}
+              >
+                <img
+                  class="size-full object-contain"
+                  src={getAssetMediaUrl({
+                    id: petUnknownAssignmentObservation.sourceAssetId,
+                    size: AssetMediaSize.Preview,
+                  })}
+                  alt=""
+                />
+                <span
+                  class="pointer-events-none absolute rounded-md border-2 border-dashed border-white/90 bg-primary/5 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+                  style={`left:${petUnknownAssignmentObservation.box.x * 100}%;top:${petUnknownAssignmentObservation.box.y * 100}%;width:${petUnknownAssignmentObservation.box.w * 100}%;height:${petUnknownAssignmentObservation.box.h * 100}%`}
+                  aria-hidden="true"
+                ></span>
+              </a>
+              <div class="min-w-0 self-center">
+                <p class="truncate font-semibold" title={petUnknownAssignmentObservation.filename}>
+                  {petUnknownAssignmentObservation.filename || 'Photo'}
+                </p>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  The detector found a {petUnknownAssignmentObservation.speciesKind.replace('_', ' ')}. You decide the
+                  identity.
+                </p>
+              </div>
+            </div>
+
+            <div
+              class="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 dark:bg-immich-dark-gray"
+              role="tablist"
+              aria-label="Pet assignment destination"
+            >
+              <button
+                class={[
+                  'min-h-10 rounded-lg px-3 text-sm font-semibold transition-colors',
+                  petUnknownAssignmentMode === 'existing'
+                    ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                    : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+                ]}
+                type="button"
+                role="tab"
+                aria-selected={petUnknownAssignmentMode === 'existing'}
+                onclick={() => {
+                  selectUnknownAssignmentMode('existing');
+                  requestAnimationFrame(() => petUnknownAssignmentSearchInput?.focus());
+                }}>Move to</button
+              >
+              <button
+                class={[
+                  'min-h-10 rounded-lg px-3 text-sm font-semibold transition-colors',
+                  petUnknownAssignmentMode === 'new'
+                    ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                    : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+                ]}
+                type="button"
+                role="tab"
+                aria-selected={petUnknownAssignmentMode === 'new'}
+                onclick={() => {
+                  selectUnknownAssignmentMode('new');
+                  requestAnimationFrame(() => createNameInput?.focus());
+                }}>Create new</button
+              >
+            </div>
+
+            {#if petUnknownAssignmentMode === 'existing'}
+              <div class="grid gap-3" role="tabpanel">
+                <label
+                  class="flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 px-3 focus-within:border-primary dark:border-immich-dark-gray"
+                >
+                  <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
+                  <input
+                    bind:this={petUnknownAssignmentSearchInput}
+                    bind:value={petUnknownAssignmentQuery}
+                    class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    type="search"
+                    placeholder="Search compatible pets"
+                    aria-label="Search compatible pets"
+                  />
+                </label>
+                <div class="grid max-h-72 gap-2 overflow-y-auto pr-1">
+                  {#each compatibleUnknownPets as pet (pet.petId)}
+                    <button
+                      class={[
+                        'flex min-h-16 items-center gap-3 rounded-xl border p-2 text-left transition-colors',
+                        petUnknownAssignmentPetId === pet.petId
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-gray-200 hover:border-primary/60 dark:border-immich-dark-gray',
+                      ]}
+                      type="button"
+                      aria-pressed={petUnknownAssignmentPetId === pet.petId}
+                      onclick={() => (petUnknownAssignmentPetId = pet.petId)}
+                    >
+                      <span class="flex size-12 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                        {#if petVisualStyle(pet)}
+                          <span class="block size-full bg-cover bg-center" style={petVisualStyle(pet)}></span>
+                        {:else}
+                          <span class="flex size-full items-center justify-center text-gray-500 dark:text-gray-300">
+                            <Icon icon={getPetPresentation(pet).icon} size="23" />
+                          </span>
+                        {/if}
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-semibold">{pet.displayName}</span>
+                        <span class="block truncate text-xs text-gray-500 dark:text-gray-400">
+                          {pet.breedLabel || `${pet.confirmedMediaCount.toLocaleString()} photos`}
+                        </span>
+                      </span>
+                      {#if petUnknownAssignmentPetId === pet.petId}
+                        <span
+                          class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-white"
+                        >
+                          <Icon icon={mdiCheck} size="17" />
+                        </span>
+                      {/if}
+                    </button>
+                  {:else}
+                    <CimmichStatePanel
+                      title={petUnknownAssignmentQuery ? 'No matching pets' : 'No compatible pets yet'}
+                      description={petUnknownAssignmentQuery
+                        ? 'Try another name or switch to Create new.'
+                        : `Create the first ${petUnknownAssignmentObservation.speciesKind.replace('_', ' ')} Pet for this photo.`}
+                    />
+                  {/each}
+                </div>
+              </div>
+            {:else}
+              <div class="grid gap-4" role="tabpanel">
+                <Field label={$t('name')}>
+                  <Input bind:value={createName} bind:ref={createNameInput} required maxlength={160} />
+                </Field>
+                <div
+                  class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-immich-dark-gray dark:bg-immich-dark-gray/35"
+                >
+                  <p class="text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">Species</p>
+                  <p class="mt-1 text-sm font-semibold capitalize">
+                    {petUnknownAssignmentObservation.speciesKind.replace('_', ' ')}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Kept with the detection so the assignment remains consistent.
+                  </p>
+                </div>
+                <Field label="Aliases" description="Optional · comma-separated">
+                  <Input bind:value={createAliases} placeholder="Nickname, former name" />
+                </Field>
+                <Field label="Breed" description="Optional · entered by you">
+                  <Input bind:value={createBreedLabel} maxlength={120} placeholder="For example, Border Collie" />
+                </Field>
+                <Field label="About" description="Optional">
+                  <Textarea
+                    bind:value={createDescription}
+                    maxlength={2000}
+                    placeholder="A detail that helps you tell them apart"
+                  />
+                </Field>
+              </div>
+            {/if}
+
+            {#if petUnknownError}
+              <p
+                class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
+                role="alert"
+              >
+                {errorCopy(petUnknownError)}
+              </p>
+            {/if}
+          </div>
+        </ModalBody>
+        <ModalFooter class="flex justify-end gap-2">
+          <button
+            class="rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-immich-dark-gray"
+            type="button"
+            onclick={() => closeUnknownAssignment()}
+            disabled={isCreating || Boolean(petUnknownReviewing)}>Cancel</button
+          >
+          <button
+            class="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-45"
+            type="submit"
+            disabled={isCreating ||
+              Boolean(petUnknownReviewing) ||
+              (petUnknownAssignmentMode === 'existing' ? !petUnknownAssignmentPetId : !createName.trim())}
+          >
+            <Icon icon={petUnknownAssignmentMode === 'existing' ? mdiCheck : mdiPlus} size="18" />
+            {isCreating || petUnknownReviewing
+              ? 'Saving…'
+              : petUnknownAssignmentMode === 'existing'
+                ? 'Assign pet'
+                : 'Create and assign'}
+          </button>
+        </ModalFooter>
+      </form>
     </Modal>
   {/if}
 
