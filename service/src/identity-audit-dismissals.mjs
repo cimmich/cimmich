@@ -18,6 +18,7 @@ export const carryForwardIdentityAuditDismissals = async (
         AND prior.audit_kind = current.audit_kind
         AND prior.face_id = current.face_id
         AND prior.suggested_person_id = current.suggested_person_id
+        AND prior.evidence_route = current.evidence_route
         AND prior.assigned_person_id IS NOT DISTINCT FROM
           current.assigned_person_id
         AND prior.review_state = 'dismissed'

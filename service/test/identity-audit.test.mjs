@@ -137,6 +137,7 @@ test("scored identity audit rows persist in one bounded batch", async () => {
   assert.equal(eligible, 5000);
   assert.match(query, /jsonb_to_recordset/);
   assert.match(query, /candidate\.assigned_person_id/);
+  assert.match(query, /candidate\.evidence_route/);
   assert.match(query, /cimmich_probable_same_photo_derivative/);
 });
 
@@ -406,6 +407,7 @@ test("audit items expose the exact trusted references needed for visual review",
     "immich.asset.current-reference",
   );
   assert.equal(result.items[0].suggestedPerson.reference.score, 0.9);
+  assert.equal(result.items[0].evidenceRoute, "cross_person_match");
   assert.equal(result.items[0].suggestedPerson.confidenceBand, "high");
   assert.deepEqual(result.items[0].suggestedPerson.reviewEvidence, {
     independentReferenceCount: 4,

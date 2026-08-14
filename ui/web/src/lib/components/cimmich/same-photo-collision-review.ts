@@ -76,6 +76,7 @@ export const personCandidateReviewItems = (candidates: CimmichIdentityCandidate[
           }
         : null;
     return {
+      evidenceRoute: 'cross_person_match',
       assetId: candidate.asset_id,
       assignedPerson: currentPerson,
       box: { h: candidate.box_h, w: candidate.box_w, x: candidate.box_x, y: candidate.box_y },

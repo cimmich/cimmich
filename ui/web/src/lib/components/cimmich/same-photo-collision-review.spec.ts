@@ -14,6 +14,7 @@ const reviewItem = (faceId: string, assetId = 'asset-1'): CimmichPersonReviewIte
   box: { h: 0.2, w: 0.2, x: 0.1, y: 0.1 },
   captureTime: null,
   detectionConfidence: 0.9,
+  evidenceRoute: 'cross_person_match',
   faceId,
   physicalFaceId: faceId,
   filename: 'photo.jpg',

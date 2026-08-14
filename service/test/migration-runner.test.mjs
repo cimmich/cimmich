@@ -1309,3 +1309,20 @@ test("schema 135 quarantines overlapping XMP neighbour embeddings without changi
   );
   assert.doesNotMatch(source, /UPDATE identity_claim/);
 });
+
+test("schema 136 records own-cluster identity outliers as review-only evidence", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0136_identity_audit_own_cluster_outlier_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /ADD COLUMN evidence_route text NOT NULL/);
+  assert.match(source, /'cross_person_match', 'own_cluster_outlier'/);
+  assert.match(source, /assigned_person_id = suggested_person_id/);
+  assert.match(source, /audit_kind = 'accepted_contradiction'/);
+  assert.doesNotMatch(source, /UPDATE\s+identity_claim/i);
+});

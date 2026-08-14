@@ -1787,6 +1787,7 @@ export type CimmichIdentityAuditItem = {
   currentDecisionId?: string | null;
   currentRevision?: number;
   detectionConfidence: number;
+  evidenceRoute: 'cross_person_match' | 'own_cluster_outlier';
   faceId: string;
   physicalFaceId: string;
   filename: string;

@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-Public Beta development continues on schema 135 without rewriting the schema-128
+Public Beta development continues on schema 136 without rewriting the schema-128
 Community Preview 8 release. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
@@ -36,6 +36,10 @@ Schema 135 binds bounded XMP recognition to the original sidecar region,
 canonicalises accepted-identity audit queries at the physical Face, and
 quarantines proven neighbour-borrowed embeddings without rewriting accepted
 identity.
+Schema 136 adds a second Possible-mistag evidence route for accepted Faces that
+do not resemble even their Person's lower-quality confirmed Faces when no other
+Person wins. It is computed in batched NumPy on the paired Mac, requires a
+supported Person-specific lower-tail outlier, and grants no identity authority.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

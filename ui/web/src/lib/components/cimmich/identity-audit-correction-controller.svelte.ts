@@ -121,7 +121,10 @@ export class CimmichIdentityAuditCorrectionController {
     this.open(item);
   }
 
-  open(item: CimmichPersonReviewItem, targetPersonId = item.suggestedPerson.personId) {
+  open(
+    item: CimmichPersonReviewItem,
+    targetPersonId = item.evidenceRoute === 'own_cluster_outlier' ? '' : item.suggestedPerson.personId,
+  ) {
     this.faceId = item.faceId;
     this.targetPersonIds = { ...this.targetPersonIds, [item.faceId]: targetPersonId };
     this.queries = { ...this.queries, [item.faceId]: '' };

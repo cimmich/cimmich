@@ -4025,20 +4025,29 @@
                                 <span
                                   class="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-800 dark:bg-violet-900 dark:text-violet-100"
                                 >
-                                  {item.kind === 'untagged_match' ? 'Previously untagged' : 'Existing tag disputed'}
+                                  {item.kind === 'untagged_match'
+                                    ? 'Previously untagged'
+                                    : item.evidenceRoute === 'own_cluster_outlier'
+                                      ? 'Own identity outlier'
+                                      : 'Existing tag disputed'}
                                 </span>
                                 <span class="text-xs text-gray-500 dark:text-gray-400">
-                                  Match {item.suggestedPerson.score.toFixed(2)} · {item.margin >
-                                  item.suggestedPerson.score
-                                    ? 'no competing person'
-                                    : `${item.margin.toFixed(2)} ahead of the next person`}
+                                  {item.evidenceRoute === 'own_cluster_outlier'
+                                    ? `Closest confirmed match ${item.suggestedPerson.score.toFixed(2)} · ${item.margin.toFixed(2)} below ${item.assignedPerson?.displayName ?? cimmichPerson.display_name}’s outlier floor`
+                                    : `Match ${item.suggestedPerson.score.toFixed(2)} · ${
+                                        item.margin > item.suggestedPerson.score
+                                          ? 'no competing person'
+                                          : `${item.margin.toFixed(2)} ahead of the next person`
+                                      }`}
                                 </span>
                               </div>
                               <p class="mt-2 line-clamp-2 min-w-0 text-sm/5 font-semibold break-all">{item.filename}</p>
                               <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                                {item.kind === 'accepted_contradiction'
-                                  ? `Currently ${item.assignedPerson?.displayName ?? 'another person'} · Matcher suggests ${item.suggestedPerson.displayName}`
-                                  : `Matcher suggests ${item.suggestedPerson.displayName}`}
+                                {item.evidenceRoute === 'own_cluster_outlier'
+                                  ? `Tagged as ${item.assignedPerson?.displayName ?? cimmichPerson.display_name} · does not resemble this Person’s confirmed Face set`
+                                  : item.kind === 'accepted_contradiction'
+                                    ? `Currently ${item.assignedPerson?.displayName ?? 'another person'} · Matcher suggests ${item.suggestedPerson.displayName}`
+                                    : `Matcher suggests ${item.suggestedPerson.displayName}`}
                               </p>
                             </div>
                             {#if item.suggestedPerson.reference || item.candidateEvidence}
@@ -4050,7 +4059,9 @@
                               >
                                 {cimmichIdentityAuditEvidenceExpanded.includes(item.faceId)
                                   ? 'Hide matching evidence'
-                                  : 'Why this match?'}
+                                  : item.evidenceRoute === 'own_cluster_outlier'
+                                    ? 'Why was this flagged?'
+                                    : 'Why this match?'}
                               </button>
                               {#if cimmichIdentityAuditEvidenceExpanded.includes(item.faceId)}
                                 {#if item.suggestedPerson.reference}
@@ -4065,7 +4076,9 @@
                                       aria-label={`Open confirmed reference for ${item.suggestedPerson.displayName}`}
                                     ></a>
                                     <p class="text-xs/5 text-gray-600 dark:text-gray-300">
-                                      Compared with a confirmed {item.suggestedPerson.displayName} photo.
+                                      {item.evidenceRoute === 'own_cluster_outlier'
+                                        ? `This is the closest other confirmed ${item.suggestedPerson.displayName} Face, including lower-quality accepted Faces; the match still falls outside that Person’s normal lower tail.`
+                                        : `Compared with a confirmed ${item.suggestedPerson.displayName} photo.`}
                                     </p>
                                   </div>
                                 {:else if item.candidateEvidence}
@@ -4102,33 +4115,47 @@
                             {/if}
                             <div class="mt-auto grid min-w-0 grid-cols-2 gap-2">
                               {#if item.kind === 'accepted_contradiction'}
-                                <div class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
+                                {#if item.evidenceRoute === 'own_cluster_outlier'}
                                   <button
-                                    class={[
-                                      'min-h-10 min-w-0 rounded-md p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40',
-                                      cimmichIdentityAuditCorrection.decision(item).targetPersonId ===
-                                      cimmichPerson.person_id
-                                        ? 'bg-immich-primary'
-                                        : 'bg-amber-600',
-                                    ]}
+                                    class="col-span-2 min-h-10 min-w-0 rounded-md bg-amber-600 p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40"
                                     type="button"
-                                    disabled={cimmichIdentityAuditBusyForFace(item.faceId) ||
-                                      !cimmichIdentityAuditCorrection.decision(item).target}
-                                    onclick={() => void changeCimmichAuditPerson(item)}
-                                  >
-                                    {cimmichIdentityAuditFaceSaving(item.faceId)
-                                      ? 'Saving…'
-                                      : cimmichIdentityAuditCorrection.decision(item).label}
-                                  </button>
-                                  <button
-                                    class="min-h-10 rounded-md border border-gray-300 text-lg font-bold disabled:opacity-40 dark:border-gray-600"
-                                    type="button"
-                                    aria-label={`Choose a different person for ${item.filename}`}
-                                    aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
                                     disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
-                                    onclick={() => toggleCimmichIdentityAuditCorrection(item)}>…</button
+                                    aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
+                                    onclick={() => toggleCimmichIdentityAuditCorrection(item)}
                                   >
-                                </div>
+                                    {cimmichIdentityAuditCorrection.faceId === item.faceId
+                                      ? 'Close Person choices'
+                                      : 'Assign the correct Person…'}
+                                  </button>
+                                {:else}
+                                  <div class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2">
+                                    <button
+                                      class={[
+                                        'min-h-10 min-w-0 rounded-md p-2 text-sm/5 font-semibold whitespace-normal text-white disabled:opacity-40',
+                                        cimmichIdentityAuditCorrection.decision(item).targetPersonId ===
+                                        cimmichPerson.person_id
+                                          ? 'bg-immich-primary'
+                                          : 'bg-amber-600',
+                                      ]}
+                                      type="button"
+                                      disabled={cimmichIdentityAuditBusyForFace(item.faceId) ||
+                                        !cimmichIdentityAuditCorrection.decision(item).target}
+                                      onclick={() => void changeCimmichAuditPerson(item)}
+                                    >
+                                      {cimmichIdentityAuditFaceSaving(item.faceId)
+                                        ? 'Saving…'
+                                        : cimmichIdentityAuditCorrection.decision(item).label}
+                                    </button>
+                                    <button
+                                      class="min-h-10 rounded-md border border-gray-300 text-lg font-bold disabled:opacity-40 dark:border-gray-600"
+                                      type="button"
+                                      aria-label={`Choose a different person for ${item.filename}`}
+                                      aria-expanded={cimmichIdentityAuditCorrection.faceId === item.faceId}
+                                      disabled={cimmichIdentityAuditBusyForFace(item.faceId)}
+                                      onclick={() => toggleCimmichIdentityAuditCorrection(item)}>…</button
+                                    >
+                                  </div>
+                                {/if}
                                 <button
                                   class="col-span-2 min-h-10 min-w-0 rounded-md border border-gray-300 p-2 text-sm/5 font-semibold whitespace-normal disabled:opacity-40 dark:border-gray-600"
                                   type="button"

@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 135. Schema 76 adds
+patch level 1. Current post-submission source is schema 136. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -243,6 +243,11 @@ neighbour's Face embedding, makes accepted-identity audits use the canonical
 physical Face, and append-only quarantines historic vectors that strongly match
 an intersecting neighbour while contradicting their own canonical Face. It does
 not change accepted identity truth or source media.
+Schema 136 extends accepted-tag review with a second, explicitly typed evidence
+route. When no different Person wins, the Mac-local scorer compares the Face
+with every other confirmed Face for its current Person—including lower-quality
+accepted evidence—and queues only strict lower-tail outliers with sufficient
+support. The result remains review-only and cannot rename or accept identity.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

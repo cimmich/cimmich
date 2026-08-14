@@ -50,6 +50,7 @@ const scoreBatches = async (scorer, kind, rows, eligibleQueries) => {
     asset_id: row.assetId,
     assigned_person_id: row.assignedPersonId,
     comparison_score: row.comparisonScore,
+    evidence_route: row.evidenceRoute || "cross_person_match",
     face_id: row.faceId,
     margin: row.margin,
     suggested_person_id: row.personId,
@@ -102,8 +103,50 @@ export const scoreIdentityAuditLocally = async (
     ORDER BY reference.person_id, physical.physical_face_id,
       reference.face_id
   `;
+  const supportGallery = await sql`
+    WITH face_contexts AS MATERIALIZED (
+      SELECT face_id, array_agg(context_id ORDER BY context_id) AS context_ids
+      FROM current_face_capture_context
+      GROUP BY face_id
+    )
+    SELECT DISTINCT ON (claim.person_id, claim.physical_face_id)
+      claim.person_id, face.face_id, face.asset_id,
+      embedding.embedding::text AS embedding,
+      coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
+    FROM current_physical_face_identity claim
+    JOIN current_matchable_physical_face face
+      ON face.physical_face_id = claim.physical_face_id
+      AND face.state = 'valid'
+    JOIN source_pack pack ON pack.pack_id = ${packId}
+    JOIN face_embedding embedding
+      ON embedding.face_id = face.face_id
+      AND embedding.state = 'active'
+      AND embedding.model_family = pack.model_family
+      AND embedding.model_version = pack.model_version
+      AND embedding.config_digest = pack.config_digest
+    JOIN current_person person
+      ON person.person_id = claim.person_id
+      AND person.status = 'active'
+      AND person.subject_kind = 'person'
+      AND cimmich_visibility_person_rank(person.person_id) <= ${presentationRank}
+    LEFT JOIN face_contexts context ON context.face_id = face.face_id
+    WHERE claim.state = 'accepted'
+      AND NOT EXISTS (
+        SELECT 1 FROM current_person_category category
+        WHERE category.person_id = person.person_id
+          AND category.slug IN ('sort', 'holding')
+      )
+    ORDER BY claim.person_id, claim.physical_face_id, face.face_id
+  `;
   await scorer.initialize(
     gallery.map((row) => ({
+      assetId: row.asset_id,
+      contextIds: row.context_ids,
+      embedding: embedding(row.embedding),
+      faceId: row.face_id,
+      personId: row.person_id,
+    })),
+    supportGallery.map((row) => ({
       assetId: row.asset_id,
       contextIds: row.context_ids,
       embedding: embedding(row.embedding),

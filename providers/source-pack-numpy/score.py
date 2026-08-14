@@ -5,6 +5,13 @@ import sys
 import numpy as np
 
 
+OWN_CLUSTER_MINIMUM_SUPPORT = 5
+OWN_CLUSTER_LOW_TAIL_QUANTILE = 0.25
+OWN_CLUSTER_LOW_TAIL_GAP = 0.12
+OWN_CLUSTER_ABSOLUTE_CEILING = 0.20
+OWN_CLUSTER_CHUNK_SIZE = 512
+
+
 def fail(message):
     raise ValueError(message)
 
@@ -56,6 +63,130 @@ class Scorer:
             self.gallery_person_indexes, dtype=np.int32
         )
         self.person_count = len(self.person_ids)
+        self._initialize_support(request.get("supportGallery") or [])
+
+    def _initialize_support(self, support_gallery):
+        if not isinstance(support_gallery, list) or len(support_gallery) > 250000:
+            fail("invalid support gallery")
+        self.support_by_person = {}
+        self.own_cluster_floors = {}
+        if not support_gallery:
+            return
+        grouped = {}
+        for row in support_gallery:
+            person_id = bounded_text(row.get("personId"), "support personId")
+            entry = {
+                "asset_id": bounded_text(row.get("assetId"), "support assetId"),
+                "contexts": frozenset(map(str, row.get("contextIds") or [])),
+                "embedding": row.get("embedding"),
+                "face_id": bounded_text(row.get("faceId"), "support faceId"),
+            }
+            if len(entry["contexts"]) > 64:
+                fail("invalid support contexts")
+            grouped.setdefault(person_id, []).append(entry)
+        for person_id, entries in grouped.items():
+            embeddings = matrix(
+                [entry["embedding"] for entry in entries], "support"
+            )
+            support = {
+                "asset_ids": np.asarray(
+                    [entry["asset_id"] for entry in entries], dtype=object
+                ),
+                "contexts": [entry["contexts"] for entry in entries],
+                "embeddings": embeddings,
+                "face_ids": np.asarray(
+                    [entry["face_id"] for entry in entries], dtype=object
+                ),
+            }
+            self.support_by_person[person_id] = support
+            floor = self._own_cluster_floor(support)
+            if floor is not None:
+                self.own_cluster_floors[person_id] = floor
+
+    @staticmethod
+    def _valid_support(support, face_id, asset_id, contexts):
+        valid = (support["face_ids"] != face_id) & (
+            support["asset_ids"] != asset_id
+        )
+        if contexts:
+            valid &= np.fromiter(
+                (not bool(contexts & value) for value in support["contexts"]),
+                dtype=bool,
+                count=len(support["contexts"]),
+            )
+        return valid
+
+    def _own_cluster_floor(self, support):
+        count = len(support["face_ids"])
+        if count < OWN_CLUSTER_MINIMUM_SUPPORT:
+            return None
+        nearest = np.full(count, -np.inf, dtype=np.float32)
+        for start in range(0, count, OWN_CLUSTER_CHUNK_SIZE):
+            stop = min(count, start + OWN_CLUSTER_CHUNK_SIZE)
+            scores = np.clip(
+                support["embeddings"][start:stop] @ support["embeddings"].T,
+                -1.0,
+                1.0,
+            )
+            for local_index, support_index in enumerate(range(start, stop)):
+                valid = self._valid_support(
+                    support,
+                    support["face_ids"][support_index],
+                    support["asset_ids"][support_index],
+                    support["contexts"][support_index],
+                )
+                if np.count_nonzero(valid) >= OWN_CLUSTER_MINIMUM_SUPPORT - 1:
+                    nearest[support_index] = np.max(scores[local_index, valid])
+        finite = nearest[np.isfinite(nearest)]
+        if len(finite) < OWN_CLUSTER_MINIMUM_SUPPORT:
+            return None
+        low_tail = float(
+            np.quantile(finite, OWN_CLUSTER_LOW_TAIL_QUANTILE, method="linear")
+        )
+        return min(
+            OWN_CLUSTER_ABSOLUTE_CEILING,
+            low_tail - OWN_CLUSTER_LOW_TAIL_GAP,
+        )
+
+    def _own_cluster_matches(self, queries, query_matrix):
+        matches = [None] * len(queries)
+        grouped = {}
+        for query_index, query in enumerate(queries):
+            person_id = str(query.get("assignedPersonId") or "").strip()
+            if person_id in self.own_cluster_floors:
+                grouped.setdefault(person_id, []).append(query_index)
+        for person_id, query_indexes in grouped.items():
+            support = self.support_by_person[person_id]
+            floor = self.own_cluster_floors[person_id]
+            group_scores = np.clip(
+                query_matrix[query_indexes] @ support["embeddings"].T,
+                -1.0,
+                1.0,
+            )
+            for local_index, query_index in enumerate(query_indexes):
+                query = queries[query_index]
+                valid = self._valid_support(
+                    support,
+                    str(query.get("faceId") or "").strip(),
+                    str(query.get("assetId") or "").strip(),
+                    frozenset(map(str, query.get("contextIds") or [])),
+                )
+                if np.count_nonzero(valid) < OWN_CLUSTER_MINIMUM_SUPPORT - 1:
+                    continue
+                valid_indexes = np.flatnonzero(valid)
+                reference_index = int(
+                    valid_indexes[np.argmax(group_scores[local_index, valid_indexes])]
+                )
+                score = float(group_scores[local_index, reference_index])
+                if score < floor:
+                    matches[query_index] = {
+                        "floor": floor,
+                        "referenceAssetId": str(
+                            support["asset_ids"][reference_index]
+                        ),
+                        "score": score,
+                    }
+        return matches
 
     def score(self, request):
         queries = request.get("queries")
@@ -136,6 +267,11 @@ class Scorer:
             fail("invalid audit kind")
         query_matrix = matrix([row.get("embedding") for row in queries], "query")
         scores = np.clip(query_matrix @ self.gallery.T, -1.0, 1.0)
+        own_cluster_matches = (
+            self._own_cluster_matches(queries, query_matrix)
+            if audit_kind == "accepted_contradiction"
+            else [None] * len(queries)
+        )
         results = []
         comparable_queries = 0
         for query_index, query in enumerate(queries):
@@ -177,25 +313,52 @@ class Scorer:
                 if winner_score < 0 or margin < 0.25:
                     continue
             else:
-                if not assigned_person_id or assigned_person_id not in self.person_ids:
-                    continue
-                assigned_index = self.person_ids.index(assigned_person_id)
-                assigned_score = float(person_scores[assigned_index])
-                if not np.isfinite(assigned_score):
-                    continue
-                comparable_queries += 1
-                alternatives = np.arange(self.person_count)
-                alternatives = alternatives[alternatives != assigned_index]
-                alternatives = alternatives[np.isfinite(person_scores[alternatives])]
-                if len(alternatives) == 0:
-                    continue
-                winner_index = int(
-                    alternatives[np.argmax(person_scores[alternatives])]
-                )
-                winner_score = float(person_scores[winner_index])
-                next_score = assigned_score
-                margin = winner_score - assigned_score
-                if winner_score < 0.35 or margin < 0.21:
+                winner_index = None
+                evidence_route = "cross_person_match"
+                if assigned_person_id and assigned_person_id in self.person_ids:
+                    assigned_index = self.person_ids.index(assigned_person_id)
+                    assigned_score = float(person_scores[assigned_index])
+                    if np.isfinite(assigned_score):
+                        comparable_queries += 1
+                        alternatives = np.arange(self.person_count)
+                        alternatives = alternatives[alternatives != assigned_index]
+                        alternatives = alternatives[
+                            np.isfinite(person_scores[alternatives])
+                        ]
+                        if len(alternatives) > 0:
+                            alternative_index = int(
+                                alternatives[np.argmax(person_scores[alternatives])]
+                            )
+                            alternative_score = float(
+                                person_scores[alternative_index]
+                            )
+                            alternative_margin = alternative_score - assigned_score
+                            if alternative_score >= 0.35 and alternative_margin >= 0.21:
+                                winner_index = alternative_index
+                                winner_score = alternative_score
+                                next_score = assigned_score
+                                margin = alternative_margin
+                if winner_index is None:
+                    outlier = own_cluster_matches[query_index]
+                    if outlier is None:
+                        continue
+                    evidence_route = "own_cluster_outlier"
+                    winner_score = outlier["score"]
+                    next_score = outlier["floor"]
+                    margin = next_score - winner_score
+                    results.append(
+                        {
+                            "assetId": asset_id,
+                            "assignedPersonId": assigned_person_id,
+                            "comparisonScore": next_score,
+                            "evidenceRoute": evidence_route,
+                            "faceId": face_id,
+                            "margin": margin,
+                            "personId": assigned_person_id,
+                            "referenceAssetId": outlier["referenceAssetId"],
+                            "score": winner_score,
+                        }
+                    )
                     continue
 
             winning_gallery = np.flatnonzero(
@@ -209,6 +372,7 @@ class Scorer:
                     "assetId": asset_id,
                     "assignedPersonId": assigned_person_id or None,
                     "comparisonScore": None if next_score == -1.0 else next_score,
+                    "evidenceRoute": evidence_route if audit_kind == "accepted_contradiction" else "cross_person_match",
                     "faceId": face_id,
                     "margin": margin,
                     "personId": self.person_ids[winner_index],

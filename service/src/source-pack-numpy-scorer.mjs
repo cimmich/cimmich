@@ -100,10 +100,15 @@ export const createSourcePackNumpyScorer = ({
     });
 
   return {
-    async initialize(gallery) {
-      const response = await request({ gallery, kind: "initialize" });
+    async initialize(gallery, supportGallery = []) {
+      const response = await request({
+        gallery,
+        kind: "initialize",
+        supportGallery,
+      });
       if (response?.kind !== "ready")
         throw scorerError("SourcePack local scorer did not initialize");
+      return response.diagnostics || null;
     },
     async score({ marginFloor, queries, scoreFloor }) {
       const response = await request({

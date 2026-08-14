@@ -606,7 +606,7 @@
                     <span
                       class="absolute inset-x-1 bottom-1 rounded-md bg-indigo-950/85 px-1.5 py-1 text-center text-[0.6rem] font-bold tracking-wide text-white uppercase"
                     >
-                      Suggested
+                      {item.evidenceRoute === 'own_cluster_outlier' ? 'Closest confirmed' : 'Suggested'}
                     </span>
                   </a>
                 {:else}
@@ -619,11 +619,15 @@
               </div>
               <div class="min-w-0">
                 {#if item.assignedPerson}
-                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Currently tagged</p>
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {item.evidenceRoute === 'own_cluster_outlier' ? 'Own identity outlier' : 'Currently tagged'}
+                  </p>
                   <p class="truncate text-sm font-semibold text-immich-fg dark:text-immich-dark-fg">
                     {item.assignedPerson.displayName}
-                    <Icon icon={mdiArrowRight} size="15" class="mx-1 inline" />
-                    {item.suggestedPerson.displayName}
+                    {#if item.evidenceRoute !== 'own_cluster_outlier'}
+                      <Icon icon={mdiArrowRight} size="15" class="mx-1 inline" />
+                      {item.suggestedPerson.displayName}
+                    {/if}
                   </p>
                 {:else}
                   <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Possible match</p>
@@ -632,16 +636,24 @@
                   </p>
                 {/if}
                 <p class="mt-1 text-xs text-gray-400">
-                  {item.assignedPerson
-                    ? `Current ${item.assignedPerson.score.toFixed(2)} · suggested ${item.suggestedPerson.score.toFixed(2)}`
-                    : `Similarity ${item.suggestedPerson.score.toFixed(2)}`}
-                  {item.margin > item.suggestedPerson.score ? '· only candidate' : `· margin ${item.margin.toFixed(2)}`}
+                  {item.evidenceRoute === 'own_cluster_outlier'
+                    ? `Closest confirmed ${item.suggestedPerson.score.toFixed(2)} · ${item.margin.toFixed(2)} below this Person’s outlier floor`
+                    : item.assignedPerson
+                      ? `Current ${item.assignedPerson.score.toFixed(2)} · suggested ${item.suggestedPerson.score.toFixed(2)}`
+                      : `Similarity ${item.suggestedPerson.score.toFixed(2)}`}
+                  {item.evidenceRoute === 'own_cluster_outlier'
+                    ? ''
+                    : item.margin > item.suggestedPerson.score
+                      ? '· only candidate'
+                      : `· margin ${item.margin.toFixed(2)}`}
                 </p>
                 {#if reviewMode === 'focus'}
                   <p class="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
-                    {item.assignedPerson
-                      ? 'Compare the detected face with the current trusted photo and the suggested person before choosing.'
-                      : 'Compare the detected face with the independent trusted photo before confirming the name.'}
+                    {item.evidenceRoute === 'own_cluster_outlier'
+                      ? 'No different Person won. This Face is here because it also failed to resemble the lower-quality confirmed Faces of its current Person.'
+                      : item.assignedPerson
+                        ? 'Compare the detected face with the current trusted photo and the suggested person before choosing.'
+                        : 'Compare the detected face with the independent trusted photo before confirming the name.'}
                   </p>
                 {/if}
               </div>
@@ -663,24 +675,37 @@
                     {item.assignedPerson ? 'Keep current' : `Not ${item.suggestedPerson.displayName}`}
                   </span>
                 </button>
-                <button
-                  type="button"
-                  class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50 dark:bg-immich-dark-primary"
-                  disabled={Boolean(busyFaceId)}
-                  aria-label={item.assignedPerson
-                    ? `Change tag to ${item.suggestedPerson.displayName}`
-                    : `Confirm match with ${item.suggestedPerson.displayName}`}
-                  onclick={() => void accept(item)}
-                >
-                  <Icon icon={mdiCheck} size="15" class="shrink-0" />
-                  <span class="truncate">
-                    {busyFaceId === item.faceId
-                      ? 'Saving…'
-                      : item.assignedPerson
-                        ? `Use ${item.suggestedPerson.displayName}`
-                        : `Tag as ${item.suggestedPerson.displayName}`}
-                  </span>
-                </button>
+                {#if item.evidenceRoute === 'own_cluster_outlier' && item.assignedPerson}
+                  <a
+                    class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 dark:bg-immich-dark-primary"
+                    href={Route.cimmichPerson({
+                      identityReviewCount: 1,
+                      name: item.assignedPerson.displayName,
+                      personId: item.assignedPerson.personId,
+                    })}
+                  >
+                    Review and reassign
+                  </a>
+                {:else}
+                  <button
+                    type="button"
+                    class="flex min-w-0 items-center gap-1.5 rounded-xl bg-immich-primary px-3 py-2 text-xs font-semibold text-white hover:brightness-110 disabled:opacity-50 dark:bg-immich-dark-primary"
+                    disabled={Boolean(busyFaceId)}
+                    aria-label={item.assignedPerson
+                      ? `Change tag to ${item.suggestedPerson.displayName}`
+                      : `Confirm match with ${item.suggestedPerson.displayName}`}
+                    onclick={() => void accept(item)}
+                  >
+                    <Icon icon={mdiCheck} size="15" class="shrink-0" />
+                    <span class="truncate">
+                      {busyFaceId === item.faceId
+                        ? 'Saving…'
+                        : item.assignedPerson
+                          ? `Use ${item.suggestedPerson.displayName}`
+                          : `Tag as ${item.suggestedPerson.displayName}`}
+                    </span>
+                  </button>
+                {/if}
               </div>
             </article>
           {/each}

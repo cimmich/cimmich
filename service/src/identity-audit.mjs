@@ -5,6 +5,7 @@ import { createIdentityAuditLeads } from "./identity-audit-leads.mjs";
 import { persistIdentityAuditScoredRows } from "./identity-audit-persistence.mjs";
 import * as localAudit from "./identity-audit-local-scoring.mjs";
 import { identityAuditConfidenceBand } from "./identity-audit-projection.mjs";
+import { identityAuditSuggestedReferenceSql } from "./identity-audit-reference-projection.mjs";
 import { projectIdentityAuditRun } from "./identity-audit-run-projection.mjs";
 import {
   identityAuditScoringConcurrency,
@@ -129,14 +130,14 @@ const auditSql = async (
           audit_run_id, audit_kind, face_id, asset_id, assigned_person_id,
           suggested_person_id, suggested_score, comparison_score, margin,
           review_state, reviewed_at, reviewed_by, created_at, privacy_class,
-          suggested_reference_asset_id
+          suggested_reference_asset_id, evidence_route
         )
         SELECT ${runId}, prior.audit_kind, prior.face_id, prior.asset_id,
           prior.assigned_person_id, prior.suggested_person_id,
           prior.suggested_score, prior.comparison_score, prior.margin,
           prior.review_state, prior.reviewed_at, prior.reviewed_by,
           prior.created_at, prior.privacy_class,
-          prior.suggested_reference_asset_id
+          prior.suggested_reference_asset_id, prior.evidence_route
         FROM identity_audit_item prior
         JOIN identity_audit_run prior_run
           ON prior_run.audit_run_id = prior.audit_run_id
@@ -1372,41 +1373,11 @@ export const createIdentityAudit = (
         LIMIT 1
       ) assigned_reference ON item.assigned_person_id IS NOT NULL
       LEFT JOIN LATERAL (
-        SELECT reference.face_id, reference_face.asset_id,
-          reference_face.box_x, reference_face.box_y,
-          reference_face.box_w, reference_face.box_h,
-          reference_asset.width, reference_asset.height,
-          (1 - (reference.embedding <=> query_embedding.embedding))::float8 AS score
-        FROM source_pack_matching_gallery reference
-        JOIN face_observation reference_face
-          ON reference_face.face_id = reference.face_id
-          AND reference_face.state = 'valid'
-          AND reference_face.asset_id <> item.asset_id
-        JOIN asset reference_asset
-          ON reference_asset.asset_id = reference_face.asset_id
-          AND reference_asset.state = 'active'
-          AND cimmich_visibility_asset_rank(reference_asset.asset_id)
-            <= ${presentationRank()}
-        WHERE reference.pack_id = item_run.pack_id
-          AND reference.person_id = item.suggested_person_id
-          AND reference.bucket_kind = 'prime'
-          AND reference.reference_kind = 'face'
-          AND reference.face_id <> item.face_id
-          AND (
-            item.suggested_reference_asset_id IS NULL
-            OR reference_face.asset_id =
-              item.suggested_reference_asset_id
-          )
-          AND NOT EXISTS (
-            SELECT 1
-            FROM current_face_capture_context query_context
-            JOIN current_face_capture_context reference_context
-              ON reference_context.context_id = query_context.context_id
-            WHERE query_context.face_id = item.face_id
-              AND reference_context.face_id = reference.face_id
-          )
-        ORDER BY score DESC, reference.face_id
-        LIMIT 1
+        ${
+          typeof sql.unsafe === "function"
+            ? sql.unsafe(identityAuditSuggestedReferenceSql(presentationRank()))
+            : identityAuditSuggestedReferenceSql(presentationRank())
+        }
       ) suggested_reference ON true
       LEFT JOIN LATERAL (
         SELECT count(*)::int AS reference_count,
@@ -1577,6 +1548,7 @@ export const createIdentityAudit = (
         currentDecisionId: row.current_decision_id,
         currentRevision: Number(row.current_revision),
         detectionConfidence: Number(row.detection_confidence),
+        evidenceRoute: row.evidence_route || "cross_person_match",
         faceId: row.face_id,
         physicalFaceId: row.physical_face_id,
         height: row.height,
