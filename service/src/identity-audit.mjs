@@ -17,6 +17,10 @@ export const identityAuditSimilarityEpsilon = 1e-6;
 // deterministic, production-sized query frontier. Larger libraries retain
 // their strongest eligible queries and emit a structured truncation warning.
 export const identityAuditQueryFrontierLimit = 5_000;
+// X1 has eight physical cores. A full audit is an explicit bounded background
+// job, so let its two pure scoring statements request six workers while
+// leaving host capacity for interactive reads and the rest of the stack.
+export const identityAuditParallelWorkers = 6;
 // Independent-evidence verification runs two provider comparisons per
 // candidate. Bound the normal owner run to 100 strongest candidates (200
 // provider comparisons); controlled diagnostics may supply another limit.
@@ -166,7 +170,9 @@ const auditSql = async (
       SELECT set_config('statement_timeout',
           ${String(identityAuditStatementTimeoutMs)}, true),
         set_config('transaction_timeout',
-          ${String(identityAuditTransactionTimeoutMs)}, true)
+          ${String(identityAuditTransactionTimeoutMs)}, true),
+        set_config('max_parallel_workers_per_gather',
+          ${String(identityAuditParallelWorkers)}, true)
     `;
     if (incremental) {
       await tx`
@@ -475,7 +481,9 @@ const auditSql = async (
       SELECT set_config('statement_timeout',
           ${String(identityAuditStatementTimeoutMs)}, true),
         set_config('transaction_timeout',
-          ${String(identityAuditTransactionTimeoutMs)}, true)
+          ${String(identityAuditTransactionTimeoutMs)}, true),
+        set_config('max_parallel_workers_per_gather',
+          ${String(identityAuditParallelWorkers)}, true)
     `;
     const contradictionScored = await tx`
       WITH face_contexts AS MATERIALIZED (

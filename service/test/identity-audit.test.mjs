@@ -5,6 +5,7 @@ import {
   carryForwardIdentityAuditDismissals,
   createIdentityAudit,
   identityAuditIndependenceComparisonLimit,
+  identityAuditParallelWorkers,
   identityAuditQueryFrontierLimit,
   suppressSamePhotoDerivatives,
 } from "../src/identity-audit.mjs";
@@ -79,6 +80,11 @@ test("expensive identity audit scoring stays parallel-safe before persistence", 
   assert.match(persistenceSource, /INSERT INTO identity_audit_item/);
   assert.match(persistenceSource, /jsonb_to_recordset/);
   assert.match(persistenceSource, /cimmich_probable_same_photo_derivative/);
+  assert.equal(identityAuditParallelWorkers, 6);
+  assert.equal(
+    auditSource.match(/max_parallel_workers_per_gather/g)?.length,
+    2,
+  );
 });
 
 test("scored identity audit rows persist in one bounded batch", async () => {
