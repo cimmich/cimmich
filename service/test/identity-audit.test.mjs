@@ -40,6 +40,24 @@ test("prime reference gallery is transaction-safe across both audit phases", asy
   assert.equal(source.match(/primeReferenceGallery\(tx\)/g)?.length, 2);
 });
 
+test("accepted contradiction audit uses one canonical Face per physical identity", async () => {
+  const source = await readFile(
+    new URL("../src/identity-audit.mjs", import.meta.url),
+    "utf8",
+  );
+  const contradiction = source.slice(
+    source.indexOf("accepted_people_by_asset AS MATERIALIZED"),
+    source.indexOf('reportFrontierTruncation(\n      "accepted_contradiction"'),
+  );
+  assert.match(contradiction, /FROM current_physical_face_identity claim/);
+  assert.match(contradiction, /JOIN current_matchable_physical_face face/);
+  assert.match(
+    contradiction,
+    /face\.physical_face_id = claim\.physical_face_id/,
+  );
+  assert.doesNotMatch(contradiction, /FROM current_face_identity claim/);
+});
+
 test("incremental audit carries its completed base and scopes expensive work", async () => {
   const source = await readFile(
     new URL("../src/identity-audit.mjs", import.meta.url),

@@ -1,9 +1,9 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-11
+Updated: 2026-08-14
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 128/patch 1
-Current development source: migration-ledger schema 134/patch 1
+Current development source: migration-ledger schema 135/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0

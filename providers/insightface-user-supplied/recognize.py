@@ -135,6 +135,9 @@ def recognize(
                     allow_expanded_fallback=(
                         target_binding != "bounded_sidecar_region"
                     ),
+                    bounded_sidecar_region=(
+                        target_binding == "bounded_sidecar_region"
+                    ),
                 )
                 if pipeline_version
                 == "target-centric-tight-crop+2.4x-source-fallback-v2"

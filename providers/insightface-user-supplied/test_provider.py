@@ -97,14 +97,45 @@ class ProviderContractTest(unittest.TestCase):
         )
         self.assertIsNone(provider.select_target_face(boxes, (100, 100), (200, 200, 3)))
 
+    def test_bounded_target_excludes_higher_confidence_neighbour(self):
+        boxes = np.asarray(
+            [[30, 40, 70, 120, 0.81], [66, 30, 104, 115, 0.99]],
+            dtype=np.float32,
+        )
+        self.assertEqual(
+            provider.select_bounded_target_face(
+                boxes,
+                (50, 80),
+                (160, 140, 3),
+                (25, 25, 75, 135),
+            ),
+            0,
+        )
+
+    def test_bounded_target_abstains_when_only_neighbour_is_detected(self):
+        boxes = np.asarray(
+            [[66, 30, 104, 115, 0.99]],
+            dtype=np.float32,
+        )
+        self.assertIsNone(
+            provider.select_bounded_target_face(
+                boxes,
+                (50, 80),
+                (160, 140, 3),
+                (25, 25, 65, 135),
+            )
+        )
+
     def test_bounded_sidecar_region_never_borrows_expanded_neighbor(self):
         instance = provider.UserSuppliedInsightFaceProvider.__new__(
             provider.UserSuppliedInsightFaceProvider
         )
         calls = []
 
-        def no_face(crop, expected_center, *, selection, route):
-            calls.append(route)
+        def no_face(
+            crop, expected_center, *, selection, route, target_bounds=None
+        ):
+            calls.append((route, selection, target_bounds))
             return None
 
         instance._embed_crop = no_face
@@ -114,9 +145,12 @@ class ProviderContractTest(unittest.TestCase):
                 image,
                 (0.2, 0.5, 0.2, 0.2),
                 allow_expanded_fallback=False,
+                bounded_sidecar_region=True,
             )
         )
-        self.assertEqual(calls, ["tight_target"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0:2], ("tight_target", "bounded_sidecar_region"))
+        self.assertIsNotNone(calls[0][2])
 
     def test_media_root_confinement_rejects_escape(self):
         provider_root = Path(__file__).resolve().parent

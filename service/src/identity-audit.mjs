@@ -483,9 +483,10 @@ const auditSql = async (
         GROUP BY face_id
       ), accepted_people_by_asset AS MATERIALIZED (
         SELECT DISTINCT face.asset_id, claim.person_id
-        FROM current_face_identity claim
-        JOIN face_observation face
-          ON face.face_id = claim.face_id AND face.state = 'valid'
+        FROM current_physical_face_identity claim
+        JOIN current_matchable_physical_face face
+          ON face.physical_face_id = claim.physical_face_id
+          AND face.state = 'valid'
         WHERE claim.state = 'accepted'
       ), eligible_queries AS MATERIALIZED (
         SELECT face.face_id, face.asset_id,
@@ -495,9 +496,10 @@ const auditSql = async (
             (face.quality_measurements->>'quality_score')::float8, 0
           ) AS quality_score,
           coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
-        FROM current_face_identity claim
-        JOIN face_observation face
-          ON face.face_id = claim.face_id AND face.state = 'valid'
+        FROM current_physical_face_identity claim
+        JOIN current_matchable_physical_face face
+          ON face.physical_face_id = claim.physical_face_id
+          AND face.state = 'valid'
         JOIN source_pack pack ON pack.pack_id = ${packId}
         JOIN face_embedding embedding
           ON embedding.face_id = face.face_id

@@ -227,6 +227,32 @@ def select_target_face(
     return scored[0][3]
 
 
+def select_bounded_target_face(
+    boxes: np.ndarray | None,
+    expected_center: tuple[float, float],
+    crop_shape: tuple[int, ...],
+    target_bounds: tuple[float, float, float, float],
+) -> int | None:
+    """Select only a detector result whose centre belongs to the source region."""
+    if boxes is None or len(boxes) == 0:
+        return None
+    left, top, right, bottom = target_bounds
+    eligible: list[int] = []
+    for index, box in enumerate(boxes):
+        center_x = float((box[0] + box[2]) / 2)
+        center_y = float((box[1] + box[3]) / 2)
+        if left <= center_x <= right and top <= center_y <= bottom:
+            eligible.append(index)
+    if not eligible:
+        return None
+    selected = select_target_face(
+        np.asarray([boxes[index] for index in eligible]),
+        expected_center,
+        crop_shape,
+    )
+    return None if selected is None else eligible[selected]
+
+
 def execution_providers(device: str) -> list[str]:
     if device == "cpu":
         return ["CPUExecutionProvider"]
@@ -319,6 +345,7 @@ class UserSuppliedInsightFaceProvider:
         *,
         selection: str,
         route: str,
+        target_bounds: tuple[float, float, float, float] | None = None,
     ):
         if crop.size == 0 or min(crop.shape[:2]) < 8:
             return None
@@ -329,6 +356,15 @@ class UserSuppliedInsightFaceProvider:
             return None
         if selection == "strict":
             selected = select_target_face(boxes, expected_center, crop.shape)
+        elif selection == "bounded_sidecar_region":
+            if target_bounds is None:
+                raise ValueError("bounded sidecar selection requires target bounds")
+            selected = select_bounded_target_face(
+                boxes,
+                expected_center,
+                crop.shape,
+                target_bounds,
+            )
         elif selection == "target_centric_v2":
             diagonal = max(1.0, math.hypot(crop.shape[1], crop.shape[0]))
             selected = max(
@@ -383,6 +419,7 @@ class UserSuppliedInsightFaceProvider:
         box: tuple[float, float, float, float],
         *,
         allow_expanded_fallback: bool = True,
+        bounded_sidecar_region: bool = False,
     ):
         image_height, image_width = image.shape[:2]
         x, y, width, height = box
@@ -404,11 +441,28 @@ class UserSuppliedInsightFaceProvider:
             np.frombuffer(encoded.getvalue(), dtype=np.uint8), cv2.IMREAD_COLOR
         )
         if tight is not None:
+            scale_x = tight.shape[1] / max(1, tight_box[2] - tight_box[0])
+            scale_y = tight.shape[0] / max(1, tight_box[3] - tight_box[1])
+            target_bounds = (
+                (x1 - tight_box[0]) * scale_x,
+                (y1 - tight_box[1]) * scale_y,
+                (x2 - tight_box[0]) * scale_x,
+                (y2 - tight_box[1]) * scale_y,
+            )
+            expected_center = (
+                (target_bounds[0] + target_bounds[2]) / 2.0,
+                (target_bounds[1] + target_bounds[3]) / 2.0,
+            )
             result = self._embed_crop(
                 tight,
-                (tight.shape[1] / 2.0, tight.shape[0] / 2.0),
-                selection="target_centric_v2",
+                expected_center,
+                selection=(
+                    "bounded_sidecar_region"
+                    if bounded_sidecar_region
+                    else "target_centric_v2"
+                ),
                 route="tight_target",
+                target_bounds=target_bounds if bounded_sidecar_region else None,
             )
             if result is not None:
                 return result

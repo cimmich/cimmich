@@ -1285,3 +1285,27 @@ test("schema 134 separates reversible ignored Pet matches from terminal False Ma
   assert.match(source, /reversible/);
   assert.match(source, /terminal False Match/);
 });
+
+test("schema 135 quarantines overlapping XMP neighbour embeddings without changing identity", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0135_overlapping_xmp_embedding_quarantine_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE face_embedding_quarantine/);
+  assert.match(source, /observation_origin = 'xmp_sidecar_import'/);
+  assert.match(source, /member\.face_id <> member\.canonical_face_id/);
+  assert.match(source, /neighbour_similarity DESC/);
+  assert.match(source, />= 0\.75/);
+  assert.match(source, /< 0\.30/);
+  assert.match(source, /ACTIVE_SOURCE_PACK_CONTAINS_QUARANTINED_EMBEDDING/);
+  assert.match(
+    source,
+    /UPDATE face_embedding embedding[\s\S]*state = 'superseded'/,
+  );
+  assert.doesNotMatch(source, /UPDATE identity_claim/);
+});
