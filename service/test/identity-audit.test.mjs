@@ -90,6 +90,14 @@ test("expensive identity audit scoring uses six serial database shards before pe
   assert.match(persistenceSource, /cimmich_probable_same_photo_derivative/);
   assert.equal(identityAuditScoringConcurrency, 6);
   assert.match(scoringSource, /await Promise\.all/);
+  const serviceSource = await readFile(
+    new URL("../src/index.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /CIMMICH_DATABASE_INTERACTIVE_CONNECTIONS \|\| "8"/,
+  );
   assert.equal(
     scoringSource.match(/max_parallel_workers_per_gather/g)?.length,
     1,

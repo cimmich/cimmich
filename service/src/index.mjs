@@ -67,7 +67,7 @@ const immichCompanion = await createImmichCompanionManager({
 const sql = postgres(databaseUrl, {
   max: Math.max(
     2,
-    Number(process.env.CIMMICH_DATABASE_INTERACTIVE_CONNECTIONS || "5"),
+    Number(process.env.CIMMICH_DATABASE_INTERACTIVE_CONNECTIONS || "8"),
   ),
   prepare: true,
 });
