@@ -29,8 +29,14 @@
       }
       if (personId === requestedPersonId) {
         onviewchange('new');
+        const headSummary = result.headRescan.totalCount
+          ? ` Rescanned ${result.headRescan.totalCount.toLocaleString()} of their Heads; ${result.headRescan.movedCount.toLocaleString()} re-entered Face matching.`
+          : ' No assigned Heads needed rescanning.';
+        const mistagSummary = result.mistagRefresh.reevaluatedCount
+          ? ` Rechecked ${result.mistagRefresh.reevaluatedCount.toLocaleString()} mistags in their lane; ${result.mistagRefresh.resolvedCount.toLocaleString()} no longer qualify.`
+          : ' No current mistags needed rechecking.';
         onmessage(
-          `Updated ${result.matcherPhotoCount.toLocaleString()} matcher ${result.matcherPhotoCount === 1 ? 'photo' : 'photos'} and found ${result.candidateCount.toLocaleString()} new ${result.candidateCount === 1 ? 'match' : 'matches'} to check. Nothing was confirmed.`,
+          `Updated ${result.matcherPhotoCount.toLocaleString()} matcher ${result.matcherPhotoCount === 1 ? 'photo' : 'photos'} and found ${result.candidateCount.toLocaleString()} new ${result.candidateCount === 1 ? 'match' : 'matches'} to check.${headSummary}${mistagSummary} Nothing was confirmed.`,
         );
       }
     } catch (error) {
@@ -51,8 +57,9 @@
   <div class="grid gap-1">
     <h3 class="font-semibold">Refresh matching</h3>
     <p class="text-sm text-gray-500 dark:text-gray-400">
-      Update matcher photos from confirmed Faces, then look across unassigned Faces and People marked Needs attention
-      for more likely matches.
+      Recheck this Person’s assigned Heads and current mistags, update matcher photos from confirmed Faces, then look
+      across unassigned Faces and People marked Needs attention for more likely matches. Empty Head and mistag lanes are
+      skipped before scoring.
     </p>
   </div>
   <button

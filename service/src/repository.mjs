@@ -976,6 +976,7 @@ export const createCimmichRepository = (
     invalidateMachineSuggestions,
     maintenanceSql,
     reassign: (input) => repository.reassignFaceIdentity(input),
+    rescanHeads: (input) => repository.rescanHeadEvidence(input),
     requireVisibleSubject,
   });
   const bulkAcceptPersonCandidates = createBulkPersonCandidateAcceptor({
@@ -7453,10 +7454,31 @@ export const createCimmichRepository = (
           "PERSON_HOLDING_REQUIRED",
         );
       }
-      const matchingStatus = await repository.faceMatchingStatus();
-      if (!matchingStatus.review.enabled || !matchingProvider) {
+      if (!matchingProvider) {
         throw typedError(
-          "Face matching must have one active reviewed SourcePack before Head evidence can be rescanned",
+          "Face matching must be configured before Head evidence can be rescanned",
+          409,
+          "PERSON_HEAD_RESCAN_UNAVAILABLE",
+        );
+      }
+      const [headPack] = await sql`
+        SELECT pack_id
+        FROM source_pack
+        WHERE evaluation_status = 'passed'
+          AND state IN ('active', 'retired')
+          AND model_family = ${matchingProvider.modelFamily}
+          AND model_version = ${matchingProvider.modelVersion}
+          AND config_digest = ${matchingProvider.configDigest}
+          AND evaluation_summary->'matcherPolicy'->>'policyVersion'
+            = ${machineMatcherPolicyVersion}
+          AND evaluation_summary->'matcherPolicy'->>'scorer'
+            = 'best_individual_prime'
+        ORDER BY (state = 'active') DESC, created_at DESC, pack_id DESC
+        LIMIT 1
+      `;
+      if (!headPack) {
+        throw typedError(
+          "A passed calibrated matcher is required before Head evidence can be rescanned",
           409,
           "PERSON_HEAD_RESCAN_UNAVAILABLE",
         );
@@ -7467,8 +7489,10 @@ export const createCimmichRepository = (
           SELECT pack.model_family, pack.model_version, pack.config_digest,
             (pack.evaluation_summary->'matcherPolicy'->>'scoreFloor')::float8 AS score_floor,
             (pack.evaluation_summary->'matcherPolicy'->>'marginFloor')::float8 AS margin_floor
-          FROM current_source_pack pack
-          WHERE pack.evaluation_status = 'passed'
+          FROM source_pack pack
+          WHERE pack.pack_id = ${headPack.pack_id}
+            AND pack.evaluation_status = 'passed'
+            AND pack.state IN ('active', 'retired')
             AND pack.model_family = ${matchingProvider.modelFamily}
             AND pack.model_version = ${matchingProvider.modelVersion}
             AND pack.config_digest = ${matchingProvider.configDigest}

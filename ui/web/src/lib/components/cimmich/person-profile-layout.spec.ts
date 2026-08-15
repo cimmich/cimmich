@@ -115,7 +115,8 @@ describe('Person profile layout', () => {
     expect(source).toContain('Refresh matching');
     expect(source).toContain('Refresh matches');
     expect(source).toContain('refreshCimmichPersonMatches(requestedPersonId)');
-    expect(source).toContain('Update matcher photos from confirmed Faces');
+    expect(source).toContain('Recheck this Person’s assigned Heads');
+    expect(source).toContain('Empty Head and mistag lanes are');
     expect(source).toContain('People marked');
     expect(source).toMatch(/Needs attention\s+for more likely matches/);
     expect(source).toContain('Nothing was confirmed.');

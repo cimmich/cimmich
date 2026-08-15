@@ -17,7 +17,18 @@ export type CimmichPersonMatchRefreshResult = {
   acceptedIdentityDelta: 0;
   automaticIdentityWrites: 0;
   candidateCount: number;
+  headRescan: {
+    movedCount: number;
+    retainedCount: number;
+    totalCount: number;
+  };
   matcherPhotoCount: number;
+  mistagRefresh: {
+    reevaluatedCount: number;
+    remainingCount: number;
+    resolvedCount: number;
+    routeChangedCount: number;
+  };
   personId: string;
   personName: string;
   referenceSetDigest: string;

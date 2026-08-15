@@ -60,14 +60,13 @@ test("Head rescan retains evidence unless the governed winner is the current Per
     if (statement.includes("slug = 'holding'")) {
       return [{ holding: false }];
     }
-    if (statement.includes("FROM source_pack")) {
+    if (
+      statement.includes("SELECT pack_id") &&
+      !statement.includes("head_faces AS MATERIALIZED")
+    ) {
       return [
         {
-          active_passed: 1,
-          active_ready: 1,
-          awaiting_review: 0,
-          margin_floor: 0.21,
-          score_floor: 0,
+          pack_id: "sourcepack-passed",
         },
       ];
     }
@@ -140,14 +139,13 @@ test("Head rescan commits all bucket moves in one shared transaction", async () 
     if (statement.includes("slug = 'holding'")) {
       return [{ holding: false }];
     }
-    if (statement.includes("FROM source_pack")) {
+    if (
+      statement.includes("SELECT pack_id") &&
+      !statement.includes("head_faces AS MATERIALIZED")
+    ) {
       return [
         {
-          active_passed: 1,
-          active_ready: 1,
-          awaiting_review: 0,
-          margin_floor: 0.21,
-          score_floor: 0.5,
+          pack_id: "sourcepack-passed",
         },
       ];
     }
