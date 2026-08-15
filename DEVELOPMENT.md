@@ -2,7 +2,8 @@
 
 This guide is for contributors who want to understand the repository before
 running or changing it. For product behavior, begin with the
-[walkthrough](docs/WALKTHROUGH.md). For contribution expectations, read
+[user guide](docs/USER_GUIDE.md); for the UX-to-code and data map, read
+[product architecture](docs/PRODUCT_ARCHITECTURE.md). For contribution expectations, read
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Architecture at a glance
@@ -252,6 +253,8 @@ See [GOVERNANCE.md](GOVERNANCE.md) for authorship and authority rules.
 
 ## Where to continue
 
+- [Product architecture](docs/PRODUCT_ARCHITECTURE.md)
+- [Detailed user guide](docs/USER_GUIDE.md)
 - [Contributing workflow](CONTRIBUTING.md)
 - [Project governance](GOVERNANCE.md)
 - [Technical documentation index](docs/README.md)

@@ -17,7 +17,7 @@ meaningful: the person you know was present without a visible face, the place
 and event it belongs to, or the document that explains it. Cimmich adds that
 owner-controlled context beside Immich.
 
-[See the walkthrough](docs/WALKTHROUGH.md) · [Install Cimmich](INSTALL.md) ·
+[Read the user guide](docs/USER_GUIDE.md) · [See the walkthrough](docs/WALKTHROUGH.md) · [Install Cimmich](INSTALL.md) ·
 [Try fictional data](demo/cedar-house-v1/README.md) · [Understand privacy](PRIVACY.md) ·
 [Contribute](CONTRIBUTING.md)
 
@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 8** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 9** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
@@ -155,12 +155,14 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 | I want to…                                               | Start here                                 |
 | :------------------------------------------------------- | :----------------------------------------- |
-| See what the product does                                | [Product walkthrough](docs/WALKTHROUGH.md) |
+| See everything the product can do and how to use it      | [Detailed user guide](docs/USER_GUIDE.md)  |
+| Take a short visual tour                                 | [Product walkthrough](docs/WALKTHROUGH.md) |
 | Install, update, back up or remove it                    | [Installation and operations](INSTALL.md)  |
 | Understand data and network behavior                     | [Privacy guide](PRIVACY.md)                |
 | Use or operate optional Local AI review                  | [Local AI review](docs/LOCAL_AI_REVIEW.md) |
 | Resolve a common question                                | [FAQ](docs/FAQ.md)                         |
 | Understand the repository                                | [Development guide](DEVELOPMENT.md)        |
+| Map product experiences to their implementation          | [Product architecture](docs/PRODUCT_ARCHITECTURE.md) |
 | Propose a change                                         | [Contributing guide](CONTRIBUTING.md)      |
 | Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md)                |
 | Inspect release and journey evidence                     | [Documentation index](docs/README.md)      |

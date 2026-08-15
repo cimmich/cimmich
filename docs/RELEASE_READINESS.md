@@ -2,11 +2,11 @@
 
 Updated: 2026-08-14
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview release: migration-ledger schema 128/patch 1
+Current Community Preview release: migration-ledger schema 130/patch 1
 Current development source: migration-ledger schema 139/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release candidate: `v1.1.0-community-preview.8` for exact Immich 3.1.0
+Current release: `v1.1.0-community-preview.9` for exact Immich 3.1.0
 
 Schema 136 adds review-only own-Person outlier evidence to Possible mistags.
 The Mac-local scorer first preserves the stronger-different-Person route, then
@@ -550,8 +550,8 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-The Community Preview 8 release remains schema 128; schema 131 is current local
-development source pending full lifecycle and live-runtime certification.
+Community Preview 9 remains schema 130; schema 139 is the current development
+source and does not revise the named public release.
 
 ## Historical Public Beta Patch 6 certification
 

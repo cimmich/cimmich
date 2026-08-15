@@ -9,7 +9,10 @@ requiring access to anybody's private library.
 > biometric-accuracy, demographic-fairness or real-person consistency benchmark.
 
 [Install Cimmich](../INSTALL.md) · [Run the isolated demo](../demo/cedar-house-v1/README.md) ·
-[Read the privacy guide](../PRIVACY.md)
+[Read the privacy guide](../PRIVACY.md) · [Use the detailed guide](USER_GUIDE.md)
+
+This is the short visual tour. For every current section, review action and
+owner boundary, continue with the [detailed user guide](USER_GUIDE.md).
 
 ## 1. Inspect the scope before importing
 

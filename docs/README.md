@@ -6,6 +6,8 @@ remain available without controlling the front door.
 
 ## Use Cimmich
 
+- [Detailed user guide](USER_GUIDE.md) — the canonical description of what
+  Cimmich can do and how each owner workflow works.
 - [Product walkthrough](WALKTHROUGH.md) — a visual tour using the fictional
   Cedar House archive.
 - [Install and operate](../INSTALL.md) — verify, configure, start, back up,
@@ -19,6 +21,8 @@ remain available without controlling the front door.
 
 ## Develop and contribute
 
+- [Product architecture](PRODUCT_ARCHITECTURE.md) — the UX-to-code, data,
+  authority, performance and acceptance map.
 - [Development guide](../DEVELOPMENT.md) — architecture, repository map,
   npm/pnpm workspaces and checks.
 - [Contributing guide](../CONTRIBUTING.md) — scope, boundaries, proof and pull
@@ -49,7 +53,7 @@ installation path.
 
 ## Releases and verification
 
-- [Current named release: Community Preview 8](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.8)
+- [Current named release: Community Preview 9](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.9)
 - [Community Preview publication runbook](COMMUNITY_PREVIEW_PUBLICATION.md)
 - [Release-readiness record](RELEASE_READINESS.md)
 - [Public beta changelog](PUBLIC_BETA_CHANGELOG.md)
