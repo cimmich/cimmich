@@ -381,7 +381,7 @@
   </section>
 
   <section
-    class="sticky top-2 z-20 rounded-3xl border border-gray-200 bg-white/95 p-4 shadow-lg backdrop-blur-md dark:border-gray-700 dark:bg-immich-dark-bg/95"
+    class="rounded-3xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-immich-dark-bg"
     aria-label="Split action"
   >
     <div class="flex flex-wrap items-center gap-3">
