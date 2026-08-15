@@ -17,7 +17,6 @@
     mdiArchiveArrowDown,
     mdiArchiveArrowDownOutline,
     mdiCalendarBlankOutline,
-    mdiClipboardCheckOutline,
     mdiCogOutline,
     mdiFileDocumentOutline,
     mdiFolderOutline,
@@ -93,7 +92,6 @@
         { title: 'Events', href: Route.cimmichEvents(), icon: mdiCalendarBlankOutline },
         { title: 'Documents', href: Route.cimmichDocuments(), icon: mdiFileDocumentOutline },
         { title: 'Smart Search', href: Route.cimmichSmartSearch(), icon: mdiTextSearch },
-        { title: 'Review', href: Route.cimmichSteward(), icon: mdiClipboardCheckOutline },
         { title: 'Archive Health', href: Route.cimmichArchiveIntegrity(), icon: mdiShieldCheckOutline },
         { title: 'Settings', href: Route.cimmichSettings(), icon: mdiCogOutline },
       ]}

@@ -35,6 +35,7 @@ const asset = (overrides = {}) => ({
   ownerId: "22222222-2222-4222-8222-222222222222",
   people: [{ name: "Private Person" }],
   tags: [{ name: "Private Tag" }],
+  thumbhash: "synthetic-visual-signature",
   type: "IMAGE",
   updatedAt: "2026-01-02T00:00:00.000Z",
   visibility: "timeline",
@@ -421,6 +422,7 @@ test("asset projection is path-minimal and produces a deterministic non-path rev
   assert.equal(first.immichAssetId, "11111111-1111-4111-8111-111111111111");
   assert.equal(first.assetType, "image");
   assert.equal(first.originalFileName, "synthetic.jpg");
+  assert.equal(first.visualThumbhash, "synthetic-visual-signature");
   assert.equal("originalPath" in first, false);
   assert.equal("owner" in first, false);
   assert.equal("people" in first, false);

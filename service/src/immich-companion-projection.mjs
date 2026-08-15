@@ -98,6 +98,7 @@ export const projectImmichAsset = (value, { includePeople = false } = {}) => {
     localDateTime: optionalText(value.localDateTime),
     originalFileName: optionalText(value.originalFileName),
     originalMimeType: optionalText(value.originalMimeType),
+    visualThumbhash: optionalText(value.thumbhash),
     width:
       Number.isInteger(value.width) && value.width >= 0 ? value.width : null,
     height:

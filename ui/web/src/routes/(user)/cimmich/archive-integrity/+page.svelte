@@ -4,6 +4,7 @@
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import {
     buildArchiveVariantGroups,
+    createArchiveVisualDuplicateGroup,
     type ArchiveCanonicalPlanStatus,
     type ArchiveVariantClassification,
     type ArchiveVariantGroup,
@@ -12,6 +13,7 @@
   import {
     getCimmichArchiveBackupProof,
     getCimmichArchiveSourceEvidence,
+    getCimmichDuplicateStatus,
     getCimmichExactDuplicates,
     type CimmichArchiveBackupProofItem,
     type CimmichArchiveBackupProofPage,
@@ -19,7 +21,7 @@
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize, getAssetDuplicates, type AssetResponseDto } from '@immich/sdk';
+  import { AssetMediaSize, getAssetDuplicates, getAssetInfo, type AssetResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
@@ -255,6 +257,21 @@
     variantError = '';
     try {
       const nativeGroups = await getAssetDuplicates();
+      if (focusedAssetId && !nativeGroups.some((group) => group.assets.some((asset) => asset.id === focusedAssetId))) {
+        const statusPage = await getCimmichDuplicateStatus([focusedAssetId]);
+        const status = statusPage.items.find(
+          (item) => item.sourceAssetId === focusedAssetId && item.kind === 'possible_version',
+        );
+        if (status) {
+          const relatedAssets = await Promise.all(
+            status.relatedSourceAssetIds.map((id) => getAssetInfo({ id }).catch(() => null)),
+          );
+          const assets = relatedAssets.filter((asset): asset is AssetResponseDto => asset !== null);
+          if (assets.length > 1) {
+            nativeGroups.push(createArchiveVisualDuplicateGroup(`cimmich-visual-${status.contentId}`, assets));
+          }
+        }
+      }
       const sourceAssetIds = [...new Set(nativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
       const evidence = [];
       for (let index = 0; index < sourceAssetIds.length; index += 80) {

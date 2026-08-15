@@ -33,7 +33,7 @@ describe('Cimmich navigation shell contract', () => {
     expect(cimmichSidebar).toContain('href={Route.cimmichHome()}');
     expect(cimmichSidebar).toContain('title="Library"');
     expect(cimmichSidebar).toContain('href={Route.cimmichLibrary()}');
-    expect(cimmichSidebar).toContain('title="Review"');
+    expect(cimmichSidebar).not.toContain('title="Review"');
     expect(cimmichSidebar).toContain('title="Archive Health"');
     expect(cimmichSidebar).toContain('title="Settings"');
     expect(cimmichSidebar).not.toContain('title="Smart Search"');
@@ -43,7 +43,8 @@ describe('Cimmich navigation shell contract', () => {
     expect(immichSidebar).toContain('href={Route.cimmichHome()}');
     expect(immichSidebar).toContain('bind:expanded={$cimmichCompanionDropdown}');
     expect(immichSidebar).toContain("{ title: 'Smart Search', href: Route.cimmichSmartSearch()");
-    expect(immichSidebar).toContain("{ title: 'Review', href: Route.cimmichSteward()");
+    expect(immichSidebar).not.toContain("{ title: 'Review', href: Route.cimmichSteward()");
+    expect(people).toContain('Identity checks');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });

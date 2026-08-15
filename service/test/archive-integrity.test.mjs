@@ -245,7 +245,9 @@ test("duplicate status projects exact-copy membership for a bounded visible asse
         content_digest: "d".repeat(64),
         content_id: "media_content_one",
         copy_count: "3",
+        duplicate_kind: "exact",
         position: 1,
+        related_source_asset_ids: [],
         source_asset_id: "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7",
       },
     ]);
@@ -263,14 +265,45 @@ test("duplicate status projects exact-copy membership for a bounded visible asse
         contentDigest: "d".repeat(64),
         contentId: "media_content_one",
         copyCount: 3,
+        kind: "exact",
+        relatedSourceAssetIds: [],
         sourceAssetId: "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7",
       },
     ],
     schemaVersion: archiveIntegritySchemaVersion,
   });
-  assert.match(statements[0], /copy_count > 1/);
+  assert.match(statements[0], /HAVING count\(\*\) > 1/);
   assert.match(statements[0], /cimmich_visibility_asset_rank/);
   assert.doesNotMatch(statements[0], /\b(?:DELETE|INSERT|UPDATE)\b/);
+});
+
+test("duplicate status distinguishes visually identical files with different verified bytes", async () => {
+  const first = "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7";
+  const second = "8156f9c7-2e50-403d-a1ce-adbcc69cf981";
+  const sql = () =>
+    Promise.resolve([
+      {
+        content_digest: "e".repeat(64),
+        content_id: "media_content_visual_one",
+        copy_count: "2",
+        duplicate_kind: "possible_version",
+        related_source_asset_ids: [first, second],
+        source_asset_id: first,
+      },
+    ]);
+
+  const result = await createArchiveIntegrityStore(sql, {
+    presentationRank: () => 2,
+  }).archiveIntegrityDuplicateStatus({ sourceAssetIds: first });
+
+  assert.deepEqual(result.items[0], {
+    contentDigest: "e".repeat(64),
+    contentId: "media_content_visual_one",
+    copyCount: 2,
+    kind: "possible_version",
+    relatedSourceAssetIds: [first, second],
+    sourceAssetId: first,
+  });
 });
 
 test("backup proof refuses to treat source-system copies as independent storage", async () => {

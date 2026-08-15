@@ -68,6 +68,17 @@ export const possibleVersionIndicator = (
   sourceAssetId,
 });
 
+const visualSignatureIndicator = (status: CimmichDuplicateStatus): CimmichDuplicateIndicator => ({
+  classification: 'verified_variant',
+  count: status.copyCount,
+  href: Route.cimmichArchiveIntegrity({ assetId: status.sourceAssetId, mode: 'variants' }),
+  kind: 'possible_version',
+  label: `Possible version · ${status.copyCount} files`,
+  reason:
+    'The rendered images have the same local visual signature, while Cimmich verified that their complete files differ.',
+  sourceAssetId: status.sourceAssetId,
+});
+
 const loadEvidence = async (sourceAssetIds: string[]) => {
   const missing = [...new Set(sourceAssetIds)].filter((sourceAssetId) => !evidenceCache.has(sourceAssetId));
   for (const batch of chunks(missing, 80)) {
@@ -84,20 +95,23 @@ const loadEvidence = async (sourceAssetIds: string[]) => {
 
 export const loadCimmichDuplicateIndicators = async (sourceAssetIds: string[]) => {
   const requested = [...new Set(sourceAssetIds.filter(Boolean))];
-  const exactItems: CimmichDuplicateStatus[] = [];
+  const statusItems: CimmichDuplicateStatus[] = [];
   for (const batch of chunks(requested, 100)) {
     if (batch.length === 0) {
       continue;
     }
     const page = await getCimmichDuplicateStatus(batch);
-    exactItems.push(...page.items);
+    statusItems.push(...page.items);
   }
-  const exactByAsset = new Map(exactItems.map((item) => [item.sourceAssetId, item]));
+  const statusByAsset = new Map(statusItems.map((item) => [item.sourceAssetId, item]));
   const result = new Map<string, CimmichDuplicateIndicator | null>();
   for (const sourceAssetId of requested) {
-    const exact = exactByAsset.get(sourceAssetId);
-    if (exact) {
-      result.set(sourceAssetId, exactDuplicateIndicator(sourceAssetId, exact));
+    const status = statusByAsset.get(sourceAssetId);
+    if (status) {
+      result.set(
+        sourceAssetId,
+        status.kind === 'exact' ? exactDuplicateIndicator(sourceAssetId, status) : visualSignatureIndicator(status),
+      );
     }
   }
 

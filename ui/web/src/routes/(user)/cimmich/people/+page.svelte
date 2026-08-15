@@ -43,6 +43,7 @@
   import {
     mdiAccountMultipleOutline,
     mdiCheck,
+    mdiClipboardCheckOutline,
     mdiClose,
     mdiFilterVariant,
     mdiImageOffOutline,
@@ -481,6 +482,14 @@
         : 'Loading people'}
     >
       {#snippet actions()}
+        <a
+          class="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-primary hover:text-primary dark:border-gray-700 dark:bg-immich-dark-bg dark:text-gray-200"
+          href={Route.cimmichSteward()}
+          title="Review library-wide identity checks"
+        >
+          <Icon icon={mdiClipboardCheckOutline} size="18" />
+          Identity checks
+        </a>
         <div
           class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
           role="toolbar"

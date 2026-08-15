@@ -42,6 +42,8 @@ export type CimmichDuplicateStatus = {
   contentDigest: string;
   contentId: string;
   copyCount: number;
+  kind: 'exact' | 'possible_version';
+  relatedSourceAssetIds: string[];
   sourceAssetId: string;
 };
 

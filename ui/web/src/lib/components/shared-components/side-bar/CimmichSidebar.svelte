@@ -7,7 +7,6 @@
     mdiAccount,
     mdiAccountOutline,
     mdiCalendarBlankOutline,
-    mdiClipboardCheckOutline,
     mdiCogOutline,
     mdiFileDocumentOutline,
     mdiHome,
@@ -77,13 +76,6 @@
     icon={mdiFileDocumentOutline}
     isActive={() => isSectionActive(Route.cimmichDocuments())}
   />
-  <NavbarItem
-    title="Review"
-    href={Route.cimmichSteward()}
-    icon={mdiClipboardCheckOutline}
-    isActive={() => isSectionActive(Route.cimmichSteward())}
-  />
-
   <NavbarGroup title="Manage" size="tiny" />
 
   <NavbarItem

@@ -952,6 +952,7 @@ export const createCimmichRepository = (
     sourceId: options.immichSourceId,
   });
   const archiveIntegrity = createArchiveIntegrityStore(sql, {
+    companion: options.immichCompanion,
     presentationRank,
   });
   const assetLabels = createAssetLabelStore(sql, { presentationRank });

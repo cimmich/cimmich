@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 138. Schema 76 adds
+patch level 1. Current post-submission source is schema 139. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -1129,6 +1129,12 @@ reference the old crop and supersede its active embeddings while preserving
 accepted human identity truth. The contract never writes Immich or source
 media and grants no automatic identity, Prime, activation or training
 authority.
+
+Schema 139 retains Immich's path-free visual thumbhash in the current asset
+projection. Cimmich uses equal image dimensions plus that signature to surface
+probable same-image versions when complete-file SHA-256 values differ, while
+exact byte identity remains the stronger classification. This is discovery
+evidence only and grants no deletion or canonical-file authority.
 
 ## Database-backed tests
 

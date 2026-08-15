@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { Route } from '$lib/route';
   import { getParentPath } from '$lib/utils/tree-utils';
   import { Icon } from '@immich/ui';
@@ -12,7 +13,13 @@
   let { asset, variant = 'overlay' }: Props = $props();
   let copied = $state(false);
   const parentPath = $derived(getParentPath(asset.originalPath));
-  const folderHref = $derived(Route.viewFolderAsset({ id: asset.id, path: parentPath }));
+  const inFolderViewer = $derived(page.url.pathname.startsWith('/folders/photos/'));
+  const folderHref = $derived(
+    inFolderViewer
+      ? Route.folders({ organise: 1, path: parentPath })
+      : Route.viewFolderAsset({ cimmich: 1, id: asset.id, path: parentPath }),
+  );
+  const folderLabel = $derived(inFolderViewer ? 'Open folder' : 'Show in folder');
 
   const legacyCopyPath = () => {
     const input = document.createElement('textarea');
@@ -27,7 +34,9 @@
 
   const copyPath = async () => {
     try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable');
+      }
       await navigator.clipboard.writeText(asset.originalPath);
     } catch {
       legacyCopyPath();
@@ -49,11 +58,11 @@
         ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
         : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
       href={folderHref}
-      aria-label={`Show ${asset.originalFileName} in its folder`}
-      title="Show in folder"
+      aria-label={`${folderLabel}: ${asset.originalFileName}`}
+      title={folderLabel}
     >
       <Icon icon={mdiFolderOpenOutline} size={variant === 'overlay' ? '21' : '17'} />
-      {#if variant === 'detail'}<span>Show in folder</span>{/if}
+      {#if variant === 'detail'}<span>{folderLabel}</span>{/if}
     </a>
     <button
       class={variant === 'overlay'

@@ -94,6 +94,9 @@ describe('Route', () => {
       expect(Route.viewFolderAsset({ id: 'asset-1', path: '/archive/Trips/Sydney' })).toBe(
         '/folders/photos/asset-1?path=%2Farchive%2FTrips%2FSydney',
       );
+      expect(Route.viewFolderAsset({ cimmich: 1, id: 'asset-1', path: '/archive/Trips/Sydney' })).toBe(
+        '/folders/photos/asset-1?cimmichContext=1&path=%2Farchive%2FTrips%2FSydney',
+      );
     });
   });
 

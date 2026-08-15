@@ -72,7 +72,8 @@ export const Route = {
 
   // folders
   folders: (params?: { path?: string; organise?: 1 }) => '/folders' + asQueryString(params),
-  viewFolderAsset: ({ id, path }: { id: string; path: string }) => `/folders/photos/${id}` + asQueryString({ path }),
+  viewFolderAsset: ({ id, path, cimmich }: { id: string; path: string; cimmich?: 1 }) =>
+    `/folders/photos/${id}` + asQueryString({ cimmichContext: cimmich, path }),
 
   // libraries
   libraries: () => '/admin/library-management',

@@ -161,16 +161,7 @@
 
 <UserPageLayout title="Photo details review">
   <div class="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 lg:py-10">
-    <nav class="flex w-fit gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" aria-label="Review area">
-      <a
-        class="rounded-lg px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300"
-        href={Route.cimmichSteward()}>People</a
-      >
-      <a
-        class="rounded-lg bg-white px-4 py-2 text-sm font-semibold shadow-sm dark:bg-gray-700"
-        href={Route.cimmichPhotoReview()}>Photo details</a
-      >
-    </nav>
+    <a class="w-fit text-sm font-semibold text-primary hover:underline" href={Route.cimmichLibrary()}>← Library</a>
 
     <header class="rounded-3xl bg-gray-950 px-6 py-7 text-white sm:px-8">
       <p class="text-xs font-semibold tracking-[0.16em] text-white/55 uppercase">Archive quality</p>

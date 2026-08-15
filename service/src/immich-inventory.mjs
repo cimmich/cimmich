@@ -7,7 +7,6 @@ import {
 } from "./archive-mobility.mjs";
 
 export const IMMICH_INVENTORY_SCHEMA_VERSION = "cimmich.immich-inventory.v1";
-
 const VISIBILITIES = ["timeline", "archive", "hidden", "locked"];
 const VISIBILITY_SET = new Set(VISIBILITIES);
 const INVENTORY_ACCESS_STATES = new Set([
@@ -20,7 +19,6 @@ const OPERATIONS = new Set([
   "detect_and_recognize",
 ]);
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
-
 const canonicalize = (value) => {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value && typeof value === "object") {
@@ -40,7 +38,6 @@ const digest = (value) =>
       typeof value === "string" ? value : JSON.stringify(canonicalize(value)),
     )
     .digest("hex");
-
 const mapWithConcurrency = async (items, concurrency, project) => {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -57,7 +54,6 @@ const mapWithConcurrency = async (items, concurrency, project) => {
   await Promise.all(workers);
   return results;
 };
-
 const requiredText = (value, label, maximum = 200) => {
   const normalized = String(value || "").trim();
   if (!normalized || normalized.length > maximum) {
@@ -167,6 +163,7 @@ const normalizeAsset = (value, visibility) => {
     visibility: assetVisibility,
     originalMimeType: String(value.originalMimeType || "").trim() || null,
     originalFileName: optionalFilename(value.originalFileName),
+    visualThumbhash: optionalFilename(value.visualThumbhash),
     captureTime: requiredTimestamp(value.captureTime, "asset.captureTime"),
     sourceUpdatedAt: requiredTimestamp(value.updatedAt, "asset.updatedAt"),
     width: optionalDimension(value.width, "asset.width"),
@@ -974,7 +971,8 @@ const createImmichInventoryLedger = (
           INSERT INTO immich_asset_projection (
             source_id, immich_asset_id, cimmich_asset_id, owner_digest,
             input_revision, checksum, asset_type, visibility,
-            original_mime_type, original_file_name, capture_time, source_updated_at,
+            original_mime_type, original_file_name, visual_thumbhash,
+            capture_time, source_updated_at,
             width, height, duration_seconds, is_archived, is_favorite,
             is_offline, is_trashed, state, first_seen_run_id, last_seen_run_id
           ) VALUES (
@@ -982,7 +980,8 @@ const createImmichInventoryLedger = (
             ${assetInput.ownerDigest}, ${assetInput.inputRevision},
             ${assetInput.checksum}, ${assetInput.assetType},
             ${assetInput.visibility}, ${assetInput.originalMimeType},
-            ${assetInput.originalFileName}, ${assetInput.captureTime}, ${assetInput.sourceUpdatedAt},
+            ${assetInput.originalFileName}, ${assetInput.visualThumbhash},
+            ${assetInput.captureTime}, ${assetInput.sourceUpdatedAt},
             ${assetInput.width}, ${assetInput.height},
             ${assetInput.durationSeconds}, ${assetInput.isArchived},
             ${assetInput.isFavorite}, ${assetInput.isOffline},
@@ -998,6 +997,7 @@ const createImmichInventoryLedger = (
             visibility = excluded.visibility,
             original_mime_type = excluded.original_mime_type,
             original_file_name = excluded.original_file_name,
+            visual_thumbhash = excluded.visual_thumbhash,
             capture_time = excluded.capture_time,
             source_updated_at = excluded.source_updated_at,
             width = excluded.width,

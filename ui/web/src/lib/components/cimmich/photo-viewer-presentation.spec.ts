@@ -122,11 +122,18 @@ describe('photo viewer presentation context', () => {
       isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery')),
     ).toBe(true);
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=people'))).toBe(true);
+    expect(
+      isCimmichViewingSurface(
+        new URL('http://localhost/folders/photos/asset-1?cimmichContext=1&path=%2Farchive%2FTrips'),
+      ),
+    ).toBe(true);
+    expect(isCimmichViewingSurface(new URL('http://localhost/folders/photos/asset-1?organise=1'))).toBe(true);
   });
 
   it('does not let arbitrary photo query parameters turn Immich into Cimmich', () => {
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=0'))).toBe(false);
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichOverlay=unexpected'))).toBe(false);
+    expect(isCimmichViewingSurface(new URL('http://localhost/folders/photos/asset-1?path=%2Farchive'))).toBe(false);
   });
 
   it('defers the full timeline only for an exact Cimmich photo viewer', () => {

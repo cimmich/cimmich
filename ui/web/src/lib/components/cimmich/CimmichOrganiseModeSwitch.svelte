@@ -4,6 +4,7 @@
   import { Icon } from '@immich/ui';
   import {
     mdiCalendarBlankOutline,
+    mdiClipboardCheckOutline,
     mdiClockOutline,
     mdiFolderMultipleOutline,
     mdiHeartOutline,
@@ -78,6 +79,10 @@
   <a class="organise-switch__bulk" href={bulkHref} title="Open Bulk tools">
     <Icon icon={mdiShieldCheckOutline} size="18" />
     <span>Bulk</span>
+  </a>
+  <a class="organise-switch__bulk" href={Route.cimmichPhotoReview()} title="Review photo details">
+    <Icon icon={mdiClipboardCheckOutline} size="18" />
+    <span>Checks</span>
   </a>
 </nav>
 

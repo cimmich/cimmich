@@ -322,6 +322,8 @@ const isExplicitCimmichPhotoContext = (url: URL) => {
 
 export const isCimmichViewingSurface = (url: URL) =>
   url.pathname.startsWith('/cimmich') ||
+  (url.pathname.startsWith('/folders/photos/') &&
+    (url.searchParams.get('cimmichContext') === '1' || url.searchParams.get('organise') === '1')) ||
   isExplicitCimmichPhotoContext(url) ||
   Boolean(getCimmichPersonPhotoContext(url)) ||
   Boolean(getCimmichPetPhotoContext(url));

@@ -30,6 +30,11 @@ export type ArchiveVariantGroup = DuplicateResponseDto & {
   evidence: Map<string, CimmichArchiveSourceEvidence>;
 };
 
+export const createArchiveVisualDuplicateGroup = (
+  duplicateId: string,
+  assets: AssetResponseDto[],
+): DuplicateResponseDto => ({ assets, duplicateId, suggestedKeepAssetIds: [] });
+
 const originalCaptureExtensions = new Set([
   '3fr',
   'arw',
