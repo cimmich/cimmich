@@ -88,6 +88,9 @@ describe('Person profile layout', () => {
     expect(source).toContain("cimmichIdentityFilter === 'candidates'");
     expect(source).toContain("cimmichPresentationPickerSlot === slotKind ? '' : slotKind");
     expect(source).toContain('Select from this person');
+    expect(source).toContain(
+      '!face.body_assigned_person_id || face.body_assigned_person_id === cimmichPerson?.person_id',
+    );
     expect(source).toContain('Drag · Wheel · Arrow keys');
     expect(source).toContain('startCimmichPresentationDrag');
     expect(source).toContain('zoomCimmichPresentation');

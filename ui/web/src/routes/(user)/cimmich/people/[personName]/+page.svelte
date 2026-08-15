@@ -757,7 +757,11 @@
   );
   const cimmichPresentationPickerFaces = $derived(
     cimmichPresentationPickerSlot === 'body'
-      ? cimmichIdentityFaces.filter((face) => Boolean(face.body_id))
+      ? cimmichIdentityFaces.filter(
+          (face) =>
+            Boolean(face.body_id) &&
+            (!face.body_assigned_person_id || face.body_assigned_person_id === cimmichPerson?.person_id),
+        )
       : cimmichIdentityFaces,
   );
   const cimmichIdentityWorkspaceGroups = $derived(

@@ -628,6 +628,121 @@ test("Person presentation persists only confirmed Person evidence and projects f
   );
 });
 
+test("Person presentation accepts an unassigned Body containing the Person's accepted Face", async () => {
+  const statements = [];
+  const rows = [];
+  const sql = async (strings, ...values) => {
+    const statement = strings.join("?");
+    statements.push({ statement, values });
+    if (statement.includes("FROM current_person")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    if (
+      statement.includes("FROM body_observation body") &&
+      statement.includes("FROM current_body_tag occupied")
+    ) {
+      return [{ exists: 1 }];
+    }
+    if (statement.includes("INSERT INTO person_presentation_media")) {
+      rows.splice(0, rows.length, {
+        asset_id: "asset-1",
+        crop: { h: 0.8, w: 0.4, x: 0.3, y: 0.1 },
+        observation_id: "body-1",
+        observation_kind: "body",
+        slot_kind: "body",
+        updated_at: new Date("2026-08-16T00:00:00.000Z"),
+        height: 1200,
+        width: 1800,
+      });
+      return [];
+    }
+    if (statement.includes("FROM person_presentation_media")) return rows;
+    if (statement.includes("body_representative AS MATERIALIZED")) {
+      return [
+        {
+          body_preview_body_id: null,
+          person_id: "person-1",
+          representative_asset_id: "asset-1",
+          representative_face_id: "face-1",
+          box_h: 0.2,
+          box_w: 0.1,
+          box_x: 0.4,
+          box_y: 0.3,
+          height: 1200,
+          width: 1800,
+        },
+      ];
+    }
+    return [];
+  };
+  sql.json = (value) => value;
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      [
+        "asset-1",
+        { filename: "body.jpg", sourceAssetId: "immich-asset-1" },
+      ],
+    ]),
+  );
+
+  const presentation = await repository.setPersonPresentation({
+    actorId: "tester",
+    assetId: "asset-1",
+    crop: { h: 0.8, w: 0.4, x: 0.3, y: 0.1 },
+    observationId: "body-1",
+    observationKind: "body",
+    personId: "person-1",
+    slotKind: "body",
+  });
+
+  assert.equal(presentation.body.observationId, "body-1");
+  assert.equal(presentation.body.selectionMode, "explicit");
+  const validation = statements.find(({ statement }) =>
+    statement.includes("FROM current_body_tag occupied"),
+  );
+  assert.match(validation.statement, /FROM current_face_identity identity/);
+  assert.match(validation.statement, /identity\.state = 'accepted'/);
+  assert.match(validation.statement, /occupied\.state = 'accepted'/);
+  assert.equal(
+    statements.some(({ statement }) => statement.includes("INSERT INTO body_tag")),
+    false,
+  );
+});
+
+test("Person presentation rejects a Body without accepted identity continuity", async () => {
+  const statements = [];
+  const sql = async (strings) => {
+    const statement = strings.join("?");
+    statements.push(statement);
+    if (statement.includes("FROM current_person")) {
+      return [{ person_id: "person-1", subject_kind: "person" }];
+    }
+    if (statement.includes("FROM body_observation body")) return [];
+    return [];
+  };
+  const repository = createCimmichRepository(sql, new Map());
+
+  await assert.rejects(
+    repository.setPersonPresentation({
+      actorId: "tester",
+      assetId: "asset-1",
+      crop: null,
+      observationId: "body-1",
+      observationKind: "body",
+      personId: "person-1",
+      slotKind: "body",
+    }),
+    (error) =>
+      error.statusCode === 409 &&
+      error.message === "Presentation photo is not confirmed evidence for this person",
+  );
+  assert.equal(
+    statements.some((statement) => statement.includes("INSERT INTO person_presentation_media")),
+    false,
+  );
+});
+
 test("Person assets resolve scoped associations without expanding person_assets", async () => {
   let statement = "";
   const sql = async (strings) => {

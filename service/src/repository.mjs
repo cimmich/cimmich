@@ -5517,14 +5517,41 @@ export const createCimmichRepository = (
       } else if (kind === "body" && observation) {
         const [row] = await sql`
           SELECT 1
-          FROM current_body_tag tag
-          JOIN body_observation body ON body.body_id = tag.body_id
+          FROM body_observation body
           JOIN asset source ON source.asset_id = body.asset_id
             AND source.state = 'active'
-          WHERE tag.person_id = ${id} AND tag.state = 'accepted'
-            AND body.body_id = ${observation} AND body.asset_id = ${asset}
+          WHERE body.body_id = ${observation} AND body.asset_id = ${asset}
             AND body.state = 'valid'
             AND cimmich_visibility_asset_rank(body.asset_id) <= ${presentationRank()}
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM current_body_tag tag
+                WHERE tag.body_id = body.body_id
+                  AND tag.person_id = ${id} AND tag.state = 'accepted'
+              )
+              OR (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM current_body_tag occupied
+                  WHERE occupied.body_id = body.body_id
+                    AND occupied.state = 'accepted'
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM current_face_identity identity
+                  JOIN face_observation face ON face.face_id = identity.face_id
+                    AND face.state = 'valid'
+                  WHERE identity.person_id = ${id}
+                    AND identity.state = 'accepted'
+                    AND face.asset_id = body.asset_id
+                    AND (face.box_x + face.box_w / 2)
+                      BETWEEN body.box_x AND body.box_x + body.box_w
+                    AND (face.box_y + face.box_h / 2)
+                      BETWEEN body.box_y AND body.box_y + body.box_h
+                )
+              )
+            )
         `;
         valid = Boolean(row);
       } else if (kind === "presence") {
