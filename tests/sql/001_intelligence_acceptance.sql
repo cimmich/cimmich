@@ -366,33 +366,28 @@ INSERT INTO person_category_membership_event(
   'categoryevent_holding','person_alpha','category_holding','add','user','fixture','decision_holding','receipt_user','release-safe'
 );
 SELECT assert_true((
-  SELECT needs_holding AND needs_sort AND matching_authority='holding'
+  SELECT needs_holding AND NOT needs_sort AND matching_authority='review_only'
   FROM current_person_review_state WHERE person_id='person_alpha'
-), '16 holding automatically inherits Sort and becomes nonmatching');
-SELECT assert_true(NOT EXISTS (
+), '138 holding is an independent attention flag');
+SELECT assert_true(EXISTS (
   SELECT 1 FROM current_reference_gallery WHERE person_id='person_alpha'
-), '16 holding retires every matching gallery');
-SELECT assert_true(NOT EXISTS (
+), '138 holding keeps the matching gallery available');
+SELECT assert_true(EXISTS (
   SELECT 1 FROM current_reference_prototype WHERE person_id='person_alpha'
-), '16 holding retires every prototype');
+), '138 holding keeps matching prototypes available');
 SELECT assert_true(NOT EXISTS (
   SELECT 1 FROM capture_context_presence_candidate WHERE person_id='person_alpha'
 ), '16 Sort and Holding identities cannot seed Burst Presence candidates');
-DO $$
-BEGIN
-  BEGIN
-    INSERT INTO person_category_membership_event(
-      membership_event_id,person_id,category_id,action,actor_kind,actor_id,decision_id,producer_receipt_id,privacy_class
-    ) VALUES (
-      'categoryevent_illegal_sort_remove','person_alpha','category_sort','remove','user','fixture',
-      'decision_holding','receipt_user','release-safe'
-    );
-    RAISE EXCEPTION 'Sort was removed while Holding remained active';
-  EXCEPTION WHEN SQLSTATE '23514' THEN
-    NULL;
-  END;
-END;
-$$;
+INSERT INTO person_category_membership_event(
+  membership_event_id,person_id,category_id,action,actor_kind,actor_id,decision_id,producer_receipt_id,privacy_class
+) VALUES (
+  'categoryevent_independent_sort_remove','person_alpha','category_sort','remove','user','fixture',
+  'decision_holding','receipt_user','release-safe'
+);
+SELECT assert_true((
+  SELECT needs_holding AND NOT needs_sort
+  FROM current_person_review_state WHERE person_id='person_alpha'
+), '138 Sort can be removed while Holding remains active');
 
 INSERT INTO asset(
   asset_id,content_hash,locator_token,media_kind,mime_type,width,height,

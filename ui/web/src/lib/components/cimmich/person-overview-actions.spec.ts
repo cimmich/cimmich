@@ -40,7 +40,7 @@ describe('Person overview actions and split workspace', () => {
     expect(component).not.toContain('lg:grid-cols-6 xl:grid-cols-8');
     expect(component).toContain('const selectionLimit = 100');
     expect(component).toContain('row.person_id !== person.person_id');
-    expect(component).toContain('!row.needs_holding');
+    expect(component).not.toContain('!row.needs_holding');
     expect(component).toContain(
       "action === 'create' ? { faceId, newPersonName: name } : { faceId, personId: movePersonId }",
     );
@@ -55,24 +55,25 @@ describe('Person overview actions and split workspace', () => {
     expect(component).toContain('matching needs to be refreshed from their Checks section');
   });
 
-  it('keeps Needs attention one-click while Holding remains guarded', async () => {
+  it('keeps Needs attention independent while Holding remains an attention flag', async () => {
     const page = await readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8');
 
     expect(page).toContain('const toggleCimmichNeedsAttention = async () =>');
     expect(page).toContain("setup.category_catalog.find(({ slug }) => slug === 'sort')");
-    expect(page).toContain('cimmichPerson.needs_holding && cimmichPerson.needs_sort');
-    expect(page).toContain('needsAttentionDisabled={cimmichPerson.needs_holding}');
+    expect(page).not.toContain('cimmichPerson.needs_holding && cimmichPerson.needs_sort');
+    expect(page).not.toContain('needsAttentionDisabled={cimmichPerson.needs_holding}');
     expect(page).not.toContain('Keep matches visible, but treat this identity as review-only.');
   });
 
-  it('opens Holding people on their face matcher and exposes the Holding control', async () => {
+  it('keeps the normal identity workspace available while exposing the Holding control', async () => {
     const [control, page] = await Promise.all([
       readFile('src/lib/components/cimmich/CimmichPersonHoldingControl.svelte', 'utf8'),
       readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
     ]);
 
-    expect(page).toContain("cimmichPerson?.needs_holding && cimmichIdentityFilter === 'overview'");
-    expect(page).toContain("cimmichIdentityFilter = 'all'");
+    expect(page).not.toContain("cimmichPerson?.needs_holding && cimmichIdentityFilter === 'overview'");
+    expect(page).toContain('<CimmichPersonIdentityNavigation');
+    expect(page).toContain('<details');
     expect(page).toContain("onreview={() => void openCimmichIdentityAt('all')}");
     expect(page).toContain('onchange={openCimmichSetup}');
     expect(control).toContain('id="cimmich-holding-category"');

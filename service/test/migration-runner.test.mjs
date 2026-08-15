@@ -1345,3 +1345,29 @@ test("schema 137 projects the evidence route through physical-Face audit reads",
   assert.match(source, /FROM identity_audit_item item/);
   assert.doesNotMatch(source, /UPDATE\s+identity_claim/i);
 });
+
+test("schema 138 makes Holding an attention flag without identity quarantine", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0138_holding_attention_only_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(
+    source,
+    /DROP TRIGGER IF EXISTS person_category_holding_sort_parent/,
+  );
+  assert.match(
+    source,
+    /DROP TRIGGER IF EXISTS person_category_holding_sort_guard/,
+  );
+  assert.match(source, /SET state = snapshot\.prior_state/);
+  assert.match(source, /category\.slug IN \('sort', 'holding'\)/);
+  assert.doesNotMatch(
+    source,
+    /UPDATE reference_bucket\s+SET state = 'retired'/,
+  );
+});

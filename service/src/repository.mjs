@@ -11,7 +11,6 @@ import {
   deferBodyLinksAfterCommand,
   deferPrimeAfterCommand,
   deferPrimeForPeople,
-  isHoldingPerson,
   refreshPrimeAfterCommand,
   refreshPrimeForPeople,
   waitForMaintenanceIdle,
@@ -4277,6 +4276,100 @@ export const createCimmichRepository = (
       return { ...result, maintenancePending };
     },
 
+    async setPersonCategory({ actorId, categoryId, personId, selected }) {
+      const actor = cleanActor(actorId);
+      if (!actor) {
+        throw typedError("Missing Cimmich actor", 400, "ACTOR_REQUIRED");
+      }
+      if (typeof selected !== "boolean") {
+        throw typedError(
+          "Category selection must be true or false",
+          400,
+          "PERSON_CATEGORY_SELECTION_INVALID",
+        );
+      }
+      const result = await sql.begin(async (tx) => {
+        const [person] = await tx`
+          SELECT person_id FROM person
+          WHERE person_id = ${String(personId || "")} AND status = 'active'
+          FOR UPDATE
+        `;
+        if (!person) {
+          throw typedError(
+            "Active Cimmich identity not found",
+            404,
+            "PERSON_NOT_FOUND",
+          );
+        }
+        const [category] = await tx`
+          SELECT category_id, name, slug FROM person_category
+          WHERE category_id = ${String(categoryId || "")} AND state = 'active'
+          FOR SHARE
+        `;
+        if (!category) {
+          throw typedError(
+            "Active Cimmich category not found",
+            404,
+            "PERSON_CATEGORY_NOT_FOUND",
+          );
+        }
+        const [membership] = await tx`
+          SELECT EXISTS (
+            SELECT 1 FROM current_person_category
+            WHERE person_id = ${person.person_id}
+              AND category_id = ${category.category_id}
+          ) AS selected
+        `;
+        if (membership?.selected === selected) {
+          return {
+            categoryId: category.category_id,
+            changed: false,
+            personId: person.person_id,
+            selected,
+          };
+        }
+        await ensureUserCommandReceipt(tx);
+        const decisionId = `decision_${randomUUID().replaceAll("-", "")}`;
+        await tx`
+          INSERT INTO decision (
+            decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+            reason_code, note, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${decisionId}, 'person_category', ${category.category_id}, 'pin', 'user', ${actor},
+            'identity_setup_category_change',
+            ${`${selected ? "Add" : "Remove"} ${category.name}`},
+            ${userCommandReceiptId}, 'private'
+          )
+        `;
+        await tx`
+          INSERT INTO person_category_membership_event (
+            membership_event_id, person_id, category_id, action, actor_kind,
+            actor_id, decision_id, producer_receipt_id, privacy_class
+          ) VALUES (
+            ${`categoryevent_${randomUUID().replaceAll("-", "")}`},
+            ${person.person_id}, ${category.category_id},
+            ${selected ? "add" : "remove"}, 'user', ${actor}, ${decisionId},
+            ${userCommandReceiptId}, 'private'
+          )
+        `;
+        await tx`
+          UPDATE person SET current_revision = current_revision + 1
+          WHERE person_id = ${person.person_id}
+        `;
+        return {
+          categoryId: category.category_id,
+          changed: true,
+          decisionId,
+          personId: person.person_id,
+          selected,
+        };
+      });
+      if (result.changed) {
+        invalidateMachineSuggestions();
+      }
+      return result;
+    },
+
     async previewPersonMerge({ sourcePersonId, targetPersonId }) {
       if (
         !sourcePersonId ||
@@ -6362,13 +6455,6 @@ export const createCimmichRepository = (
 
     async faceMatchesBatch({ faceIds, limitPerFace = 1, personId }) {
       const id = String(personId || "");
-      if (!(await isHoldingPerson(sql, id))) {
-        throw typedError(
-          "Batch face matching is limited to a Holding Person",
-          409,
-          "PERSON_HOLDING_REQUIRED",
-        );
-      }
       if (
         !Array.isArray(faceIds) ||
         faceIds.length < 1 ||
@@ -6419,7 +6505,7 @@ export const createCimmichRepository = (
       const visibleFaceIds = new Set(visibleFaces.map((row) => row.face_id));
       if (normalizedFaceIds.some((faceId) => !visibleFaceIds.has(faceId))) {
         throw typedError(
-          "One or more requested faces are not visible for this Holding Person",
+          "One or more requested faces are not visible for this Person",
           404,
           "PERSON_IDENTITY_FACE_NOT_VISIBLE",
         );
@@ -7416,15 +7502,6 @@ export const createCimmichRepository = (
           statusCode: 400,
         });
       }
-      if (await isHoldingPerson(sql, personId)) {
-        throw Object.assign(
-          new Error(
-            "Holding faces must move to a real Person before entering matching buckets",
-          ),
-          { statusCode: 409 },
-        );
-      }
-
       const result = await sql.begin(async (tx) =>
         applyFaceBucketChange(tx, { actor, bucketKind, faceId, personId }),
       );
@@ -7446,13 +7523,6 @@ export const createCimmichRepository = (
       }
       const id = String(personId || "").trim();
       await requireVisibleSubject(id);
-      if (await isHoldingPerson(sql, id)) {
-        throw typedError(
-          "Holding evidence must be assigned to a real Person before rescanning",
-          409,
-          "PERSON_HOLDING_REQUIRED",
-        );
-      }
       if (!matchingProvider) {
         throw typedError(
           "Face matching must be configured before Head evidence can be rescanned",
@@ -8048,14 +8118,6 @@ export const createCimmichRepository = (
         throw Object.assign(new Error("Missing Cimmich actor"), {
           statusCode: 400,
         });
-      }
-      if (await isHoldingPerson(sql, personId)) {
-        throw Object.assign(
-          new Error(
-            "Holding faces must move to a real Person before entering Specialty",
-          ),
-          { statusCode: 409 },
-        );
       }
       if (typeof selected !== "boolean") {
         throw Object.assign(

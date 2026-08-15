@@ -10,16 +10,6 @@ import {
   loadPrimeCuratorFaces,
 } from "./prime-curator-repository.mjs";
 
-export const isHoldingPerson = async (sql, personId) => {
-  const [row] = await sql`
-    SELECT EXISTS (
-      SELECT 1 FROM current_person_category
-      WHERE person_id = ${String(personId || "")} AND slug = 'holding'
-    ) AS holding
-  `;
-  return row?.holding === true;
-};
-
 // Identity transactions are authoritative. Derived maintenance must remain
 // bounded and retryable without making a committed owner correction fail.
 export const refreshPrimeAfterCommand = async (
@@ -29,18 +19,6 @@ export const refreshPrimeAfterCommand = async (
 ) => {
   if (!personId) return false;
   try {
-    if (await isHoldingPerson(sql, personId)) {
-      await sql`
-        WITH retired_buckets AS (
-          UPDATE reference_bucket SET state = 'retired'
-          WHERE person_id = ${personId} AND state IN ('active','candidate')
-          RETURNING bucket_id
-        )
-        UPDATE reference_prototype SET state = 'retired'
-        WHERE person_id = ${personId} AND state = 'active'
-      `;
-      return false;
-    }
     const faces = await loadPrimeCuratorFaces(sql, personId);
     const curations = buildPrimeCurations(faces, {
       evidenceCutoff: new Date().toISOString(),

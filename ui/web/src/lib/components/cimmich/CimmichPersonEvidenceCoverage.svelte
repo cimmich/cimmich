@@ -26,7 +26,6 @@
   interface Props {
     coverage: CimmichPersonEvidenceCoverage;
     needsAttention: boolean;
-    needsAttentionDisabled?: boolean;
     needsAttentionSaving?: boolean;
     onmerge: () => void;
     onneedsattention: () => void;
@@ -38,7 +37,6 @@
   let {
     coverage,
     needsAttention,
-    needsAttentionDisabled = false,
     needsAttentionSaving = false,
     onmerge,
     onneedsattention,
@@ -455,18 +453,12 @@
         ]}
         type="button"
         aria-pressed={needsAttention}
-        disabled={needsAttentionDisabled || needsAttentionSaving}
+        disabled={needsAttentionSaving}
         onclick={onneedsattention}
       >
         <span class="block font-semibold">Needs attention</span>
         <span class="mt-1 block text-sm opacity-75">
-          {needsAttentionSaving
-            ? 'Saving…'
-            : needsAttentionDisabled
-              ? 'On via Holding'
-              : needsAttention
-                ? 'On · click to remove'
-                : 'Keep visible for review'}
+          {needsAttentionSaving ? 'Saving…' : needsAttention ? 'On · click to remove' : 'Keep visible for review'}
         </span>
       </button>
       <button

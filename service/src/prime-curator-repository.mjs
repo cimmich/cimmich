@@ -119,10 +119,6 @@ export const loadPrimeCuratorFaces = async (sql, personId = "") => {
     ) user_main_override ON true
     WHERE cfi.state = 'accepted'
       AND fo.observation_origin <> 'manual_user'
-      AND NOT EXISTS (
-        SELECT 1 FROM current_person_category category
-        WHERE category.person_id = cfi.person_id AND category.slug = 'holding'
-      )
       AND (${String(personId || "")} = '' OR cfi.person_id = ${String(personId || "")})
     ORDER BY cfi.person_id, fe.model_family, fe.model_version, fe.config_digest, fo.face_id
   `;

@@ -63,6 +63,10 @@ const acceptedEvidence = [
 ];
 
 try {
+  // This journey owns its activation baseline. Holding no longer retires an
+  // unrelated active pack as a side effect, so isolate the disposable fixture
+  // explicitly instead of depending on that obsolete workflow behavior.
+  await sql`UPDATE source_pack SET state = 'retired' WHERE state = 'active'`;
   await sql`
     INSERT INTO source_snapshot (
       snapshot_id, input_schema_version, source_digest, locator_root_token,

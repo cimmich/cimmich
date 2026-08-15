@@ -398,45 +398,6 @@ docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test
       NULL;
     END;
   END \$\$;" >/dev/null
-docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test -c \
-  "DO \$\$ DECLARE
-    held_person text;
-    active_pack text;
-  BEGIN
-    SELECT ref.person_id, ref.pack_id INTO held_person, active_pack
-    FROM source_pack_reference ref
-    JOIN source_pack pack ON pack.pack_id = ref.pack_id AND pack.state = 'active'
-    ORDER BY ref.person_id, ref.reference_id
-    LIMIT 1;
-    IF held_person IS NULL OR active_pack IS NULL THEN
-      RAISE EXCEPTION 'Holding SourcePack test requires an active referenced Person';
-    END IF;
-
-    INSERT INTO person_category_membership_event (
-      membership_event_id, person_id, category_id, action, actor_kind, actor_id,
-      producer_receipt_id, privacy_class
-    ) VALUES (
-      'categoryevent_holding_pack_guard_add', held_person, 'category_holding', 'add',
-      'system', 'synthetic-acceptance', 'receipt_service_fixture', 'release-safe'
-    );
-    IF EXISTS (SELECT 1 FROM source_pack WHERE pack_id = active_pack AND state = 'active') THEN
-      RAISE EXCEPTION 'Holding did not retire an active SourcePack containing that Person';
-    END IF;
-    BEGIN
-      UPDATE source_pack SET state = 'active' WHERE pack_id = active_pack;
-      RAISE EXCEPTION 'Holding SourcePack activation guard did not fire';
-    EXCEPTION WHEN check_violation THEN
-      NULL;
-    END;
-    INSERT INTO person_category_membership_event (
-      membership_event_id, person_id, category_id, action, actor_kind, actor_id,
-      producer_receipt_id, privacy_class
-    ) VALUES (
-      'categoryevent_holding_pack_guard_remove', held_person, 'category_holding', 'remove',
-      'system', 'synthetic-acceptance', 'receipt_service_fixture', 'release-safe'
-    );
-    UPDATE source_pack SET state = 'active' WHERE pack_id = active_pack;
-  END \$\$;" >/dev/null
 docker exec "$SERVICE_CONTAINER" node acceptance/live.mjs
 docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test -c \
   "DO \$\$ DECLARE

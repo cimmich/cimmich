@@ -1885,7 +1885,48 @@ test("Pet presentation routes preserve independent profile and hero slots", asyn
   ]);
 });
 
-test("Holding match batch route preserves Person and bounded request shape", async () => {
+test("Person category route preserves the owner selection command", async () => {
+  const calls = [];
+  const result = {
+    categoryId: "category-holding",
+    changed: true,
+    personId: "person-one",
+    selected: false,
+  };
+  await withServer(
+    {
+      setPersonCategory: async (input) => {
+        calls.push(input);
+        return result;
+      },
+    },
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/people/person-one/categories/category-holding`,
+        {
+          body: JSON.stringify({ selected: false }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "tester",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), result);
+    },
+  );
+  assert.deepEqual(calls, [
+    {
+      actorId: "tester",
+      categoryId: "category-holding",
+      personId: "person-one",
+      selected: false,
+    },
+  ]);
+});
+
+test("Person match batch route preserves Person and bounded request shape", async () => {
   const calls = [];
   const result = {
     items: [{ faceId: "face-one", matches: [] }],

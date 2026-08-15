@@ -232,7 +232,7 @@ await getJson(
 const heldPerson = await getJson("/v1/people/person_service_fixture");
 assert.equal(heldPerson.needs_holding, true);
 assert.equal(heldPerson.needs_sort, true);
-assert.equal(heldPerson.prime_faces, 0);
+assert.equal(heldPerson.prime_faces >= 1, true);
 const heldPersonInList = (await getJson("/v1/people?limit=500")).items.find(
   (person) => person.person_id === "person_service_fixture",
 );
@@ -247,8 +247,8 @@ assert.equal(
   heldSetup.categories.some((category) => category.slug === "sort"),
   true,
 );
-const heldBucketWrite = await fetch(
-  `${root}/v1/people/person_service_fixture/identity/faces/face_identity_fixture/bucket`,
+const heldBucketWrite = await getJson(
+  "/v1/people/person_service_fixture/identity/faces/face_identity_fixture/bucket",
   {
     body: JSON.stringify({ bucketKind: "prime" }),
     headers: {
@@ -258,7 +258,7 @@ const heldBucketWrite = await fetch(
     method: "POST",
   },
 );
-assert.equal(heldBucketWrite.status, 409);
+assert.equal(heldBucketWrite.changed, false);
 const heldMatchBatch = await getJson(
   "/v1/people/person_service_fixture/identity/matches:batch",
   {
@@ -288,8 +288,8 @@ if (heldMatchBatch.items[0].matches.length > 0) {
     "person_match_fixture",
   );
 }
-const heldSortRemoval = await fetch(
-  `${root}/v1/people/person_service_fixture/categories/${encodeURIComponent(sortCategory.category_id)}`,
+await getJson(
+  `/v1/people/person_service_fixture/categories/${encodeURIComponent(sortCategory.category_id)}`,
   {
     body: JSON.stringify({ selected: false }),
     headers: {
@@ -299,7 +299,9 @@ const heldSortRemoval = await fetch(
     method: "POST",
   },
 );
-assert.equal(heldSortRemoval.status, 409);
+const heldWithoutSort = await getJson("/v1/people/person_service_fixture");
+assert.equal(heldWithoutSort.needs_holding, true);
+assert.equal(heldWithoutSort.needs_sort, false);
 await getJson(
   `/v1/people/person_service_fixture/categories/${encodeURIComponent(holdingCategory.category_id)}`,
   {
@@ -313,10 +315,10 @@ await getJson(
 );
 const releasedPerson = await getJson("/v1/people/person_service_fixture");
 assert.equal(releasedPerson.needs_holding, false);
-assert.equal(releasedPerson.needs_sort, true);
+assert.equal(releasedPerson.needs_sort, false);
 assert.equal(releasedPerson.prime_faces >= 1, true);
-const releasedMatchBatch = await fetch(
-  `${root}/v1/people/person_service_fixture/identity/matches:batch`,
+const releasedMatchBatch = await getJson(
+  "/v1/people/person_service_fixture/identity/matches:batch",
   {
     body: JSON.stringify({
       faceIds: ["face_identity_fixture"],
@@ -326,19 +328,7 @@ const releasedMatchBatch = await fetch(
     method: "POST",
   },
 );
-assert.equal(releasedMatchBatch.status, 409);
-assert.equal((await releasedMatchBatch.json()).code, "PERSON_HOLDING_REQUIRED");
-await getJson(
-  `/v1/people/person_service_fixture/categories/${encodeURIComponent(sortCategory.category_id)}`,
-  {
-    body: JSON.stringify({ selected: false }),
-    headers: {
-      "content-type": "application/json",
-      "x-cimmich-actor": "synthetic-operator",
-    },
-    method: "POST",
-  },
-);
+assert.equal(releasedMatchBatch.requestedCount, 1);
 assert.equal(
   (await getJson("/v1/review/identity-claims?limit=5")).items.length,
   1,

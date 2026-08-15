@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 137. Schema 76 adds
+patch level 1. Current post-submission source is schema 138. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -388,13 +388,13 @@ count with bounded presentation media. The projection has no inference, write, s
 automatic identity authority. See
 `docs/PERSON_EVIDENCE_COVERAGE.md`.
 
-Holding hints are separately bounded by
+Person-scoped closest-match hints are separately bounded by
 `cimmich.person-holding-match-batch.v1`:
 
 - `POST /v1/people/:personId/identity/matches:batch` accepts 1–24 unique
   `faceIds` and `limitPerFace` from 1 to 3;
 - every requested face must be a visible active accepted face of that exact
-  current Holding Person; ordinary People and hidden/outside faces fail typed;
+  current Person; hidden or outside faces fail typed;
 - response items preserve request order and reuse the exact existing face-match
   shape, while the server runs at most four scorers concurrently;
 - this is a read projection only and grants no identity, category or gallery

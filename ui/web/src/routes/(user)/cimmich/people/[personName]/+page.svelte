@@ -728,12 +728,7 @@
     cimmichMergeOptions.find((option) => option.person_id === cimmichSetupMergePersonId),
   );
   const cimmichMoveOptions = $derived(
-    cimmichSetupPeople.filter(
-      (row) =>
-        row.person_id !== cimmichPerson?.person_id &&
-        row.subject_kind === 'person' &&
-        (!cimmichPerson?.needs_holding || !row.needs_holding),
-    ),
+    cimmichSetupPeople.filter((row) => row.person_id !== cimmichPerson?.person_id && row.subject_kind === 'person'),
   );
   const filteredCimmichMoveOptions = $derived.by(() => {
     const query = cimmichIdentityMoveQuery.trim().toLocaleLowerCase();
@@ -2199,10 +2194,6 @@
   };
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
     selectCimmichMode('identity');
-    if (cimmichPerson?.needs_holding && cimmichIdentityFilter === 'overview') {
-      cimmichIdentityFilter = 'all';
-      syncCimmichWorkspaceUrl();
-    }
     if (cimmichIdentityFilter === 'overview') {
       void untrack(() => loadCimmichEvidence(generation));
       return;
@@ -2353,7 +2344,7 @@
   };
 
   const toggleCimmichNeedsAttention = async () => {
-    if (!cimmichPerson || cimmichOverviewActionSaving || (cimmichPerson.needs_holding && cimmichPerson.needs_sort)) {
+    if (!cimmichPerson || cimmichOverviewActionSaving) {
       return;
     }
     const personId = cimmichPerson.person_id;
@@ -2929,7 +2920,7 @@
       cimmichPerson = row;
       cimmichIdentityMoveUndo = restoreIdentityMoveUndo(row.person_id);
       cimmichLoadError = '';
-      if (row.needs_holding || cimmichMode === 'identity') {
+      if (cimmichMode === 'identity') {
         void openCimmichIdentity(generation);
       }
 
@@ -2979,7 +2970,7 @@
       cimmichIdentityFaces = cached.identityFaces;
       cimmichIdentityFaceSummary = cached.identityFaceSummary;
       cimmichIdentityNextCursor = cached.identityNextCursor;
-      cimmichIdentityLoaded = cached.person.needs_holding ? false : cached.identityLoaded;
+      cimmichIdentityLoaded = cached.identityLoaded;
       cimmichExplore.restoreCachedResult(cached.exploreFilterKey, cached.exploreResult);
       cimmichKnownClusterSuggestions = cached.knownClusterSuggestions;
       cimmichMachineSuggestions = cached.machineSuggestions;
@@ -2989,10 +2980,6 @@
       cimmichIdentityReviewLoading = false;
       cimmichLoadError = '';
       if (untrack(() => cimmichMode) === 'identity') {
-        if (cached.person.needs_holding && untrack(() => cimmichIdentityFilter) === 'overview') {
-          cimmichIdentityFilter = 'all';
-          syncCimmichWorkspaceUrl();
-        }
         if (untrack(() => cimmichIdentityFilter) === 'overview') {
           void untrack(() => loadCimmichEvidence(generation));
         } else {
@@ -3687,77 +3674,76 @@
                 onchange={openCimmichSetup}
                 onreview={() => void openCimmichIdentityAt('all')}
               />
-            {:else}
-              <CimmichPersonIdentityNavigation
-                awaitingCounts={cimmichAwaitingCounts}
-                filter={cimmichIdentityFilter}
-                groups={cimmichIdentityWorkspaceGroups}
-                onfilter={selectCimmichIdentityWorkspace}
-                onsection={selectCimmichIdentitySection}
-                section={cimmichIdentitySection}
-                selectedGroup={cimmichSelectedIdentityWorkspaceGroup}
-              />
+            {/if}
+            <CimmichPersonIdentityNavigation
+              awaitingCounts={cimmichAwaitingCounts}
+              filter={cimmichIdentityFilter}
+              groups={cimmichIdentityWorkspaceGroups}
+              onfilter={selectCimmichIdentityWorkspace}
+              onsection={selectCimmichIdentitySection}
+              section={cimmichIdentitySection}
+              selectedGroup={cimmichSelectedIdentityWorkspaceGroup}
+            />
 
-              {#if cimmichIdentityFilter !== 'overview'}
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p class="text-sm font-semibold">
-                      {cimmichIdentityFilter === 'presentation'
-                        ? 'Display photos'
+            {#if cimmichIdentityFilter !== 'overview'}
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-sm font-semibold">
+                    {cimmichIdentityFilter === 'presentation'
+                      ? 'Display photos'
+                      : cimmichIdentityFilter === 'candidates'
+                        ? 'Awaiting confirmation'
+                        : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
+                            (filter) => filter.id === cimmichIdentityFilter,
+                          )?.label}
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+                    {cimmichIdentityFilter === 'appearance' ||
+                    cimmichIdentityFilter === 'head' ||
+                    cimmichIdentityFilter === 'body' ||
+                    cimmichIdentityFilter === 'presence'
+                      ? `${cimmichSelectedAppearanceAssets.length.toLocaleString()} photos`
+                      : cimmichIdentityFilter === 'presentation'
+                        ? `${cimmichPresentationSelectionCount} of 3 selected`
                         : cimmichIdentityFilter === 'candidates'
-                          ? 'Awaiting confirmation'
-                          : [...cimmichIdentityFilters, ...cimmichIdentityAdvancedFilters].find(
-                              (filter) => filter.id === cimmichIdentityFilter,
-                            )?.label}
-                    </p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-                      {cimmichIdentityFilter === 'appearance' ||
-                      cimmichIdentityFilter === 'head' ||
-                      cimmichIdentityFilter === 'body' ||
-                      cimmichIdentityFilter === 'presence'
-                        ? `${cimmichSelectedAppearanceAssets.length.toLocaleString()} photos`
-                        : cimmichIdentityFilter === 'presentation'
-                          ? `${cimmichPresentationSelectionCount} of 3 selected`
-                          : cimmichIdentityFilter === 'candidates'
-                            ? `${cimmichAwaitingCounts.newMatches.toLocaleString()} new matches · ${cimmichAwaitingCounts.possibleMistags.toLocaleString()} possible mistags`
-                            : cimmichIdentityFilter === 'all'
-                              ? `${cimmichIdentityFaces.length.toLocaleString()} accepted Face observations`
-                              : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
-                    </p>
-                  </div>
-                  <div class="flex max-w-xl flex-wrap items-center justify-end gap-2">
-                    <p class="text-left text-xs text-gray-500 sm:text-right dark:text-gray-400">
-                      {cimmichIdentityFilter === 'appearance'
-                        ? 'Head and Body placements are one operational Appearance state. The badges retain the correction detail.'
-                        : cimmichIdentityFilter === 'body'
-                          ? 'Body placements without a usable Face.'
-                          : cimmichIdentityFilter === 'presence'
-                            ? 'Attributed to this person without a visible Face, Head, or Body placement.'
-                            : cimmichIdentityFilter === 'presentation'
-                              ? 'Drag each photo to frame it. Scroll or use the controls to zoom.'
-                              : cimmichIdentityFilter === 'candidates'
-                                ? 'Suggestions are evidence only. Nothing changes until you confirm.'
-                                : cimmichIdentityFilter === 'prime'
-                                  ? 'Selected by the machinery to cover different appearances for matching; this is not a best-photo gallery.'
-                                  : cimmichIdentityFilter === 'secondary'
-                                    ? 'Accepted Face evidence outside Core. Cards distinguish evidence-only photos from guarded matcher references.'
-                                    : cimmichIdentityFilter === 'head'
-                                      ? 'Head placements without a usable Face. Operationally these belong with Body placements under Appearance.'
-                                      : 'Audit what the machinery believes. Open Review face to correct its class, tags, identity, or display role.'}
-                    </p>
-                    {#if cimmichIdentityFilter === 'head'}
-                      <button
-                        class="min-h-9 shrink-0 rounded-md border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                        type="button"
-                        disabled={cimmichHeadRescanSaving || cimmichIdentityFaceSummary.head === 0}
-                        onclick={() => void rescanCimmichHeads()}
-                      >
-                        {cimmichHeadRescanSaving ? 'Rescanning…' : 'Rescan Heads'}
-                      </button>
-                    {/if}
-                  </div>
+                          ? `${cimmichAwaitingCounts.newMatches.toLocaleString()} new matches · ${cimmichAwaitingCounts.possibleMistags.toLocaleString()} possible mistags`
+                          : cimmichIdentityFilter === 'all'
+                            ? `${cimmichIdentityFaces.length.toLocaleString()} accepted Face observations`
+                            : `${renderedCimmichIdentityFaces.length.toLocaleString()} confirmed`}
+                  </p>
                 </div>
-              {/if}
+                <div class="flex max-w-xl flex-wrap items-center justify-end gap-2">
+                  <p class="text-left text-xs text-gray-500 sm:text-right dark:text-gray-400">
+                    {cimmichIdentityFilter === 'appearance'
+                      ? 'Head and Body placements are one operational Appearance state. The badges retain the correction detail.'
+                      : cimmichIdentityFilter === 'body'
+                        ? 'Body placements without a usable Face.'
+                        : cimmichIdentityFilter === 'presence'
+                          ? 'Attributed to this person without a visible Face, Head, or Body placement.'
+                          : cimmichIdentityFilter === 'presentation'
+                            ? 'Drag each photo to frame it. Scroll or use the controls to zoom.'
+                            : cimmichIdentityFilter === 'candidates'
+                              ? 'Suggestions are evidence only. Nothing changes until you confirm.'
+                              : cimmichIdentityFilter === 'prime'
+                                ? 'Selected by the machinery to cover different appearances for matching; this is not a best-photo gallery.'
+                                : cimmichIdentityFilter === 'secondary'
+                                  ? 'Accepted Face evidence outside Core. Cards distinguish evidence-only photos from guarded matcher references.'
+                                  : cimmichIdentityFilter === 'head'
+                                    ? 'Head placements without a usable Face. Operationally these belong with Body placements under Appearance.'
+                                    : 'Audit what the machinery believes. Open Review face to correct its class, tags, identity, or display role.'}
+                  </p>
+                  {#if cimmichIdentityFilter === 'head'}
+                    <button
+                      class="min-h-9 shrink-0 rounded-md border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                      type="button"
+                      disabled={cimmichHeadRescanSaving || cimmichIdentityFaceSummary.head === 0}
+                      onclick={() => void rescanCimmichHeads()}
+                    >
+                      {cimmichHeadRescanSaving ? 'Rescanning…' : 'Rescan Heads'}
+                    </button>
+                  {/if}
+                </div>
+              </div>
             {/if}
           </div>
 
@@ -3841,7 +3827,6 @@
               <CimmichPersonEvidenceCoverage
                 coverage={cimmichEvidenceCoverage}
                 needsAttention={cimmichPerson.needs_sort}
-                needsAttentionDisabled={cimmichPerson.needs_holding}
                 needsAttentionSaving={cimmichOverviewActionSaving}
                 onmerge={() => void openCimmichMerge()}
                 onneedsattention={() => void toggleCimmichNeedsAttention()}
@@ -4807,142 +4792,141 @@
                           {cimmichHoldingMatchesLoading[face.face_id] ? 'Finding closest…' : 'Find closest match'}
                         </button>
                       {/if}
-                    {:else}
-                      <details
-                        class="rounded-lg border border-gray-200 bg-gray-50 dark:border-immich-dark-gray dark:bg-black/10"
-                      >
-                        <summary class="flex min-h-11 cursor-pointer items-center px-3 text-xs font-semibold">
-                          Review face
-                        </summary>
-                        <div class="grid gap-2 border-t border-gray-200 p-2.5 dark:border-immich-dark-gray">
-                          <label
-                            class="grid gap-1 text-[11px] font-medium tracking-wide text-gray-500 uppercase dark:text-gray-400"
-                          >
-                            Face matching role
-                            <select
-                              class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm font-medium tracking-normal text-immich-fg normal-case outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
-                              value={cimmichMatchingBucket(face) ?? ''}
-                              disabled={cimmichIdentitySavingId === `face:${face.face_id}`}
-                              onchange={(event) => {
-                                const value = event.currentTarget.value;
-                                void selectCimmichFaceBucket(
-                                  face,
-                                  value === 'prime' || value === 'secondary' || value === 'lq' || value === 'head'
-                                    ? value
-                                    : null,
-                                );
-                              }}
-                            >
-                              <option value="">Supporting evidence only</option>
-                              <option value="prime">Core matching set</option>
-                              <option value="secondary">Supporting matcher reference</option>
-                              <option value="lq">Low-quality Face evidence</option>
-                              <option value="head">Head reference (Face-derived)</option>
-                            </select>
-                          </label>
-
-                          <div class="grid grid-cols-2 gap-1.5 text-xs">
-                            <button
-                              class="rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
-                              type="button"
-                              disabled={Boolean(cimmichPresentationSaving)}
-                              onclick={() => void chooseCimmichPresentation('face', face, 'face')}
-                              >Use as Face photo</button
-                            >
-                            <button
-                              class="rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
-                              type="button"
-                              disabled={Boolean(cimmichPresentationSaving)}
-                              onclick={() => void chooseCimmichPresentation('hero', face, 'face')}
-                              >Use as Hero photo</button
-                            >
-                            {#if face.body_id && (face.body_selected || face.body_linked)}
-                              <button
-                                class="col-span-2 rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
-                                type="button"
-                                disabled={Boolean(cimmichPresentationSaving)}
-                                onclick={() => void chooseCimmichPresentation('body', face, 'body')}
-                                >Use as Body photo</button
-                              >
-                            {/if}
-                          </div>
-
-                          <div class="grid gap-1.5">
-                            {#if face.modifiers.length > 0 || face.modifier_proposals.length > 0 || face.capture_contexts.length > 0}
-                              <div class="flex flex-wrap gap-1">
-                                {#each face.modifiers as modifier (modifier.modifierKey)}
-                                  <button
-                                    class="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-200 disabled:opacity-50 dark:bg-violet-950 dark:text-violet-200"
-                                    type="button"
-                                    title={`Remove ${modifier.modifierLabel}`}
-                                    disabled={cimmichIdentitySavingId.startsWith(`modifier:${face.face_id}:`)}
-                                    onclick={() => void toggleCimmichFaceModifier(face, modifier.modifierLabel, false)}
-                                  >
-                                    {modifier.modifierLabel} ×
-                                  </button>
-                                {/each}
-                                {#each face.modifier_proposals as proposal (proposal.proposalId)}
-                                  <span
-                                    class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 p-0.5 pl-2 text-[11px] font-medium text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
-                                    title={`Suggested with ${Math.round(proposal.confidence * 100)}% confidence`}
-                                  >
-                                    {proposal.modifierLabel}?
-                                    <button
-                                      class="rounded-full bg-amber-200 px-1.5 py-0.5 font-semibold hover:bg-amber-300 disabled:opacity-50 dark:bg-amber-900 dark:hover:bg-amber-800"
-                                      type="button"
-                                      disabled={cimmichIdentitySavingId === `modifier-proposal:${proposal.proposalId}`}
-                                      onclick={() => void decideCimmichModifierProposal(proposal.proposalId, 'accept')}
-                                    >
-                                      Add
-                                    </button>
-                                    <button
-                                      class="rounded-full px-1.5 py-0.5 hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-950"
-                                      type="button"
-                                      aria-label={`Reject ${proposal.modifierLabel} suggestion`}
-                                      disabled={cimmichIdentitySavingId === `modifier-proposal:${proposal.proposalId}`}
-                                      onclick={() => void decideCimmichModifierProposal(proposal.proposalId, 'reject')}
-                                    >
-                                      ×
-                                    </button>
-                                  </span>
-                                {/each}
-                                {#each face.capture_contexts as context (context.contextId)}
-                                  <span
-                                    class="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-200"
-                                    title={context.label || 'Shared capture context'}
-                                  >
-                                    {context.contextKind === 'rapid_burst'
-                                      ? 'Burst'
-                                      : context.contextKind === 'same_moment'
-                                        ? 'Same moment'
-                                        : 'Sequence'}
-                                    · {context.memberCount}
-                                  </span>
-                                {/each}
-                              </div>
-                            {/if}
-                            <select
-                              class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm text-immich-fg outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
-                              value=""
-                              aria-label="Add modifier"
-                              disabled={cimmichIdentitySavingId.startsWith(`modifier:${face.face_id}:`)}
-                              onchange={(event) => {
-                                const modifierName = event.currentTarget.value;
-                                event.currentTarget.value = '';
-                                if (modifierName) {
-                                  void toggleCimmichFaceModifier(face, modifierName, true);
-                                }
-                              }}
-                            >
-                              <option value="">Add modifier…</option>
-                              {#each cimmichModifierOptions.filter((name) => !face.modifiers.some((modifier) => modifier.modifierLabel === name)) as modifierName (modifierName)}
-                                <option value={modifierName}>{modifierName}</option>
-                              {/each}
-                            </select>
-                          </div>
-                        </div>
-                      </details>
                     {/if}
+                    <details
+                      class="rounded-lg border border-gray-200 bg-gray-50 dark:border-immich-dark-gray dark:bg-black/10"
+                    >
+                      <summary class="flex min-h-11 cursor-pointer items-center px-3 text-xs font-semibold">
+                        Review face
+                      </summary>
+                      <div class="grid gap-2 border-t border-gray-200 p-2.5 dark:border-immich-dark-gray">
+                        <label
+                          class="grid gap-1 text-[11px] font-medium tracking-wide text-gray-500 uppercase dark:text-gray-400"
+                        >
+                          Face matching role
+                          <select
+                            class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm font-medium tracking-normal text-immich-fg normal-case outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
+                            value={cimmichMatchingBucket(face) ?? ''}
+                            disabled={cimmichIdentitySavingId === `face:${face.face_id}`}
+                            onchange={(event) => {
+                              const value = event.currentTarget.value;
+                              void selectCimmichFaceBucket(
+                                face,
+                                value === 'prime' || value === 'secondary' || value === 'lq' || value === 'head'
+                                  ? value
+                                  : null,
+                              );
+                            }}
+                          >
+                            <option value="">Supporting evidence only</option>
+                            <option value="prime">Core matching set</option>
+                            <option value="secondary">Supporting matcher reference</option>
+                            <option value="lq">Low-quality Face evidence</option>
+                            <option value="head">Head reference (Face-derived)</option>
+                          </select>
+                        </label>
+
+                        <div class="grid grid-cols-2 gap-1.5 text-xs">
+                          <button
+                            class="rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
+                            type="button"
+                            disabled={Boolean(cimmichPresentationSaving)}
+                            onclick={() => void chooseCimmichPresentation('face', face, 'face')}
+                            >Use as Face photo</button
+                          >
+                          <button
+                            class="rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
+                            type="button"
+                            disabled={Boolean(cimmichPresentationSaving)}
+                            onclick={() => void chooseCimmichPresentation('hero', face, 'face')}
+                            >Use as Hero photo</button
+                          >
+                          {#if face.body_id && (face.body_selected || face.body_linked)}
+                            <button
+                              class="col-span-2 rounded-md border border-gray-200 p-2 font-semibold hover:bg-white disabled:opacity-50 dark:border-immich-dark-gray dark:hover:bg-white/10"
+                              type="button"
+                              disabled={Boolean(cimmichPresentationSaving)}
+                              onclick={() => void chooseCimmichPresentation('body', face, 'body')}
+                              >Use as Body photo</button
+                            >
+                          {/if}
+                        </div>
+
+                        <div class="grid gap-1.5">
+                          {#if face.modifiers.length > 0 || face.modifier_proposals.length > 0 || face.capture_contexts.length > 0}
+                            <div class="flex flex-wrap gap-1">
+                              {#each face.modifiers as modifier (modifier.modifierKey)}
+                                <button
+                                  class="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-200 disabled:opacity-50 dark:bg-violet-950 dark:text-violet-200"
+                                  type="button"
+                                  title={`Remove ${modifier.modifierLabel}`}
+                                  disabled={cimmichIdentitySavingId.startsWith(`modifier:${face.face_id}:`)}
+                                  onclick={() => void toggleCimmichFaceModifier(face, modifier.modifierLabel, false)}
+                                >
+                                  {modifier.modifierLabel} ×
+                                </button>
+                              {/each}
+                              {#each face.modifier_proposals as proposal (proposal.proposalId)}
+                                <span
+                                  class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 p-0.5 pl-2 text-[11px] font-medium text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                                  title={`Suggested with ${Math.round(proposal.confidence * 100)}% confidence`}
+                                >
+                                  {proposal.modifierLabel}?
+                                  <button
+                                    class="rounded-full bg-amber-200 px-1.5 py-0.5 font-semibold hover:bg-amber-300 disabled:opacity-50 dark:bg-amber-900 dark:hover:bg-amber-800"
+                                    type="button"
+                                    disabled={cimmichIdentitySavingId === `modifier-proposal:${proposal.proposalId}`}
+                                    onclick={() => void decideCimmichModifierProposal(proposal.proposalId, 'accept')}
+                                  >
+                                    Add
+                                  </button>
+                                  <button
+                                    class="rounded-full px-1.5 py-0.5 hover:bg-amber-100 disabled:opacity-50 dark:hover:bg-amber-950"
+                                    type="button"
+                                    aria-label={`Reject ${proposal.modifierLabel} suggestion`}
+                                    disabled={cimmichIdentitySavingId === `modifier-proposal:${proposal.proposalId}`}
+                                    onclick={() => void decideCimmichModifierProposal(proposal.proposalId, 'reject')}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              {/each}
+                              {#each face.capture_contexts as context (context.contextId)}
+                                <span
+                                  class="rounded-full bg-sky-100 px-2 py-1 text-[11px] font-medium text-sky-800 dark:bg-sky-950 dark:text-sky-200"
+                                  title={context.label || 'Shared capture context'}
+                                >
+                                  {context.contextKind === 'rapid_burst'
+                                    ? 'Burst'
+                                    : context.contextKind === 'same_moment'
+                                      ? 'Same moment'
+                                      : 'Sequence'}
+                                  · {context.memberCount}
+                                </span>
+                              {/each}
+                            </div>
+                          {/if}
+                          <select
+                            class="min-w-0 rounded-md border border-gray-200 bg-white p-2 text-sm text-immich-fg outline-none focus:border-primary disabled:opacity-60 dark:border-immich-dark-gray dark:bg-immich-dark-gray dark:text-immich-dark-fg"
+                            value=""
+                            aria-label="Add modifier"
+                            disabled={cimmichIdentitySavingId.startsWith(`modifier:${face.face_id}:`)}
+                            onchange={(event) => {
+                              const modifierName = event.currentTarget.value;
+                              event.currentTarget.value = '';
+                              if (modifierName) {
+                                void toggleCimmichFaceModifier(face, modifierName, true);
+                              }
+                            }}
+                          >
+                            <option value="">Add modifier…</option>
+                            {#each cimmichModifierOptions.filter((name) => !face.modifiers.some((modifier) => modifier.modifierLabel === name)) as modifierName (modifierName)}
+                              <option value={modifierName}>{modifierName}</option>
+                            {/each}
+                          </select>
+                        </div>
+                      </div>
+                    </details>
 
                     {#if face.body_linked}
                       <p
@@ -5076,8 +5060,7 @@
                         class="rounded-md px-2 py-1.5 text-left text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950"
                         type="button"
                         disabled={Boolean(cimmichIdentitySavingId)}
-                        onclick={() => void openCimmichIdentityMove(face)}
-                        >{cimmichPerson.needs_holding ? 'Choose person' : 'Move / split'}</button
+                        onclick={() => void openCimmichIdentityMove(face)}>Move / split</button
                       >
                     {/if}
 

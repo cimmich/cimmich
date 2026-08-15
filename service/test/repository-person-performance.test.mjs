@@ -1161,11 +1161,9 @@ test("Identity pages limit accepted faces before per-face enrichment", async () 
   );
 });
 
-test("Holding match batches are Person-scoped, ordered and concurrency-bounded", async () => {
+test("Person match batches are owner-scoped, ordered and concurrency-bounded", async () => {
   const sql = async (strings) => {
     const statement = strings.join("?");
-    if (statement.includes("current_person_category"))
-      return [{ holding: true }];
     if (statement.includes("SELECT identity.face_id")) {
       return Array.from({ length: 6 }, (_, index) => ({
         face_id: `face-${index + 1}`,
@@ -1188,7 +1186,7 @@ test("Holding match batches are Person-scoped, ordered and concurrency-bounded",
   const result = await repository.faceMatchesBatch({
     faceIds,
     limitPerFace: 1,
-    personId: "person-holding",
+    personId: "person-owner",
   });
 
   assert.equal(result.schemaVersion, "cimmich.person-holding-match-batch.v1");
@@ -1200,17 +1198,17 @@ test("Holding match batches are Person-scoped, ordered and concurrency-bounded",
   assert.equal(result.requestedCount, 6);
 });
 
-test("Holding match batches reject ordinary People before face lookup", async () => {
-  const sql = async () => [{ holding: false }];
+test("Person match batches reject faces outside the requested owner", async () => {
+  const sql = async () => [];
   const repository = createCimmichRepository(sql);
 
   await assert.rejects(
     repository.faceMatchesBatch({
       faceIds: ["face-1"],
       limitPerFace: 1,
-      personId: "person-ordinary",
+      personId: "person-owner",
     }),
-    (error) => error.code === "PERSON_HOLDING_REQUIRED",
+    (error) => error.code === "PERSON_IDENTITY_FACE_NOT_VISIBLE",
   );
 });
 
@@ -1487,20 +1485,16 @@ test("owner Face review comparison does not change the governed Prime matcher", 
   );
 });
 
-test("Holding Prime retirement is one atomic SQL statement", async () => {
-  // The maintenance helper is exercised indirectly by command methods in SQL
-  // acceptance; this source assertion prevents reintroducing split retirement.
+test("Prime maintenance does not quarantine Holding people", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
       new URL("../src/repository-maintenance.mjs", import.meta.url),
       "utf8",
     ),
   );
-  assert.match(source, /WITH retired_buckets AS/);
-  assert.doesNotMatch(
-    source,
-    /await sql`UPDATE reference_bucket[\s\S]{0,250}await sql`UPDATE reference_prototype/,
-  );
+  assert.doesNotMatch(source, /isHoldingPerson/);
+  assert.doesNotMatch(source, /WITH retired_buckets AS/);
+  assert.match(source, /loadPrimeCuratorFaces\(sql, personId\)/);
 });
 
 test("personPresentation automatic slots use the narrow representative query, not the person() dossier", async () => {

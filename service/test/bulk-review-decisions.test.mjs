@@ -56,12 +56,12 @@ test("bulk candidate accept returns after the durable write while Prime maintena
     if (query.includes("SET state = 'accepted'")) {
       return values[0].map((claimId) => ({ identity_claim_id: claimId }));
     }
-    if (query.includes("slug = 'holding'")) {
+    if (query.includes("FROM current_face_identity cfi")) {
       maintenanceStarted = true;
       await maintenanceGate;
-      return [{ holding: true }];
+      return [];
     }
-    if (query.includes("retired_buckets")) return [];
+    if (query.includes("UPDATE reference_prototype")) return [];
     return [];
   });
 

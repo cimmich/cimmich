@@ -37,15 +37,15 @@ test("deferred Prime maintenance coalesces queued rebuilds per Person", async ()
   });
   const sql = async (strings) => {
     const statement = strings.join("?");
-    if (statement.includes("slug = 'holding'")) {
+    if (statement.includes("FROM current_face_identity cfi")) {
       runs += 1;
       active += 1;
       maxActive = Math.max(maxActive, active);
       if (runs === 1) await firstGate;
       active -= 1;
-      return [{ holding: true }];
+      return [];
     }
-    if (statement.includes("retired_buckets")) return [];
+    if (statement.includes("UPDATE reference_prototype")) return [];
     throw new Error(
       `Unexpected Prime maintenance query: ${statement.slice(0, 80)}`,
     );
@@ -93,14 +93,12 @@ test("deferred Prime maintenance retries a failed repository rebuild with the or
   let attempts = 0;
   const sql = async (strings) => {
     const statement = strings.join("?");
-    if (statement.includes("retired_buckets")) {
-      return [];
-    }
-    if (statement.includes("slug = 'holding'")) {
+    if (statement.includes("FROM current_face_identity cfi")) {
       attempts += 1;
       if (attempts === 1) throw new Error("temporary repository failure");
-      return [{ holding: true }];
+      return [];
     }
+    if (statement.includes("UPDATE reference_prototype")) return [];
     throw new Error(
       `Unexpected Prime maintenance query: ${statement.slice(0, 80)}`,
     );

@@ -73,7 +73,6 @@
         (row) =>
           row.person_id !== person.person_id &&
           row.subject_kind === 'person' &&
-          !row.needs_holding &&
           [row.display_name, ...row.aliases].join(' ').toLocaleLowerCase().includes(query),
       )
       .slice(0, 10);
