@@ -64,4 +64,20 @@ describe('Person overview actions and split workspace', () => {
     expect(page).toContain('needsAttentionDisabled={cimmichPerson.needs_holding}');
     expect(page).not.toContain('Keep matches visible, but treat this identity as review-only.');
   });
+
+  it('opens Holding people on their face matcher and exposes the Holding control', async () => {
+    const [control, page] = await Promise.all([
+      readFile('src/lib/components/cimmich/CimmichPersonHoldingControl.svelte', 'utf8'),
+      readFile('src/routes/(user)/cimmich/people/[personName]/+page.svelte', 'utf8'),
+    ]);
+
+    expect(page).toContain("cimmichPerson?.needs_holding && cimmichIdentityFilter === 'overview'");
+    expect(page).toContain("cimmichIdentityFilter = 'all'");
+    expect(page).toContain("onreview={() => void openCimmichIdentityAt('all')}");
+    expect(page).toContain('onchange={openCimmichSetup}');
+    expect(control).toContain('id="cimmich-holding-category"');
+    expect(control).toContain("document.querySelector('#cimmich-holding-category')?.scrollIntoView");
+    expect(control).toContain('>Held faces</button');
+    expect(control).toContain('>Change Holding</button');
+  });
 });

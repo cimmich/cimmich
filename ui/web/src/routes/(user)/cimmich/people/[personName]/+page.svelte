@@ -3,6 +3,7 @@
   import CimmichExploreFilters from '$lib/components/cimmich/CimmichExploreFilters.svelte';
   import CimmichPersonDetails from '$lib/components/cimmich/CimmichPersonDetails.svelte';
   import CimmichPersonEvidenceCoverage from '$lib/components/cimmich/CimmichPersonEvidenceCoverage.svelte';
+  import CimmichPersonHoldingControl from '$lib/components/cimmich/CimmichPersonHoldingControl.svelte';
   import CimmichPersonSplitWorkspace from '$lib/components/cimmich/CimmichPersonSplitWorkspace.svelte';
   import CimmichPersonAppearanceGallery from '$lib/components/cimmich/CimmichPersonAppearanceGallery.svelte';
   import CimmichPersonIdentityNavigation from '$lib/components/cimmich/CimmichPersonIdentityNavigation.svelte';
@@ -2198,6 +2199,10 @@
   };
   const openCimmichIdentity = async (generation = personProjectionGeneration) => {
     selectCimmichMode('identity');
+    if (cimmichPerson?.needs_holding && cimmichIdentityFilter === 'overview') {
+      cimmichIdentityFilter = 'all';
+      syncCimmichWorkspaceUrl();
+    }
     if (cimmichIdentityFilter === 'overview') {
       void untrack(() => loadCimmichEvidence(generation));
       return;
@@ -2974,7 +2979,7 @@
       cimmichIdentityFaces = cached.identityFaces;
       cimmichIdentityFaceSummary = cached.identityFaceSummary;
       cimmichIdentityNextCursor = cached.identityNextCursor;
-      cimmichIdentityLoaded = cached.identityLoaded;
+      cimmichIdentityLoaded = cached.person.needs_holding ? false : cached.identityLoaded;
       cimmichExplore.restoreCachedResult(cached.exploreFilterKey, cached.exploreResult);
       cimmichKnownClusterSuggestions = cached.knownClusterSuggestions;
       cimmichMachineSuggestions = cached.machineSuggestions;
@@ -2983,8 +2988,16 @@
       cimmichIdentityLoading = false;
       cimmichIdentityReviewLoading = false;
       cimmichLoadError = '';
-      if (untrack(() => cimmichMode) === 'identity' && untrack(() => cimmichIdentityFilter) === 'overview') {
-        void untrack(() => loadCimmichEvidence(generation));
+      if (untrack(() => cimmichMode) === 'identity') {
+        if (cached.person.needs_holding && untrack(() => cimmichIdentityFilter) === 'overview') {
+          cimmichIdentityFilter = 'all';
+          syncCimmichWorkspaceUrl();
+        }
+        if (untrack(() => cimmichIdentityFilter) === 'overview') {
+          void untrack(() => loadCimmichEvidence(generation));
+        } else {
+          void untrack(() => openCimmichIdentity(generation));
+        }
       }
       return;
     }
@@ -3181,8 +3194,7 @@
                   >
                 {/if}
                 {#if cimmichPerson.needs_holding}
-                  <span class="rounded-full bg-violet-200 px-3 py-1 text-xs font-semibold text-violet-950">Holding</span
-                  >
+                  <CimmichPersonHoldingControl variant="badge" onchange={openCimmichSetup} />
                 {:else if cimmichPerson.needs_sort}
                   <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-950"
                     >Needs sorting</span
@@ -3670,7 +3682,11 @@
         <section class="grid gap-4">
           <div class="grid gap-3">
             {#if cimmichPerson.needs_holding}
-              <p class="text-sm font-semibold">Choose a match for each held face</p>
+              <CimmichPersonHoldingControl
+                variant="banner"
+                onchange={openCimmichSetup}
+                onreview={() => void openCimmichIdentityAt('all')}
+              />
             {:else}
               <CimmichPersonIdentityNavigation
                 awaitingCounts={cimmichAwaitingCounts}
@@ -5204,24 +5220,12 @@
               <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">No relationship selected appears in Others.</p>
               {#each cimmichSetup.category_catalog.filter((category) => category.slug === 'holding') as category (category.category_id)}
                 {@const selected = cimmichSetup.categories.some((item) => item.category_id === category.category_id)}
-                <button
-                  class={[
-                    'mt-4 flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors disabled:opacity-50',
-                    selected
-                      ? 'border-violet-400 bg-violet-50 text-violet-950 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-100'
-                      : 'border-gray-200 hover:bg-gray-50 dark:border-immich-dark-gray dark:hover:bg-immich-dark-gray',
-                  ]}
-                  type="button"
-                  aria-pressed={selected}
+                <CimmichPersonHoldingControl
+                  variant="setting"
+                  {selected}
                   disabled={Boolean(cimmichSetupSaving)}
-                  onclick={() => void toggleSetupCategory(category.category_id)}
-                >
-                  <span>
-                    <span class="block font-semibold">Holding</span>
-                    <span class="block text-xs opacity-70">Mixed people; match and move each face individually.</span>
-                  </span>
-                  <span class="font-semibold">{selected ? 'On' : 'Off'}</span>
-                </button>
+                  onchange={() => void toggleSetupCategory(category.category_id)}
+                />
               {/each}
             </article>
 
