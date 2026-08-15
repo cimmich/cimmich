@@ -45,6 +45,13 @@ test("Person matcher refresh is bounded and human-review-only", async () => {
     /JOIN current_matchable_physical_face accepted_face/,
   );
   assert.match(source, /THEN 'unassigned_or_needs_attention'/);
+  assert.match(source, /'same_photo_stronger_accepted'/);
+  assert.match(source, /best_unassigned_score \+ 0\.02/);
+  assert.match(source, /accepted\.person_id <> \$\{id\}/);
+  assert.match(
+    source,
+    /INSERT INTO cimmich_person_match_refresh_target \([\s\S]*scope_kind[\s\S]*same_photo_stronger_accepted/,
+  );
   assert.match(source, /ELSE 'person_tag_recheck'/);
   assert.match(source, /category\.slug IN \('sort', 'holding'\)/);
   assert.match(source, /target_score >= \$\{Number\(pack\.score_floor\)\}/);

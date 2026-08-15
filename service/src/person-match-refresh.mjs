@@ -534,6 +534,132 @@ export const createPersonMatchRefresher = ({
             nearest.reference_face_id
       `;
       await tx`ANALYZE cimmich_person_match_refresh_target`;
+      // An unassigned region can be a plausible match while a different,
+      // already-named Face in the same crowded photo is an even stronger
+      // match for this Person. Excluding accepted Faces before scoring used to
+      // leave only the weaker region in New matches, making the proposal point
+      // at the wrong person. Compare only the bounded assets already reached
+      // by the ordinary refresh and add stronger accepted alternatives to the
+      // same-photo review lane. This remains review-only identity evidence.
+      await tx`
+        INSERT INTO cimmich_person_match_refresh_target (
+          face_id, physical_face_id, asset_id, embedding, context_ids,
+          reference_face_id, reference_asset_id, target_score, scope_kind
+        )
+        WITH target_asset AS MATERIALIZED (
+          SELECT asset_id, max(target_score)::float8 AS best_unassigned_score
+          FROM cimmich_person_match_refresh_target
+          WHERE scope_kind IS NULL
+          GROUP BY asset_id
+        ), reference_context AS MATERIALIZED (
+          SELECT reference.face_id, reference.asset_id,
+            reference_embedding.embedding::vector(512) AS embedding,
+            coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids
+          FROM person_match_refresh_reference reference
+          JOIN face_embedding reference_embedding
+            ON reference_embedding.face_id = reference.face_id
+            AND reference_embedding.state = 'active'
+            AND reference_embedding.model_family = ${pack.model_family}
+            AND reference_embedding.model_version = ${pack.model_version}
+            AND reference_embedding.config_digest = ${pack.config_digest}
+          LEFT JOIN LATERAL (
+            SELECT array_agg(capture.context_id ORDER BY capture.context_id)
+              AS context_ids
+            FROM current_face_capture_context capture
+            WHERE capture.face_id = reference.face_id
+          ) context ON true
+          WHERE reference.run_id = ${runId}
+        ), accepted_alternative AS MATERIALIZED (
+          SELECT DISTINCT ON (candidate.physical_face_id)
+            candidate.face_id, candidate.physical_face_id,
+            candidate.asset_id,
+            candidate_embedding.embedding::vector(512) AS embedding,
+            coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids,
+            target_asset.best_unassigned_score
+          FROM target_asset
+          JOIN current_matchable_physical_face candidate
+            ON candidate.asset_id = target_asset.asset_id
+          JOIN cimmich_person_match_refresh_physical_identity accepted
+            ON accepted.physical_face_id = candidate.physical_face_id
+            AND accepted.state = 'accepted'
+            AND accepted.person_id <> ${id}
+          JOIN face_embedding candidate_embedding
+            ON candidate_embedding.face_id = candidate.face_id
+            AND candidate_embedding.state = 'active'
+            AND candidate_embedding.model_family = ${pack.model_family}
+            AND candidate_embedding.model_version = ${pack.model_version}
+            AND candidate_embedding.config_digest = ${pack.config_digest}
+          LEFT JOIN LATERAL (
+            SELECT array_agg(capture.context_id ORDER BY capture.context_id)
+              AS context_ids
+            FROM current_face_capture_context capture
+            WHERE capture.face_id = candidate.face_id
+          ) context ON true
+          WHERE cimmich_face_match_eligible(
+              candidate.detection_confidence, candidate.box_w, candidate.box_h
+            )
+            AND coalesce((
+              SELECT review.reason_code
+              FROM decision review
+              WHERE review.subject_type = 'face_review'
+                AND review.subject_id = candidate.face_id
+              ORDER BY review.created_at DESC, review.decision_id DESC
+              LIMIT 1
+            ), '') NOT IN (
+              'face_review_unknown','face_review_later','face_review_geometry'
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM identity_claim rejected
+              JOIN current_face_physical_member rejected_member
+                ON rejected_member.face_id = rejected.face_id
+              WHERE rejected.person_id = ${id}
+                AND rejected.state = 'rejected'
+                AND rejected_member.physical_face_id = candidate.physical_face_id
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM identity_claim existing
+              JOIN current_face_physical_member existing_member
+                ON existing_member.face_id = existing.face_id
+              WHERE existing.person_id = ${id}
+                AND existing.state = 'candidate'
+                AND existing.origin <> 'person_refresh_match'
+                AND existing_member.physical_face_id = candidate.physical_face_id
+            )
+          ORDER BY candidate.physical_face_id, candidate.face_id
+        ), scored AS MATERIALIZED (
+          SELECT alternative.*,
+            reference.face_id AS reference_face_id,
+            reference.asset_id AS reference_asset_id,
+            (1 - (alternative.embedding <=> reference.embedding))::float8
+              AS target_score
+          FROM accepted_alternative alternative
+          JOIN reference_context reference
+            ON reference.asset_id <> alternative.asset_id
+            AND NOT (reference.context_ids && alternative.context_ids)
+        ), strongest AS (
+          SELECT DISTINCT ON (physical_face_id)
+            face_id, physical_face_id, asset_id, embedding, context_ids,
+            reference_face_id, reference_asset_id, target_score,
+            best_unassigned_score
+          FROM scored
+          ORDER BY physical_face_id, target_score DESC, reference_face_id
+        )
+        SELECT strongest.face_id, strongest.physical_face_id,
+          strongest.asset_id, strongest.embedding, strongest.context_ids,
+          strongest.reference_face_id, strongest.reference_asset_id,
+          strongest.target_score, 'same_photo_stronger_accepted'
+        FROM strongest
+        WHERE strongest.target_score >= ${Number(pack.score_floor)}
+          AND strongest.target_score >= strongest.best_unassigned_score + 0.02
+          AND NOT EXISTS (
+            SELECT 1
+            FROM cimmich_person_match_refresh_target existing
+            WHERE existing.physical_face_id = strongest.physical_face_id
+          )
+      `;
+      await tx`ANALYZE cimmich_person_match_refresh_target`;
       await tx`
         CREATE TEMP TABLE cimmich_person_match_refresh_accepted_asset
         ON COMMIT DROP AS
@@ -635,6 +761,8 @@ export const createPersonMatchRefresher = ({
             'search_pool', CASE
               WHEN result.scope_kind IS NULL
                 THEN 'unassigned_or_needs_attention'
+              WHEN result.scope_kind = 'same_photo_stronger_accepted'
+                THEN 'same_photo_stronger_accepted'
               ELSE 'person_tag_recheck'
             END,
             'next_score', result.next_score,

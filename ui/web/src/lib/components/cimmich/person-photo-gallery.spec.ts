@@ -90,6 +90,22 @@ describe('person photo gallery', () => {
     expect(personPhotoDateLabel(photos[0])).toContain('2023');
   });
 
+  it('drills chronological grouping down through month, week and day', () => {
+    const photos = preparePersonPhotos(
+      [photo('later', ['face'], '2024-05-16T12:00:00Z'), photo('earlier', ['face'], '2024-05-15T12:00:00Z')],
+      'all',
+      'oldest',
+    );
+
+    expect(groupPersonPhotos(photos, 'month')).toEqual([
+      expect.objectContaining({ id: 'month:2024-05', items: photos }),
+    ]);
+    expect(groupPersonPhotos(photos, 'week')).toEqual([
+      expect.objectContaining({ id: 'week:2024-05-13', items: photos }),
+    ]);
+    expect(groupPersonPhotos(photos, 'day').map(({ id }) => id)).toEqual(['day:2024-05-15', 'day:2024-05-16']);
+  });
+
   it('frames accepted Face geometry without changing the photo collection', () => {
     const acceptedFace = {
       ...photo('face-crop', ['face'], '2024-01-01T00:00:00Z'),

@@ -3,16 +3,70 @@ import { cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
 
 export type PersonPhotoRelationFilter = 'all' | 'presence' | 'visible';
 export type PersonPhotoSort = 'filename' | 'newest' | 'oldest';
-export type PersonPhotoGroup = 'event' | 'none' | 'object' | 'place' | 'year';
+export type PersonPhotoGroup = 'day' | 'event' | 'month' | 'none' | 'object' | 'place' | 'week' | 'year';
 export type PersonPhotoSize = 'large' | 'medium' | 'small';
 export type PersonPhotoView = 'face' | 'photo';
 export type PersonPhotoDateStatus = 'known' | 'needs-review' | 'unknown';
+
+export const personPhotoGroupOptions: Array<{ label: string; value: PersonPhotoGroup }> = [
+  { label: 'No grouping', value: 'none' },
+  { label: 'Year', value: 'year' },
+  { label: 'Month', value: 'month' },
+  { label: 'Week', value: 'week' },
+  { label: 'Day', value: 'day' },
+  { label: 'Place', value: 'place' },
+  { label: 'Event', value: 'event' },
+  { label: 'Thing', value: 'object' },
+];
 
 export type PersonPhotoGroupResult = {
   id: string;
   items: CimmichPersonAsset[];
   kindLabel: string | null;
   label: string | null;
+};
+
+const dateGroupLabel = (timestamp: number, group: Extract<PersonPhotoGroup, 'day' | 'month' | 'week' | 'year'>) => {
+  const date = new Date(timestamp);
+  if (group === 'year') {
+    return String(date.getFullYear());
+  }
+  if (group === 'month') {
+    return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
+  }
+  if (group === 'day') {
+    return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+  }
+
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  const startLabel = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: start.getFullYear() === end.getFullYear() ? undefined : 'numeric',
+  }).format(start);
+  const endLabel = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(end);
+  return `${startLabel}–${endLabel}`;
+};
+
+const dateGroupId = (timestamp: number, group: Extract<PersonPhotoGroup, 'day' | 'month' | 'week' | 'year'>) => {
+  const date = new Date(timestamp);
+  if (group === 'year') {
+    return String(date.getFullYear());
+  }
+  if (group === 'month') {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+  if (group === 'day') {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  return `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
 };
 
 const rawCaptureTimestamp = ({ capture_time }: CimmichPersonAsset) => {
@@ -91,8 +145,8 @@ export const groupPersonPhotos = (
     return [{ id: 'all', items: assets, kindLabel: null, label: null }];
   }
 
-  if (group === 'year') {
-    const groups = new Map<string, CimmichPersonAsset[]>();
+  if (group === 'year' || group === 'month' || group === 'week' || group === 'day') {
+    const groups = new Map<string, PersonPhotoGroupResult>();
     for (const asset of assets) {
       const status = personPhotoDateStatus(asset, now);
       const timestamp = trustedCaptureTimestamp(asset, now);
@@ -101,10 +155,12 @@ export const groupPersonPhotos = (
           ? 'Date needs review'
           : timestamp === null
             ? 'Date unknown'
-            : String(new Date(timestamp).getFullYear());
-      groups.set(label, [...(groups.get(label) ?? []), asset]);
+            : dateGroupLabel(timestamp, group);
+      const id = timestamp === null || status === 'needs-review' ? label : dateGroupId(timestamp, group);
+      const existing = groups.get(id);
+      groups.set(id, { id: `${group}:${id}`, items: [...(existing?.items ?? []), asset], kindLabel: null, label });
     }
-    return [...groups].map(([label, items]) => ({ id: `year:${label}`, items, kindLabel: null, label }));
+    return [...groups.values()];
   }
 
   const contextGroups = new Map<string, PersonPhotoGroupResult>();

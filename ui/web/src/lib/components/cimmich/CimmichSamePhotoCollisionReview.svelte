@@ -113,6 +113,7 @@
                     })
                   : undefined}
                 image={item}
+                targetLabel={`Review: ${item.suggestedPerson.displayName}`}
                 onRotate={(direction) => void photoReview.rotate(item.assetId, direction)}
                 onUndo={context?.rotationDecisionId
                   ? () => void photoReview.undo(item.assetId, context.rotationDecisionId ?? '')

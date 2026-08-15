@@ -41,6 +41,7 @@
     selected?: boolean;
     sourceAssetId: string;
     targetAspect?: number;
+    targetLabel?: string;
   }
 
   let {
@@ -57,6 +58,7 @@
     selected = false,
     sourceAssetId,
     targetAspect = 4 / 3,
+    targetLabel = 'Review this Face',
   }: Props = $props();
 
   let previewOpen = $state(false);
@@ -76,6 +78,10 @@
   const previewCanvasStyle = $derived(
     `width: max(100%, min(${rotatedPreview.width}px, 2400px)); aspect-ratio: ${rotatedPreview.width} / ${rotatedPreview.height};`,
   );
+  const previewTargetStyle = $derived.by(() => {
+    const box = rotatedPreview.box;
+    return `left: ${box.x * 100}%; top: ${box.y * 100}%; width: ${box.w * 100}%; height: ${box.h * 100}%;`;
+  });
 
   const previewTags = $derived.by(() => {
     const tags: PreviewPeopleTag[] = [];
@@ -409,6 +415,19 @@
                 >
               </div>
             {/each}
+          </div>
+
+          <div class="pointer-events-none absolute inset-0 z-30" data-testid="cimmich-preview-review-target">
+            <div
+              class="absolute border-3 border-amber-300 shadow-[0_0_0_2px_rgba(0,0,0,0.8)]"
+              style={previewTargetStyle}
+              title={targetLabel}
+            >
+              <span
+                class="absolute top-0 left-0 max-w-52 -translate-y-full truncate rounded-sm bg-amber-300 px-2 py-1 text-xs font-bold text-black shadow-lg"
+                >{targetLabel}</span
+              >
+            </div>
           </div>
 
           {#if previewPresenceNames.length > 0}

@@ -111,6 +111,7 @@
     personFaceCropStyle,
     personPhotoDateLabel,
     personPhotoGridClass,
+    personPhotoGroupOptions,
     preparePersonPhotos,
     type PersonPhotoGroup,
     type PersonPhotoSize,
@@ -3338,11 +3339,9 @@
                     bind:value={cimmichPhotoGroup}
                     aria-label="Group photos"
                   >
-                    <option value="none">No grouping</option>
-                    <option value="year">Year</option>
-                    <option value="place">Place</option>
-                    <option value="event">Event</option>
-                    <option value="object">Thing</option>
+                    {#each personPhotoGroupOptions as option (option.value)}<option value={option.value}
+                        >{option.label}</option
+                      >{/each}
                   </select>
                 </label>
                 <label
@@ -4078,6 +4077,7 @@
                                 })
                               : undefined}
                             image={item}
+                            targetLabel={`Review: ${item.suggestedPerson.displayName}`}
                             onOpen={storeCimmichReturnScroll}
                             onRotate={(direction) => void cimmichPhotoReview.rotate(item.assetId, direction)}
                             onToggle={(event) => toggleCimmichAuditSelection(item.faceId, event)}

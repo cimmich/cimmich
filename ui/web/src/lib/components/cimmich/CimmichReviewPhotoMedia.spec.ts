@@ -55,4 +55,36 @@ describe('CimmichReviewPhotoMedia preview evidence', () => {
     expect(mocks.getManualTags).toHaveBeenCalledWith('asset-internal');
     expect(mocks.getManualPresences).toHaveBeenCalledWith('asset-internal');
   });
+
+  it('keeps the exact reviewed Face distinct from saved People overlays', async () => {
+    mocks.getEvidence.mockReset().mockResolvedValue({
+      asset_id: 'asset-internal',
+      bodies: [],
+      faces: [
+        {
+          box_h: 0.4,
+          box_w: 0.3,
+          box_x: 0.2,
+          box_y: 0.1,
+          display_name: 'Existing Person',
+          face_id: 'face-existing',
+          person_id: 'person-existing',
+        },
+      ],
+      identity_locators: [],
+      presence: [],
+    });
+    const rendered = render(CimmichReviewPhotoMedia, {
+      contextLabel: 'Cedar House',
+      filename: 'portrait.jpg',
+      image: { box: { h: 0.2, w: 0.15, x: 0.6, y: 0.3 }, height: 800, width: 1200 },
+      onRotate: vi.fn(),
+      sourceAssetId: 'source-asset-1',
+      targetLabel: 'Review: Cammy',
+    });
+
+    await fireEvent.click(rendered.getByRole('button', { name: 'Preview portrait.jpg with context' }));
+    expect(await rendered.findByTitle('Review: Cammy')).toBeInTheDocument();
+    expect(await rendered.findByTitle('Existing Person · already tagged')).toBeInTheDocument();
+  });
 });
