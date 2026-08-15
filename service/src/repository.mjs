@@ -867,6 +867,7 @@ export const createCimmichRepository = (
     requireVisibleSubject,
   });
   const smartSplitRecommendations = createSmartSplitRecommendationStore(sql, {
+    matchingProvider,
     presentationRank,
     requireVisibleSubject,
   });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildSmartSplitRecommendations,
+  createSmartSplitRecommendationStore,
   smartSplitRecommendationPolicy,
 } from "../src/smart-split-recommendations.mjs";
 
@@ -136,4 +137,75 @@ test("distance-only recommendations require conservative cohesion and separation
     result.policy.strongLinkFloor,
     smartSplitRecommendationPolicy.strongLinkFloor,
   );
+});
+
+test("Smart split uses the configured current embedding lineage without an active SourcePack", async () => {
+  const queries = [];
+  const sql = async (strings) => {
+    const source = strings.join(" ");
+    queries.push(source);
+    if (source.includes("GROUP BY member.physical_face_id")) {
+      return [
+        {
+          asset_id: "asset-a",
+          canonical_face_id: "face-a",
+          face_ids: ["face-a"],
+          physical_face_id: "physical-a",
+        },
+        {
+          asset_id: "asset-b",
+          canonical_face_id: "face-b",
+          face_ids: ["face-b"],
+          physical_face_id: "physical-b",
+        },
+      ];
+    }
+    if (source.includes("SELECT DISTINCT member.physical_face_id")) {
+      return [
+        { physical_face_id: "physical-a" },
+        { physical_face_id: "physical-b" },
+      ];
+    }
+    if (source.includes("WITH target AS MATERIALIZED")) return [];
+    throw new Error(`Unexpected Smart Split query: ${source}`);
+  };
+  const store = createSmartSplitRecommendationStore(sql, {
+    matchingProvider: {
+      configDigest: "a".repeat(64),
+      modelFamily: "private-face",
+      modelVersion: "v2",
+    },
+    requireVisibleSubject: async () => ({ person_id: "mixed-person" }),
+  });
+
+  const result = await store.recommendations({ personId: "mixed-person" });
+
+  assert.equal(result.available, true);
+  assert.deepEqual(result.embeddingLineage, {
+    configDigest: "a".repeat(64),
+    dimension: 512,
+    modelFamily: "private-face",
+    modelVersion: "v2",
+  });
+  assert.equal(result.sourcePackId, undefined);
+  assert.equal(
+    queries.some((query) => query.includes("current_source_pack")),
+    false,
+  );
+});
+
+test("Smart split fails closed when no current matching provider is configured", async () => {
+  const sql = async (strings) => {
+    const source = strings.join(" ");
+    if (source.includes("GROUP BY member.physical_face_id")) return [];
+    throw new Error(`Unexpected Smart Split query: ${source}`);
+  };
+  const store = createSmartSplitRecommendationStore(sql, {
+    requireVisibleSubject: async () => ({ person_id: "mixed-person" }),
+  });
+
+  const result = await store.recommendations({ personId: "mixed-person" });
+
+  assert.equal(result.available, false);
+  assert.equal(result.unavailableReason, "matching_provider_unavailable");
 });

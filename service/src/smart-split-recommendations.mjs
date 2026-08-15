@@ -283,17 +283,11 @@ export const buildSmartSplitRecommendations = ({
 
 export const createSmartSplitRecommendationStore = (
   sql,
-  { presentationRank = () => 0, requireVisibleSubject },
+  { matchingProvider = null, presentationRank = () => 0, requireVisibleSubject },
 ) => ({
   async recommendations({ personId }) {
     await requireVisibleSubject(personId);
     const id = String(personId || "").trim();
-    const packs = await sql`
-      SELECT pack_id, model_family, model_version, config_digest, dimension
-      FROM current_source_pack
-      WHERE evaluation_status = 'passed' AND dimension = 512
-      ORDER BY pack_id
-    `;
     const nodes = await sql`
       SELECT member.physical_face_id, member.canonical_face_id,
         canonical.asset_id,
@@ -309,7 +303,7 @@ export const createSmartSplitRecommendationStore = (
       GROUP BY member.physical_face_id, member.canonical_face_id, canonical.asset_id
       ORDER BY member.physical_face_id
     `;
-    if (packs.length !== 1 || nodes.length > 1200) {
+    if (!matchingProvider || nodes.length > 1200) {
       return {
         ...buildSmartSplitRecommendations({
           nodes: nodes.map((node) => ({
@@ -322,20 +316,27 @@ export const createSmartSplitRecommendationStore = (
         }),
         available: false,
         unavailableReason:
-          packs.length !== 1 ? "source_pack_unavailable" : "safe_size_limit",
+          !matchingProvider
+            ? "matching_provider_unavailable"
+            : "safe_size_limit",
       };
     }
-    const pack = packs[0];
+    const lineage = {
+      configDigest: matchingProvider.configDigest,
+      dimension: 512,
+      modelFamily: matchingProvider.modelFamily,
+      modelVersion: matchingProvider.modelVersion,
+    };
     const embedded = await sql`
       SELECT DISTINCT member.physical_face_id
       FROM current_face_identity identity
       JOIN current_face_physical_member member ON member.face_id = identity.face_id
         AND member.reconciliation_state <> 'conflict'
       JOIN face_embedding embedding ON embedding.face_id = member.canonical_face_id
-        AND embedding.state = 'active' AND embedding.dimension = ${Number(pack.dimension)}
-        AND embedding.model_family = ${pack.model_family}
-        AND embedding.model_version = ${pack.model_version}
-        AND embedding.config_digest = ${pack.config_digest}
+        AND embedding.state = 'active' AND embedding.dimension = ${lineage.dimension}
+        AND embedding.model_family = ${lineage.modelFamily}
+        AND embedding.model_version = ${lineage.modelVersion}
+        AND embedding.config_digest = ${lineage.configDigest}
       WHERE identity.person_id = ${id} AND identity.state = 'accepted'
       ORDER BY member.physical_face_id
     `;
@@ -351,10 +352,10 @@ export const createSmartSplitRecommendationStore = (
           AND canonical.state = 'valid'
         JOIN asset ON asset.asset_id = canonical.asset_id AND asset.state = 'active'
         JOIN face_embedding embedding ON embedding.face_id = member.canonical_face_id
-          AND embedding.state = 'active' AND embedding.dimension = ${Number(pack.dimension)}
-          AND embedding.model_family = ${pack.model_family}
-          AND embedding.model_version = ${pack.model_version}
-          AND embedding.config_digest = ${pack.config_digest}
+          AND embedding.state = 'active' AND embedding.dimension = ${lineage.dimension}
+          AND embedding.model_family = ${lineage.modelFamily}
+          AND embedding.model_version = ${lineage.modelVersion}
+          AND embedding.config_digest = ${lineage.configDigest}
         WHERE identity.person_id = ${id} AND identity.state = 'accepted'
           AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
         ORDER BY member.physical_face_id, embedding.created_at DESC, embedding.embedding_id
@@ -390,7 +391,7 @@ export const createSmartSplitRecommendationStore = (
         personId: id,
       }),
       available: true,
-      sourcePackId: pack.pack_id,
+      embeddingLineage: lineage,
       unavailableReason: null,
     };
   },

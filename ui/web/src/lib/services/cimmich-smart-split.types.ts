@@ -16,6 +16,12 @@ export type CimmichSmartSplitGroup = {
 export type CimmichSmartSplitRecommendations = {
   automaticIdentityAuthority: 'none';
   available: boolean;
+  embeddingLineage?: {
+    configDigest: string;
+    dimension: 512;
+    modelFamily: string;
+    modelVersion: string;
+  };
   groups: CimmichSmartSplitGroup[];
   personId: string;
   policy: {
@@ -30,12 +36,11 @@ export type CimmichSmartSplitRecommendations = {
     strongLinkFloor: number;
   };
   schemaVersion: 'cimmich.smart-split-recommendations.v1';
-  sourcePackId?: string;
   summary: {
     clearGroupCount: number;
     embeddedPhysicalFaceCount: number;
     physicalFaceCount: number;
     unclearFaceCount: number;
   };
-  unavailableReason: 'safe_size_limit' | 'source_pack_unavailable' | null;
+  unavailableReason: 'matching_provider_unavailable' | 'safe_size_limit' | null;
 };
