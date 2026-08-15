@@ -50,7 +50,7 @@ const captureTime = (value) => {
   return String(value);
 };
 
-const visibleCopiesSql = (sql, visibleRank) => sql`
+const visibleCopiesSql = (sql, visibleRank, sourceAssetId = null) => sql`
   SELECT binding.content_id, binding.asset_id, binding.source_kind,
     binding.source_id, content.byte_length,
     fingerprint.content_digest,
@@ -74,6 +74,21 @@ const visibleCopiesSql = (sql, visibleRank) => sql`
     AND projection.state = 'active'
   WHERE binding.state = 'active'
     AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+    AND (
+      ${sourceAssetId}::text IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM asset_source_binding focused_binding
+        JOIN immich_asset_projection focused_projection
+          ON focused_binding.source_kind = 'immich'
+          AND focused_projection.source_id = focused_binding.source_id
+          AND focused_projection.immich_asset_id = focused_binding.external_asset_id
+          AND focused_projection.state = 'active'
+        WHERE focused_binding.content_id = binding.content_id
+          AND focused_binding.state = 'active'
+          AND focused_projection.immich_asset_id = ${sourceAssetId}
+      )
+    )
 `;
 
 export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
@@ -244,11 +259,84 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
       schemaVersion: archiveIntegritySchemaVersion,
     };
   },
-  async exactDuplicates({ limit, offset } = {}) {
+  async archiveIntegrityDuplicateStatus({ sourceAssetIds } = {}) {
+    const requestedIds = cleanSourceAssetIds(sourceAssetIds);
+    const visibleRank = presentationRank();
+    const rows = await sql`
+      WITH requested(source_asset_id, position) AS (
+        SELECT source_asset_id, ordinality::int
+        FROM unnest(${requestedIds}::text[]) WITH ORDINALITY
+          AS requested(source_asset_id, ordinality)
+      ), requested_bindings AS MATERIALIZED (
+        SELECT requested.position, requested.source_asset_id,
+          binding.content_id, fingerprint.content_digest
+        FROM requested
+        JOIN immich_asset_projection projection
+          ON projection.immich_asset_id = requested.source_asset_id
+          AND projection.state = 'active'
+        JOIN asset_source_binding binding
+          ON binding.source_kind = 'immich'
+          AND binding.source_id = projection.source_id
+          AND binding.external_asset_id = projection.immich_asset_id
+          AND binding.state = 'active'
+        JOIN asset
+          ON asset.asset_id = binding.asset_id AND asset.state = 'active'
+        JOIN media_content_fingerprint fingerprint
+          ON fingerprint.content_id = binding.content_id
+          AND fingerprint.hash_algorithm = 'sha256'
+          AND fingerprint.verification = 'byte_verified'
+        WHERE cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+      ), visible_copy_counts AS MATERIALIZED (
+        SELECT binding.content_id, count(*)::int AS copy_count
+        FROM asset_source_binding binding
+        JOIN asset ON asset.asset_id = binding.asset_id AND asset.state = 'active'
+        JOIN immich_asset_projection projection
+          ON binding.source_kind = 'immich'
+          AND projection.source_id = binding.source_id
+          AND projection.immich_asset_id = binding.external_asset_id
+          AND projection.state = 'active'
+        WHERE binding.state = 'active'
+          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+          AND binding.content_id IN (SELECT content_id FROM requested_bindings)
+        GROUP BY binding.content_id
+      )
+      SELECT requested.position, requested.source_asset_id,
+        requested.content_id, requested.content_digest, copies.copy_count
+      FROM requested_bindings requested
+      JOIN visible_copy_counts copies USING (content_id)
+      WHERE copies.copy_count > 1
+      ORDER BY requested.position
+    `;
+    return {
+      items: rows.map((row) => ({
+        contentDigest: row.content_digest,
+        contentId: row.content_id,
+        copyCount: count(row.copy_count),
+        sourceAssetId: row.source_asset_id,
+      })),
+      schemaVersion: archiveIntegritySchemaVersion,
+    };
+  },
+  async exactDuplicates({ limit, offset, sourceAssetId } = {}) {
     const pageSize = Math.max(1, cleanInteger(limit, 24, 100));
     const pageOffset = cleanInteger(offset, 0, 1_000_000);
+    const focusedSourceAssetIds = cleanOptionalSourceAssetIds(sourceAssetId);
+    if (focusedSourceAssetIds.length > 1) {
+      throw Object.assign(
+        new Error("Archive integrity source asset ID is invalid"),
+        {
+          code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_ID_INVALID",
+          statusCode: 400,
+        },
+      );
+    }
+    const focusedSourceAssetId = focusedSourceAssetIds[0] || null;
     const visibleRank = presentationRank();
-    const visibleCopies = visibleCopiesSql(sql, visibleRank);
+    const visibleCopies = visibleCopiesSql(
+      sql,
+      visibleRank,
+      focusedSourceAssetId,
+    );
     const [summary = {}] = await sql`
       WITH visible_copies AS MATERIALIZED (${visibleCopies}),
       duplicate_groups AS (

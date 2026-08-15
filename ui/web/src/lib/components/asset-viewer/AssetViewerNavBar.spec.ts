@@ -15,6 +15,10 @@ const appState = vi.hoisted(() => ({ data: {}, url: new URL('http://localhost/ph
 
 vi.mock('$app/state', () => ({ page: appState }));
 
+vi.mock('$lib/components/cimmich/duplicate-indicators', () => ({
+  getCimmichDuplicateIndicator: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock(import('$lib/managers/feature-flags-manager.svelte'), () => ({
   featureFlagsManager: {
     init: vi.fn(),
@@ -102,6 +106,8 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('<CimmichViewingMode variant="overlay" restorePreference={false} />');
     expect(source).toContain('<span class="hidden md:inline">This </span>photo');
     expect(source).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />');
+    expect(source).toContain('<CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />');
+    expect(source).toContain('<CimmichFileLocationActions {asset} variant="overlay" />');
     expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');
     expect(source).not.toContain('Immich view · All photos visible</span>');
     expect(source).not.toContain('Immich · All visible</span>');

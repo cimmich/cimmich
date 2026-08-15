@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
+  import CimmichDuplicateIndicator from '$lib/components/cimmich/CimmichDuplicateIndicator.svelte';
   import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichPetUnknownReview from '$lib/components/cimmich/CimmichPetUnknownReview.svelte';
@@ -1941,6 +1942,7 @@
                           <span class="line-clamp-1">{formatCaptureDate(item.capture_time)}</span>
                         </span>
                       </a>
+                      <CimmichDuplicateIndicator sourceAssetId={item.sourceAssetId} />
                       {#if petMediaSelectionMode}
                         <button
                           class="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full border-2 border-white bg-black/55 text-white shadow-lg"
@@ -1955,7 +1957,7 @@
                       {/if}
                       {#if petPresentation?.face?.assetId === item.asset_id || petPresentation?.hero?.assetId === item.asset_id}
                         <span
-                          class="pointer-events-none absolute top-2 left-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm"
+                          class="pointer-events-none absolute top-10 left-2 rounded-full bg-black/65 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm"
                           >{petPresentation?.face?.assetId === item.asset_id &&
                           petPresentation?.hero?.assetId === item.asset_id
                             ? 'Profile + Hero'

@@ -28,6 +28,22 @@ export const createReviewRoutes =
         await repository.exactDuplicates({
           limit: url.searchParams.get("limit"),
           offset: url.searchParams.get("offset"),
+          sourceAssetId: url.searchParams.get("sourceAssetId"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/duplicate-status"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityDuplicateStatus({
+          sourceAssetIds: url.searchParams.get("sourceAssetIds"),
         }),
         allowedOrigin,
       );

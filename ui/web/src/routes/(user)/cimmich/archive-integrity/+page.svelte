@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import {
@@ -38,7 +39,9 @@
   }
 
   let { data }: Props = $props();
-  let mode = $state<'exact' | 'variants' | 'plan' | 'backup'>('exact');
+  const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
+  const requestedMode = page.url.searchParams.get('mode');
+  let mode = $state<'exact' | 'variants' | 'plan' | 'backup'>(requestedMode === 'variants' ? 'variants' : 'exact');
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
   let loaded = $state(false);
@@ -75,7 +78,11 @@
     unprovenItems: 0,
   });
   let filteredVariantGroups = $derived(
-    variantGroups.filter((group) => variantFilter === 'all' || group.classification === variantFilter),
+    variantGroups.filter(
+      (group) =>
+        (!focusedAssetId || group.assets.some((asset) => asset.id === focusedAssetId)) &&
+        (variantFilter === 'all' || group.classification === variantFilter),
+    ),
   );
   let visibleVariantGroups = $derived(filteredVariantGroups.slice(0, visibleVariantCount));
   let filteredPlanGroups = $derived(
@@ -205,7 +212,11 @@
       error = '';
     }
     try {
-      const page = await getCimmichExactDuplicates({ limit: 24, offset: append ? (nextOffset ?? 0) : 0 });
+      const page = await getCimmichExactDuplicates({
+        limit: 24,
+        offset: append ? (nextOffset ?? 0) : 0,
+        sourceAssetId: focusedAssetId,
+      });
       groups = append ? [...groups, ...page.groups] : page.groups;
       summary = page.summary;
       nextOffset = page.nextOffset;
@@ -339,6 +350,17 @@
         Backup proof
       </button>
     </nav>
+
+    {#if focusedAssetId}
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm dark:border-violet-900 dark:bg-violet-950/25"
+      >
+        <span
+          ><strong>Photo-specific evidence.</strong> Showing the duplicate group that contains the photo you opened.</span
+        >
+        <a class="font-semibold text-primary hover:underline" href={Route.cimmichArchiveIntegrity()}>Show all groups</a>
+      </div>
+    {/if}
 
     <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Archive integrity summary">
       {#each summaryMetrics as metric (metric.label)}

@@ -236,6 +236,43 @@ test("source evidence rejects missing, malformed and oversized asset sets", asyn
   );
 });
 
+test("duplicate status projects exact-copy membership for a bounded visible asset set", async () => {
+  const statements = [];
+  const sql = (strings, ..._values) => {
+    statements.push(strings.join(" ? "));
+    return Promise.resolve([
+      {
+        content_digest: "d".repeat(64),
+        content_id: "media_content_one",
+        copy_count: "3",
+        position: 1,
+        source_asset_id: "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7",
+      },
+    ]);
+  };
+
+  const result = await createArchiveIntegrityStore(sql, {
+    presentationRank: () => 2,
+  }).archiveIntegrityDuplicateStatus({
+    sourceAssetIds: "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7",
+  });
+
+  assert.deepEqual(result, {
+    items: [
+      {
+        contentDigest: "d".repeat(64),
+        contentId: "media_content_one",
+        copyCount: 3,
+        sourceAssetId: "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7",
+      },
+    ],
+    schemaVersion: archiveIntegritySchemaVersion,
+  });
+  assert.match(statements[0], /copy_count > 1/);
+  assert.match(statements[0], /cimmich_visibility_asset_rank/);
+  assert.doesNotMatch(statements[0], /\b(?:DELETE|INSERT|UPDATE)\b/);
+});
+
 test("backup proof refuses to treat source-system copies as independent storage", async () => {
   const statements = [];
   const sourceAssetId = "dbe4efb0-9645-4c52-8cf6-70f6972a4fc7";

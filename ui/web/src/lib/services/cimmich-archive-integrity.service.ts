@@ -38,6 +38,18 @@ export type CimmichExactDuplicatePage = {
   };
 };
 
+export type CimmichDuplicateStatus = {
+  contentDigest: string;
+  contentId: string;
+  copyCount: number;
+  sourceAssetId: string;
+};
+
+export type CimmichDuplicateStatusPage = {
+  items: CimmichDuplicateStatus[];
+  schemaVersion: 'cimmich.archive-integrity.v1';
+};
+
 export type CimmichArchiveSourceEvidence = {
   assetId: string;
   bodyAssignments: number;
@@ -79,9 +91,18 @@ export type CimmichArchiveBackupProofPage = {
   };
 };
 
-export const getCimmichExactDuplicates = ({ limit = 24, offset = 0 } = {}) => {
+export const getCimmichExactDuplicates = ({ limit = 24, offset = 0, sourceAssetId = '' } = {}) => {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (sourceAssetId) {
+    search.set('sourceAssetId', sourceAssetId);
+  }
   return request<CimmichExactDuplicatePage>(`/v1/archive-integrity/exact-duplicates?${search.toString()}`);
+};
+
+export const getCimmichDuplicateStatus = (sourceAssetIds: string[]) => {
+  const unique = [...new Set(sourceAssetIds.filter(Boolean))].slice(0, 100);
+  const search = new URLSearchParams({ sourceAssetIds: unique.join(',') });
+  return request<CimmichDuplicateStatusPage>(`/v1/archive-integrity/duplicate-status?${search.toString()}`);
 };
 
 export const getCimmichArchiveSourceEvidence = (sourceAssetIds: string[]) => {

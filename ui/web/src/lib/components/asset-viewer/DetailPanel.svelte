@@ -1,11 +1,14 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import DetailPanelDate from '$lib/components/asset-viewer/DetailPanelDate.svelte';
   import DetailPanelDescription from '$lib/components/asset-viewer/DetailPanelDescription.svelte';
   import DetailPanelLocation from '$lib/components/asset-viewer/DetailPanelLocation.svelte';
   import DetailPanelRating from '$lib/components/asset-viewer/DetailPanelStarRating.svelte';
   import DetailPanelTags from '$lib/components/asset-viewer/DetailPanelTags.svelte';
   import CimmichAppearancesPanel from '$lib/components/cimmich/CimmichAppearancesPanel.svelte';
+  import CimmichFileLocationActions from '$lib/components/cimmich/CimmichFileLocationActions.svelte';
+  import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
   import { timeToLoadTheMap } from '$lib/constants';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
@@ -44,6 +47,7 @@
   let { asset, currentAlbum = null }: Props = $props();
 
   let isOwner = $derived(authManager.authenticated && authManager.user.id === asset.ownerId);
+  const isCimmichSurface = $derived(isCimmichViewingSurface(page.url));
   let latlng = $derived(
     (() => {
       const lat = asset.exifInfo?.latitude;
@@ -173,7 +177,7 @@
         <div>
           <p class="flex place-items-center gap-2 break-all whitespace-pre-wrap">
             {asset.originalFileName}
-            {#if isOwner}
+            {#if isOwner && !isCimmichSurface}
               <IconButton
                 icon={mdiInformationOutline}
                 aria-label={$t('show_file_location')}
@@ -185,7 +189,10 @@
               />
             {/if}
           </p>
-          {#if assetViewerManager.isShowAssetPath}
+          {#if isCimmichSurface}
+            <p class="mt-1 text-xs break-all opacity-60">{asset.originalPath}</p>
+            <CimmichFileLocationActions {asset} variant="detail" />
+          {:else if assetViewerManager.isShowAssetPath}
             <p class="pb-2 text-xs break-all opacity-50 hover:text-primary" transition:slide={{ duration: 250 }}>
               <!-- eslint-disable-next-line svelte/no-navigation-without-resolve this is supposed to be treated as an absolute/external link -->
               <a href={getAssetFolderHref(asset)} title={$t('go_to_folder')} class="whitespace-pre-wrap">

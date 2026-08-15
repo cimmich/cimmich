@@ -12,7 +12,7 @@
   import CimmichPersonMatchRefresh from '$lib/components/cimmich/CimmichPersonMatchRefresh.svelte';
   import CimmichPersonNamesEditor from '$lib/components/cimmich/CimmichPersonNamesEditor.svelte';
   import CimmichEntityMediaActions from '$lib/components/cimmich/CimmichEntityMediaActions.svelte';
-  import { handleCimmichMediaCardClick } from '$lib/components/cimmich/media-card-selection';
+  import CimmichPersonPhotoCard from '$lib/components/cimmich/CimmichPersonPhotoCard.svelte';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
   import CimmichObjectVisibility from '$lib/components/cimmich/CimmichObjectVisibility.svelte';
   import CimmichStatePanel from '$lib/components/cimmich/CimmichStatePanel.svelte';
@@ -108,8 +108,6 @@
   } from '$lib/components/cimmich/person-page-display';
   import {
     groupPersonPhotos,
-    personFaceCropStyle,
-    personPhotoDateLabel,
     personPhotoGridClass,
     personPhotoGroupOptions,
     preparePersonPhotos,
@@ -3433,77 +3431,15 @@
             {/if}
             <div class={personPhotoGridClass(cimmichPhotoSize)}>
               {#each group.items as asset (asset.asset_id)}
-                {#if asset.sourceAssetId}
-                  <article
-                    class="group relative aspect-square overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-800"
-                    class:ring-4={cimmichPhotoSelected(asset.asset_id)}
-                    class:ring-primary={cimmichPhotoSelected(asset.asset_id)}
-                  >
-                    <a
-                      href={Route.viewCimmichPersonAsset({
-                        id: asset.sourceAssetId,
-                        personId: cimmichPerson.person_id,
-                        personName: cimmichPerson.display_name,
-                      })}
-                      class="block size-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                      title={asset.filename}
-                      onclick={(event) =>
-                        handleCimmichMediaCardClick(event, cimmichPhotoSelectionMode, () =>
-                          toggleCimmichPhotoSelection(asset.asset_id),
-                        )}
-                    >
-                      {#if cimmichPhotoView === 'face' && asset.face_crop}
-                        <img
-                          src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
-                          alt={`${cimmichPerson.display_name} face in ${asset.filename}`}
-                          class="max-w-none transition-transform group-hover:scale-[1.02]"
-                          style={personFaceCropStyle(asset)}
-                          loading="lazy"
-                        />
-                      {:else}
-                        <img
-                          src={getAssetMediaUrl({ id: asset.sourceAssetId, size: AssetMediaSize.Thumbnail })}
-                          alt={asset.filename}
-                          class="size-full object-cover transition-transform group-hover:scale-[1.02]"
-                          class:opacity-55={cimmichPhotoView === 'face'}
-                          loading="lazy"
-                        />
-                      {/if}
-                      {#if cimmichPhotoView === 'face' && !asset.face_crop}
-                        <span
-                          class="pointer-events-none absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[11px] font-semibold text-white shadow-sm"
-                          >No face crop</span
-                        >
-                      {/if}
-                      <span
-                        class="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-black/75 to-transparent px-3 pt-10 pb-2 text-xs font-medium text-white opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-                      >
-                        <span class="line-clamp-1">{asset.filename}</span>
-                        {#if personPhotoDateLabel(asset)}
-                          <span class="mt-0.5 block font-normal text-white/80">{personPhotoDateLabel(asset)}</span>
-                        {/if}
-                      </span>
-                    </a>
-                    {#if cimmichPhotoSelectionMode}
-                      <button
-                        class="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full border-2 border-white bg-black/55 text-white shadow-lg"
-                        class:bg-primary={cimmichPhotoSelected(asset.asset_id)}
-                        type="button"
-                        aria-label={`${cimmichPhotoSelected(asset.asset_id) ? 'Deselect' : 'Select'} ${asset.filename}`}
-                        aria-pressed={cimmichPhotoSelected(asset.asset_id)}
-                        onclick={() => toggleCimmichPhotoSelection(asset.asset_id)}
-                      >
-                        {#if cimmichPhotoSelected(asset.asset_id)}<Icon icon={mdiCheckCircleOutline} size="20" />{/if}
-                      </button>
-                    {/if}
-                  </article>
-                {:else}
-                  <div
-                    class="flex aspect-square items-end rounded-sm bg-gray-200 p-3 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300"
-                  >
-                    <span class="line-clamp-3">{asset.filename || asset.asset_id}</span>
-                  </div>
-                {/if}
+                <CimmichPersonPhotoCard
+                  {asset}
+                  ontoggle={() => toggleCimmichPhotoSelection(asset.asset_id)}
+                  personId={cimmichPerson.person_id}
+                  personName={cimmichPerson.display_name}
+                  selected={cimmichPhotoSelected(asset.asset_id)}
+                  selectionMode={cimmichPhotoSelectionMode}
+                  view={cimmichPhotoView}
+                />
               {/each}
             </div>
           {:else}

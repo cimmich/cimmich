@@ -83,6 +83,17 @@ describe('Route', () => {
       expect(Route.cimmichSetup()).toBe('/cimmich/setup');
       expect(Route.cimmichMaintenance()).toBe('/cimmich/maintenance');
       expect(Route.cimmichArchiveIntegrity()).toBe('/cimmich/archive-integrity');
+      expect(Route.cimmichArchiveIntegrity({ assetId: 'asset-1', mode: 'variants' })).toBe(
+        '/cimmich/archive-integrity?assetId=asset-1&mode=variants',
+      );
+    });
+  });
+
+  describe(Route.viewFolderAsset.name, () => {
+    it('opens the asset inside its containing folder context', () => {
+      expect(Route.viewFolderAsset({ id: 'asset-1', path: '/archive/Trips/Sydney' })).toBe(
+        '/folders/photos/asset-1?path=%2Farchive%2FTrips%2FSydney',
+      );
     });
   });
 

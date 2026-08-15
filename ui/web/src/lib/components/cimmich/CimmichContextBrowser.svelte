@@ -10,6 +10,7 @@
   import CimmichPlacePlan from './CimmichPlacePlan.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
   import CimmichEntityMediaActions from './CimmichEntityMediaActions.svelte';
+  import CimmichDuplicateIndicator from './CimmichDuplicateIndicator.svelte';
   import { handleCimmichMediaCardClick } from './media-card-selection';
   import { cimmichPlaceChildCoverAssetId } from './place-child-cover';
   import { cimmichPlaceAssetSectionNames } from './place-media-section';
@@ -3495,6 +3496,7 @@
                           >{mediaContextLabel}</span
                         >{/if}
                     </a>
+                    <CimmichDuplicateIndicator sourceAssetId={asset.sourceAssetId} />
                     {#if mediaSelectionMode}
                       <button
                         class="context-place-photo-select"
@@ -3510,7 +3512,7 @@
                     {/if}
                     {#if selected.entity.coverAssetId === asset.sourceAssetId}
                       <span
-                        class="absolute top-2 left-2 z-1 rounded-full bg-black/62 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm"
+                        class="absolute top-10 left-2 z-1 rounded-full bg-black/62 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm"
                         >Cover</span
                       >
                     {/if}

@@ -3,6 +3,7 @@
   import type { CimmichPersonAsset } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
+  import CimmichDuplicateIndicator from './CimmichDuplicateIndicator.svelte';
   import CimmichStatePanel from './CimmichStatePanel.svelte';
   import type { CimmichIdentityFilter } from './person-workspace-navigation';
 
@@ -73,6 +74,7 @@
           {/if}
         </div>
       </a>
+      <CimmichDuplicateIndicator sourceAssetId={asset.sourceAssetId} />
       <div class="grid gap-1 p-2.5">
         <p class="text-xs font-semibold">
           {[hasHead ? 'Head' : '', hasBody ? 'Body' : '', hasPresence ? 'Presence' : ''].filter(Boolean).join(' · ')}

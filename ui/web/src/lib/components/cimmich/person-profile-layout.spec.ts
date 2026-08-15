@@ -18,6 +18,7 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/CimmichMistagCorrectionFooter.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/accepted-mistag-actions.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonPhotoCard.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonMatchRefresh.svelte', 'utf8'),
     readFile('src/lib/services/cimmich-face-review-comparison-client.ts', 'utf8'),
   ]);
@@ -260,7 +261,7 @@ describe('Person profile layout', () => {
     expect(source).toContain("preparePersonPhotos(cimmichAssets, 'all', cimmichPhotoSort)");
     expect(source).toContain('aria-label="Thumbnail view"');
     expect(source).toContain('<CimmichPersonPhotoViewToggle');
-    expect(source).toContain("cimmichPhotoView === 'face' && asset.face_crop");
+    expect(source).toContain("view === 'face' && asset.face_crop");
     expect(source).toContain('No face crop');
     expect(source).toContain("{cimmichFuturePhotoDateCount === 1 ? 'date needs' : 'dates need'} review");
     expect(source).toContain('date.getTime() > Date.now()');
@@ -274,7 +275,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('subjectKind: cimmichPerson.subject_kind');
     expect(source).toContain('Maximum ${ENTITY_MEDIA_SELECTION_LIMIT} photos');
     expect(source).toContain('cimmichPhotoSelectionMode');
-    expect(source).toContain('handleCimmichMediaCardClick(event, cimmichPhotoSelectionMode');
+    expect(source).toContain('handleCimmichMediaCardClick(event, selectionMode');
     expect(source).not.toContain("tagType: 'face'");
   });
 
