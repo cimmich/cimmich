@@ -17,21 +17,14 @@ export type CimmichPersonMatchRefreshResult = {
   acceptedIdentityDelta: 0;
   automaticIdentityWrites: 0;
   candidateCount: number;
-  headRescan: {
-    movedCount: number;
-    retainedCount: number;
-    totalCount: number;
-  };
   matcherPhotoCount: number;
-  mistagRefresh: {
-    reevaluatedCount: number;
-    remainingCount: number;
-    resolvedCount: number;
-    routeChangedCount: number;
-  };
+  matchedHeadCount: number;
+  matchedMistagCount: number;
   personId: string;
   personName: string;
   referenceSetDigest: string;
+  reviewedHeadCount: number;
+  reviewedMistagCount: number;
   runId: string;
   schemaVersion: 'cimmich.person-match-refresh.v1';
   state: 'complete';

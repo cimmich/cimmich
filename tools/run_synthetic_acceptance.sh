@@ -153,9 +153,6 @@ docker exec \
 docker exec \
   -e CIMMICH_TEST_DATABASE_URL="postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/$FACE_REVIEW_DATABASE" \
   "$SERVICE_CONTAINER" node --test test/repository-face-review.integration.test.mjs
-docker exec \
-  -e CIMMICH_TEST_DATABASE_URL="postgres://cimmich_test:synthetic-only-password@127.0.0.1:5432/$FACE_REVIEW_DATABASE" \
-  "$SERVICE_CONTAINER" node --test test/person-mistag-refresh.integration.test.mjs
 docker exec "$CONTAINER" dropdb -U cimmich_test "$FACE_REVIEW_DATABASE"
 docker exec -e CIMMICH_PERSON_PROFILE_PHASE=write "$SERVICE_CONTAINER" \
   node acceptance/person-profile-journey.mjs

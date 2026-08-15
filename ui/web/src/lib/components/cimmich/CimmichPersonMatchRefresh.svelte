@@ -29,14 +29,8 @@
       }
       if (personId === requestedPersonId) {
         onviewchange('new');
-        const headSummary = result.headRescan.totalCount
-          ? ` Rescanned ${result.headRescan.totalCount.toLocaleString()} of their Heads; ${result.headRescan.movedCount.toLocaleString()} re-entered Face matching.`
-          : ' No assigned Heads needed rescanning.';
-        const mistagSummary = result.mistagRefresh.reevaluatedCount
-          ? ` Rechecked ${result.mistagRefresh.reevaluatedCount.toLocaleString()} mistags in their lane; ${result.mistagRefresh.resolvedCount.toLocaleString()} no longer qualify.`
-          : ' No current mistags needed rechecking.';
         onmessage(
-          `Updated ${result.matcherPhotoCount.toLocaleString()} matcher ${result.matcherPhotoCount === 1 ? 'photo' : 'photos'} and found ${result.candidateCount.toLocaleString()} new ${result.candidateCount === 1 ? 'match' : 'matches'} to check.${headSummary}${mistagSummary} Nothing was confirmed.`,
+          `Found ${result.candidateCount.toLocaleString()} new matches. Rechecked ${result.reviewedHeadCount.toLocaleString()} Heads and ${result.reviewedMistagCount.toLocaleString()} mistags.`,
         );
       }
     } catch (error) {
@@ -54,14 +48,7 @@
 <div
   class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-immich-dark-gray/15"
 >
-  <div class="grid gap-1">
-    <h3 class="font-semibold">Refresh matching</h3>
-    <p class="text-sm text-gray-500 dark:text-gray-400">
-      Recheck this Person’s assigned Heads and current mistags, update matcher photos from confirmed Faces, then look
-      across unassigned Faces and People marked Needs attention for more likely matches. Empty Head and mistag lanes are
-      skipped before scoring.
-    </p>
-  </div>
+  <p class="text-sm text-gray-500 dark:text-gray-400">Recheck this Person’s tags.</p>
   <button
     class="inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-wait disabled:opacity-60"
     disabled={saving}

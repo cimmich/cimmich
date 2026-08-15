@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { personMatchRefreshContract } from "../src/person-match-refresh.mjs";
-import { selectPersonMistagRefreshOutcome } from "../src/person-mistag-refresh.mjs";
 
 test("Person matcher refresh is bounded and human-review-only", async () => {
   assert.deepEqual(personMatchRefreshContract, {
@@ -45,7 +44,8 @@ test("Person matcher refresh is bounded and human-review-only", async () => {
     source,
     /JOIN current_matchable_physical_face accepted_face/,
   );
-  assert.match(source, /'search_pool', 'unassigned_or_needs_attention'/);
+  assert.match(source, /THEN 'unassigned_or_needs_attention'/);
+  assert.match(source, /ELSE 'person_tag_recheck'/);
   assert.match(source, /category\.slug IN \('sort', 'holding'\)/);
   assert.match(source, /target_score >= \$\{Number\(pack\.score_floor\)\}/);
   assert.match(source, /margin >= \$\{Number\(pack\.margin_floor\)\}/);
@@ -74,7 +74,7 @@ test("new-Person batches trigger one post-batch matcher refresh without hiding a
   );
 });
 
-test("Person refresh probes its exact Head and mistag lanes before optional scoring", async () => {
+test("Person refresh adds only that Person's Heads and mistags to the normal matcher", async () => {
   const source = await readFile(
     new URL("../src/person-match-refresh-repository.mjs", import.meta.url),
     "utf8",
@@ -84,85 +84,23 @@ test("Person refresh probes its exact Head and mistag lanes before optional scor
   assert.match(source, /item\.audit_kind = 'accepted_contradiction'/);
   assert.match(source, /item\.review_state = 'open'/);
   assert.match(source, /item\.assigned_person_id = \$\{id\}/);
-  assert.match(source, /item\.suggested_person_id = \$\{id\}/);
+  assert.doesNotMatch(source, /item\.suggested_person_id = \$\{id\}/);
+  assert.match(source, /reviewFaces: scopedReviewFaces/);
   assert.ok(
-    source.indexOf("const scope = await scopes(personId)") <
-      source.indexOf("await rescanHeads"),
+    source.indexOf("const scopedReviewFaces = await reviewFaces(personId)") <
+      source.indexOf("await refresher.refresh"),
   );
-  assert.match(source, /scope\.headCount\s+\? await rescanHeads/);
-  assert.match(
-    source,
-    /scope\.mistagCount\s+\? await mistagRefresher\.refresh/,
-  );
-});
+  assert.doesNotMatch(source, /rescanHeads|mistagRefresher/);
 
-test("bounded mistag refresh preserves current reasons or resolves the row", () => {
-  assert.deepEqual(
-    selectPersonMistagRefreshOutcome({
-      alternative_person_id: "person-kostas",
-      alternative_reference_asset_id: "asset-reference",
-      alternative_score: 0.61,
-      assigned_person_id: "person-meg",
-      assigned_score: 0.2,
-      comparison_score: 0.18,
-      evidence_route: "own_cluster_outlier",
-    }),
-    {
-      comparisonScore: 0.2,
-      evidenceRoute: "cross_person_match",
-      margin: 0.41,
-      referenceAssetId: "asset-reference",
-      score: 0.61,
-      suggestedPersonId: "person-kostas",
-    },
-  );
-  assert.deepEqual(
-    selectPersonMistagRefreshOutcome({
-      alternative_score: 0.3,
-      assigned_person_id: "person-meg",
-      assigned_score: 0.2,
-      comparison_score: 0.18,
-      evidence_route: "own_cluster_outlier",
-      own_reference_asset_id: "asset-own",
-      own_score: 0.12,
-    }),
-    {
-      comparisonScore: 0.18,
-      evidenceRoute: "own_cluster_outlier",
-      margin: 0.06,
-      referenceAssetId: "asset-own",
-      score: 0.12,
-      suggestedPersonId: "person-meg",
-    },
-  );
-  assert.equal(
-    selectPersonMistagRefreshOutcome({
-      alternative_score: 0.3,
-      assigned_person_id: "person-meg",
-      assigned_score: 0.2,
-      comparison_score: 0.18,
-      evidence_route: "own_cluster_outlier",
-      own_score: 0.25,
-    }),
-    null,
-  );
-});
-
-test("bounded mistag refresh excludes aliases, same-photo people, and derivatives", async () => {
-  const source = await readFile(
-    new URL("../src/person-mistag-refresh.mjs", import.meta.url),
+  const matcher = await readFile(
+    new URL("../src/person-match-refresh.mjs", import.meta.url),
     "utf8",
   );
-  assert.match(source, /gallery\.physical_face_id <> lane\.physical_face_id/);
-  assert.match(source, /accepted_people_by_asset AS MATERIALIZED/);
-  assert.match(
-    source,
-    /same_photo_person\.person_id IS NULL\s+OR gallery\.person_id = lane\.assigned_person_id/,
-  );
-  assert.match(source, /cimmich_probable_same_photo_derivative/);
-  assert.match(source, /item\.assigned_person_id = \$\{id\}/);
-  assert.match(source, /item\.suggested_person_id = \$\{id\}/);
-  assert.doesNotMatch(source, /INSERT INTO identity_claim/);
+  assert.match(matcher, /reviewFaces = \[\]/);
+  assert.match(matcher, /cimmich_person_match_refresh_review_scope/);
+  assert.match(matcher, /'person_tag_recheck'/);
+  assert.match(matcher, /matchedHeadCount/);
+  assert.match(matcher, /matchedMistagCount/);
 });
 
 test("the authenticated Person review route exposes explicit matcher refresh", async () => {

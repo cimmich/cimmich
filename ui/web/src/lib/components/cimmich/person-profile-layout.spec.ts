@@ -112,14 +112,11 @@ describe('Person profile layout', () => {
     expect(source).toContain('Supporting matcher reference');
     expect(source).toContain('face.matching_reference_tier');
     expect(source).toContain('Awaiting confirmation');
-    expect(source).toContain('Refresh matching');
     expect(source).toContain('Refresh matches');
     expect(source).toContain('refreshCimmichPersonMatches(requestedPersonId)');
-    expect(source).toContain('Recheck this Person’s assigned Heads');
-    expect(source).toContain('Empty Head and mistag lanes are');
-    expect(source).toContain('People marked');
-    expect(source).toMatch(/Needs attention\s+for more likely matches/);
-    expect(source).toContain('Nothing was confirmed.');
+    expect(source).toContain('Recheck this Person’s tags.');
+    expect(source).not.toContain('Empty Head and mistag lanes are');
+    expect(source).toContain('Found ${result.candidateCount.toLocaleString()} new matches.');
     expect(source).toContain('const cimmichAwaitingCountHint');
     expect(source).toContain('Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)');
     expect(source).toContain('{waitingHint.toLocaleString()} waiting');

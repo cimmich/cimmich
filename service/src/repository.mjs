@@ -976,7 +976,6 @@ export const createCimmichRepository = (
     invalidateMachineSuggestions,
     maintenanceSql,
     reassign: (input) => repository.reassignFaceIdentity(input),
-    rescanHeads: (input) => repository.rescanHeadEvidence(input),
     requireVisibleSubject,
   });
   const bulkAcceptPersonCandidates = createBulkPersonCandidateAcceptor({

@@ -42,12 +42,29 @@ export const createPersonMatchRefresher = ({
   requireVisibleSubject,
   sql,
 }) => ({
-  async refresh({ actorId, personId }) {
+  async refresh({ actorId, personId, reviewFaces = [] }) {
     const actor = cleanActor(actorId);
     if (!actor) {
       throw typedError("Missing Cimmich actor", 400, "CIMMICH_ACTOR_REQUIRED");
     }
     const id = String(personId || "").trim();
+    const reviewScopeByFace = new Map();
+    for (const item of reviewFaces) {
+      const faceId = String(item?.faceId || "").trim();
+      const scopeKind = String(item?.scopeKind || "").trim();
+      if (!faceId || !["head", "mistag"].includes(scopeKind)) continue;
+      if (scopeKind === "mistag" || !reviewScopeByFace.has(faceId)) {
+        reviewScopeByFace.set(faceId, scopeKind);
+      }
+    }
+    const scopedReviewFaces = [...reviewScopeByFace].map(
+      ([faceId, scopeKind]) => ({ faceId, scopeKind }),
+    );
+    const scopedReviewRows = scopedReviewFaces.map((item) => ({
+      face_id: item.faceId,
+      scope_kind: item.scopeKind,
+    }));
+    const scopedReviewFaceIds = scopedReviewFaces.map((item) => item.faceId);
     const subject = await requireVisibleSubject(id);
     if (subject.subject_kind !== "person") {
       throw typedError(
@@ -209,6 +226,36 @@ export const createPersonMatchRefresher = ({
             });
           }
         }
+        if (scopedReviewFaceIds.length > 0) {
+          const reviewed = await tx`
+            SELECT query_embedding.face_id,
+              (1 - (query_embedding.embedding::vector(512) <=>
+                ${reference.embedding}::vector(512)))::float8 AS target_score
+            FROM face_embedding query_embedding
+            WHERE query_embedding.face_id = ANY(${scopedReviewFaceIds}::text[])
+              AND query_embedding.state = 'active'
+              AND query_embedding.dimension = 512
+              AND query_embedding.model_family = ${pack.model_family}
+              AND query_embedding.model_version = ${pack.model_version}
+              AND query_embedding.config_digest = ${pack.config_digest}
+          `;
+          for (const candidate of reviewed) {
+            const current = frontierByFace.get(candidate.face_id);
+            if (
+              !current ||
+              Number(candidate.target_score) > Number(current.target_score) ||
+              (Number(candidate.target_score) ===
+                Number(current.target_score) &&
+                reference.face_id < current.reference_face_id)
+            ) {
+              frontierByFace.set(candidate.face_id, {
+                face_id: candidate.face_id,
+                reference_face_id: reference.face_id,
+                target_score: Number(candidate.target_score),
+              });
+            }
+          }
+        }
       }
       const frontier = [...frontierByFace.values()];
       await tx`
@@ -228,6 +275,22 @@ export const createPersonMatchRefresher = ({
             AS row(
               face_id text, reference_face_id text, target_score float8
             )
+        `;
+      }
+      await tx`
+        CREATE TEMP TABLE cimmich_person_match_refresh_review_scope (
+          face_id text PRIMARY KEY,
+          scope_kind text NOT NULL CHECK (scope_kind IN ('head', 'mistag'))
+        ) ON COMMIT DROP
+      `;
+      if (scopedReviewFaces.length > 0) {
+        await tx`
+          INSERT INTO cimmich_person_match_refresh_review_scope (
+            face_id, scope_kind
+          )
+          SELECT row.face_id, row.scope_kind
+          FROM jsonb_to_recordset(${tx.json(scopedReviewRows)}::jsonb)
+            AS row(face_id text, scope_kind text)
         `;
       }
       await tx`
@@ -354,7 +417,7 @@ export const createPersonMatchRefresher = ({
             query_face.asset_id,
             candidate_embedding.embedding::vector(512) AS embedding,
             coalesce(context.context_ids, ARRAY[]::text[]) AS context_ids,
-            frontier.target_score
+            frontier.target_score, review_scope.scope_kind
           FROM cimmich_person_match_refresh_frontier frontier
           JOIN person_match_refresh_reference reference
             ON reference.run_id = ${runId}
@@ -373,6 +436,8 @@ export const createPersonMatchRefresher = ({
             AND face.state = 'valid'
           JOIN asset ON asset.asset_id = query_face.asset_id
             AND asset.state = 'active' AND asset.media_kind = 'image'
+          LEFT JOIN cimmich_person_match_refresh_review_scope review_scope
+            ON review_scope.face_id = query_face.face_id
           LEFT JOIN LATERAL (
             SELECT array_agg(capture.context_id ORDER BY capture.context_id)
               AS context_ids
@@ -385,29 +450,35 @@ export const createPersonMatchRefresher = ({
             AND cimmich_face_match_eligible(
               face.detection_confidence, face.box_w, face.box_h
             )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM cimmich_person_match_refresh_physical_identity target_identity
-              WHERE target_identity.physical_face_id =
-                  query_face.physical_face_id
-                AND target_identity.person_id = ${id}
-                AND target_identity.state = 'accepted'
+            AND (
+              review_scope.scope_kind IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1
+                FROM cimmich_person_match_refresh_physical_identity target_identity
+                WHERE target_identity.physical_face_id =
+                    query_face.physical_face_id
+                  AND target_identity.person_id = ${id}
+                  AND target_identity.state = 'accepted'
+              )
             )
             AND (
-              NOT EXISTS (
-                SELECT 1
-                FROM cimmich_person_match_refresh_physical_identity accepted
-                WHERE accepted.physical_face_id = query_face.physical_face_id
-                  AND accepted.state = 'accepted'
-              )
-              OR EXISTS (
-                SELECT 1
-                FROM cimmich_person_match_refresh_physical_identity accepted
-                JOIN current_person_category attention
-                  ON attention.person_id = accepted.person_id
-                  AND attention.slug = 'sort'
-                WHERE accepted.physical_face_id = query_face.physical_face_id
-                  AND accepted.state = 'accepted'
+              review_scope.scope_kind IS NOT NULL
+              OR (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM cimmich_person_match_refresh_physical_identity accepted
+                  WHERE accepted.physical_face_id = query_face.physical_face_id
+                    AND accepted.state = 'accepted'
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM cimmich_person_match_refresh_physical_identity accepted
+                  JOIN current_person_category attention
+                    ON attention.person_id = accepted.person_id
+                    AND attention.slug = 'sort'
+                  WHERE accepted.physical_face_id = query_face.physical_face_id
+                    AND accepted.state = 'accepted'
+                )
               )
             )
         )
@@ -415,19 +486,22 @@ export const createPersonMatchRefresher = ({
             nearest.face_id, nearest.physical_face_id, nearest.asset_id,
             nearest.embedding, nearest.context_ids,
             nearest.reference_face_id, nearest.reference_asset_id,
-            nearest.target_score
+            nearest.target_score, nearest.scope_kind
           FROM nearest_raw nearest
           JOIN face_observation face ON face.face_id = nearest.face_id
           WHERE nearest.target_score >= ${Number(pack.score_floor)}
-            AND coalesce((
-              SELECT review.reason_code
-              FROM decision review
-              WHERE review.subject_type = 'face_review'
-                AND review.subject_id = nearest.face_id
-              ORDER BY review.created_at DESC, review.decision_id DESC
-              LIMIT 1
-            ), '') NOT IN (
-              'face_review_unknown','face_review_later','face_review_geometry'
+            AND (
+              nearest.scope_kind IS NOT NULL
+              OR coalesce((
+                SELECT review.reason_code
+                FROM decision review
+                WHERE review.subject_type = 'face_review'
+                  AND review.subject_id = nearest.face_id
+                ORDER BY review.created_at DESC, review.decision_id DESC
+                LIMIT 1
+              ), '') NOT IN (
+                'face_review_unknown','face_review_later','face_review_geometry'
+              )
             )
             AND NOT EXISTS (
               SELECT 1
@@ -448,10 +522,13 @@ export const createPersonMatchRefresher = ({
                 AND existing.origin <> 'person_refresh_match'
                 AND existing_member.physical_face_id = nearest.physical_face_id
             )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM cimmich_person_match_refresh_target_accepted_asset same_photo
-              WHERE same_photo.asset_id = nearest.asset_id
+            AND (
+              nearest.scope_kind IS NOT NULL
+              OR NOT EXISTS (
+                SELECT 1
+                FROM cimmich_person_match_refresh_target_accepted_asset same_photo
+                WHERE same_photo.asset_id = nearest.asset_id
+              )
             )
           ORDER BY nearest.face_id, nearest.target_score DESC,
             nearest.reference_face_id
@@ -501,7 +578,8 @@ export const createPersonMatchRefresher = ({
                 )
           ) competitor ON true
         )
-        SELECT face_id, physical_face_id, asset_id, target_score AS score,
+        SELECT face_id, physical_face_id, asset_id, scope_kind,
+          target_score AS score,
           next_score, margin, reference_face_id, reference_asset_id
         FROM scored
         WHERE margin >= ${Number(pack.margin_floor)}
@@ -554,7 +632,11 @@ export const createPersonMatchRefresher = ({
             'best_score', result.score,
             'margin', result.margin,
             'matcher_photo_count', ${references.length}::int,
-            'search_pool', 'unassigned_or_needs_attention',
+            'search_pool', CASE
+              WHEN result.scope_kind IS NULL
+                THEN 'unassigned_or_needs_attention'
+              ELSE 'person_tag_recheck'
+            END,
             'next_score', result.next_score,
             'person_id', ${id}::text,
             'physical_face_id', result.physical_face_id,
@@ -567,6 +649,49 @@ export const createPersonMatchRefresher = ({
           ${receiptId}, 'sensitive-biometric'
         FROM cimmich_person_match_refresh_result result
         RETURNING identity_claim_id
+      `;
+      const [reviewResult] = await tx`
+        SELECT
+          count(*) FILTER (WHERE scope_kind = 'head')::int
+            AS matched_head_count,
+          count(*) FILTER (WHERE scope_kind = 'mistag')::int
+            AS matched_mistag_count
+        FROM cimmich_person_match_refresh_result
+      `;
+      await tx`
+        DELETE FROM identity_audit_item item
+        USING current_face_physical_member member,
+          cimmich_person_match_refresh_result result
+        WHERE result.scope_kind = 'mistag'
+          AND member.face_id = item.face_id
+          AND member.physical_face_id = result.physical_face_id
+          AND item.audit_kind = 'accepted_contradiction'
+          AND item.review_state = 'open'
+          AND item.assigned_person_id = ${id}
+          AND item.audit_run_id = (
+            SELECT audit_run_id
+            FROM identity_audit_run
+            WHERE state = 'completed'
+            ORDER BY started_at DESC, audit_run_id DESC
+            LIMIT 1
+          )
+      `;
+      await tx`
+        UPDATE identity_audit_run run
+        SET contradiction_candidates = (
+          SELECT count(*)::int
+          FROM identity_audit_item item
+          WHERE item.audit_run_id = run.audit_run_id
+            AND item.audit_kind = 'accepted_contradiction'
+            AND item.review_state = 'open'
+        )
+        WHERE run.audit_run_id = (
+          SELECT audit_run_id
+          FROM identity_audit_run
+          WHERE state = 'completed'
+          ORDER BY started_at DESC, audit_run_id DESC
+          LIMIT 1
+        )
       `;
       await tx`
         UPDATE person_match_refresh_run
@@ -599,10 +724,18 @@ export const createPersonMatchRefresher = ({
         automaticIdentityWrites: 0,
         candidateCount: inserted.length,
         matcherPhotoCount: references.length,
+        matchedHeadCount: Number(reviewResult?.matched_head_count || 0),
+        matchedMistagCount: Number(reviewResult?.matched_mistag_count || 0),
         personId: id,
         personName: person.display_name,
         referenceSetDigest,
         runId,
+        reviewedHeadCount: scopedReviewFaces.filter(
+          (item) => item.scopeKind === "head",
+        ).length,
+        reviewedMistagCount: scopedReviewFaces.filter(
+          (item) => item.scopeKind === "mistag",
+        ).length,
         schemaVersion: personMatchRefreshContract.schemaVersion,
         state: "complete",
       };
