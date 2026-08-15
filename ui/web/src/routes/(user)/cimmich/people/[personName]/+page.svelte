@@ -2456,21 +2456,22 @@
     }
     const generation = personProjectionGeneration;
     try {
-      const [directConnections, setupPeople] = await Promise.all([
-        getCimmichPersonConnections(cimmichPerson.person_id),
-        cimmichSetupPeople.length > 0 ? cimmichSetupPeople : getCimmichPeople(500),
-      ]);
+      const directConnections = await getCimmichPersonConnections(cimmichPerson.person_id);
       if (generation !== personProjectionGeneration) {
         return;
       }
       cimmichDirectContextConnections = directConnections;
+      cimmichConnectionsLoaded = true;
+      const setupPeople = cimmichSetupPeople.length > 0 ? cimmichSetupPeople : await getCimmichPeople(500);
+      if (generation !== personProjectionGeneration) {
+        return;
+      }
       cimmichSetupPeople = setupPeople;
       cimmichPeopleConnections = await loadCimmichPeopleConnections(
         cimmichPerson.person_id,
         cimmichAssets,
         setupPeople,
       );
-      cimmichConnectionsLoaded = true;
     } catch (error) {
       if (generation === personProjectionGeneration) {
         cimmichConnectionError = error instanceof Error ? error.message : 'Unable to load connections';
