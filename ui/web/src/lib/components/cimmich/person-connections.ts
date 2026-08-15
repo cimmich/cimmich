@@ -1,6 +1,44 @@
 import { getCimmichContextEntity, type CimmichPerson, type CimmichPersonAsset } from '$lib/services/cimmich.service';
 import type { CimmichPersonConnection } from './person-page-types';
 
+export const personConnectionRelationshipLabel = (people: CimmichPerson[], personId: string) =>
+  people
+    .find((person) => person.person_id === personId)
+    ?.categories.filter((category) => category.category_kind === 'relationship')
+    .sort((left, right) => left.sort_order - right.sort_order)
+    .map((category) => category.name)
+    .join(' · ') || 'Appears together';
+
+export const groupCimmichPersonConnections = (connections: CimmichPersonConnection[]) => {
+  const merged = new Map<string, CimmichPersonConnection>();
+  for (const connection of connections) {
+    const key = `${connection.entityKind}:${connection.entityId}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...connection });
+      continue;
+    }
+    existing.contextCount = (existing.contextCount ?? 0) + (connection.contextCount ?? 0);
+    existing.photoCount = Math.max(existing.photoCount, connection.photoCount);
+    existing.sourceAssetId ||= connection.sourceAssetId;
+    if (existing.metaLabel === 'Appears together' && connection.metaLabel !== 'Appears together') {
+      existing.metaLabel = connection.metaLabel;
+    }
+    existing.directRelations = [...(existing.directRelations ?? []), ...(connection.directRelations ?? [])];
+  }
+  return [
+    { id: 'person', label: 'People' },
+    { id: 'event', label: 'Events' },
+    { id: 'place', label: 'Places' },
+    { id: 'object', label: 'Things' },
+  ]
+    .map((group) => ({
+      ...group,
+      items: [...merged.values()].filter((connection) => connection.entityKind === group.id),
+    }))
+    .filter((group) => group.items.length > 0);
+};
+
 export const loadCimmichPeopleConnections = async (
   personId: string,
   assets: CimmichPersonAsset[],
@@ -51,10 +89,11 @@ export const loadCimmichPeopleConnections = async (
       const existing = linked.get(person.person_id);
       if (existing) {
         existing.contextIds.add(detail.entity.entityId);
-        existing.photoCount = existing.contextIds.size;
+        existing.contextCount = existing.contextIds.size;
         continue;
       }
       linked.set(person.person_id, {
+        contextCount: 1,
         contextIds: new Set([detail.entity.entityId]),
         displayName: person.display_name,
         entityId: person.person_id,
@@ -65,7 +104,7 @@ export const loadCimmichPeopleConnections = async (
             .sort((left, right) => left.sort_order - right.sort_order)
             .map((category) => category.name)
             .join(' · ') || 'Connected person',
-        photoCount: 1,
+        photoCount: 0,
         sourceAssetId: person.sourceAssetId,
         typeKind: relation.relationKind,
       });

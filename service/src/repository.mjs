@@ -1091,6 +1091,98 @@ export const createCimmichRepository = (
     }
     return connections;
   };
+  const loadPersonCoappearances = async (executor, { personId }) => {
+    const rows = await executor`
+      WITH subject_assets AS MATERIALIZED (
+        SELECT face.asset_id
+        FROM identity_claim claim
+        JOIN face_observation face ON face.face_id = claim.face_id
+          AND face.state = 'valid'
+        WHERE claim.person_id = ${personId} AND claim.state = 'accepted'
+        UNION
+        SELECT body.asset_id
+        FROM body_tag tag
+        JOIN body_observation body ON body.body_id = tag.body_id
+          AND body.state = 'valid'
+        WHERE tag.person_id = ${personId} AND tag.state = 'accepted'
+        UNION
+        SELECT presence.asset_id
+        FROM presence_tag presence
+        WHERE presence.person_id = ${personId}
+          AND presence.state = 'accepted'
+        UNION
+        SELECT head.asset_id
+        FROM manual_head_tag tag
+        JOIN manual_head_observation head ON head.head_id = tag.head_id
+          AND head.state = 'valid'
+        WHERE tag.subject_id = ${personId}
+          AND tag.subject_kind = 'person' AND tag.state = 'accepted'
+      ), visible_subject_assets AS MATERIALIZED (
+        SELECT subject.asset_id
+        FROM subject_assets subject
+        JOIN asset ON asset.asset_id = subject.asset_id AND asset.state = 'active'
+        WHERE cimmich_visibility_asset_rank(subject.asset_id)
+          <= ${presentationRank()}
+      ), shared_people_assets AS MATERIALIZED (
+        SELECT face.asset_id, claim.person_id
+        FROM visible_subject_assets subject
+        JOIN face_observation face ON face.asset_id = subject.asset_id
+          AND face.state = 'valid'
+        JOIN identity_claim claim ON claim.face_id = face.face_id
+          AND claim.state = 'accepted'
+        WHERE claim.person_id <> ${personId}
+        UNION
+        SELECT body.asset_id, tag.person_id
+        FROM visible_subject_assets subject
+        JOIN body_observation body ON body.asset_id = subject.asset_id
+          AND body.state = 'valid'
+        JOIN body_tag tag ON tag.body_id = body.body_id
+          AND tag.state = 'accepted'
+        WHERE tag.person_id <> ${personId}
+        UNION
+        SELECT presence.asset_id, presence.person_id
+        FROM visible_subject_assets subject
+        JOIN presence_tag presence ON presence.asset_id = subject.asset_id
+          AND presence.state = 'accepted'
+        WHERE presence.person_id <> ${personId}
+        UNION
+        SELECT head.asset_id, tag.subject_id
+        FROM visible_subject_assets subject
+        JOIN manual_head_observation head ON head.asset_id = subject.asset_id
+          AND head.state = 'valid'
+        JOIN manual_head_tag tag ON tag.head_id = head.head_id
+          AND tag.subject_kind = 'person' AND tag.state = 'accepted'
+        WHERE tag.subject_id <> ${personId}
+      )
+      SELECT shared.person_id AS target_id, target.display_name,
+        count(*)::int AS photo_count,
+        (array_agg(
+          shared.asset_id
+          ORDER BY asset.capture_time DESC NULLS LAST, shared.asset_id
+        ))[1] AS cover_asset_id
+      FROM shared_people_assets shared
+      JOIN person target ON target.person_id = shared.person_id
+        AND target.subject_kind = 'person' AND target.status = 'active'
+      JOIN asset ON asset.asset_id = shared.asset_id
+      WHERE cimmich_visibility_person_rank(shared.person_id)
+        <= ${presentationRank()}
+      GROUP BY shared.person_id, target.display_name
+      ORDER BY photo_count DESC, lower(target.display_name), shared.person_id
+      LIMIT 100
+    `;
+    return rows.map((row) => ({
+      coverAssetId: row.cover_asset_id
+        ? bridgeFields(bridge, row.cover_asset_id).sourceAssetId || null
+        : null,
+      direction: "incoming",
+      displayName: row.display_name || "",
+      photoCount: Number(row.photo_count || 0),
+      relationType: "co_appearance",
+      targetId: row.target_id,
+      targetKind: "person",
+      typeKind: null,
+    }));
+  };
   const loadPetRows = async (
     executor,
     { includeHidden = false, limit = 100, petId = "", query = "" } = {},
@@ -3575,11 +3667,14 @@ export const createCimmichRepository = (
       if (subject.subject_kind !== "person") {
         throw typedError("Cimmich person not found", 404, "PERSON_NOT_FOUND");
       }
-      const connections = await loadSubjectConnections(sql, {
-        subjectIds: [subject.person_id],
-        subjectKind: "person",
-      });
-      return connections.get(subject.person_id) || [];
+      const [connections, coappearances] = await Promise.all([
+        loadSubjectConnections(sql, {
+          subjectIds: [subject.person_id],
+          subjectKind: "person",
+        }),
+        loadPersonCoappearances(sql, { personId: subject.person_id }),
+      ]);
+      return [...coappearances, ...(connections.get(subject.person_id) || [])];
     },
 
     async people({

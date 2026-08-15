@@ -1,6 +1,7 @@
 import type { CimmichPersonPresentationSlot, CimmichPersonProfileFieldKey } from '$lib/services/cimmich.service';
 
 export type CimmichPersonConnection = {
+  contextCount?: number;
   directRelations?: Array<{ relationId: string; relationType: string }>;
   displayName: string;
   entityId: string;

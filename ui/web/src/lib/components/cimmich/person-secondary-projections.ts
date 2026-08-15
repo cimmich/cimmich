@@ -1,10 +1,8 @@
 import {
   getCimmichIdentityCorrectionDiscovery,
-  getCimmichPersonConnections,
   getCimmichPersonPresentation,
   getCimmichVisibilityObject,
   type CimmichIdentityCorrectionDiscovery,
-  type CimmichPersonContextConnection,
   type CimmichPersonPresentation,
   type CimmichVisibilityObject,
 } from '$lib/services/cimmich.service';
@@ -12,7 +10,6 @@ import {
 type PersonSecondaryProjectionOptions = {
   includePresentation: boolean;
   isCurrent: () => boolean;
-  onConnections: (connections: CimmichPersonContextConnection[]) => void;
   onCorrections: (corrections: CimmichIdentityCorrectionDiscovery) => void;
   onPresentation: (presentation: CimmichPersonPresentation) => void;
   onVisibility: (visibility: CimmichVisibilityObject) => void;
@@ -37,7 +34,6 @@ export const loadPersonSecondaryProjections = (options: PersonSecondaryProjectio
     isCurrent,
     options.onCorrections,
   );
-  projectWhenCurrent(getCimmichPersonConnections(personId), isCurrent, options.onConnections);
   if (subjectKind !== 'person') {
     return;
   }

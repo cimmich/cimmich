@@ -58,7 +58,11 @@
     CimmichPresentationFrame,
   } from '$lib/components/cimmich/person-page-types';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
-  import { loadCimmichPeopleConnections } from '$lib/components/cimmich/person-connections';
+  import {
+    groupCimmichPersonConnections,
+    loadCimmichPeopleConnections,
+    personConnectionRelationshipLabel,
+  } from '$lib/components/cimmich/person-connections';
   import { loadPersonDetailsProjection } from '$lib/components/cimmich/person-details-projection';
   import { loadPersonSecondaryProjections } from '$lib/components/cimmich/person-secondary-projections';
   import {
@@ -374,6 +378,7 @@
   let cimmichPersonVisibility = $state<CimmichVisibilityObject>();
   let cimmichPeopleConnections = $state<CimmichPersonConnection[]>([]);
   let cimmichDirectContextConnections = $state<CimmichPersonContextConnection[]>([]);
+  let cimmichConnectionsLoaded = $state(false);
   let cimmichConnectionError = $state('');
   let cimmichConnectionSavingId = $state('');
   let cimmichConnectionUndoDecisionId = $state('');
@@ -511,8 +516,11 @@
         displayName: connection.displayName,
         entityId: connection.targetId,
         entityKind: connection.targetKind,
-        metaLabel: connection.relationType.replaceAll('_', ' '),
-        photoCount: 0,
+        metaLabel:
+          connection.targetKind === 'person'
+            ? personConnectionRelationshipLabel(cimmichSetupPeople, connection.targetId)
+            : connection.relationType.replaceAll('_', ' '),
+        photoCount: connection.targetKind === 'person' ? connection.photoCount : 0,
         sourceAssetId: connection.coverAssetId,
         typeKind: connection.typeKind ?? connection.targetKind,
       });
@@ -544,20 +552,9 @@
     );
   });
   const cimmichPersonConnectionGroups = $derived(
-    [
-      { id: 'person', label: 'People' },
-      { id: 'event', label: 'Events' },
-      { id: 'place', label: 'Places' },
-      { id: 'object', label: 'Things' },
-    ]
-      .map((group) => ({
-        ...group,
-        items: [...cimmichPeopleConnections, ...cimmichPersonConnections].filter(
-          (connection) => connection.entityKind === group.id,
-        ),
-      }))
-      .filter((group) => group.items.length > 0),
+    groupCimmichPersonConnections([...cimmichPeopleConnections, ...cimmichPersonConnections]),
   );
+  const cimmichPersonConnectionCount = $derived(cimmichPersonConnectionGroups.flatMap(({ items }) => items).length);
   const cimmichPersonConnectionHref = ({ entityId, entityKind }: CimmichPersonConnection) => {
     if (entityKind === 'person') {
       const person = cimmichSetupPeople.find((row) => row.person_id === entityId);
@@ -2454,21 +2451,26 @@
 
   const openCimmichConnections = async () => {
     selectCimmichMode('connections');
-    if (!cimmichPerson || cimmichPeopleConnections.length > 0) {
+    if (!cimmichPerson || cimmichConnectionsLoaded) {
       return;
     }
     const generation = personProjectionGeneration;
     try {
-      const setupPeople = cimmichSetupPeople.length > 0 ? cimmichSetupPeople : await getCimmichPeople(500);
+      const [directConnections, setupPeople] = await Promise.all([
+        getCimmichPersonConnections(cimmichPerson.person_id),
+        cimmichSetupPeople.length > 0 ? cimmichSetupPeople : getCimmichPeople(500),
+      ]);
       if (generation !== personProjectionGeneration) {
         return;
       }
+      cimmichDirectContextConnections = directConnections;
       cimmichSetupPeople = setupPeople;
       cimmichPeopleConnections = await loadCimmichPeopleConnections(
         cimmichPerson.person_id,
         cimmichAssets,
         setupPeople,
       );
+      cimmichConnectionsLoaded = true;
     } catch (error) {
       if (generation === personProjectionGeneration) {
         cimmichConnectionError = error instanceof Error ? error.message : 'Unable to load connections';
@@ -2926,12 +2928,13 @@
       cimmichLoadError = '';
       if (cimmichMode === 'identity') {
         void openCimmichIdentity(generation);
+      } else if (cimmichMode === 'connections') {
+        void openCimmichConnections();
       }
 
       loadPersonSecondaryProjections({
         includePresentation: cimmichMode !== 'identity',
         isCurrent: () => generation === personProjectionGeneration,
-        onConnections: (connections) => (cimmichDirectContextConnections = connections),
         onCorrections: (corrections) => {
           cimmichIdentityCorrections = corrections.items;
           cimmichIdentityUndoDecisionId = corrections.items.find((item) => item.undo.eligible)?.undo.decisionId ?? '';
@@ -2999,6 +3002,7 @@
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
     cimmichDirectContextConnections = [];
+    cimmichConnectionsLoaded = false;
     cimmichConnectionError = '';
     cimmichConnectionSavingId = '';
     cimmichConnectionUndoDecisionId = '';
@@ -3273,7 +3277,7 @@
           <div class="flex min-w-max items-stretch sm:min-w-full">
             <CimmichPersonPrimaryTabs
               assetCount={cimmichPerson.asset_count}
-              connectionCount={cimmichPeopleConnections.length + cimmichPersonConnections.length}
+              connectionCount={cimmichPersonConnectionCount}
               mode={cimmichMode}
               newMatches={cimmichAwaitingCounts.newMatches}
               onconnections={() => void openCimmichConnections()}
@@ -3595,8 +3599,17 @@
                             <span class="mt-1 truncate font-semibold">{connection.displayName}</span>
                             <span class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               {#if connection.entityKind === 'person'}
-                                {connection.photoCount.toLocaleString()} shared
-                                {connection.photoCount === 1 ? 'context' : 'contexts'}
+                                {#if connection.photoCount > 0}
+                                  {connection.photoCount.toLocaleString()} shared
+                                  {connection.photoCount === 1 ? 'photo' : 'photos'}
+                                {/if}
+                                {#if connection.photoCount > 0 && (connection.contextCount ?? 0) > 0}
+                                  ·
+                                {/if}
+                                {#if (connection.contextCount ?? 0) > 0}
+                                  {(connection.contextCount ?? 0).toLocaleString()} shared
+                                  {connection.contextCount === 1 ? 'context' : 'contexts'}
+                                {/if}
                               {:else if connection.photoCount > 0}
                                 {connection.photoCount.toLocaleString()}
                                 {connection.photoCount === 1 ? 'photo' : 'photos'}

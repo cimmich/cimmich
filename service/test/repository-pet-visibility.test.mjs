@@ -155,17 +155,47 @@ test("Person connections project incoming context relations without requiring sh
         },
       ];
     }
+    if (statement.includes("WITH subject_assets AS MATERIALIZED")) {
+      return [
+        {
+          cover_asset_id: "asset-maya-with-noah",
+          display_name: "Noah Vale",
+          photo_count: 2,
+          target_id: "person-noah",
+        },
+      ];
+    }
     throw new Error(`Unexpected SQL: ${statement}`);
   };
-  const repository = createCimmichRepository(sql, new Map(), {
-    currentRank: () => 0,
-  });
+  const repository = createCimmichRepository(
+    sql,
+    new Map([
+      [
+        "asset-maya-with-noah",
+        {
+          filename: "maya-with-noah.jpg",
+          sourceAssetId: "source-maya-with-noah",
+        },
+      ],
+    ]),
+    { currentRank: () => 0 },
+  );
 
   const result = await repository.personConnections({
     personId: "person-maya",
   });
 
   assert.deepEqual(result, [
+    {
+      coverAssetId: "source-maya-with-noah",
+      direction: "incoming",
+      displayName: "Noah Vale",
+      photoCount: 2,
+      relationType: "co_appearance",
+      targetId: "person-noah",
+      targetKind: "person",
+      typeKind: null,
+    },
     {
       coverAssetId: null,
       direction: "incoming",
@@ -183,6 +213,15 @@ test("Person connections project incoming context relations without requiring sh
     statements[1].statement,
     /cimmich_visibility_context_entity_rank\(source\.entity_id\)/,
   );
+  assert.match(statements[2].statement, /WITH subject_assets AS MATERIALIZED/);
+  assert.match(statements[2].statement, /shared_people_assets AS MATERIALIZED/);
+  assert.match(statements[2].statement, /claim\.state = 'accepted'/);
+  assert.match(statements[2].statement, /tag\.state = 'accepted'/);
+  assert.match(statements[2].statement, /presence\.state = 'accepted'/);
+  assert.match(statements[2].statement, /cimmich_visibility_asset_rank/);
+  assert.match(statements[2].statement, /cimmich_visibility_person_rank/);
+  assert.match(statements[2].statement, /target\.status = 'active'/);
+  assert.match(statements[2].statement, /LIMIT 100/);
 });
 
 test("Pet-bearing identity, search, document and context surfaces use the subject visibility seam", async () => {

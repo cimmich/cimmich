@@ -750,7 +750,19 @@ export type CimmichPetConnection = {
   typeKind: CimmichContextTypeKind | null;
 };
 
-export type CimmichPersonContextConnection = CimmichPetConnection;
+export type CimmichPersonContextConnection =
+  | CimmichPetConnection
+  | {
+      coverAssetId: string | null;
+      direction: 'incoming';
+      displayName: string;
+      photoCount: number;
+      relationId?: undefined;
+      relationType: 'co_appearance';
+      targetId: string;
+      targetKind: 'person';
+      typeKind: null;
+    };
 
 export type CimmichPet = {
   aliases: string[];

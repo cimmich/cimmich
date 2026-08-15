@@ -71,8 +71,8 @@ describe('public Cimmich product boundary', () => {
     const service = await read('../../services/cimmich.service.ts');
 
     expect(service).toContain('/v1/people/${encodeURIComponent(personId)}/connections');
-    expect(secondary).toContain('getCimmichPersonConnections(personId)');
-    expect(person).toContain('onConnections: (connections) => (cimmichDirectContextConnections = connections)');
+    expect(secondary).not.toContain('getCimmichPersonConnections');
+    expect(person).toContain('getCimmichPersonConnections(cimmichPerson.person_id)');
     expect(person).toContain('connection.coverAssetId');
     expect(person).toContain("connection.metaLabel || 'Connected'");
   });
