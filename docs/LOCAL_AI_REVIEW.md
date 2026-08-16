@@ -125,16 +125,30 @@ Body stays unavailable unless both
 `CIMMICH_LOCAL_AI_BODY_MODEL_PATH` and
 `CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH` resolve to local files and the separately
 supplied provider runtime is compatible, and
-`CIMMICH_LOCAL_AI_BODY_ENABLED=true` is deliberately set. Scene/Text stays
-unavailable unless explicitly enabled against a loopback endpoint. This
-document does not certify those optional models, biometric accuracy,
+`CIMMICH_LOCAL_AI_BODY_ENABLED=true` is deliberately set. General Scene/Text
+stays unavailable unless explicitly enabled against a loopback endpoint. This
+document does not certify optional custom models, biometric accuracy,
 demographic fairness or archive-wide performance.
 
-Summary profiles use `CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL` and
-`CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL`. If either is absent, the deployment
-may explicitly fall back to `CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL`; capability
-status reports that the profile is shared so the UI does not present one model
-as two genuinely different quality levels.
+Smart summary provider selection defaults to `auto`. A native macOS Local AI
+worker with the bundled executable selects Apple Vision without downloading
+weights; other platforms remain fail-closed unless a compatible custom model is
+configured. Apple Vision runs the whole photo set in one resident process and
+normally skips its own OCR because Cimmich composes the already-stored Immich
+OCR instead of paying for it twice.
+
+Owners can choose another local model without changing Cimmich source:
+
+```text
+CIMMICH_LOCAL_AI_SUMMARY_SMART_PROVIDER=ollama
+CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL=your-model
+CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED=true
+```
+
+Enhanced uses the independent `SUMMARY_ENHANCED_PROVIDER` and
+`SUMMARY_ENHANCED_MODEL` settings. Ollama remains restricted to its standard
+loopback origin. Capability status exposes the selected provider and model so
+the UI never presents one profile as another.
 
 Pose is independently fail-closed. It stays unavailable unless
 `CIMMICH_LOCAL_AI_POSE_ENABLED=true` and both

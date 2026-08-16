@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { digest, fileDigest, validateConfig } from "./contract.mjs";
 import { trackedSpawn } from "./processes.mjs";
 
@@ -210,6 +210,23 @@ const bodyManifestCheck = async ({ config, modelDigest, runtime }) => {
 const sceneCheck = async ({ config, fetchImpl = fetch, timeoutMs }) => {
   if (!config.enabled) return skipped("scene-text-loopback");
   try {
+    if (config.provider === "apple-vision") {
+      const executable = await stat(config.executablePath);
+      if (!executable.isFile() || (executable.mode & 0o111) === 0) {
+        throw Object.assign(new Error("Apple Vision provider is unavailable"), {
+          code: "LOCAL_AI_MODEL_UNAVAILABLE",
+        });
+      }
+      return {
+        checkId: "scene-text-loopback",
+        details: {
+          modelName: config.model,
+          network: "none",
+          provider: "apple-vision",
+        },
+        state: "passed",
+      };
+    }
     let endpoint;
     if (
       config.endpoint === "http://127.0.0.1:11434" ||

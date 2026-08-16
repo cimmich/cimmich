@@ -168,10 +168,51 @@ const providerConfig = ({ enabled, environment, modelPaths }) => {
         endpoint:
           environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENDPOINT ||
           "http://127.0.0.1:11434",
+        executablePath: "/usr/bin/false",
+        includeOcr: true,
         model: environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL || "disabled",
+        provider: "ollama",
       },
     },
     schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
+  };
+};
+
+const summaryProfileConfig = ({ enabled, environment, modelPaths, tier }) => {
+  const upperTier = tier.toUpperCase();
+  const runtimePlatform =
+    environment.CIMMICH_LOCAL_AI_RUNTIME_PLATFORM || process.platform;
+  const requestedProvider =
+    environment[`CIMMICH_LOCAL_AI_SUMMARY_${upperTier}_PROVIDER`] ||
+    (tier === "smart" ? "auto" : "ollama");
+  const provider =
+    requestedProvider === "auto"
+      ? runtimePlatform === "darwin" && modelPaths.appleVision
+        ? "apple-vision"
+        : "ollama"
+      : requestedProvider;
+  const model =
+    environment[`CIMMICH_LOCAL_AI_SUMMARY_${upperTier}_MODEL`] ||
+    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
+    "";
+  const appleVision =
+    provider === "apple-vision" &&
+    runtimePlatform === "darwin" &&
+    Boolean(modelPaths.appleVision);
+  const ollama =
+    provider === "ollama" &&
+    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED === "true" &&
+    Boolean(model);
+  return {
+    enabled: enabled && (appleVision || ollama),
+    endpoint:
+      environment.CIMMICH_LOCAL_AI_SCENE_TEXT_ENDPOINT ||
+      "http://127.0.0.1:11434",
+    executablePath: modelPaths.appleVision || "/usr/bin/false",
+    includeOcr:
+      environment.CIMMICH_LOCAL_AI_SUMMARY_APPLE_OCR_ENABLED === "true",
+    model: appleVision ? "Apple Vision" : model || "disabled",
+    provider: appleVision ? "apple-vision" : "ollama",
   };
 };
 
@@ -189,20 +230,12 @@ const existingExecutable = async (value) => {
   return info?.isFile() && (info.mode & 0o111) !== 0 ? resolve(path) : "";
 };
 
-const publicCapabilities = (config, enabled, environment) => {
+const publicCapabilities = (config, enabled, environment, summaryProfiles) => {
   const faces = enabled && config.providers.faces.enabled;
   const enhance = enabled && config.providers.enhance.enabled;
   const bodies = enabled && config.providers.bodies.enabled;
   const poses = enabled && bodies && config.providers.poses.enabled;
   const sceneText = enabled && config.providers.sceneText.enabled;
-  const smartSummaryModel =
-    environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
-    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
-    "";
-  const enhancedSummaryModel =
-    environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
-    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
-    "";
   return {
     best: enhance,
     bodies,
@@ -211,8 +244,8 @@ const publicCapabilities = (config, enabled, environment) => {
     poses,
     quick: enabled,
     sceneText,
-    summaryEnhanced: sceneText && Boolean(enhancedSummaryModel),
-    summarySmart: sceneText && Boolean(smartSummaryModel),
+    summaryEnhanced: enabled && summaryProfiles.enhanced.enabled,
+    summarySmart: enabled && summaryProfiles.smart.enabled,
   };
 };
 
@@ -422,7 +455,14 @@ export const createLocalAiService = async ({
   const requestedVulkanRuntimePath =
     environment.CIMMICH_LOCAL_AI_ENHANCE_VULKAN_RUNTIME_PATH ||
     "/usr/local/bin/realesrgan-ncnn-vulkan";
+  const requestedAppleVisionPath =
+    environment.CIMMICH_LOCAL_AI_APPLE_VISION_EXECUTABLE_PATH ||
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../providers/apple-vision-summary/provider",
+    );
   const modelPaths = {
+    appleVision: await existingExecutable(requestedAppleVisionPath),
     bodyManifest: await existingFile(
       environment.CIMMICH_LOCAL_AI_BODY_MANIFEST_PATH,
     ),
@@ -447,7 +487,26 @@ export const createLocalAiService = async ({
     face: await existingFile(environment.CIMMICH_LOCAL_AI_FACE_MODEL_PATH),
   };
   const config = providerConfig({ enabled, environment, modelPaths });
-  const capabilities = publicCapabilities(config, enabled, environment);
+  const summaryProfiles = {
+    enhanced: summaryProfileConfig({
+      enabled,
+      environment,
+      modelPaths,
+      tier: "enhanced",
+    }),
+    smart: summaryProfileConfig({
+      enabled,
+      environment,
+      modelPaths,
+      tier: "smart",
+    }),
+  };
+  const capabilities = publicCapabilities(
+    config,
+    enabled,
+    environment,
+    summaryProfiles,
+  );
   const jobs = new Map();
   let activeJob = null;
   const queue = [];
@@ -473,17 +532,19 @@ export const createLocalAiService = async ({
     summaryProfiles: {
       enhanced: {
         dedicated: Boolean(environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL),
-        model:
-          environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
-          environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
-          null,
+        model: summaryProfiles.enhanced.enabled
+          ? summaryProfiles.enhanced.model
+          : null,
+        provider: summaryProfiles.enhanced.provider,
       },
       smart: {
-        dedicated: Boolean(environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL),
-        model:
-          environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
-          environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
-          null,
+        dedicated:
+          summaryProfiles.smart.provider === "apple-vision" ||
+          Boolean(environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL),
+        model: summaryProfiles.smart.enabled
+          ? summaryProfiles.smart.model
+          : null,
+        provider: summaryProfiles.smart.provider,
       },
     },
     state:
@@ -567,20 +628,18 @@ export const createLocalAiService = async ({
       }
       const configPath = join(workDir, "config.json");
       const setPath = join(workDir, "set.json");
-      const summaryModel =
+      const summaryProfile =
         job.operation === "summary-smart"
-          ? environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
-            environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL
+          ? summaryProfiles.smart
           : job.operation === "summary-enhanced"
-            ? environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
-              environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL
+            ? summaryProfiles.enhanced
             : null;
-      const jobConfig = summaryModel
+      const jobConfig = summaryProfile
         ? {
             ...config,
             providers: {
               ...config.providers,
-              sceneText: { ...config.providers.sceneText, model: summaryModel },
+              sceneText: summaryProfile,
             },
           }
         : config;

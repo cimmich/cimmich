@@ -31,6 +31,10 @@
 !providers/perceptual-dhash/*.json
 !providers/perceptual-dhash/*.md
 !providers/perceptual-dhash/requirements.txt
+!providers/apple-vision-summary/
+!providers/apple-vision-summary/README.md
+!providers/apple-vision-summary/provider
+!providers/apple-vision-summary/provider.swift
 !providers/ultralytics-yolo-body/
 !providers/ultralytics-yolo-body/*.py
 !providers/ultralytics-yolo-body/*.json

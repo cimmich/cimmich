@@ -215,26 +215,59 @@ export const validateConfig = (input) => {
     );
   }
 
-  const sceneText = providerCore(
-    input.providers.sceneText,
-    "providers.sceneText",
-    ["enabled", "endpoint", "model"],
-  );
-  const endpoint = new URL(
-    requiredText(sceneText.endpoint, "providers.sceneText.endpoint", 2048),
-  );
-  if (
-    endpoint.protocol !== "http:" ||
-    endpoint.port !== "11434" ||
-    !["127.0.0.1", "localhost"].includes(endpoint.hostname)
-  ) {
-    throw typedError(
-      "Scene/Text endpoint must use the standard loopback Ollama origin",
-      "LOCAL_AI_NETWORK_FORBIDDEN",
-    );
+  const legacySceneText =
+    Object.keys(input.providers.sceneText || {})
+      .sort()
+      .join(",") === "enabled,endpoint,model";
+  const sceneText = legacySceneText
+    ? {
+        ...providerCore(input.providers.sceneText, "providers.sceneText", [
+          "enabled",
+          "endpoint",
+          "model",
+        ]),
+        executablePath: "/usr/bin/false",
+        includeOcr: true,
+        provider: "ollama",
+      }
+    : providerCore(input.providers.sceneText, "providers.sceneText", [
+        "enabled",
+        "endpoint",
+        "executablePath",
+        "includeOcr",
+        "model",
+        "provider",
+      ]);
+  if (!["apple-vision", "ollama"].includes(sceneText.provider)) {
+    throw typedError("providers.sceneText.provider is unsupported");
   }
-  sceneText.endpoint = endpoint.origin;
+  sceneText.executablePath = resolve(
+    requiredText(
+      sceneText.executablePath,
+      "providers.sceneText.executablePath",
+      4096,
+    ),
+  );
+  sceneText.includeOcr = Boolean(sceneText.includeOcr);
   sceneText.model = requiredText(sceneText.model, "providers.sceneText.model");
+  if (sceneText.provider === "ollama") {
+    const endpoint = new URL(
+      requiredText(sceneText.endpoint, "providers.sceneText.endpoint", 2048),
+    );
+    if (
+      endpoint.protocol !== "http:" ||
+      endpoint.port !== "11434" ||
+      !["127.0.0.1", "localhost"].includes(endpoint.hostname)
+    ) {
+      throw typedError(
+        "Scene/Text endpoint must use the standard loopback Ollama origin",
+        "LOCAL_AI_NETWORK_FORBIDDEN",
+      );
+    }
+    sceneText.endpoint = endpoint.origin;
+  } else {
+    sceneText.endpoint = "native://apple-vision";
+  }
 
   const enhance = providerCore(input.providers.enhance, "providers.enhance", [
     "device",

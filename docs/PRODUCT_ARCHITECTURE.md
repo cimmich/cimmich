@@ -87,6 +87,7 @@ this directory.
 | `ui/web/src/lib/managers/cimmich-visibility-manager.svelte.ts` | Client-side viewing-mode generation, invalidation and fail-closed coordination.                  |
 | `ui/web/src/lib/route.ts`                                      | Canonical navigable URL builders.                                                                |
 | `providers/`                                                   | Weight-free or separately licensed provider adapters and manifests.                              |
+| `providers/apple-vision-summary/`                              | No-download native-macOS Smart evidence adapter and replaceable compile-on-first-use launcher.   |
 | `tools/`                                                       | Installer, lifecycle, acceptance, publication and bounded operator tooling.                      |
 | `demo/cedar-house-v1/`                                         | Fictional rights-cleared end-to-end fixture.                                                     |
 
@@ -96,14 +97,14 @@ this directory.
 | :------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
 | Home                 | `routes/(user)/cimmich/+page.svelte`; home presentation helpers                                                                    | bounded home/summary projections                                                                 | current visible counts and selected cover settings                                              |
 | Library              | `/cimmich/library` redirects to the inherited photo route with Cimmich organise context; `CimmichBulkPhotoSorter`, Explore filters | tag/label/album operations, explore routes, asset corrections                                    | Cimmich labels, operation receipts, correction decisions; media remains Immich-owned            |
-| Photo viewer         | `AssetViewerNavBar`, `CimmichPhotoOverlay`, viewer presentation, duplicate/file-location/visibility components                    | asset evidence, manual subject/context routes, correction routes, archive-integrity status       | accepted/proposed observations, typed tags, correction decisions, duplicate evidence            |
+| Photo viewer         | `AssetViewerNavBar`, `CimmichPhotoOverlay`, viewer presentation, duplicate/file-location/visibility components                     | asset evidence, manual subject/context routes, correction routes, archive-integrity status       | accepted/proposed observations, typed tags, correction decisions, duplicate evidence            |
 | People directory     | `routes/(user)/cimmich/people/+page.svelte`; People cache and Explore filters                                                      | People projection, candidate summary, possible-people and identity-audit routes                  | Person identities and categories are durable; queues/counts are projections                     |
 | Person workspace     | `people/[personName]/+page.svelte`; identity navigation, coverage, candidate review, split, names and presentation components      | Person assets/connections/profile/names/presentation, identity audit, match refresh, merge/split | profile and accepted evidence are durable; coverage, candidates and Smart Split are rebuildable |
 | Pets                 | `routes/(user)/cimmich/pets/+page.svelte`; `CimmichPetUnknownReview`                                                               | Pet CRUD/media/documents, Pet matching and Unknown review                                        | Pet profile and owner decisions durable; detector suggestions derived                           |
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                  | context entity, relation, asset, cover, plan and geocoding routes                                | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived        |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                | Document metadata/link/content/version routes                                                    | metadata in PostgreSQL; imported bytes in the separate content-addressed store                  |
 | Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                  | deterministic smart-search and Document queries                                                  | local read projection over confirmed truth; no search-owned authority                           |
-| Archive Health       | archive-integrity route and focused client                                                                                         | exact copies, possible-duplicate groups, inline preservation recommendation and backup proof      | fingerprints/provenance durable or reproducible; recommendations derived                        |
+| Archive Health       | archive-integrity route and focused client                                                                                         | exact copies, possible-duplicate groups, inline preservation recommendation and backup proof     | fingerprints/provenance durable or reproducible; recommendations derived                        |
 | Settings/setup       | settings, setup and maintenance routes                                                                                             | integration, onboarding, provider, SourcePack, Local AI and Guided operators                     | configuration and reviewed lifecycle state; model output remains observation                    |
 
 ## Identity and evidence model
@@ -394,6 +395,14 @@ The Local AI review surface carries an **Alpha · Experimental build** banner.
 Its public build default is `false`; private deployments may deliberately set
 `PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`, while the source, Compose
 and Dockerfile defaults remain off for public builds.
+
+Smart summary provider selection is `auto`: a native macOS worker selects the
+bundled Apple Vision adapter with no downloaded weights or network access;
+other platforms stay fail-closed unless an owner configures a compatible local
+model. A complete photo set is one provider process, not one process per photo.
+The stored proposal binds the adapter launcher, Swift source, operating-system
+runtime and deterministic composer configuration. Provider output never gains
+identity, Context or activation authority.
 
 ## Migrations and compatibility
 

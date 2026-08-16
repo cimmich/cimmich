@@ -48,7 +48,15 @@ describe('photo summary compiler', () => {
         visibleText: [],
       },
     } as never;
-    expect(compileCimmichModelSummary({ analysis, evidence })).toContain('Known people: Ted.');
+    const text = compileCimmichModelSummary({
+      analysis,
+      asset: { exifInfo: { city: 'Sydney', dateTimeOriginal: '2024-03-12T10:00:00Z' } } as never,
+      evidence,
+      ocr: [{ text: 'JETTY' }] as never,
+    });
+    expect(text).toContain('Known people: Ted.');
+    expect(text).toContain('Location: Sydney.');
+    expect(text).toContain('Visible text: “JETTY”.');
     expect(cimmichSummaryQc(evidence, analysis)).toMatchObject({ missingBodies: 1, missingFaces: 1 });
   });
 });

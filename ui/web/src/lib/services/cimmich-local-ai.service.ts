@@ -35,8 +35,8 @@ export type CimmichLocalAiStatus = {
   reviewRequired: true;
   schemaVersion: 'cimmich.local-ai-jobs.v1';
   summaryProfiles: {
-    enhanced: { dedicated: boolean; model: string | null };
-    smart: { dedicated: boolean; model: string | null };
+    enhanced: { dedicated: boolean; model: string | null; provider?: 'apple-vision' | 'ollama' };
+    smart: { dedicated: boolean; model: string | null; provider?: 'apple-vision' | 'ollama' };
   };
   state: 'disabled' | 'ready' | 'unavailable';
 };

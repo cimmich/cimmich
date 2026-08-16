@@ -66,9 +66,9 @@ owner normally has to leave a computer running for hours or days to benefit.
   faster visual time-to-first-token than comparable small VLMs. The released
   weights are restricted to non-commercial research, so they cannot be the
   Community default or bundled product model.
-- **Apple Vision** can provide fast on-device OCR, image classification, face,
-  body, pose, saliency, quality and similarity signals. It is a strong optional
-  macOS/iOS specialist backend, not a cross-platform summary model.
+- **Apple Vision** provides the default Smart specialist backend on native
+  macOS workers. It remains platform-specific rather than a cross-platform
+  summary model, and custom model profiles remain supported.
 - **MobileCLIP2** is useful evidence that classification/retrieval can be very
   fast on phones, but Apple's released weights are also research-only. It is a
   design reference, not a product dependency.
@@ -118,6 +118,32 @@ away.
 | Qwen3-VL 2B Q4 compact facts       | No OCR output, 61 output tokens average                                          | 0.84/s sequential; 1.61/s at concurrency four                                        |
 | SmolVLM 500M 4-bit MLX             | One short literal sentence, persistent loaded model                              | 18 completions in 5.899 s: 3.05/s; one invented-text failure                         |
 | Florence-2 base 4-bit MLX          | Intended specialist task tokens                                                  | No score: current MLX/Transformers processor incompatibility                         |
+
+### Real archive screen
+
+A second bounded screen used 24 private photos with accepted owner evidence,
+stratified across four time periods and small, medium and large saved Face areas.
+The set included nightlife, beaches, cliffs, ATVs, a fruit market, low light,
+crowds and compressed social-media images. Media stayed local and the active X1
+OCR run was not changed.
+
+| Apple path                                           | Result                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| Classification + accurate OCR + Face/Human/Animal    | 24/24 valid; 9.12 photos/s warm                                        |
+| Classification + Face/Human/Animal; reuse Immich OCR | 24/24 valid; 17.86 photos/s warm; 0.067 s median and 0.116 s p95/photo |
+
+Useful high-confidence evidence included `atv`, `helmet`, `fruit`, `banana`,
+`interior_shop`, `beach`, `palm_tree`, `nightclub`, `restaurant`, `mask` and
+`costume`. Apple also proposed weaker `rock_climbing` labels for people standing
+on cliffs, proving that activity storage needs a stricter threshold than object
+storage. The shipped deterministic composer therefore admits activities only at
+0.45 confidence, removes generic taxonomy parents, and keeps identity/date/place
+authority in current Cimmich truth.
+
+At the measured no-duplicate-OCR rate, the current 118,458-photo archive is
+about 1 hour 51 minutes of native inference before archive I/O and persistence.
+This replaces the earlier synthetic-only estimate; a full run is still not
+authorized by this screen.
 
 The Apple classifier labels were useful but deliberately generic: for example
 `helmet`, `moon`, `porthole`, `backpack`, `cup`, `people` and `adult`. They are

@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+provider_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+source_path="$provider_dir/provider.swift"
+cache_root="${TMPDIR:-/tmp}/cimmich-apple-vision-summary"
+binary_path="$cache_root/provider"
+incoming_path="$cache_root/provider.incoming.$$"
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo '{"error":{"code":"APPLE_VISION_REQUIRES_MACOS"}}' >&2
+  exit 1
+fi
+
+mkdir -p "$cache_root"
+if [ ! -x "$binary_path" ] || [ "$source_path" -nt "$binary_path" ]; then
+  trap 'rm -f "$incoming_path"' EXIT HUP INT TERM
+  swiftc "$source_path" -o "$incoming_path"
+  chmod 700 "$incoming_path"
+  mv -f "$incoming_path" "$binary_path"
+  trap - EXIT HUP INT TERM
+fi
+
+exec "$binary_path" "$@"

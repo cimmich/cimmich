@@ -643,6 +643,255 @@ const validateSceneProposal = (value) => {
   };
 };
 
+const appleSceneLabels = new Map([
+  ["bar", "bar"],
+  ["beach", "beach"],
+  ["cave", "cave"],
+  ["dirt_road", "dirt road"],
+  ["interior_room", "indoor room"],
+  ["interior_shop", "shop"],
+  ["nightclub", "nightclub"],
+  ["restaurant", "restaurant"],
+  ["road_other", "road"],
+  ["storefront", "shopfront"],
+]);
+const appleActivityLabels = new Set([
+  "dancing",
+  "diving",
+  "eating",
+  "hiking",
+  "rock_climbing",
+  "running",
+  "skiing",
+  "sunbathing",
+  "surfing",
+  "swimming",
+]);
+const appleGenericLabels = new Set([
+  "adult",
+  "art",
+  "child",
+  "clothing",
+  "container",
+  "conveyance",
+  "decoration",
+  "furniture",
+  "land",
+  "machine",
+  "material",
+  "outdoor",
+  "people",
+  "plant",
+  "recreation",
+  "sky",
+  "structure",
+  "tableware",
+  "teen",
+  "utensil",
+  "vehicle",
+]);
+const humanizeAppleLabel = (value) => value.replaceAll("_", " ");
+
+const appleVisionProposal = (raw, asset) => {
+  if (
+    !raw ||
+    raw.schemaVersion !== "cimmich.apple-vision-summary.raw.v1" ||
+    raw.imagePath !== asset.path ||
+    !Array.isArray(raw.classifications) ||
+    !Array.isArray(raw.animals) ||
+    !Array.isArray(raw.visibleText) ||
+    !Array.isArray(raw.errors) ||
+    raw.errors.length > 0 ||
+    !Number.isInteger(raw.faceCount) ||
+    !Number.isInteger(raw.humanCount)
+  ) {
+    throw Object.assign(new Error("Apple Vision result is invalid"), {
+      code: "LOCAL_AI_PROVIDER_OUTPUT_INVALID",
+    });
+  }
+  const classifications = raw.classifications.filter(
+    (row) =>
+      row &&
+      typeof row.identifier === "string" &&
+      Number.isFinite(row.confidence) &&
+      row.confidence >= 0 &&
+      row.confidence <= 1,
+  );
+  const sceneEntry = classifications.find(
+    (row) => row.confidence >= 0.12 && appleSceneLabels.has(row.identifier),
+  );
+  const activities = classifications
+    .filter(
+      (row) =>
+        row.confidence >= 0.45 && appleActivityLabels.has(row.identifier),
+    )
+    .slice(0, 4)
+    .map((row) => humanizeAppleLabel(row.identifier));
+  const excluded = new Set([
+    ...appleGenericLabels,
+    ...appleActivityLabels,
+    ...appleSceneLabels.keys(),
+  ]);
+  let objects = classifications
+    .filter((row) => row.confidence >= 0.2 && !excluded.has(row.identifier))
+    .slice(0, 8)
+    .map((row) => humanizeAppleLabel(row.identifier));
+  for (const animal of raw.animals) {
+    const label = animal?.labels?.find(
+      (row) => typeof row.identifier === "string" && row.confidence >= 0.5,
+    )?.identifier;
+    if (label && !objects.includes(label)) objects.push(label);
+  }
+  const collapsedParents = new Set();
+  if (
+    objects.some((value) => ["atv", "motorcycle", "scooter"].includes(value))
+  ) {
+    for (const value of ["rim", "tire", "wheel"]) collapsedParents.add(value);
+  }
+  if (objects.includes("helmet")) collapsedParents.add("headgear");
+  if (
+    objects.some((value) =>
+      ["apple", "banana", "grape", "mango", "oranges", "pineapple"].includes(
+        value,
+      ),
+    )
+  ) {
+    for (const value of ["citrus fruit", "food", "fruit"])
+      collapsedParents.add(value);
+  }
+  if (objects.includes("folding chair")) collapsedParents.add("chair");
+  objects = objects.filter((value) => !collapsedParents.has(value));
+  const visibleText = raw.visibleText
+    .filter(
+      (row) =>
+        row &&
+        typeof row.identifier === "string" &&
+        row.identifier.trim().length >= 2 &&
+        Number(row.confidence) >= 0.5,
+    )
+    .slice(0, 30)
+    .map((row) => row.identifier.trim());
+  const baselinePeople = Math.max(
+    asset.acceptedSubjects?.length || 0,
+    asset.baselineObservations?.faces?.length || 0,
+    asset.baselineObservations?.bodies?.length || 0,
+  );
+  const peopleCountEstimate = Math.min(
+    100,
+    Math.max(raw.faceCount, raw.humanCount, baselinePeople),
+  );
+  const scene = sceneEntry
+    ? appleSceneLabels.get(sceneEntry.identifier)
+    : classifications.some((row) => row.identifier === "outdoor")
+      ? "outdoors"
+      : classifications.some((row) => row.identifier === "interior_room")
+        ? "indoors"
+        : "general scene";
+  const peopleText =
+    peopleCountEstimate === 0
+      ? "No person is clearly detected"
+      : peopleCountEstimate === 1
+        ? "One person is visible"
+        : `${peopleCountEstimate} people are visible`;
+  const activityText = activities.length
+    ? `, with ${activities.join(" and ")}`
+    : "";
+  const objectText = objects.length
+    ? ` Visible details include ${objects.slice(0, 5).join(", ")}.`
+    : "";
+  const scenePhrase =
+    scene === "outdoors"
+      ? "outdoors"
+      : scene === "general scene"
+        ? "in the scene"
+        : ["beach", "shopfront"].includes(scene)
+          ? `at a ${scene}`
+          : ["dirt road", "road"].includes(scene)
+            ? `on a ${scene}`
+            : `in a ${scene}`;
+  return validateSceneProposal({
+    activities,
+    objects,
+    peopleCountEstimate,
+    qualityFlags: [
+      ...(raw.faceCount === 0 && baselinePeople > 0
+        ? ["known person without Apple face detection"]
+        : []),
+    ],
+    scene,
+    summary: `${peopleText} ${scenePhrase}${activityText}.${objectText}`,
+    visibleText,
+  });
+};
+
+export const runAppleVisionSceneTextBatch = async ({ assets, config }) => {
+  if (!config.enabled) {
+    return assets.map(() => ({
+      operation: "scene-text",
+      reason: "provider_disabled",
+      state: "unavailable",
+    }));
+  }
+  try {
+    const adapterDigest = await fileDigest(config.executablePath);
+    const sourceDigest = await fileDigest(
+      join(dirname(config.executablePath), "provider.swift"),
+    ).catch(() => adapterDigest);
+    const response = await runProcess({
+      args: [
+        "--json-array",
+        ...(config.includeOcr ? [] : ["--skip-ocr"]),
+        ...assets.map((asset) => asset.path),
+      ],
+      command: config.executablePath,
+      timeoutMs: config.timeoutMs,
+    });
+    if (
+      response?.schemaVersion !== "cimmich.apple-vision-summary.raw.v1" ||
+      typeof response.runtime?.adapterVersion !== "string" ||
+      typeof response.runtime?.operatingSystem !== "string" ||
+      !Array.isArray(response.results) ||
+      response.results.length !== assets.length
+    ) {
+      throw Object.assign(new Error("Apple Vision batch result is invalid"), {
+        code: "LOCAL_AI_PROVIDER_OUTPUT_INVALID",
+      });
+    }
+    const modelDigest = digest({
+      adapterDigest,
+      runtime: response.runtime,
+      sourceDigest,
+      model: "apple-vision-system",
+      provider: "apple-vision-native-summary",
+    });
+    const configDigest = digest({
+      activityConfidence: 0.45,
+      adapterDigest,
+      composerVersion: "apple-specialist-composer-v1",
+      includeOcr: config.includeOcr,
+      objectConfidence: 0.2,
+      sceneConfidence: 0.12,
+      sourceDigest,
+    });
+    return response.results.map((raw, index) => {
+      const proposal = appleVisionProposal(raw, assets[index]);
+      return {
+        activationAuthority: "none",
+        configDigest,
+        model: { digest: modelDigest, name: "Apple Vision", size: 0 },
+        network: "none",
+        operation: "scene-text",
+        providerId: "apple-vision-native-summary",
+        proposal,
+        proposalDigest: digest(proposal),
+        state: "proposed",
+      };
+    });
+  } catch (error) {
+    return assets.map(() => providerFailure("scene-text", error));
+  }
+};
+
 export const runSceneText = async ({ asset, config }) => {
   if (!config.enabled)
     return {
@@ -650,6 +899,9 @@ export const runSceneText = async ({ asset, config }) => {
       state: "unavailable",
       reason: "provider_disabled",
     };
+  if (config.provider === "apple-vision") {
+    return (await runAppleVisionSceneTextBatch({ assets: [asset], config }))[0];
+  }
   try {
     const tags = await checkedFetch(
       `${config.endpoint}/api/tags`,

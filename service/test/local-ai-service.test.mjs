@@ -175,6 +175,7 @@ test("summary tiers disclose shared fallback and dedicated model profiles", asyn
       environment: {
         CIMMICH_LOCAL_AI_ENABLED: "true",
         CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_RUNTIME_PLATFORM: "linux",
         CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED: "true",
         CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL: "shared-vision",
       },
@@ -184,14 +185,19 @@ test("summary tiers disclose shared fallback and dedicated model profiles", asyn
     assert.equal(shared.status().capabilities.summarySmart, true);
     assert.equal(shared.status().capabilities.summaryEnhanced, true);
     assert.deepEqual(shared.status().summaryProfiles, {
-      enhanced: { dedicated: false, model: "shared-vision" },
-      smart: { dedicated: false, model: "shared-vision" },
+      enhanced: {
+        dedicated: false,
+        model: "shared-vision",
+        provider: "ollama",
+      },
+      smart: { dedicated: false, model: "shared-vision", provider: "ollama" },
     });
 
     const dedicated = await createLocalAiService({
       environment: {
         CIMMICH_LOCAL_AI_ENABLED: "true",
         CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_RUNTIME_PLATFORM: "linux",
         CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED: "true",
         CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL: "heavy-vision",
         CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL: "fast-vision",
@@ -200,8 +206,54 @@ test("summary tiers disclose shared fallback and dedicated model profiles", asyn
       repository: {},
     });
     assert.deepEqual(dedicated.status().summaryProfiles, {
-      enhanced: { dedicated: true, model: "heavy-vision" },
-      smart: { dedicated: true, model: "fast-vision" },
+      enhanced: { dedicated: true, model: "heavy-vision", provider: "ollama" },
+      smart: { dedicated: true, model: "fast-vision", provider: "ollama" },
+    });
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("Smart selects Apple Vision on a Mac worker and permits an explicit custom model", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
+  const executable = join(root, "apple-vision-provider");
+  try {
+    await writeFile(executable, "#!/bin/sh\nexit 0\n");
+    await chmod(executable, 0o500);
+    const apple = await createLocalAiService({
+      environment: {
+        CIMMICH_LOCAL_AI_APPLE_VISION_EXECUTABLE_PATH: executable,
+        CIMMICH_LOCAL_AI_ENABLED: "true",
+        CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_RUNTIME_PLATFORM: "darwin",
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(apple.status().capabilities.summarySmart, true);
+    assert.deepEqual(apple.status().summaryProfiles.smart, {
+      dedicated: true,
+      model: "Apple Vision",
+      provider: "apple-vision",
+    });
+
+    const custom = await createLocalAiService({
+      environment: {
+        CIMMICH_LOCAL_AI_APPLE_VISION_EXECUTABLE_PATH: executable,
+        CIMMICH_LOCAL_AI_ENABLED: "true",
+        CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_RUNTIME_PLATFORM: "darwin",
+        CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED: "true",
+        CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL: "owner-model",
+        CIMMICH_LOCAL_AI_SUMMARY_SMART_PROVIDER: "ollama",
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.deepEqual(custom.status().summaryProfiles.smart, {
+      dedicated: true,
+      model: "owner-model",
+      provider: "ollama",
     });
   } finally {
     await rm(root, { force: true, recursive: true });

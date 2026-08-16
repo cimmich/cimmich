@@ -113,16 +113,23 @@ export const compileCimmichStandardSummary = ({
 
 export const compileCimmichModelSummary = ({
   analysis,
+  asset,
   evidence,
+  ocr,
 }: {
   analysis: CimmichGeneratedSummaryAnalysis;
+  asset: AssetResponseDto;
   evidence: CimmichAssetEvidence;
+  ocr: OcrBoundingBox[];
 }) => {
   const facts = analysis.visualFacts;
   const people = cimmichSummaryKnownPeople(evidence);
   const liveDetails = [
     people.length > 0 ? cleanSentence(`Known people: ${joinNatural(people)}`) : '',
     contextSentence(evidence),
+    dateSentence(asset),
+    locationSentence(asset),
+    ocrSentence(ocr),
   ].filter(Boolean);
   return [cleanSentence(facts.summary), ...liveDetails].filter(Boolean).join(' ');
 };

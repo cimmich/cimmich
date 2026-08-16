@@ -42,7 +42,7 @@ The simplest mental model is:
 | Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
 | Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
 | Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
-| Understand duplicate or preservation evidence | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.   |
+| Understand duplicate or preservation evidence | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.    |
 | Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
@@ -164,7 +164,7 @@ From the detail tools you can:
 - correct saved rotation, capture date or Place in Cimmich's projection and
   undo the correction; and
 - open **Summary** for an instant Standard view or configured Smart/Enhanced
-  local analysis; and
+  local analysis;
 - run bounded optional Local AI review on that photo or a small selection.
 
 These actions write Cimmich truth and decisions, not source pixels or Immich's
@@ -174,6 +174,10 @@ Standard Summary uses current People, Context, date, place and OCR without a
 model. Smart favours a fast local visual pass plus review-only QC leads.
 Enhanced is the heavier initial interpretation. Both model tiers retain
 structured facts, so later names and Context update without another visual run.
+On a Mac Local AI worker, Smart selects Apple Vision by default and downloads
+no model. Self-hosters can replace it with a compatible local model; Cimmich
+shows which provider produced each result and applies the same validation to
+all of them.
 The editable **Owner note** remains separate and can never be overwritten by a
 generated summary. See [Photo summaries](SUMMARIES.md).
 
@@ -504,7 +508,7 @@ Settings separates ordinary product setup from optional machinery:
 - **Body evidence** configures optional body-observation production;
 - **Local AI** enables bounded photo review/enhancement experiments; and
 - **Guided access** exposes a separately authenticated, capability-bounded
-machine interface when deliberately enabled.
+  machine interface when deliberately enabled.
 
 Local AI is visibly labelled **Alpha · Experimental build** wherever its photo
 review dialog opens. It is off by default in public builds and appears only

@@ -46,7 +46,9 @@
     evidence ? compileCimmichStandardSummary({ asset, evidence, ocr: ocrManager.data }) : '',
   );
   const summaryText = $derived(
-    analysis && evidence ? compileCimmichModelSummary({ analysis, evidence }) : standardText,
+    analysis && evidence
+      ? compileCimmichModelSummary({ analysis, asset, evidence, ocr: ocrManager.data })
+      : standardText,
   );
   const qc = $derived(evidence ? cimmichSummaryQc(evidence, analysis) : null);
   const running = $derived(job?.state === 'queued' || job?.state === 'running');
@@ -206,7 +208,12 @@
               ? 'Fast local visual pass for scene detail and basic QC.'
               : 'Heavy first visual pass. Later names and Context update without rerunning it.'}
           </p>
-          {#if profile && !profile.dedicated}
+          {#if profile?.provider === 'apple-vision'}
+            <p class="provider-note">Mac default · Apple Vision · no model download</p>
+          {:else if profile?.provider === 'ollama' && profile.model}
+            <p class="provider-note">Custom local model · {profile.model}</p>
+          {/if}
+          {#if profile?.model && !profile.dedicated}
             <p class="notice">Using the shared scene model; a dedicated {mode} profile is not configured.</p>
           {/if}
           {#if !capability}
@@ -382,10 +389,14 @@
     font-size: 11px;
   }
   .lineage,
-  .explanation {
+  .explanation,
+  .provider-note {
     margin: 12px 22px 0;
     color: rgb(255 255 255 / 0.45);
     font-size: 11px;
+  }
+  .provider-note {
+    color: rgb(186 230 253 / 0.78);
   }
   .summary-card .lineage {
     margin-inline: 0;

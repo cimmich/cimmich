@@ -4,6 +4,10 @@ Cimmich offers three summary levels from the **Summary** icon in the photo
 viewer. They share one display surface but have deliberately different cost and
 authority.
 
+> [!NOTE]
+> Apple Vision as the automatic native-macOS Smart provider is **Source
+> current** and newer than Community Preview 9.
+
 ## Standard
 
 Standard is immediate and uses no generative model. It rebuilds whenever the
@@ -50,9 +54,11 @@ a model.
 ## Availability and privacy
 
 Standard is always available on a presentable Cimmich photo. Smart and Enhanced
-require Local AI plus a configured loopback-only vision model. Public builds keep
-Local AI opt-in. A deployment may use the existing scene model as an explicit
-fallback, but the UI says when a dedicated Smart or Enhanced profile is absent.
+require Local AI. Public builds keep Local AI opt-in. On a native macOS worker,
+Smart automatically uses the bundled Apple Vision adapter; an owner can instead
+name any compatible local Ollama vision model. Enhanced remains an independent
+owner-selected model profile. The UI reports the actual provider rather than
+assuming a particular machine or model.
 
 Source media is read-only. Local working copies are removed after each job. The
 stored analysis is private and source-revision-bound. A result from an older
@@ -72,8 +78,10 @@ Migration `0140_generated_asset_summary_v1.sql` owns the durable record:
 `service/src/generated-asset-summary.mjs` validates and commits provider output.
 `service/src/local-ai-service.mjs` exposes `summary-smart` and
 `summary-enhanced`, selects the configured profile and commits successful local
-scene proposals. `CimmichSummaryAction.svelte` compiles the photo-facing result
-with current evidence.
+scene proposals. `providers/apple-vision-summary` owns the no-download macOS
+adapter; the Local AI runner invokes the whole set once and deterministically
+collapses Apple taxonomy parents before storage. `CimmichSummaryAction.svelte`
+compiles the photo-facing result with current evidence.
 
 The current implementation is photo-scoped. Group/event/archive roll-ups should
 aggregate current photo facts hierarchically; they should not repeatedly send

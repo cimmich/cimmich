@@ -346,6 +346,15 @@ export const runPhotoLab = async ({
             config: bodiesConfig,
           })
         : null;
+    const sceneTextBatchResults =
+      executedOperations.includes("scene-text") &&
+      sceneTextConfig.provider === "apple-vision" &&
+      providerImplementations.runAppleVisionSceneTextBatch
+        ? await providerImplementations.runAppleVisionSceneTextBatch({
+            assets: photoSet.assets,
+            config: sceneTextConfig,
+          })
+        : null;
 
     for (const [assetIndex, assetInput] of photoSet.assets.entries()) {
       const operations = {};
@@ -383,12 +392,14 @@ export const runPhotoLab = async ({
         );
       }
       if (executedOperations.includes("scene-text")) {
-        operations.sceneText = await timed(() =>
-          providerImplementations.runSceneText({
-            asset: assetInput,
-            config: sceneTextConfig,
-          }),
-        );
+        operations.sceneText = sceneTextBatchResults
+          ? sceneTextBatchResults[assetIndex]
+          : await timed(() =>
+              providerImplementations.runSceneText({
+                asset: assetInput,
+                config: sceneTextConfig,
+              }),
+            );
       }
       if (executedOperations.includes("enhance-preview")) {
         const outputPath = join(artifactRoot, `${name}-enhanced-quick-x2.png`);

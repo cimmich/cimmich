@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -15,7 +22,11 @@ import {
 import { inferContext } from "../src/context.mjs";
 import { diffRunResults, iou } from "../src/diff.mjs";
 import { runDoctor } from "../src/doctor.mjs";
-import { runProcess, runSceneText } from "../src/providers.mjs";
+import {
+  runAppleVisionSceneTextBatch,
+  runProcess,
+  runSceneText,
+} from "../src/providers.mjs";
 import {
   activeProcessCount,
   terminateActiveProcesses,
@@ -89,6 +100,19 @@ test("config accepts loopback, rejects remote endpoints, and expands full", () =
   assert.throws(() => validateConfig(config("http://127.0.0.1:11435")), {
     code: "LOCAL_AI_NETWORK_FORBIDDEN",
   });
+  const apple = config();
+  apple.providers.sceneText = {
+    enabled: true,
+    endpoint: "native://apple-vision",
+    executablePath: "/provider",
+    includeOcr: false,
+    model: "Apple Vision",
+    provider: "apple-vision",
+  };
+  assert.deepEqual(
+    validateConfig(apple).providers.sceneText,
+    apple.providers.sceneText,
+  );
   assert.deepEqual(normalizeOperations("full"), [
     "faces",
     "bodies",
@@ -683,6 +707,58 @@ test("Scene/Text accepts validated structured output from a local model thinking
   });
   assert.equal(result.state, "proposed");
   assert.deepEqual(result.proposal, proposal);
+});
+
+test("Apple Vision batch composes conservative Smart facts without a network model", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-apple-vision-"));
+  const imagePath = join(root, "photo.jpg");
+  const executablePath = join(root, "provider");
+  await writeFile(imagePath, "image");
+  const raw = {
+    animals: [],
+    classifications: [
+      { confidence: 0.95, identifier: "people" },
+      { confidence: 0.9, identifier: "outdoor" },
+      { confidence: 0.82, identifier: "vehicle" },
+      { confidence: 0.79, identifier: "atv" },
+      { confidence: 0.71, identifier: "helmet" },
+    ],
+    elapsedSeconds: 0.05,
+    errors: [],
+    faceCount: 1,
+    humanCount: 1,
+    imagePath,
+    ocrPerformed: false,
+    schemaVersion: "cimmich.apple-vision-summary.raw.v1",
+    visibleText: [],
+  };
+  await writeFile(
+    executablePath,
+    `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ results: [raw], runtime: { adapterVersion: "test-v1", operatingSystem: "macOS test" }, schemaVersion: raw.schemaVersion })}'\n`,
+  );
+  await chmod(executablePath, 0o500);
+  const [result] = await runAppleVisionSceneTextBatch({
+    assets: [
+      {
+        acceptedSubjects: ["Example Person"],
+        assetId: "asset-1",
+        path: imagePath,
+        sourceContentDigest: "source-digest",
+      },
+    ],
+    config: {
+      enabled: true,
+      executablePath,
+      includeOcr: false,
+      timeoutMs: 1000,
+    },
+  });
+  assert.equal(result.state, "proposed");
+  assert.equal(result.providerId, "apple-vision-native-summary");
+  assert.equal(result.network, "none");
+  assert.equal(result.proposal.peopleCountEstimate, 1);
+  assert.deepEqual(result.proposal.objects, ["atv", "helmet"]);
+  assert.match(result.proposal.summary, /atv, helmet/);
 });
 
 test("set summary stays compact and preserves review/candidate language", () => {
