@@ -29,10 +29,35 @@ describe('photo summary compiler', () => {
       evidence,
       ocr: [{ text: 'JETTY' }] as never,
     });
-    expect(text).toContain('Ted is in this photo.');
-    expect(text).toContain('Known things: Harbour Boat.');
-    expect(text).toContain('Location: Sydney.');
-    expect(text).toContain('Visible text: “JETTY”.');
+    expect(text).toBe('Ted is pictured with Harbour Boat in Sydney on March 12, 2024. Visible text includes “JETTY”.');
+    expect(text).not.toMatch(/Face needs|Faces need|Body needs|Bodies need|review/i);
+  });
+
+  it('uses natural articles and never mixes review workload into Standard', () => {
+    const text = compileCimmichStandardSummary({
+      asset: {
+        exifInfo: {
+          city: 'Káto Garoúna',
+          country: 'Greece',
+          dateTimeOriginal: '2025-12-24T12:35:23Z',
+          state: 'Ionian Islands',
+        },
+      } as never,
+      evidence: {
+        bodies: [{ display_name: null, person_id: null }],
+        contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
+        faces: [
+          { display_name: 'Benji Hart', rejected_identity_claim_id: null, review_disposition: 'active' },
+          { display_name: null, rejected_identity_claim_id: null, review_disposition: 'active' },
+        ],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe(
+      'Benji Hart is pictured with an ATV in Káto Garoúna, Ionian Islands, Greece on December 24, 2025.',
+    );
+    expect(text).not.toMatch(/review|missing|needs/i);
   });
 
   it('adds current names to stored visual facts without mutating the model record', () => {
@@ -56,7 +81,7 @@ describe('photo summary compiler', () => {
     });
     expect(text).toContain('Known people: Ted.');
     expect(text).toContain('Location: Sydney.');
-    expect(text).toContain('Visible text: “JETTY”.');
+    expect(text).toContain('Visible text includes “JETTY”.');
     expect(cimmichSummaryQc(evidence, analysis)).toMatchObject({ missingBodies: 1, missingFaces: 1 });
   });
 

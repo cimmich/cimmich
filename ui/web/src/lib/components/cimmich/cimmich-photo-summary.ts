@@ -32,6 +32,16 @@ const cleanSentence = (value: string) => {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 };
 
+const withIndefiniteArticle = (value: string) => {
+  if (/^[A-Z][a-zÀ-ž'-]+(?:\s+[A-Z][a-zÀ-ž'-]+)+$/.test(value)) {
+    return value;
+  }
+  if (/^[A-Z0-9-]{2,}$/.test(value)) {
+    return `${/^[AEFHILMNORSX]/.test(value) ? 'an' : 'a'} ${value}`;
+  }
+  return `${/^[aeiou]/i.test(value) ? 'an' : 'a'} ${value}`;
+};
+
 export const cimmichSummaryKnownPeople = (evidence: CimmichAssetEvidence) =>
   unique([
     ...evidence.faces.map((face) => face.display_name),
@@ -90,6 +100,23 @@ const contextSentence = (evidence: CimmichAssetEvidence) => {
   return parts.length > 0 ? cleanSentence(parts.join(' · ')) : '';
 };
 
+const contextNames = (evidence: CimmichAssetEvidence, kind: 'event' | 'object' | 'place') =>
+  unique((evidence.contexts || []).filter((item) => item.entity_kind === kind).map((item) => item.display_name));
+
+const formattedDate = (asset: AssetResponseDto) => {
+  const value = asset.exifInfo?.dateTimeOriginal || asset.fileCreatedAt;
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? '' : new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(date);
+};
+
+const locationName = (asset: AssetResponseDto, evidence: CimmichAssetEvidence) => {
+  const metadataLocation = unique([asset.exifInfo?.city, asset.exifInfo?.state, asset.exifInfo?.country]);
+  return metadataLocation.length > 0 ? metadataLocation.join(', ') : joinNatural(contextNames(evidence, 'place'));
+};
+
 const dateSentence = (asset: AssetResponseDto) => {
   const value = asset.exifInfo?.dateTimeOriginal || asset.fileCreatedAt;
   if (!value) {
@@ -109,19 +136,7 @@ const locationSentence = (asset: AssetResponseDto) => {
 
 const ocrSentence = (ocr: OcrBoundingBox[]) => {
   const text = unique(ocr.map((item) => item.text)).slice(0, 5);
-  return text.length > 0 ? `Visible text: ${text.map((item) => `“${item}”`).join(' · ')}.` : '';
-};
-
-const reviewSentence = (evidence: CimmichAssetEvidence) => {
-  const unresolvedFaces = evidence.faces.filter(
-    (face) => !face.display_name && !face.rejected_identity_claim_id && face.review_disposition === 'active',
-  ).length;
-  const unlinkedBodies = evidence.bodies.filter((body) => !body.person_id).length;
-  const parts = [
-    unresolvedFaces > 0 ? `${unresolvedFaces} ${unresolvedFaces === 1 ? 'Face needs' : 'Faces need'} review` : '',
-    unlinkedBodies > 0 ? `${unlinkedBodies} ${unlinkedBodies === 1 ? 'Body needs' : 'Bodies need'} review` : '',
-  ].filter(Boolean);
-  return parts.length > 0 ? cleanSentence(parts.join(' · ')) : '';
+  return text.length > 0 ? `Visible text includes ${text.map((item) => `“${item}”`).join(', ')}.` : '';
 };
 
 export const compileCimmichStandardSummary = ({
@@ -134,19 +149,20 @@ export const compileCimmichStandardSummary = ({
   ocr: OcrBoundingBox[];
 }) => {
   const people = cimmichSummaryKnownPeople(evidence);
-  const sentences = [
-    people.length > 0
-      ? cleanSentence(`${joinNatural(people)} ${people.length === 1 ? 'is' : 'are'} in this photo`)
-      : '',
-    contextSentence(evidence),
-    dateSentence(asset),
-    locationSentence(asset),
-    ocrSentence(ocr),
-    reviewSentence(evidence),
-  ].filter(Boolean);
+  const objects = contextNames(evidence, 'object');
+  const events = contextNames(evidence, 'event');
+  const place = locationName(asset, evidence);
+  const date = formattedDate(asset);
+  const describedObjects = objects.map(withIndefiniteArticle);
+  const subjectText = people.length > 0 ? joinNatural(people) : joinNatural(describedObjects);
+  const subjectCount = people.length > 0 ? people.length : describedObjects.length;
+  const main = subjectText
+    ? `${subjectText} ${subjectCount === 1 ? 'is' : 'are'} pictured${people.length > 0 && describedObjects.length > 0 ? ` with ${joinNatural(describedObjects)}` : ''}${place ? ` in ${place}` : ''}${events.length > 0 ? ` during ${joinNatural(events)}` : ''}${date ? ` on ${date}` : ''}.`
+    : '';
+  const sentences = [main, ocrSentence(ocr)].filter(Boolean);
   return sentences.length > 0
     ? sentences.join(' ')
-    : 'No confirmed people, place, text or other Context has been recorded for this photo yet.';
+    : 'No confirmed descriptive information has been recorded for this photo yet.';
 };
 
 export const compileCimmichModelSummary = ({
