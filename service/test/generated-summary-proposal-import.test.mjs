@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { planAppleSmartProposalImport } from "../src/generated-summary-proposal-import.mjs";
 
@@ -127,4 +128,15 @@ test("rejects duplicate current source mappings", () => {
       }),
     /APPLE_SMART_IMPORT_CURRENT_ASSET_DUPLICATE/,
   );
+});
+
+test("live planning uses byte-verified content identity, not a metadata revision", async () => {
+  const source = await readFile(
+    new URL("../bin/import-apple-smart-proposals.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /JOIN asset_source_binding binding/);
+  assert.match(source, /JOIN media_content_fingerprint fingerprint/);
+  assert.match(source, /fingerprint\.verification = 'byte_verified'/);
+  assert.doesNotMatch(source, /current_asset_source_revision/);
 });

@@ -53,15 +53,22 @@ const mapCurrentAssets = async (sql, sourceAssetIds) => {
       ...(await sql`
       SELECT projection.immich_asset_id AS source_asset_id,
         projection.cimmich_asset_id,
-        array_remove(array_agg(DISTINCT revision.source_content_digest), NULL)
+        array_remove(array_agg(DISTINCT fingerprint.content_digest), NULL)
           AS source_content_digests,
         current_summary.proposal_digest AS current_smart_proposal_digest
       FROM immich_asset_projection projection
       JOIN asset ON asset.asset_id = projection.cimmich_asset_id
         AND asset.state = 'active'
-      LEFT JOIN current_asset_source_revision revision
-        ON revision.asset_id = projection.cimmich_asset_id
-        AND revision.input_revision = projection.input_revision
+      LEFT JOIN asset_source_binding binding
+        ON binding.asset_id = projection.cimmich_asset_id
+        AND binding.source_kind = 'immich'
+        AND binding.source_id = projection.source_id
+        AND binding.external_asset_id = projection.immich_asset_id
+        AND binding.state = 'active'
+      LEFT JOIN media_content_fingerprint fingerprint
+        ON fingerprint.content_id = binding.content_id
+        AND fingerprint.hash_algorithm = 'sha256'
+        AND fingerprint.verification = 'byte_verified'
       LEFT JOIN current_generated_asset_summary_analysis current_summary
         ON current_summary.asset_id = projection.cimmich_asset_id
         AND current_summary.tier = 'smart'
