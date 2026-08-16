@@ -11,10 +11,18 @@
     type CimmichImmichOnboardingScope,
     type CimmichImmichOnboardingStatus,
   } from '$lib/services/cimmich.service';
+  import { OpenQueryParam } from '$lib/constants';
   import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
   import { Route } from '$lib/route';
   import { Icon } from '@immich/ui';
-  import { mdiArrowRight, mdiCheckCircleOutline, mdiCogOutline, mdiDatabaseImportOutline, mdiRefresh } from '@mdi/js';
+  import {
+    mdiArrowRight,
+    mdiCheckCircleOutline,
+    mdiCogOutline,
+    mdiDatabaseImportOutline,
+    mdiDatabaseSearchOutline,
+    mdiRefresh,
+  } from '@mdi/js';
   import { onMount } from 'svelte';
   import CimmichImmichPersonResolution from './CimmichImmichPersonResolution.svelte';
 
@@ -656,5 +664,46 @@
         </p>
       </div>
     {/if}
+  {/if}
+
+  {#if connectionReady && status}
+    <aside
+      class="mt-6 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-900 dark:bg-violet-950/20"
+      aria-labelledby="recommended-immich-processing-title"
+    >
+      <div class="flex items-start gap-3">
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-600 text-white">
+          <Icon icon={mdiDatabaseSearchOutline} size="19" />
+        </span>
+        <div class="min-w-0 flex-1">
+          <h3 id="recommended-immich-processing-title" class="font-semibold">Recommended Immich processing</h3>
+          <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+            <span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">Smart Search · On</span>
+            <span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">OCR · On</span>
+            <span class="rounded-full bg-gray-200 px-3 py-1.5 text-gray-800">Facial Recognition · Off</span>
+          </div>
+          <p class="mt-3 text-sm/6 text-gray-700 dark:text-gray-200">
+            Existing library: run <strong>Missing</strong> for Smart Search → Duplicate Detection → OCR. Duplicates need
+            Smart Search; use <strong>All</strong> only after changing a model. Cimmich handles identity separately.
+          </p>
+          {#if status.connection.principal?.isAdmin}
+            <div class="mt-4 flex flex-wrap gap-3">
+              <a
+                class="inline-flex min-h-10 items-center rounded-full bg-violet-950 px-4 text-sm font-semibold text-white dark:bg-violet-100 dark:text-violet-950"
+                href={Route.systemSettings({ isOpen: OpenQueryParam.MACHINE_LEARNING })}>Immich machine learning</a
+              >
+              <a
+                class="inline-flex min-h-10 items-center rounded-full border border-violet-300 px-4 text-sm font-semibold hover:bg-white/70 dark:border-violet-700 dark:hover:bg-violet-950/40"
+                href={Route.queues()}>Immich jobs</a
+              >
+            </div>
+          {:else}
+            <p class="mt-3 text-xs font-semibold text-violet-900 dark:text-violet-200">
+              Ask the Immich owner to check these settings and jobs.
+            </p>
+          {/if}
+        </div>
+      </div>
+    </aside>
   {/if}
 </section>

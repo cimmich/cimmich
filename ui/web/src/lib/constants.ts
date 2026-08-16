@@ -64,6 +64,7 @@ export enum SessionStorageKey {
 export enum OpenQueryParam {
   OAUTH = 'oauth',
   JOB = 'job',
+  MACHINE_LEARNING = 'machine-learning',
   STORAGE_TEMPLATE = 'storage-template',
   NOTIFICATIONS = 'notifications',
   PURCHASE_SETTINGS = 'user-purchase-settings',

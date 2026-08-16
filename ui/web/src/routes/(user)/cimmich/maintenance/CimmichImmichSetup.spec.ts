@@ -187,6 +187,15 @@ describe('Cimmich first-run Immich setup', () => {
 
     await waitFor(() => expect(getByText('Immich owner')).toBeInTheDocument());
     expect(queryByText('owner-fixture')).not.toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Recommended Immich processing' })).toBeInTheDocument();
+    expect(getByText('Smart Search · On')).toBeInTheDocument();
+    expect(getByText('OCR · On')).toBeInTheDocument();
+    expect(getByText('Facial Recognition · Off')).toBeInTheDocument();
+    expect(getByRole('link', { name: 'Immich machine learning' })).toHaveAttribute(
+      'href',
+      '/admin/system-settings?isOpen=machine-learning',
+    );
+    expect(getByRole('link', { name: 'Immich jobs' })).toHaveAttribute('href', '/admin/queues');
 
     await fireEvent.click(getByRole('button', { name: 'Replace connection' }));
     expect(getByRole('button', { name: 'Verify and replace' })).toBeInTheDocument();

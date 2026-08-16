@@ -192,6 +192,25 @@ key.
 No optional model is required for core organisation. Matching and evidence
 providers remain off until deliberately configured.
 
+### Recommended Immich processing for Cimmich
+
+In Immich **Administration → Settings → Machine Learning**, enable **Smart
+Search** and **OCR**. Immich Facial Recognition is not required for Cimmich's
+identity workflow and can remain off unless you also use Immich People
+matching.
+
+For an existing library, open **Administration → Jobs** and run **Missing** in
+this order:
+
+1. Smart Search
+2. Duplicate Detection
+3. OCR
+
+Smart Search supplies the embeddings used by Duplicate Detection. New assets
+are queued automatically while these features remain enabled. Use **All** only
+after changing the relevant model or matching configuration; it deliberately
+reprocesses already completed assets.
+
 After connection, you may delete or rotate the key from Immich's **Account
 Settings → API Keys**. Deleting it immediately stops Cimmich's library reads;
 create and verify a new dedicated key to reconnect.

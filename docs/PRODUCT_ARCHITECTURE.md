@@ -269,6 +269,16 @@ same-image versions can be reviewed even without an Immich duplicate-group ID.
 Equal signatures and dimensions can propose a group; different verified
 SHA-256 values explicitly prevent an exact claim.
 
+Immich's library-wide visual duplicate groups are an upstream enrichment, not
+something Cimmich synthesizes. They require Immich Smart Search to produce a
+CLIP embedding for each asset and Duplicate Detection to consume those
+embeddings. Enabling Smart Search affects new assets; an existing library must
+run the missing Smart Search jobs before missing Duplicate Detection jobs.
+Changing the CLIP model requires an all-assets Smart Search rerun. OCR is a
+separate optional upstream enrichment. Immich Facial Recognition is not a
+Cimmich identity dependency and can remain disabled when Cimmich owns that
+workflow.
+
 Duplicate badges use one bounded status request for a viewport and a short
 cache, not one request per card. Photo-specific Archive Health URLs preserve
 the target asset and requested evidence mode. Archive Health already receives

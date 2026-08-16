@@ -89,6 +89,19 @@ The complete supported setup is in [INSTALL.md](../INSTALL.md). The in-product
 screen is for connecting and refreshing an already installed companion; it is
 not a substitute for backups or the operator lifecycle.
 
+### Recommended Immich processing
+
+For the data Cimmich can reuse, enable **Smart Search** and **OCR** in Immich.
+Immich Facial Recognition can remain off because Cimmich handles identity
+separately; enable it only if you also want Immich's People matching.
+
+For an existing library, open Immich **Administration → Jobs** and run
+**Missing** in this order: **Smart Search → Duplicate Detection → OCR**. Smart
+Search must finish first because Duplicate Detection consumes its image
+embeddings. Use **All** only after changing the relevant model or matching
+configuration. New assets enter Immich's enabled processing queues
+automatically.
+
 ## Home
 
 Home is an orientation surface, not an analytics dashboard. It loads the cover
@@ -430,6 +443,13 @@ copy-local Immich People or Tags, so inspect what would be lost before removing
 anything outside Cimmich.
 
 ### Possible duplicates
+
+Immich's native possible-duplicate groups require completed Smart Search
+embeddings followed by Duplicate Detection. If Smart Search is disabled or the
+historical library has not been backfilled, those groups will be absent.
+Cimmich can still prove byte-exact copies from SHA-256 and may surface bounded
+visual-signature leads, but those are not a substitute for Immich's complete
+library-wide duplicate pass.
 
 Similarity groups are classified as:
 
