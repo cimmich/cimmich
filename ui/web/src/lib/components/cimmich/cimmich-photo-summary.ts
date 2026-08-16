@@ -143,6 +143,7 @@ const smartScenePhrase = (value: string) => {
 const lowValueSmartFactKeys = new Set([
   'consumerelectronics',
   'daytime',
+  'domicile',
   'frame',
   'light',
   'liquid',
@@ -184,6 +185,19 @@ const collapseObservedSmartParents = (values: string[]) => {
 };
 
 const isEnvironmentFact = (value: string) => /(?:^|\s)(?:sky|sunrise|sunset)(?:\s|$)/i.test(value);
+
+const collapseSmartEnvironment = (values: string[]) => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const displayed = displayFact(value);
+    const family = /sky/i.test(displayed) ? 'sky' : /sunrise|sunset/i.test(displayed) ? 'solar-event' : factKey(value);
+    if (seen.has(family)) {
+      return false;
+    }
+    seen.add(family);
+    return true;
+  });
+};
 
 const smartEnvironmentPhrase = (value: string) => {
   const displayed = displayFact(value);
@@ -477,7 +491,7 @@ const compileCimmichSmartSummary = ({
   const observedObjects = collapseObservedSmartParents(
     uniqueFacts(facts.objects).filter((value) => isUsefulObservedSmartFact(value, facts.peopleCountEstimate)),
   );
-  const environment = observedObjects.filter((value) => isEnvironmentFact(value));
+  const environment = collapseSmartEnvironment(observedObjects.filter((value) => isEnvironmentFact(value)));
   const observedDetails = factsNotCoveredBy(
     observedObjects.filter((value) => !isEnvironmentFact(value)),
     ownerObjects,
@@ -537,9 +551,9 @@ const compileCimmichSmartSummary = ({
     main += main ? ` on ${date}` : `The photo was taken on ${date}`;
   }
 
-  const remainingDetails = observedDetails.filter(
-    (value) => !usedObservedObjects.some((used) => factKey(used) === factKey(value)),
-  );
+  const remainingDetails = observedDetails
+    .filter((value) => !usedObservedObjects.some((used) => factKey(used) === factKey(value)))
+    .slice(0, 3);
   const detailSentence =
     remainingDetails.length > 0
       ? `${capitalizeFirst(joinNatural(remainingDetails.map((value) => naturalFactPhrase(value))))} ${remainingDetails.length > 1 || usesPluralVerb(remainingDetails[0]) ? 'are' : 'is'} also visible.`

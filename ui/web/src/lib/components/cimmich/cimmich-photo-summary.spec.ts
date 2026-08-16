@@ -159,7 +159,7 @@ describe('photo summary compiler', () => {
       tier: 'smart',
       visualFacts: {
         activities: [],
-        objects: ['blue sky', 'crowd', 'headgear', 'helmet', 'atv'],
+        objects: ['blue sky', 'cloudy', 'crowd', 'headgear', 'helmet', 'atv', 'domicile'],
         peopleCountEstimate: 2,
         qualityFlags: [],
         scene: 'outdoors',
@@ -193,6 +193,34 @@ describe('photo summary compiler', () => {
     );
     expect(text).not.toMatch(/Visible details|Known things|Taken|Location:/);
     expect(text.match(/ATV/g)).toHaveLength(1);
+    expect(text).not.toMatch(/cloudy|domicile/i);
+  });
+
+  it('keeps Smart detail sentences to the strongest three useful facts', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'smart',
+        visualFacts: {
+          activities: [],
+          objects: ['balcony', 'window', 'apartment', 'awning', 'building'],
+          peopleCountEstimate: 1,
+          qualityFlags: [],
+          scene: 'outdoors',
+          summary: 'One person is visible outdoors.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: {} } as never,
+      evidence: {
+        bodies: [],
+        contexts: [],
+        faces: [{ display_name: 'Ted', person_id: 'person-ted', review_disposition: 'active' }],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe('Ted is outdoors. A balcony, a window, and an apartment are also visible.');
   });
 
   it('lets a specific owner object supersede its generic visual label', () => {
