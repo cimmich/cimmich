@@ -1,7 +1,7 @@
 <script lang="ts">
   import { clickOutside } from '$lib/actions/click-outside';
   import Portal from '$lib/elements/Portal.svelte';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiLockOpenVariantOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
   import { tick } from 'svelte';
 
@@ -12,6 +12,7 @@
     objectLabel?: string;
     onSelectTier: (tier: CimmichVisibilityTier) => Promise<void>;
     showLabel?: boolean;
+    showObjectLabel?: boolean;
     tier: CimmichVisibilityTier;
     variant?: 'default' | 'overlay';
   }
@@ -21,6 +22,7 @@
     objectLabel = 'item',
     onSelectTier,
     showLabel = false,
+    showObjectLabel = false,
     tier,
     variant = 'default',
   }: Props = $props();
@@ -114,6 +116,33 @@
   };
 </script>
 
+{#snippet visibilityTrigger(props: Record<string, unknown>)}
+  <button
+    {...props}
+    bind:this={triggerElement}
+    type="button"
+    class={[
+      'flex min-h-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60',
+      showLabel ? 'gap-2 px-3' : 'size-11',
+      variant === 'overlay'
+        ? 'text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)] hover:bg-white/10'
+        : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+    ]}
+    aria-expanded={isOpen}
+    aria-haspopup="menu"
+    aria-label={`${objectLabel} visibility: ${tierLabel}`}
+    data-testid="cimmich-visibility-tier-trigger"
+    {disabled}
+    onclick={toggle}
+    title={variant === 'overlay' ? undefined : `${objectLabel} visibility: ${tierLabel}`}
+  >
+    <Icon icon={tierIcon} size="24" />
+    {#if showLabel}
+      <span class="text-sm font-semibold">{showObjectLabel ? `${objectLabel} · ${tierLabel}` : tierLabel}</span>
+    {/if}
+  </button>
+{/snippet}
+
 {#snippet tierMenu(portaled = false)}
   <div
     class={[
@@ -166,27 +195,15 @@
     onEscape: close,
   }}
 >
-  <button
-    bind:this={triggerElement}
-    type="button"
-    class={[
-      'flex min-h-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60',
-      showLabel ? 'gap-2 px-3' : 'size-11',
-      variant === 'overlay'
-        ? 'text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)] hover:bg-white/10'
-        : 'hover:bg-gray-100 dark:hover:bg-gray-800',
-    ]}
-    aria-expanded={isOpen}
-    aria-haspopup="menu"
-    aria-label={`${objectLabel} visibility: ${tierLabel}`}
-    data-testid="cimmich-visibility-tier-trigger"
-    {disabled}
-    onclick={toggle}
-    title={`${objectLabel} visibility: ${tierLabel}`}
-  >
-    <Icon icon={tierIcon} size="24" />
-    {#if showLabel}<span class="text-sm font-semibold">{tierLabel}</span>{/if}
-  </button>
+  {#if variant === 'overlay'}
+    <TooltipProvider delayDuration={120}>
+      <Tooltip text={`${objectLabel} visibility: ${tierLabel}`}>
+        {#snippet child({ props })}{@render visibilityTrigger(props)}{/snippet}
+      </Tooltip>
+    </TooltipProvider>
+  {:else}
+    {@render visibilityTrigger({})}
+  {/if}
 
   {#if isOpen}
     {#if variant === 'overlay'}

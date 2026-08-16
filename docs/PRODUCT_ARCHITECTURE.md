@@ -96,7 +96,7 @@ this directory.
 | :------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
 | Home                 | `routes/(user)/cimmich/+page.svelte`; home presentation helpers                                                                    | bounded home/summary projections                                                                 | current visible counts and selected cover settings                                              |
 | Library              | `/cimmich/library` redirects to the inherited photo route with Cimmich organise context; `CimmichBulkPhotoSorter`, Explore filters | tag/label/album operations, explore routes, asset corrections                                    | Cimmich labels, operation receipts, correction decisions; media remains Immich-owned            |
-| Photo viewer         | `CimmichPhotoOverlay`, viewer presentation, duplicate and file-location components                                                 | asset evidence, manual subject/context routes, correction routes, archive-integrity status       | accepted/proposed observations, typed tags, correction decisions, duplicate evidence            |
+| Photo viewer         | `AssetViewerNavBar`, `CimmichPhotoOverlay`, viewer presentation, duplicate/file-location/visibility components                    | asset evidence, manual subject/context routes, correction routes, archive-integrity status       | accepted/proposed observations, typed tags, correction decisions, duplicate evidence            |
 | People directory     | `routes/(user)/cimmich/people/+page.svelte`; People cache and Explore filters                                                      | People projection, candidate summary, possible-people and identity-audit routes                  | Person identities and categories are durable; queues/counts are projections                     |
 | Person workspace     | `people/[personName]/+page.svelte`; identity navigation, coverage, candidate review, split, names and presentation components      | Person assets/connections/profile/names/presentation, identity audit, match refresh, merge/split | profile and accepted evidence are durable; coverage, candidates and Smart Split are rebuildable |
 | Pets                 | `routes/(user)/cimmich/pets/+page.svelte`; `CimmichPetUnknownReview`                                                               | Pet CRUD/media/documents, Pet matching and Unknown review                                        | Pet profile and owner decisions durable; detector suggestions derived                           |
@@ -107,6 +107,12 @@ this directory.
 | Settings/setup       | settings, setup and maintenance routes                                                                                             | integration, onboarding, provider, SourcePack, Local AI and Guided operators                     | configuration and reviewed lifecycle state; model output remains observation                    |
 
 ## Identity and evidence model
+
+The photo navbar has one interaction hierarchy: Cimmich photo-status and file
+controls are grouped before a visual separator; inherited viewer actions remain
+their own sequence. The app tooltip provider uses a 200 ms initial delay, while
+the dense viewer/Cimmich icon controls use 120 ms and replace native `title`
+delays. Labels and `aria-label`s remain the authority for accessible names.
 
 ### Person is the durable subject
 

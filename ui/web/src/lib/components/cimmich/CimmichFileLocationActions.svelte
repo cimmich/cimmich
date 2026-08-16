@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { Route } from '$lib/route';
   import { getParentPath } from '$lib/utils/tree-utils';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiCheck, mdiContentCopy, mdiFolderOpenOutline } from '@mdi/js';
 
   interface Props {
@@ -46,6 +46,37 @@
   };
 </script>
 
+{#snippet folderAction(props: Record<string, unknown>)}
+  <a
+    {...props}
+    class={variant === 'overlay'
+      ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
+      : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
+    href={folderHref}
+    aria-label={`${folderLabel}: ${asset.originalFileName}`}
+    title={variant === 'detail' ? folderLabel : undefined}
+  >
+    <Icon icon={mdiFolderOpenOutline} size={variant === 'overlay' ? '21' : '17'} />
+    {#if variant === 'detail'}<span>{folderLabel}</span>{/if}
+  </a>
+{/snippet}
+
+{#snippet copyAction(props: Record<string, unknown>)}
+  <button
+    {...props}
+    class={variant === 'overlay'
+      ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
+      : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
+    type="button"
+    aria-label={`Copy full path for ${asset.originalFileName}`}
+    title={variant === 'detail' ? (copied ? 'Path copied' : 'Copy full path') : undefined}
+    onclick={() => void copyPath()}
+  >
+    <Icon icon={copied ? mdiCheck : mdiContentCopy} size={variant === 'overlay' ? '20' : '16'} />
+    {#if variant === 'detail'}<span>{copied ? 'Path copied' : 'Copy full path'}</span>{/if}
+  </button>
+{/snippet}
+
 {#if asset.originalPath}
   <div
     class={variant === 'overlay'
@@ -53,28 +84,18 @@
       : 'mt-2 flex flex-wrap items-center gap-2'}
     aria-label="File location actions"
   >
-    <a
-      class={variant === 'overlay'
-        ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
-        : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
-      href={folderHref}
-      aria-label={`${folderLabel}: ${asset.originalFileName}`}
-      title={folderLabel}
-    >
-      <Icon icon={mdiFolderOpenOutline} size={variant === 'overlay' ? '21' : '17'} />
-      {#if variant === 'detail'}<span>{folderLabel}</span>{/if}
-    </a>
-    <button
-      class={variant === 'overlay'
-        ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
-        : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
-      type="button"
-      aria-label={`Copy full path for ${asset.originalFileName}`}
-      title={copied ? 'Path copied' : 'Copy full path'}
-      onclick={() => void copyPath()}
-    >
-      <Icon icon={copied ? mdiCheck : mdiContentCopy} size={variant === 'overlay' ? '20' : '16'} />
-      {#if variant === 'detail'}<span>{copied ? 'Path copied' : 'Copy full path'}</span>{/if}
-    </button>
+    {#if variant === 'overlay'}
+      <TooltipProvider delayDuration={120}>
+        <Tooltip text={folderLabel}>
+          {#snippet child({ props })}{@render folderAction(props)}{/snippet}
+        </Tooltip>
+        <Tooltip text={copied ? 'Path copied' : 'Copy full path'}>
+          {#snippet child({ props })}{@render copyAction(props)}{/snippet}
+        </Tooltip>
+      </TooltipProvider>
+    {:else}
+      {@render folderAction({})}
+      {@render copyAction({})}
+    {/if}
   </div>
 {/if}

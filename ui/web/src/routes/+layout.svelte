@@ -285,7 +285,7 @@
   {/if}
 </svelte:head>
 
-<TooltipProvider>
+<TooltipProvider delayDuration={200}>
   {#if page.data.error}
     <ErrorLayout error={page.data.error}></ErrorLayout>
   {:else}

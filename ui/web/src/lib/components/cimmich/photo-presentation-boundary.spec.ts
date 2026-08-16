@@ -58,4 +58,14 @@ describe('app-wide Cimmich photo presentation boundary', () => {
       '<CimmichViewingMode variant="overlay" restorePreference={false} />',
     );
   });
+
+  it('keeps icon tooltips prompt and photo-status controls visually grouped', () => {
+    expect(source('src/routes/+layout.svelte')).toContain('<TooltipProvider delayDuration={200}>');
+    const navbar = source('src/lib/components/asset-viewer/AssetViewerNavBar.svelte');
+    expect(navbar).toContain('data-testid="cimmich-photo-status-toolbar"');
+    expect(navbar).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" showLabel />');
+    expect(source('src/lib/components/cimmich/CimmichFileLocationActions.svelte')).toContain(
+      '<TooltipProvider delayDuration={120}>',
+    );
+  });
 });

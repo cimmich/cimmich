@@ -128,15 +128,19 @@
         </Tooltip>
       {/if}
       {#if isCimmichSurface}
-        <CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />
-        <CimmichFileLocationActions {asset} variant="overlay" />
-        <div class="flex items-center text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)]">
-          <span class="text-xs font-semibold"><span class="hidden md:inline">This </span>photo</span>
-          <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" />
+        <div
+          class="flex h-12 items-center gap-0.5 rounded-full border border-white/15 bg-black/35 p-1 text-white shadow-[0_2px_12px_rgb(0_0_0/0.18)] backdrop-blur-md"
+          data-testid="cimmich-photo-status-toolbar"
+          aria-label="Cimmich photo status and file actions"
+        >
+          <CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />
+          <CimmichFileLocationActions {asset} variant="overlay" />
+          <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" showLabel />
+          {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
+            <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
+          {/if}
         </div>
-        {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
-          <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
-        {/if}
+        <span class="h-6 w-px bg-white/20" aria-hidden="true"></span>
       {/if}
       <ActionButton action={Cast} />
       <ActionButton action={Actions.Share} />
@@ -177,7 +181,6 @@
           {#if !isLocked && asset.isTrashed}
             <RestoreAction {asset} {onAction} />
           {/if}
-
           <ActionMenuItem action={Actions.AddToAlbum} />
           {#if album && (isOwner || isAlbumOwner)}
             <RemoveFromAlbumAction {album} onRemove={onRemoveFromAlbum} assetIds={[asset.id]} menuItem />

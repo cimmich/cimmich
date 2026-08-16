@@ -2,7 +2,7 @@
   import { clickOutside } from '$lib/actions/click-outside';
   import { focusTrap } from '$lib/actions/focus-trap';
   import Portal from '$lib/elements/Portal.svelte';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
   import { onMount } from 'svelte';
 
@@ -246,14 +246,9 @@
   </div>
 {/snippet}
 
-<div
-  class="relative"
-  use:clickOutside={{
-    onOutclick: close,
-    onEscape: close,
-  }}
->
+{#snippet viewingModeTrigger(props: Record<string, unknown>)}
   <button
+    {...props}
     bind:this={triggerElement}
     type="button"
     class="flex h-11 items-center justify-center text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-wait disabled:opacity-60 {variant ===
@@ -268,13 +263,31 @@
     data-testid="cimmich-viewing-mode-trigger"
     {disabled}
     onclick={toggle}
-    title={`Viewing mode: ${modeLabel}`}
+    title={variant === 'overlay' ? undefined : `Viewing mode: ${modeLabel}`}
   >
     <Icon icon={modeIcon} size="24" />
     {#if variant !== 'overlay'}
       <span class={variant === 'default' ? 'hidden xl:inline' : ''}>{modeLabel}</span>
     {/if}
   </button>
+{/snippet}
+
+<div
+  class="relative"
+  use:clickOutside={{
+    onOutclick: close,
+    onEscape: close,
+  }}
+>
+  {#if variant === 'overlay'}
+    <TooltipProvider delayDuration={120}>
+      <Tooltip text={`Viewing mode: ${modeLabel}`}>
+        {#snippet child({ props })}{@render viewingModeTrigger(props)}{/snippet}
+      </Tooltip>
+    </TooltipProvider>
+  {:else}
+    {@render viewingModeTrigger({})}
+  {/if}
 
   {#if isOpen}
     {#if variant === 'overlay'}

@@ -31,6 +31,19 @@ describe('CimmichVisibilityTierControl', () => {
     expect(queryByText('Standard')).not.toBeInTheDocument();
   });
 
+  it('can expose an explicit object and tier label in a viewer toolbar', () => {
+    const { getByText } = render(CimmichVisibilityTierControl, {
+      objectLabel: 'Photo',
+      onSelectTier: vi.fn(() => Promise.resolve()),
+      showLabel: true,
+      showObjectLabel: true,
+      tier: 'private',
+      variant: 'overlay',
+    });
+
+    expect(getByText('Photo · Private')).toBeInTheDocument();
+  });
+
   it('sends an explicit tier change through its supplied service callback', async () => {
     const onSelectTier = vi.fn(() => Promise.resolve());
     const { getByRole } = render(CimmichVisibilityTierControl, {

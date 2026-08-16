@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiContentDuplicate, mdiImageMultipleOutline } from '@mdi/js';
   import { onMount } from 'svelte';
   import { getCimmichDuplicateIndicator, type CimmichDuplicateIndicator } from './duplicate-indicators';
@@ -63,26 +63,40 @@
   };
 </script>
 
+{#snippet indicatorLink(current: CimmichDuplicateIndicator, props: Record<string, unknown>)}
+  <a
+    {...props}
+    href={current.href}
+    class={variant === 'grid'
+      ? `absolute top-2 left-2 z-10 inline-flex min-h-7 max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold text-white shadow-md backdrop-blur-sm ${current.kind === 'exact' ? 'bg-violet-700/90' : 'bg-amber-600/92'}`
+      : `inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/20 px-2.5 text-xs font-semibold text-white shadow-sm transition hover:border-white/35 hover:brightness-110 ${current.kind === 'exact' ? 'bg-violet-700/80' : 'bg-amber-600/82'}`}
+    aria-label={`${current.label}. Open the evidence comparison.`}
+    title={variant === 'grid' ? `${current.label}. ${current.reason}` : undefined}
+    onclick={openEvidence}
+  >
+    <Icon
+      icon={current.kind === 'exact' ? mdiContentDuplicate : mdiImageMultipleOutline}
+      size={variant === 'grid' ? '14' : '17'}
+    />
+    <span class={variant === 'navbar' ? 'hidden lg:inline' : 'truncate'}>
+      {variant === 'grid' ? (current.kind === 'exact' ? 'Exact copy' : 'Possible version') : current.label}
+    </span>
+  </a>
+{/snippet}
+
 {#if variant === 'grid'}
   <span bind:this={sentinel} class="pointer-events-none absolute top-0 left-0 size-px" aria-hidden="true"></span>
 {/if}
 
 {#if indicator}
-  <a
-    href={indicator.href}
-    class={variant === 'grid'
-      ? `absolute top-2 left-2 z-10 inline-flex min-h-7 max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold text-white shadow-md backdrop-blur-sm ${indicator.kind === 'exact' ? 'bg-violet-700/90' : 'bg-amber-600/92'}`
-      : `inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/25 px-2.5 text-xs font-semibold text-white shadow-sm backdrop-blur-sm hover:bg-white/15 ${indicator.kind === 'exact' ? 'bg-violet-700/75' : 'bg-amber-600/75'}`}
-    aria-label={`${indicator.label}. Open the evidence comparison.`}
-    title={`${indicator.label}. ${indicator.reason}`}
-    onclick={openEvidence}
-  >
-    <Icon
-      icon={indicator.kind === 'exact' ? mdiContentDuplicate : mdiImageMultipleOutline}
-      size={variant === 'grid' ? '14' : '17'}
-    />
-    <span class={variant === 'navbar' ? 'hidden lg:inline' : 'truncate'}>
-      {variant === 'grid' ? (indicator.kind === 'exact' ? 'Exact copy' : 'Possible version') : indicator.label}
-    </span>
-  </a>
+  {@const current = indicator}
+  {#if variant === 'navbar'}
+    <TooltipProvider delayDuration={120}>
+      <Tooltip text={`${current.label}. ${current.reason}`}>
+        {#snippet child({ props })}{@render indicatorLink(current, props)}{/snippet}
+      </Tooltip>
+    </TooltipProvider>
+  {:else}
+    {@render indicatorLink(current, {})}
+  {/if}
 {/if}
