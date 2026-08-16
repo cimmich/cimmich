@@ -328,6 +328,7 @@ describe('photo summary compiler', () => {
   it('resolves stable Enhanced identity tokens to the current display name', () => {
     const analysis = {
       current: true,
+      tier: 'enhanced',
       visualFacts: {
         activities: ['riding'],
         objects: ['atv'],
@@ -351,6 +352,7 @@ describe('photo summary compiler', () => {
   it('fills a bounded anonymous Enhanced subject after that Person is named', () => {
     const analysis = {
       current: true,
+      tier: 'enhanced',
       visualFacts: {
         activities: ['riding'],
         objects: ['atv'],
@@ -375,5 +377,74 @@ describe('photo summary compiler', () => {
     });
     expect(text).toContain('Ted rides an ATV with Jani - Hup behind him.');
     expect(text).not.toContain('another person');
+  });
+
+  it('preserves Enhanced relationships while weaving current owner metadata naturally', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'enhanced',
+        visualFacts: {
+          activities: ['riding an ATV', 'smiling'],
+          objects: ['green ATV', 'helmets', 'sunglasses', 'wristwatch', 'sneakers'],
+          peopleCountEstimate: 2,
+          qualityFlags: ['water droplets on lens'],
+          scene: 'outdoors',
+          summary:
+            '{{person:person-benji}} rides a green ATV with another person behind him under a clear blue sky. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
+          visibleText: [],
+        },
+      } as never,
+      asset: {
+        exifInfo: {
+          city: 'Káto Garoúna',
+          country: 'Greece',
+          dateTimeOriginal: '2025-12-24T12:35:23Z',
+          state: 'Ionian Islands',
+        },
+      } as never,
+      evidence: {
+        bodies: [],
+        contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
+        faces: [
+          { display_name: 'Benji Hart', person_id: 'person-benji', review_disposition: 'active' },
+          { display_name: 'Jani - Hup', person_id: 'person-jani', review_disposition: 'active' },
+        ],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe(
+      'Benji Hart rides a green ATV with Jani - Hup behind him under a clear blue sky in Káto Garoúna, Ionian Islands, Greece on December 24, 2025. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
+    );
+    expect(text).not.toMatch(/Known things|Known people|Taken|Location:/);
+    expect(text.match(/ATV/g)).toHaveLength(1);
+  });
+
+  it('replaces a generic Enhanced object with its current owner-recorded name', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'enhanced',
+        visualFacts: {
+          activities: ['standing'],
+          objects: ['boat'],
+          peopleCountEstimate: 1,
+          qualityFlags: [],
+          scene: 'marina',
+          summary: '{{person:person-ted}} stands beside a boat.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: { city: 'Sydney', dateTimeOriginal: '2024-03-12T10:00:00Z' } } as never,
+      evidence: {
+        bodies: [],
+        contexts: [{ display_name: 'Booze Cruise Boat', entity_kind: 'object' }],
+        faces: [{ display_name: 'Ted', person_id: 'person-ted', review_disposition: 'active' }],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe('Ted stands beside Booze Cruise Boat in Sydney on March 12, 2024.');
   });
 });

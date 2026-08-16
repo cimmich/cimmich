@@ -178,7 +178,9 @@ Body review counts remain in the relevant People/QC controls. Smart favours a
 fast local visual pass plus review-only QC leads. Its stored facts are composed
 with current names, Context, place and date into natural prose; repeated labels
 and low-value classifier categories are suppressed without rerunning Smart.
-Enhanced is the heavier initial interpretation. Both model tiers retain
+Enhanced is the heavier initial interpretation. It keeps the model's useful
+relationships while resolving current Person and named-object truth inside the
+prose and weaving Place, Event and date naturally. Both model tiers retain
 structured facts, so later names and Context update without another visual run.
 On a Mac Local AI worker, Smart selects Apple Vision by default and downloads
 no model. Self-hosters can replace it with a compatible local model; Cimmich

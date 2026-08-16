@@ -55,7 +55,12 @@ Enhanced is the deliberate one-photo or selected-photo visual pass for material
 an owner specifically cares about. It uses the same durable fact contract but
 is expected to be configured with a stronger model profile. Once current,
 ordinary changes such as renaming a Person, naming a boat or attaching a Place
-are merged into the displayed result without rerunning the heavy model.
+are merged into the displayed result without rerunning the heavy model. The
+model's useful relational prose is preserved: current Person tokens and
+owner-recorded object names are resolved inside it, while Place, Event and date
+are woven into its first sentence. Only owner facts that the prose genuinely
+did not mention become a short natural follow-up; labelled database-field
+sentences are not appended.
 
 Enhanced should run again only when the source pixels changed, its model/profile
 changed, or the owner explicitly requests a fresh visual interpretation.

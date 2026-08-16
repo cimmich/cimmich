@@ -207,6 +207,59 @@ const factsNotCoveredBy = (facts: string[], strongerFacts: string[]) => {
   });
 };
 
+const escapedRegExp = (value: string) => value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+const factPhrasePattern = (value: string, includeArticle = false) => {
+  const words = value
+    .trim()
+    .split(/\s+/)
+    .map((word) => escapedRegExp(word))
+    .join(String.raw`\s+`);
+  return new RegExp(
+    String.raw`(^|[^\p{L}\p{N}])${includeArticle ? String.raw`(?:(?:a|an|the)\s+)?` : ''}${words}(?=$|[^\p{L}\p{N}])`,
+    'iu',
+  );
+};
+
+const includesFactPhrase = (text: string, value: string) => factPhrasePattern(value).test(text);
+
+const replaceEnhancedOwnerObjects = (text: string, ownerObjects: string[], observedObjects: string[]) => {
+  let result = text;
+  for (const ownerObject of ownerObjects) {
+    if (includesFactPhrase(result, ownerObject)) {
+      continue;
+    }
+    const ownerKey = factKey(ownerObject);
+    const genericObject = observedObjects
+      .filter((observed) => {
+        const observedKey = factKey(observed);
+        return observedKey.length >= 3 && ownerKey.includes(observedKey) && includesFactPhrase(result, observed);
+      })
+      .sort((left, right) => factKey(right).length - factKey(left).length)[0];
+    if (!genericObject) {
+      continue;
+    }
+    result = result.replace(
+      factPhrasePattern(genericObject, true),
+      (_match, prefix: string) => `${prefix}${ownerObject}`,
+    );
+  }
+  return result;
+};
+
+const appendFirstSentenceModifiers = (text: string, modifiers: string[]) => {
+  if (!text.trim() || modifiers.length === 0) {
+    return text;
+  }
+  const ending = text.match(/[.!?](?=\s|$)/);
+  if (!ending || ending.index == null) {
+    return `${text.trim()} ${modifiers.join(' ')}`;
+  }
+  const before = text.slice(0, ending.index).trimEnd();
+  const after = text.slice(ending.index + 1).trimStart();
+  return `${before} ${modifiers.join(' ')}${ending[0]}${after ? ` ${after}` : ''}`;
+};
+
 export const cimmichSummaryKnownPeople = (evidence: CimmichAssetEvidence) =>
   unique([
     ...evidence.faces.map((face) => face.display_name),
@@ -496,6 +549,47 @@ const compileCimmichSmartSummary = ({
   return [base || fallback, ocrSentence(ocr, facts.visibleText, base || fallback)].filter(Boolean).join(' ');
 };
 
+const compileCimmichEnhancedSummary = ({
+  analysis,
+  asset,
+  evidence,
+  ocr,
+}: {
+  analysis: CimmichGeneratedSummaryAnalysis;
+  asset: AssetResponseDto;
+  evidence: CimmichAssetEvidence;
+  ocr: OcrBoundingBox[];
+}) => {
+  const facts = analysis.visualFacts;
+  const people = currentPeople(evidence);
+  const modelSummary = modelPeopleSummary(facts.summary, people, facts.peopleCountEstimate);
+  const ownerObjects = uniqueFacts(contextNames(evidence, 'object'));
+  const observedObjects = uniqueFacts(facts.objects);
+  let base = replaceEnhancedOwnerObjects(modelSummary.text, ownerObjects, observedObjects).trim();
+  const events = uniqueFacts(contextNames(evidence, 'event')).filter((event) => !includesFactPhrase(base, event));
+  const place = locationName(asset, evidence);
+  const date = formattedDate(asset);
+  const modifiers = [
+    ...(events.length > 0 ? [`during ${joinNatural(events)}`] : []),
+    ...(place && !includesFactPhrase(base, place) ? [`in ${place}`] : []),
+    ...(date && !includesFactPhrase(base, date) ? [`on ${date}`] : []),
+  ];
+  base = cleanSentence(appendFirstSentenceModifiers(base, modifiers));
+
+  const unmentionedPeople = modelSummary.unmentionedPeople.map((item) => item.displayName);
+  const peopleSentence =
+    unmentionedPeople.length > 0
+      ? `${joinNatural(unmentionedPeople)} ${unmentionedPeople.length === 1 ? 'is' : 'are'} also pictured.`
+      : '';
+  const unmentionedObjects = ownerObjects.filter((object) => !includesFactPhrase(base, object));
+  const objectSentence =
+    unmentionedObjects.length > 0
+      ? `${capitalizeFirst(joinNatural(unmentionedObjects.map((object) => naturalFactPhrase(object))))} ${unmentionedObjects.length > 1 || usesPluralVerb(unmentionedObjects[0]) ? 'are' : 'is'} also pictured.`
+      : '';
+  const composed = [base, peopleSentence, objectSentence].filter(Boolean).join(' ');
+  return [composed, ocrSentence(ocr, facts.visibleText, composed)].filter(Boolean).join(' ');
+};
+
 const prefersStructuredSmartComposition = (analysis: CimmichGeneratedSummaryAnalysis) =>
   analysis.model?.providerId === 'apple-vision-native-summary' ||
   /^(?:No person|One person|\d+ people) (?:is|are) (?:clearly detected|visible)\b/i.test(
@@ -515,6 +609,9 @@ export const compileCimmichModelSummary = ({
 }) => {
   if (analysis.tier === 'smart' && prefersStructuredSmartComposition(analysis)) {
     return compileCimmichSmartSummary({ analysis, asset, evidence, ocr });
+  }
+  if (analysis.tier === 'enhanced') {
+    return compileCimmichEnhancedSummary({ analysis, asset, evidence, ocr });
   }
   const facts = analysis.visualFacts;
   const people = currentPeople(evidence);
