@@ -1,5 +1,6 @@
 import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import type { CimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive-integrity.service';
+import { getParentPath } from '$lib/utils/tree-utils';
 
 export type ArchiveVariantClassification = 'verified_exact' | 'verified_variant' | 'similarity_candidate';
 
@@ -28,6 +29,28 @@ export type ArchiveVariantGroup = DuplicateResponseDto & {
   classification: ArchiveVariantClassification;
   differences: string[];
   evidence: Map<string, CimmichArchiveSourceEvidence>;
+};
+
+export type ArchiveVariantFolderContext = {
+  moreLikelySameHere: number;
+  path: string;
+};
+
+export const archiveVariantFolderContext = (
+  assets: AssetResponseDto[],
+  asset: AssetResponseDto,
+): ArchiveVariantFolderContext | null => {
+  if (!asset.originalPath) {
+    return null;
+  }
+  const path = getParentPath(asset.originalPath);
+  return {
+    moreLikelySameHere: assets.filter(
+      (candidate) =>
+        candidate.id !== asset.id && Boolean(candidate.originalPath) && getParentPath(candidate.originalPath) === path,
+    ).length,
+    path,
+  };
 };
 
 export const createArchiveVisualDuplicateGroup = (

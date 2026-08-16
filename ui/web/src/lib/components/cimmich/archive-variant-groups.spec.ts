@@ -1,7 +1,7 @@
 import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import { describe, expect, it } from 'vitest';
 import type { CimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive-integrity.service';
-import { buildArchiveVariantGroups } from './archive-variant-groups';
+import { archiveVariantFolderContext, buildArchiveVariantGroups } from './archive-variant-groups';
 
 const asset = (id: string, overrides: Partial<AssetResponseDto> = {}): AssetResponseDto =>
   ({
@@ -42,6 +42,26 @@ const evidence = (sourceAssetId: string, contentDigest: string): CimmichArchiveS
 });
 
 describe('Archive variant grouping', () => {
+  it('reports only the other likely-same files in the current asset folder', () => {
+    const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
+    const assets = [
+      current,
+      asset('same-folder', { originalPath: '/archive/Ben/2009/copy.jpg' }),
+      asset('other-folder', { originalPath: '/archive/Ben/2010/copy.jpg' }),
+    ];
+
+    expect(archiveVariantFolderContext(assets, current)).toEqual({
+      moreLikelySameHere: 1,
+      path: '/archive/Ben/2009',
+    });
+  });
+
+  it('omits folder context when Immich has no original path', () => {
+    const current = asset('current', { originalPath: '' });
+
+    expect(archiveVariantFolderContext([current], current)).toBeNull();
+  });
+
   it('separates transformed variants from verified exact bytes and explains copy-local differences', () => {
     const groups: DuplicateResponseDto[] = [
       {
