@@ -213,13 +213,13 @@ describe('photo summary compiler', () => {
       asset: { exifInfo: {} } as never,
       evidence: {
         bodies: [],
-        contexts: [{ display_name: 'Booze Cruise Boat', entity_kind: 'object' }],
+        contexts: [{ display_name: 'Harbour Boat', entity_kind: 'object' }],
         faces: [],
         presence: [],
       } as never,
       ocr: [],
     });
-    expect(text).toBe('Booze Cruise Boat is pictured outdoors.');
+    expect(text).toBe('Harbour Boat is pictured outdoors.');
   });
 
   it('uses a Smart activity only when it exists in structured evidence', () => {
@@ -439,12 +439,12 @@ describe('photo summary compiler', () => {
       asset: { exifInfo: { city: 'Sydney', dateTimeOriginal: '2024-03-12T10:00:00Z' } } as never,
       evidence: {
         bodies: [],
-        contexts: [{ display_name: 'Booze Cruise Boat', entity_kind: 'object' }],
+        contexts: [{ display_name: 'Harbour Boat', entity_kind: 'object' }],
         faces: [{ display_name: 'Ted', person_id: 'person-ted', review_disposition: 'active' }],
         presence: [],
       } as never,
       ocr: [],
     });
-    expect(text).toBe('Ted stands beside Booze Cruise Boat in Sydney on March 12, 2024.');
+    expect(text).toBe('Ted stands beside Harbour Boat in Sydney on March 12, 2024.');
   });
 });

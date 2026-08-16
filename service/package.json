@@ -25,6 +25,7 @@
     "docker-image-retention": "node ../tools/cimmich_image_retention.mjs",
     "guided-local-conformance": "node bin/guided-local-conformance.mjs",
     "import-xmp-sidecars": "node bin/import-xmp-sidecars.mjs",
+    "import-apple-smart-proposals": "node bin/import-apple-smart-proposals.mjs",
     "repair-inventory-asset-splits": "node bin/repair-inventory-asset-splits.mjs",
     "repair-inventory-only-jobs": "node bin/repair-inventory-only-jobs.mjs",
     "link-face-bodies": "node bin/link-face-bodies.mjs",

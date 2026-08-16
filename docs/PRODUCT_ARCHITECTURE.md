@@ -414,6 +414,13 @@ The stored proposal binds the adapter launcher, Swift source, operating-system
 runtime and deterministic composer configuration. Provider output never gains
 identity, Context or activation authority.
 
+Preserved Apple Vision batch output remains inert proposal evidence until the
+revision-checking `service/bin/import-apple-smart-proposals.mjs` operator commits
+it. The operator first compares the complete manifest/result sets with active
+Immich-to-Cimmich mappings, current source-content digests and existing Smart
+authority. Execution is guarded by the exact artifact digests and eligible
+count from the dry run; current conflicts are retained rather than superseded.
+
 ## Migrations and compatibility
 
 Migrations are ordered, checksummed and replay-tested. A schema change requires:

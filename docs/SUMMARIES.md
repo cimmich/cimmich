@@ -111,6 +111,16 @@ adapter; the Local AI runner invokes the whole set once and deterministically
 collapses Apple taxonomy parents before storage. `CimmichSummaryAction.svelte`
 compiles the photo-facing result with current evidence.
 
+A provider result file is not a generated summary by itself. Preserved Apple
+Vision batch proposals can enter the durable summary projection only through
+`service/bin/import-apple-smart-proposals.mjs`. The importer is dry-run by
+default and admits a proposal only when its manifest mapping and source-content
+digest still match the current active Asset revision. It preserves a different
+current Smart result, is resumable and idempotent, and requires the dry-run's
+two artifact digests and eligible count again before `--execute`. This prevents
+an old evaluation artifact from silently becoming current after pixels,
+projection identity or a reviewed Smart result changed.
+
 Enhanced requests include owner-confirmed Face and linked-Body geometry as
 stable aliases, never display names. Provider output stores
 `{{person:person_id}}` tokens; the UI resolves those tokens against the current
