@@ -172,6 +172,7 @@ const providerConfig = ({ enabled, environment, modelPaths }) => {
         includeOcr: true,
         model: environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL || "disabled",
         provider: "ollama",
+        summaryTier: null,
       },
     },
     schemaVersion: "cimmich.local-ai-photo-lab-config.v1",
@@ -213,6 +214,7 @@ const summaryProfileConfig = ({ enabled, environment, modelPaths, tier }) => {
       environment.CIMMICH_LOCAL_AI_SUMMARY_APPLE_OCR_ENABLED === "true",
     model: appleVision ? "Apple Vision" : model || "disabled",
     provider: appleVision ? "apple-vision" : "ollama",
+    summaryTier: tier,
   };
 };
 
@@ -602,6 +604,9 @@ export const createLocalAiService = async ({
                 y: body.box_y,
               },
               observationId: body.body_id,
+              ...(body.display_name && body.person_id
+                ? { personId: body.person_id, subject: body.display_name }
+                : {}),
             })),
             faces: evidence.faces.map((face) => ({
               box: {
@@ -612,6 +617,9 @@ export const createLocalAiService = async ({
               },
               observationId: face.face_id,
               ...(face.display_name ? { subject: face.display_name } : {}),
+              ...(face.display_name && face.person_id
+                ? { personId: face.person_id }
+                : {}),
             })),
           },
           captureTime: evidence.capture_time,

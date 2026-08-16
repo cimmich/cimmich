@@ -39,6 +39,44 @@ export const cimmichSummaryKnownPeople = (evidence: CimmichAssetEvidence) =>
     ...evidence.presence.map((item) => item.display_name),
   ]);
 
+const currentPeople = (evidence: CimmichAssetEvidence) =>
+  [
+    ...evidence.faces.map((item) => ({ displayName: item.display_name, personId: item.person_id })),
+    ...evidence.bodies.map((item) => ({ displayName: item.display_name, personId: item.person_id })),
+    ...evidence.presence.map((item) => ({ displayName: item.display_name, personId: item.person_id })),
+  ].filter(
+    (item, index, values): item is { displayName: string; personId: string } =>
+      Boolean(item.displayName && item.personId) &&
+      values.findIndex((candidate) => candidate.personId === item.personId) === index,
+  );
+
+const modelPeopleSummary = (
+  summary: string,
+  people: Array<{ displayName: string; personId: string }>,
+  estimate: number,
+) => {
+  const byId = new Map(people.map((item) => [item.personId, item.displayName]));
+  let usedIdentity = false;
+  let text = summary.replaceAll(/\{\{person:([^}]+)\}\}/g, (_token, personId: string) => {
+    usedIdentity = true;
+    return byId.get(personId) || 'a confirmed person';
+  });
+  if (!usedIdentity && people.length > 0 && estimate > 0) {
+    const unknownCount = Math.max(0, estimate - people.length);
+    const subjects = [
+      ...people.map((item) => item.displayName),
+      ...(unknownCount === 1 ? ['another person'] : unknownCount > 1 ? [`${unknownCount} other people`] : []),
+    ];
+    const subject = joinNatural(subjects);
+    text = text.replace(
+      /^(?:one|\d+) (person|people) (is|are) visible\b/i,
+      `${subject} ${subjects.length === 1 ? 'is' : 'are'} visible`,
+    );
+    usedIdentity = text !== summary;
+  }
+  return { text, usedIdentity };
+};
+
 const contextSentence = (evidence: CimmichAssetEvidence) => {
   const contexts = evidence.contexts || [];
   const parts = (['place', 'event', 'object'] as const).flatMap((kind) => {
@@ -123,15 +161,18 @@ export const compileCimmichModelSummary = ({
   ocr: OcrBoundingBox[];
 }) => {
   const facts = analysis.visualFacts;
-  const people = cimmichSummaryKnownPeople(evidence);
+  const people = currentPeople(evidence);
+  const modelSummary = modelPeopleSummary(facts.summary, people, facts.peopleCountEstimate);
   const liveDetails = [
-    people.length > 0 ? cleanSentence(`Known people: ${joinNatural(people)}`) : '',
+    !modelSummary.usedIdentity && people.length > 0
+      ? cleanSentence(`Known people: ${joinNatural(people.map((item) => item.displayName))}`)
+      : '',
     contextSentence(evidence),
     dateSentence(asset),
     locationSentence(asset),
     ocrSentence(ocr),
   ].filter(Boolean);
-  return [cleanSentence(facts.summary), ...liveDetails].filter(Boolean).join(' ');
+  return [cleanSentence(modelSummary.text), ...liveDetails].filter(Boolean).join(' ');
 };
 
 export const cimmichSummaryQc = (evidence: CimmichAssetEvidence, analysis?: CimmichGeneratedSummaryAnalysis | null) => {

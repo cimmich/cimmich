@@ -548,8 +548,54 @@ const sceneSchema = {
   },
 };
 
-const scenePrompt =
-  "Inspect only visible evidence in this image. Do not identify or guess the names of people. Return a concise literal summary, scene, visible activities, concrete objects, legible text only, a conservative people count, and visible quality issues. Use empty arrays when evidence is absent.";
+const baseScenePrompt =
+  "Inspect only visible evidence in this image. Do not guess identities, relationships, events, or locations. The summary must be one to three natural sentences, no more than 90 words, with the main action and the most useful visible detail first. The scene must be a short two-to-eight-word setting, not a description. Return visible activities, concrete objects, only complete meaningful legible text, a conservative people count, and visible image-quality issues. Exclude cropped or partial words, watermarks, logos, and incidental interface text. Quality flags describe only visible limitations such as blur, obstruction, or extreme crop; partial text is not a quality flag. Use empty arrays when evidence is absent.";
+
+const roundedBox = (box) =>
+  ["x", "y", "w", "h"]
+    .map((key) => `${key}=${Number(box?.[key] || 0).toFixed(3)}`)
+    .join(", ");
+
+const enhancedIdentityPrompt = (asset) => {
+  const locators = [
+    ...(asset.baselineObservations?.faces || []).map((item) => ({
+      ...item,
+      kind: "face",
+    })),
+    ...(asset.baselineObservations?.bodies || []).map((item) => ({
+      ...item,
+      kind: "body",
+    })),
+  ].filter((item) => item.personId && item.subject && item.box);
+  const people = [
+    ...new Map(locators.map((item) => [item.personId, item])).values(),
+  ];
+  if (people.length === 0) return { aliases: [], prompt: baseScenePrompt };
+  const aliases = people.map((item, index) => ({
+    alias: `IDENTITY_${index + 1}`,
+    personId: item.personId,
+    subject: item.subject,
+  }));
+  const lines = locators.map((item) => {
+    const alias = aliases.find(
+      (candidate) => candidate.personId === item.personId,
+    )?.alias;
+    return `- ${alias}: owner-confirmed ${item.kind} box (${roundedBox(item.box)})`;
+  });
+  return {
+    aliases,
+    prompt: `${baseScenePrompt}\n\nThe owner has confirmed these spatial identity locators (normalized source-image coordinates, top-left origin):\n${lines.join("\n")}\nUse the exact alias directly as that person's name in the summary, for example \"IDENTITY_1 rides a bicycle\". Never say \"identified as\", \"confirmed as\", or otherwise explain the alias. Call every other person \"another person\". Never emit a display name or infer an identity outside its locator. The application will replace aliases with current owner-controlled names.`,
+  };
+};
+
+const replaceIdentityAliases = (proposal, aliases) => ({
+  ...proposal,
+  summary: aliases.reduce(
+    (summary, item) =>
+      summary.replaceAll(item.alias, `{{person:${item.personId}}}`),
+    proposal.summary,
+  ),
+});
 
 const checkedFetch = async (url, init, timeoutMs) => {
   const response = await fetch(url, {
@@ -636,7 +682,16 @@ const validateSceneProposal = (value) => {
     activities: boundedStrings(value.activities, "activities", 12),
     objects: boundedStrings(value.objects, "objects", 24),
     peopleCountEstimate: value.peopleCountEstimate,
-    qualityFlags: boundedStrings(value.qualityFlags, "quality flags", 12),
+    qualityFlags: boundedStrings(
+      value.qualityFlags,
+      "quality flags",
+      12,
+    ).filter(
+      (item) =>
+        !/(?:partial|cropped|incidental).{0,24}(?:text|word)|watermark|logo|interface/i.test(
+          item,
+        ),
+    ),
     scene: value.scene.trim(),
     summary: value.summary.trim(),
     visibleText: boundedStrings(value.visibleText, "visible text", 30),
@@ -749,6 +804,7 @@ const appleVisionProposal = (raw, asset) => {
     for (const value of ["rim", "tire", "wheel"]) collapsedParents.add(value);
   }
   if (objects.includes("helmet")) collapsedParents.add("headgear");
+  if (objects.includes("atv")) collapsedParents.add("scooter");
   if (
     objects.some((value) =>
       ["apple", "banana", "grape", "mango", "oranges", "pineapple"].includes(
@@ -867,7 +923,7 @@ export const runAppleVisionSceneTextBatch = async ({ assets, config }) => {
     const configDigest = digest({
       activityConfidence: 0.45,
       adapterDigest,
-      composerVersion: "apple-specialist-composer-v1",
+      composerVersion: "apple-specialist-composer-v2",
       includeOcr: config.includeOcr,
       objectConfidence: 0.2,
       sceneConfidence: 0.12,
@@ -903,6 +959,10 @@ export const runSceneText = async ({ asset, config }) => {
     return (await runAppleVisionSceneTextBatch({ assets: [asset], config }))[0];
   }
   try {
+    const identityPrompt =
+      config.summaryTier === "enhanced"
+        ? enhancedIdentityPrompt(asset)
+        : { aliases: [], prompt: baseScenePrompt };
     const tags = await checkedFetch(
       `${config.endpoint}/api/tags`,
       {},
@@ -928,7 +988,7 @@ export const runSceneText = async ({ asset, config }) => {
           messages: [
             {
               role: "user",
-              content: scenePrompt,
+              content: identityPrompt.prompt,
               images: [encoded],
             },
           ],
@@ -944,15 +1004,21 @@ export const runSceneText = async ({ asset, config }) => {
       response.message?.content?.trim() ||
       response.message?.thinking?.trim() ||
       "";
-    const proposal = validateSceneProposal(JSON.parse(structuredText));
+    const proposal = replaceIdentityAliases(
+      validateSceneProposal(JSON.parse(structuredText)),
+      identityPrompt.aliases,
+    );
     return {
       activationAuthority: "none",
       configDigest: digest({
         format: sceneSchema,
         modelDigest: installed.digest,
         options: { seed: 0, temperature: 0 },
-        prompt: scenePrompt,
-        promptVersion: "literal-visible-evidence-v1",
+        prompt: identityPrompt.prompt,
+        promptVersion:
+          config.summaryTier === "enhanced"
+            ? "literal-visible-evidence-with-owner-locators-v2"
+            : "literal-visible-evidence-v2",
       }),
       model: {
         digest: installed.digest,

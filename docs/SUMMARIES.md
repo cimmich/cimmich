@@ -83,6 +83,14 @@ adapter; the Local AI runner invokes the whole set once and deterministically
 collapses Apple taxonomy parents before storage. `CimmichSummaryAction.svelte`
 compiles the photo-facing result with current evidence.
 
+Enhanced requests include owner-confirmed Face and linked-Body geometry as
+stable aliases, never display names. Provider output stores
+`{{person:person_id}}` tokens; the UI resolves those tokens against the current
+Person name. This lets a heavy model describe who is doing what without freezing
+a mutable name into model evidence or requiring a rerun after an ordinary rename.
+Fast Smart output remains identity-neutral, and its conservative people count is
+woven together with current accepted names only while rendering.
+
 The current implementation is photo-scoped. Group/event/archive roll-ups should
 aggregate current photo facts hierarchically; they should not repeatedly send
 all original photos through a large model.

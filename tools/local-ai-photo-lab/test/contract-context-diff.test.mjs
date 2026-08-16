@@ -709,6 +709,71 @@ test("Scene/Text accepts validated structured output from a local model thinking
   assert.deepEqual(result.proposal, proposal);
 });
 
+test("Enhanced Scene/Text replaces spatial identity aliases with stable person tokens", async (context) => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-scene-identity-"));
+  const imagePath = join(root, "image.bin");
+  await writeFile(imagePath, "image");
+  let prompt = "";
+  const proposal = {
+    activities: ["riding"],
+    objects: ["atv"],
+    peopleCountEstimate: 2,
+    qualityFlags: [],
+    scene: "outdoors",
+    summary: "IDENTITY_1 and another person ride an ATV.",
+    visibleText: [],
+  };
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/api/tags") {
+      response.end(
+        JSON.stringify({
+          models: [{ digest: "model-digest", name: "vision", size: 1 }],
+        }),
+      );
+      return;
+    }
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => {
+      prompt = JSON.parse(Buffer.concat(chunks).toString()).messages[0].content;
+      response.end(
+        JSON.stringify({ message: { content: JSON.stringify(proposal) } }),
+      );
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+  const result = await runSceneText({
+    asset: {
+      baselineObservations: {
+        bodies: [],
+        faces: [
+          {
+            box: { h: 0.2, w: 0.1, x: 0.4, y: 0.1 },
+            personId: "person_ted",
+            subject: "Ted",
+          },
+        ],
+      },
+      path: imagePath,
+    },
+    config: {
+      enabled: true,
+      endpoint: `http://127.0.0.1:${server.address().port}`,
+      model: "vision",
+      summaryTier: "enhanced",
+      timeoutMs: 1000,
+    },
+  });
+  assert.match(prompt, /IDENTITY_1: owner-confirmed face box/);
+  assert.doesNotMatch(prompt, /Ted/);
+  assert.equal(
+    result.proposal.summary,
+    "{{person:person_ted}} and another person ride an ATV.",
+  );
+});
+
 test("Apple Vision batch composes conservative Smart facts without a network model", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-ai-apple-vision-"));
   const imagePath = join(root, "photo.jpg");
@@ -722,6 +787,7 @@ test("Apple Vision batch composes conservative Smart facts without a network mod
       { confidence: 0.82, identifier: "vehicle" },
       { confidence: 0.79, identifier: "atv" },
       { confidence: 0.71, identifier: "helmet" },
+      { confidence: 0.7, identifier: "scooter" },
     ],
     elapsedSeconds: 0.05,
     errors: [],
