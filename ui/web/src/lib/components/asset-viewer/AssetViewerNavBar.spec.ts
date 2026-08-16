@@ -93,24 +93,35 @@ describe('AssetViewerNavBar component', () => {
       'utf8',
     );
 
-    expect(source).toContain('<CimmichViewingMode variant="overlay" restorePreference={false} />');
+    expect(source).toContain('restorePreference={false}');
     expect(source).not.toContain('Immich view. All photos are visible.');
   });
 
-  it('groups fast Cimmich photo status separately from ordinary viewer actions', () => {
+  it('places privacy first and centers Cimmich tools in the single viewer bar', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/lib/components/asset-viewer/AssetViewerNavBar.svelte'),
       'utf8',
     );
 
-    expect(source).toContain('<CimmichViewingMode variant="overlay" restorePreference={false} />');
-    expect(source).toContain('data-testid="cimmich-photo-status-toolbar"');
-    expect(source).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" showLabel />');
+    expect(source.indexOf('<CimmichViewingMode')).toBeLessThan(source.indexOf('<ActionButton action={Close} />'));
+    expect(source).toContain('sourceAssetId={isCimmichSurface ? asset.id : undefined}');
+    expect(source).toContain('data-testid="cimmich-photo-tools"');
+    expect(source).toContain('id="cimmich-photo-overlay-toolbar"');
     expect(source).toContain('<CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />');
     expect(source).toContain('<CimmichFileLocationActions {asset} variant="overlay" />');
+    expect(source).not.toContain('<CimmichAssetVisibility');
     expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');
-    expect(source).not.toContain('Immich view · All photos visible</span>');
-    expect(source).not.toContain('Immich · All visible</span>');
+  });
+
+  it('gives Local AI the same fast tooltip treatment as the other viewer icons', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichLocalAiAction.svelte'),
+      'utf8',
+    );
+
+    expect(source).toContain('<TooltipProvider delayDuration={120}>');
+    expect(source).toContain('<Tooltip text="Local AI">');
+    expect(source).not.toContain('title="Local AI"');
   });
 
   it('keeps Local AI hidden until the separate experiment is enabled', () => {

@@ -13,7 +13,6 @@
   import SetVisibilityAction from '$lib/components/asset-viewer/actions/SetVisibilityAction.svelte';
   import UnstackAction from '$lib/components/asset-viewer/actions/UnstackAction.svelte';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
-  import CimmichAssetVisibility from '$lib/components/cimmich/CimmichAssetVisibility.svelte';
   import CimmichDuplicateIndicator from '$lib/components/cimmich/CimmichDuplicateIndicator.svelte';
   import CimmichFileLocationActions from '$lib/components/cimmich/CimmichFileLocationActions.svelte';
   import CimmichLocalAiAction from '$lib/components/cimmich/CimmichLocalAiAction.svelte';
@@ -106,16 +105,37 @@
 />
 
 <div
-  class="flex h-16 place-items-center justify-between bg-linear-to-b from-black/40 px-3 drop-shadow-[0_0_1px_rgba(0,0,0,0.4)] transition-transform duration-200"
+  class="grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-linear-to-b from-black/40 px-3 drop-shadow-[0_0_1px_rgba(0,0,0,0.4)] transition-transform duration-200"
 >
   <div class="dark flex items-center gap-1">
+    <CimmichViewingMode
+      variant="overlay"
+      restorePreference={false}
+      sourceAssetId={isCimmichSurface ? asset.id : undefined}
+    />
     <ActionButton action={Close} />
-    <CimmichViewingMode variant="overlay" restorePreference={false} />
   </div>
+
+  {#if photoPresentable && isCimmichSurface}
+    <div
+      class="dark mx-2 flex min-w-0 items-center justify-center gap-0.5 overflow-x-auto text-white *:shrink-0"
+      data-testid="cimmich-photo-tools"
+      aria-label="Cimmich photo tools"
+    >
+      <div id="cimmich-photo-overlay-toolbar" class="flex shrink-0 items-center"></div>
+      <CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />
+      <CimmichFileLocationActions {asset} variant="overlay" />
+      {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
+        <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
+      {/if}
+    </div>
+  {:else}
+    <div></div>
+  {/if}
 
   {#if photoPresentable}
     <div
-      class="dark -m-1 flex items-center gap-2 overflow-x-auto p-1 *:shrink-0"
+      class="dark -m-1 flex min-w-0 items-center gap-2 overflow-x-auto p-1 *:shrink-0"
       data-testid="asset-viewer-navbar-actions"
     >
       {#if assetViewerManager.isImageLoading}
@@ -126,21 +146,6 @@
             </div>
           {/snippet}
         </Tooltip>
-      {/if}
-      {#if isCimmichSurface}
-        <div
-          class="flex h-12 items-center gap-0.5 rounded-full border border-white/15 bg-black/35 p-1 text-white shadow-[0_2px_12px_rgb(0_0_0/0.18)] backdrop-blur-md"
-          data-testid="cimmich-photo-status-toolbar"
-          aria-label="Cimmich photo status and file actions"
-        >
-          <CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />
-          <CimmichFileLocationActions {asset} variant="overlay" />
-          <CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" showLabel />
-          {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}
-            <CimmichLocalAiAction sourceAssetIds={[asset.id]} />
-          {/if}
-        </div>
-        <span class="h-6 w-px bg-white/20" aria-hidden="true"></span>
       {/if}
       <ActionButton action={Cast} />
       <ActionButton action={Actions.Share} />

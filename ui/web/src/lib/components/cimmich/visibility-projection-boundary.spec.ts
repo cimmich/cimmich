@@ -32,13 +32,14 @@ describe('Cimmich visibility projection boundary', () => {
     );
   });
 
-  it('keeps the photo controls compact below the desktop toolbar breakpoint', () => {
-    const contents = source('src/lib/components/cimmich/CimmichPhotoOverlay.svelte');
-    expect(contents).toContain('left-1/2');
-    expect(contents).toContain('-translate-x-1/2');
-    expect(contents).toContain('rounded-full border border-white/15 bg-black/85');
-    expect(contents).toContain('hidden text-sm font-medium sm:inline');
-    expect(contents).toContain('sm:translate-x-0');
+  it('keeps People and Context inside the single centred photo toolbar', () => {
+    const overlay = source('src/lib/components/cimmich/CimmichPhotoOverlay.svelte');
+    const navbar = source('src/lib/components/asset-viewer/AssetViewerNavBar.svelte');
+    expect(overlay).toContain('<Portal target="#cimmich-photo-overlay-toolbar">');
+    expect(overlay).toContain('class="pointer-events-auto flex shrink-0 items-center gap-1"');
+    expect(navbar).toContain('id="cimmich-photo-overlay-toolbar"');
+    expect(navbar).toContain('items-center justify-center gap-0.5 overflow-x-auto');
+    expect(overlay).not.toContain('fixed top-17');
   });
 
   it('requests archived detail only for a row already disclosed by the archived collection', () => {

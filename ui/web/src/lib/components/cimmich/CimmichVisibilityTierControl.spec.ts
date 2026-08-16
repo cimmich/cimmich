@@ -61,6 +61,19 @@ describe('CimmichVisibilityTierControl', () => {
     await waitFor(() => expect(onSelectTier).toHaveBeenCalledWith('private'));
   });
 
+  it('can keep its photo menu inside a parent privacy popover', async () => {
+    const { getByRole } = render(CimmichVisibilityTierControl, {
+      menuPortaled: false,
+      objectLabel: 'Photo',
+      onSelectTier: vi.fn(() => Promise.resolve()),
+      tier: 'standard',
+      variant: 'overlay',
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Photo visibility: Standard' }));
+    expect(getByRole('menu', { name: 'Photo visibility' })).toBeInTheDocument();
+  });
+
   it('supports arrow navigation and Escape from the tier menu', async () => {
     const { getByRole, queryByRole } = render(CimmichVisibilityTierControl, {
       objectLabel: 'Person',

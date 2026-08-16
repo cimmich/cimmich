@@ -144,12 +144,14 @@ buttons, pointer controls and Left/Right arrow keys move through that projected
 set. The Cimmich overlay can show accepted and proposed Face, Head, Body,
 Presence, Pet and context evidence.
 
-The top bar separates Cimmich photo status from ordinary viewer actions. Its
-compact status group keeps duplicate evidence, file location and the explicit
-**Photo · Standard/Personal/Private** visibility control together; a divider
-then leads into Share, Zoom, Download, Info and other Immich actions. Icon
-tooltips appear promptly rather than making the owner wait to identify an
-unfamiliar control.
+The photo viewer uses one top bar. Privacy is the first control at the left;
+its dropdown distinguishes **what you can currently see** from the saved
+visibility of **this photo**, so the two scopes are available without two
+competing lock icons. People, Context, duplicate evidence, file location and
+optional Local AI use matching icon controls centred in the space before the
+ordinary Share, Zoom, Download, Info and other Immich actions. Icon tooltips
+appear promptly rather than making the owner wait to identify an unfamiliar
+control.
 
 From the detail tools you can:
 

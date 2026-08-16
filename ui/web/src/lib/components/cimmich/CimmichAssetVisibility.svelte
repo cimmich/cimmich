@@ -14,12 +14,13 @@
   import CimmichVisibilityTierControl from './CimmichVisibilityTierControl.svelte';
 
   interface Props {
+    menuPortaled?: boolean;
     showLabel?: boolean;
     sourceAssetId: string;
     variant?: 'default' | 'overlay';
   }
 
-  let { showLabel = false, sourceAssetId, variant = 'default' }: Props = $props();
+  let { menuPortaled = true, showLabel = false, sourceAssetId, variant = 'default' }: Props = $props();
   let object = $state<CimmichVisibilityObject>();
   let isLoading = $state(false);
   let loadedSourceAssetId = $state('');
@@ -112,6 +113,7 @@
       disabled={isLoading}
       objectLabel="Photo"
       onSelectTier={selectTier}
+      {menuPortaled}
       showObjectLabel={showLabel}
       {showLabel}
       tier={object.visibilityTier}

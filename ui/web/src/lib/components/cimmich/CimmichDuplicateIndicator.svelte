@@ -69,7 +69,7 @@
     href={current.href}
     class={variant === 'grid'
       ? `absolute top-2 left-2 z-10 inline-flex min-h-7 max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold text-white shadow-md backdrop-blur-sm ${current.kind === 'exact' ? 'bg-violet-700/90' : 'bg-amber-600/92'}`
-      : `inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/20 px-2.5 text-xs font-semibold text-white shadow-sm transition hover:border-white/35 hover:brightness-110 ${current.kind === 'exact' ? 'bg-violet-700/80' : 'bg-amber-600/82'}`}
+      : `grid size-10 place-items-center rounded-full text-white shadow-sm transition hover:brightness-110 ${current.kind === 'exact' ? 'bg-violet-700/80' : 'bg-amber-600/82'}`}
     aria-label={`${current.label}. Open the evidence comparison.`}
     title={variant === 'grid' ? `${current.label}. ${current.reason}` : undefined}
     onclick={openEvidence}
@@ -78,9 +78,9 @@
       icon={current.kind === 'exact' ? mdiContentDuplicate : mdiImageMultipleOutline}
       size={variant === 'grid' ? '14' : '17'}
     />
-    <span class={variant === 'navbar' ? 'hidden lg:inline' : 'truncate'}>
-      {variant === 'grid' ? (current.kind === 'exact' ? 'Exact copy' : 'Possible version') : current.label}
-    </span>
+    {#if variant === 'grid'}
+      <span class="truncate">{current.kind === 'exact' ? 'Exact copy' : 'Possible version'}</span>
+    {/if}
   </a>
 {/snippet}
 

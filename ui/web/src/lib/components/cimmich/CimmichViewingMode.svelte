@@ -21,10 +21,11 @@
 
   interface Props {
     restorePreference?: boolean;
+    sourceAssetId?: string;
     variant?: 'dashboard' | 'default' | 'overlay';
   }
 
-  let { restorePreference = true, variant = 'default' }: Props = $props();
+  let { restorePreference = true, sourceAssetId, variant = 'default' }: Props = $props();
 
   let status = $state<CimmichVisibilityStatus>();
   let statusError = $state('');
@@ -186,6 +187,7 @@
     onUnlock={unlock}
     privateConfigured={status.privateConfigured}
     privateUnlocked={status.privateAuthorized}
+    {sourceAssetId}
     {variant}
   />
 {:else if statusError}

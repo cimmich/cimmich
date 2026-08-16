@@ -9,6 +9,7 @@
 
   interface Props {
     disabled?: boolean;
+    menuPortaled?: boolean;
     objectLabel?: string;
     onSelectTier: (tier: CimmichVisibilityTier) => Promise<void>;
     showLabel?: boolean;
@@ -19,6 +20,7 @@
 
   let {
     disabled = false,
+    menuPortaled = true,
     objectLabel = 'item',
     onSelectTier,
     showLabel = false,
@@ -60,7 +62,7 @@
       close();
       return;
     }
-    if (variant === 'overlay' && triggerElement) {
+    if (variant === 'overlay' && menuPortaled && triggerElement) {
       const rect = triggerElement.getBoundingClientRect();
       const margin = 12;
       const width = Math.min(192, Math.max(0, window.innerWidth - margin * 2));
@@ -207,7 +209,11 @@
 
   {#if isOpen}
     {#if variant === 'overlay'}
-      <Portal target="body">{@render tierMenu(true)}</Portal>
+      {#if menuPortaled}
+        <Portal target="body">{@render tierMenu(true)}</Portal>
+      {:else}
+        {@render tierMenu(false)}
+      {/if}
     {:else}
       {@render tierMenu()}
     {/if}

@@ -108,11 +108,15 @@ this directory.
 
 ## Identity and evidence model
 
-The photo navbar has one interaction hierarchy: Cimmich photo-status and file
-controls are grouped before a visual separator; inherited viewer actions remain
-their own sequence. The app tooltip provider uses a 200 ms initial delay, while
-the dense viewer/Cimmich icon controls use 120 ms and replace native `title`
-delays. Labels and `aria-label`s remain the authority for accessible names.
+The photo navbar is one three-part grid: privacy and close at the left, a real
+centre slot for Cimmich People/Context/evidence/file/Local-AI controls, and the
+inherited Immich viewer actions at the right. `CimmichPhotoOverlay` portals its
+controls into that centre slot rather than creating a second fixed toolbar.
+The privacy popover owns both scopes: the current viewing mode and the saved
+visibility of the opened photo. The app tooltip provider uses a 200 ms initial
+delay, while dense viewer/Cimmich icon controls use 120 ms and replace native
+`title` delays. Labels and `aria-label`s remain the authority for accessible
+names.
 
 ### Person is the durable subject
 

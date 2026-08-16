@@ -3833,18 +3833,15 @@
       </div>
     </div>
   {/if}
-  <Portal target="body">
-    <div
-      class="pointer-events-auto fixed top-17 left-1/2 z-100 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-full border border-white/15 bg-black/85 p-1 shadow-xl backdrop-blur-md sm:top-2 sm:left-28 sm:max-w-[calc(100%-8rem)] sm:translate-x-0 sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none"
-      data-testid="cimmich-top-bar"
-    >
+  <Portal target="#cimmich-photo-overlay-toolbar">
+    <div class="pointer-events-auto flex shrink-0 items-center gap-1" data-testid="cimmich-top-bar">
       <div class="flex shrink-0 items-center gap-1 text-white drop-shadow-[0_1px_2px_rgb(0_0_0/0.9)]">
         <Tooltip text="People">
           {#snippet child({ props })}
             <button
               {...props}
               class={[
-                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-10 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isPeopleSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',
@@ -3865,7 +3862,7 @@
             <button
               {...props}
               class={[
-                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-10 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isContextSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',

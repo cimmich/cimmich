@@ -55,16 +55,23 @@ describe('app-wide Cimmich photo presentation boundary', () => {
       '<CimmichViewingMode />',
     );
     expect(source('src/lib/components/asset-viewer/AssetViewerNavBar.svelte')).toContain(
-      '<CimmichViewingMode variant="overlay" restorePreference={false} />',
+      'sourceAssetId={isCimmichSurface ? asset.id : undefined}',
     );
   });
 
-  it('keeps icon tooltips prompt and photo-status controls visually grouped', () => {
+  it('keeps icon tooltips prompt and Cimmich controls in the single viewer bar', () => {
     expect(source('src/routes/+layout.svelte')).toContain('<TooltipProvider delayDuration={200}>');
     const navbar = source('src/lib/components/asset-viewer/AssetViewerNavBar.svelte');
-    expect(navbar).toContain('data-testid="cimmich-photo-status-toolbar"');
-    expect(navbar).toContain('<CimmichAssetVisibility sourceAssetId={asset.id} variant="overlay" showLabel />');
+    expect(navbar).toContain('data-testid="cimmich-photo-tools"');
+    expect(navbar).toContain('id="cimmich-photo-overlay-toolbar"');
+    expect(source('src/lib/components/cimmich/CimmichPhotoOverlay.svelte')).toContain(
+      '<Portal target="#cimmich-photo-overlay-toolbar">',
+    );
+    expect(source('src/lib/components/cimmich/CimmichViewingModeControl.svelte')).toContain('<CimmichAssetVisibility');
     expect(source('src/lib/components/cimmich/CimmichFileLocationActions.svelte')).toContain(
+      '<TooltipProvider delayDuration={120}>',
+    );
+    expect(source('src/lib/components/cimmich/CimmichLocalAiAction.svelte')).toContain(
       '<TooltipProvider delayDuration={120}>',
     );
   });

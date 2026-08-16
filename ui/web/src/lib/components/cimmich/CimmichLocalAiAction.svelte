@@ -11,7 +11,7 @@
     type CimmichLocalAiOperation,
     type CimmichLocalAiStatus,
   } from '$lib/services/cimmich.service';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiAutoFix, mdiCheckCircleOutline, mdiClose, mdiImageSearchOutline, mdiShieldCheckOutline } from '@mdi/js';
   import { onDestroy } from 'svelte';
 
@@ -224,16 +224,28 @@
   });
 </script>
 
-<button
-  class="local-ai-trigger"
-  class:toolbar-trigger={variant === 'toolbar'}
-  type="button"
-  aria-label="Open Local AI review"
-  title="Local AI"
-  onclick={() => void show()}
->
-  <Icon icon={mdiAutoFix} size="23" />
-</button>
+{#snippet localAiTrigger(props: Record<string, unknown>)}
+  <button
+    {...props}
+    class="local-ai-trigger"
+    class:toolbar-trigger={variant === 'toolbar'}
+    type="button"
+    aria-label="Open Local AI review"
+    onclick={() => void show()}
+  >
+    <Icon icon={mdiAutoFix} size="23" />
+  </button>
+{/snippet}
+
+{#if variant === 'overlay'}
+  <TooltipProvider delayDuration={120}>
+    <Tooltip text="Local AI">
+      {#snippet child({ props })}{@render localAiTrigger(props)}{/snippet}
+    </Tooltip>
+  </TooltipProvider>
+{:else}
+  {@render localAiTrigger({})}
+{/if}
 
 {#if open}
   <div

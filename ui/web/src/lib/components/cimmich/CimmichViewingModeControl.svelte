@@ -5,6 +5,7 @@
   import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiLockOffOutline, mdiLockOutline, mdiShieldAccountOutline } from '@mdi/js';
   import { onMount } from 'svelte';
+  import CimmichAssetVisibility from './CimmichAssetVisibility.svelte';
 
   export type CimmichViewingMode = 'personal' | 'private' | 'standard';
 
@@ -16,6 +17,7 @@
     onUnlock: (password: string) => Promise<void>;
     privateConfigured?: boolean;
     privateUnlocked: boolean;
+    sourceAssetId?: string;
     variant?: 'dashboard' | 'default' | 'overlay';
   }
 
@@ -27,6 +29,7 @@
     onUnlock,
     privateConfigured = true,
     privateUnlocked,
+    sourceAssetId,
     variant = 'default',
   }: Props = $props();
 
@@ -139,7 +142,7 @@
 {#snippet viewingModePanel(portaled = false)}
   <div
     class={[
-      'z-200 overflow-hidden rounded-2xl border p-2 shadow-2xl',
+      'z-200 overflow-visible rounded-2xl border p-2 shadow-2xl',
       portaled ? 'fixed' : 'absolute top-[calc(100%+0.5rem)] right-0 w-72',
       variant === 'overlay'
         ? 'border-white/20 bg-black/92 text-white backdrop-blur-sm'
@@ -192,6 +195,26 @@
         </button>
       {/each}
     </div>
+
+    {#if sourceAssetId}
+      <div
+        class="mt-2 border-t pt-2 {variant === 'overlay' ? 'border-white/15' : 'border-gray-200 dark:border-gray-700'}"
+      >
+        <p
+          class="px-2 pb-1 text-[11px] font-bold tracking-wide uppercase {variant === 'overlay'
+            ? 'text-white/55'
+            : 'text-gray-500'}"
+        >
+          This photo
+        </p>
+        <CimmichAssetVisibility
+          {sourceAssetId}
+          variant={variant === 'overlay' ? 'overlay' : 'default'}
+          menuPortaled={false}
+          showLabel
+        />
+      </div>
+    {/if}
 
     {#if showUnlock}
       <form
