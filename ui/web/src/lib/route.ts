@@ -106,7 +106,11 @@ export const Route = {
   cimmichActivity: ({ id }: { id: string }) => `/cimmich/activities/${encodeURIComponent(id)}`,
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
-  cimmichArchiveIntegrity: () => '/cimmich/archive-integrity',
+  cimmichArchiveIntegrity: (params?: {
+    assetId?: string;
+    folder?: string;
+    mode?: 'exact' | 'variants' | 'plan' | 'backup';
+  }) => '/cimmich/archive-integrity' + asQueryString(params),
   cimmichLibrary: () => '/cimmich/library',
   cimmichLibraryBulk: () => '/cimmich/library/bulk',
   cimmichMaintenance: () => '/cimmich/maintenance',

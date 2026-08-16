@@ -83,6 +83,23 @@ describe('Route', () => {
       expect(Route.cimmichSetup()).toBe('/cimmich/setup');
       expect(Route.cimmichMaintenance()).toBe('/cimmich/maintenance');
       expect(Route.cimmichArchiveIntegrity()).toBe('/cimmich/archive-integrity');
+      expect(Route.cimmichArchiveIntegrity({ assetId: 'asset-1', mode: 'variants' })).toBe(
+        '/cimmich/archive-integrity?assetId=asset-1&mode=variants',
+      );
+      expect(Route.cimmichArchiveIntegrity({ folder: '/archive/Trips/Sydney', mode: 'variants' })).toBe(
+        '/cimmich/archive-integrity?folder=%2Farchive%2FTrips%2FSydney&mode=variants',
+      );
+    });
+  });
+
+  describe(Route.viewFolderAsset.name, () => {
+    it('opens the asset inside its containing folder context', () => {
+      expect(Route.viewFolderAsset({ id: 'asset-1', path: '/archive/Trips/Sydney' })).toBe(
+        '/folders/photos/asset-1?path=%2Farchive%2FTrips%2FSydney',
+      );
+      expect(Route.viewFolderAsset({ cimmich: 1, id: 'asset-1', path: '/archive/Trips/Sydney' })).toBe(
+        '/folders/photos/asset-1?cimmichContext=1&path=%2Farchive%2FTrips%2FSydney',
+      );
     });
   });
 

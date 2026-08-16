@@ -1,7 +1,11 @@
 import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import { describe, expect, it } from 'vitest';
 import type { CimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive-integrity.service';
-import { archiveVariantFolderContext, buildArchiveVariantGroups } from './archive-variant-groups';
+import {
+  archiveVariantFolderContext,
+  archiveVariantGroupsInFolder,
+  buildArchiveVariantGroups,
+} from './archive-variant-groups';
 
 const asset = (id: string, overrides: Partial<AssetResponseDto> = {}): AssetResponseDto =>
   ({
@@ -42,16 +46,26 @@ const evidence = (sourceAssetId: string, contentDigest: string): CimmichArchiveS
 });
 
 describe('Archive variant grouping', () => {
-  it('reports only the other likely-same files in the current asset folder', () => {
+  it('reports every other flagged photo in the folder across review groups', () => {
     const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
-    const assets = [
-      current,
-      asset('same-folder', { originalPath: '/archive/Ben/2009/copy.jpg' }),
-      asset('other-folder', { originalPath: '/archive/Ben/2010/copy.jpg' }),
+    const groups: DuplicateResponseDto[] = [
+      {
+        assets: [current, asset('counterpart', { originalPath: '/archive/PV/copy.jpg' })],
+        duplicateId: 'focused',
+        suggestedKeepAssetIds: [],
+      },
+      {
+        assets: [
+          asset('other-flagged', { originalPath: '/archive/Ben/2009/other.jpg' }),
+          asset('other-copy', { originalPath: '/archive/Phone/other.jpg' }),
+        ],
+        duplicateId: 'another-group',
+        suggestedKeepAssetIds: [],
+      },
     ];
 
-    expect(archiveVariantFolderContext(assets, current)).toEqual({
-      moreLikelySameHere: 1,
+    expect(archiveVariantFolderContext(groups, current)).toEqual({
+      otherFlaggedHere: 1,
       path: '/archive/Ben/2009',
     });
   });
@@ -59,16 +73,23 @@ describe('Archive variant grouping', () => {
   it('omits folder context when Immich has no original path', () => {
     const current = asset('current', { originalPath: '' });
 
-    expect(archiveVariantFolderContext([current], current)).toBeNull();
+    expect(archiveVariantFolderContext([{ assets: [current] }], current)).toBeNull();
   });
 
   it('keeps an explicit zero when the likely-same group has no folder peer', () => {
     const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
 
-    expect(archiveVariantFolderContext([current], current)).toEqual({
-      moreLikelySameHere: 0,
+    expect(archiveVariantFolderContext([{ assets: [current] }], current)).toEqual({
+      otherFlaggedHere: 0,
       path: '/archive/Ben/2009',
     });
+  });
+
+  it('filters the review to groups with at least one file in the requested folder', () => {
+    const matching = { assets: [asset('one', { originalPath: '/archive/Ben/2009/one.jpg' })] };
+    const elsewhere = { assets: [asset('two', { originalPath: '/archive/Ben/2010/two.jpg' })] };
+
+    expect(archiveVariantGroupsInFolder([matching, elsewhere], '/archive/Ben/2009')).toEqual([matching]);
   });
 
   it('separates transformed variants from verified exact bytes and explains copy-local differences', () => {
