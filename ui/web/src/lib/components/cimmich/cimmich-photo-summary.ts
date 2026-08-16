@@ -42,6 +42,171 @@ const withIndefiniteArticle = (value: string) => {
   return `${/^[aeiou]/i.test(value) ? 'an' : 'a'} ${value}`;
 };
 
+const displayFact = (value: string) => {
+  const trimmed = value.trim();
+  const acronym = new Map([
+    ['atv', 'ATV'],
+    ['automobile', 'car'],
+    ['cloudy', 'cloudy sky'],
+    ['gps', 'GPS'],
+    ['qr code', 'QR code'],
+    ['suv', 'SUV'],
+    ['tv', 'TV'],
+    ['water body', 'body of water'],
+  ]).get(trimmed.toLocaleLowerCase());
+  return acronym || trimmed;
+};
+
+const factKey = (value: string) =>
+  displayFact(value)
+    .toLocaleLowerCase()
+    .replaceAll(/[^\p{L}\p{N}]/gu, '');
+
+const uniqueFacts = (values: Array<string | null | undefined>) => {
+  const seen = new Set<string>();
+  return unique(values)
+    .map((value) => displayFact(value))
+    .filter((value) => {
+      const key = factKey(value);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+};
+
+const isPluralOrMassFact = (value: string) => {
+  const normalized = value.toLocaleLowerCase();
+  return (
+    /(?:people|children|men|women)$/.test(normalized) ||
+    (normalized.endsWith('s') && !/(?:ss|us|is)$/.test(normalized)) ||
+    ['equipment', 'food', 'fog', 'grass', 'rain', 'snow', 'sunlight', 'sunshine', 'water'].includes(normalized)
+  );
+};
+
+const naturalFactPhrase = (value: string) => {
+  const displayed = displayFact(value);
+  return isPluralOrMassFact(displayed) ? displayed : withIndefiniteArticle(displayed);
+};
+
+const capitalizeFirst = (value: string) => (value ? `${value[0].toLocaleUpperCase()}${value.slice(1)}` : '');
+
+const numberWord = (value: number) =>
+  ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'][value] || String(value);
+
+const smartSubject = (people: Array<{ displayName: string; personId: string }>, peopleCountEstimate: number) => {
+  const unknownCount = Math.max(0, peopleCountEstimate - people.length);
+  const subjects = [
+    ...people.map((item) => item.displayName),
+    ...(unknownCount === 1 ? ['another person'] : unknownCount > 1 ? [`${unknownCount} other people`] : []),
+  ];
+  if (subjects.length > 0) {
+    const displayedSubjects =
+      subjects.length > 4 ? [...subjects.slice(0, 3), `${subjects.length - 3} others`] : subjects;
+    return { count: subjects.length, text: joinNatural(displayedSubjects) };
+  }
+  if (peopleCountEstimate > 0) {
+    return {
+      count: peopleCountEstimate,
+      text: peopleCountEstimate === 1 ? 'One person' : `${numberWord(peopleCountEstimate)} people`,
+    };
+  }
+  return { count: 0, text: '' };
+};
+
+const usefulScene = (value: string) => {
+  const scene = value.trim().toLocaleLowerCase();
+  return scene && !['general scene', 'image', 'photo', 'scene', 'unknown'].includes(scene) ? scene : '';
+};
+
+const smartScenePhrase = (value: string) => {
+  const scene = usefulScene(value);
+  if (!scene) {
+    return '';
+  }
+  if (scene === 'outdoors' || scene === 'indoors') {
+    return scene;
+  }
+  if (scene === 'road' || scene === 'dirt road') {
+    return `on ${naturalFactPhrase(scene)}`;
+  }
+  if (scene === 'shopfront') {
+    return 'near a shopfront';
+  }
+  if (scene === 'beach') {
+    return 'at a beach';
+  }
+  return `in ${naturalFactPhrase(scene)}`;
+};
+
+const lowValueSmartFactKeys = new Set([
+  'consumerelectronics',
+  'daytime',
+  'frame',
+  'light',
+  'liquid',
+  'opticalequipment',
+  'portal',
+  'sport',
+  'textile',
+  'watersport',
+  'woodnatural',
+  'woodprocessed',
+]);
+
+const isUsefulObservedSmartFact = (value: string, peopleCountEstimate: number) => {
+  const key = factKey(value);
+  return (
+    !lowValueSmartFactKeys.has(key) &&
+    !(peopleCountEstimate > 0 && ['crowd', 'face', 'group', 'human', 'people', 'person'].includes(key))
+  );
+};
+
+const collapseObservedSmartParents = (values: string[]) => {
+  const keys = new Set(values.map((value) => factKey(value)));
+  return values.filter((value) => {
+    const key = factKey(value);
+    if (key === 'headgear' && [...keys].some((candidate) => ['baseballhat', 'hat', 'helmet'].includes(candidate))) {
+      return false;
+    }
+    if (key === 'footwear' && [...keys].some((candidate) => ['shoes', 'sneakers'].includes(candidate))) {
+      return false;
+    }
+    if (
+      ['bodyofwater', 'water'].includes(key) &&
+      [...keys].some((candidate) => ['lake', 'ocean', 'pool'].includes(candidate))
+    ) {
+      return false;
+    }
+    return true;
+  });
+};
+
+const isEnvironmentFact = (value: string) => /(?:^|\s)(?:sky|sunrise|sunset)(?:\s|$)/i.test(value);
+
+const smartEnvironmentPhrase = (value: string) => {
+  const displayed = displayFact(value);
+  if (/sky/i.test(displayed)) {
+    return `under ${naturalFactPhrase(displayed)}`;
+  }
+  if (/sunrise|sunset/i.test(displayed)) {
+    return `at ${displayed}`;
+  }
+  if (/rain/i.test(displayed)) {
+    return 'in the rain';
+  }
+  return `in ${displayed}`;
+};
+
+const factsNotCoveredBy = (facts: string[], strongerFacts: string[]) => {
+  const strongerKeys = strongerFacts.map((value) => factKey(value));
+  return facts.filter((fact) => {
+    const key = factKey(fact);
+    return !strongerKeys.some((strongerKey) => strongerKey === key || (key.length >= 3 && strongerKey.includes(key)));
+  });
+};
+
 export const cimmichSummaryKnownPeople = (evidence: CimmichAssetEvidence) =>
   unique([
     ...evidence.faces.map((face) => face.display_name),
@@ -233,6 +398,110 @@ export const compileCimmichStandardSummary = ({
     : 'No confirmed descriptive information has been recorded for this photo yet.';
 };
 
+const usesPluralVerb = (value: string) => {
+  const normalized = value.toLocaleLowerCase();
+  return (
+    /(?:people|children|men|women)$/.test(normalized) || (normalized.endsWith('s') && !/(?:ss|us|is)$/.test(normalized))
+  );
+};
+
+const compileCimmichSmartSummary = ({
+  analysis,
+  asset,
+  evidence,
+  ocr,
+}: {
+  analysis: CimmichGeneratedSummaryAnalysis;
+  asset: AssetResponseDto;
+  evidence: CimmichAssetEvidence;
+  ocr: OcrBoundingBox[];
+}) => {
+  const facts = analysis.visualFacts;
+  const people = currentPeople(evidence);
+  const subject = smartSubject(people, facts.peopleCountEstimate);
+  const activities = uniqueFacts(facts.activities);
+  const ownerObjects = uniqueFacts(contextNames(evidence, 'object'));
+  const observedObjects = collapseObservedSmartParents(
+    uniqueFacts(facts.objects).filter((value) => isUsefulObservedSmartFact(value, facts.peopleCountEstimate)),
+  );
+  const environment = observedObjects.filter((value) => isEnvironmentFact(value));
+  const observedDetails = factsNotCoveredBy(
+    observedObjects.filter((value) => !isEnvironmentFact(value)),
+    ownerObjects,
+  ).filter((value) => !activities.some((activity) => factKey(activity).includes(factKey(value))));
+  const activityText = activities.join(' and ');
+  const scene = smartScenePhrase(facts.scene);
+  const environmentText = environment.map((value) => smartEnvironmentPhrase(value)).join(' and ');
+  const place = locationName(asset, evidence);
+  const date = formattedDate(asset);
+  const events = uniqueFacts(contextNames(evidence, 'event'));
+  const ownerObjectsOutsideActivity = ownerObjects.filter(
+    (value) => !activities.some((activity) => factKey(activity).includes(factKey(value))),
+  );
+  const usedObservedObjects: string[] = [];
+  let main = '';
+
+  if (subject.text) {
+    const be = subject.count === 1 ? 'is' : 'are';
+    if (activityText) {
+      main = `${subject.text} ${be} ${activityText}`;
+      if (scene) {
+        main += ` ${scene}`;
+      }
+    } else if (scene) {
+      main = `${subject.text} ${be} ${scene}`;
+    } else {
+      main = `${subject.text} ${be} pictured`;
+    }
+    if (ownerObjectsOutsideActivity.length > 0) {
+      main += ` with ${joinNatural(ownerObjectsOutsideActivity.map((value) => naturalFactPhrase(value)))}`;
+    }
+  } else {
+    const primaryObjects = ownerObjects.length > 0 ? ownerObjects : observedDetails.slice(0, 2);
+    usedObservedObjects.push(...primaryObjects);
+    if (primaryObjects.length > 0) {
+      const objectText = joinNatural(primaryObjects.map((value) => naturalFactPhrase(value)));
+      const be = primaryObjects.length > 1 || usesPluralVerb(primaryObjects[0]) ? 'are' : 'is';
+      main = `${capitalizeFirst(objectText)} ${be} pictured`;
+      if (scene) {
+        main += ` ${scene}`;
+      }
+    } else if (scene) {
+      main = `The photo was taken ${scene}`;
+    }
+  }
+
+  if (environmentText) {
+    main += main ? ` ${environmentText}` : `The photo was taken ${environmentText}`;
+  }
+  if (place) {
+    main += main ? ` in ${place}` : `The photo was taken in ${place}`;
+  }
+  if (events.length > 0) {
+    main += main ? ` during ${joinNatural(events)}` : `The photo was taken during ${joinNatural(events)}`;
+  }
+  if (date) {
+    main += main ? ` on ${date}` : `The photo was taken on ${date}`;
+  }
+
+  const remainingDetails = observedDetails.filter(
+    (value) => !usedObservedObjects.some((used) => factKey(used) === factKey(value)),
+  );
+  const detailSentence =
+    remainingDetails.length > 0
+      ? `${capitalizeFirst(joinNatural(remainingDetails.map((value) => naturalFactPhrase(value))))} ${remainingDetails.length > 1 || usesPluralVerb(remainingDetails[0]) ? 'are' : 'is'} also visible.`
+      : '';
+  const base = [cleanSentence(main), detailSentence].filter(Boolean).join(' ');
+  const fallback = cleanSentence(modelPeopleSummary(facts.summary, people, facts.peopleCountEstimate).text);
+  return [base || fallback, ocrSentence(ocr, facts.visibleText, base || fallback)].filter(Boolean).join(' ');
+};
+
+const prefersStructuredSmartComposition = (analysis: CimmichGeneratedSummaryAnalysis) =>
+  analysis.model?.providerId === 'apple-vision-native-summary' ||
+  /^(?:No person|One person|\d+ people) (?:is|are) (?:clearly detected|visible)\b/i.test(
+    analysis.visualFacts.summary.trim(),
+  );
+
 export const compileCimmichModelSummary = ({
   analysis,
   asset,
@@ -244,6 +513,9 @@ export const compileCimmichModelSummary = ({
   evidence: CimmichAssetEvidence;
   ocr: OcrBoundingBox[];
 }) => {
+  if (analysis.tier === 'smart' && prefersStructuredSmartComposition(analysis)) {
+    return compileCimmichSmartSummary({ analysis, asset, evidence, ocr });
+  }
   const facts = analysis.visualFacts;
   const people = currentPeople(evidence);
   const modelSummary = modelPeopleSummary(facts.summary, people, facts.peopleCountEstimate);

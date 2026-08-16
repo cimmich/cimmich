@@ -788,6 +788,8 @@ test("Apple Vision batch composes conservative Smart facts without a network mod
       { confidence: 0.79, identifier: "atv" },
       { confidence: 0.71, identifier: "helmet" },
       { confidence: 0.7, identifier: "scooter" },
+      { confidence: 0.68, identifier: "wood_processed" },
+      { confidence: 0.67, identifier: "portal" },
     ],
     elapsedSeconds: 0.05,
     errors: [],

@@ -175,7 +175,9 @@ database.
 Standard Summary uses current People, Context, date, place and OCR without a
 model, and describes the photograph rather than reporting review work. Face and
 Body review counts remain in the relevant People/QC controls. Smart favours a
-fast local visual pass plus review-only QC leads.
+fast local visual pass plus review-only QC leads. Its stored facts are composed
+with current names, Context, place and date into natural prose; repeated labels
+and low-value classifier categories are suppressed without rerunning Smart.
 Enhanced is the heavier initial interpretation. Both model tiers retain
 structured facts, so later names and Context update without another visual run.
 On a Mac Local AI worker, Smart selects Apple Vision by default and downloads

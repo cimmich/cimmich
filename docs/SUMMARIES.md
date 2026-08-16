@@ -34,9 +34,20 @@ where useful scene, activity, object, visible-text and basic QC evidence is more
 valuable than an expensive near-perfect caption. A Smart run stores validated
 structured facts and exact source/model/configuration lineage.
 
+Facts-first providers such as Apple Vision are composed at read time rather
+than preserving their inventory-style sentence. Current People, Context, place
+and date are woven into one conservative description; scene, atmosphere,
+activity and object facts keep distinct grammatical roles; owner Context
+supersedes duplicate visual labels; low-value classifier taxonomy is omitted.
+A richer custom Smart provider keeps its relational prose instead. This changes
+no pixels and requires no model rerun.
+
 Its Face and Body counts are **review leads only**. They can point out that a
 photo may be missing a saved Face or Body, but cannot create observations,
-identify anyone or alter People automatically.
+identify anyone or alter People automatically. Zero-result QC is hidden. A
+current stored result remains readable even when its producing provider is not
+available on the viewing host; provider availability matters only when a run
+or refresh is needed.
 
 ## Enhanced
 

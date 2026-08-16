@@ -19,6 +19,10 @@ providers/apple-vision-summary/provider --json-array --skip-ocr photo-*.jpg
 
 `--skip-ocr` is the normal Smart path when Immich OCR already exists. Cimmich
 merges that stored OCR at composition time instead of paying for it twice.
+Generic classifier categories that add no useful description are discarded
+before persistence. The UI then composes the remaining typed facts with current
+owner truth, while preserving richer relational prose from custom Smart
+providers.
 
 ## Use another model
 

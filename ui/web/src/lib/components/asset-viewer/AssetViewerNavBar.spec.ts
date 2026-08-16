@@ -156,6 +156,17 @@ describe('AssetViewerNavBar component', () => {
     expect(summary).toContain("['standard', 'smart', 'enhanced', 'custom']");
   });
 
+  it('keeps current model results free of unavailable-provider and empty-QC noise', () => {
+    const summary = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichSummaryAction.svelte'),
+      'utf8',
+    );
+
+    expect(summary).toContain('{#if !capability && needsRun}');
+    expect(summary).toContain('qcLeadCounts.length > 0 || qc.flags.length > 0');
+    expect(summary).not.toContain('{qc.missingFaces || 0} possible missing Faces');
+  });
+
   it('keeps Local AI hidden until the separate experiment is enabled', () => {
     const owner = userAdminFactory.build();
     authManager.setUser(owner);

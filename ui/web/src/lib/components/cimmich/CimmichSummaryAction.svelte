@@ -97,6 +97,10 @@
   const needsRun = $derived((mode === 'smart' || mode === 'enhanced') && (!analysis || !analysis.current));
   const customDirty = $derived(customDraft.trim() !== (evidence?.ownerSummary?.summaryText || ''));
   const ocrReadings = $derived(compileCimmichOcrReadings(ocrManager.data));
+  const qcLeadCounts = $derived([
+    ...(qc?.missingFaces ? [`${qc.missingFaces} possible missing Face${qc.missingFaces === 1 ? '' : 's'}`] : []),
+    ...(qc?.missingBodies ? [`${qc.missingBodies} possible missing Body${qc.missingBodies === 1 ? '' : 's'}`] : []),
+  ]);
 
   const load = async () => {
     loading = true;
@@ -325,15 +329,15 @@
           {#if profile?.model && !profile.dedicated}
             <p class="notice">Using the shared scene model; a dedicated {mode} profile is not configured.</p>
           {/if}
-          {#if !capability}
+          {#if !capability && needsRun}
             <p class="notice">No compatible local {mode} model is configured.</p>
           {/if}
         {/if}
 
-        {#if qc && mode !== 'standard' && analysis}
+        {#if qc && mode !== 'standard' && analysis && (qcLeadCounts.length > 0 || qc.flags.length > 0)}
           <div class="qc">
             <strong>QC leads</strong>
-            <span>{qc.missingFaces || 0} possible missing Faces · {qc.missingBodies || 0} possible missing Bodies</span>
+            {#if qcLeadCounts.length > 0}<span>{qcLeadCounts.join(' · ')}</span>{/if}
             {#if qc.flags.length > 0}<span>{qc.flags.join(' · ')}</span>{/if}
             <small>Leads only. Nothing is added to People without review.</small>
           </div>

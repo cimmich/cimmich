@@ -153,12 +153,13 @@ describe('photo summary compiler', () => {
     expect(text).toBe('A sign reads JETTY. Visible text includes “welcome”.');
   });
 
-  it('weaves current names into count-based Smart prose', () => {
+  it('composes Smart facts and current owner truth into natural conservative prose', () => {
     const analysis = {
       current: true,
+      tier: 'smart',
       visualFacts: {
         activities: [],
-        objects: ['atv'],
+        objects: ['blue sky', 'crowd', 'headgear', 'helmet', 'atv'],
         peopleCountEstimate: 2,
         qualityFlags: [],
         scene: 'outdoors',
@@ -168,12 +169,160 @@ describe('photo summary compiler', () => {
     } as never;
     const text = compileCimmichModelSummary({
       analysis,
+      asset: {
+        exifInfo: {
+          city: 'Káto Garoúna',
+          country: 'Greece',
+          dateTimeOriginal: '2025-12-24T12:35:23Z',
+          state: 'Ionian Islands',
+        },
+      } as never,
+      evidence: {
+        bodies: [
+          { display_name: 'Benji Hart', person_id: 'person-benji' },
+          { display_name: 'Jani - Hup', person_id: 'person-jani' },
+        ],
+        contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
+        faces: [],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe(
+      'Benji Hart and Jani - Hup are outdoors with an ATV under a blue sky in Káto Garoúna, Ionian Islands, Greece on December 24, 2025. A helmet is also visible.',
+    );
+    expect(text).not.toMatch(/Visible details|Known things|Taken|Location:/);
+    expect(text.match(/ATV/g)).toHaveLength(1);
+  });
+
+  it('lets a specific owner object supersede its generic visual label', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'smart',
+        visualFacts: {
+          activities: [],
+          objects: ['boat'],
+          peopleCountEstimate: 0,
+          qualityFlags: [],
+          scene: 'outdoors',
+          summary: 'No person is clearly detected outdoors. Visible details include boat.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: {} } as never,
+      evidence: {
+        bodies: [],
+        contexts: [{ display_name: 'Booze Cruise Boat', entity_kind: 'object' }],
+        faces: [],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe('Booze Cruise Boat is pictured outdoors.');
+  });
+
+  it('uses a Smart activity only when it exists in structured evidence', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'smart',
+        visualFacts: {
+          activities: ['walking'],
+          objects: ['backpack'],
+          peopleCountEstimate: 1,
+          qualityFlags: [],
+          scene: 'dirt road',
+          summary: 'One person is visible on a dirt road.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: { city: 'Sydney' } } as never,
+      evidence: {
+        bodies: [],
+        contexts: [],
+        faces: [{ display_name: 'Ted', person_id: 'person-ted', review_disposition: 'active' }],
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe('Ted is walking on a dirt road in Sydney. A backpack is also visible.');
+  });
+
+  it('describes non-person Smart scenes without inventing relationships', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'smart',
+        visualFacts: {
+          activities: [],
+          objects: ['dog', 'tennis ball', 'grass', 'frame', 'light'],
+          peopleCountEstimate: 0,
+          qualityFlags: [],
+          scene: 'outdoors',
+          summary: 'No person is clearly detected outdoors. Visible details include dog, tennis ball, grass.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: {} } as never,
+      evidence: { bodies: [], contexts: [], faces: [], presence: [] } as never,
+      ocr: [],
+    });
+    expect(text).toBe('A dog and a tennis ball are pictured outdoors. Grass is also visible.');
+  });
+
+  it('preserves richer relational prose from a custom Smart provider', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        model: { providerId: 'owner-fast-vlm' },
+        tier: 'smart',
+        visualFacts: {
+          activities: ['riding an ATV'],
+          objects: ['ATV'],
+          peopleCountEstimate: 2,
+          qualityFlags: [],
+          scene: 'outdoors',
+          summary: '{{person:person-ted}} rides an ATV with another person behind him.',
+          visibleText: [],
+        },
+      } as never,
       asset: { exifInfo: {} } as never,
       evidence,
       ocr: [],
     });
-    expect(text).toContain('Ted and another person are visible outdoors.');
-    expect(text).not.toContain('Known people:');
+    expect(text).toBe('Ted rides an ATV with another person behind him. Known things: Harbour Boat.');
+  });
+
+  it('keeps named group Smart summaries bounded', () => {
+    const text = compileCimmichModelSummary({
+      analysis: {
+        current: true,
+        tier: 'smart',
+        visualFacts: {
+          activities: [],
+          objects: ['bottle', 'crowd'],
+          peopleCountEstimate: 6,
+          qualityFlags: [],
+          scene: 'indoor room',
+          summary: '6 people are visible in an indoor room. Visible details include bottle, crowd.',
+          visibleText: [],
+        },
+      } as never,
+      asset: { exifInfo: {} } as never,
+      evidence: {
+        bodies: [],
+        contexts: [],
+        faces: ['Aaron', 'Benji', 'Deedee', 'Mike', 'Sophie', 'Tom'].map((display_name, index) => ({
+          display_name,
+          person_id: `person-${index}`,
+          review_disposition: 'active',
+        })),
+        presence: [],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toBe('Aaron, Benji, Deedee, and 3 others are in an indoor room. A bottle is also visible.');
   });
 
   it('resolves stable Enhanced identity tokens to the current display name', () => {

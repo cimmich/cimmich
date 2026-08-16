@@ -745,6 +745,20 @@ const appleGenericLabels = new Set([
   "utensil",
   "vehicle",
 ]);
+const appleLowValueLabels = new Set([
+  "consumer_electronics",
+  "daytime",
+  "frame",
+  "light",
+  "liquid",
+  "optical_equipment",
+  "portal",
+  "sport",
+  "textile",
+  "watersport",
+  "wood_natural",
+  "wood_processed",
+]);
 const humanizeAppleLabel = (value) => value.replaceAll("_", " ");
 
 const appleVisionProposal = (raw, asset) => {
@@ -784,6 +798,7 @@ const appleVisionProposal = (raw, asset) => {
     .map((row) => humanizeAppleLabel(row.identifier));
   const excluded = new Set([
     ...appleGenericLabels,
+    ...appleLowValueLabels,
     ...appleActivityLabels,
     ...appleSceneLabels.keys(),
   ]);
