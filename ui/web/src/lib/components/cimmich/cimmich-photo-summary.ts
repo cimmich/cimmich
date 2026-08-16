@@ -66,11 +66,40 @@ const modelPeopleSummary = (
   estimate: number,
 ) => {
   const byId = new Map(people.map((item) => [item.personId, item.displayName]));
+  const mentionedPersonIds = new Set<string>();
   let usedIdentity = false;
   let text = summary.replaceAll(/\{\{person:([^}]+)\}\}/g, (_token, personId: string) => {
     usedIdentity = true;
-    return byId.get(personId) || 'a confirmed person';
+    const displayName = byId.get(personId);
+    if (displayName) {
+      mentionedPersonIds.add(personId);
+    }
+    return displayName || 'a confirmed person';
   });
+  if (mentionedPersonIds.size > 0 && estimate > 0 && people.length === estimate) {
+    const remainingPeople = people.filter((item) => !mentionedPersonIds.has(item.personId));
+    if (remainingPeople.length === 1) {
+      const nextText = text.replace(
+        /\b(?:another person|a second person|one other person)\b/i,
+        remainingPeople[0].displayName,
+      );
+      if (nextText !== text) {
+        mentionedPersonIds.add(remainingPeople[0].personId);
+        text = nextText;
+      }
+    } else if (remainingPeople.length > 1) {
+      const nextText = text.replace(
+        /\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten) other people\b/i,
+        joinNatural(remainingPeople.map((item) => item.displayName)),
+      );
+      if (nextText !== text) {
+        for (const item of remainingPeople) {
+          mentionedPersonIds.add(item.personId);
+        }
+        text = nextText;
+      }
+    }
+  }
   if (!usedIdentity && people.length > 0 && estimate > 0) {
     const unknownCount = Math.max(0, estimate - people.length);
     const subjects = [
@@ -83,8 +112,13 @@ const modelPeopleSummary = (
       `${subject} ${subjects.length === 1 ? 'is' : 'are'} visible`,
     );
     usedIdentity = text !== summary;
+    if (usedIdentity) {
+      for (const item of people) {
+        mentionedPersonIds.add(item.personId);
+      }
+    }
   }
-  return { text, usedIdentity };
+  return { text, unmentionedPeople: people.filter((item) => !mentionedPersonIds.has(item.personId)), usedIdentity };
 };
 
 const contextSentence = (evidence: CimmichAssetEvidence) => {
@@ -153,7 +187,7 @@ export const compileCimmichStandardSummary = ({
   const events = contextNames(evidence, 'event');
   const place = locationName(asset, evidence);
   const date = formattedDate(asset);
-  const describedObjects = objects.map(withIndefiniteArticle);
+  const describedObjects = objects.map((object) => withIndefiniteArticle(object));
   const subjectText = people.length > 0 ? joinNatural(people) : joinNatural(describedObjects);
   const subjectCount = people.length > 0 ? people.length : describedObjects.length;
   const main = subjectText
@@ -180,8 +214,8 @@ export const compileCimmichModelSummary = ({
   const people = currentPeople(evidence);
   const modelSummary = modelPeopleSummary(facts.summary, people, facts.peopleCountEstimate);
   const liveDetails = [
-    !modelSummary.usedIdentity && people.length > 0
-      ? cleanSentence(`Known people: ${joinNatural(people.map((item) => item.displayName))}`)
+    modelSummary.unmentionedPeople.length > 0
+      ? cleanSentence(`Known people: ${joinNatural(modelSummary.unmentionedPeople.map((item) => item.displayName))}`)
       : '',
     contextSentence(evidence),
     dateSentence(asset),

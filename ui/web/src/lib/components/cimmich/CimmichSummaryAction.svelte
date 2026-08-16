@@ -2,9 +2,11 @@
   import { focusTrap } from '$lib/actions/focus-trap';
   import { portal } from '$lib/elements/Portal.svelte';
   import {
+    createCimmichManualPhotoContextCommandId,
     getCimmichAssetEvidence,
     getCimmichLocalAiJob,
     getCimmichLocalAiStatus,
+    setCimmichAssetOwnerSummary,
     startCimmichLocalAiJob,
     type CimmichAssetEvidence,
     type CimmichGeneratedSummaryAnalysis,
@@ -18,7 +20,7 @@
   import { onDestroy } from 'svelte';
   import { cimmichSummaryQc, compileCimmichModelSummary, compileCimmichStandardSummary } from './cimmich-photo-summary';
 
-  type Mode = 'standard' | 'smart' | 'enhanced';
+  type Mode = 'standard' | 'smart' | 'enhanced' | 'custom';
 
   interface Props {
     asset: AssetResponseDto;
@@ -33,6 +35,9 @@
   let mode = $state<Mode>('standard');
   let job = $state<CimmichLocalAiJob>();
   let error = $state('');
+  let customDraft = $state('');
+  let customMessage = $state('');
+  let customSaving = $state(false);
   let stopped = false;
 
   const analysis = $derived(
@@ -45,10 +50,28 @@
   const standardText = $derived(
     evidence ? compileCimmichStandardSummary({ asset, evidence, ocr: ocrManager.data }) : '',
   );
+  const smartText = $derived(
+    evidence?.generatedSummaries?.smart
+      ? compileCimmichModelSummary({
+          analysis: evidence.generatedSummaries.smart,
+          asset,
+          evidence,
+          ocr: ocrManager.data,
+        })
+      : '',
+  );
+  const enhancedText = $derived(
+    evidence?.generatedSummaries?.enhanced
+      ? compileCimmichModelSummary({
+          analysis: evidence.generatedSummaries.enhanced,
+          asset,
+          evidence,
+          ocr: ocrManager.data,
+        })
+      : '',
+  );
   const summaryText = $derived(
-    analysis && evidence
-      ? compileCimmichModelSummary({ analysis, asset, evidence, ocr: ocrManager.data })
-      : standardText,
+    mode === 'smart' ? smartText : mode === 'enhanced' ? enhancedText : mode === 'custom' ? customDraft : standardText,
   );
   const qc = $derived(evidence ? cimmichSummaryQc(evidence, analysis) : null);
   const running = $derived(job?.state === 'queued' || job?.state === 'running');
@@ -59,8 +82,15 @@
         ? localAi?.capabilities.summaryEnhanced
         : true,
   );
-  const profile = $derived(mode === 'smart' ? localAi?.summaryProfiles.smart : localAi?.summaryProfiles.enhanced);
-  const needsRun = $derived(mode !== 'standard' && (!analysis || !analysis.current));
+  const profile = $derived(
+    mode === 'smart'
+      ? localAi?.summaryProfiles.smart
+      : mode === 'enhanced'
+        ? localAi?.summaryProfiles.enhanced
+        : undefined,
+  );
+  const needsRun = $derived((mode === 'smart' || mode === 'enhanced') && (!analysis || !analysis.current));
+  const customDirty = $derived(customDraft.trim() !== (evidence?.ownerSummary?.summaryText || ''));
 
   const load = async () => {
     loading = true;
@@ -71,6 +101,7 @@
         getCimmichLocalAiStatus().catch(() => undefined),
       ]);
       evidence = nextEvidence;
+      customDraft = nextEvidence.ownerSummary?.summaryText || '';
       localAi = nextLocalAi;
     } catch (error_) {
       error = error_ instanceof Error ? error_.message : 'Summary could not be loaded';
@@ -116,8 +147,44 @@
     }
   };
 
+  const importCustom = (source: 'standard' | 'smart' | 'enhanced') => {
+    const imported = source === 'standard' ? standardText : source === 'smart' ? smartText : enhancedText;
+    if (imported) {
+      customDraft = imported.slice(0, 2000);
+      customMessage = `${source[0].toUpperCase() + source.slice(1)} copied. Edit it, then save.`;
+      error = '';
+    }
+  };
+
+  const saveCustom = async () => {
+    if (!canRun || !evidence || customSaving || !customDirty) {
+      return;
+    }
+    customSaving = true;
+    customMessage = '';
+    error = '';
+    try {
+      const result = await setCimmichAssetOwnerSummary(asset.id, {
+        commandId: createCimmichManualPhotoContextCommandId('custom-summary-set'),
+        expectedRevision: evidence.ownerSummary?.revision || 0,
+        summaryText: customDraft.trim() || null,
+      });
+      evidence = { ...evidence, ownerSummary: result.summary };
+      customDraft = result.summary.summaryText || '';
+      customMessage = result.changed
+        ? customDraft
+          ? 'Custom summary saved.'
+          : 'Custom summary cleared.'
+        : 'No changes to save.';
+    } catch (error_) {
+      error = error_ instanceof Error ? error_.message : 'Custom summary could not be saved';
+    } finally {
+      customSaving = false;
+    }
+  };
+
   const close = () => {
-    if (!running) {
+    if (!running && !customSaving) {
       open = false;
     }
   };
@@ -159,13 +226,19 @@
           <p>Photo understanding</p>
           <h2 id="summary-title">Summary</h2>
         </div>
-        <button class="close" type="button" aria-label="Close Summary" disabled={running} onclick={close}>
+        <button
+          class="close"
+          type="button"
+          aria-label="Close Summary"
+          disabled={running || customSaving}
+          onclick={close}
+        >
           <Icon icon={mdiClose} size="22" />
         </button>
       </header>
 
       <nav aria-label="Summary type">
-        {#each ['standard', 'smart', 'enhanced'] as item (item)}
+        {#each ['standard', 'smart', 'enhanced', 'custom'] as item (item)}
           <button class:active={mode === item} type="button" onclick={() => (mode = item as Mode)}>
             {item[0].toUpperCase() + item.slice(1)}
           </button>
@@ -174,6 +247,36 @@
 
       {#if loading}
         <div class="empty" role="status">Building Standard summary…</div>
+      {:else if evidence && mode === 'custom'}
+        <article class="summary-card custom-card">
+          <div class="summary-heading">
+            <strong>Custom</strong>
+            <span>{customDirty ? 'Unsaved' : customDraft ? 'Saved' : 'Empty'}</span>
+          </div>
+          <label for="cimmich-custom-summary">Your summary</label>
+          <textarea
+            id="cimmich-custom-summary"
+            maxlength="2000"
+            placeholder="Write what matters about this photo…"
+            bind:value={customDraft}
+            disabled={!canRun || customSaving}
+          ></textarea>
+          <div class="custom-meta">
+            <span>{customDraft.length}/2000</span>
+            <span>Start from</span>
+          </div>
+          <div class="import-actions" aria-label="Import another summary">
+            <button type="button" disabled={!canRun} onclick={() => importCustom('standard')}>Use Standard</button>
+            <button type="button" disabled={!canRun || !smartText} onclick={() => importCustom('smart')}
+              >Use Smart</button
+            >
+            <button type="button" disabled={!canRun || !enhancedText} onclick={() => importCustom('enhanced')}
+              >Use Enhanced</button
+            >
+          </div>
+        </article>
+        <p class="explanation">Your editable version. Importing never overwrites it until you save.</p>
+        {#if customMessage}<p class="custom-message" role="status">{customMessage}</p>{/if}
       {:else if evidence}
         <article class="summary-card">
           <div class="summary-heading">
@@ -229,11 +332,6 @@
             <small>Leads only. Nothing is added to People without review.</small>
           </div>
         {/if}
-
-        <div class="owner-note">
-          <strong>Owner note</strong>
-          <span>{evidence.ownerSummary?.summaryText || 'No owner note.'}</span>
-        </div>
       {/if}
 
       {#if running}
@@ -245,8 +343,12 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
 
       <footer>
-        <button class="secondary" type="button" disabled={running} onclick={close}>Close</button>
-        {#if mode !== 'standard'}
+        <button class="secondary" type="button" disabled={running || customSaving} onclick={close}>Close</button>
+        {#if mode === 'custom'}
+          <button class="primary" type="button" disabled={!canRun || customSaving || !customDirty} onclick={saveCustom}>
+            {customSaving ? 'Saving…' : 'Save Custom'}
+          </button>
+        {:else if mode !== 'standard'}
           <button class="primary" type="button" disabled={!canRun || !needsRun || !capability || running} onclick={run}>
             {analysis?.current ? 'Up to date' : analysis ? `Refresh ${mode}` : `Run ${mode}`}
           </button>
@@ -323,7 +425,7 @@
   }
   nav {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 5px;
     margin: 0 22px;
     padding: 4px;
@@ -343,8 +445,8 @@
   }
   .summary-card,
   .qc,
-  .owner-note,
   .notice,
+  .custom-message,
   .progress,
   .error,
   .empty {
@@ -407,8 +509,7 @@
     color: #fde68a;
     font-size: 12px;
   }
-  .qc,
-  .owner-note {
+  .qc {
     display: grid;
     gap: 5px;
     padding: 13px 15px;
@@ -416,12 +517,66 @@
     color: rgb(255 255 255 / 0.7);
     font-size: 12px;
   }
-  .qc strong,
-  .owner-note strong {
+  .qc strong {
     color: white;
   }
   .qc small {
     color: rgb(255 255 255 / 0.4);
+  }
+  .custom-card label {
+    display: block;
+    margin-top: 14px;
+    color: rgb(255 255 255 / 0.7);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .custom-card textarea {
+    width: 100%;
+    min-height: 150px;
+    margin-top: 7px;
+    resize: vertical;
+    border: 1px solid rgb(255 255 255 / 0.16);
+    border-radius: 12px;
+    background: rgb(0 0 0 / 0.24);
+    padding: 12px;
+    color: white;
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+  }
+  .custom-card textarea:focus {
+    border-color: rgb(255 255 255 / 0.58);
+  }
+  .custom-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    color: rgb(255 255 255 / 0.42);
+    font-size: 11px;
+  }
+  .import-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .import-actions button {
+    min-height: 36px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.09);
+    padding: 0 12px;
+    color: rgb(255 255 255 / 0.82);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .import-actions button:disabled {
+    opacity: 0.34;
+  }
+  .custom-message {
+    padding: 10px 12px;
+    background: rgb(125 211 252 / 0.1);
+    color: rgb(186 230 253 / 0.9);
+    font-size: 12px;
   }
   .progress {
     display: grid;

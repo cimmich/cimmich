@@ -87,6 +87,7 @@ describe('public Cimmich product boundary', () => {
 
   it('keeps the photo workflow task-led and leaves evidence in the existing Info panel', async () => {
     const overlay = await read('../cimmich/CimmichPhotoOverlay.svelte');
+    const summary = await read('../cimmich/CimmichSummaryAction.svelte');
     const editActions = await read('../cimmich/CimmichPeopleEditActions.svelte');
     const detailPanel = await read('../asset-viewer/DetailPanel.svelte');
     expect(overlay).toContain('aria-label="People"');
@@ -107,8 +108,11 @@ describe('public Cimmich product boundary', () => {
     expect(overlay).toContain("isObjectTaggingMode ? 'Cancel adding an object tag' : 'Add object'");
     expect(overlay).toContain('Drag around the object');
     expect(overlay).toContain('attachCimmichManualObjectRegion');
-    expect(overlay).toContain('setCimmichAssetOwnerSummary');
-    expect(overlay).toContain("ownerSummaryDraft = result.ownerSummary.summaryText || ''");
+    expect(overlay).not.toContain('Owner note');
+    expect(summary).toContain('setCimmichAssetOwnerSummary');
+    expect(summary).toContain('Use Standard');
+    expect(summary).toContain('Use Smart');
+    expect(summary).toContain('Use Enhanced');
     expect(overlay).toContain("{ kind: 'place' as const, label: 'Place' }");
     expect(overlay).toContain("{ kind: 'event' as const, label: 'Event' }");
     expect(overlay).toContain('onclick={() => void addPhotoContext(option)}');

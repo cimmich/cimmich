@@ -130,4 +130,33 @@ describe('photo summary compiler', () => {
     expect(text).toContain('Ted and another person ride an ATV.');
     expect(text).not.toContain('{{person:');
   });
+
+  it('fills a bounded anonymous Enhanced subject after that Person is named', () => {
+    const analysis = {
+      current: true,
+      visualFacts: {
+        activities: ['riding'],
+        objects: ['atv'],
+        peopleCountEstimate: 2,
+        qualityFlags: [],
+        scene: 'outdoors',
+        summary: '{{person:person-ted}} rides an ATV with another person behind him.',
+        visibleText: [],
+      },
+    } as never;
+    const text = compileCimmichModelSummary({
+      analysis,
+      asset: { exifInfo: {} } as never,
+      evidence: {
+        ...(evidence as unknown as Record<string, unknown>),
+        faces: [
+          { display_name: 'Ted', person_id: 'person-ted' },
+          { display_name: 'Jani - Hup', person_id: 'person-jani' },
+        ],
+      } as never,
+      ocr: [],
+    });
+    expect(text).toContain('Ted rides an ATV with Jani - Hup behind him.');
+    expect(text).not.toContain('another person');
+  });
 });

@@ -180,8 +180,9 @@ On a Mac Local AI worker, Smart selects Apple Vision by default and downloads
 no model. Self-hosters can replace it with a compatible local model; Cimmich
 shows which provider produced each result and applies the same validation to
 all of them.
-The editable **Owner note** remains separate and can never be overwritten by a
-generated summary. See [Photo summaries](SUMMARIES.md).
+The editable **Custom** option remains separate and can never be overwritten by
+a generated summary. Use Standard, Smart or Enhanced as a starting point, edit
+the imported text and save when ready. See [Photo summaries](SUMMARIES.md).
 
 ### File location and duplicate badges — Source current
 

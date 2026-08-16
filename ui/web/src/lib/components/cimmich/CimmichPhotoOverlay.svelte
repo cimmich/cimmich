@@ -45,7 +45,6 @@
     setCimmichFaceIdentity,
     setCimmichFaceReviewDisposition,
     setCimmichManualPresence,
-    setCimmichAssetOwnerSummary,
     undoCimmichIdentityCorrection,
     undoCimmichContextDecision,
     undoCimmichManualSubjectTag,
@@ -209,11 +208,6 @@
   let objectActionMessage = $state('');
   let objectUndoDecisionId = $state('');
   let isObjectSaving = $state(false);
-  let ownerSummaryDraft = $state('');
-  let ownerSummaryActionError = $state('');
-  let ownerSummaryActionMessage = $state('');
-  let ownerSummaryUndoDecisionId = $state('');
-  let isOwnerSummarySaving = $state(false);
   let isContextLoading = $state(false);
   let isContextSaving = $state(false);
   let contextOptions = $state<CimmichContextEntity[]>([]);
@@ -310,7 +304,6 @@
   const personPhotoContext = $derived(getCimmichPersonPhotoContext(page.url));
   const photoContexts = $derived(evidence?.contexts ?? []);
   const thingRegions = $derived(evidence?.thingRegions ?? []);
-  const ownerSummary = $derived(evidence?.ownerSummary);
   const displayedPhotoContexts = $derived.by(() => {
     const spatialThings = new Set(thingRegions.map((tag) => tag.entityId));
     return photoContexts.filter((context) => context.entityKind !== 'object' || !spatialThings.has(context.entityId));
@@ -2688,57 +2681,21 @@
     }
   };
 
-  const saveOwnerSummary = async () => {
-    if (!evidence?.summary?.searchRowId || isOwnerSummarySaving) {
-      return;
-    }
-    const text = ownerSummaryDraft.trim();
-    isOwnerSummarySaving = true;
-    ownerSummaryActionError = '';
-    try {
-      const result = await setCimmichAssetOwnerSummary(evidence.summary.searchRowId, {
-        commandId: createCimmichManualPhotoContextCommandId('summary-set'),
-        expectedRevision: ownerSummary?.revision || 0,
-        summaryText: text || null,
-      });
-      ownerSummaryActionMessage = result.changed
-        ? text
-          ? 'Summary saved.'
-          : 'Summary cleared.'
-        : 'No changes to save.';
-      ownerSummaryUndoDecisionId = result.changed ? result.decisionId || '' : '';
-      retryCurrentEvidence();
-    } catch (error) {
-      ownerSummaryActionError = error instanceof Error ? error.message : 'Unable to save this summary';
-    } finally {
-      isOwnerSummarySaving = false;
-    }
-  };
-
   const undoManualPhotoContextAction = async (decisionId: string) => {
-    if (!decisionId || isObjectSaving || isOwnerSummarySaving) {
+    if (!decisionId || isObjectSaving) {
       return;
     }
     isObjectSaving = true;
-    isOwnerSummarySaving = true;
+    objectActionError = '';
     try {
-      const result = await undoCimmichManualPhotoContextDecision(
-        decisionId,
-        createCimmichManualPhotoContextCommandId('undo'),
-      );
-      ownerSummaryDraft = result.ownerSummary.summaryText || '';
+      await undoCimmichManualPhotoContextDecision(decisionId, createCimmichManualPhotoContextCommandId('undo'));
       objectUndoDecisionId = '';
-      ownerSummaryUndoDecisionId = '';
       objectActionMessage = 'Change undone.';
-      ownerSummaryActionMessage = 'Change undone.';
       retryCurrentEvidence();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to undo this change';
-      objectActionError = message;
-      ownerSummaryActionError = message;
+      objectActionError = error instanceof Error ? error.message : 'Unable to undo this change';
     } finally {
       isObjectSaving = false;
-      isOwnerSummarySaving = false;
     }
   };
 
@@ -2867,9 +2824,6 @@
     closeObjectTagging();
     contextQuery = '';
     contextAddKind = '';
-    ownerSummaryDraft = ownerSummary?.summaryText || '';
-    ownerSummaryActionError = '';
-    ownerSummaryActionMessage = '';
   };
 
   const loadManualTagSubjects = async () => {
@@ -3560,10 +3514,6 @@
     objectActionError = '';
     objectActionMessage = '';
     objectUndoDecisionId = '';
-    ownerSummaryDraft = '';
-    ownerSummaryActionError = '';
-    ownerSummaryActionMessage = '';
-    ownerSummaryUndoDecisionId = '';
     contextQuery = '';
     contextAddKind = '';
     contextActionError = '';
@@ -5989,12 +5939,6 @@
         ]}
         data-testid="cimmich-context-overlay"
       >
-        {#if ownerSummary?.summaryText}
-          <p class={[isContextEditing ? 'mb-3' : 'mr-1', 'font-medium text-white/90']}>
-            {ownerSummary.summaryText}
-          </p>
-        {/if}
-
         <div class="flex flex-wrap gap-1.5" aria-label="Context on this photo">
           {#each displayedPhotoContexts as context (`${context.family}:${context.entityId}`)}
             <div
@@ -6055,28 +5999,6 @@
 
         {#if isContextEditing}
           <div class="mt-3 grid gap-3 border-t border-white/12 pt-3">
-            <label class="grid gap-1.5 text-xs font-semibold text-white/70" for="cimmich-photo-owner-summary">
-              Owner note
-              <textarea
-                id="cimmich-photo-owner-summary"
-                class="min-h-20 resize-y rounded-lg border border-white/20 bg-black/35 px-3 py-2 text-sm font-normal text-white outline-none placeholder:text-white/40 focus:border-white/60"
-                placeholder="What matters about this photo?"
-                maxlength="2000"
-                bind:value={ownerSummaryDraft}
-                onkeydown={stopPhotoViewerShortcutPropagation}
-              ></textarea>
-            </label>
-            <div class="flex items-center justify-between gap-3">
-              <span class="text-[11px] text-white/45"
-                >Kept separate from generated Summary · {ownerSummaryDraft.length}/2000</span
-              >
-              <button
-                class="min-h-11 rounded-full bg-white px-4 text-xs font-bold text-black disabled:opacity-45"
-                type="button"
-                disabled={isOwnerSummarySaving || ownerSummaryDraft.trim() === (ownerSummary?.summaryText || '')}
-                onclick={() => void saveOwnerSummary()}>{isOwnerSummarySaving ? 'Saving…' : 'Save summary'}</button
-              >
-            </div>
             <div class="grid gap-2">
               <p class="text-xs font-semibold text-white/70">Add context</p>
               <div class="flex flex-wrap gap-2">
@@ -6136,24 +6058,6 @@
                     : `Every visible ${contextAddKind === 'place' ? 'Place' : 'Event'} is already connected.`}
                 </p>
               {/if}
-            {/if}
-            {#if ownerSummaryActionMessage || ownerSummaryActionError}
-              <div
-                class={[
-                  'flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs',
-                  ownerSummaryActionError ? 'bg-red-400/15 text-red-100' : 'bg-white/8 text-white/75',
-                ]}
-                role={ownerSummaryActionError ? 'alert' : 'status'}
-              >
-                <span>{ownerSummaryActionError || ownerSummaryActionMessage}</span>
-                {#if ownerSummaryUndoDecisionId && !ownerSummaryActionError}
-                  <button
-                    class="min-h-11 rounded-full bg-white/12 px-3 font-semibold hover:bg-white/20"
-                    type="button"
-                    onclick={() => void undoManualPhotoContextAction(ownerSummaryUndoDecisionId)}>Undo</button
-                  >
-                {/if}
-              </div>
             {/if}
           </div>
         {/if}

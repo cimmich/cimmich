@@ -125,6 +125,25 @@ describe('AssetViewerNavBar component', () => {
     expect(source).not.toContain('title="Local AI"');
   });
 
+  it('keeps the editable summary in a fourth Custom tab with import choices', () => {
+    const summary = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichSummaryAction.svelte'),
+      'utf8',
+    );
+    const context = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichPhotoOverlay.svelte'),
+      'utf8',
+    );
+
+    expect(summary).toContain("['standard', 'smart', 'enhanced', 'custom']");
+    expect(summary).toContain('Use Standard');
+    expect(summary).toContain('Use Smart');
+    expect(summary).toContain('Use Enhanced');
+    expect(summary).toContain('Save Custom');
+    expect(summary).not.toContain('Owner note');
+    expect(context).not.toContain('Owner note');
+  });
+
   it('keeps Local AI hidden until the separate experiment is enabled', () => {
     const owner = userAdminFactory.build();
     authManager.setUser(owner);

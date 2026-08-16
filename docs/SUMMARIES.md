@@ -49,11 +49,12 @@ are merged into the displayed result without rerunning the heavy model.
 Enhanced should run again only when the source pixels changed, its model/profile
 changed, or the owner explicitly requests a fresh visual interpretation.
 
-## Owner note
+## Custom
 
-The editable manual field is called **Owner note**. It remains separate from all
-three generated levels, is revisioned, supports Undo and is never overwritten by
-a model.
+**Custom** is the editable fourth option in the Summary bar. It remains separate
+from all three generated levels, is revisioned and is never overwritten by a
+model. The owner can start with Standard, Smart or Enhanced, edit the imported
+text and save only when ready.
 
 ## Availability and privacy
 
@@ -92,6 +93,10 @@ stable aliases, never display names. Provider output stores
 `{{person:person_id}}` tokens; the UI resolves those tokens against the current
 Person name. This lets a heavy model describe who is doing what without freezing
 a mutable name into model evidence or requiring a rerun after an ordinary rename.
+If the model left an unnamed subject as an anonymous phrase, the renderer fills
+that phrase only when the current accepted-Person count exactly matches the
+model's people estimate; otherwise it appends the still-unmentioned accepted
+names without guessing who occupied which position.
 Fast Smart output remains identity-neutral, and its conservative people count is
 woven together with current accepted names only while rendering.
 

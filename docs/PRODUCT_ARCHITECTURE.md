@@ -396,6 +396,11 @@ people, Context, date, place and OCR facts. They produce descriptive prose only;
 review queues and unresolved Face/Body counts remain separate operational
 projections.
 
+Custom is the manual fourth Summary view. It persists through the revisioned
+asset-owner-summary authority while importing only rendered text from Standard,
+Smart or Enhanced; importing does not mutate model evidence or save until the
+owner confirms it.
+
 The Local AI review surface carries an **Alpha · Experimental build** banner.
 Its public build default is `false`; private deployments may deliberately set
 `PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`, while the source, Compose
