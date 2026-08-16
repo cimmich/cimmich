@@ -16,6 +16,7 @@
   import CimmichDuplicateIndicator from '$lib/components/cimmich/CimmichDuplicateIndicator.svelte';
   import CimmichFileLocationActions from '$lib/components/cimmich/CimmichFileLocationActions.svelte';
   import CimmichLocalAiAction from '$lib/components/cimmich/CimmichLocalAiAction.svelte';
+  import CimmichSummaryAction from '$lib/components/cimmich/CimmichSummaryAction.svelte';
   import CimmichViewingMode from '$lib/components/cimmich/CimmichViewingMode.svelte';
   import { isCimmichViewingSurface } from '$lib/components/cimmich/photo-viewer-presentation';
   import { page } from '$app/state';
@@ -123,6 +124,7 @@
       aria-label="Cimmich photo tools"
     >
       <div id="cimmich-photo-overlay-toolbar" class="flex shrink-0 items-center"></div>
+      <CimmichSummaryAction {asset} canRun={isOwner && asset.type === AssetTypeEnum.Image} />
       <CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />
       <CimmichFileLocationActions {asset} variant="overlay" />
       {#if $cimmichLocalAiExperiment && isOwner && asset.type === AssetTypeEnum.Image}

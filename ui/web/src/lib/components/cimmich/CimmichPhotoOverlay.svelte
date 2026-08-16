@@ -145,7 +145,6 @@
     rotationQuarterTurns?: number;
   }
 
-  type SummaryMode = 'normal' | 'enhanced' | 'evidence';
   type OverlayView = 'context' | 'machinery' | 'off' | 'people';
   type FaceBox = CimmichFaceOverlay['bbox'];
   type BodyBox = CimmichBodyOverlay['bbox'];
@@ -200,7 +199,6 @@
   let isPresenceSaving = $state(false);
   let presenceInput = $state<HTMLInputElement>();
   let manualTagInput = $state<HTMLInputElement>();
-  let isSummaryVisible = $state(false);
   let isContextEditing = $state(false);
   let isObjectTaggingMode = $state(false);
   let objectRegionDraft = $state<ManualPhotoTagGeometry>();
@@ -238,7 +236,6 @@
   let showSidecarOnlyFaces = $state(false);
   let showLinkedBodies = $state(true);
   let showUnlinkedBodies = $state(true);
-  let summaryMode = $state<SummaryMode>('enhanced');
   const requestedFaceId = $derived(page.url.searchParams.get('cimmichFaceId')?.trim() ?? '');
   let overlayView = $state<OverlayView>(
     page.url.searchParams.get('cimmichOverlay') === 'machinery' || requestedFaceId
@@ -253,7 +250,6 @@
   const isContextSurfaceActive = $derived(overlayView === 'context' && !isSidecarVisible);
   let isArrivalCueVisible = $state(false);
   let hasStartedArrivalCue = false;
-  let isExpanded = $state(false);
   let selectedFaceId = $state('');
   let selectedBodyId = $state('');
   let bodyPersonQuery = $state('');
@@ -371,12 +367,6 @@
   const isCimmichEvidence = $derived(evidence?.provider === 'cimmich');
   const evidenceBrand = $derived(isCimmichEvidence ? 'Cimmich' : 'Imported evidence');
 
-  const candidatePeople = $derived(evidence?.summary?.candidatePeople ?? []);
-  const bodyPeople = $derived(evidence?.summary?.bodyContextPeople ?? []);
-  const bodyRows = $derived(
-    (evidence?.stateRows ?? []).filter((row) => row.family === 'body_context' || row.family === 'body_marker'),
-  );
-
   const faceOverlays = $derived(evidence?.faceOverlays ?? []);
   const bodyOverlays = $derived(evidence?.bodyOverlays ?? []);
   const sourcePresenceOverlays = $derived(evidence?.sourcePresenceOverlays ?? []);
@@ -394,19 +384,6 @@
     manualTagSubjects.find((subject) => subject.kind === 'person' && subject.id === bodySelectedPersonId),
   );
   const step2Item = $derived(step2Readback?.item);
-  const step2HasConsequentialReview = $derived(
-    Boolean(
-      step2Item &&
-      (step2Item.captureContext.temporalClashIds.length > 0 ||
-        step2Item.contextResolutionRequests.length > 0 ||
-        step2Item.identity.clauses.some(
-          (clause) =>
-            clause.negative_scopes.length > 0 ||
-            clause.evidence_class.endsWith('_reviewed_sequence_identity_candidate'),
-        ) ||
-        step2Item.identity.localFaces.some((face) => face.sequence_identity_candidate?.status === 'reject_candidate')),
-    ),
-  );
   const step2SummaryText = $derived(
     step2Item
       ? step2Item.enhancedVisualQc?.summary ||
@@ -2554,40 +2531,6 @@
     return evidence.summary.enhancedCaption || evidence.summary.visualDetailedCaption || fallbackSummary;
   });
 
-  const evidenceSummary = $derived.by(() => {
-    if (!evidence?.summary) {
-      return '';
-    }
-
-    return evidence.summary.evidenceCaption || fallbackSummary;
-  });
-
-  const currentSummary = $derived.by(() => {
-    if (summaryMode === 'normal') {
-      return normalSummary;
-    }
-    if (summaryMode === 'enhanced') {
-      return enhancedSummary || (step2Item ? step2SummaryText : '');
-    }
-    return evidenceSummary;
-  });
-
-  const summaryTitle = $derived.by(() => {
-    if (summaryMode === 'normal') {
-      return 'Standard image summary';
-    }
-    if (summaryMode === 'enhanced' && step2Item && !enhancedSummary) {
-      if (step2Item.enhancedVisualQc) {
-        return 'Enhanced visual summary · reviewed';
-      }
-      return step2HasConsequentialReview ? 'Step 2 · reviewed summary input' : 'Photo context';
-    }
-    if (summaryMode === 'enhanced') {
-      return 'Enhanced image summary';
-    }
-    return 'Evidence summary';
-  });
-
   const contextHref = (context: Pick<CimmichPhotoContext, 'entityId' | 'family'>) => {
     const search = new SvelteURLSearchParams({ entityId: context.entityId });
     if (context.family === 'objects') {
@@ -2873,7 +2816,6 @@
     }
     overlayView = view;
     isSidecarVisible = false;
-    isSummaryVisible = false;
     isEnhancedMenuOpen = false;
     selectedFaceId = '';
     selectedBodyId = '';
@@ -3405,7 +3347,6 @@
     isBulkFacePanelOpen = false;
     isTaggingMode = false;
     isEditingFaceName = false;
-    isExpanded = false;
     manualTagDraft = undefined;
     manualTagQuery = '';
     manualTagSelectedSubjectId = '';
@@ -3464,7 +3405,7 @@
       isEnhancedMenuOpen = false;
       return;
     }
-    if (event.key === 'Escape' && (overlayView !== 'off' || isSummaryVisible || isSidecarVisible)) {
+    if (event.key === 'Escape' && (overlayView !== 'off' || isSidecarVisible)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       selectOverlayView('off');
@@ -3531,106 +3472,6 @@
     ].filter((section) => section.fields.length > 0);
   });
 
-  const moreLines = $derived.by(() => {
-    if (step2Item) {
-      if (!step2HasConsequentialReview && !step2Item.enhancedVisualQc) {
-        return [];
-      }
-      const lines = [`Event: ${step2Item.summaryInput.event_clause}.`];
-      if (step2Item.enhancedVisualQc) {
-        const enhanced = step2Item.enhancedVisualQc;
-        lines.push(
-          `Enhanced QC: ${enhanced.terminalOutcome.replaceAll('_', ' ')} · confidence ${enhanced.confidence ?? 'not scored'} · model ${enhanced.modelDigest.slice(0, 12)}…`,
-        );
-        if (enhanced.visibleEntities.length > 0) {
-          lines.push(`Visible entities: ${enhanced.visibleEntities.join(', ')}.`);
-        }
-        for (const uncertainty of enhanced.additionalUncertainties) {
-          lines.push(`Safe unknown: ${uncertainty}.`);
-        }
-      }
-      for (const clause of step2Item.identity.clauses) {
-        const subject = clause.subject_scopes.map((scope) => scope.replaceAll('_', ' ')).join(', ');
-        const negative = clause.negative_scopes.map((scope) => scope.replaceAll('_', ' ')).join(', ');
-        lines.push(
-          `${clause.name} · ${clause.evidence_class.replaceAll('_', ' ')} · scope: ${subject}${negative ? ` · does not: ${negative}` : ''}.`,
-        );
-      }
-      for (const face of step2Item.identity.localFaces.filter(
-        (candidate) => candidate.sequence_identity_candidate?.status === 'reject_candidate',
-      )) {
-        lines.push(
-          `${face.sequence_identity_candidate?.name} proposal · rejected; ${face.disposition.replaceAll('_', ' ')}.`,
-        );
-      }
-      if (step2Item.visibleText.present) {
-        lines.push(
-          `Visible text (${step2Item.visibleText.legibility}): ${step2Item.visibleText.visible_text_clues.join(', ')}.`,
-        );
-      }
-      if (step2Item.captureContext.temporalClashIds.length > 0) {
-        lines.push(`Unresolved temporal context: ${step2Item.captureContext.temporalClashIds.join(', ')}.`);
-      }
-      lines.push(
-        `Exact v3 ledger · ${step2Readback?.rowCount} rows · digest ${step2Readback?.decisionDigestSha256.slice(0, 12)}…`,
-        step2Item.enhancedVisualQc
-          ? 'Read-only enhanced visual QC; canonical identity promotion and all source/database writes remain closed.'
-          : 'Read-only intermediate evidence; canonical identity promotion and enhanced visual QC remain closed.',
-      );
-      return lines;
-    }
-    if (!evidence?.summary) {
-      return [];
-    }
-
-    const lines: string[] = [];
-    if (
-      evidence.summary.visualDetailedCaption &&
-      evidence.summary.visualDetailedCaption !== evidence.summary.visualCaption
-    ) {
-      lines.push(evidence.summary.visualDetailedCaption);
-    }
-    if (evidence.summary.visualScene) {
-      lines.push(`Visible scene: ${evidence.summary.visualScene}.`);
-    }
-    if (evidence.summary.visibleActions?.length) {
-      lines.push(`Visible actions: ${evidence.summary.visibleActions.join(', ')}.`);
-    }
-    if (evidence.summary.visiblePeopleCountEstimate) {
-      lines.push(`Visible people estimate: ${evidence.summary.visiblePeopleCountEstimate}.`);
-    }
-    if (
-      evidence.summary.evidenceDetailedCaption &&
-      evidence.summary.evidenceDetailedCaption !== evidence.summary.evidenceCaption
-    ) {
-      lines.push(evidence.summary.evidenceDetailedCaption);
-    }
-    lines.push(...(evidence.summary.summaryEvidence ?? []));
-    if (candidatePeople.length > 0) {
-      lines.push(`Model candidates: ${candidatePeople.join(', ')}.`);
-    }
-    if (sourcePresenceOverlays.length > 0) {
-      lines.push(
-        `Imported identity locators awaiting type resolution: ${sourcePresenceOverlays.map((presence) => presence.name).join(', ')}.`,
-      );
-    }
-    if (bodyPeople.length > 0) {
-      lines.push(`Body/context people: ${bodyPeople.join(', ')}.`);
-    }
-    if (evidence.summary.localDescription && !lines.includes(evidence.summary.localDescription)) {
-      lines.push(evidence.summary.localDescription);
-    }
-    if (evidence.summary.visionRouteReason) {
-      lines.push(evidence.summary.visionRouteReason);
-    }
-    for (const row of bodyRows.slice(0, 3)) {
-      lines.push(
-        `${row.personName || 'Body evidence'}: ${row.reason}${row.machineValue ? ` (${row.machineValue})` : ''}`,
-      );
-    }
-    return lines;
-  });
-
   const loadCurrentEvidence = async (generation: number, assetId: string) => {
     isLoading = true;
     loadError = '';
@@ -3684,7 +3525,6 @@
     evidence = undefined;
     bundle = undefined;
     step2Readback = undefined;
-    isExpanded = false;
     selectedFaceId = '';
     selectedBodyId = '';
     faceActionMessage = '';
@@ -3771,7 +3611,7 @@
   <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{faceActionMessage}</p>
   <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{observationActionMessage}</p>
 
-  {#if loadError && !isSummaryVisible && !isSidecarVisible}
+  {#if loadError && !isSidecarVisible}
     <div class="pointer-events-auto absolute inset-x-4 top-16 z-30 flex justify-center" role="alert">
       <div
         class="flex max-w-xl items-center gap-3 rounded-md border border-red-200/30 bg-black/85 px-4 py-3 text-sm text-red-100 shadow-xl backdrop-blur-sm"
@@ -4174,7 +4014,7 @@
     {/if}
   {/if}
 
-  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'machinery' && imageMetrics && ((isFacesVisible && visibleMatchFaceOverlays.length > 0) || (isBodiesVisible && visibleSpatialBodyOverlays.length > 0))}
+  {#if !isSidecarVisible && overlayView === 'machinery' && imageMetrics && ((isFacesVisible && visibleMatchFaceOverlays.length > 0) || (isBodiesVisible && visibleSpatialBodyOverlays.length > 0))}
     <div
       class="pointer-events-none absolute inset-0"
       style={spatialOverlayStyle}
@@ -4427,7 +4267,7 @@
     </div>
   {/if}
 
-  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'machinery' && !isTaggingMode && imageMetrics}
+  {#if !isSidecarVisible && overlayView === 'machinery' && !isTaggingMode && imageMetrics}
     <div
       class="pointer-events-none absolute inset-0 z-30"
       style={spatialOverlayStyle}
@@ -4507,7 +4347,7 @@
     </div>
   {/if}
 
-  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'people' && isFacesVisible && imageMetrics}
+  {#if !isSidecarVisible && overlayView === 'people' && isFacesVisible && imageMetrics}
     <div
       class="pointer-events-none absolute inset-0"
       style={spatialOverlayStyle}
@@ -4637,7 +4477,7 @@
     </div>
   {/if}
 
-  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'people' && !isTaggingMode && imageMetrics}
+  {#if !isSidecarVisible && overlayView === 'people' && !isTaggingMode && imageMetrics}
     <div class="pointer-events-none absolute inset-0 z-35" style={spatialOverlayStyle}>
       {#each sourcePresenceOverlays as presence (presence.id)}
         <div
@@ -4681,7 +4521,7 @@
     </div>
   {/if}
 
-  {#if !isSidecarVisible && !isSummaryVisible && overlayView === 'people' && (namedPhotoPresence.length > 0 || primaryLocalizedManualPresenceTags.length > 0 || primaryRegionlessPresenceItems.length > 0)}
+  {#if !isSidecarVisible && overlayView === 'people' && (namedPhotoPresence.length > 0 || primaryLocalizedManualPresenceTags.length > 0 || primaryRegionlessPresenceItems.length > 0)}
     <div
       class="pointer-events-none absolute inset-x-3 bottom-6 z-30 flex flex-wrap justify-center gap-2"
       data-testid="cimmich-named-presence"
@@ -6216,7 +6056,7 @@
         {#if isContextEditing}
           <div class="mt-3 grid gap-3 border-t border-white/12 pt-3">
             <label class="grid gap-1.5 text-xs font-semibold text-white/70" for="cimmich-photo-owner-summary">
-              Photo summary
+              Owner note
               <textarea
                 id="cimmich-photo-owner-summary"
                 class="min-h-20 resize-y rounded-lg border border-white/20 bg-black/35 px-3 py-2 text-sm font-normal text-white outline-none placeholder:text-white/40 focus:border-white/60"
@@ -6227,7 +6067,9 @@
               ></textarea>
             </label>
             <div class="flex items-center justify-between gap-3">
-              <span class="text-[11px] text-white/45">Owner-written · {ownerSummaryDraft.length}/2000</span>
+              <span class="text-[11px] text-white/45"
+                >Kept separate from generated Summary · {ownerSummaryDraft.length}/2000</span
+              >
               <button
                 class="min-h-11 rounded-full bg-white px-4 text-xs font-bold text-black disabled:opacity-45"
                 type="button"
@@ -6348,49 +6190,6 @@
                 onclick={() => void undoManualPhotoContextAction(objectUndoDecisionId)}>Undo</button
               >
             {/if}
-          </div>
-        {/if}
-      </article>
-    </div>
-  {/if}
-
-  {#if isSummaryVisible && !isSidecarVisible}
-    <div class="pointer-events-auto absolute inset-x-3 bottom-6 flex justify-center">
-      <article
-        class="w-full max-w-3xl rounded-md bg-black/75 px-4 py-3 text-sm text-white shadow-xl backdrop-blur-sm"
-        data-testid="cimmich-summary-overlay"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-xs font-semibold tracking-wide text-white/60 uppercase">
-              {summaryTitle}
-            </p>
-            {#if isLoading}
-              <p class="mt-1 font-medium">Loading summary...</p>
-            {:else if loadError}
-              <p class="mt-1 font-medium text-red-100">{loadError}</p>
-            {:else if evidence}
-              <p class="mt-1 font-medium">{currentSummary}</p>
-            {:else if bundle}
-              <p class="mt-1 font-medium">No {evidenceBrand} summary for {asset.originalFileName}</p>
-            {/if}
-          </div>
-          {#if evidence && moreLines.length > 0}
-            <button
-              class="shrink-0 rounded-sm border border-white/30 px-2 py-1 text-xs"
-              type="button"
-              onclick={() => (isExpanded = !isExpanded)}
-            >
-              {isExpanded ? 'Less' : 'More'}
-            </button>
-          {/if}
-        </div>
-
-        {#if isExpanded}
-          <div class="mt-3 grid gap-2 border-t border-white/15 pt-3 text-xs text-white/75">
-            {#each moreLines as line (line)}
-              <p>{line}</p>
-            {/each}
           </div>
         {/if}
       </article>

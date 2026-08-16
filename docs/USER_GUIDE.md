@@ -147,7 +147,7 @@ Presence, Pet and context evidence.
 The photo viewer uses one top bar. Privacy is the first control at the left;
 its dropdown distinguishes **what you can currently see** from the saved
 visibility of **this photo**, so the two scopes are available without two
-competing lock icons. People, Context, duplicate evidence, file location and
+competing lock icons. People, Context, Summary, duplicate evidence, file location and
 optional Local AI use matching icon controls centred in the space before the
 ordinary Share, Zoom, Download, Info and other Immich actions. Icon tooltips
 appear promptly rather than making the owner wait to identify an unfamiliar
@@ -163,10 +163,19 @@ From the detail tools you can:
 - add or remove whole-photo Presence knowledge;
 - correct saved rotation, capture date or Place in Cimmich's projection and
   undo the correction; and
+- open **Summary** for an instant Standard view or configured Smart/Enhanced
+  local analysis; and
 - run bounded optional Local AI review on that photo or a small selection.
 
 These actions write Cimmich truth and decisions, not source pixels or Immich's
 database.
+
+Standard Summary uses current People, Context, date, place and OCR without a
+model. Smart favours a fast local visual pass plus review-only QC leads.
+Enhanced is the heavier initial interpretation. Both model tiers retain
+structured facts, so later names and Context update without another visual run.
+The editable **Owner note** remains separate and can never be overwritten by a
+generated summary. See [Photo summaries](SUMMARIES.md).
 
 ### File location and duplicate badges — Source current
 
@@ -553,5 +562,6 @@ library details.
 - [Privacy guide](../PRIVACY.md)
 - [Product architecture](PRODUCT_ARCHITECTURE.md)
 - [Local AI review](LOCAL_AI_REVIEW.md)
+- [Photo summaries](SUMMARIES.md)
 - [Community Preview journeys](COMMUNITY_PREVIEW_JOURNEYS.md)
 - [Frequently asked questions](FAQ.md)

@@ -9,6 +9,7 @@ import {
   type CimmichFaceIdentitySelector,
 } from './cimmich-face-identity-batch.service';
 import { createFaceReviewComparisonClient, type CimmichFaceMatch } from './cimmich-face-review-comparison-client';
+import type { CimmichGeneratedAssetSummaries } from './cimmich-generated-summary.types';
 import type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
 import type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
 import type { CimmichPersonAssetProjection } from './cimmich-person-asset.types';
@@ -21,6 +22,7 @@ export * from './cimmich-asset-correction.service';
 export * from './cimmich-asset-label.service';
 export * from './cimmich-bulk-album-operation.service';
 export * from './cimmich-local-ai.service';
+export type * from './cimmich-generated-summary.types';
 export * from './cimmich-deferred-face-review';
 export type { CimmichSmartSplitGroup, CimmichSmartSplitRecommendations } from './cimmich-smart-split.types';
 export type { CimmichExploreFacet, CimmichExploreFacetResult, CimmichExploreFilters } from './cimmich-explore.service';
@@ -1576,6 +1578,7 @@ export type CimmichAssetEvidence = {
     review_reason: 'general' | 'geometry';
   }>;
   filename: string;
+  generatedSummaries?: CimmichGeneratedAssetSummaries;
   height: number;
   known_people: Array<{ display_name: string; needs_holding: boolean; person_id: string }>;
   identity_locators?: Array<{

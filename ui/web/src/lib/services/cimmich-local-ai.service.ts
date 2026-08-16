@@ -1,6 +1,15 @@
 import { CimmichServiceError, cimmichRequestContext, request } from './cimmich.service';
 
-export type CimmichLocalAiOperation = 'best' | 'bodies' | 'context' | 'faces' | 'poses' | 'quick' | 'scene-text';
+export type CimmichLocalAiOperation =
+  | 'best'
+  | 'bodies'
+  | 'context'
+  | 'faces'
+  | 'poses'
+  | 'quick'
+  | 'scene-text'
+  | 'summary-enhanced'
+  | 'summary-smart';
 
 export type CimmichLocalAiStatus = {
   capabilities: {
@@ -11,6 +20,8 @@ export type CimmichLocalAiStatus = {
     poses: boolean;
     quick: boolean;
     sceneText: boolean;
+    summaryEnhanced: boolean;
+    summarySmart: boolean;
   };
   enabled: boolean;
   limits: {
@@ -23,6 +34,10 @@ export type CimmichLocalAiStatus = {
   originals: 'read-only';
   reviewRequired: true;
   schemaVersion: 'cimmich.local-ai-jobs.v1';
+  summaryProfiles: {
+    enhanced: { dedicated: boolean; model: string | null };
+    smart: { dedicated: boolean; model: string | null };
+  };
   state: 'disabled' | 'ready' | 'unavailable';
 };
 

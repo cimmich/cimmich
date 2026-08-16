@@ -40,6 +40,7 @@ remain available without controlling the front door.
 - [Privacy boundary](PRIVACY_BOUNDARY.md)
 - [Source-media immutability](SOURCE_MEDIA_IMMUTABILITY.md)
 - [Local AI review](LOCAL_AI_REVIEW.md)
+- [Photo summaries](SUMMARIES.md)
 - [Migration operations](MIGRATION_OPERATIONS.md)
 - [Archive mobility](ARCHIVE_MOBILITY.md)
 - [Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md)

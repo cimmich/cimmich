@@ -29,6 +29,7 @@ import { createMachineSuggestionSnapshot } from "./machine-suggestion-snapshot.m
 import { createManualSubjectPresenceStore } from "./manual-subject-presence.mjs";
 import { createManualSubjectTagStore } from "./manual-subject-tag.mjs";
 import { createManualPhotoContextStore } from "./manual-photo-context.mjs";
+import { createGeneratedAssetSummaryStore } from "./generated-asset-summary.mjs";
 import { normalizeMatchingProvider } from "./matching-provider.mjs";
 import { projectBodyPose, stripBodyPoseStorage } from "./body-pose.mjs";
 import { createPersonProfileStore } from "./person-profile.mjs";
@@ -892,6 +893,9 @@ export const createCimmichRepository = (
   });
   const manualPhotoContext = createManualPhotoContextStore(sql, {
     presentationRank,
+    resolveVisibleAssetDisplay,
+  });
+  const generatedAssetSummaries = createGeneratedAssetSummaryStore(sql, {
     resolveVisibleAssetDisplay,
   });
   const observationCorrections = createObservationCorrectionStore(sql, {
@@ -2360,6 +2364,7 @@ export const createCimmichRepository = (
     rejectManualObjectRegion: manualPhotoContext.rejectObject,
     setAssetOwnerSummary: manualPhotoContext.setSummary,
     undoManualPhotoContextDecision: manualPhotoContext.undo,
+    commitGeneratedAssetSummary: generatedAssetSummaries.commitFromLocalAi,
     smartSearch: basicSmartSearch.search,
     createPerson: personCreates.create,
     possiblePeopleRefresh: possiblePeople.refresh,
@@ -6667,9 +6672,12 @@ export const createCimmichRepository = (
       const linked = await resolveVisibleAssetDisplay(sourceAssetId);
       const [asset] = await sql`
       SELECT asset.asset_id, asset.capture_time, asset.height, asset.media_kind,
-        asset.mime_type, asset.width,
+        asset.mime_type, asset.width, projection.input_revision,
         coalesce(rotation.rotation_quarter_turns, 0)::int AS rotation_quarter_turns
       FROM asset
+      JOIN immich_asset_projection projection
+        ON projection.cimmich_asset_id = asset.asset_id
+        AND projection.state = 'active'
       LEFT JOIN current_asset_correction rotation
         ON rotation.asset_id = asset.asset_id
         AND rotation.correction_kind = 'rotation'
@@ -6689,6 +6697,7 @@ export const createCimmichRepository = (
         peopleRows,
         contextRows,
         manualContext,
+        generatedSummaries,
       ] = await Promise.all([
         sql`
         SELECT fo.face_id, fo.box_x::float8, fo.box_y::float8, fo.box_w::float8, fo.box_h::float8,
@@ -6937,6 +6946,10 @@ export const createCimmichRepository = (
         ORDER BY entity.entity_kind, lower(entity.display_name), entity.entity_id
       `,
         manualPhotoContext.projectCurrentAsset({ assetId: linked.assetId }),
+        generatedAssetSummaries.projectCurrentAsset({
+          assetId: linked.assetId,
+          inputRevision: asset.input_revision,
+        }),
       ]);
 
       const displayFaces = dedupeAssetFaces(faceRows);
@@ -7058,6 +7071,7 @@ export const createCimmichRepository = (
         known_people: peopleRows,
         presence: presenceRows,
         contexts: contextRows,
+        generatedSummaries,
         ownerSummary: manualContext.ownerSummary,
         thingRegions: manualContext.thingRegions,
       };

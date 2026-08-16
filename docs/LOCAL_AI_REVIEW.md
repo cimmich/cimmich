@@ -22,7 +22,11 @@ The owner can request:
 - **Add Context** — available only for a small multi-photo set with that Body
   provider; and
 - **Read Scene & Text** — available only with a separately configured
-  loopback-only vision model.
+  loopback-only vision model;
+- **Summary · Smart** — a fast local visual-fact pass committed to the private,
+  revision-bound summary projection; and
+- **Summary · Enhanced** — the heavier initial visual-fact pass, expected to
+  use a separately configured stronger profile.
 
 Unavailable operations remain visible and explain the missing capability. A
 configured model never changes accepted identity or Context data by itself.
@@ -73,7 +77,9 @@ Temporary input/configuration files are removed after every run and abandoned
 work directories are removed on service start. The derived store retains at
 most 12 recent runs and at most 4 GiB, pruning the oldest first. Removing that
 store loses previews only; it does not remove originals or accepted Cimmich
-truth.
+truth. Smart and Enhanced summary facts are the deliberate exception: successful
+validated proposals are committed to PostgreSQL with their exact source and
+model lineage. They still grant no identity or Context authority.
 
 ## Configuration
 
@@ -123,6 +129,12 @@ supplied provider runtime is compatible, and
 unavailable unless explicitly enabled against a loopback endpoint. This
 document does not certify those optional models, biometric accuracy,
 demographic fairness or archive-wide performance.
+
+Summary profiles use `CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL` and
+`CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL`. If either is absent, the deployment
+may explicitly fall back to `CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL`; capability
+status reports that the profile is shared so the UI does not present one model
+as two genuinely different quality levels.
 
 Pose is independently fail-closed. It stays unavailable unless
 `CIMMICH_LOCAL_AI_POSE_ENABLED=true` and both

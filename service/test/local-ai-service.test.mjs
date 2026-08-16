@@ -31,6 +31,8 @@ test("Local AI is fail-closed by default", async () => {
     poses: false,
     quick: false,
     sceneText: false,
+    summaryEnhanced: false,
+    summarySmart: false,
   });
   assert.equal(service.status().state, "disabled");
   await assert.rejects(
@@ -161,6 +163,46 @@ test("Local AI rejects unknown fields and unconfigured model capabilities", asyn
       }),
       (error) => error.code === "LOCAL_AI_INPUT_INVALID",
     );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("summary tiers disclose shared fallback and dedicated model profiles", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cimmich-local-ai-service-"));
+  try {
+    const shared = await createLocalAiService({
+      environment: {
+        CIMMICH_LOCAL_AI_ENABLED: "true",
+        CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED: "true",
+        CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL: "shared-vision",
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.equal(shared.status().capabilities.summarySmart, true);
+    assert.equal(shared.status().capabilities.summaryEnhanced, true);
+    assert.deepEqual(shared.status().summaryProfiles, {
+      enhanced: { dedicated: false, model: "shared-vision" },
+      smart: { dedicated: false, model: "shared-vision" },
+    });
+
+    const dedicated = await createLocalAiService({
+      environment: {
+        CIMMICH_LOCAL_AI_ENABLED: "true",
+        CIMMICH_LOCAL_AI_ROOT: root,
+        CIMMICH_LOCAL_AI_SCENE_TEXT_ENABLED: "true",
+        CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL: "heavy-vision",
+        CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL: "fast-vision",
+      },
+      immichCompanion: {},
+      repository: {},
+    });
+    assert.deepEqual(dedicated.status().summaryProfiles, {
+      enhanced: { dedicated: true, model: "heavy-vision" },
+      smart: { dedicated: true, model: "fast-vision" },
+    });
   } finally {
     await rm(root, { force: true, recursive: true });
   }

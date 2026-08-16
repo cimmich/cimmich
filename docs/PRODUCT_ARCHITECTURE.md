@@ -7,7 +7,7 @@ contracts or release receipts.
 
 > [!IMPORTANT]
 > This document follows the **current development source** (migration-ledger
-> schema 139/patch 1 at the time of this reconciliation). The latest named
+> schema 140/patch 1 at the time of this reconciliation). The latest named
 > public release is Community Preview 9 at schema 130/patch 1. Release claims
 > belong to the named release and its changelog, not to an arbitrary checkout.
 
@@ -83,7 +83,7 @@ this directory.
 | `ui/web/src/routes/(user)/cimmich/`                            | SvelteKit route shells for Cimmich screens.                                                      |
 | `ui/web/src/lib/components/cimmich/`                           | Product components, presentation controllers and shared Cimmich interactions.                    |
 | `ui/web/src/lib/services/cimmich.service.ts`                   | Main typed Web client and cross-domain public types.                                             |
-| `ui/web/src/lib/services/cimmich-*.ts`                         | Focused clients for explore, corrections, identity review, duplicates and Local AI.              |
+| `ui/web/src/lib/services/cimmich-*.ts`                         | Focused clients for explore, corrections, identity review, summaries, duplicates and Local AI.   |
 | `ui/web/src/lib/managers/cimmich-visibility-manager.svelte.ts` | Client-side viewing-mode generation, invalidation and fail-closed coordination.                  |
 | `ui/web/src/lib/route.ts`                                      | Canonical navigable URL builders.                                                                |
 | `providers/`                                                   | Weight-free or separately licensed provider adapters and manifests.                              |
@@ -384,8 +384,9 @@ are independently enabled capabilities:
   weights and not identity authority;
 - **providers** produce versioned observations under their own licence and
   confinement contract;
-- **Local AI** operates on one photo or a bounded selection and returns
-  temporary review/artifact results; and
+- **Local AI** operates on one photo or a bounded selection. Most results and
+  artifacts are temporary; explicitly generated Smart/Enhanced summary facts
+  are revision-bound durable projections with no identity authority; and
 - **Guided** is separately authenticated, capability-scoped and unable to raise
   its viewing ceiling.
 
@@ -459,6 +460,7 @@ contract; keep dated test counts and deployment identities in release receipts.
 - [Basic Smart Search](BASIC_SMART_SEARCH_V1.md)
 - [Archive mobility](ARCHIVE_MOBILITY.md)
 - [Local AI review](LOCAL_AI_REVIEW.md)
+- [Photo summaries](SUMMARIES.md)
 - [Privacy boundary](PRIVACY_BOUNDARY.md)
 - [Source-media immutability](SOURCE_MEDIA_IMMUTABILITY.md)
 - [Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md)

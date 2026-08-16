@@ -21,6 +21,8 @@ const operationMap = new Map([
   ["poses", "poses"],
   ["context", "context"],
   ["scene-text", "scene-text"],
+  ["summary-smart", "scene-text"],
+  ["summary-enhanced", "scene-text"],
 ]);
 const finalStates = new Set(["cancelled", "completed", "failed", "partial"]);
 const maxRetainedRuns = 12;
@@ -193,6 +195,14 @@ const publicCapabilities = (config, enabled, environment) => {
   const bodies = enabled && config.providers.bodies.enabled;
   const poses = enabled && bodies && config.providers.poses.enabled;
   const sceneText = enabled && config.providers.sceneText.enabled;
+  const smartSummaryModel =
+    environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
+    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
+    "";
+  const enhancedSummaryModel =
+    environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
+    environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
+    "";
   return {
     best: enhance,
     bodies,
@@ -201,6 +211,8 @@ const publicCapabilities = (config, enabled, environment) => {
     poses,
     quick: enabled,
     sceneText,
+    summaryEnhanced: sceneText && Boolean(enhancedSummaryModel),
+    summarySmart: sceneText && Boolean(smartSummaryModel),
   };
 };
 
@@ -458,6 +470,22 @@ export const createLocalAiService = async ({
     originals: "read-only",
     reviewRequired: true,
     schemaVersion,
+    summaryProfiles: {
+      enhanced: {
+        dedicated: Boolean(environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL),
+        model:
+          environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
+          environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
+          null,
+      },
+      smart: {
+        dedicated: Boolean(environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL),
+        model:
+          environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
+          environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL ||
+          null,
+      },
+    },
     state:
       enabled && Object.values(capabilities).some(Boolean)
         ? "ready"
@@ -539,7 +567,24 @@ export const createLocalAiService = async ({
       }
       const configPath = join(workDir, "config.json");
       const setPath = join(workDir, "set.json");
-      await writeFile(configPath, `${JSON.stringify(config)}\n`, {
+      const summaryModel =
+        job.operation === "summary-smart"
+          ? environment.CIMMICH_LOCAL_AI_SUMMARY_SMART_MODEL ||
+            environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL
+          : job.operation === "summary-enhanced"
+            ? environment.CIMMICH_LOCAL_AI_SUMMARY_ENHANCED_MODEL ||
+              environment.CIMMICH_LOCAL_AI_SCENE_TEXT_MODEL
+            : null;
+      const jobConfig = summaryModel
+        ? {
+            ...config,
+            providers: {
+              ...config.providers,
+              sceneText: { ...config.providers.sceneText, model: summaryModel },
+            },
+          }
+        : config;
+      await writeFile(configPath, `${JSON.stringify(jobConfig)}\n`, {
         mode: 0o600,
       });
       await writeFile(
@@ -619,6 +664,27 @@ export const createLocalAiService = async ({
         );
       }
       const result = JSON.parse(await readFile(receipt.resultPath, "utf8"));
+      if (
+        job.operation === "summary-smart" ||
+        job.operation === "summary-enhanced"
+      ) {
+        const tier = job.operation === "summary-smart" ? "smart" : "enhanced";
+        for (const asset of result.assets || []) {
+          const sceneText = asset.operations?.sceneText;
+          if (sceneText?.state !== "proposed") continue;
+          await repository.commitGeneratedAssetSummary({
+            configDigest: sceneText.configDigest,
+            modelDigest: sceneText.model?.digest,
+            modelName: sceneText.model?.name,
+            proposalDigest: sceneText.proposalDigest,
+            providerId: sceneText.providerId,
+            sourceAssetId: asset.assetId,
+            sourceContentDigest: asset.sourceContentDigest,
+            tier,
+            visualFacts: sceneText.proposal,
+          });
+        }
+      }
       const artifacts = artifactEntries(result);
       job.artifacts = new Map(
         artifacts.map((entry) => [
@@ -805,9 +871,13 @@ export const createLocalAiService = async ({
       }
       if (
         !capabilities[
-          normalized.operation === "scene-text"
-            ? "sceneText"
-            : normalized.operation
+          normalized.operation === "summary-smart"
+            ? "summarySmart"
+            : normalized.operation === "summary-enhanced"
+              ? "summaryEnhanced"
+              : normalized.operation === "scene-text"
+                ? "sceneText"
+                : normalized.operation
         ]
       ) {
         throw typedError(

@@ -3,7 +3,7 @@
 Updated: 2026-08-14
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 130/patch 1
-Current development source: migration-ledger schema 139/patch 1
+Current development source: migration-ledger schema 140/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
 Current release: `v1.1.0-community-preview.9` for exact Immich 3.1.0
@@ -18,6 +18,9 @@ audit view so the review API can render the new rows instead of failing closed.
 Schema 139 retains Immich's path-free visual signature so probable same-image
 versions remain reviewable even when Immich has not assigned a duplicate group;
 verified complete-file hashes still control exact-copy classification.
+Schema 140 adds revision-bound Smart and Enhanced visual-summary facts. Display
+text is rebuilt from those facts plus current owner-approved People and Context,
+so a rename never requires another model run. Standard remains model-free.
 
 ## Community Preview release contract
 
@@ -550,7 +553,7 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-Community Preview 9 remains schema 130; schema 139 is the current development
+Community Preview 9 remains schema 130; schema 140 is the current development
 source and does not revise the named public release.
 
 ## Historical Public Beta Patch 6 certification

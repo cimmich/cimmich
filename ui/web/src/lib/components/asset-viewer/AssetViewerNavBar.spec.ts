@@ -107,6 +107,7 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('sourceAssetId={isCimmichSurface ? asset.id : undefined}');
     expect(source).toContain('data-testid="cimmich-photo-tools"');
     expect(source).toContain('id="cimmich-photo-overlay-toolbar"');
+    expect(source).toContain('<CimmichSummaryAction {asset}');
     expect(source).toContain('<CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />');
     expect(source).toContain('<CimmichFileLocationActions {asset} variant="overlay" />');
     expect(source).not.toContain('<CimmichAssetVisibility');
