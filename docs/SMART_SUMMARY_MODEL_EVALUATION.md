@@ -8,10 +8,10 @@ approve a model, download weights or start an archive job.
 
 The private reference machines expose two very different useful profiles:
 
-| Profile | Hardware | Guaranteed acceleration | Smart implication |
-| --- | --- | --- | --- |
-| Portable Linux | 8-core / 16-thread AMD Ryzen 7 255, Radeon 780M, 28 GiB usable RAM | CPU only. The 780M is not in Ollama's supported Linux ROCm list; Vulkan remains optional proof, never the baseline. | A default must be small, quantized and useful without a discrete GPU. |
-| Apple Silicon | M5 Pro, 64 GiB unified memory, 20-core GPU | Metal through MLX, Core ML or Ollama | This is the preferred private bulk worker and may use an independently selected accelerated profile. |
+| Profile        | Hardware                                                           | Guaranteed acceleration                                                                                             | Smart implication                                                                                    |
+| -------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Portable Linux | 8-core / 16-thread AMD Ryzen 7 255, Radeon 780M, 28 GiB usable RAM | CPU only. The 780M is not in Ollama's supported Linux ROCm list; Vulkan remains optional proof, never the baseline. | A default must be small, quantized and useful without a discrete GPU.                                |
+| Apple Silicon  | M5 Pro, 64 GiB unified memory, 20-core GPU                         | Metal through MLX, Core ML or Ollama                                                                                | This is the preferred private bulk worker and may use an independently selected accelerated profile. |
 
 Phone-scale models are useful evidence that this capability is computationally
 modest on current computers; phones are not a Cimmich deployment target. A
@@ -118,21 +118,21 @@ private corpus remains outside Git and model training.
 
 ### Truth and usefulness
 
-| Measure | Required bar |
-| --- | --- |
-| Major-error-free summary | At least 95% of acceptance photos |
-| Owner rates result useful and materially correct | At least 90% |
-| Unsupported precise identity, date or location claim | 0 occurrences |
-| Concrete object precision / recall | At least 92% / 75% |
-| Visible activity precision | At least 90% |
-| People count, 0–5 visible people | Exact at least 90%; within one at least 98% |
-| Dense-scene people bucket: 0, 1, 2, 3–5, 6+ | At least 90% |
-| Quality-flag precision / recall | At least 90% / 80% |
-| Missing Face/Body review-lead precision / recall | At least 80% / 85% |
-| Invented visible text | No more than 1% of photos containing a text claim |
-| Acceptance photos receiving a stored Smart result | At least 70% |
-| Stored Smart results containing at least one useful fact beyond Standard | At least 90% |
-| Smart results the owner would choose to run again | At least 85% |
+| Measure                                                                  | Required bar                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------- |
+| Major-error-free summary                                                 | At least 95% of acceptance photos                 |
+| Owner rates result useful and materially correct                         | At least 90%                                      |
+| Unsupported precise identity, date or location claim                     | 0 occurrences                                     |
+| Concrete object precision / recall                                       | At least 92% / 75%                                |
+| Visible activity precision                                               | At least 90%                                      |
+| People count, 0–5 visible people                                         | Exact at least 90%; within one at least 98%       |
+| Dense-scene people bucket: 0, 1, 2, 3–5, 6+                              | At least 90%                                      |
+| Quality-flag precision / recall                                          | At least 90% / 80%                                |
+| Missing Face/Body review-lead precision / recall                         | At least 80% / 85%                                |
+| Invented visible text                                                    | No more than 1% of photos containing a text claim |
+| Acceptance photos receiving a stored Smart result                        | At least 70%                                      |
+| Stored Smart results containing at least one useful fact beyond Standard | At least 90%                                      |
+| Smart results the owner would choose to run again                        | At least 85%                                      |
 
 People and QC counts remain review leads. They must never create observations,
 name a Person or alter accepted identity.
@@ -155,10 +155,42 @@ tokens per second or time-to-first-token. Speed and value are independent hard
 gates: quality cannot excuse a slow Smart pipeline, and speed cannot excuse
 low-value output.
 
-| Batch profile | Hard qualification | Target |
-| --- | --- | --- |
-| Accelerated computer | At least 10 complete photos/s sustained | At least 20 photos/s |
-| Portable CPU baseline | At least 2 complete photos/s sustained | At least 4 photos/s |
+Smart is benchmarked against the Immich work owners already choose to run on
+the same machine. Before testing a candidate, run Immich OCR and Smart Search
+over the same corpus and record their complete queue throughput. These are the
+native reference lanes:
+
+- **OCR** is the minimum acceptable Smart-summary speed. It already performs
+  per-photo visual inference and persistence at a cost Immich treats as normal
+  archive processing.
+- **Smart Search** is the stretch target. It measures how quickly the installed
+  Immich visual encoder can turn an image into useful stored evidence.
+
+On the private X1 archive, a live Immich v3.1.0 CPU run on 16 August 2026
+retained enough queue history for an end-to-end measurement:
+
+| Native X1 lane | Installed model | Completed sample          | Sustained rate |
+| -------------- | --------------- | ------------------------- | -------------- |
+| OCR            | PP-OCRv5_mobile | 5,000 photos in 1,048.7 s | 4.77 photos/s  |
+| Smart Search   | ViT-B/32 OpenAI | 5,000 photos in 254.8 s   | 19.62 photos/s |
+
+Those numbers are a provisional UX anchor, not a portable model claim. The
+current OCR run has one active queue job and was observed using roughly two CPU
+cores; Smart Search used a different concurrency pattern. Clean qualification
+therefore repeats all three lanes with the same corpus, worker limits and
+machine state, and records core-seconds per committed photo as well as wall
+throughput.
+
+| Qualification                    | Hard gate                                                 | Target                                                                |
+| -------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| Same-host throughput             | At least 90% of that host's Immich OCR rate               | At least the OCR rate; approach Smart Search where truth still passes |
+| Same-host compute                | No more than 110% of OCR core-seconds per committed photo | At or below OCR core-seconds per photo                                |
+| Private X1 provisional wall-rate | At least 4.29 complete photos/s                           | At least 4.77 complete photos/s                                       |
+
+The 10% qualification tolerance absorbs normal queue and storage variance; it
+does not redefine a substantially slower model as fast. A Mac profile is judged
+against Immich OCR and Smart Search measured on that Mac, not against an
+invented accelerated-machine number or an X1 result scaled by core count.
 
 The sustained rate includes image decode, model work, schema validation and
 committing the result. It is measured over both the labelled 1,000-photo corpus
@@ -168,9 +200,10 @@ separately chosen Enhanced or accelerated-only profile.
 
 The worker prioritizes explicit batches, new imports and voluntary catch-up,
 but scheduling is not a substitute for performance. Chunking and resume protect
-interrupted work; they do not make a slow model acceptable. If no candidate
-clears both the throughput and usefulness gates, Cimmich does not ship it as
-Smart.
+interrupted work; they do not make a slow model acceptable. Smart reuses stored
+OCR, People, Context and other metadata rather than calculating them again. If
+no candidate clears both the Immich-relative throughput gate and the usefulness
+bar, Cimmich does not ship it as Smart.
 
 The Mac Smart worker should stay below 16 GiB additional memory. X1 should stay
 below 8 GiB additional memory, use adaptive multi-core concurrency, and
@@ -191,17 +224,21 @@ requires long unattended compute.
 
 ## Evaluation order
 
-1. Run the 300-photo screen on Qwen3-VL-2B, SmolVLM-500M and both Florence-2
+1. Run native Immich OCR and Smart Search over the exact benchmark corpus on
+   each claimed host profile with fixed worker/resource limits. Record
+   end-to-end throughput, core-seconds per committed photo, peak memory and
+   foreground API latency.
+2. Run the 300-photo screen on Qwen3-VL-2B, SmolVLM-500M and both Florence-2
    sizes with identical normalized input and output limits.
-2. Compare Florence-only, Qwen-only and Florence-to-Qwen routed pipelines. Add
+3. Compare Florence-only, Qwen-only and Florence-to-Qwen routed pipelines. Add
    Moondream only if one of the first three leaves an unfilled speed/quality
    quadrant.
-3. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
+4. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
    Reject any profile below either its hard throughput gate or the independent
    usefulness bar; do not average the two into one forgiving score.
-4. Use the already available larger local VLM only as a diagnostic comparison;
+5. Use the already available larger local VLM only as a diagnostic comparison;
    human labels remain authority.
-5. Run the 10,000-photo engineering soak before selecting a private default. No
+6. Run the 10,000-photo engineering soak before selecting a private default. No
    archive-wide run begins until the queue and pressure guards exist, and no
    complete archive sweep becomes a normal product requirement.
 
