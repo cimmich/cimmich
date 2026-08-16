@@ -2,6 +2,7 @@
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import {
+    archiveVariantFolderContext,
     buildArchiveVariantGroups,
     type ArchiveCanonicalPlanStatus,
     type ArchiveVariantClassification,
@@ -24,6 +25,7 @@
     mdiArrowRight,
     mdiContentDuplicate,
     mdiDatabaseSearchOutline,
+    mdiFolderOpenOutline,
     mdiImageMultipleOutline,
     mdiInformationOutline,
     mdiRefresh,
@@ -624,6 +626,7 @@
               <div class="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
                 {#each group.assets as asset, assetIndex (asset.id)}
                   {@const cimmichEvidence = group.evidence.get(asset.id)}
+                  {@const folderContext = archiveVariantFolderContext(group.assets, asset)}
                   <div class="overflow-hidden rounded-2xl border border-gray-200 dark:border-immich-dark-gray">
                     <a
                       class="group relative block aspect-16/10 overflow-hidden bg-gray-100 dark:bg-gray-900"
@@ -649,6 +652,21 @@
                           {formatDate(asset.exifInfo?.dateTimeOriginal ?? asset.localDateTime)} ·
                           {assetDimensions(asset)} · {formatBytes(asset.exifInfo?.fileSizeInByte ?? 0)}
                         </p>
+                        {#if folderContext}
+                          <a
+                            class="mt-2 flex min-w-0 items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                            href={Route.viewFolderAsset({ cimmich: 1, id: asset.id, path: folderContext.path })}
+                            title={`Show all in ${folderContext.path}`}
+                          >
+                            <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0" />
+                            <span class="min-w-0 truncate">{folderContext.path}</span>
+                            <span class="shrink-0 whitespace-nowrap">
+                              {folderContext.moreLikelySameHere > 0
+                                ? `(+${folderContext.moreLikelySameHere} more likely same here · see all)`
+                                : '(see folder)'}
+                            </span>
+                          </a>
+                        {/if}
                       </div>
                       <div class="space-y-1.5 text-xs/5 text-gray-600 dark:text-gray-300">
                         <p><strong class="text-gray-900 dark:text-white">Immich People:</strong> {names(asset)}</p>
