@@ -23,21 +23,28 @@ owner normally has to leave a computer running for hours or days to benefit.
 
 ### First benchmark set
 
-1. **Qwen3-VL-2B-Instruct** is the leading general Smart candidate. It is
-   Apache-2.0, current, explicitly spans edge deployments, has strong OCR and
-   spatial understanding, and is available as a 1.9 GB Q4 Ollama model for
-   Linux and macOS. It should be tested with thinking disabled, bounded image
-   resolution and a short schema-constrained response.
-2. **SmolVLM-500M-Instruct** is the portability and speed floor. Hugging Face
-   provides Transformers, MLX, ONNX and WebGPU routes and describes the 500M
-   model as more robust to prompting than the 256M variant. If it meets the
-   truth bar, its footprint makes it particularly attractive for CPU, browser
-   and future phone use.
+1. **Apple Vision plus deterministic composition** is the provisional Mac
+   champion. Its built-in classifier, accurate OCR, Face, Human and Animal
+   requests already clear the archive-speed class on the M5 Pro. It does not
+   solve the portable Linux profile and still needs the labelled truth screen.
+2. **SmolVLM-500M-Instruct** is the leading selective generative challenger,
+   not an every-photo default. Hugging Face provides Transformers, MLX, ONNX
+   and WebGPU routes. A persistent 4-bit MLX screen reached 3.05 photos/s on the
+   M5 Pro: much closer than Qwen, but below the 4.29/s hard gate and with one
+   invented-text failure in six examples. It may still add value on a bounded
+   minority of photos selected by the fast specialist pass.
 3. **Florence-2-base-ft and Florence-2-large-ft** are the specialist/hybrid
    candidates. Microsoft's 0.23B and 0.77B MIT-licensed models expose caption,
-   dense caption, object detection and OCR tasks. They are not expected to be
-   the final prose writer. They may be the fastest way to produce grounded
-   facts over every image before a compact language pass.
+   dense caption, object detection and OCR tasks. The 164 MB 4-bit base build
+   could not be benchmarked in the current Mac MLX environment: its processor
+   needs a Transformers combination that the current `mlx-vlm` runtime does
+   not support cleanly. Resolve that in an isolated runtime before judging its
+   speed; do not install a large compatibility stack into a shared environment.
+4. **Qwen3-VL-2B-Instruct** is rejected as an every-photo Smart candidate. It
+   is Apache-2.0 and produced useful compact facts, but the Mac screen reached
+   only 0.84 photos/s sequentially and 1.61 photos/s with four concurrent
+   requests. Its full contract also invented visible text. It remains an
+   Enhanced or tightly routed comparison model.
 
 ### Useful challengers
 
@@ -93,6 +100,37 @@ need at least 370 output tokens per second to process 100,000 photos in three
 hours, before any image work. That arithmetic demonstrates why routing easy,
 duplicate and low-value photos around generation matters more than shaving a few
 tokens from a caption; it is not a promised completion time.
+
+## Provisional Mac screen
+
+The first Mac screen used the six rights-cleared Space Trip demo images. It is a
+pipeline-direction screen, not the 300-photo acceptance corpus. Repeated-image
+runs expose warm sustained cost and can benefit from filesystem/model caches;
+the first-pass figures therefore remain visible rather than being averaged
+away.
+
+| Pipeline                           | Work per photo                                                                   | Result                                                                               |
+| ---------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Existing Apple Vision worker       | Accurate OCR, Face, Human, pose and Animal evidence, source hashing and receipts | 6 photos in 1.335 s: 4.49/s including cold start; about 10.0/s after the first photo |
+| Apple Vision classification screen | Classification, accurate OCR, Face, Human and Animal evidence                    | First six in 0.636 s: 9.43/s; 120 repeated completions in 6.168 s: 19.46/s           |
+| Qwen3-VL 8B full contract          | Full image-to-structured-facts generation                                        | About 0.18/s warm; useful output, decisively Enhanced-only                           |
+| Qwen3-VL 2B Q4 full contract       | Full image-to-structured-facts generation                                        | About 0.29/s warm; invented visible text and repetitive objects                      |
+| Qwen3-VL 2B Q4 compact facts       | No OCR output, 61 output tokens average                                          | 0.84/s sequential; 1.61/s at concurrency four                                        |
+| SmolVLM 500M 4-bit MLX             | One short literal sentence, persistent loaded model                              | 18 completions in 5.899 s: 3.05/s; one invented-text failure                         |
+| Florence-2 base 4-bit MLX          | Intended specialist task tokens                                                  | No score: current MLX/Transformers processor incompatibility                         |
+
+The Apple classifier labels were useful but deliberately generic: for example
+`helmet`, `moon`, `porthole`, `backpack`, `cup`, `people` and `adult`. They are
+evidence inputs, not finished summaries. Cimmich should collapse taxonomy
+parents, merge them with stored OCR/People/Place/Context and compose the common
+case deterministically. A compact VLM should run only when those facts are
+incomplete or contradictory.
+
+Using the conservative warm Apple worker rate of 10 photos/s and the measured
+SmolVLM rate of 3.05 photos/s, routing 20% of photos through SmolVLM yields an
+estimated serial pipeline rate of about 6.0 photos/s. Routing one third falls to
+roughly the OCR target. This makes **routing rate** a release metric: a default
+profile must not depend on generative escalation for most of the archive.
 
 ## Acceptance corpus
 
@@ -228,11 +266,12 @@ requires long unattended compute.
    each claimed host profile with fixed worker/resource limits. Record
    end-to-end throughput, core-seconds per committed photo, peak memory and
    foreground API latency.
-2. Run the 300-photo screen on Qwen3-VL-2B, SmolVLM-500M and both Florence-2
-   sizes with identical normalized input and output limits.
-3. Compare Florence-only, Qwen-only and Florence-to-Qwen routed pipelines. Add
-   Moondream only if one of the first three leaves an unfilled speed/quality
-   quadrant.
+2. Run the 300-photo Mac screen on Apple Vision composition, then Apple Vision
+   with SmolVLM escalation capped at 10%, 20% and 30%. Measure both useful
+   coverage and total routed throughput.
+3. Resolve Florence in a disposable compatible runtime and compare it as the
+   portable specialist. Add Moondream only if Florence and SmolVLM leave an
+   unfilled speed/quality quadrant. Do not retest Qwen as an every-photo lane.
 4. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
    Reject any profile below either its hard throughput gate or the independent
    usefulness bar; do not average the two into one forgiving score.
