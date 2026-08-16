@@ -171,7 +171,9 @@ These actions write Cimmich truth and decisions, not source pixels or Immich's
 database.
 
 Standard Summary uses current People, Context, date, place and OCR without a
-model. Smart favours a fast local visual pass plus review-only QC leads.
+model, and describes the photograph rather than reporting review work. Face and
+Body review counts remain in the relevant People/QC controls. Smart favours a
+fast local visual pass plus review-only QC leads.
 Enhanced is the heavier initial interpretation. Both model tiers retain
 structured facts, so later names and Context update without another visual run.
 On a Mac Local AI worker, Smart selects Apple Vision by default and downloads

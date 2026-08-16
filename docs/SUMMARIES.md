@@ -21,6 +21,10 @@ photo is opened from currently available facts such as:
 Because Standard is compiled rather than stored as prose, correcting a name or
 adding Context changes the next read immediately.
 
+Standard describes the photograph in natural language. Review workload such as
+unresolved Face or Body counts belongs in People and QC controls, never in the
+photo summary.
+
 ## Smart
 
 Smart is the fast, always-batched local visual pass. It consumes imports,

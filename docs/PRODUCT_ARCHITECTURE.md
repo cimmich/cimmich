@@ -391,6 +391,11 @@ are independently enabled capabilities:
 - **Guided** is separately authenticated, capability-scoped and unable to raise
   its viewing ceiling.
 
+Standard photo summaries are deterministic read projections of accepted
+people, Context, date, place and OCR facts. They produce descriptive prose only;
+review queues and unresolved Face/Body counts remain separate operational
+projections.
+
 The Local AI review surface carries an **Alpha · Experimental build** banner.
 Its public build default is `false`; private deployments may deliberately set
 `PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`, while the source, Compose
