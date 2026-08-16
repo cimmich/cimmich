@@ -103,7 +103,7 @@ this directory.
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                  | context entity, relation, asset, cover, plan and geocoding routes                                | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived        |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                | Document metadata/link/content/version routes                                                    | metadata in PostgreSQL; imported bytes in the separate content-addressed store                  |
 | Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                  | deterministic smart-search and Document queries                                                  | local read projection over confirmed truth; no search-owned authority                           |
-| Archive Health       | archive-integrity route and focused client                                                                                         | exact duplicates, visual-signature groups, backup proof and canonical-plan derivation            | fingerprints/provenance durable or reproducible; recommendations derived                        |
+| Archive Health       | archive-integrity route and focused client                                                                                         | exact copies, possible-duplicate groups, inline preservation recommendation and backup proof      | fingerprints/provenance durable or reproducible; recommendations derived                        |
 | Settings/setup       | settings, setup and maintenance routes                                                                                             | integration, onboarding, provider, SourcePack, Local AI and Guided operators                     | configuration and reviewed lifecycle state; model output remains observation                    |
 
 ## Identity and evidence model
@@ -273,11 +273,15 @@ Duplicate badges use one bounded status request for a viewport and a short
 cache, not one request per card. Photo-specific Archive Health URLs preserve
 the target asset and requested evidence mode. Archive Health already receives
 each Immich `AssetResponseDto.originalPath`; it derives containing-folder and
-same-group/same-folder peer counts in the client, so displaying folder context
-does not add a service query or matcher pass.
+folder-wide flagged-photo counts across the loaded duplicate review in the
+client, so displaying and filtering folder context does not add a service query
+or matcher pass.
 
-The canonical preservation plan is a pure ranking/read model. It records
-reasons and cautions, may hold an ambiguous group and never deletes a file.
+The preservation recommendation is a pure ranking/read model rendered inline
+with its comparison group. It records reasons and cautions, may hold an
+ambiguous group and never deletes a file. Legacy `mode=plan` URLs open the
+Possible duplicates view because the recommendation is no longer a duplicate
+navigation destination.
 
 ## Visibility architecture
 

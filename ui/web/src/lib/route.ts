@@ -108,8 +108,11 @@ export const Route = {
   cimmichActivity: ({ id }: { id: string }) => `/cimmich/activities/${encodeURIComponent(id)}`,
   cimmichDocuments: () => '/cimmich/documents',
   cimmichEvents: () => '/cimmich/events',
-  cimmichArchiveIntegrity: (params?: { assetId?: string; mode?: 'exact' | 'variants' }) =>
-    '/cimmich/archive-integrity' + asQueryString(params),
+  cimmichArchiveIntegrity: (params?: {
+    assetId?: string;
+    folder?: string;
+    mode?: 'exact' | 'variants' | 'plan' | 'backup';
+  }) => '/cimmich/archive-integrity' + asQueryString(params),
   cimmichLibrary: () => '/cimmich/library',
   cimmichLibraryBulk: () => '/cimmich/library/bulk',
   cimmichMaintenance: () => '/cimmich/maintenance',

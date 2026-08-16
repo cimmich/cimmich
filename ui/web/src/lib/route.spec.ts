@@ -86,6 +86,9 @@ describe('Route', () => {
       expect(Route.cimmichArchiveIntegrity({ assetId: 'asset-1', mode: 'variants' })).toBe(
         '/cimmich/archive-integrity?assetId=asset-1&mode=variants',
       );
+      expect(Route.cimmichArchiveIntegrity({ folder: '/archive/Trips/Sydney', mode: 'variants' })).toBe(
+        '/cimmich/archive-integrity?folder=%2Farchive%2FTrips%2FSydney&mode=variants',
+      );
     });
   });
 

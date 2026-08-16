@@ -42,7 +42,7 @@ The simplest mental model is:
 | Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
 | Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
 | Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
-| Understand duplicate or preservation evidence | **Archive Health** | Separate byte-exact copies from similar files and inspect recommendation-only plans.                |
+| Understand duplicate or preservation evidence | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.   |
 | Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
@@ -157,9 +157,10 @@ Ordinary Cimmich photo cards and the viewer can show two distinct badges:
 
 Selecting a badge opens the relevant photo-specific group in Archive Health so
 you can see why it was classified that way. Each compared file shows its
-containing folder. A bracketed count reports how many other files in that
-evidence group share the folder, and **see all** opens that location with
-Cimmich context intact. **Show in folder** opens the browser-accessible folder
+containing folder. A bracketed count reports how many other photos in that
+folder are flagged anywhere in the loaded duplicate review; selecting it shows
+those groups. Selecting the path opens the browser-accessible folder with
+Cimmich context intact. **Show in folder** also opens the browser-accessible folder
 context; **Copy full path** copies the source path when the signed-in surface is
 allowed to expose it. A web browser does not claim that it opened Finder or
 another native file manager unless a real host mapping exists.
@@ -428,23 +429,21 @@ sizes and relevant organisation details. Even exact bytes can have different
 copy-local Immich People or Tags, so inspect what would be lost before removing
 anything outside Cimmich.
 
-### Similar media
+### Possible duplicates
 
 Similarity groups are classified as:
 
-- **Bytes differ** — complete hashes prove the files are not exact copies;
-- **Exact overlap** — complete hashes agree inside a similarity group; or
-- **Candidate only** — at least one file lacks enough byte proof.
+- **Different files** — complete hashes prove the files are not exact copies;
+- **Exact copies** — complete hashes agree inside a similarity group; or
+- **Needs verification** — at least one file lacks enough byte proof.
 
 The comparison explains dimensions, file size, dates, metadata and Cimmich
 evidence. A probable version can be a resize, edit, export or merely a strong
 visual lead. Similarity alone is never deletion authority.
 
-### Preferred preservation candidates
-
-The recommendation-only plan discloses why one version leads—such as original
-capture indicators, resolution, metadata or evidence links—and why a group is
-held. The owner still reviews and acts outside the plan.
+When evidence supports a preferred preservation candidate, it is marked on the
+photo and explained in the same group. Ambiguous or byte-incomplete groups say
+that no safe recommendation exists. Recommendations never change files.
 
 ### Backup proof
 

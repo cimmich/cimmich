@@ -32,25 +32,42 @@ export type ArchiveVariantGroup = DuplicateResponseDto & {
 };
 
 export type ArchiveVariantFolderContext = {
-  moreLikelySameHere: number;
+  otherFlaggedHere: number;
   path: string;
 };
 
 export const archiveVariantFolderContext = (
-  assets: AssetResponseDto[],
+  groups: Pick<DuplicateResponseDto, 'assets'>[],
   asset: AssetResponseDto,
 ): ArchiveVariantFolderContext | null => {
   if (!asset.originalPath) {
     return null;
   }
   const path = getParentPath(asset.originalPath);
+  const flaggedAssetIds = new Set(
+    groups.flatMap((group) =>
+      group.assets
+        .filter((candidate) => Boolean(candidate.originalPath) && getParentPath(candidate.originalPath) === path)
+        .map((candidate) => candidate.id),
+    ),
+  );
+  flaggedAssetIds.delete(asset.id);
   return {
-    moreLikelySameHere: assets.filter(
-      (candidate) =>
-        candidate.id !== asset.id && Boolean(candidate.originalPath) && getParentPath(candidate.originalPath) === path,
-    ).length,
+    otherFlaggedHere: flaggedAssetIds.size,
     path,
   };
+};
+
+export const archiveVariantGroupsInFolder = <T extends Pick<DuplicateResponseDto, 'assets'>>(
+  groups: T[],
+  path: string,
+) => {
+  if (!path) {
+    return groups;
+  }
+  return groups.filter((group) =>
+    group.assets.some((asset) => Boolean(asset.originalPath) && getParentPath(asset.originalPath) === path),
+  );
 };
 
 export const createArchiveVisualDuplicateGroup = (
