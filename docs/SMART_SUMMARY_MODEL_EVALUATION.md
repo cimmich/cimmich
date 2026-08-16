@@ -68,18 +68,24 @@ owner normally has to leave a computer running for hours or days to benefit.
 
 ## Recommended Smart architecture
 
-Smart should be a pipeline, not a smaller imitation of Enhanced:
+Smart should be an always-batched pipeline, not a smaller imitation of
+Enhanced:
 
 1. Decode and normalize each image once.
 2. Reuse existing Immich/Cimmich people, OCR, date, location, quality and
    duplicate evidence.
 3. Run a fast specialist pass over every eligible photo for grounded caption,
    objects and visual quality leads.
-4. Invoke the compact VLM only when the specialist result is incomplete,
-   contradictory or sufficiently information-rich to benefit.
+4. Batch compact-VLM work only for photos where the specialist result is
+   incomplete, contradictory or sufficiently information-rich to benefit.
 5. Persist validated structured facts, never frozen final prose.
 6. Build event, group and archive summaries from those photo facts. Do not send
    the original archive through another large visual pass.
+
+Smart is never the one-photo interactive action. Standard serves the open photo
+immediately; Enhanced is the explicit action when an owner cares about one
+photo or a selected set. Smart consumes imports, selections or catch-up work in
+batches so model load, image preprocessing and persistence are amortized.
 
 This design makes useful results available quickly without requiring a complete
 archive sweep. A VLM that generates even 40 output tokens for every photo would
@@ -124,8 +130,9 @@ private corpus remains outside Git and model training.
 | Quality-flag precision / recall | At least 90% / 80% |
 | Missing Face/Body review-lead precision / recall | At least 80% / 85% |
 | Invented visible text | No more than 1% of photos containing a text claim |
-| Routed photos receiving at least one useful fact beyond Standard | At least 80% |
-| Smart results the owner would choose to wait for again | At least 75% |
+| Acceptance photos receiving a stored Smart result | At least 70% |
+| Stored Smart results containing at least one useful fact beyond Standard | At least 90% |
+| Smart results the owner would choose to run again | At least 85% |
 
 People and QC counts remain review leads. They must never create observations,
 name a Person or alter accepted identity.
@@ -141,31 +148,36 @@ name a Person or alter accepted identity.
   every stored result; and
 - stale source/model results are visible as stale and never silently current.
 
-### Performance and perceived cost
+### Performance
 
 Measure time to a useful committed result and complete-asset throughput, not
-tokens per second or time-to-first-token.
+tokens per second or time-to-first-token. Speed and value are independent hard
+gates: quality cannot excuse a slow Smart pipeline, and speed cannot excuse
+low-value output.
 
-| Experience | Accelerated computer | Portable CPU baseline |
+| Batch profile | Hard qualification | Target |
 | --- | --- | --- |
-| One requested photo | p95 at most 2 seconds | p95 at most 5 seconds |
-| 100 selected/recent photos | at most 1 minute | at most 5 minutes |
-| 1,000-photo voluntary catch-up | at most 10 minutes | at most 30 minutes |
-| Ordinary background slice | useful progress inside 5 minutes | useful progress inside 10 minutes |
+| Accelerated computer | At least 10 complete photos/s sustained | At least 20 photos/s |
+| Portable CPU baseline | At least 2 complete photos/s sustained | At least 4 photos/s |
 
-These are usability ceilings, not invitations to occupy the ceiling. The worker
-must prioritize the open photo, explicit selections, new imports and recent
-unsummarized photos. A complete historical sweep is optional, chunked and
-resumable; Cimmich must never imply that the feature is incomplete until every
-old photo has run.
+The sustained rate includes image decode, model work, schema validation and
+committing the result. It is measured over both the labelled 1,000-photo corpus
+and the 10,000-photo soak, including batch initialization and final flush. The
+default Smart model package should be at most 2 GB; a larger model needs a
+separately chosen Enhanced or accelerated-only profile.
+
+The worker prioritizes explicit batches, new imports and voluntary catch-up,
+but scheduling is not a substitute for performance. Chunking and resume protect
+interrupted work; they do not make a slow model acceptable. If no candidate
+clears both the throughput and usefulness gates, Cimmich does not ship it as
+Smart.
 
 The Mac Smart worker should stay below 16 GiB additional memory. X1 should stay
 below 8 GiB additional memory, use adaptive multi-core concurrency, and
 automatically reduce or pause when API/database latency, memory pressure or
 Immich jobs cross their guardrails. A faster model that makes ordinary Cimmich
 slow does not pass. Neither does a model whose small improvement over Standard
-requires a persistent service, a large mandatory download or long unattended
-compute.
+requires long unattended compute.
 
 ### Operational bar
 
@@ -184,8 +196,9 @@ compute.
 2. Compare Florence-only, Qwen-only and Florence-to-Qwen routed pipelines. Add
    Moondream only if one of the first three leaves an unfilled speed/quality
    quadrant.
-3. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline,
-   including whether their incremental value justifies their elapsed time.
+3. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
+   Reject any profile below either its hard throughput gate or the independent
+   usefulness bar; do not average the two into one forgiving score.
 4. Use the already available larger local VLM only as a diagnostic comparison;
    human labels remain authority.
 5. Run the 10,000-photo engineering soak before selecting a private default. No

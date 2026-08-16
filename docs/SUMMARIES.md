@@ -19,10 +19,12 @@ adding Context changes the next read immediately.
 
 ## Smart
 
-Smart is the fast local visual pass. It is intended for high-throughput archive
-work where useful scene, activity, object, visible-text and basic QC evidence is
-more valuable than an expensive near-perfect caption. A Smart run stores
-validated structured facts and exact source/model/configuration lineage.
+Smart is the fast, always-batched local visual pass. It consumes imports,
+explicit selections or voluntary catch-up work in batches; it is not the
+one-photo interactive action. It is intended for high-throughput archive work
+where useful scene, activity, object, visible-text and basic QC evidence is more
+valuable than an expensive near-perfect caption. A Smart run stores validated
+structured facts and exact source/model/configuration lineage.
 
 Its Face and Body counts are **review leads only**. They can point out that a
 photo may be missing a saved Face or Body, but cannot create observations,
@@ -30,10 +32,11 @@ identify anyone or alter People automatically.
 
 ## Enhanced
 
-Enhanced is the heavier first visual pass. It uses the same durable fact
-contract but is expected to be configured with a stronger model profile. Once
-current, ordinary changes such as renaming a Person, naming a boat or attaching
-a Place are merged into the displayed result without rerunning the heavy model.
+Enhanced is the deliberate one-photo or selected-photo visual pass for material
+an owner specifically cares about. It uses the same durable fact contract but
+is expected to be configured with a stronger model profile. Once current,
+ordinary changes such as renaming a Person, naming a boat or attaching a Place
+are merged into the displayed result without rerunning the heavy model.
 
 Enhanced should run again only when the source pixels changed, its model/profile
 changed, or the owner explicitly requests a fresh visual interpretation.
