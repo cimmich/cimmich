@@ -3841,7 +3841,7 @@
             <button
               {...props}
               class={[
-                'flex size-10 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isPeopleSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',
@@ -3862,7 +3862,7 @@
             <button
               {...props}
               class={[
-                'flex size-10 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
+                'flex size-11 items-center justify-center rounded-full transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white',
                 isContextSurfaceActive
                   ? 'bg-white text-black shadow-sm'
                   : 'text-white/72 hover:bg-white/10 hover:text-white',

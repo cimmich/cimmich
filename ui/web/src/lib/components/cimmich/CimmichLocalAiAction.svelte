@@ -266,6 +266,10 @@
       aria-describedby="local-ai-boundary"
       use:focusTrap
     >
+      <div class="experiment-banner" role="status">
+        <strong>Alpha · Experimental build</strong>
+        <span>Review-only features may change.</span>
+      </div>
       <button class="close" type="button" aria-label="Close Local AI" disabled={running} onclick={close}>
         <Icon icon={mdiClose} size="22" />
       </button>
@@ -436,6 +440,30 @@
     background: rgb(255 255 255);
     box-shadow: 0 34px 100px rgb(0 0 0 / 0.4);
   }
+  .experiment-banner {
+    display: flex;
+    min-height: 64px;
+    align-items: center;
+    gap: 10px;
+    margin: -28px -28px 24px;
+    border-radius: 26px 26px 0 0;
+    padding: 14px 72px 14px 28px;
+    background: linear-gradient(100deg, rgb(120 53 15), rgb(180 83 9));
+    color: white;
+  }
+  .experiment-banner strong,
+  .experiment-banner span {
+    display: block;
+  }
+  .experiment-banner strong {
+    font-size: 0.86rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .experiment-banner span {
+    color: rgb(255 237 213);
+    font-size: 0.76rem;
+  }
   .close {
     position: absolute;
     top: 18px;
@@ -445,7 +473,7 @@
     height: 40px;
     place-items: center;
     border-radius: 999px;
-    color: rgb(71 85 105);
+    color: white;
   }
   .close:hover,
   .close:focus-visible {

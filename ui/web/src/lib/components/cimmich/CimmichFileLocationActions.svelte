@@ -1,25 +1,30 @@
 <script lang="ts">
-  import { page } from '$app/state';
+  import { focusTrap } from '$lib/actions/focus-trap';
+  import Portal from '$lib/elements/Portal.svelte';
   import { Route } from '$lib/route';
   import { getParentPath } from '$lib/utils/tree-utils';
   import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiCheck, mdiContentCopy, mdiFolderOpenOutline } from '@mdi/js';
+  import { tick } from 'svelte';
 
   interface Props {
-    asset: { id: string; originalFileName: string; originalPath: string };
+    asset: { originalFileName: string; originalPath: string };
     variant?: 'detail' | 'overlay';
   }
 
   let { asset, variant = 'overlay' }: Props = $props();
   let copied = $state(false);
+  let folderDialogOpen = $state(false);
+  let folderTrigger = $state<HTMLButtonElement>();
   const parentPath = $derived(getParentPath(asset.originalPath));
-  const inFolderViewer = $derived(page.url.pathname.startsWith('/folders/photos/'));
-  const folderHref = $derived(
-    inFolderViewer
-      ? Route.folders({ organise: 1, path: parentPath })
-      : Route.viewFolderAsset({ cimmich: 1, id: asset.id, path: parentPath }),
-  );
-  const folderLabel = $derived(inFolderViewer ? 'Open folder' : 'Show in folder');
+  const folderHref = $derived(Route.folders({ organise: 1, path: parentPath }));
+  const folderLabel = 'Open folder';
+
+  const closeFolderDialog = () => {
+    const trigger = folderTrigger;
+    folderDialogOpen = false;
+    void tick().then(() => trigger?.focus());
+  };
 
   const legacyCopyPath = () => {
     const input = document.createElement('textarea');
@@ -47,18 +52,20 @@
 </script>
 
 {#snippet folderAction(props: Record<string, unknown>)}
-  <a
+  <button
     {...props}
+    bind:this={folderTrigger}
     class={variant === 'overlay'
       ? 'grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white'
       : 'inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-800'}
-    href={folderHref}
-    aria-label={`${folderLabel}: ${asset.originalFileName}`}
+    type="button"
+    aria-label={`${folderLabel} options for ${asset.originalFileName}`}
     title={variant === 'detail' ? folderLabel : undefined}
+    onclick={() => (folderDialogOpen = true)}
   >
     <Icon icon={mdiFolderOpenOutline} size={variant === 'overlay' ? '21' : '17'} />
     {#if variant === 'detail'}<span>{folderLabel}</span>{/if}
-  </a>
+  </button>
 {/snippet}
 
 {#snippet copyAction(props: Record<string, unknown>)}
@@ -98,4 +105,63 @@
       {@render copyAction({})}
     {/if}
   </div>
+{/if}
+
+{#if folderDialogOpen}
+  <Portal target="body">
+    <div class="fixed inset-0 z-1200 grid place-items-center p-4">
+      <button
+        type="button"
+        class="absolute inset-0 cursor-default bg-black/70"
+        aria-label="Close folder dialog"
+        onclick={closeFolderDialog}
+      ></button>
+      <div
+        class="relative w-full max-w-lg rounded-3xl border border-gray-200 bg-white p-6 text-gray-900 shadow-2xl dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+        role="dialog"
+        tabindex="-1"
+        aria-modal="true"
+        aria-labelledby="cimmich-folder-dialog-title"
+        aria-describedby="cimmich-folder-dialog-description"
+        use:focusTrap
+        onkeydown={(event) => {
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            closeFolderDialog();
+          }
+        }}
+      >
+        <div
+          class="grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary dark:bg-immich-dark-primary/15 dark:text-immich-dark-primary"
+        >
+          <Icon icon={mdiFolderOpenOutline} size="23" />
+        </div>
+        <p class="mt-4 text-xs font-bold tracking-[0.12em] text-gray-500 uppercase dark:text-gray-400">Stored on X1</p>
+        <h2 id="cimmich-folder-dialog-title" class="mt-1 text-xl font-semibold">Open this location in Cimmich?</h2>
+        <p id="cimmich-folder-dialog-description" class="mt-2 text-sm/6 text-gray-600 dark:text-gray-300">
+          A web browser cannot open the file manager on another machine. The original is stored on X1, but Cimmich can
+          show the same location in Folder view.
+        </p>
+        <code
+          class="mt-4 block max-h-24 overflow-auto rounded-xl bg-gray-100 px-3 py-2 text-xs break-all text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+        >
+          {parentPath}
+        </code>
+        <div class="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="min-h-11 rounded-full px-4 text-sm font-semibold hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-primary dark:hover:bg-gray-800"
+            onclick={closeFolderDialog}>Close</button
+          >
+          <a
+            class="inline-flex min-h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-white hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-immich-dark-primary dark:text-immich-dark-bg"
+            href={folderHref}
+            onclick={() => (folderDialogOpen = false)}
+          >
+            Open folder view
+          </a>
+        </div>
+      </div>
+    </div>
+  </Portal>
 {/if}

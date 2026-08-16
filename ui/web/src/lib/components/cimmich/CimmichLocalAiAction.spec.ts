@@ -84,6 +84,8 @@ describe('Cimmich Local AI review action', () => {
     expect(dialog).toBeInTheDocument();
     expect(dialog.parentElement).toHaveClass('local-ai-backdrop');
     expect(dialog.parentElement?.parentElement).toBe(document.body);
+    expect(rendered.getByText('Alpha · Experimental build')).toBeInTheDocument();
+    expect(rendered.getByText('Review-only features may change.')).toBeInTheDocument();
     expect(rendered.getByText(/Nothing is written into identity or Context data/)).toBeInTheDocument();
     expect(rendered.getByText(/fast, full-photo 2x upscale/i)).toBeInTheDocument();
     expect(rendered.getByRole('radio', { name: /Look for missed Bodies/ })).toBeDisabled();

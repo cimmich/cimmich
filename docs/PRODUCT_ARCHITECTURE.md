@@ -297,6 +297,12 @@ folder-wide flagged-photo counts across the loaded duplicate review in the
 client, so displaying and filtering folder context does not add a service query
 or matcher pass.
 
+Photo file-location actions do not attempt to launch a native file manager on
+the remote archive host. They open an explicit browser boundary dialog and
+route **Open folder view** to `Route.folders({ organise: 1, path })`. This avoids
+the misleading former transition to the same asset overlay under a different
+URL, which made the action appear inert.
+
 The preservation recommendation is a pure ranking/read model rendered inline
 with its comparison group. It records reasons and cautions, may hold an
 ambiguous group and never deletes a file. Legacy `mode=plan` URLs open the
@@ -382,6 +388,12 @@ are independently enabled capabilities:
   temporary review/artifact results; and
 - **Guided** is separately authenticated, capability-scoped and unable to raise
   its viewing ceiling.
+
+The Local AI review surface carries an **Alpha · Experimental build** banner.
+Its public build default is `false`; private deployments may deliberately set
+`PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`. The private X1 image does
+so, while the source, Compose and Dockerfile defaults remain off for public
+builds.
 
 ## Migrations and compatibility
 

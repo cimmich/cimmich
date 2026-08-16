@@ -181,11 +181,12 @@ Selecting a badge opens the relevant photo-specific group in Archive Health so
 you can see why it was classified that way. Each compared file shows its
 containing folder. A bracketed count reports how many other photos in that
 folder are flagged anywhere in the loaded duplicate review; selecting it shows
-those groups. Selecting the path opens the browser-accessible folder with
-Cimmich context intact. **Show in folder** also opens the browser-accessible folder
-context; **Copy full path** copies the source path when the signed-in surface is
-allowed to expose it. A web browser does not claim that it opened Finder or
-another native file manager unless a real host mapping exists.
+those groups. **Open folder** explains that a browser cannot open the native
+file manager on the remote X1 host, then offers **Open folder view** to show the
+containing directory in Cimmich or **Close** to remain on the photo. **Copy full
+path** copies the source path when the signed-in surface is allowed to expose
+it. Cimmich never claims that Finder or another native file manager opened
+unless a real host mapping exists.
 
 ### Photo checks
 
@@ -494,7 +495,13 @@ Settings separates ordinary product setup from optional machinery:
 - **Body evidence** configures optional body-observation production;
 - **Local AI** enables bounded photo review/enhancement experiments; and
 - **Guided access** exposes a separately authenticated, capability-bounded
-  machine interface when deliberately enabled.
+machine interface when deliberately enabled.
+
+Local AI is visibly labelled **Alpha · Experimental build** wherever its photo
+review dialog opens. It is off by default in public builds and appears only
+after a deployment deliberately enables the experimental capability. The
+private X1 deployment opts in by default; this does not change the public
+default or give Local AI authority to write identity truth.
 
 A provider produces observations. A SourcePack binds compatible provider,
 vector, evidence and policy versions into an immutable reviewed matching input.
