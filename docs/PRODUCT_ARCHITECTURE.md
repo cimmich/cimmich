@@ -70,41 +70,41 @@ this directory.
 
 ## Repository map
 
-| Path | Responsibility |
-| :-- | :-- |
-| `service/src/server.mjs` | HTTP composition, authentication boundary and top-level route registration. |
-| `service/src/*-routes.mjs` | Thin request validation and response mapping for a domain. |
-| `service/src/repository.mjs` | Legacy central repository seam; new bounded domain repositories should live beside their domain. |
-| `service/src/*repository*.mjs` | Domain reads/writes, visibility admission and transactional command handling. |
-| `service/src/immich-*.mjs` | Supported Immich client, inventory and companion projection boundary. |
-| `migrations/` | Ordered checksummed PostgreSQL schema ledger. |
-| `service/test/` | Unit, integration, security and route-contract proof. |
-| `tests/sql/` | Fresh-schema and migration acceptance invariants. |
-| `ui/web/src/routes/(user)/cimmich/` | SvelteKit route shells for Cimmich screens. |
-| `ui/web/src/lib/components/cimmich/` | Product components, presentation controllers and shared Cimmich interactions. |
-| `ui/web/src/lib/services/cimmich.service.ts` | Main typed Web client and cross-domain public types. |
-| `ui/web/src/lib/services/cimmich-*.ts` | Focused clients for explore, corrections, identity review, duplicates and Local AI. |
-| `ui/web/src/lib/managers/cimmich-visibility-manager.svelte.ts` | Client-side viewing-mode generation, invalidation and fail-closed coordination. |
-| `ui/web/src/lib/route.ts` | Canonical navigable URL builders. |
-| `providers/` | Weight-free or separately licensed provider adapters and manifests. |
-| `tools/` | Installer, lifecycle, acceptance, publication and bounded operator tooling. |
-| `demo/cedar-house-v1/` | Fictional rights-cleared end-to-end fixture. |
+| Path                                                           | Responsibility                                                                                   |
+| :------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- |
+| `service/src/server.mjs`                                       | HTTP composition, authentication boundary and top-level route registration.                      |
+| `service/src/*-routes.mjs`                                     | Thin request validation and response mapping for a domain.                                       |
+| `service/src/repository.mjs`                                   | Legacy central repository seam; new bounded domain repositories should live beside their domain. |
+| `service/src/*repository*.mjs`                                 | Domain reads/writes, visibility admission and transactional command handling.                    |
+| `service/src/immich-*.mjs`                                     | Supported Immich client, inventory and companion projection boundary.                            |
+| `migrations/`                                                  | Ordered checksummed PostgreSQL schema ledger.                                                    |
+| `service/test/`                                                | Unit, integration, security and route-contract proof.                                            |
+| `tests/sql/`                                                   | Fresh-schema and migration acceptance invariants.                                                |
+| `ui/web/src/routes/(user)/cimmich/`                            | SvelteKit route shells for Cimmich screens.                                                      |
+| `ui/web/src/lib/components/cimmich/`                           | Product components, presentation controllers and shared Cimmich interactions.                    |
+| `ui/web/src/lib/services/cimmich.service.ts`                   | Main typed Web client and cross-domain public types.                                             |
+| `ui/web/src/lib/services/cimmich-*.ts`                         | Focused clients for explore, corrections, identity review, duplicates and Local AI.              |
+| `ui/web/src/lib/managers/cimmich-visibility-manager.svelte.ts` | Client-side viewing-mode generation, invalidation and fail-closed coordination.                  |
+| `ui/web/src/lib/route.ts`                                      | Canonical navigable URL builders.                                                                |
+| `providers/`                                                   | Weight-free or separately licensed provider adapters and manifests.                              |
+| `tools/`                                                       | Installer, lifecycle, acceptance, publication and bounded operator tooling.                      |
+| `demo/cedar-house-v1/`                                         | Fictional rights-cleared end-to-end fixture.                                                     |
 
 ## UX-to-implementation map
 
-| Product surface | Web entry and principal components | Service/domain seam | Durable or derived truth |
-| :-- | :-- | :-- | :-- |
-| Home | `routes/(user)/cimmich/+page.svelte`; home presentation helpers | bounded home/summary projections | current visible counts and selected cover settings |
-| Library | `/cimmich/library` redirects to the inherited photo route with Cimmich organise context; `CimmichBulkPhotoSorter`, Explore filters | tag/label/album operations, explore routes, asset corrections | Cimmich labels, operation receipts, correction decisions; media remains Immich-owned |
-| Photo viewer | `CimmichPhotoOverlay`, viewer presentation, duplicate and file-location components | asset evidence, manual subject/context routes, correction routes, archive-integrity status | accepted/proposed observations, typed tags, correction decisions, duplicate evidence |
-| People directory | `routes/(user)/cimmich/people/+page.svelte`; People cache and Explore filters | People projection, candidate summary, possible-people and identity-audit routes | Person identities and categories are durable; queues/counts are projections |
-| Person workspace | `people/[personName]/+page.svelte`; identity navigation, coverage, candidate review, split, names and presentation components | Person assets/connections/profile/names/presentation, identity audit, match refresh, merge/split | profile and accepted evidence are durable; coverage, candidates and Smart Split are rebuildable |
-| Pets | `routes/(user)/cimmich/pets/+page.svelte`; `CimmichPetUnknownReview` | Pet CRUD/media/documents, Pet matching and Unknown review | Pet profile and owner decisions durable; detector suggestions derived |
-| Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components | context entity, relation, asset, cover, plan and geocoding routes | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived |
-| Documents | route shell plus `CimmichDocuments` | Document metadata/link/content/version routes | metadata in PostgreSQL; imported bytes in the separate content-addressed store |
-| Smart Search | `routes/(user)/cimmich/smart-search/+page.svelte` | deterministic smart-search and Document queries | local read projection over confirmed truth; no search-owned authority |
-| Archive Health | archive-integrity route and focused client | exact duplicates, visual-signature groups, backup proof and canonical-plan derivation | fingerprints/provenance durable or reproducible; recommendations derived |
-| Settings/setup | settings, setup and maintenance routes | integration, onboarding, provider, SourcePack, Local AI and Guided operators | configuration and reviewed lifecycle state; model output remains observation |
+| Product surface      | Web entry and principal components                                                                                                 | Service/domain seam                                                                              | Durable or derived truth                                                                        |
+| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
+| Home                 | `routes/(user)/cimmich/+page.svelte`; home presentation helpers                                                                    | bounded home/summary projections                                                                 | current visible counts and selected cover settings                                              |
+| Library              | `/cimmich/library` redirects to the inherited photo route with Cimmich organise context; `CimmichBulkPhotoSorter`, Explore filters | tag/label/album operations, explore routes, asset corrections                                    | Cimmich labels, operation receipts, correction decisions; media remains Immich-owned            |
+| Photo viewer         | `CimmichPhotoOverlay`, viewer presentation, duplicate and file-location components                                                 | asset evidence, manual subject/context routes, correction routes, archive-integrity status       | accepted/proposed observations, typed tags, correction decisions, duplicate evidence            |
+| People directory     | `routes/(user)/cimmich/people/+page.svelte`; People cache and Explore filters                                                      | People projection, candidate summary, possible-people and identity-audit routes                  | Person identities and categories are durable; queues/counts are projections                     |
+| Person workspace     | `people/[personName]/+page.svelte`; identity navigation, coverage, candidate review, split, names and presentation components      | Person assets/connections/profile/names/presentation, identity audit, match refresh, merge/split | profile and accepted evidence are durable; coverage, candidates and Smart Split are rebuildable |
+| Pets                 | `routes/(user)/cimmich/pets/+page.svelte`; `CimmichPetUnknownReview`                                                               | Pet CRUD/media/documents, Pet matching and Unknown review                                        | Pet profile and owner decisions durable; detector suggestions derived                           |
+| Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                  | context entity, relation, asset, cover, plan and geocoding routes                                | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived        |
+| Documents            | route shell plus `CimmichDocuments`                                                                                                | Document metadata/link/content/version routes                                                    | metadata in PostgreSQL; imported bytes in the separate content-addressed store                  |
+| Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                  | deterministic smart-search and Document queries                                                  | local read projection over confirmed truth; no search-owned authority                           |
+| Archive Health       | archive-integrity route and focused client                                                                                         | exact duplicates, visual-signature groups, backup proof and canonical-plan derivation            | fingerprints/provenance durable or reproducible; recommendations derived                        |
+| Settings/setup       | settings, setup and maintenance routes                                                                                             | integration, onboarding, provider, SourcePack, Local AI and Guided operators                     | configuration and reviewed lifecycle state; model output remains observation                    |
 
 ## Identity and evidence model
 
@@ -271,7 +271,10 @@ SHA-256 values explicitly prevent an exact claim.
 
 Duplicate badges use one bounded status request for a viewport and a short
 cache, not one request per card. Photo-specific Archive Health URLs preserve
-the target asset and requested evidence mode.
+the target asset and requested evidence mode. Archive Health already receives
+each Immich `AssetResponseDto.originalPath`; it derives containing-folder and
+same-group/same-folder peer counts in the client, so displaying folder context
+does not add a service query or matcher pass.
 
 The canonical preservation plan is a pure ranking/read model. It records
 reasons and cautions, may hold an ambiguous group and never deletes a file.

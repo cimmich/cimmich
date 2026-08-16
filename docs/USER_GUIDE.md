@@ -31,19 +31,19 @@ The simplest mental model is:
 
 ## Where to go for each job
 
-| I want to… | Open | What happens |
-| :-- | :-- | :-- |
-| See the shape of my memory library | **Home** | Featured media and bounded summaries lead into each Cimmich collection. |
-| Browse or organise photos | **Library** | The familiar Immich timeline opens with Cimmich context, filters and bulk tools. |
-| Find, describe or correct a person | **People** | Browse people, review suggestions, inspect evidence and manage one Person. |
-| Manage animals and unknown detections | **Pets** | Create Pet profiles, manage media and review Unknown or Ignored detections. |
-| Describe where a memory happened | **Places** | Build geographic and named-location hierarchies, maps and journeys. |
-| Record an important object | **Things** | Create vehicles, properties, devices, collectibles, equipment and other Things. |
-| Group a trip, activity or life period | **Events** | Create overlapping memories, chapters, dates, participants and locations. |
-| Keep records with the memories they explain | **Documents** | Import or reference documents, version them and link them to other subjects. |
-| Find a known combination | **Smart Search** | Intersect confirmed names, aliases, context and exact dates; search Documents separately. |
-| Understand duplicate or preservation evidence | **Archive Health** | Separate byte-exact copies from similar files and inspect recommendation-only plans. |
-| Connect, tune or diagnose Cimmich | **Settings** | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
+| I want to…                                    | Open               | What happens                                                                                        |
+| :-------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
+| See the shape of my memory library            | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
+| Browse or organise photos                     | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
+| Find, describe or correct a person            | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
+| Manage animals and unknown detections         | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
+| Describe where a memory happened              | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
+| Record an important object                    | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
+| Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
+| Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
+| Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
+| Understand duplicate or preservation evidence | **Archive Health** | Separate byte-exact copies from similar files and inspect recommendation-only plans.                |
+| Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
 
@@ -156,11 +156,13 @@ Ordinary Cimmich photo cards and the viewer can show two distinct badges:
   version, but byte evidence does not justify an exact-copy claim.
 
 Selecting a badge opens the relevant photo-specific group in Archive Health so
-you can see why it was classified that way. **Show in folder** opens the
-browser-accessible folder context; **Copy full path** copies the source path
-when the signed-in surface is allowed to expose it. A web browser does not
-claim that it opened Finder or another native file manager unless a real host
-mapping exists.
+you can see why it was classified that way. Each compared file shows its
+containing folder. A bracketed count reports how many other files in that
+evidence group share the folder, and **see all** opens that location with
+Cimmich context intact. **Show in folder** opens the browser-accessible folder
+context; **Copy full path** copies the source path when the signed-in surface is
+allowed to expose it. A web browser does not claim that it opened Finder or
+another native file manager unless a real host mapping exists.
 
 ### Photo checks
 
@@ -212,12 +214,12 @@ records.
 
 These are different claims:
 
-| Evidence | What it says | Matching authority |
-| :-- | :-- | :-- |
-| **Face** | A usable face region represents this Person. | May support Cimmich matching when explicitly eligible. |
-| **Head** | The head is visible, but the observation should not be treated as a usable Face. | Excluded from face matching. |
-| **Body** | A body or appearance region represents this Person. | Does not become face-matching evidence. |
-| **Presence** | The owner knows the Person belongs to the photo without claiming visible Face, Head or Body geometry. | Does not train face or body matching. |
+| Evidence     | What it says                                                                                          | Matching authority                                     |
+| :----------- | :---------------------------------------------------------------------------------------------------- | :----------------------------------------------------- |
+| **Face**     | A usable face region represents this Person.                                                          | May support Cimmich matching when explicitly eligible. |
+| **Head**     | The head is visible, but the observation should not be treated as a usable Face.                      | Excluded from face matching.                           |
+| **Body**     | A body or appearance region represents this Person.                                                   | Does not become face-matching evidence.                |
+| **Presence** | The owner knows the Person belongs to the photo without claiming visible Face, Head or Body geometry. | Does not train face or body matching.                  |
 
 Identity Overview reports mutually exclusive operational coverage: Face
 visible, Appearance only (Head or Body), and Presence only. It also shows a
