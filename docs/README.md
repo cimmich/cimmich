@@ -41,6 +41,7 @@ remain available without controlling the front door.
 - [Source-media immutability](SOURCE_MEDIA_IMMUTABILITY.md)
 - [Local AI review](LOCAL_AI_REVIEW.md)
 - [Photo summaries](SUMMARIES.md)
+- [Smart summary model evaluation](SMART_SUMMARY_MODEL_EVALUATION.md)
 - [Migration operations](MIGRATION_OPERATIONS.md)
 - [Archive mobility](ARCHIVE_MOBILITY.md)
 - [Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md)

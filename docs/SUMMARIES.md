@@ -75,3 +75,8 @@ with current evidence.
 The current implementation is photo-scoped. Group/event/archive roll-ups should
 aggregate current photo facts hierarchically; they should not repeatedly send
 all original photos through a large model.
+
+Model selection and archive-speed claims are governed by the
+[Smart summary model evaluation](SMART_SUMMARY_MODEL_EVALUATION.md). No model is
+a Smart default until it passes that Cimmich-specific truth, throughput and
+operational bar on both the accelerated and portable profiles it claims.
