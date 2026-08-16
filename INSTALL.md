@@ -206,10 +206,13 @@ this order:
 2. Duplicate Detection
 3. OCR
 
-Smart Search supplies the embeddings used by Duplicate Detection. New assets
-are queued automatically while these features remain enabled. Use **All** only
-after changing the relevant model or matching configuration; it deliberately
-reprocesses already completed assets.
+Wait for each queue to reach zero before starting the next one. Smart Search
+supplies the embeddings used by Duplicate Detection; starting both together can
+leave early Duplicate Detection jobs without an embedding. If that happened,
+run **Duplicate Detection → Missing** again after Smart Search finishes. New
+assets are queued automatically while these features remain enabled. Use
+**All** only after changing the relevant model or matching configuration; it
+deliberately reprocesses already completed assets.
 
 After connection, you may delete or rotate the key from Immich's **Account
 Settings → API Keys**. Deleting it immediately stops Cimmich's library reads;

@@ -60,6 +60,35 @@ describe('photo summary compiler', () => {
     expect(text).not.toMatch(/review|missing|needs/i);
   });
 
+  it('orders useful OCR text and drops punctuation and one-character noise', () => {
+    const text = compileCimmichStandardSummary({
+      asset: { exifInfo: {} } as never,
+      evidence: { bodies: [], contexts: [], faces: [], presence: [] } as never,
+      ocr: [
+        { text: 'JETTY', x1: 0.6, x2: 0.8, x3: 0.8, x4: 0.6, y1: 0.2, y2: 0.2, y3: 0.3, y4: 0.3 },
+        { text: '•', x1: 0.1, x2: 0.2, x3: 0.2, x4: 0.1, y1: 0.1, y2: 0.1, y3: 0.2, y4: 0.2 },
+        { text: 'WELCOME', x1: 0.1, x2: 0.4, x3: 0.4, x4: 0.1, y1: 0.2, y2: 0.2, y3: 0.3, y4: 0.3 },
+        { text: 'R', x1: 0.1, x2: 0.2, x3: 0.2, x4: 0.1, y1: 0.4, y2: 0.4, y3: 0.5, y4: 0.5 },
+      ] as never,
+    });
+    expect(text).toBe('Visible text includes “WELCOME”, “JETTY”.');
+  });
+
+  it('keeps a complete OCR reading instead of repeating its component boxes', () => {
+    const text = compileCimmichStandardSummary({
+      asset: { exifInfo: {} } as never,
+      evidence: { bodies: [], contexts: [], faces: [], presence: [] } as never,
+      ocr: [
+        { text: 'The' },
+        { text: 'pink' },
+        { text: 'Palace' },
+        { text: 'CORFU GREECE' },
+        { text: 'ThePinkPalace.com' },
+      ] as never,
+    });
+    expect(text).toBe('Visible text includes “CORFU GREECE”, “ThePinkPalace.com”.');
+  });
+
   it('adds current names to stored visual facts without mutating the model record', () => {
     const analysis = {
       current: true,
@@ -83,6 +112,28 @@ describe('photo summary compiler', () => {
     expect(text).toContain('Location: Sydney.');
     expect(text).toContain('Visible text includes “JETTY”.');
     expect(cimmichSummaryQc(evidence, analysis)).toMatchObject({ missingBodies: 1, missingFaces: 1 });
+  });
+
+  it('merges stored and Immich OCR without repeating text already used in model prose', () => {
+    const analysis = {
+      current: true,
+      visualFacts: {
+        activities: [],
+        objects: [],
+        peopleCountEstimate: 0,
+        qualityFlags: [],
+        scene: 'sign',
+        summary: 'A sign reads JETTY.',
+        visibleText: ['JETTY', 'WELCOME'],
+      },
+    } as never;
+    const text = compileCimmichModelSummary({
+      analysis,
+      asset: { exifInfo: {} } as never,
+      evidence: { bodies: [], contexts: [], faces: [], presence: [] } as never,
+      ocr: [{ text: 'welcome' }, { text: '-' }] as never,
+    });
+    expect(text).toBe('A sign reads JETTY. Visible text includes “welcome”.');
   });
 
   it('weaves current names into count-based Smart prose', () => {

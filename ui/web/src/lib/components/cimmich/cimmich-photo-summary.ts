@@ -168,8 +168,38 @@ const locationSentence = (asset: AssetResponseDto) => {
   return location.length > 0 ? `Location: ${location.join(', ')}.` : '';
 };
 
-const ocrSentence = (ocr: OcrBoundingBox[]) => {
-  const text = unique(ocr.map((item) => item.text)).slice(0, 5);
+const meaningfulVisibleText = (values: string[], existingSummary = '') => {
+  const seen = new Set<string>();
+  const summary = existingSummary.toLocaleLowerCase();
+  const candidates = unique(values).filter((value) => {
+    const normalized = value.toLocaleLowerCase();
+    const meaningfulCharacters = value.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+    if (meaningfulCharacters < 2 || seen.has(normalized) || summary.includes(normalized)) {
+      return false;
+    }
+    seen.add(normalized);
+    return true;
+  });
+  const compact = (value: string) => value.toLocaleLowerCase().replaceAll(/[^\p{L}\p{N}]/gu, '');
+  return candidates.filter((value, index) => {
+    const fragment = compact(value);
+    return !candidates.some((candidate, candidateIndex) => {
+      const complete = compact(candidate);
+      return candidateIndex !== index && complete.length > fragment.length && complete.includes(fragment);
+    });
+  });
+};
+
+const ocrSentence = (ocr: OcrBoundingBox[], additionalText: string[] = [], existingSummary = '') => {
+  const orderedOcr = [...ocr].sort((left, right) => {
+    const top = (item: OcrBoundingBox) => Math.min(item.y1 ?? 0, item.y2 ?? 0, item.y3 ?? 0, item.y4 ?? 0);
+    const leftEdge = (item: OcrBoundingBox) => Math.min(item.x1 ?? 0, item.x2 ?? 0, item.x3 ?? 0, item.x4 ?? 0);
+    return top(left) - top(right) || leftEdge(left) - leftEdge(right);
+  });
+  const text = meaningfulVisibleText(
+    [...orderedOcr.map((item) => item.text), ...additionalText],
+    existingSummary,
+  ).slice(0, 5);
   return text.length > 0 ? `Visible text includes ${text.map((item) => `“${item}”`).join(', ')}.` : '';
 };
 
@@ -220,7 +250,7 @@ export const compileCimmichModelSummary = ({
     contextSentence(evidence),
     dateSentence(asset),
     locationSentence(asset),
-    ocrSentence(ocr),
+    ocrSentence(ocr, facts.visibleText, modelSummary.text),
   ].filter(Boolean);
   return [cleanSentence(modelSummary.text), ...liveDetails].filter(Boolean).join(' ');
 };

@@ -18,22 +18,43 @@ export type CimmichDuplicateIndicator = {
   sourceAssetId: string;
 };
 
-const indicatorCache = new Map<string, CimmichDuplicateIndicator | null>();
-const evidenceCache = new Map<string, CimmichArchiveSourceEvidence | null>();
+type CacheEntry<T> = { expiresAt: number; value: T };
+
+export const CIMMICH_DUPLICATE_CACHE_LIFETIME_MS = 60_000;
+
+const indicatorCache = new Map<string, CacheEntry<CimmichDuplicateIndicator | null>>();
+const evidenceCache = new Map<string, CacheEntry<CimmichArchiveSourceEvidence | null>>();
 const pending = new Map<
   string,
   Array<{ reject: (reason?: unknown) => void; resolve: (value: CimmichDuplicateIndicator | null) => void }>
 >();
 let nativeGroupsPromise: Promise<DuplicateResponseDto[]> | null = null;
+let nativeGroupsExpiresAt = 0;
 let flushScheduled = false;
 
 const nativeGroups = () => {
-  nativeGroupsPromise ??= getAssetDuplicates().catch((error) => {
-    nativeGroupsPromise = null;
-    throw error;
-  });
+  if (!nativeGroupsPromise || nativeGroupsExpiresAt <= Date.now()) {
+    nativeGroupsExpiresAt = Date.now() + CIMMICH_DUPLICATE_CACHE_LIFETIME_MS;
+    nativeGroupsPromise = getAssetDuplicates().catch((error) => {
+      nativeGroupsPromise = null;
+      nativeGroupsExpiresAt = 0;
+      throw error;
+    });
+  }
   return nativeGroupsPromise;
 };
+
+const cachedValue = <T>(cache: Map<string, CacheEntry<T>>, key: string) => {
+  const entry = cache.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return undefined;
+  }
+  return entry.value;
+};
+
+const cacheValue = <T>(cache: Map<string, CacheEntry<T>>, key: string, value: T) =>
+  cache.set(key, { expiresAt: Date.now() + CIMMICH_DUPLICATE_CACHE_LIFETIME_MS, value });
 
 const chunks = <T>(items: T[], size: number) =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
@@ -80,7 +101,9 @@ const visualSignatureIndicator = (status: CimmichDuplicateStatus): CimmichDuplic
 });
 
 const loadEvidence = async (sourceAssetIds: string[]) => {
-  const missing = [...new Set(sourceAssetIds)].filter((sourceAssetId) => !evidenceCache.has(sourceAssetId));
+  const missing = [...new Set(sourceAssetIds)].filter(
+    (sourceAssetId) => cachedValue(evidenceCache, sourceAssetId) === undefined,
+  );
   for (const batch of chunks(missing, 80)) {
     if (batch.length === 0) {
       continue;
@@ -88,7 +111,7 @@ const loadEvidence = async (sourceAssetIds: string[]) => {
     const page = await getCimmichArchiveSourceEvidence(batch);
     const found = new Map(page.items.map((item) => [item.sourceAssetId, item]));
     for (const sourceAssetId of batch) {
-      evidenceCache.set(sourceAssetId, found.get(sourceAssetId) ?? null);
+      cacheValue(evidenceCache, sourceAssetId, found.get(sourceAssetId) ?? null);
     }
   }
 };
@@ -125,7 +148,9 @@ export const loadCimmichDuplicateIndicators = async (sourceAssetIds: string[]) =
     // Exact byte-copy status remains useful when Immich similarity is unavailable.
   }
 
-  const evidence = [...evidenceCache.values()].filter((item): item is CimmichArchiveSourceEvidence => item !== null);
+  const evidence = [...evidenceCache.entries()]
+    .map(([sourceAssetId]) => cachedValue(evidenceCache, sourceAssetId))
+    .filter((item): item is CimmichArchiveSourceEvidence => item != null);
   for (const group of buildArchiveVariantGroups(groups, evidence)) {
     for (const asset of group.assets) {
       if (!requested.includes(asset.id) || result.has(asset.id)) {
@@ -153,7 +178,7 @@ const flushPending = async () => {
     const indicators = await loadCimmichDuplicateIndicators(sourceAssetIds);
     for (const sourceAssetId of sourceAssetIds) {
       const indicator = indicators.get(sourceAssetId) ?? null;
-      indicatorCache.set(sourceAssetId, indicator);
+      cacheValue(indicatorCache, sourceAssetId, indicator);
       for (const waiter of current.get(sourceAssetId) ?? []) {
         waiter.resolve(indicator);
       }
@@ -168,8 +193,9 @@ const flushPending = async () => {
 };
 
 export const getCimmichDuplicateIndicator = (sourceAssetId: string) => {
-  if (indicatorCache.has(sourceAssetId)) {
-    return Promise.resolve(indicatorCache.get(sourceAssetId) ?? null);
+  const cached = cachedValue(indicatorCache, sourceAssetId);
+  if (cached !== undefined) {
+    return Promise.resolve(cached);
   }
   const promise = new Promise<CimmichDuplicateIndicator | null>((resolve, reject) => {
     pending.set(sourceAssetId, [...(pending.get(sourceAssetId) ?? []), { reject, resolve }]);
@@ -185,4 +211,5 @@ export const clearCimmichDuplicateIndicatorCache = () => {
   indicatorCache.clear();
   evidenceCache.clear();
   nativeGroupsPromise = null;
+  nativeGroupsExpiresAt = 0;
 };

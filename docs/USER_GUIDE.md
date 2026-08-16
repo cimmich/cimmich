@@ -96,10 +96,12 @@ Immich Facial Recognition can remain off because Cimmich handles identity
 separately; enable it only if you also want Immich's People matching.
 
 For an existing library, open Immich **Administration → Jobs** and run
-**Missing** in this order: **Smart Search → Duplicate Detection → OCR**. Smart
-Search must finish first because Duplicate Detection consumes its image
-embeddings. Use **All** only after changing the relevant model or matching
-configuration. New assets enter Immich's enabled processing queues
+**Missing** in this order: **Smart Search → Duplicate Detection → OCR**. Wait
+for each queue to reach zero before starting the next one. Smart Search must
+finish first because Duplicate Detection consumes its image embeddings; if the
+two were started together, run **Duplicate Detection → Missing** again after
+Smart Search finishes. Use **All** only after changing the relevant model or
+matching configuration. New assets enter Immich's enabled processing queues
 automatically.
 
 ## Home

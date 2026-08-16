@@ -683,8 +683,10 @@
             <span class="rounded-full bg-gray-200 px-3 py-1.5 text-gray-800">Facial Recognition · Off</span>
           </div>
           <p class="mt-3 text-sm/6 text-gray-700 dark:text-gray-200">
-            Existing library: run <strong>Missing</strong> for Smart Search → Duplicate Detection → OCR. Duplicates need
-            Smart Search; use <strong>All</strong> only after changing a model. Cimmich handles identity separately.
+            Existing library: run <strong>Missing</strong> for Smart Search → Duplicate Detection → OCR, waiting for
+            each queue to finish. If Smart Search and Duplicates ran together, run Duplicate Detection Missing again.
+            Use
+            <strong>All</strong> only after changing a model. Cimmich handles identity separately.
           </p>
           {#if status.connection.principal?.isAdmin}
             <div class="mt-4 flex flex-wrap gap-3">
