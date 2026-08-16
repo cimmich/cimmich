@@ -13,10 +13,11 @@ The private reference machines expose two very different useful profiles:
 | Portable Linux | 8-core / 16-thread AMD Ryzen 7 255, Radeon 780M, 28 GiB usable RAM | CPU only. The 780M is not in Ollama's supported Linux ROCm list; Vulkan remains optional proof, never the baseline. | A default must be small, quantized and useful without a discrete GPU. |
 | Apple Silicon | M5 Pro, 64 GiB unified memory, 20-core GPU | Metal through MLX, Core ML or Ollama | This is the preferred private bulk worker and may use an independently selected accelerated profile. |
 
-Modern phones prove that useful single-photo vision can run locally. They do
-not, by themselves, prove archive throughput. Processing 100,000 photos in
-three hours requires **9.26 complete photos per second**, including image decode,
-vision encoding, structured generation, validation and persistence.
+Phone-scale models are useful evidence that this capability is computationally
+modest on current computers; phones are not a Cimmich deployment target. A
+100,000-photo/three-hour run is a useful stress calculation, not a product goal.
+Smart is a marginal-value convenience feature: it fails the product test if an
+owner normally has to leave a computer running for hours or days to benefit.
 
 ## Candidate shortlist
 
@@ -80,11 +81,12 @@ Smart should be a pipeline, not a smaller imitation of Enhanced:
 6. Build event, group and archive summaries from those photo facts. Do not send
    the original archive through another large visual pass.
 
-This design is the credible route to the three-hour stretch goal. A VLM that
-generates even 40 output tokens for every photo would need at least 370 output
-tokens per second at that archive rate, before any image work. Routing easy and
-empty photos around generation matters more than shaving a few tokens from a
-caption.
+This design makes useful results available quickly without requiring a complete
+archive sweep. A VLM that generates even 40 output tokens for every photo would
+need at least 370 output tokens per second to process 100,000 photos in three
+hours, before any image work. That arithmetic demonstrates why routing easy,
+duplicate and low-value photos around generation matters more than shaving a few
+tokens from a caption; it is not a promised completion time.
 
 ## Acceptance corpus
 
@@ -122,6 +124,8 @@ private corpus remains outside Git and model training.
 | Quality-flag precision / recall | At least 90% / 80% |
 | Missing Face/Body review-lead precision / recall | At least 80% / 85% |
 | Invented visible text | No more than 1% of photos containing a text claim |
+| Routed photos receiving at least one useful fact beyond Standard | At least 80% |
+| Smart results the owner would choose to wait for again | At least 75% |
 
 People and QC counts remain review leads. They must never create observations,
 name a Person or alter accepted identity.
@@ -137,26 +141,36 @@ name a Person or alter accepted identity.
   every stored result; and
 - stale source/model results are visible as stale and never silently current.
 
-### Performance
+### Performance and perceived cost
 
-Measure complete asset throughput, not tokens per second or time-to-first-token.
+Measure time to a useful committed result and complete-asset throughput, not
+tokens per second or time-to-first-token.
 
-| Profile | Minimum qualification | Target | Stretch |
-| --- | --- | --- | --- |
-| M5 Pro bulk worker | 4 photos/s sustained; 100k in 7 hours | 7 photos/s; 100k in 4 hours | 9.26 photos/s; 100k in 3 hours |
-| X1 portable CPU | 0.5 photos/s; 100k in 56 hours | 1 photo/s; 100k in 28 hours | Faster only if proven without harming Cimmich |
-| Future phone interactive | p95 under 2 seconds for one photo | p95 under 1 second | Sustained 100-photo run without thermal collapse |
+| Experience | Accelerated computer | Portable CPU baseline |
+| --- | --- | --- |
+| One requested photo | p95 at most 2 seconds | p95 at most 5 seconds |
+| 100 selected/recent photos | at most 1 minute | at most 5 minutes |
+| 1,000-photo voluntary catch-up | at most 10 minutes | at most 30 minutes |
+| Ordinary background slice | useful progress inside 5 minutes | useful progress inside 10 minutes |
+
+These are usability ceilings, not invitations to occupy the ceiling. The worker
+must prioritize the open photo, explicit selections, new imports and recent
+unsummarized photos. A complete historical sweep is optional, chunked and
+resumable; Cimmich must never imply that the feature is incomplete until every
+old photo has run.
 
 The Mac Smart worker should stay below 16 GiB additional memory. X1 should stay
 below 8 GiB additional memory, use adaptive multi-core concurrency, and
 automatically reduce or pause when API/database latency, memory pressure or
 Immich jobs cross their guardrails. A faster model that makes ordinary Cimmich
-slow does not pass.
+slow does not pass. Neither does a model whose small improvement over Standard
+requires a persistent service, a large mandatory download or long unattended
+compute.
 
 ### Operational bar
 
 - 10,000-photo soak with no memory growth, orphaned temporary media or queue
-  loss;
+  loss; this is engineering proof, not the expected owner workflow;
 - bounded retry, lease expiry, cancellation, checkpoint and resume proof;
 - no duplicate model copies per release and less than 4 KiB stored facts per
   photo on average;
@@ -170,11 +184,13 @@ slow does not pass.
 2. Compare Florence-only, Qwen-only and Florence-to-Qwen routed pipelines. Add
    Moondream only if one of the first three leaves an unfilled speed/quality
    quadrant.
-3. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
+3. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline,
+   including whether their incremental value justifies their elapsed time.
 4. Use the already available larger local VLM only as a diagnostic comparison;
    human labels remain authority.
-5. Run the 10,000-photo soak before selecting a private default. No archive-wide
-   run begins until the queue and pressure guards exist.
+5. Run the 10,000-photo engineering soak before selecting a private default. No
+   archive-wide run begins until the queue and pressure guards exist, and no
+   complete archive sweep becomes a normal product requirement.
 
 ## Source notes
 
@@ -189,4 +205,3 @@ slow does not pass.
   [research-only model licence](https://github.com/apple/ml-fastvlm/blob/main/LICENSE_MODEL)
 - [Apple Vision framework](https://developer.apple.com/documentation/vision)
 - [Ollama hardware support](https://docs.ollama.com/gpu)
-
