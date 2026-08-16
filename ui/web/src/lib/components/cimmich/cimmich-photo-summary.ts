@@ -190,16 +190,20 @@ const meaningfulVisibleText = (values: string[], existingSummary = '') => {
   });
 };
 
-const ocrSentence = (ocr: OcrBoundingBox[], additionalText: string[] = [], existingSummary = '') => {
+export const compileCimmichOcrReadings = (ocr: OcrBoundingBox[]) => {
   const orderedOcr = [...ocr].sort((left, right) => {
     const top = (item: OcrBoundingBox) => Math.min(item.y1 ?? 0, item.y2 ?? 0, item.y3 ?? 0, item.y4 ?? 0);
     const leftEdge = (item: OcrBoundingBox) => Math.min(item.x1 ?? 0, item.x2 ?? 0, item.x3 ?? 0, item.x4 ?? 0);
     return top(left) - top(right) || leftEdge(left) - leftEdge(right);
   });
-  const text = meaningfulVisibleText(
-    [...orderedOcr.map((item) => item.text), ...additionalText],
-    existingSummary,
-  ).slice(0, 5);
+  return meaningfulVisibleText(orderedOcr.map((item) => item.text));
+};
+
+const ocrSentence = (ocr: OcrBoundingBox[], additionalText: string[] = [], existingSummary = '') => {
+  const text = meaningfulVisibleText([...compileCimmichOcrReadings(ocr), ...additionalText], existingSummary).slice(
+    0,
+    5,
+  );
   return text.length > 0 ? `Visible text includes ${text.map((item) => `“${item}”`).join(', ')}.` : '';
 };
 

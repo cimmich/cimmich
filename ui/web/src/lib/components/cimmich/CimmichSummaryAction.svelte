@@ -18,7 +18,12 @@
   import { Icon, Tooltip, TooltipProvider } from '@immich/ui';
   import { mdiClose, mdiTextBoxSearchOutline } from '@mdi/js';
   import { onDestroy } from 'svelte';
-  import { cimmichSummaryQc, compileCimmichModelSummary, compileCimmichStandardSummary } from './cimmich-photo-summary';
+  import {
+    cimmichSummaryQc,
+    compileCimmichModelSummary,
+    compileCimmichOcrReadings,
+    compileCimmichStandardSummary,
+  } from './cimmich-photo-summary';
 
   type Mode = 'standard' | 'smart' | 'enhanced' | 'custom';
 
@@ -91,6 +96,7 @@
   );
   const needsRun = $derived((mode === 'smart' || mode === 'enhanced') && (!analysis || !analysis.current));
   const customDirty = $derived(customDraft.trim() !== (evidence?.ownerSummary?.summaryText || ''));
+  const ocrReadings = $derived(compileCimmichOcrReadings(ocrManager.data));
 
   const load = async () => {
     loading = true;
@@ -334,6 +340,28 @@
         {/if}
       {/if}
 
+      {#if !loading && evidence}
+        <section class="ocr-card" aria-labelledby="cimmich-summary-ocr-title">
+          <div class="ocr-heading">
+            <strong id="cimmich-summary-ocr-title">OCR</strong>
+            <span
+              >{ocrReadings.length > 0
+                ? `${ocrReadings.length} reading${ocrReadings.length === 1 ? '' : 's'}`
+                : 'None found'}</span
+            >
+          </div>
+          {#if ocrReadings.length > 0}
+            <div class="ocr-readings">
+              {#each ocrReadings as reading (reading)}
+                <span>{reading}</span>
+              {/each}
+            </div>
+          {:else}
+            <p class="ocr-empty">No text detected by Immich.</p>
+          {/if}
+        </section>
+      {/if}
+
       {#if running}
         <div class="progress" role="status">
           <span>{mode === 'smart' ? 'Building Smart summary…' : 'Building Enhanced summary…'}</span>
@@ -444,6 +472,7 @@
     color: white;
   }
   .summary-card,
+  .ocr-card,
   .qc,
   .notice,
   .custom-message,
@@ -456,6 +485,42 @@
   .summary-card {
     padding: 18px;
     background: rgb(255 255 255 / 0.07);
+  }
+  .ocr-card {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    background: rgb(255 255 255 / 0.035);
+  }
+  .ocr-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: rgb(255 255 255 / 0.45);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .ocr-heading strong {
+    color: rgb(255 255 255 / 0.82);
+  }
+  .ocr-readings {
+    display: grid;
+    gap: 5px;
+    max-height: 160px;
+    margin-top: 10px;
+    overflow: auto;
+  }
+  .ocr-readings span {
+    color: rgb(255 255 255 / 0.86);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .ocr-empty {
+    margin: 9px 0 0;
+    color: rgb(255 255 255 / 0.42);
+    font-size: 12px;
   }
   .summary-heading {
     display: flex;

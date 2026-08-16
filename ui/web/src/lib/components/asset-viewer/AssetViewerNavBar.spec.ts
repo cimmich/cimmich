@@ -144,6 +144,18 @@ describe('AssetViewerNavBar component', () => {
     expect(context).not.toContain('Owner note');
   });
 
+  it('shows Immich OCR as evidence separate from the summary modes', () => {
+    const summary = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichSummaryAction.svelte'),
+      'utf8',
+    );
+
+    expect(summary).toContain('cimmich-summary-ocr-title');
+    expect(summary).toContain('compileCimmichOcrReadings(ocrManager.data)');
+    expect(summary).toContain('No text detected by Immich.');
+    expect(summary).toContain("['standard', 'smart', 'enhanced', 'custom']");
+  });
+
   it('keeps Local AI hidden until the separate experiment is enabled', () => {
     const owner = userAdminFactory.build();
     authManager.setUser(owner);

@@ -184,7 +184,9 @@ shows which provider produced each result and applies the same validation to
 all of them.
 The editable **Custom** option remains separate and can never be overwritten by
 a generated summary. Use Standard, Smart or Enhanced as a starting point, edit
-the imported text and save when ready. See [Photo summaries](SUMMARIES.md).
+the imported text and save when ready. Beneath every option, the separate
+**OCR** section shows Immich's existing extracted text in reading order without
+starting another scan. See [Photo summaries](SUMMARIES.md).
 
 ### File location and duplicate badges — Source current
 

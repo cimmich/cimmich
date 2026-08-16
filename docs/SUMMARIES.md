@@ -56,6 +56,13 @@ from all three generated levels, is revisioned and is never overwritten by a
 model. The owner can start with Standard, Smart or Enhanced, edit the imported
 text and save only when ready.
 
+## OCR evidence
+
+The Summary panel shows Immich's stored OCR in a separate compact section under
+every summary level. Readings follow image order and suppress repeated fragments
+and punctuation noise. This is inspection of existing OCR evidence, not another
+OCR run; a clear empty state appears when Immich detected no text.
+
 ## Availability and privacy
 
 Standard is always available on a presentable Cimmich photo. Smart and Enhanced

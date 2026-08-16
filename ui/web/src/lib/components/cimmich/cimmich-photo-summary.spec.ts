@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cimmichSummaryQc, compileCimmichModelSummary, compileCimmichStandardSummary } from './cimmich-photo-summary';
+import {
+  cimmichSummaryQc,
+  compileCimmichModelSummary,
+  compileCimmichOcrReadings,
+  compileCimmichStandardSummary,
+} from './cimmich-photo-summary';
 
 const evidence = {
   bodies: [
@@ -23,6 +28,18 @@ const evidence = {
 } as never;
 
 describe('photo summary compiler', () => {
+  it('exposes cleaned OCR readings in visual reading order for the Summary panel', () => {
+    expect(
+      compileCimmichOcrReadings([
+        { text: 'Palace', x1: 80, x2: 90, x3: 90, x4: 80, y1: 60, y2: 60, y3: 70, y4: 70 },
+        { text: 'ThePinkPalace.com', x1: 10, x2: 70, x3: 70, x4: 10, y1: 60, y2: 60, y3: 70, y4: 70 },
+        { text: '.', x1: 0, x2: 1, x3: 1, x4: 0, y1: 0, y2: 0, y3: 1, y4: 1 },
+        { text: 'WELCOME', x1: 20, x2: 60, x3: 60, x4: 20, y1: 20, y2: 20, y3: 30, y4: 30 },
+        { text: 'welcome', x1: 20, x2: 60, x3: 60, x4: 20, y1: 40, y2: 40, y3: 50, y4: 50 },
+      ] as never),
+    ).toEqual(['WELCOME', 'ThePinkPalace.com']);
+  });
+
   it('rebuilds Standard from current owner-approved facts and OCR', () => {
     const text = compileCimmichStandardSummary({
       asset: { exifInfo: { city: 'Sydney', dateTimeOriginal: '2024-03-12T10:00:00Z' } } as never,
