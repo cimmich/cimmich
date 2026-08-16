@@ -136,11 +136,13 @@
         >
           <Icon icon={mdiFolderOpenOutline} size="23" />
         </div>
-        <p class="mt-4 text-xs font-bold tracking-[0.12em] text-gray-500 uppercase dark:text-gray-400">Stored on X1</p>
+        <p class="mt-4 text-xs font-bold tracking-[0.12em] text-gray-500 uppercase dark:text-gray-400">
+          Remote library
+        </p>
         <h2 id="cimmich-folder-dialog-title" class="mt-1 text-xl font-semibold">Open this location in Cimmich?</h2>
         <p id="cimmich-folder-dialog-description" class="mt-2 text-sm/6 text-gray-600 dark:text-gray-300">
-          A web browser cannot open the file manager on another machine. The original is stored on X1, but Cimmich can
-          show the same location in Folder view.
+          A web browser cannot open the file manager on another machine. The original is stored on your library server,
+          but Cimmich can show the same location in Folder view.
         </p>
         <code
           class="mt-4 block max-h-24 overflow-auto rounded-xl bg-gray-100 px-3 py-2 text-xs break-all text-gray-700 dark:bg-gray-800 dark:text-gray-200"

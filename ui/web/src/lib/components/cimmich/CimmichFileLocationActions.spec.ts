@@ -15,6 +15,9 @@ describe('CimmichFileLocationActions', () => {
     await fireEvent.click(rendered.getByRole('button', { name: `Open folder options for ${asset.originalFileName}` }));
 
     expect(rendered.getByRole('dialog', { name: 'Open this location in Cimmich?' })).toBeInTheDocument();
+    expect(rendered.getByText('Remote library')).toBeInTheDocument();
+    expect(rendered.getByText(/stored on your library server/)).toBeInTheDocument();
+    expect(rendered.queryByText(/X1/)).not.toBeInTheDocument();
     expect(rendered.getByText(/browser cannot open the file manager on another machine/i)).toBeInTheDocument();
     expect(rendered.getByText('/archive/Benji/B_Archive/Photos/2009 - Ben')).toBeInTheDocument();
     expect(rendered.getByRole('link', { name: 'Open folder view' })).toHaveAttribute(

@@ -182,7 +182,7 @@ you can see why it was classified that way. Each compared file shows its
 containing folder. A bracketed count reports how many other photos in that
 folder are flagged anywhere in the loaded duplicate review; selecting it shows
 those groups. **Open folder** explains that a browser cannot open the native
-file manager on the remote X1 host, then offers **Open folder view** to show the
+file manager on the remote library host, then offers **Open folder view** to show the
 containing directory in Cimmich or **Close** to remain on the photo. **Copy full
 path** copies the source path when the signed-in surface is allowed to expose
 it. Cimmich never claims that Finder or another native file manager opened
@@ -499,9 +499,9 @@ machine interface when deliberately enabled.
 
 Local AI is visibly labelled **Alpha · Experimental build** wherever its photo
 review dialog opens. It is off by default in public builds and appears only
-after a deployment deliberately enables the experimental capability. The
-private X1 deployment opts in by default; this does not change the public
-default or give Local AI authority to write identity truth.
+after a deployment deliberately enables the experimental capability. Opting in
+does not change the public default or give Local AI authority to write identity
+truth.
 
 A provider produces observations. A SourcePack binds compatible provider,
 vector, evidence and policy versions into an immutable reviewed matching input.

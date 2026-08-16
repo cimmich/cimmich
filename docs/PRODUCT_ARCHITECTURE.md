@@ -391,9 +391,8 @@ are independently enabled capabilities:
 
 The Local AI review surface carries an **Alpha · Experimental build** banner.
 Its public build default is `false`; private deployments may deliberately set
-`PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`. The private X1 image does
-so, while the source, Compose and Dockerfile defaults remain off for public
-builds.
+`PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT=true`, while the source, Compose
+and Dockerfile defaults remain off for public builds.
 
 ## Migrations and compatibility
 
