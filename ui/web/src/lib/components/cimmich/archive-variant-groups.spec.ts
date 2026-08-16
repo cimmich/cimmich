@@ -62,6 +62,15 @@ describe('Archive variant grouping', () => {
     expect(archiveVariantFolderContext([current], current)).toBeNull();
   });
 
+  it('keeps an explicit zero when the likely-same group has no folder peer', () => {
+    const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
+
+    expect(archiveVariantFolderContext([current], current)).toEqual({
+      moreLikelySameHere: 0,
+      path: '/archive/Ben/2009',
+    });
+  });
+
   it('separates transformed variants from verified exact bytes and explains copy-local differences', () => {
     const groups: DuplicateResponseDto[] = [
       {

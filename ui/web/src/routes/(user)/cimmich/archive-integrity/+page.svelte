@@ -661,9 +661,8 @@
                             <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0" />
                             <span class="min-w-0 truncate">{folderContext.path}</span>
                             <span class="shrink-0 whitespace-nowrap">
-                              {folderContext.moreLikelySameHere > 0
-                                ? `(+${folderContext.moreLikelySameHere} more likely same here · see all)`
-                                : '(see folder)'}
+                              ({folderContext.moreLikelySameHere > 0 ? '+' : ''}{folderContext.moreLikelySameHere} more likely
+                              same here · see all)
                             </span>
                           </a>
                         {/if}
