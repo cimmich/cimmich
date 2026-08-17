@@ -49,8 +49,10 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('No safe recommendation');
     expect(source).toContain('Why this recommendation');
     expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
-    expect(source).toContain("mode === 'folder' ? 'Folder Check' : 'Archive Health'");
+    expect(source).toContain("title={mode === 'folder' ? undefined : data.meta.title}");
     expect(source).toContain('Back to Archive Health');
+    expect(source).toContain('Open this folder in Library');
+    expect(source).toContain('Run Folder Check again');
     expect(source).toContain('Most impacted folders');
     expect(source).toContain('rankArchiveFoldersByImpact(nativeVariantGroups)');
     expect(source).toContain('affectedAssetCount');
