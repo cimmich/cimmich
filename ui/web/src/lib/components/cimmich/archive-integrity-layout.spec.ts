@@ -85,7 +85,8 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('No match elsewhere');
     expect(folderComparison).toContain('Repeated only inside');
     expect(folderComparison).toContain('Check byte details');
-    expect(folderComparison).toContain('Highlighted rows show the values that differ.');
+    expect(folderComparison).toContain('Highlighted rows compare aligned files below.');
+    expect(folderComparison).toContain('pairedAsset(asset, outsideAssets, index)');
     expect(folderComparison).toContain("label: 'File location'");
     expect(folderComparison).toContain("label: 'File size'");
     expect(folderComparison).toContain("label: 'Resolution'");
