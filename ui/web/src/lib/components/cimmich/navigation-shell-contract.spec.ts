@@ -49,7 +49,10 @@ describe('Cimmich navigation shell contract', () => {
     expect(people).not.toContain('Identity checks');
     expect(people).not.toContain('Route.cimmichSteward()');
     expect(people).toContain('{#snippet actions()}');
-    expect(people).toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end"');
+    expect(people).toContain(
+      'class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap"',
+    );
+    expect(people).not.toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end"');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });
