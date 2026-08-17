@@ -92,8 +92,9 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('Recommended to keep');
     expect(folderComparison).toContain('Review only');
     expect(folderComparison).toContain('This is a review recommendation, not deletion proof.');
-    expect(folderComparison).toContain("plan.status !== 'hold_incomplete'");
+    expect(folderComparison).toContain("plan.status === 'hold_exact' || plan.status === 'hold_ambiguous'");
     expect(folderComparison).toContain('visibleRecommendation(group.canonicalPlan, comparisonAssets)');
+    expect(folderComparison).toContain('The archive-wide winner is outside this folder pair.');
     expect(folderComparison).toContain('No safe recommendation');
     expect(folderComparison).toContain('recommendedAssetId === asset.id');
     expect(folderComparison).toContain("label: 'File location'");
