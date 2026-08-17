@@ -46,7 +46,8 @@ describe('Cimmich navigation shell contract', () => {
     expect(immichSidebar).toContain('bind:expanded={$cimmichCompanionDropdown}');
     expect(immichSidebar).toContain("{ title: 'Smart Search', href: Route.cimmichSmartSearch()");
     expect(immichSidebar).not.toContain("{ title: 'Review', href: Route.cimmichSteward()");
-    expect(people).toContain('Identity checks');
+    expect(people).not.toContain('Identity checks');
+    expect(people).not.toContain('Route.cimmichSteward()');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });
