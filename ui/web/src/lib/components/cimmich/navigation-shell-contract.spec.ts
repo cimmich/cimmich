@@ -54,6 +54,11 @@ describe('Cimmich navigation shell contract', () => {
     );
     expect(people).not.toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end"');
     expect(people).toContain('<Tooltip text="Thumbnail size">');
+    expect(people).toContain("tooltip: 'Browse people with accepted photos'");
+    expect(people).toContain("tooltip: 'People with new identity suggestions to review'");
+    expect(people).toContain("tooltip: 'Review unassigned faces that may belong together'");
+    expect(people).toContain("tooltip: 'People with unresolved sorting or identity work'");
+    expect(people).toContain('<Tooltip text="Search names in the current People mode">');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });

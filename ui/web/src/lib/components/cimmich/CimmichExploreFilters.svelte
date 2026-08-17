@@ -12,7 +12,7 @@
     CimmichVisibilityTier,
   } from '$lib/services/cimmich.service';
   import { mdiChevronDown, mdiChevronUp, mdiClose, mdiFilterVariant, mdiLockOutline } from '@mdi/js';
-  import { Icon } from '@immich/ui';
+  import { Icon, Tooltip } from '@immich/ui';
 
   interface Props {
     error?: string;
@@ -101,28 +101,43 @@
 
 <section class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-gray">
   <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-    <button
-      class="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-immich-fg transition hover:bg-gray-100 dark:text-immich-dark-fg dark:hover:bg-white/10"
-      type="button"
-      aria-expanded={expanded}
-      onclick={toggleExpanded}
-    >
-      <Icon icon={mdiFilterVariant} size="18" /> Explore
-      {#if activeCount > 0}
-        <span class="rounded-full bg-primary px-2 py-0.5 text-[11px] text-white dark:text-black">{activeCount}</span>
-      {/if}
-      <Icon icon={expanded ? mdiChevronUp : mdiChevronDown} size="17" />
-    </button>
-    <span class="text-sm text-gray-600 dark:text-gray-300" aria-live="polite">{resultLabel}</span>
+    <Tooltip text="Filter this view by exact privacy, tags, places, events and things">
+      {#snippet child({ props })}
+        <button
+          {...props}
+          class="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-immich-fg transition hover:bg-gray-100 dark:text-immich-dark-fg dark:hover:bg-white/10"
+          type="button"
+          aria-expanded={expanded}
+          onclick={toggleExpanded}
+        >
+          <Icon icon={mdiFilterVariant} size="18" /> Explore
+          {#if activeCount > 0}
+            <span class="rounded-full bg-primary px-2 py-0.5 text-[11px] text-white dark:text-black">{activeCount}</span
+            >
+          {/if}
+          <Icon icon={expanded ? mdiChevronUp : mdiChevronDown} size="17" />
+        </button>
+      {/snippet}
+    </Tooltip>
+    <Tooltip text="Matching photos out of all photos available in the current viewing mode">
+      {#snippet child({ props })}
+        <span {...props} class="text-sm text-gray-600 dark:text-gray-300" aria-live="polite">{resultLabel}</span>
+      {/snippet}
+    </Tooltip>
     {#if loading && result}
       <span class="size-2 animate-pulse rounded-full bg-primary" aria-label="Updating filters"></span>
     {/if}
     {#if activeCount > 0}
-      <button
-        class="ml-auto rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10"
-        type="button"
-        onclick={() => update(emptyCimmichExploreFilters())}>Clear all</button
-      >
+      <Tooltip text="Remove every Explore filter">
+        {#snippet child({ props })}
+          <button
+            {...props}
+            class="ml-auto rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10"
+            type="button"
+            onclick={() => update(emptyCimmichExploreFilters())}>Clear all</button
+          >
+        {/snippet}
+      </Tooltip>
     {/if}
   </div>
 
@@ -132,33 +147,48 @@
       aria-label="Active filters"
     >
       {#if filters.futureDates}
-        <button
-          class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100"
-          type="button"
-          onclick={() => update({ ...filters, futureDates: false })}
-        >
-          Capture date after today <Icon icon={mdiClose} size="14" />
-        </button>
+        <Tooltip text="Remove the future capture-date filter">
+          {#snippet child({ props })}
+            <button
+              {...props}
+              class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-950 dark:bg-amber-950 dark:text-amber-100"
+              type="button"
+              onclick={() => update({ ...filters, futureDates: false })}
+            >
+              Capture date after today <Icon icon={mdiClose} size="14" />
+            </button>
+          {/snippet}
+        </Tooltip>
       {/if}
       {#each filters.privacyTiers as tier (tier)}
-        <button
-          class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-950 dark:bg-violet-950 dark:text-violet-100"
-          type="button"
-          onclick={() => remove('privacyTiers', tier)}
-        >
-          {tier[0]?.toUpperCase()}{tier.slice(1)} only <Icon icon={mdiClose} size="14" />
-        </button>
+        <Tooltip text={`Remove the exact ${tier} privacy filter`}>
+          {#snippet child({ props })}
+            <button
+              {...props}
+              class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-950 dark:bg-violet-950 dark:text-violet-100"
+              type="button"
+              onclick={() => remove('privacyTiers', tier)}
+            >
+              {tier[0]?.toUpperCase()}{tier.slice(1)} only <Icon icon={mdiClose} size="14" />
+            </button>
+          {/snippet}
+        </Tooltip>
       {/each}
       {#each selectionGroups as group (group.key)}
         {#each group.values as id (id)}
-          <button
-            class="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-950 dark:bg-sky-950 dark:text-sky-100"
-            type="button"
-            onclick={() => remove(group.key, id)}
-          >
-            {group.label}: {facetName(group.items, id)}
-            <Icon icon={mdiClose} size="14" />
-          </button>
+          <Tooltip text={`Remove the ${group.label.toLowerCase()} filter`}>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                class="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-950 dark:bg-sky-950 dark:text-sky-100"
+                type="button"
+                onclick={() => remove(group.key, id)}
+              >
+                {group.label}: {facetName(group.items, id)}
+                <Icon icon={mdiClose} size="14" />
+              </button>
+            {/snippet}
+          </Tooltip>
         {/each}
       {/each}
     </div>
@@ -176,20 +206,29 @@
           {#each result?.facets.privacy ?? [] as facet (facet.id)}
             {@const tier = facet.id as CimmichVisibilityTier}
             {@const protectedTier = needsViewingMode(tier)}
-            <button
-              class={[
-                'rounded-lg border p-2 text-left text-xs transition',
-                filters.privacyTiers.includes(facet.id as CimmichVisibilityTier)
-                  ? 'border-primary bg-primary/10 font-semibold text-primary'
-                  : 'border-gray-200 hover:border-primary/40 dark:border-gray-600',
-              ]}
-              type="button"
-              aria-pressed={filters.privacyTiers.includes(tier)}
-              onclick={() => setPrivacy(tier)}
+            <Tooltip
+              text={protectedTier
+                ? `Enter ${facet.displayName} viewing mode to inspect exact ${facet.displayName} photos`
+                : `Show only photos with exact ${facet.displayName} privacy`}
             >
-              <span class="block">{facet.displayName}</span>
-              <span class="opacity-65">{protectedTier ? 'Enter to inspect' : facet.count.toLocaleString()}</span>
-            </button>
+              {#snippet child({ props })}
+                <button
+                  {...props}
+                  class={[
+                    'rounded-lg border p-2 text-left text-xs transition',
+                    filters.privacyTiers.includes(facet.id as CimmichVisibilityTier)
+                      ? 'border-primary bg-primary/10 font-semibold text-primary'
+                      : 'border-gray-200 hover:border-primary/40 dark:border-gray-600',
+                  ]}
+                  type="button"
+                  aria-pressed={filters.privacyTiers.includes(tier)}
+                  onclick={() => setPrivacy(tier)}
+                >
+                  <span class="block">{facet.displayName}</span>
+                  <span class="opacity-65">{protectedTier ? 'Enter to inspect' : facet.count.toLocaleString()}</span>
+                </button>
+              {/snippet}
+            </Tooltip>
           {/each}
         </div>
       </fieldset>
