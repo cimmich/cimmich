@@ -249,15 +249,29 @@
   const visibleRecommendation = (plan: ArchiveFolderComparisonGroup['canonicalPlan'], assets: AssetResponseDto[]) => {
     const visibleAssetIds = new Set(assets.map((asset) => asset.id));
     if (plan.preferredAssetId && visibleAssetIds.has(plan.preferredAssetId)) {
-      return { assetId: plan.preferredAssetId, reviewOnly: false };
+      return {
+        assetId: plan.preferredAssetId,
+        note: 'Review the image and copy-local metadata before removing anything.',
+        reviewOnly: false,
+      };
     }
-    if (plan.status !== 'hold_incomplete') {
+    if (plan.status === 'hold_exact' || plan.status === 'hold_ambiguous') {
       return null;
     }
     const ranking = [...plan.rankings.values()]
       .filter((candidate) => visibleAssetIds.has(candidate.assetId))
       .sort((left, right) => left.position - right.position)[0];
-    return ranking ? { assetId: ranking.assetId, reviewOnly: true } : null;
+    if (!ranking) {
+      return null;
+    }
+    return {
+      assetId: ranking.assetId,
+      note:
+        plan.status === 'candidate'
+          ? 'The archive-wide winner is outside this folder pair. This visible-pair recommendation is review-only, not deletion proof.'
+          : 'Byte evidence is incomplete. This is a review recommendation, not deletion proof.',
+      reviewOnly: true,
+    };
   };
   const recommendationReason = (
     plan: ArchiveFolderComparisonGroup['canonicalPlan'],
@@ -528,9 +542,7 @@
               </div>
               <p class="max-w-2xl text-xs/5 text-emerald-900 dark:text-emerald-100">
                 {recommendationReason(group.canonicalPlan, comparisonAssets, recommendedAsset.id)}
-                {recommendation?.reviewOnly
-                  ? 'Byte evidence is incomplete. This is a review recommendation, not deletion proof.'
-                  : 'Review the image and copy-local metadata before removing anything.'}
+                {recommendation?.note}
               </p>
             </div>
           {:else}
