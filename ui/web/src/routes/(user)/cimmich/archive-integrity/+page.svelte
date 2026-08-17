@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { replaceState } from '$app/navigation';
   import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
@@ -28,7 +29,14 @@
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize, getAssetDuplicates, getAssetInfo, searchAssets, type AssetResponseDto } from '@immich/sdk';
+  import {
+    AssetMediaSize,
+    getAssetDuplicates,
+    getAssetInfo,
+    searchAssets,
+    type AssetResponseDto,
+    type DuplicateResponseDto,
+  } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
@@ -51,10 +59,10 @@
 
   let { data }: Props = $props();
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
-  const focusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
+  const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
   let mode = $state<'exact' | 'variants' | 'folder' | 'backup'>(
-    requestedMode === 'folder' || (requestedMode === 'variants' && focusedFolder)
+    requestedMode === 'folder' || (requestedMode === 'variants' && initialFocusedFolder)
       ? 'folder'
       : requestedMode === 'variants' || requestedMode === 'plan'
         ? 'variants'
@@ -62,7 +70,8 @@
           ? 'backup'
           : 'exact',
   );
-  let folderPathInput = $state(focusedFolder);
+  let activeFolder = $state(initialFocusedFolder);
+  let folderPathInput = $state(initialFocusedFolder);
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
   let loaded = $state(false);
@@ -86,6 +95,7 @@
   let folderError = $state('');
   let folderLoaded = $state(false);
   let folderLoading = $state(false);
+  let folderRankingLoading = $state(false);
   let backupError = $state('');
   let backupItems = $state(new Map<string, CimmichArchiveBackupProofItem>());
   let backupLoaded = $state(false);
@@ -101,10 +111,13 @@
     sourceSystemCount: 0,
     unprovenItems: 0,
   });
+  let nativeVariantGroups: DuplicateResponseDto[] | null = null;
+  let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
+  let folderRequestGeneration = 0;
   let scopedVariantGroups = $derived(
     archiveVariantGroupsInFolder(
       variantGroups.filter((group) => !focusedAssetId || group.assets.some((asset) => asset.id === focusedAssetId)),
-      mode === 'folder' ? focusedFolder : '',
+      mode === 'folder' ? activeFolder : '',
     ),
   );
   let filteredVariantGroups = $derived(
@@ -131,10 +144,10 @@
         .find(
           (asset) =>
             Boolean(asset.originalPath) &&
-            asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === focusedFolder,
+            asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === activeFolder,
         ),
   );
-  let folderOverlap = $derived(buildArchiveFolderOverlap(focusedFolder, folderAssets, variantGroups));
+  let folderOverlap = $derived(buildArchiveFolderOverlap(activeFolder, folderAssets, variantGroups));
   let visibleFolderImpacts = $derived(folderImpacts.slice(0, 50));
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
@@ -212,12 +225,14 @@
     backupLoading = true;
     backupError = '';
     try {
-      const items: CimmichArchiveBackupProofItem[] = [];
-      const firstPage = await getCimmichArchiveBackupProof(sourceAssetIds.slice(0, 80));
-      items.push(...firstPage.items);
-      for (let index = 80; index < sourceAssetIds.length; index += 80) {
-        const page = await getCimmichArchiveBackupProof(sourceAssetIds.slice(index, index + 80));
-        items.push(...page.items);
+      const batches = Array.from({ length: Math.ceil(sourceAssetIds.length / 80) }, (_, index) =>
+        sourceAssetIds.slice(index * 80, index * 80 + 80),
+      );
+      const pages = await Promise.all(batches.map((batch) => getCimmichArchiveBackupProof(batch)));
+      const firstPage = pages[0];
+      const items = pages.flatMap((page) => page.items);
+      if (!firstPage) {
+        return;
       }
       backupSummary = firstPage.summary;
       backupItems = new Map(items.map((item) => [item.sourceAssetId, item]));
@@ -229,11 +244,38 @@
     }
   };
 
-  const loadVariants = async () => {
+  const ensureNativeVariantGroups = async ({ refresh = false } = {}) => {
+    if (refresh) {
+      nativeVariantGroups = null;
+      nativeVariantGroupsRequest = null;
+      folderImpacts = [];
+    }
+    if (nativeVariantGroups) {
+      return nativeVariantGroups;
+    }
+    nativeVariantGroupsRequest ??= getAssetDuplicates();
+    try {
+      nativeVariantGroups = [...(await nativeVariantGroupsRequest)];
+      folderImpacts = rankArchiveFoldersByImpact(nativeVariantGroups);
+      return nativeVariantGroups;
+    } finally {
+      nativeVariantGroupsRequest = null;
+    }
+  };
+
+  const readArchiveEvidence = async (sourceAssetIds: string[]) => {
+    const batches = Array.from({ length: Math.ceil(sourceAssetIds.length / 80) }, (_, index) =>
+      sourceAssetIds.slice(index * 80, index * 80 + 80),
+    );
+    const pages = await Promise.all(batches.map((batch) => getCimmichArchiveSourceEvidence(batch)));
+    return pages.flatMap((page) => page.items);
+  };
+
+  const loadVariants = async ({ includeBackup = false, refreshNative = false } = {}) => {
     variantsLoading = true;
     variantError = '';
     try {
-      const nativeGroups = await getAssetDuplicates();
+      const nativeGroups = [...(await ensureNativeVariantGroups({ refresh: refreshNative }))];
       if (focusedAssetId && !nativeGroups.some((group) => group.assets.some((asset) => asset.id === focusedAssetId))) {
         const statusPage = await getCimmichDuplicateStatus([focusedAssetId]);
         const status = statusPage.items.find(
@@ -249,17 +291,14 @@
           }
         }
       }
-      folderImpacts = rankArchiveFoldersByImpact(nativeGroups);
       const sourceAssetIds = [...new Set(nativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
-      const evidence = [];
-      for (let index = 0; index < sourceAssetIds.length; index += 80) {
-        const page = await getCimmichArchiveSourceEvidence(sourceAssetIds.slice(index, index + 80));
-        evidence.push(...page.items);
-      }
+      const evidence = await readArchiveEvidence(sourceAssetIds);
       variantGroups = buildArchiveVariantGroups(nativeGroups, evidence);
       variantsLoaded = true;
       visibleVariantCount = 12;
-      void loadBackupProof(sourceAssetIds);
+      if (includeBackup) {
+        void loadBackupProof(sourceAssetIds);
+      }
     } catch (error_) {
       variantError = error_ instanceof Error ? error_.message : 'Cimmich could not read similarity candidates.';
     } finally {
@@ -267,45 +306,91 @@
     }
   };
 
-  const loadFolderAssets = async () => {
-    if (!focusedFolder) {
+  const readFolderAssets = async (folderPath: string) => {
+    const matches: AssetResponseDto[] = [];
+    let pageNumber = 1;
+    for (let pageIndex = 0; pageIndex < 50; pageIndex += 1) {
+      const result = await searchAssets({
+        metadataSearchDto: { originalPath: folderPath, page: pageNumber, size: 100, withExif: true },
+      });
+      matches.push(
+        ...result.assets.items.filter((asset) => {
+          if (asset.isTrashed || asset.isOffline || !asset.originalPath) {
+            return false;
+          }
+          return asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === folderPath;
+        }),
+      );
+      if (!result.assets.nextPage) {
+        break;
+      }
+      const nextPage = Number(result.assets.nextPage);
+      if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
+        break;
+      }
+      pageNumber = nextPage;
+    }
+    return matches.filter(
+      (asset, index, assets) => assets.findIndex((candidate) => candidate.id === asset.id) === index,
+    );
+  };
+
+  const loadFolderRanking = async ({ refreshNative = false } = {}) => {
+    folderRankingLoading = true;
+    variantError = '';
+    try {
+      await ensureNativeVariantGroups({ refresh: refreshNative });
+    } catch (error_) {
+      variantError = error_ instanceof Error ? error_.message : 'Cimmich could not rank archive folders.';
+    } finally {
+      folderRankingLoading = false;
+    }
+  };
+
+  const loadFolderComparison = async (folderPath: string, { refreshNative = false } = {}) => {
+    const requestGeneration = ++folderRequestGeneration;
+    folderLoading = true;
+    variantsLoading = true;
+    folderLoaded = false;
+    variantsLoaded = false;
+    folderError = '';
+    variantError = '';
+    try {
+      const [allNativeGroups, assets] = await Promise.all([
+        ensureNativeVariantGroups({ refresh: refreshNative }),
+        readFolderAssets(folderPath),
+      ]);
+      const folderNativeGroups = archiveVariantGroupsInFolder(allNativeGroups, folderPath);
+      const sourceAssetIds = [...new Set(folderNativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
+      const evidence = await readArchiveEvidence(sourceAssetIds);
+      if (requestGeneration !== folderRequestGeneration) {
+        return;
+      }
+      folderAssets = assets;
+      variantGroups = buildArchiveVariantGroups(folderNativeGroups, evidence);
+      folderLoaded = true;
+      variantsLoaded = true;
+    } catch (error_) {
+      if (requestGeneration === folderRequestGeneration) {
+        folderError = error_ instanceof Error ? error_.message : 'Cimmich could not compare this folder.';
+      }
+    } finally {
+      if (requestGeneration === folderRequestGeneration) {
+        folderLoading = false;
+        variantsLoading = false;
+      }
+    }
+  };
+
+  const submitFolder = (event: SubmitEvent) => {
+    event.preventDefault();
+    const folderPath = folderPathInput.trim();
+    if (!folderPath) {
       return;
     }
-    folderLoading = true;
-    folderError = '';
-    try {
-      const matches: AssetResponseDto[] = [];
-      let pageNumber = 1;
-      for (let pageIndex = 0; pageIndex < 50; pageIndex += 1) {
-        const result = await searchAssets({
-          metadataSearchDto: { originalPath: focusedFolder, page: pageNumber, size: 100, withExif: true },
-        });
-        matches.push(
-          ...result.assets.items.filter((asset) => {
-            if (asset.isTrashed || asset.isOffline || !asset.originalPath) {
-              return false;
-            }
-            return asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === focusedFolder;
-          }),
-        );
-        if (!result.assets.nextPage) {
-          break;
-        }
-        const nextPage = Number(result.assets.nextPage);
-        if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
-          break;
-        }
-        pageNumber = nextPage;
-      }
-      folderAssets = matches.filter(
-        (asset, index, assets) => assets.findIndex((candidate) => candidate.id === asset.id) === index,
-      );
-      folderLoaded = true;
-    } catch (error_) {
-      folderError = error_ instanceof Error ? error_.message : 'Cimmich could not read every photo in this folder.';
-    } finally {
-      folderLoading = false;
-    }
+    activeFolder = folderPath;
+    replaceState(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' }), globalThis.history.state);
+    void loadFolderComparison(folderPath);
   };
 
   const refreshCurrentMode = () => {
@@ -313,16 +398,46 @@
       void load();
       return;
     }
-    void loadVariants();
-    if (mode === 'folder' && focusedFolder) {
-      void loadFolderAssets();
+    if (mode === 'variants') {
+      void loadVariants({ refreshNative: true });
+      return;
     }
+    if (mode === 'folder') {
+      if (activeFolder) {
+        void loadFolderComparison(activeFolder, { refreshNative: true });
+      } else {
+        void loadFolderRanking({ refreshNative: true });
+      }
+      return;
+    }
+    void load();
+    void loadVariants({ includeBackup: true, refreshNative: true });
   };
 
   onMount(() => {
-    void load();
-    void loadVariants();
-    void loadFolderAssets();
+    switch (mode) {
+      case 'exact': {
+        void load();
+        break;
+      }
+      case 'variants': {
+        void loadVariants();
+        break;
+      }
+      case 'folder': {
+        if (activeFolder) {
+          void loadFolderComparison(activeFolder);
+        } else {
+          void loadFolderRanking();
+        }
+        break;
+      }
+      case 'backup': {
+        void load();
+        void loadVariants({ includeBackup: true });
+        break;
+      }
+    }
   });
 </script>
 
@@ -339,10 +454,16 @@
         <button
           type="button"
           class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-          disabled={loading || loadingMore || variantsLoading || backupLoading}
+          disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
           onclick={refreshCurrentMode}
         >
-          <Icon icon={mdiRefresh} size="18" class={loading || variantsLoading || backupLoading ? 'animate-spin' : ''} />
+          <Icon
+            icon={mdiRefresh}
+            size="18"
+            class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+              ? 'animate-spin'
+              : ''}
+          />
           Refresh
         </button>
       </div>
@@ -419,7 +540,7 @@
         <strong>{countLabel(summary.duplicateGroups, 'group')}</strong> · {countLabel(summary.copiesInGroups, 'file')} ·
         {formatBytes(summary.reclaimableBytes)} possible space. Exact means byte-for-byte.
       </p>
-    {:else if mode === 'variants' && !focusedFolder}
+    {:else if mode === 'variants'}
       <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
         <strong>{countLabel(scopedVariantGroups.length, 'group')}</strong> · {countLabel(scopedVariantAssets, 'file')} ·
         {countLabel(scopedVariantFolders, 'folder')}. A visual match is a review lead, not deletion proof.
@@ -610,17 +731,17 @@
               id="folder-impact-selector"
               class="mt-3 min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-violet-900"
               bind:value={folderPathInput}
-              disabled={variantsLoading && folderImpacts.length === 0}
+              disabled={folderRankingLoading && folderImpacts.length === 0}
             >
               <option value="">
-                {variantsLoading && folderImpacts.length === 0
+                {folderRankingLoading && folderImpacts.length === 0
                   ? 'Ranking archive folders…'
                   : folderImpacts.length === 0
                     ? 'No cross-folder impacts found'
                     : 'Choose a high-impact folder'}
               </option>
-              {#if focusedFolder && !visibleFolderImpacts.some((candidate) => candidate.folderPath === focusedFolder)}
-                <option value={focusedFolder}>{focusedFolder} · current folder</option>
+              {#if activeFolder && !visibleFolderImpacts.some((candidate) => candidate.folderPath === activeFolder)}
+                <option value={activeFolder}>{activeFolder} · current folder</option>
               {/if}
               {#each visibleFolderImpacts as candidate, index (candidate.folderPath)}
                 <option value={candidate.folderPath}>
@@ -635,10 +756,10 @@
           </div>
 
           <form
-            data-sveltekit-reload
             class="mt-4 flex flex-col gap-3 sm:flex-row"
             method="get"
             action={Route.cimmichArchiveIntegrity()}
+            onsubmit={submitFolder}
           >
             <input type="hidden" name="mode" value="folder" />
             <label class="min-w-0 flex-1">
@@ -661,13 +782,13 @@
           </form>
         </div>
 
-        {#if focusedFolder}
+        {#if activeFolder}
           <div class="flex flex-wrap items-center justify-between gap-3 px-1">
-            <p class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{focusedFolder}</p>
+            <p class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{activeFolder}</p>
             {#if focusedFolderAsset}
               <a
                 class="inline-flex min-h-10 items-center gap-2 font-semibold text-primary hover:underline"
-                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: focusedFolder })}
+                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
               >
                 Open folder <Icon icon={mdiArrowRight} size="17" />
               </a>
@@ -675,7 +796,7 @@
           </div>
           <ArchiveFolderComparison
             error={folderError || variantError}
-            folderPath={focusedFolder}
+            folderPath={activeFolder}
             loaded={folderLoaded && variantsLoaded}
             loading={folderLoading || variantsLoading}
             overlap={folderOverlap}
