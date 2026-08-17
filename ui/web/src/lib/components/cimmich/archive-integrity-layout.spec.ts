@@ -94,6 +94,15 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain("label: 'File modified'");
     expect(folderComparison).toContain("label: 'Photo location'");
     expect(folderComparison).toContain("label: 'Camera'");
+    expect(folderComparison).toContain('More Immich metadata');
+    expect(folderComparison).toContain("label: 'Rotation'");
+    expect(folderComparison).toContain("label: 'Description'");
+    expect(folderComparison).toContain("label: 'Rating'");
+    expect(folderComparison).toContain("label: 'Immich People'");
+    expect(folderComparison).toContain("label: 'Immich Tags'");
+    expect(folderComparison).toContain("label: 'Favourite'");
+    expect(folderComparison).toContain("label: 'Archive status'");
+    expect(folderComparison).toContain("label: 'Visibility'");
     expect(backupProof).toContain('Retirement safety gate');
     expect(backupProof).toContain('No independent backup connected');
     expect(backupProof).toContain('targetsLoaded && targets.length > 0');

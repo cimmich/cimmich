@@ -105,6 +105,20 @@
     const lens = asset.exifInfo?.lensModel ? `Lens: ${asset.exifInfo.lensModel}` : '';
     return [body, lens].filter(Boolean).join(' · ') || 'Not recorded';
   };
+  const people = (asset: AssetResponseDto) =>
+    asset.people
+      ?.map((person) => person.name.trim())
+      .filter(Boolean)
+      .sort()
+      .join(', ') || 'None recorded';
+  const tags = (asset: AssetResponseDto) =>
+    asset.tags
+      ?.map((tag) => tag.value.trim())
+      .filter(Boolean)
+      .sort()
+      .join(', ') || 'None recorded';
+  const orientation = (asset: AssetResponseDto) =>
+    asset.exifInfo?.orientation == null ? 'Not recorded' : String(asset.exifInfo.orientation);
   const scalar = (value: unknown) => JSON.stringify(value ?? null);
   const pairedAsset = (asset: AssetResponseDto, candidates: AssetResponseDto[], index: number) =>
     candidates.find((candidate) => candidate.originalFileName === asset.originalFileName) ?? candidates[index];
@@ -174,6 +188,53 @@
       value: camera(asset),
     },
   ];
+  const moreFactsFor = (asset: AssetResponseDto, comparison: AssetResponseDto | undefined) => [
+    {
+      changed: Boolean(comparison && asset.originalMimeType !== comparison.originalMimeType),
+      label: 'File type',
+      value: asset.originalMimeType || 'Not recorded',
+    },
+    {
+      changed: Boolean(comparison && asset.exifInfo?.orientation !== comparison.exifInfo?.orientation),
+      label: 'Rotation',
+      value: orientation(asset),
+    },
+    {
+      changed: Boolean(comparison && asset.exifInfo?.description !== comparison.exifInfo?.description),
+      label: 'Description',
+      value: asset.exifInfo?.description || 'Not recorded',
+    },
+    {
+      changed: Boolean(comparison && asset.exifInfo?.rating !== comparison.exifInfo?.rating),
+      label: 'Rating',
+      value: asset.exifInfo?.rating == null ? 'Not recorded' : `${asset.exifInfo.rating} stars`,
+    },
+    {
+      changed: Boolean(comparison && people(asset) !== people(comparison)),
+      label: 'Immich People',
+      value: people(asset),
+    },
+    {
+      changed: Boolean(comparison && tags(asset) !== tags(comparison)),
+      label: 'Immich Tags',
+      value: tags(asset),
+    },
+    {
+      changed: Boolean(comparison && asset.isFavorite !== comparison.isFavorite),
+      label: 'Favourite',
+      value: asset.isFavorite ? 'Yes' : 'No',
+    },
+    {
+      changed: Boolean(comparison && asset.isArchived !== comparison.isArchived),
+      label: 'Archive status',
+      value: asset.isArchived ? 'Archived' : 'Not archived',
+    },
+    {
+      changed: Boolean(comparison && asset.visibility !== comparison.visibility),
+      label: 'Visibility',
+      value: asset.visibility || 'Not recorded',
+    },
+  ];
   const statusLabel = (classification: string) =>
     classification === 'verified_exact'
       ? 'Exact bytes'
@@ -238,6 +299,31 @@
         </div>
       {/each}
     </dl>
+    <details class="border-t border-gray-100 text-xs dark:border-immich-dark-gray">
+      <summary class="cursor-pointer px-4 py-3 font-semibold text-primary">More Immich metadata</summary>
+      <dl
+        class="divide-y divide-gray-100 border-t border-gray-100 dark:divide-immich-dark-gray dark:border-immich-dark-gray"
+      >
+        {#each moreFactsFor(asset, comparison) as fact (fact.label)}
+          <div
+            class="grid gap-1 px-4 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)] {fact.changed
+              ? 'bg-amber-50/80 dark:bg-amber-950/20'
+              : ''}"
+          >
+            <dt class="flex items-center gap-1.5 font-semibold text-gray-600 dark:text-gray-300">
+              {fact.label}
+              {#if fact.changed}
+                <span
+                  class="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-950 dark:bg-amber-900 dark:text-amber-100"
+                  >Different</span
+                >
+              {/if}
+            </dt>
+            <dd class="wrap-break-word text-gray-900 dark:text-gray-100" title={fact.value}>{fact.value}</dd>
+          </div>
+        {/each}
+      </dl>
+    </details>
   </div>
 {/snippet}
 
