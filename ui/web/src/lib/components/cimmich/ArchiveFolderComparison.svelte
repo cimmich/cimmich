@@ -485,7 +485,7 @@
         {@const recommendation = visibleRecommendation(group.canonicalPlan, comparisonAssets)}
         {@const recommendedAssetId = recommendation?.assetId ?? null}
         {@const recommendedAsset = comparisonAssets.find((asset) => asset.id === recommendedAssetId)}
-        {@const comparisonGrid = `grid-template-columns: 7.5rem repeat(${comparisonAssets.length}, minmax(12rem, 1fr));`}
+        {@const comparisonGrid = `grid-template-columns: 7.5rem repeat(${comparisonAssets.length}, 13rem);`}
         <article
           class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
         >
@@ -556,7 +556,7 @@
                     : ''}"
                 >
                   <a
-                    class="group block aspect-4/3 w-24 overflow-hidden rounded-lg border border-gray-200 dark:border-immich-dark-gray"
+                    class="group block aspect-4/3 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-immich-dark-gray"
                     href={Route.viewAsset({ id: asset.id })}
                   >
                     <img
