@@ -105,36 +105,71 @@
     const lens = asset.exifInfo?.lensModel ? `Lens: ${asset.exifInfo.lensModel}` : '';
     return [body, lens].filter(Boolean).join(' · ') || 'Not recorded';
   };
-  const factsFor = (asset: AssetResponseDto, differences: string[]) => [
+  const scalar = (value: unknown) => JSON.stringify(value ?? null);
+  const pairedAsset = (asset: AssetResponseDto, candidates: AssetResponseDto[], index: number) =>
+    candidates.find((candidate) => candidate.originalFileName === asset.originalFileName) ?? candidates[index];
+  const factsFor = (asset: AssetResponseDto, comparison: AssetResponseDto | undefined) => [
     {
-      changed: differences.includes('Filenames differ'),
+      changed: Boolean(comparison && asset.originalFileName !== comparison.originalFileName),
       label: 'File name',
       value: asset.originalFileName || 'Not recorded',
     },
-    { changed: false, label: 'File location', value: asset.originalPath || 'Not recorded' },
     {
-      changed: differences.includes('File sizes differ'),
+      changed: Boolean(comparison && asset.originalPath !== comparison.originalPath),
+      label: 'File location',
+      value: asset.originalPath || 'Not recorded',
+    },
+    {
+      changed: Boolean(comparison && asset.exifInfo?.fileSizeInByte !== comparison.exifInfo?.fileSizeInByte),
       label: 'File size',
       value: formatBytes(asset.exifInfo?.fileSizeInByte),
     },
     {
-      changed: differences.includes('Resolution differs'),
+      changed: Boolean(comparison && (asset.width !== comparison.width || asset.height !== comparison.height)),
       label: 'Resolution',
       value: dimensions(asset),
     },
     {
-      changed: differences.includes('Capture dates differ'),
+      changed: Boolean(
+        comparison &&
+        (asset.exifInfo?.dateTimeOriginal ?? asset.localDateTime) !==
+          (comparison.exifInfo?.dateTimeOriginal ?? comparison.localDateTime),
+      ),
       label: 'Captured',
       value: formatDateTime(asset.exifInfo?.dateTimeOriginal ?? asset.localDateTime),
     },
-    { changed: false, label: 'File modified', value: formatDateTime(asset.fileModifiedAt) },
     {
-      changed: differences.includes('Location metadata differs'),
+      changed: Boolean(comparison && asset.fileModifiedAt !== comparison.fileModifiedAt),
+      label: 'File modified',
+      value: formatDateTime(asset.fileModifiedAt),
+    },
+    {
+      changed: Boolean(
+        comparison &&
+        scalar([
+          asset.exifInfo?.city,
+          asset.exifInfo?.state,
+          asset.exifInfo?.country,
+          asset.exifInfo?.latitude,
+          asset.exifInfo?.longitude,
+        ]) !==
+          scalar([
+            comparison.exifInfo?.city,
+            comparison.exifInfo?.state,
+            comparison.exifInfo?.country,
+            comparison.exifInfo?.latitude,
+            comparison.exifInfo?.longitude,
+          ]),
+      ),
       label: 'Photo location',
       value: photoLocation(asset),
     },
     {
-      changed: differences.includes('Camera metadata differs'),
+      changed: Boolean(
+        comparison &&
+        scalar([asset.exifInfo?.make, asset.exifInfo?.model, asset.exifInfo?.lensModel]) !==
+          scalar([comparison.exifInfo?.make, comparison.exifInfo?.model, comparison.exifInfo?.lensModel]),
+      ),
       label: 'Camera',
       value: camera(asset),
     },
@@ -155,7 +190,11 @@
   };
 </script>
 
-{#snippet assetEvidence(asset: AssetResponseDto, differences: string[], accent: 'violet' | 'emerald')}
+{#snippet assetEvidence(
+  asset: AssetResponseDto,
+  comparison: AssetResponseDto | undefined,
+  accent: 'violet' | 'emerald',
+)}
   <div class="overflow-hidden rounded-2xl border border-gray-200 dark:border-immich-dark-gray">
     <div class="grid grid-cols-[7rem_minmax(0,1fr)] border-b border-gray-100 dark:border-immich-dark-gray">
       <a href={Route.viewAsset({ id: asset.id })} aria-label={`Open ${asset.originalFileName}`}>
@@ -167,7 +206,7 @@
             ? 'text-violet-700 dark:text-violet-300'
             : 'text-emerald-700 dark:text-emerald-300'}"
         >
-          {differences.includes('Filenames differ') ? 'Different file name' : 'File'}
+          File
         </p>
         <a
           class="mt-1 block text-sm font-semibold wrap-break-word hover:text-primary hover:underline"
@@ -180,7 +219,7 @@
       </div>
     </div>
     <dl class="divide-y divide-gray-100 text-xs dark:divide-immich-dark-gray">
-      {#each factsFor(asset, differences) as fact (fact.label)}
+      {#each factsFor(asset, comparison) as fact (fact.label)}
         <div
           class="grid gap-1 px-4 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)] {fact.changed
             ? 'bg-amber-50/80 dark:bg-amber-950/20'
@@ -372,6 +411,9 @@
         {/if}
       </div>
       {#each visibleGroups as group (group.duplicateId)}
+        {@const outsideAssets = group.elsewhere.filter(
+          (asset) => !activeSharedFolder || getParentPath(asset.originalPath) === activeSharedFolder,
+        )}
         <article
           class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
         >
@@ -382,7 +424,9 @@
               <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-gray-800"
                 >{statusLabel(group.classification)}</span
               >
-              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Highlighted rows show the values that differ.</p>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Group flags are listed here. Highlighted rows compare aligned files below.
+              </p>
             </div>
             <div class="flex max-w-2xl flex-wrap justify-end gap-1.5">
               {#each group.differences as difference (difference)}
@@ -399,8 +443,8 @@
                 This folder
               </p>
               <div class="grid gap-3">
-                {#each group.here as asset (asset.id)}
-                  {@render assetEvidence(asset, group.differences, 'violet')}
+                {#each group.here as asset, index (asset.id)}
+                  {@render assetEvidence(asset, pairedAsset(asset, outsideAssets, index), 'violet')}
                 {/each}
               </div>
             </div>
@@ -409,8 +453,8 @@
                 Elsewhere
               </p>
               <div class="grid gap-3">
-                {#each group.elsewhere.filter((asset) => !activeSharedFolder || getParentPath(asset.originalPath) === activeSharedFolder) as asset (asset.id)}
-                  {@render assetEvidence(asset, group.differences, 'emerald')}
+                {#each outsideAssets as asset, index (asset.id)}
+                  {@render assetEvidence(asset, pairedAsset(asset, group.here, index), 'emerald')}
                 {/each}
               </div>
             </div>
