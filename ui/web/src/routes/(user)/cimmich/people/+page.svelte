@@ -479,43 +479,46 @@
       meta={cimmichLoaded
         ? `${cimmichPeople.length.toLocaleString()} ${cimmichPeople.length === 1 ? 'person' : 'people'}`
         : 'Loading people'}
-    />
-    <div class="flex w-full min-w-0 flex-wrap items-center gap-2">
-      <div
-        class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
-        role="toolbar"
-        aria-label="People views and categories"
-      >
-        {#each viewModes as mode (mode.id)}
-          {@const count =
-            mode.id === 'faces'
-              ? faceBackedCount
-              : mode.id === 'candidates'
-                ? cimmichCandidateCount
-                : mode.id === 'needsFace'
-                  ? needsFaceCount
-                  : null}
-          <button
-            class={[
-              'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
-              viewMode === mode.id
-                ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
-                : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
-            ]}
-            type="button"
-            aria-pressed={viewMode === mode.id}
-            onclick={() => (viewMode = mode.id)}
-          >
-            {mode.label}
-            {#if count !== null}
-              <span class="text-xs opacity-65">{count}</span>
+    >
+      {#snippet actions()}
+        <div
+          class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
+          role="toolbar"
+          aria-label="People views and categories"
+        >
+          {#each viewModes as mode (mode.id)}
+            {@const count =
+              mode.id === 'faces'
+                ? faceBackedCount
+                : mode.id === 'candidates'
+                  ? cimmichCandidateCount
+                  : mode.id === 'needsFace'
+                    ? needsFaceCount
+                    : null}
+            <button
+              class={[
+                'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
+                viewMode === mode.id
+                  ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                  : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+              ]}
+              type="button"
+              aria-pressed={viewMode === mode.id}
+              onclick={() => (viewMode = mode.id)}
+            >
+              {mode.label}
+              {#if count !== null}
+                <span class="text-xs opacity-65">{count}</span>
+              {/if}
+            </button>
+            {#if mode.id === 'faces'}
+              <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
             {/if}
-          </button>
-          {#if mode.id === 'faces'}
-            <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
-          {/if}
-        {/each}
-      </div>
+          {/each}
+        </div>
+      {/snippet}
+    </CimmichSectionHeader>
+    <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end">
       {#if viewMode !== 'possible'}
         <label
           class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
