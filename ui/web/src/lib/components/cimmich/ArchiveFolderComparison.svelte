@@ -555,9 +555,12 @@
                     ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset dark:bg-emerald-950/25'
                     : ''}"
                 >
-                  <a class="group block overflow-hidden rounded-xl" href={Route.viewAsset({ id: asset.id })}>
+                  <a
+                    class="group block aspect-4/3 w-24 overflow-hidden rounded-lg border border-gray-200 dark:border-immich-dark-gray"
+                    href={Route.viewAsset({ id: asset.id })}
+                  >
                     <img
-                      class="aspect-4/3 w-full object-cover transition group-hover:scale-[1.02]"
+                      class="size-full object-cover transition group-hover:scale-105"
                       src={thumbnail(asset.id)}
                       alt=""
                       loading="lazy"
