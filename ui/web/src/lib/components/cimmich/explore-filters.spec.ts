@@ -7,7 +7,7 @@ import {
 } from './explore-filters';
 
 describe('Cimmich Explore filter URLs', () => {
-  it('round-trips exact privacy and repeatable domain facets', () => {
+  it('round-trips privacy buckets and repeatable domain facets', () => {
     const source = new URL(
       'http://cimmich.local/cimmich/people?personId=person-one&privacy=private&label=label-two&label=label-one',
     );
