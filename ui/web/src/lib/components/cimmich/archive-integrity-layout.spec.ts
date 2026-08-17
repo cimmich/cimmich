@@ -88,8 +88,11 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('Every copy is on one line. Highlighted rows contain different values.');
     expect(folderComparison).toContain('alignAssets(group.here, outsideAssets)');
     expect(folderComparison).toContain('Recommended to keep');
+    expect(folderComparison).toContain('Review only');
+    expect(folderComparison).toContain('This is a review recommendation, not deletion proof.');
+    expect(folderComparison).toContain("plan.status === 'hold_incomplete'");
     expect(folderComparison).toContain('No safe recommendation');
-    expect(folderComparison).toContain('group.canonicalPlan.preferredAssetId === asset.id');
+    expect(folderComparison).toContain('recommendedAssetId === asset.id');
     expect(folderComparison).toContain("label: 'File location'");
     expect(folderComparison).toContain("label: 'File size'");
     expect(folderComparison).toContain("label: 'Resolution'");

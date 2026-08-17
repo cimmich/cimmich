@@ -11,7 +11,7 @@
     mdiImageSearchOutline,
     mdiShieldSearch,
   } from '@mdi/js';
-  import type { ArchiveFolderOverlap } from './archive-folder-comparison';
+  import type { ArchiveFolderComparisonGroup, ArchiveFolderOverlap } from './archive-folder-comparison';
 
   interface Props {
     error: string;
@@ -246,6 +246,35 @@
   };
   const scopeLabel = (asset: AssetResponseDto) =>
     getParentPath(asset.originalPath) === folderPath ? 'This folder' : folderLabel(getParentPath(asset.originalPath));
+  const recommendationId = (plan: ArchiveFolderComparisonGroup['canonicalPlan']) =>
+    plan.preferredAssetId ??
+    (plan.status === 'hold_incomplete'
+      ? [...plan.rankings.values()].find((ranking) => ranking.position === 1)?.assetId
+      : null);
+  const recommendationReason = (plan: ArchiveFolderComparisonGroup['canonicalPlan']) => {
+    if (plan.preferredAssetId) {
+      return plan.reasons.join(' ');
+    }
+    const ranked = [...plan.rankings.values()].sort((left, right) => left.position - right.position);
+    const preferred = ranked[0];
+    const runnerUp = ranked[1];
+    if (!preferred || !runnerUp) {
+      return 'Available preservation signals rank this copy first.';
+    }
+    if (preferred.originalCapture !== runnerUp.originalCapture) {
+      return `${preferred.extension.toLocaleUpperCase()} is an original capture format.`;
+    }
+    if (preferred.pixelCount !== runnerUp.pixelCount) {
+      return `Higher pixel dimensions rank first: ${(preferred.pixelCount / 1_000_000).toFixed(1)} MP versus ${(runnerUp.pixelCount / 1_000_000).toFixed(1)} MP.`;
+    }
+    if (preferred.fileSize !== runnerUp.fileSize) {
+      return `The larger complete file ranks first: ${formatBytes(preferred.fileSize)} versus ${formatBytes(runnerUp.fileSize)}.`;
+    }
+    if (preferred.metadataFields !== runnerUp.metadataFields) {
+      return `More capture metadata ranks first: ${preferred.metadataFields} fields versus ${runnerUp.metadataFields}.`;
+    }
+    return `Richer organisation and identity evidence ranks first: ${preferred.evidenceLinks} links versus ${runnerUp.evidenceLinks}.`;
+  };
   const statusLabel = (classification: string) =>
     classification === 'verified_exact'
       ? 'Exact bytes'
@@ -438,9 +467,8 @@
         {@const comparisonAssets = alignAssets(group.here, outsideAssets)}
         {@const primaryRows = comparisonRows(comparisonAssets, primaryFactDefinitions)}
         {@const secondaryRows = comparisonRows(comparisonAssets, secondaryFactDefinitions)}
-        {@const recommendedAsset = [...group.here, ...group.elsewhere].find(
-          (asset) => asset.id === group.canonicalPlan.preferredAssetId,
-        )}
+        {@const recommendedAssetId = recommendationId(group.canonicalPlan)}
+        {@const recommendedAsset = [...group.here, ...group.elsewhere].find((asset) => asset.id === recommendedAssetId)}
         {@const comparisonGrid = `grid-template-columns: 7.5rem repeat(${comparisonAssets.length}, minmax(12rem, 1fr));`}
         <article
           class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
@@ -471,13 +499,22 @@
             >
               <div class="min-w-0">
                 <p class="font-semibold text-emerald-900 dark:text-emerald-100">Recommended to keep</p>
+                {#if !group.canonicalPlan.preferredAssetId}
+                  <span
+                    class="mt-1 inline-block rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-900 dark:text-amber-100"
+                    >Review only</span
+                  >
+                {/if}
                 <a
                   class="mt-0.5 block font-semibold wrap-break-word text-primary hover:underline"
                   href={Route.viewAsset({ id: recommendedAsset.id })}>{recommendedAsset.originalFileName}</a
                 >
               </div>
               <p class="max-w-2xl text-xs/5 text-emerald-900 dark:text-emerald-100">
-                {group.canonicalPlan.reasons.join(' ')} Review the image and copy-local metadata before removing anything.
+                {recommendationReason(group.canonicalPlan)}
+                {group.canonicalPlan.preferredAssetId
+                  ? 'Review the image and copy-local metadata before removing anything.'
+                  : 'Byte evidence is incomplete. This is a review recommendation, not deletion proof.'}
               </p>
             </div>
           {:else}
@@ -497,8 +534,8 @@
               </div>
               {#each comparisonAssets as asset (asset.id)}
                 <div
-                  class="relative min-w-0 border-r border-b border-gray-200 p-3 last:border-r-0 dark:border-immich-dark-gray {group
-                    .canonicalPlan.preferredAssetId === asset.id
+                  class="relative min-w-0 border-r border-b border-gray-200 p-3 last:border-r-0 dark:border-immich-dark-gray {recommendedAssetId ===
+                  asset.id
                     ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset dark:bg-emerald-950/25'
                     : ''}"
                 >
@@ -518,11 +555,17 @@
                         : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100'}"
                       >{scopeLabel(asset)}</span
                     >
-                    {#if group.canonicalPlan.preferredAssetId === asset.id}
+                    {#if recommendedAssetId === asset.id}
                       <span
                         class="inline-flex items-center gap-1 rounded-full bg-emerald-700 px-2 py-0.5 text-[10px] font-semibold text-white"
                         ><Icon icon={mdiCheckCircleOutline} size="12" /> Recommended to keep</span
                       >
+                      {#if !group.canonicalPlan.preferredAssetId}
+                        <span
+                          class="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-900 dark:text-amber-100"
+                          >Review only</span
+                        >
+                      {/if}
                     {/if}
                   </div>
                   <a
