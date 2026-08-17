@@ -26,6 +26,7 @@ describe('Archive integrity layout', () => {
   it('keeps exact duplicate discovery explicit, inspectable and read-only', async () => {
     const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
+    const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
     const folderPage = await readFile(
@@ -48,8 +49,8 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('No safe recommendation');
     expect(source).toContain('Why this recommendation');
     expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
-    expect(source).toContain('Folder check');
-    expect(source).toContain('Check one folder against the archive');
+    expect(source).toContain("mode === 'folder' ? 'Folder Check' : 'Archive Health'");
+    expect(source).toContain('Back to Archive Health');
     expect(source).toContain('Most impacted folders');
     expect(source).toContain('rankArchiveFoldersByImpact(nativeVariantGroups)');
     expect(source).toContain('affectedAssetCount');
@@ -61,6 +62,11 @@ describe('Archive integrity layout', () => {
     expect(source).toContain("replaceState(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })");
     expect(source).toContain('archiveVariantGroupsInFolder(allNativeGroups, folderPath)');
     expect(source).toContain('readArchiveEvidence(sourceAssetIds)');
+    expect(source).toContain('uniqueSourceAssetIds.slice(index * 20, index * 20 + 20)');
+    expect(source).toContain('nativeGroups.slice(0, 12)');
+    expect(source).toContain('loadMoreVariants');
+    expect(source).toContain('Comparisons load in small batches');
+    expect(source).toContain('This comparison took too long');
     expect(source).toContain("case 'exact':");
     expect(source).toContain("case 'folder':");
     expect(source).not.toContain('void loadFolderAssets();');
@@ -72,8 +78,16 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('Technical details');
     expect(variants).toContain("status: 'hold_ambiguous'");
     expect(variants).toContain('originalCaptureExtensions');
-    expect(source).toContain('Backup status');
+    expect(source).toContain('Backup check');
+    expect(folderComparison).toContain('Biggest overlaps');
+    expect(folderComparison).toContain('Show top 6 only');
+    expect(folderComparison).toContain('Also found elsewhere');
+    expect(folderComparison).toContain('No match elsewhere');
+    expect(folderComparison).toContain('Repeated only inside');
+    expect(folderComparison).toContain('Check byte details');
     expect(backupProof).toContain('Retirement safety gate');
+    expect(backupProof).toContain('No independent backup connected');
+    expect(backupProof).toContain('targetsLoaded && targets.length > 0');
     expect(backupProof).toContain('Independent backup proof');
     expect(backupProof).toContain('0 verified independent destinations');
     expect(backupProof).toContain('distinct failure domain');
