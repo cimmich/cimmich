@@ -32,7 +32,14 @@
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { joinPaths } from '$lib/utils/tree-utils';
   import { ActionButton, CommandPaletteDefaultProvider, Icon, IconButton, Text } from '@immich/ui';
-  import { mdiDotsVertical, mdiFolder, mdiFolderHome, mdiFolderOutline, mdiSelectAll } from '@mdi/js';
+  import {
+    mdiDotsVertical,
+    mdiFolder,
+    mdiFolderHome,
+    mdiFolderOutline,
+    mdiFolderSearchOutline,
+    mdiSelectAll,
+  } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import type { PageData } from './$types';
 
@@ -44,6 +51,7 @@
 
   const viewport: Viewport = $state({ width: 0, height: 0 });
   const isOrganiseContext = $derived(page.url.searchParams.has('organise'));
+  const isCimmichContext = $derived(page.url.searchParams.has('cimmichContext'));
   const currentFolderIsMeaningful = $derived(
     !isOrganiseContext || !data.tree.path || isMeaningfulEventFolder(data.tree.path),
   );
@@ -54,7 +62,12 @@
 
   const handleNavigateToFolder = (folderName: string) => navigateToView(joinPaths(data.tree.path, folderName));
 
-  const getLinkForPath = (path: string) => Route.folders({ path, organise: isOrganiseContext ? 1 : undefined });
+  const getLinkForPath = (path: string) =>
+    Route.folders({
+      path,
+      organise: isOrganiseContext ? 1 : undefined,
+      cimmichContext: isCimmichContext ? 1 : undefined,
+    });
 
   afterNavigate(() => {
     assetMultiSelectManager.clear();
@@ -110,6 +123,18 @@
       <CimmichOrganiseModeSwitch />
     {/if}
     <Breadcrumbs node={data.tree} icon={mdiFolderHome} title={$t('folders')} getLink={getLinkForPath} />
+
+    {#if isCimmichContext && data.tree.path}
+      <div class="flex justify-end border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <a
+          class="inline-flex min-h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90"
+          href={Route.cimmichArchiveIntegrity({ folder: data.tree.path, mode: 'folder' })}
+        >
+          <Icon icon={mdiFolderSearchOutline} size="18" />
+          Check this folder
+        </a>
+      </div>
+    {/if}
 
     <section class="mt-2 min-h-0 flex-1 immich-scrollbar overflow-auto">
       <TreeItemThumbnails items={visibleFolderChildren} icon={mdiFolder} onClick={handleNavigateToFolder} />

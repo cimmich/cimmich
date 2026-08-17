@@ -29,6 +29,7 @@
     mdiContentDuplicate,
     mdiDatabaseSearchOutline,
     mdiFolderOpenOutline,
+    mdiFolderSearchOutline,
     mdiImageMultipleOutline,
     mdiInformationOutline,
     mdiRefresh,
@@ -46,13 +47,16 @@
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
   const focusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
-  let mode = $state<'exact' | 'variants' | 'backup'>(
-    requestedMode === 'variants' || requestedMode === 'plan'
-      ? 'variants'
-      : requestedMode === 'backup'
-        ? 'backup'
-        : 'exact',
+  let mode = $state<'exact' | 'variants' | 'folder' | 'backup'>(
+    requestedMode === 'folder' || (requestedMode === 'variants' && focusedFolder)
+      ? 'folder'
+      : requestedMode === 'variants' || requestedMode === 'plan'
+        ? 'variants'
+        : requestedMode === 'backup'
+          ? 'backup'
+          : 'exact',
   );
+  let folderPathInput = $state(focusedFolder);
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
   let loaded = $state(false);
@@ -93,7 +97,7 @@
   let scopedVariantGroups = $derived(
     archiveVariantGroupsInFolder(
       variantGroups.filter((group) => !focusedAssetId || group.assets.some((asset) => asset.id === focusedAssetId)),
-      focusedFolder,
+      mode === 'folder' ? focusedFolder : '',
     ),
   );
   let filteredVariantGroups = $derived(
@@ -286,7 +290,7 @@
       return;
     }
     void loadVariants();
-    if (focusedFolder) {
+    if (mode === 'folder' && focusedFolder) {
       void loadFolderAssets();
     }
   };
@@ -303,8 +307,10 @@
     <header class="rounded-3xl bg-[#111815] p-5 text-white shadow-sm sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="max-w-3xl">
-          <h1 class="text-2xl font-semibold tracking-tight">Duplicate review</h1>
-          <p class="mt-1 text-sm text-slate-300">Compare possible copies and versions. Nothing is changed here.</p>
+          <h1 class="text-2xl font-semibold tracking-tight">Archive Health</h1>
+          <p class="mt-1 text-sm text-slate-300">
+            Check exact copies, possible duplicates, folders and independent backups. Nothing is changed here.
+          </p>
         </div>
         <button
           type="button"
@@ -322,57 +328,56 @@
       class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200 bg-white p-1 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
       aria-label="Archive integrity evidence layer"
     >
-      <button
-        type="button"
+      <a
+        data-sveltekit-reload
+        href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
         class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'exact'
           ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
           : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'exact'}
-        onclick={() => (mode = 'exact')}
+        aria-current={mode === 'exact' ? 'page' : undefined}
       >
         Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
-      </button>
-      <button
-        type="button"
+      </a>
+      <a
+        data-sveltekit-reload
+        href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
         class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'variants'
           ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
           : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'variants'}
-        onclick={() => (mode = 'variants')}
+        aria-current={mode === 'variants' ? 'page' : undefined}
       >
         Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
-      </button>
-      <button
-        type="button"
+      </a>
+      <a
+        data-sveltekit-reload
+        href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
+        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'folder'
+          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
+          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
+        aria-current={mode === 'folder' ? 'page' : undefined}
+      >
+        Folder check
+      </a>
+      <a
+        data-sveltekit-reload
+        href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
         class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'backup'
           ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
           : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'backup'}
-        onclick={() => (mode = 'backup')}
+        aria-current={mode === 'backup' ? 'page' : undefined}
       >
         Backup status
-      </button>
+      </a>
     </nav>
 
-    {#if (mode === 'variants' && (focusedAssetId || focusedFolder)) || (mode === 'exact' && focusedAssetId)}
+    {#if (mode === 'variants' && focusedAssetId) || (mode === 'exact' && focusedAssetId)}
       <div
         class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm dark:border-violet-900 dark:bg-violet-950/25"
       >
         <span class="min-w-0 truncate">
-          {focusedFolder
-            ? `Flagged photos in ${focusedFolder}`
-            : mode === 'exact'
-              ? 'Exact copies for the photo you opened'
-              : 'Possible duplicates for the photo you opened'}
+          {mode === 'exact' ? 'Exact copies for the photo you opened' : 'Possible duplicates for the photo you opened'}
         </span>
         <div class="flex flex-wrap items-center gap-4">
-          {#if focusedFolder && focusedFolderAsset}
-            <a
-              class="font-semibold text-primary hover:underline"
-              href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: focusedFolder })}
-              >Open folder</a
-            >
-          {/if}
           <a
             class="rounded-full bg-violet-700 px-3 py-2 font-semibold text-white hover:bg-violet-800"
             data-sveltekit-reload
@@ -537,14 +542,94 @@
           </button>
         </div>
       {/if}
-    {:else if mode === 'variants' && focusedFolder}
-      <ArchiveFolderComparison
-        error={folderError || variantError}
-        folderPath={focusedFolder}
-        loaded={folderLoaded && variantsLoaded}
-        loading={folderLoading || variantsLoading}
-        overlap={folderOverlap}
-      />
+    {:else if mode === 'folder'}
+      <section class="space-y-4" aria-labelledby="folder-check-title">
+        <div
+          class="rounded-3xl border border-violet-200 bg-violet-50 p-5 sm:p-6 dark:border-violet-900 dark:bg-violet-950/20"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="max-w-2xl">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-700 text-white dark:bg-violet-600"
+                >
+                  <Icon icon={mdiFolderSearchOutline} size="23" />
+                </span>
+                <div>
+                  <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">
+                    Folder check
+                  </p>
+                  <h2 id="folder-check-title" class="mt-1 text-2xl font-semibold">
+                    Check one folder against the archive
+                  </h2>
+                </div>
+              </div>
+              <p class="mt-4 text-sm/6 text-gray-600 dark:text-gray-300">
+                See what is shared elsewhere, what currently appears only here, and which archive folders overlap most.
+              </p>
+            </div>
+            <a
+              class="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-gray-950 dark:text-violet-200 dark:hover:bg-violet-950"
+              href={Route.folders({ cimmichContext: 1 })}
+            >
+              <Icon icon={mdiFolderOpenOutline} size="18" />
+              Browse folders
+            </a>
+          </div>
+
+          <form class="mt-5 flex flex-col gap-3 sm:flex-row" method="get" action={Route.cimmichArchiveIntegrity()}>
+            <input type="hidden" name="mode" value="folder" />
+            <label class="min-w-0 flex-1">
+              <span class="sr-only">Archive folder path</span>
+              <input
+                class="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-violet-900"
+                name="folder"
+                placeholder="/archive/Photos/Folder name"
+                autocomplete="off"
+                bind:value={folderPathInput}
+              />
+            </label>
+            <button
+              type="submit"
+              class="min-h-11 rounded-full bg-violet-700 px-5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50"
+              disabled={!folderPathInput.trim()}
+            >
+              Check folder
+            </button>
+          </form>
+        </div>
+
+        {#if focusedFolder}
+          <div class="flex flex-wrap items-center justify-between gap-3 px-1">
+            <p class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{focusedFolder}</p>
+            {#if focusedFolderAsset}
+              <a
+                class="inline-flex min-h-10 items-center gap-2 font-semibold text-primary hover:underline"
+                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: focusedFolder })}
+              >
+                Open folder <Icon icon={mdiArrowRight} size="17" />
+              </a>
+            {/if}
+          </div>
+          <ArchiveFolderComparison
+            error={folderError || variantError}
+            folderPath={focusedFolder}
+            loaded={folderLoaded && variantsLoaded}
+            loading={folderLoading || variantsLoading}
+            overlap={folderOverlap}
+          />
+        {:else}
+          <div
+            class="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+          >
+            <Icon icon={mdiFolderSearchOutline} size="40" class="mx-auto text-violet-600" />
+            <h3 class="mt-3 text-lg font-semibold">Choose a folder to begin</h3>
+            <p class="mx-auto mt-2 max-w-xl text-sm text-gray-500 dark:text-gray-400">
+              Paste its archive path above, or browse the folder library and use Check this folder.
+            </p>
+          </div>
+        {/if}
+      </section>
     {:else if mode === 'variants'}
       <section class="space-y-4" aria-labelledby="variant-groups-title">
         <div class="flex flex-wrap items-end justify-between gap-4 px-1">
@@ -707,7 +792,7 @@
                             <a
                               class="shrink-0 whitespace-nowrap text-primary hover:underline"
                               data-sveltekit-reload
-                              href={Route.cimmichArchiveIntegrity({ folder: folderContext.path, mode: 'variants' })}
+                              href={Route.cimmichArchiveIntegrity({ folder: folderContext.path, mode: 'folder' })}
                               >({countLabel(folderContext.otherFlaggedHere, 'other flagged photo')} here)</a
                             >
                           </div>

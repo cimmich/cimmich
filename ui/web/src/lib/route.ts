@@ -71,7 +71,9 @@ export const Route = {
   places: () => '/places',
 
   // folders
-  folders: (params?: { path?: string; organise?: 1 }) => '/folders' + asQueryString(params),
+  folders: (params?: { path?: string; organise?: 1; cimmichContext?: 1 }) => '/folders' + asQueryString(params),
+  viewFolderAsset: ({ id, path, cimmich }: { id: string; path: string; cimmich?: 1 }) =>
+    `/folders/photos/${id}` + asQueryString({ cimmichContext: cimmich, path }),
 
   // libraries
   libraries: () => '/admin/library-management',
@@ -109,7 +111,7 @@ export const Route = {
   cimmichArchiveIntegrity: (params?: {
     assetId?: string;
     folder?: string;
-    mode?: 'exact' | 'variants' | 'plan' | 'backup';
+    mode?: 'exact' | 'variants' | 'plan' | 'folder' | 'backup';
   }) => '/cimmich/archive-integrity' + asQueryString(params),
   cimmichLibrary: () => '/cimmich/library',
   cimmichLibraryBulk: () => '/cimmich/library/bulk',
