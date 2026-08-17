@@ -2,7 +2,7 @@
   import { Route } from '$lib/route';
   import { getAssetMediaUrl } from '$lib/utils';
   import { getParentPath } from '$lib/utils/tree-utils';
-  import { AssetMediaSize } from '@immich/sdk';
+  import { AssetMediaSize, type AssetResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
@@ -64,6 +64,81 @@
 
   const thumbnail = (sourceAssetId: string) => getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Thumbnail });
   const folderLabel = (path: string) => path.split('/').findLast(Boolean) || path;
+  const formatBytes = (value: number | null | undefined) => {
+    if (!value || !Number.isFinite(value)) {
+      return 'Not recorded';
+    }
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const power = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+    const amount = value / 1024 ** power;
+    return `${amount >= 10 || power === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[power]}`;
+  };
+  const formatDateTime = (value: string | null | undefined) => {
+    if (!value) {
+      return 'Not recorded';
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? 'Not recorded'
+      : new Intl.DateTimeFormat(undefined, {
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        }).format(date);
+  };
+  const dimensions = (asset: AssetResponseDto) =>
+    asset.width && asset.height
+      ? `${asset.width.toLocaleString()} × ${asset.height.toLocaleString()} pixels`
+      : 'Not recorded';
+  const photoLocation = (asset: AssetResponseDto) => {
+    const place = [asset.exifInfo?.city, asset.exifInfo?.state, asset.exifInfo?.country].filter(Boolean).join(', ');
+    const coordinates =
+      asset.exifInfo?.latitude != null && asset.exifInfo?.longitude != null
+        ? `${asset.exifInfo.latitude.toFixed(5)}, ${asset.exifInfo.longitude.toFixed(5)}`
+        : '';
+    return [place, coordinates].filter(Boolean).join(' · ') || 'Not recorded';
+  };
+  const camera = (asset: AssetResponseDto) => {
+    const body = [asset.exifInfo?.make, asset.exifInfo?.model].filter(Boolean).join(' ');
+    const lens = asset.exifInfo?.lensModel ? `Lens: ${asset.exifInfo.lensModel}` : '';
+    return [body, lens].filter(Boolean).join(' · ') || 'Not recorded';
+  };
+  const factsFor = (asset: AssetResponseDto, differences: string[]) => [
+    {
+      changed: differences.includes('Filenames differ'),
+      label: 'File name',
+      value: asset.originalFileName || 'Not recorded',
+    },
+    { changed: false, label: 'File location', value: asset.originalPath || 'Not recorded' },
+    {
+      changed: differences.includes('File sizes differ'),
+      label: 'File size',
+      value: formatBytes(asset.exifInfo?.fileSizeInByte),
+    },
+    {
+      changed: differences.includes('Resolution differs'),
+      label: 'Resolution',
+      value: dimensions(asset),
+    },
+    {
+      changed: differences.includes('Capture dates differ'),
+      label: 'Captured',
+      value: formatDateTime(asset.exifInfo?.dateTimeOriginal ?? asset.localDateTime),
+    },
+    { changed: false, label: 'File modified', value: formatDateTime(asset.fileModifiedAt) },
+    {
+      changed: differences.includes('Location metadata differs'),
+      label: 'Photo location',
+      value: photoLocation(asset),
+    },
+    {
+      changed: differences.includes('Camera metadata differs'),
+      label: 'Camera',
+      value: camera(asset),
+    },
+  ];
   const statusLabel = (classification: string) =>
     classification === 'verified_exact'
       ? 'Exact bytes'
@@ -79,6 +154,53 @@
     }
   };
 </script>
+
+{#snippet assetEvidence(asset: AssetResponseDto, differences: string[], accent: 'violet' | 'emerald')}
+  <div class="overflow-hidden rounded-2xl border border-gray-200 dark:border-immich-dark-gray">
+    <div class="grid grid-cols-[7rem_minmax(0,1fr)] border-b border-gray-100 dark:border-immich-dark-gray">
+      <a href={Route.viewAsset({ id: asset.id })} aria-label={`Open ${asset.originalFileName}`}>
+        <img class="aspect-square size-28 object-cover" src={thumbnail(asset.id)} alt="" loading="lazy" />
+      </a>
+      <div class="min-w-0 self-center p-4">
+        <p
+          class="text-xs font-semibold tracking-wide uppercase {accent === 'violet'
+            ? 'text-violet-700 dark:text-violet-300'
+            : 'text-emerald-700 dark:text-emerald-300'}"
+        >
+          {differences.includes('Filenames differ') ? 'Different file name' : 'File'}
+        </p>
+        <a
+          class="mt-1 block text-sm font-semibold wrap-break-word hover:text-primary hover:underline"
+          href={Route.viewAsset({ id: asset.id })}>{asset.originalFileName}</a
+        >
+        <a
+          class="mt-2 inline-block text-xs font-semibold text-primary hover:underline"
+          href={Route.viewAsset({ id: asset.id })}>Open photo</a
+        >
+      </div>
+    </div>
+    <dl class="divide-y divide-gray-100 text-xs dark:divide-immich-dark-gray">
+      {#each factsFor(asset, differences) as fact (fact.label)}
+        <div
+          class="grid gap-1 px-4 py-2.5 sm:grid-cols-[7rem_minmax(0,1fr)] {fact.changed
+            ? 'bg-amber-50/80 dark:bg-amber-950/20'
+            : ''}"
+        >
+          <dt class="flex items-center gap-1.5 font-semibold text-gray-600 dark:text-gray-300">
+            {fact.label}
+            {#if fact.changed}
+              <span
+                class="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-950 dark:bg-amber-900 dark:text-amber-100"
+                >Different</span
+              >
+            {/if}
+          </dt>
+          <dd class="wrap-break-word text-gray-900 dark:text-gray-100" title={fact.value}>{fact.value}</dd>
+        </div>
+      {/each}
+    </dl>
+  </div>
+{/snippet}
 
 <section class="space-y-5" aria-labelledby="folder-comparison-title">
   <header class="min-w-0 px-1">
@@ -256,11 +378,14 @@
           <header
             class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3 dark:border-immich-dark-gray"
           >
-            <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-gray-800"
-              >{statusLabel(group.classification)}</span
-            >
-            <div class="flex flex-wrap gap-1.5">
-              {#each group.differences.slice(0, 5) as difference (difference)}
+            <div>
+              <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-gray-800"
+                >{statusLabel(group.classification)}</span
+              >
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Highlighted rows show the values that differ.</p>
+            </div>
+            <div class="flex max-w-2xl flex-wrap justify-end gap-1.5">
+              {#each group.differences as difference (difference)}
                 <span
                   class="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
                   >{difference}</span
@@ -273,17 +398,9 @@
               <p class="mb-3 text-xs font-semibold tracking-wide text-violet-700 uppercase dark:text-violet-300">
                 This folder
               </p>
-              <div class="grid gap-3 sm:grid-cols-2">
+              <div class="grid gap-3">
                 {#each group.here as asset (asset.id)}
-                  <a
-                    class="grid grid-cols-[5rem_minmax(0,1fr)] overflow-hidden rounded-2xl border border-gray-200 hover:border-violet-400 dark:border-immich-dark-gray"
-                    href={Route.viewAsset({ id: asset.id })}
-                  >
-                    <img class="aspect-square size-20 object-cover" src={thumbnail(asset.id)} alt="" loading="lazy" />
-                    <span class="min-w-0 self-center p-3 text-sm font-semibold"
-                      ><span class="block truncate" title={asset.originalFileName}>{asset.originalFileName}</span></span
-                    >
-                  </a>
+                  {@render assetEvidence(asset, group.differences, 'violet')}
                 {/each}
               </div>
             </div>
@@ -291,21 +408,9 @@
               <p class="mb-3 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-300">
                 Elsewhere
               </p>
-              <div class="grid gap-3 sm:grid-cols-2">
+              <div class="grid gap-3">
                 {#each group.elsewhere.filter((asset) => !activeSharedFolder || getParentPath(asset.originalPath) === activeSharedFolder) as asset (asset.id)}
-                  <a
-                    class="grid grid-cols-[5rem_minmax(0,1fr)] overflow-hidden rounded-2xl border border-gray-200 hover:border-emerald-400 dark:border-immich-dark-gray"
-                    href={Route.viewAsset({ id: asset.id })}
-                  >
-                    <img class="aspect-square size-20 object-cover" src={thumbnail(asset.id)} alt="" loading="lazy" />
-                    <span class="min-w-0 self-center p-3 text-sm font-semibold">
-                      <span class="block truncate" title={asset.originalFileName}>{asset.originalFileName}</span>
-                      <span
-                        class="mt-1 block truncate text-xs font-normal text-gray-500 dark:text-gray-400"
-                        title={getParentPath(asset.originalPath)}>{folderLabel(getParentPath(asset.originalPath))}</span
-                      >
-                    </span>
-                  </a>
+                  {@render assetEvidence(asset, group.differences, 'emerald')}
                 {/each}
               </div>
             </div>

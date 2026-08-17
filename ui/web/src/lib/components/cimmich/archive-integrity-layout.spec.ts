@@ -85,6 +85,14 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('No match elsewhere');
     expect(folderComparison).toContain('Repeated only inside');
     expect(folderComparison).toContain('Check byte details');
+    expect(folderComparison).toContain('Highlighted rows show the values that differ.');
+    expect(folderComparison).toContain("label: 'File location'");
+    expect(folderComparison).toContain("label: 'File size'");
+    expect(folderComparison).toContain("label: 'Resolution'");
+    expect(folderComparison).toContain("label: 'Captured'");
+    expect(folderComparison).toContain("label: 'File modified'");
+    expect(folderComparison).toContain("label: 'Photo location'");
+    expect(folderComparison).toContain("label: 'Camera'");
     expect(backupProof).toContain('Retirement safety gate');
     expect(backupProof).toContain('No independent backup connected');
     expect(backupProof).toContain('targetsLoaded && targets.length > 0');
