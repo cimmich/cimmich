@@ -85,8 +85,11 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('No match elsewhere');
     expect(folderComparison).toContain('Repeated only inside');
     expect(folderComparison).toContain('Check byte details');
-    expect(folderComparison).toContain('Highlighted rows compare aligned files below.');
-    expect(folderComparison).toContain('pairedAsset(asset, outsideAssets, index)');
+    expect(folderComparison).toContain('Every copy is on one line. Highlighted rows contain different values.');
+    expect(folderComparison).toContain('alignAssets(group.here, outsideAssets)');
+    expect(folderComparison).toContain('Recommended to keep');
+    expect(folderComparison).toContain('No safe recommendation');
+    expect(folderComparison).toContain('group.canonicalPlan.preferredAssetId === asset.id');
     expect(folderComparison).toContain("label: 'File location'");
     expect(folderComparison).toContain("label: 'File size'");
     expect(folderComparison).toContain("label: 'Resolution'");
@@ -94,7 +97,7 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain("label: 'File modified'");
     expect(folderComparison).toContain("label: 'Photo location'");
     expect(folderComparison).toContain("label: 'Camera'");
-    expect(folderComparison).toContain('More Immich metadata');
+    expect(folderComparison).toContain('More Immich metadata, same columns');
     expect(folderComparison).toContain("label: 'Rotation'");
     expect(folderComparison).toContain("label: 'Description'");
     expect(folderComparison).toContain("label: 'Rating'");
