@@ -246,16 +246,31 @@
   };
   const scopeLabel = (asset: AssetResponseDto) =>
     getParentPath(asset.originalPath) === folderPath ? 'This folder' : folderLabel(getParentPath(asset.originalPath));
-  const recommendationId = (plan: ArchiveFolderComparisonGroup['canonicalPlan']) =>
-    plan.preferredAssetId ??
-    (plan.status === 'hold_incomplete'
-      ? [...plan.rankings.values()].find((ranking) => ranking.position === 1)?.assetId
-      : null);
-  const recommendationReason = (plan: ArchiveFolderComparisonGroup['canonicalPlan']) => {
-    if (plan.preferredAssetId) {
+  const visibleRecommendation = (plan: ArchiveFolderComparisonGroup['canonicalPlan'], assets: AssetResponseDto[]) => {
+    const visibleAssetIds = new Set(assets.map((asset) => asset.id));
+    if (plan.preferredAssetId && visibleAssetIds.has(plan.preferredAssetId)) {
+      return { assetId: plan.preferredAssetId, reviewOnly: false };
+    }
+    if (plan.status !== 'hold_incomplete') {
+      return null;
+    }
+    const ranking = [...plan.rankings.values()]
+      .filter((candidate) => visibleAssetIds.has(candidate.assetId))
+      .sort((left, right) => left.position - right.position)[0];
+    return ranking ? { assetId: ranking.assetId, reviewOnly: true } : null;
+  };
+  const recommendationReason = (
+    plan: ArchiveFolderComparisonGroup['canonicalPlan'],
+    assets: AssetResponseDto[],
+    recommendedAssetId: string,
+  ) => {
+    if (plan.preferredAssetId === recommendedAssetId) {
       return plan.reasons.join(' ');
     }
-    const ranked = [...plan.rankings.values()].sort((left, right) => left.position - right.position);
+    const visibleAssetIds = new Set(assets.map((asset) => asset.id));
+    const ranked = [...plan.rankings.values()]
+      .filter((candidate) => visibleAssetIds.has(candidate.assetId))
+      .sort((left, right) => left.position - right.position);
     const preferred = ranked[0];
     const runnerUp = ranked[1];
     if (!preferred || !runnerUp) {
@@ -467,8 +482,9 @@
         {@const comparisonAssets = alignAssets(group.here, outsideAssets)}
         {@const primaryRows = comparisonRows(comparisonAssets, primaryFactDefinitions)}
         {@const secondaryRows = comparisonRows(comparisonAssets, secondaryFactDefinitions)}
-        {@const recommendedAssetId = recommendationId(group.canonicalPlan)}
-        {@const recommendedAsset = [...group.here, ...group.elsewhere].find((asset) => asset.id === recommendedAssetId)}
+        {@const recommendation = visibleRecommendation(group.canonicalPlan, comparisonAssets)}
+        {@const recommendedAssetId = recommendation?.assetId ?? null}
+        {@const recommendedAsset = comparisonAssets.find((asset) => asset.id === recommendedAssetId)}
         {@const comparisonGrid = `grid-template-columns: 7.5rem repeat(${comparisonAssets.length}, minmax(12rem, 1fr));`}
         <article
           class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
@@ -499,7 +515,7 @@
             >
               <div class="min-w-0">
                 <p class="font-semibold text-emerald-900 dark:text-emerald-100">Recommended to keep</p>
-                {#if !group.canonicalPlan.preferredAssetId}
+                {#if recommendation?.reviewOnly}
                   <span
                     class="mt-1 inline-block rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-900 dark:text-amber-100"
                     >Review only</span
@@ -511,10 +527,10 @@
                 >
               </div>
               <p class="max-w-2xl text-xs/5 text-emerald-900 dark:text-emerald-100">
-                {recommendationReason(group.canonicalPlan)}
-                {group.canonicalPlan.preferredAssetId
-                  ? 'Review the image and copy-local metadata before removing anything.'
-                  : 'Byte evidence is incomplete. This is a review recommendation, not deletion proof.'}
+                {recommendationReason(group.canonicalPlan, comparisonAssets, recommendedAsset.id)}
+                {recommendation?.reviewOnly
+                  ? 'Byte evidence is incomplete. This is a review recommendation, not deletion proof.'
+                  : 'Review the image and copy-local metadata before removing anything.'}
               </p>
             </div>
           {:else}
@@ -560,7 +576,7 @@
                         class="inline-flex items-center gap-1 rounded-full bg-emerald-700 px-2 py-0.5 text-[10px] font-semibold text-white"
                         ><Icon icon={mdiCheckCircleOutline} size="12" /> Recommended to keep</span
                       >
-                      {#if !group.canonicalPlan.preferredAssetId}
+                      {#if recommendation?.reviewOnly}
                         <span
                           class="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-950 dark:bg-amber-900 dark:text-amber-100"
                           >Review only</span
