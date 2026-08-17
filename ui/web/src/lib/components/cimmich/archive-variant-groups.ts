@@ -1,5 +1,6 @@
 import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import type { CimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive-integrity.service';
+import { getParentPath } from '$lib/utils/tree-utils';
 
 export type ArchiveVariantClassification = 'verified_exact' | 'verified_variant' | 'similarity_candidate';
 
@@ -30,6 +31,49 @@ export type ArchiveVariantGroup = DuplicateResponseDto & {
   evidence: Map<string, CimmichArchiveSourceEvidence>;
 };
 
+export type ArchiveVariantFolderContext = {
+  otherFlaggedHere: number;
+  path: string;
+};
+
+export const archiveVariantFolderContext = (
+  groups: Pick<DuplicateResponseDto, 'assets'>[],
+  asset: AssetResponseDto,
+): ArchiveVariantFolderContext | null => {
+  if (!asset.originalPath) {
+    return null;
+  }
+  const path = getParentPath(asset.originalPath);
+  const flaggedAssetIds = new Set(
+    groups.flatMap((group) =>
+      group.assets
+        .filter((candidate) => Boolean(candidate.originalPath) && getParentPath(candidate.originalPath) === path)
+        .map((candidate) => candidate.id),
+    ),
+  );
+  flaggedAssetIds.delete(asset.id);
+  return {
+    otherFlaggedHere: flaggedAssetIds.size,
+    path,
+  };
+};
+
+export const archiveVariantGroupsInFolder = <T extends Pick<DuplicateResponseDto, 'assets'>>(
+  groups: T[],
+  path: string,
+) => {
+  if (!path) {
+    return groups;
+  }
+  return groups.filter((group) =>
+    group.assets.some((asset) => Boolean(asset.originalPath) && getParentPath(asset.originalPath) === path),
+  );
+};
+
+export const createArchiveVisualDuplicateGroup = (
+  duplicateId: string,
+  assets: AssetResponseDto[],
+): DuplicateResponseDto => ({ assets, duplicateId, suggestedKeepAssetIds: [] });
 const originalCaptureExtensions = new Set([
   '3fr',
   'arw',

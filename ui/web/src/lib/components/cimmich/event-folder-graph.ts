@@ -103,4 +103,4 @@ export const eventLineage = (entity: CimmichContextEntity, entities: CimmichCont
   return lineage;
 };
 
-export const eventCopyName = (name: string) => `${name.trim()} — another`;
+export const eventCopyName = (name: string) => `${name.trim()} (another)`;

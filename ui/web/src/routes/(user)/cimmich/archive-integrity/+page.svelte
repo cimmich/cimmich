@@ -1,9 +1,19 @@
 <script lang="ts">
+  import { replaceState } from '$app/navigation';
+  import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
+  import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
+  import ArchiveHealthHeader from '$lib/components/cimmich/ArchiveHealthHeader.svelte';
   import {
+    buildArchiveFolderOverlap,
+    rankArchiveFoldersByImpact,
+    type ArchiveFolderImpact,
+  } from '$lib/components/cimmich/archive-folder-comparison';
+  import {
+    archiveVariantFolderContext,
+    archiveVariantGroupsInFolder,
     buildArchiveVariantGroups,
-    type ArchiveCanonicalPlanStatus,
     type ArchiveVariantClassification,
     type ArchiveVariantGroup,
   } from '$lib/components/cimmich/archive-variant-groups';
@@ -18,15 +28,22 @@
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize, getAssetDuplicates, type AssetResponseDto } from '@immich/sdk';
+  import {
+    AssetMediaSize,
+    getAssetDuplicates,
+    searchAssets,
+    type AssetResponseDto,
+    type DuplicateResponseDto,
+  } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
     mdiContentDuplicate,
     mdiDatabaseSearchOutline,
+    mdiFolderOpenOutline,
+    mdiFolderSearchOutline,
     mdiImageMultipleOutline,
     mdiInformationOutline,
-    mdiRefresh,
     mdiShieldCheckOutline,
     mdiTuneVariant,
   } from '@mdi/js';
@@ -38,7 +55,20 @@
   }
 
   let { data }: Props = $props();
-  let mode = $state<'exact' | 'variants' | 'plan' | 'backup'>('exact');
+  const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
+  const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
+  const requestedMode = page.url.searchParams.get('mode');
+  let mode = $state<'exact' | 'variants' | 'folder' | 'backup'>(
+    requestedMode === 'folder' || (requestedMode === 'variants' && initialFocusedFolder)
+      ? 'folder'
+      : requestedMode === 'variants' || requestedMode === 'plan'
+        ? 'variants'
+        : requestedMode === 'backup'
+          ? 'backup'
+          : 'exact',
+  );
+  let activeFolder = $state(initialFocusedFolder);
+  let folderPathInput = $state(initialFocusedFolder);
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
   let loaded = $state(false);
@@ -57,8 +87,12 @@
   let variantsLoaded = $state(false);
   let variantsLoading = $state(false);
   let visibleVariantCount = $state(12);
-  let planFilter = $state<'all' | 'candidate' | 'held'>('all');
-  let visiblePlanCount = $state(12);
+  let folderAssets = $state<AssetResponseDto[]>([]);
+  let folderImpacts = $state<ArchiveFolderImpact[]>([]);
+  let folderError = $state('');
+  let folderLoaded = $state(false);
+  let folderLoading = $state(false);
+  let folderRankingLoading = $state(false);
   let backupError = $state('');
   let backupItems = $state(new Map<string, CimmichArchiveBackupProofItem>());
   let backupLoaded = $state(false);
@@ -74,19 +108,44 @@
     sourceSystemCount: 0,
     unprovenItems: 0,
   });
-  let filteredVariantGroups = $derived(
-    variantGroups.filter((group) => variantFilter === 'all' || group.classification === variantFilter),
-  );
-  let visibleVariantGroups = $derived(filteredVariantGroups.slice(0, visibleVariantCount));
-  let filteredPlanGroups = $derived(
-    variantGroups.filter(
-      (group) =>
-        planFilter === 'all' ||
-        (planFilter === 'candidate' && group.canonicalPlan.status === 'candidate') ||
-        (planFilter === 'held' && group.canonicalPlan.status !== 'candidate'),
+  let nativeVariantGroups: DuplicateResponseDto[] | null = null;
+  let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
+  let folderRequestGeneration = 0;
+  let scopedVariantGroups = $derived(
+    archiveVariantGroupsInFolder(
+      variantGroups.filter((group) => !focusedAssetId || group.assets.some((asset) => asset.id === focusedAssetId)),
+      mode === 'folder' ? activeFolder : '',
     ),
   );
-  let visiblePlanGroups = $derived(filteredPlanGroups.slice(0, visiblePlanCount));
+  let filteredVariantGroups = $derived(
+    scopedVariantGroups.filter((group) => variantFilter === 'all' || group.classification === variantFilter),
+  );
+  let visibleVariantGroups = $derived(filteredVariantGroups.slice(0, visibleVariantCount));
+  let libraryVariantGroupCount = $derived(
+    variantGroups.filter((group) => !group.duplicateId.startsWith('cimmich-visual-')).length,
+  );
+  let scopedVariantAssets = $derived(
+    new Set(scopedVariantGroups.flatMap((group) => group.assets.map((asset) => asset.id))).size,
+  );
+  let scopedVariantFolders = $derived(
+    new Set(
+      scopedVariantGroups.flatMap((group) =>
+        group.assets.map((asset) => asset.originalPath?.slice(0, asset.originalPath.lastIndexOf('/'))).filter(Boolean),
+      ),
+    ).size,
+  );
+  let focusedFolderAsset = $derived(
+    folderAssets[0] ??
+      scopedVariantGroups
+        .flatMap((group) => group.assets)
+        .find(
+          (asset) =>
+            Boolean(asset.originalPath) &&
+            asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === activeFolder,
+        ),
+  );
+  let folderOverlap = $derived(buildArchiveFolderOverlap(activeFolder, folderAssets, variantGroups));
+  let visibleFolderImpacts = $derived(folderImpacts.slice(0, 50));
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -114,28 +173,16 @@
   const thumbnail = (sourceAssetId: string) => getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Thumbnail });
   const classificationLabel = (classification: ArchiveVariantClassification) =>
     classification === 'verified_variant'
-      ? 'Verified bytes differ'
+      ? 'Different files'
       : classification === 'verified_exact'
-        ? 'Verified exact bytes'
-        : 'Similarity candidate';
+        ? 'Exact copies'
+        : 'Needs verification';
   const classificationClass = (classification: ArchiveVariantClassification) =>
     classification === 'verified_variant'
       ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'
       : classification === 'verified_exact'
         ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200'
         : 'bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200';
-  const planLabel = (status: ArchiveCanonicalPlanStatus) =>
-    status === 'candidate'
-      ? 'Preferred candidate'
-      : status === 'hold_exact'
-        ? 'Hold — exact bytes'
-        : status === 'hold_incomplete'
-          ? 'Hold — byte evidence incomplete'
-          : 'Hold — owner comparison needed';
-  const planClass = (status: ArchiveCanonicalPlanStatus) =>
-    status === 'candidate'
-      ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200'
-      : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200';
   const names = (asset: AssetResponseDto) =>
     asset.people
       ?.map((person) => person.name.trim())
@@ -146,57 +193,6 @@
       ?.map((tag) => tag.value)
       .filter(Boolean)
       .join(', ') || 'No Immich Tags';
-  let summaryMetrics = $derived.by(() => {
-    if (mode === 'exact') {
-      return [
-        { label: 'Exact groups', value: number.format(summary.duplicateGroups) },
-        { label: 'Files in groups', value: number.format(summary.copiesInGroups) },
-        { label: 'Redundant copies', value: number.format(summary.redundantCopies) },
-        { label: 'Potential space', value: formatBytes(summary.reclaimableBytes) },
-      ];
-    }
-    if (mode === 'variants') {
-      return [
-        { label: 'Similarity groups', value: number.format(variantGroups.length) },
-        {
-          label: 'Files compared',
-          value: number.format(variantGroups.reduce((total, group) => total + group.assets.length, 0)),
-        },
-        {
-          label: 'Bytes differ',
-          value: number.format(variantGroups.filter((group) => group.classification === 'verified_variant').length),
-        },
-        {
-          label: 'Exact overlap',
-          value: number.format(variantGroups.filter((group) => group.classification === 'verified_exact').length),
-        },
-      ];
-    }
-    if (mode === 'plan') {
-      return [
-        { label: 'Groups assessed', value: number.format(variantGroups.length) },
-        {
-          label: 'Preferred candidates',
-          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'candidate').length),
-        },
-        {
-          label: 'Held for review',
-          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status !== 'candidate').length),
-        },
-        {
-          label: 'Exact-byte holds',
-          value: number.format(variantGroups.filter((group) => group.canonicalPlan.status === 'hold_exact').length),
-        },
-      ];
-    }
-    return [
-      { label: 'Byte-verified media', value: number.format(backupSummary.byteVerifiedItems) },
-      { label: 'Independently protected', value: number.format(backupSummary.independentlyProtectedItems) },
-      { label: 'Need destination proof', value: number.format(backupSummary.unprovenItems) },
-      { label: 'Verified destinations', value: number.format(backupSummary.independentDestinationCount) },
-    ];
-  });
-
   const load = async ({ append = false } = {}) => {
     if (append) {
       loadingMore = true;
@@ -205,7 +201,11 @@
       error = '';
     }
     try {
-      const page = await getCimmichExactDuplicates({ limit: 24, offset: append ? (nextOffset ?? 0) : 0 });
+      const page = await getCimmichExactDuplicates({
+        limit: 24,
+        offset: append ? (nextOffset ?? 0) : 0,
+        sourceAssetId: focusedAssetId,
+      });
       groups = append ? [...groups, ...page.groups] : page.groups;
       summary = page.summary;
       nextOffset = page.nextOffset;
@@ -222,12 +222,14 @@
     backupLoading = true;
     backupError = '';
     try {
-      const items: CimmichArchiveBackupProofItem[] = [];
-      const firstPage = await getCimmichArchiveBackupProof(sourceAssetIds.slice(0, 80));
-      items.push(...firstPage.items);
-      for (let index = 80; index < sourceAssetIds.length; index += 80) {
-        const page = await getCimmichArchiveBackupProof(sourceAssetIds.slice(index, index + 80));
-        items.push(...page.items);
+      const batches = Array.from({ length: Math.ceil(sourceAssetIds.length / 80) }, (_, index) =>
+        sourceAssetIds.slice(index * 80, index * 80 + 80),
+      );
+      const pages = await Promise.all(batches.map((batch) => getCimmichArchiveBackupProof(batch)));
+      const firstPage = pages[0];
+      const items = pages.flatMap((page) => page.items);
+      if (!firstPage) {
+        return;
       }
       backupSummary = firstPage.summary;
       backupItems = new Map(items.map((item) => [item.sourceAssetId, item]));
@@ -239,22 +241,46 @@
     }
   };
 
-  const loadVariants = async () => {
+  const ensureNativeVariantGroups = async ({ refresh = false } = {}) => {
+    if (refresh) {
+      nativeVariantGroups = null;
+      nativeVariantGroupsRequest = null;
+      folderImpacts = [];
+    }
+    if (nativeVariantGroups) {
+      return nativeVariantGroups;
+    }
+    nativeVariantGroupsRequest ??= getAssetDuplicates();
+    try {
+      nativeVariantGroups = [...(await nativeVariantGroupsRequest)];
+      folderImpacts = rankArchiveFoldersByImpact(nativeVariantGroups);
+      return nativeVariantGroups;
+    } finally {
+      nativeVariantGroupsRequest = null;
+    }
+  };
+
+  const readArchiveEvidence = async (sourceAssetIds: string[]) => {
+    const batches = Array.from({ length: Math.ceil(sourceAssetIds.length / 80) }, (_, index) =>
+      sourceAssetIds.slice(index * 80, index * 80 + 80),
+    );
+    const pages = await Promise.all(batches.map((batch) => getCimmichArchiveSourceEvidence(batch)));
+    return pages.flatMap((page) => page.items);
+  };
+
+  const loadVariants = async ({ includeBackup = false, refreshNative = false } = {}) => {
     variantsLoading = true;
     variantError = '';
     try {
-      const nativeGroups = await getAssetDuplicates();
+      const nativeGroups = [...(await ensureNativeVariantGroups({ refresh: refreshNative }))];
       const sourceAssetIds = [...new Set(nativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
-      const evidence = [];
-      for (let index = 0; index < sourceAssetIds.length; index += 80) {
-        const page = await getCimmichArchiveSourceEvidence(sourceAssetIds.slice(index, index + 80));
-        evidence.push(...page.items);
-      }
+      const evidence = await readArchiveEvidence(sourceAssetIds);
       variantGroups = buildArchiveVariantGroups(nativeGroups, evidence);
-      await loadBackupProof(sourceAssetIds);
       variantsLoaded = true;
       visibleVariantCount = 12;
-      visiblePlanCount = 12;
+      if (includeBackup) {
+        void loadBackupProof(sourceAssetIds);
+      }
     } catch (error_) {
       variantError = error_ instanceof Error ? error_.message : 'Cimmich could not read similarity candidates.';
     } finally {
@@ -262,138 +288,182 @@
     }
   };
 
-  onMount(() => {
+  const readFolderAssets = async (folderPath: string) => {
+    const matches: AssetResponseDto[] = [];
+    let pageNumber = 1;
+    for (let pageIndex = 0; pageIndex < 50; pageIndex += 1) {
+      const result = await searchAssets({
+        metadataSearchDto: { originalPath: folderPath, page: pageNumber, size: 100, withExif: true },
+      });
+      matches.push(
+        ...result.assets.items.filter((asset) => {
+          if (asset.isTrashed || asset.isOffline || !asset.originalPath) {
+            return false;
+          }
+          return asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === folderPath;
+        }),
+      );
+      if (!result.assets.nextPage) {
+        break;
+      }
+      const nextPage = Number(result.assets.nextPage);
+      if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
+        break;
+      }
+      pageNumber = nextPage;
+    }
+    return matches.filter(
+      (asset, index, assets) => assets.findIndex((candidate) => candidate.id === asset.id) === index,
+    );
+  };
+
+  const loadFolderRanking = async ({ refreshNative = false } = {}) => {
+    folderRankingLoading = true;
+    variantError = '';
+    try {
+      await ensureNativeVariantGroups({ refresh: refreshNative });
+    } catch (error_) {
+      variantError = error_ instanceof Error ? error_.message : 'Cimmich could not rank archive folders.';
+    } finally {
+      folderRankingLoading = false;
+    }
+  };
+
+  const loadFolderComparison = async (folderPath: string, { refreshNative = false } = {}) => {
+    const requestGeneration = ++folderRequestGeneration;
+    folderLoading = true;
+    variantsLoading = true;
+    folderLoaded = false;
+    variantsLoaded = false;
+    folderError = '';
+    variantError = '';
+    try {
+      const [allNativeGroups, assets] = await Promise.all([
+        ensureNativeVariantGroups({ refresh: refreshNative }),
+        readFolderAssets(folderPath),
+      ]);
+      const folderNativeGroups = archiveVariantGroupsInFolder(allNativeGroups, folderPath);
+      const sourceAssetIds = [...new Set(folderNativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
+      const evidence = await readArchiveEvidence(sourceAssetIds);
+      if (requestGeneration !== folderRequestGeneration) {
+        return;
+      }
+      folderAssets = assets;
+      variantGroups = buildArchiveVariantGroups(folderNativeGroups, evidence);
+      folderLoaded = true;
+      variantsLoaded = true;
+    } catch (error_) {
+      if (requestGeneration === folderRequestGeneration) {
+        folderError = error_ instanceof Error ? error_.message : 'Cimmich could not compare this folder.';
+      }
+    } finally {
+      if (requestGeneration === folderRequestGeneration) {
+        folderLoading = false;
+        variantsLoading = false;
+      }
+    }
+  };
+
+  const submitFolder = (event: SubmitEvent) => {
+    event.preventDefault();
+    const folderPath = folderPathInput.trim();
+    if (!folderPath) {
+      return;
+    }
+    activeFolder = folderPath;
+    replaceState(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' }), globalThis.history.state);
+    void loadFolderComparison(folderPath);
+  };
+
+  const refreshCurrentMode = () => {
+    if (mode === 'exact') {
+      void load();
+      return;
+    }
+    if (mode === 'variants') {
+      void loadVariants({ refreshNative: true });
+      return;
+    }
+    if (mode === 'folder') {
+      if (activeFolder) {
+        void loadFolderComparison(activeFolder, { refreshNative: true });
+      } else {
+        void loadFolderRanking({ refreshNative: true });
+      }
+      return;
+    }
     void load();
-    void loadVariants();
+    void loadVariants({ includeBackup: true, refreshNative: true });
+  };
+
+  onMount(() => {
+    switch (mode) {
+      case 'exact': {
+        void load();
+        break;
+      }
+      case 'variants': {
+        void loadVariants();
+        break;
+      }
+      case 'folder': {
+        if (activeFolder) {
+          void loadFolderComparison(activeFolder);
+        } else {
+          void loadFolderRanking();
+        }
+        break;
+      }
+      case 'backup': {
+        void load();
+        void loadVariants({ includeBackup: true });
+        break;
+      }
+    }
   });
 </script>
 
 <UserPageLayout title={data.meta.title} scrollbar={false}>
-  <div class="mx-auto w-full max-w-7xl space-y-6 px-4 pt-4 pb-16 sm:px-6 lg:px-8">
-    <header class="overflow-hidden rounded-4xl bg-[#111815] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-9">
-      <div class="flex flex-wrap items-start justify-between gap-5">
-        <div class="max-w-3xl">
-          <div class="flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-emerald-300 uppercase">
-            <Icon icon={mdiShieldCheckOutline} size="18" /> Archive integrity
-          </div>
-          <h1 class="mt-2 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Know what is genuinely duplicated</h1>
-          <p class="mt-3 max-w-2xl text-sm/6 text-slate-300 sm:text-base/7">
-            Review files whose complete media bytes match. This surface is discovery-only: Cimmich does not move,
-            rewrite or delete anything here.
-          </p>
-        </div>
-        <button
-          type="button"
-          class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-          disabled={loading || loadingMore || variantsLoading || backupLoading}
-          onclick={() => void (mode === 'exact' ? load() : loadVariants())}
-        >
-          <Icon icon={mdiRefresh} size="18" class={loading || variantsLoading || backupLoading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
-      </div>
-    </header>
+  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-4 pb-16 sm:px-6 lg:px-8">
+    <ArchiveHealthHeader
+      exactCount={loaded ? summary.duplicateGroups : undefined}
+      {mode}
+      onRefresh={refreshCurrentMode}
+      possibleCount={variantsLoaded ? scopedVariantGroups.length : undefined}
+      refreshing={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
+    />
 
-    <nav
-      class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200 bg-white p-1 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-      aria-label="Archive integrity evidence layer"
-    >
-      <button
-        type="button"
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'exact'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'exact'}
-        onclick={() => (mode = 'exact')}
+    {#if (mode === 'variants' && focusedAssetId) || (mode === 'exact' && focusedAssetId)}
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm dark:border-violet-900 dark:bg-violet-950/25"
       >
-        Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
-      </button>
-      <button
-        type="button"
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'variants'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'variants'}
-        onclick={() => (mode = 'variants')}
-      >
-        Similar variants {variantsLoaded ? `(${number.format(variantGroups.length)})` : ''}
-      </button>
-      <button
-        type="button"
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'plan'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'plan'}
-        onclick={() => (mode = 'plan')}
-      >
-        Canonical plan {variantsLoaded ? `(${number.format(variantGroups.length)})` : ''}
-      </button>
-      <button
-        type="button"
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'backup'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-pressed={mode === 'backup'}
-        onclick={() => (mode = 'backup')}
-      >
-        Backup proof
-      </button>
-    </nav>
-
-    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Archive integrity summary">
-      {#each summaryMetrics as metric (metric.label)}
-        <div
-          class="rounded-3xl border border-gray-200 bg-white px-5 py-4 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-        >
-          <p class="text-xs font-semibold tracking-[0.12em] text-gray-500 uppercase dark:text-gray-400">
-            {metric.label}
-          </p>
-          <p class="mt-2 text-2xl font-semibold tracking-tight">{metric.value}</p>
-        </div>
-      {/each}
-    </section>
-
-    <section
-      class="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/25"
-    >
-      <div class="flex items-start gap-3">
-        <span
-          class="grid size-10 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-        >
-          <Icon icon={mdiDatabaseSearchOutline} size="21" />
+        <span class="min-w-0 truncate">
+          {mode === 'exact' ? 'Exact copies for the photo you opened' : 'Possible duplicates for the photo you opened'}
         </span>
-        <div>
-          {#if mode === 'exact'}
-            <h2 class="font-semibold">Exact means byte-for-byte</h2>
-            <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
-              These groups are backed by a verified SHA-256 of the complete media file. Recompressed social-media copies
-              and files changed by embedded metadata belong to Similar variants. Sidecars are not compared yet.
-            </p>
-          {:else if mode === 'variants'}
-            <h2 class="font-semibold">Similarity is a lead, not deletion proof</h2>
-            <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
-              Immich supplies local similarity groups; Cimmich checks each available complete-file digest and explains
-              catalogue, People, Tags and Cimmich-evidence differences. Suggested keep/bin decisions are deliberately
-              ignored here.
-            </p>
-          {:else if mode === 'plan'}
-            <h2 class="font-semibold">A preservation lead, never a deletion instruction</h2>
-            <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
-              Cimmich compares original capture format, pixel dimensions, complete-file size, capture metadata and then
-              organisation/identity evidence. Exact bytes, incomplete evidence and true ties are held. No recommendation
-              is saved or grants authority to retire a file.
-            </p>
-          {:else}
-            <h2 class="font-semibold">Same disk is not a backup</h2>
-            <p class="mt-1 max-w-4xl text-sm/6 text-gray-700 dark:text-gray-300">
-              Complete-file SHA-256 proves byte identity, but multiple paths, partitions or Immich records on one
-              physical storage domain do not prove recovery. Retirement stays blocked until a separate destination
-              independently verifies the media bytes and, once exported, their sidecars.
-            </p>
-          {/if}
+        <div class="flex flex-wrap items-center gap-4">
+          <a
+            class="rounded-full bg-violet-700 px-3 py-2 font-semibold text-white hover:bg-violet-800"
+            data-sveltekit-reload
+            href={Route.cimmichArchiveIntegrity({ mode })}
+            >{mode === 'variants'
+              ? `View all ${number.format(libraryVariantGroupCount)} groups`
+              : 'View all exact copies'}</a
+          >
         </div>
       </div>
-    </section>
+    {/if}
+
+    {#if mode === 'exact'}
+      <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
+        <strong>{countLabel(summary.duplicateGroups, 'group')}</strong> · {countLabel(summary.copiesInGroups, 'file')} ·
+        {formatBytes(summary.reclaimableBytes)} possible space. Exact means byte-for-byte.
+      </p>
+    {:else if mode === 'variants'}
+      <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
+        <strong>{countLabel(scopedVariantGroups.length, 'group')}</strong> · {countLabel(scopedVariantAssets, 'file')} ·
+        {countLabel(scopedVariantFolders, 'folder')}. A visual match is a review lead, not deletion proof.
+      </p>
+    {/if}
 
     {#if error}
       <div
@@ -535,17 +605,140 @@
           </button>
         </div>
       {/if}
+    {:else if mode === 'folder'}
+      <section class="space-y-4" aria-labelledby="folder-check-title">
+        <div
+          class="rounded-3xl border border-violet-200 bg-violet-50 p-5 sm:p-6 dark:border-violet-900 dark:bg-violet-950/20"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="max-w-2xl">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-700 text-white dark:bg-violet-600"
+                >
+                  <Icon icon={mdiFolderSearchOutline} size="23" />
+                </span>
+                <div>
+                  <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">
+                    Folder check
+                  </p>
+                  <h2 id="folder-check-title" class="mt-1 text-2xl font-semibold">
+                    Check one folder against the archive
+                  </h2>
+                </div>
+              </div>
+              <p class="mt-4 text-sm/6 text-gray-600 dark:text-gray-300">
+                See what is shared elsewhere, what currently appears only here, and which archive folders overlap most.
+              </p>
+            </div>
+            <a
+              class="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-800 hover:bg-violet-100 dark:border-violet-800 dark:bg-gray-950 dark:text-violet-200 dark:hover:bg-violet-950"
+              href={Route.folders({ cimmichContext: 1 })}
+            >
+              <Icon icon={mdiFolderOpenOutline} size="18" />
+              Browse folders
+            </a>
+          </div>
+
+          <div class="mt-5 rounded-2xl border border-violet-200 bg-white p-4 dark:border-violet-900 dark:bg-gray-950">
+            <label for="folder-impact-selector" class="text-sm font-semibold">Most impacted folders</label>
+            <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+              Ranked by distinct files with duplicate evidence in other archive folders.
+            </p>
+            <select
+              id="folder-impact-selector"
+              class="mt-3 min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-violet-900"
+              bind:value={folderPathInput}
+              disabled={folderRankingLoading && folderImpacts.length === 0}
+            >
+              <option value="">
+                {folderRankingLoading && folderImpacts.length === 0
+                  ? 'Ranking archive folders…'
+                  : folderImpacts.length === 0
+                    ? 'No cross-folder impacts found'
+                    : 'Choose a high-impact folder'}
+              </option>
+              {#if activeFolder && !visibleFolderImpacts.some((candidate) => candidate.folderPath === activeFolder)}
+                <option value={activeFolder}>{activeFolder} · current folder</option>
+              {/if}
+              {#each visibleFolderImpacts as candidate, index (candidate.folderPath)}
+                <option value={candidate.folderPath}>
+                  {index + 1}. {candidate.folderPath} · {countLabel(
+                    candidate.affectedAssetCount,
+                    'affected file',
+                    'affected files',
+                  )} · {countLabel(candidate.counterpartFolderCount, 'other folder', 'other folders')}
+                </option>
+              {/each}
+            </select>
+          </div>
+
+          <form
+            class="mt-4 flex flex-col gap-3 sm:flex-row"
+            method="get"
+            action={Route.cimmichArchiveIntegrity()}
+            onsubmit={submitFolder}
+          >
+            <input type="hidden" name="mode" value="folder" />
+            <label class="min-w-0 flex-1">
+              <span class="sr-only">Archive folder path</span>
+              <input
+                class="min-h-11 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-violet-900"
+                name="folder"
+                placeholder="/archive/Photos/Folder name"
+                autocomplete="off"
+                bind:value={folderPathInput}
+              />
+            </label>
+            <button
+              type="submit"
+              class="min-h-11 rounded-full bg-violet-700 px-5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50"
+              disabled={!folderPathInput.trim()}
+            >
+              Check folder
+            </button>
+          </form>
+        </div>
+
+        {#if activeFolder}
+          <div class="flex flex-wrap items-center justify-between gap-3 px-1">
+            <p class="min-w-0 truncate text-sm text-gray-500 dark:text-gray-400">{activeFolder}</p>
+            {#if focusedFolderAsset}
+              <a
+                class="inline-flex min-h-10 items-center gap-2 font-semibold text-primary hover:underline"
+                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
+              >
+                Open folder <Icon icon={mdiArrowRight} size="17" />
+              </a>
+            {/if}
+          </div>
+          <ArchiveFolderComparison
+            error={folderError || variantError}
+            folderPath={activeFolder}
+            loaded={folderLoaded && variantsLoaded}
+            loading={folderLoading || variantsLoading}
+            overlap={folderOverlap}
+          />
+        {:else}
+          <div
+            class="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+          >
+            <Icon icon={mdiFolderSearchOutline} size="40" class="mx-auto text-violet-600" />
+            <h3 class="mt-3 text-lg font-semibold">Choose a folder to begin</h3>
+            <p class="mx-auto mt-2 max-w-xl text-sm text-gray-500 dark:text-gray-400">
+              Paste its archive path above, or browse the folder library and use Check this folder.
+            </p>
+          </div>
+        {/if}
+      </section>
     {:else if mode === 'variants'}
       <section class="space-y-4" aria-labelledby="variant-groups-title">
         <div class="flex flex-wrap items-end justify-between gap-4 px-1">
           <div>
-            <p class="text-xs font-semibold tracking-[0.14em] text-amber-700 uppercase dark:text-amber-300">
-              Explanation queue
-            </p>
-            <h2 id="variant-groups-title" class="mt-1 text-2xl font-semibold">Similar media, explained</h2>
+            <h2 id="variant-groups-title" class="text-xl font-semibold">Possible duplicate groups</h2>
           </div>
           <div class="flex flex-wrap gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-900" aria-label="Filter variants">
-            {#each [['all', 'All'], ['verified_variant', 'Bytes differ'], ['verified_exact', 'Exact overlap'], ['similarity_candidate', 'Candidate only']] as option (option[0])}
+            {#each [['all', 'All'], ['verified_variant', 'Different files'], ['verified_exact', 'Exact copies'], ['similarity_candidate', 'Unverified']] as option (option[0])}
               <button
                 type="button"
                 class="min-h-9 rounded-full px-3 text-xs font-semibold {variantFilter === option[0]
@@ -575,7 +768,7 @@
           >
             <div class="text-center">
               <Icon icon={mdiTuneVariant} size="34" class="mx-auto animate-pulse text-amber-500" />
-              <p class="mt-3 text-sm font-semibold">Comparing similarity, byte identity and metadata…</p>
+              <p class="mt-3 text-sm font-semibold">Loading comparisons…</p>
             </div>
           </div>
         {:else if variantsLoaded && filteredVariantGroups.length === 0}
@@ -587,26 +780,45 @@
           </div>
         {:else}
           {#each visibleVariantGroups as group (group.duplicateId)}
+            {@const plan = group.canonicalPlan}
+            {@const preferred = group.assets.find((asset) => asset.id === plan.preferredAssetId)}
             <article
               class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
             >
               <header class="border-b border-gray-100 px-5 py-4 dark:border-immich-dark-gray">
-                <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <span
                       class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {classificationClass(
                         group.classification,
                       )}">{classificationLabel(group.classification)}</span
                     >
-                    <h3 class="mt-2 font-semibold">{group.assets.length} locally similar files</h3>
+                    <h3 class="mt-2 text-lg font-semibold">{countLabel(group.assets.length, 'file')} to compare</h3>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                      {group.classification === 'verified_variant'
+                        ? 'They look alike, but the file bytes differ.'
+                        : group.classification === 'verified_exact'
+                          ? 'The complete file bytes match.'
+                          : 'They look alike, but byte verification is incomplete.'}
+                    </p>
                   </div>
-                  <p class="max-w-xl text-xs/5 text-gray-500 dark:text-gray-400">
-                    {group.classification === 'verified_variant'
-                      ? 'Complete-file digests differ. Treat this as a transformed or visually similar candidate.'
-                      : group.classification === 'verified_exact'
-                        ? 'Complete-file digests match. Copy-local Immich organisation may still differ.'
-                        : 'At least one file lacks Cimmich byte verification, so similarity remains the only claim.'}
-                  </p>
+                  <div
+                    class="max-w-md rounded-2xl {preferred
+                      ? 'bg-emerald-50 dark:bg-emerald-950/25'
+                      : 'bg-gray-100 dark:bg-gray-900'} px-4 py-3"
+                  >
+                    <p
+                      class="text-xs font-semibold tracking-wide uppercase {preferred
+                        ? 'text-emerald-800 dark:text-emerald-200'
+                        : 'text-gray-600 dark:text-gray-300'}"
+                    >
+                      {preferred ? 'Recommended to keep' : 'No safe recommendation'}
+                    </p>
+                    <p class="mt-1 text-sm font-semibold">{preferred?.originalFileName ?? 'Compare these yourself'}</p>
+                    {#if plan.reasons[0]}
+                      <p class="mt-1 text-xs/5 text-gray-600 dark:text-gray-300">{plan.reasons[0]}</p>
+                    {/if}
+                  </div>
                 </div>
                 <div class="mt-3 flex flex-wrap gap-1.5">
                   {#if group.differences.length === 0}
@@ -619,12 +831,31 @@
                     {/each}
                   {/if}
                 </div>
+                {#if plan.reasons.length > 1 || plan.cautions.length > 0}
+                  <details class="mt-3 text-xs/5 text-gray-600 dark:text-gray-300">
+                    <summary class="cursor-pointer font-semibold">Why this recommendation</summary>
+                    <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                      <ul>
+                        {#each plan.reasons as reason (reason)}<li>• {reason}</li>{/each}
+                      </ul>
+                      <ul>
+                        {#each plan.cautions as caution (caution)}<li>• {caution}</li>{/each}
+                      </ul>
+                    </div>
+                  </details>
+                {/if}
               </header>
 
               <div class="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
                 {#each group.assets as asset, assetIndex (asset.id)}
                   {@const cimmichEvidence = group.evidence.get(asset.id)}
-                  <div class="overflow-hidden rounded-2xl border border-gray-200 dark:border-immich-dark-gray">
+                  {@const folderContext = archiveVariantFolderContext(variantGroups, asset)}
+                  {@const isPreferred = plan.preferredAssetId === asset.id}
+                  <div
+                    class="overflow-hidden rounded-2xl border {isPreferred
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+                      : 'border-gray-200 dark:border-immich-dark-gray'}"
+                  >
                     <a
                       class="group relative block aspect-16/10 overflow-hidden bg-gray-100 dark:bg-gray-900"
                       href={Route.viewAsset({ id: asset.id })}
@@ -636,8 +867,10 @@
                         loading="lazy"
                       />
                       <span
-                        class="absolute top-3 left-3 rounded-full bg-black/70 px-2.5 py-1 text-xs font-semibold text-white"
-                        >Version {assetIndex + 1}</span
+                        class="absolute top-3 left-3 rounded-full {isPreferred
+                          ? 'bg-emerald-700'
+                          : 'bg-black/70'} px-2.5 py-1 text-xs font-semibold text-white"
+                        >{isPreferred ? 'Recommended keep' : `Version ${assetIndex + 1}`}</span
                       >
                     </a>
                     <div class="space-y-3 p-4">
@@ -649,17 +882,38 @@
                           {formatDate(asset.exifInfo?.dateTimeOriginal ?? asset.localDateTime)} ·
                           {assetDimensions(asset)} · {formatBytes(asset.exifInfo?.fileSizeInByte ?? 0)}
                         </p>
+                        {#if folderContext}
+                          <div class="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-medium">
+                            <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0 text-primary" />
+                            <a
+                              class="max-w-full min-w-0 truncate text-primary hover:underline"
+                              href={Route.viewFolderAsset({ cimmich: 1, id: asset.id, path: folderContext.path })}
+                              title={`Open ${folderContext.path}`}>{folderContext.path}</a
+                            >
+                            <a
+                              class="shrink-0 whitespace-nowrap text-primary hover:underline"
+                              data-sveltekit-reload
+                              href={Route.cimmichArchiveIntegrity({ folder: folderContext.path, mode: 'folder' })}
+                              >({countLabel(folderContext.otherFlaggedHere, 'other flagged photo')} here)</a
+                            >
+                          </div>
+                        {/if}
                       </div>
-                      <div class="space-y-1.5 text-xs/5 text-gray-600 dark:text-gray-300">
-                        <p><strong class="text-gray-900 dark:text-white">Immich People:</strong> {names(asset)}</p>
-                        <p><strong class="text-gray-900 dark:text-white">Immich Tags:</strong> {tags(asset)}</p>
-                        <p>
-                          <strong class="text-gray-900 dark:text-white">Cimmich evidence:</strong>
-                          {cimmichEvidence
-                            ? `${countLabel(cimmichEvidence.people, 'person', 'people')} · ${countLabel(cimmichEvidence.faceAssignments, 'face')} · ${countLabel(cimmichEvidence.headAssignments, 'head')} · ${countLabel(cimmichEvidence.bodyAssignments, 'body', 'bodies')} · ${countLabel(cimmichEvidence.presenceAssignments, 'presence', 'presence')}`
-                            : 'Byte-linked evidence unavailable'}
-                        </p>
-                      </div>
+                      <details class="text-xs/5 text-gray-600 dark:text-gray-300">
+                        <summary class="cursor-pointer font-semibold text-gray-700 dark:text-gray-200"
+                          >Technical details</summary
+                        >
+                        <div class="mt-2 space-y-1.5">
+                          <p><strong class="text-gray-900 dark:text-white">Immich People:</strong> {names(asset)}</p>
+                          <p><strong class="text-gray-900 dark:text-white">Immich Tags:</strong> {tags(asset)}</p>
+                          <p>
+                            <strong class="text-gray-900 dark:text-white">Cimmich evidence:</strong>
+                            {cimmichEvidence
+                              ? `${countLabel(cimmichEvidence.people, 'person', 'people')} · ${countLabel(cimmichEvidence.faceAssignments, 'face')} · ${countLabel(cimmichEvidence.headAssignments, 'head')} · ${countLabel(cimmichEvidence.bodyAssignments, 'body', 'bodies')} · ${countLabel(cimmichEvidence.presenceAssignments, 'presence', 'presence')}`
+                              : 'Byte-linked evidence unavailable'}
+                          </p>
+                        </div>
+                      </details>
                       <a
                         class="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-primary hover:underline"
                         href={Route.viewAsset({ id: asset.id })}
@@ -696,191 +950,6 @@
           </button>
         </div>
       {/if}
-    {:else if mode === 'plan'}
-      <section class="space-y-4" aria-labelledby="canonical-plan-title">
-        <div class="flex flex-wrap items-end justify-between gap-4 px-1">
-          <div>
-            <p class="text-xs font-semibold tracking-[0.14em] text-emerald-700 uppercase dark:text-emerald-300">
-              Recommendation-only plan
-            </p>
-            <h2 id="canonical-plan-title" class="mt-1 text-2xl font-semibold">Preferred preservation candidates</h2>
-          </div>
-          <div class="flex flex-wrap gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-900" aria-label="Filter plan">
-            {#each [['all', 'All'], ['candidate', 'Candidates'], ['held', 'Held']] as option (option[0])}
-              <button
-                type="button"
-                class="min-h-9 rounded-full px-3 text-xs font-semibold {planFilter === option[0]
-                  ? 'bg-white shadow-sm dark:bg-gray-700'
-                  : 'text-gray-500 dark:text-gray-400'}"
-                aria-pressed={planFilter === option[0]}
-                onclick={() => {
-                  planFilter = option[0] as typeof planFilter;
-                  visiblePlanCount = 12;
-                }}>{option[1]}</button
-              >
-            {/each}
-          </div>
-        </div>
-
-        <div
-          class="rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm/6 text-gray-600 dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:text-gray-300"
-        >
-          This plan covers Immich's local similarity groups. Other byte-exact groups do not need a media-quality winner;
-          review their copy retention in Exact copies only after independent backup proof.
-        </div>
-
-        {#if variantError}
-          <div
-            class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
-          >
-            {variantError}
-          </div>
-        {/if}
-
-        {#if variantsLoading && !variantsLoaded}
-          <div
-            class="grid min-h-52 place-items-center rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-          >
-            <div class="text-center">
-              <Icon icon={mdiTuneVariant} size="34" class="mx-auto animate-pulse text-emerald-500" />
-              <p class="mt-3 text-sm font-semibold">Building transparent preservation comparisons…</p>
-            </div>
-          </div>
-        {:else if variantsLoaded && filteredPlanGroups.length === 0}
-          <div
-            class="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-          >
-            <Icon icon={mdiShieldCheckOutline} size="38" class="mx-auto text-emerald-600" />
-            <h3 class="mt-3 text-lg font-semibold">No groups match this plan filter</h3>
-          </div>
-        {:else}
-          {#each visiblePlanGroups as group (group.duplicateId)}
-            {@const plan = group.canonicalPlan}
-            {@const preferred = group.assets.find((asset) => asset.id === plan.preferredAssetId)}
-            <article
-              class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-            >
-              <header class="border-b border-gray-100 p-5 dark:border-immich-dark-gray">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {planClass(plan.status)}">
-                      {planLabel(plan.status)}
-                    </span>
-                    <h3 class="mt-2 text-lg font-semibold">
-                      {preferred ? preferred.originalFileName : `${group.assets.length} versions held`}
-                    </h3>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {group.assets.length} locally similar files · {classificationLabel(group.classification)}
-                    </p>
-                  </div>
-                  <p class="max-w-md text-xs/5 text-gray-500 dark:text-gray-400">
-                    {plan.status === 'candidate'
-                      ? 'First by the disclosed preservation order. Owner review is still required.'
-                      : 'Cimmich refused to manufacture a preferred version from insufficient or equivalent evidence.'}
-                  </p>
-                </div>
-
-                <div class="mt-4 grid gap-3 lg:grid-cols-2">
-                  <div class="rounded-2xl bg-emerald-50 px-4 py-3 dark:bg-emerald-950/25">
-                    <p class="text-xs font-semibold tracking-widest text-emerald-800 uppercase dark:text-emerald-200">
-                      Basis
-                    </p>
-                    <ul class="mt-2 space-y-1 text-sm/5 text-gray-700 dark:text-gray-300">
-                      {#each plan.reasons as reason (reason)}
-                        <li>• {reason}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                  <div class="rounded-2xl bg-amber-50 px-4 py-3 dark:bg-amber-950/25">
-                    <p class="text-xs font-semibold tracking-widest text-amber-800 uppercase dark:text-amber-200">
-                      Before any retirement
-                    </p>
-                    <ul class="mt-2 space-y-1 text-sm/5 text-gray-700 dark:text-gray-300">
-                      {#each plan.cautions as caution (caution)}
-                        <li>• {caution}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                </div>
-              </header>
-
-              <div class="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                {#each group.assets as asset (asset.id)}
-                  {@const signal = plan.rankings.get(asset.id)}
-                  {@const isPreferred = plan.preferredAssetId === asset.id}
-                  <div
-                    class="overflow-hidden rounded-2xl border {isPreferred
-                      ? 'border-emerald-500 ring-2 ring-emerald-500/20'
-                      : 'border-gray-200 dark:border-immich-dark-gray'}"
-                  >
-                    <a
-                      class="group relative block aspect-16/10 overflow-hidden bg-gray-100 dark:bg-gray-900"
-                      href={Route.viewAsset({ id: asset.id })}
-                    >
-                      <img
-                        class="size-full object-cover transition duration-200 group-hover:scale-[1.02]"
-                        src={thumbnail(asset.id)}
-                        alt=""
-                        loading="lazy"
-                      />
-                      <span
-                        class="absolute top-3 left-3 rounded-full {isPreferred
-                          ? 'bg-emerald-700'
-                          : 'bg-black/70'} px-2.5 py-1 text-xs font-semibold text-white"
-                        >{isPreferred ? 'Preferred candidate' : 'Alternative'}</span
-                      >
-                    </a>
-                    <div class="space-y-3 p-4">
-                      <div>
-                        <p class="truncate text-sm font-semibold" title={asset.originalFileName}>
-                          {asset.originalFileName}
-                        </p>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {assetDimensions(asset)} · {formatBytes(asset.exifInfo?.fileSizeInByte ?? 0)}
-                        </p>
-                      </div>
-                      {#if signal}
-                        <div class="flex flex-wrap gap-1.5 text-[0.7rem] font-semibold">
-                          {#if signal.originalCapture === 1}
-                            <span
-                              class="rounded-full bg-violet-100 px-2 py-1 text-violet-900 dark:bg-violet-950 dark:text-violet-200"
-                              >Original capture</span
-                            >
-                          {/if}
-                          <span class="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-800">
-                            {signal.metadataFields} metadata fields
-                          </span>
-                          <span class="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-800">
-                            {signal.evidenceLinks} evidence links
-                          </span>
-                        </div>
-                      {/if}
-                      <a
-                        class="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-primary hover:underline"
-                        href={Route.viewAsset({ id: asset.id })}
-                      >
-                        Open photo <Icon icon={mdiArrowRight} size="17" />
-                      </a>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </article>
-          {/each}
-        {/if}
-      </section>
-
-      {#if visiblePlanCount < filteredPlanGroups.length}
-        <div class="flex justify-center">
-          <button
-            type="button"
-            class="min-h-11 rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
-            onclick={() => (visiblePlanCount += 12)}
-          >
-            Show 12 more plans
-          </button>
-        </div>
-      {/if}
     {:else}
       <ArchiveBackupProof
         error={backupError}
@@ -892,21 +961,5 @@
         summary={backupSummary}
       />
     {/if}
-
-    <section
-      class="rounded-3xl border border-gray-200 bg-white p-6 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-    >
-      <p class="text-xs font-semibold tracking-[0.14em] text-gray-500 uppercase dark:text-gray-400">
-        Next integrity layers
-      </p>
-      <div class="mt-4 grid gap-3 md:grid-cols-3">
-        {#each [['Canonical planning', 'Live recommendation-only preservation leads; no choice or file change is saved.'], ['Backup proof', 'Live readiness gate; the current archive has no independent destination proof.'], ['Sidecar export', 'Merge owner-approved Cimmich truth into staged, round-trip-tested XMP.']] as item (item[0])}
-          <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/60">
-            <h3 class="text-sm font-semibold">{item[0]}</h3>
-            <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-300">{item[1]}</p>
-          </div>
-        {/each}
-      </div>
-    </section>
   </div>
 </UserPageLayout>

@@ -41,7 +41,7 @@ describe('CimmichPrivateViewSettings', () => {
     const { getByText } = renderPanel();
 
     await waitFor(() => expect(getByText('This password filters what is shown.')).toBeVisible());
-    expect(getByText(/Immich does that, with your Immich account/)).toBeVisible();
+    expect(getByText(/Immich does that with your Immich account/)).toBeVisible();
     expect(getByText(/Switching to Immich shows everything, by design/)).toBeVisible();
   });
 

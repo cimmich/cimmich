@@ -47,7 +47,9 @@ describe('human-first Library information architecture', () => {
       expect(mode).toContain("page.url.searchParams.has('organise')");
       expect(mode).toContain('<CimmichOrganiseModeSwitch />');
     }
-    expect(folders).toContain('Route.folders({ path, organise: isOrganiseContext ? 1 : undefined })');
+    expect(folders).toContain('Route.folders({');
+    expect(folders).toContain('organise: isOrganiseContext ? 1 : undefined');
+    expect(folders).toContain('cimmichContext: isCimmichContext ? 1 : undefined');
     expect(folders).toContain('isMeaningfulEventFolder(child.path)');
     expect(folders).toContain('No original folders here');
     expect(folders).toContain('href={Route.libraries()}');

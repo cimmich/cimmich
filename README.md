@@ -8,7 +8,7 @@
 
 **Cimmich is an open-source, local-first memory companion for Immich.** It adds
 People, Pets, Places, Things, Events and Documents around the library you
-already own—without writing to the Immich database or modifying original
+already own, without writing to the Immich database or modifying original
 media.
 
 Photo libraries are good at storing files and grouping visible faces. They are
@@ -22,7 +22,7 @@ owner-controlled context beside Immich.
 [Contribute](CONTRIBUTING.md)
 
 > [!NOTE]
-> **OpenAI Build Week — Apps for Your Life.** Cimmich's original submission was
+> **OpenAI Build Week: Apps for Your Life.** Cimmich's original submission was
 > built with **Codex powered by GPT-5.6 Sol** and remains preserved at the exact
 > [`v1.0.0-build-week` tag and release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week):
 > [read the original submission README](https://github.com/cimmich/cimmich/blob/v1.0.0-build-week/README.md) ·
@@ -56,6 +56,10 @@ owner-controlled context beside Immich.
 - **Reversible archive organisation.** Apply Cimmich-owned Labels and preview
   folder-derived album manifests before creating collision-safe albums, without
   moving source media or writing sidecars.
+- **Archive health without deletion authority.** Compare exact bytes and
+  possible duplicates, check one folder against the rest of the archive, and
+  scan a configured read-only independent backup. Each category loads only
+  when selected.
 - **People exploration with context.** Filter People and a Person's photographs
   by exact privacy tier, Tags and Labels, Places, Events and Things.
 - **Owner-controlled review.** Matching may suggest; the archive owner accepts,
@@ -127,7 +131,7 @@ then extract the bundle:
 
 Open <http://127.0.0.1:3413>, sign in through Immich, and complete the guided
 library preview. Cimmich asks for a dedicated read-only Immich API key only in
-its signed-in Settings screen—never in `.env` or an AI conversation.
+its signed-in Settings screen, never in `.env` or an AI conversation.
 
 Read [INSTALL.md](INSTALL.md) before starting. It covers checksum verification,
 host addressing, first-run expectations, backups, updates, diagnostics and
@@ -153,17 +157,18 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 ## Documentation
 
-| I want to…                                               | Start here                                 |
-| :------------------------------------------------------- | :----------------------------------------- |
-| See what the product does                                | [Product walkthrough](docs/WALKTHROUGH.md) |
-| Install, update, back up or remove it                    | [Installation and operations](INSTALL.md)  |
-| Understand data and network behavior                     | [Privacy guide](PRIVACY.md)                |
-| Use or operate optional Local AI review                  | [Local AI review](docs/LOCAL_AI_REVIEW.md) |
-| Resolve a common question                                | [FAQ](docs/FAQ.md)                         |
-| Understand the repository                                | [Development guide](DEVELOPMENT.md)        |
-| Propose a change                                         | [Contributing guide](CONTRIBUTING.md)      |
-| Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md)                |
-| Inspect release and journey evidence                     | [Documentation index](docs/README.md)      |
+| I want to…                                               | Start here                                                                          |
+| :------------------------------------------------------- | :---------------------------------------------------------------------------------- |
+| See what the product does                                | [Product walkthrough](docs/WALKTHROUGH.md)                                          |
+| Install, update, back up or remove it                    | [Installation and operations](INSTALL.md)                                           |
+| Understand data and network behavior                     | [Privacy guide](PRIVACY.md)                                                         |
+| Use or operate optional Local AI review                  | [Local AI review](docs/LOCAL_AI_REVIEW.md)                                          |
+| Check copies, folders or an independent media backup     | [Archive Health walkthrough](docs/WALKTHROUGH.md#6-check-the-health-of-the-archive) |
+| Resolve a common question                                | [FAQ](docs/FAQ.md)                                                                  |
+| Understand the repository                                | [Development guide](DEVELOPMENT.md)                                                 |
+| Propose a change                                         | [Contributing guide](CONTRIBUTING.md)                                               |
+| Understand project authority and AI-assisted development | [Governance](GOVERNANCE.md)                                                         |
+| Inspect release and journey evidence                     | [Documentation index](docs/README.md)                                               |
 
 ## Current limitations
 
@@ -179,7 +184,7 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 Cimmich contains two deliberate JavaScript workspaces: a Node 22/npm service
 and an Immich-derived Node 24/pnpm UI. `ui/packages/sdk` is checked-in generated
-source—not `node_modules`.
+source, not `node_modules`.
 
 Read [DEVELOPMENT.md](DEVELOPMENT.md) before installing dependencies. Small,
 reviewable documentation, test and defect fixes are welcome under the
@@ -187,7 +192,7 @@ reviewable documentation, test and defect fixes are welcome under the
 
 ## Project history
 
-Cimmich began as a bounded **OpenAI Build Week — Apps for Your Life** project.
+Cimmich began as a bounded **OpenAI Build Week: Apps for Your Life** project.
 The exact submission remains preserved as the
 [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
 with its [prior-work disclosure](docs/BUILD_WEEK.md) and

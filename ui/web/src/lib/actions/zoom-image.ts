@@ -1,7 +1,7 @@
 import { createZoomImageWheel } from '@zoom-image/core';
 import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
 
-// Minimal touch shape — avoids importing DOM TouchEvent which isn't available in all TS targets.
+// Minimal touch shape avoids importing DOM TouchEvent, which isn't available in all TS targets.
 type TouchEventLike = {
   touches: Iterable<{ clientX: number; clientY: number }> & { length: number };
   targetTouches: ArrayLike<unknown>;
@@ -40,7 +40,7 @@ export const zoomImageAction = (node: HTMLElement, options?: { zoomTarget?: HTML
       interceptedPointers.add(event.pointerId);
       event.stopPropagation();
     } else if (overlayPointers.size > 0) {
-      // Split gesture (e.g. pinch with one finger on overlay) — intercept entirely.
+      // Intercept split gestures entirely, such as a pinch with one finger on the overlay.
       interceptedPointers.add(event.pointerId);
       event.stopPropagation();
     }

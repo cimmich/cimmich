@@ -88,6 +88,6 @@ describe('event folder and graph helpers', () => {
       'Cedar House 2025',
       'Cedar House June 2025',
     ]);
-    expect(eventCopyName('ATV Trail Ride')).toBe('ATV Trail Ride — another');
+    expect(eventCopyName('ATV Trail Ride')).toBe('ATV Trail Ride (another)');
   });
 });

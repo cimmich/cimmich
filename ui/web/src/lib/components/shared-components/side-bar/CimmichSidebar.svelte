@@ -10,6 +10,7 @@
     mdiClipboardCheckOutline,
     mdiCogOutline,
     mdiFileDocumentOutline,
+    mdiFolderSearchOutline,
     mdiHome,
     mdiHomeOutline,
     mdiImageMultipleOutline,
@@ -90,7 +91,13 @@
     title="Archive Health"
     href={Route.cimmichArchiveIntegrity()}
     icon={mdiShieldCheckOutline}
-    isActive={() => isSectionActive(Route.cimmichArchiveIntegrity())}
+    isActive={() => isSectionActive(Route.cimmichArchiveIntegrity()) && page.url.searchParams.get('mode') !== 'folder'}
+  />
+  <NavbarItem
+    title="Folder Check"
+    href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
+    icon={mdiFolderSearchOutline}
+    isActive={() => isSectionActive(Route.cimmichArchiveIntegrity()) && page.url.searchParams.get('mode') === 'folder'}
   />
   <NavbarItem
     title="Settings"

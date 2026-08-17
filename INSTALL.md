@@ -26,12 +26,12 @@ path until it has clean-install proof.
 
 ### Resource expectations
 
-| Resource | What to expect |
-| :--- | :--- |
-| Disk | Keep several gigabytes free for local image builds, Docker cache and Cimmich state. Cimmich does not duplicate the original photo library. |
-| Time | A cold first build commonly takes 4–10 minutes; network speed, CPU and Docker cache can change this substantially. |
-| CPU and memory | No minimum has been certified yet. The core stack adds a Node service, web process and PostgreSQL database beside Immich. Increase Docker's allocation if a local build is killed for memory. |
-| Optional models | Core does not need one. Local provider resource use is additional and provider-specific. |
+| Resource        | What to expect                                                                                                                                                                                |
+| :-------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Disk            | Keep several gigabytes free for local image builds, Docker cache and Cimmich state. Cimmich does not duplicate the original photo library.                                                    |
+| Time            | A cold first build commonly takes 4–10 minutes; network speed, CPU and Docker cache can change this substantially.                                                                            |
+| CPU and memory  | No minimum has been certified yet. The core stack adds a Node service, web process and PostgreSQL database beside Immich. Increase Docker's allocation if a local build is killed for memory. |
+| Optional models | Core does not need one. Local provider resource use is additional and provider-specific.                                                                                                      |
 
 `./tools/install.sh --check` reports available disk on the release-folder
 volume. Docker Desktop or another remote engine may store images elsewhere, so
@@ -97,7 +97,7 @@ reports the platform, required commands, checksum implementation, local ports,
 existing guided state and available disk. A ready new machine ends with:
 
 ```json
-{"docker":"ready","installer":"ready","state":"unchanged"}
+{ "docker": "ready", "installer": "ready", "state": "unchanged" }
 ```
 
 Do not run the installer with `sudo`.
@@ -240,6 +240,27 @@ and SFace CPU provider into Cimmich's separate provider volume:
 
 The provider is local and optional. Installing it does not turn on automatic
 identity acceptance.
+
+## Optional read-only media backup scan
+
+Archive Health can compare Immich media evidence with a genuinely independent
+destination. This is an advanced opt-in because the destination must be mounted
+into the API container. Keep the base Compose file plus the supplied override,
+use a stable storage-domain ID that is not the archive disk, and mount only the
+folder intended for verification:
+
+```sh
+export CIMMICH_BACKUP_SCAN_PATH=/mnt/independent-photo-backup
+export CIMMICH_BACKUP_SCAN_LABEL='Primary NAS backup'
+export CIMMICH_BACKUP_STORAGE_DOMAIN='nas-volume-photos-1'
+docker compose -f compose.yaml -f compose.backup-scan.yaml up -d
+```
+
+The override mounts the target at `/backup/primary` read-only. Cimmich accepts
+only the configured target ID, does not follow symlinks and runs at most one
+sequential complete-file hash scan at a time. Do not reuse the archive storage
+domain or point the mount at another folder on the archive disk; that is a copy,
+not independent backup proof.
 
 ## Back up, move, restore or remove
 

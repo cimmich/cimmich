@@ -25,7 +25,7 @@ const stateCopy: Record<
     label: 'Build references',
     nextAction: 'Analyse this library, then build a proposed reference library from accepted names and Face evidence.',
     summary:
-      'The local provider is connected. Cimmich now needs references derived from this library—not a bundled pack.',
+      'The local provider is connected. Cimmich now needs references derived from this library, not a bundled pack.',
   },
   provider_disabled: {
     label: 'Provider off',
@@ -135,9 +135,9 @@ export const referenceLibraryJourney = (status: CimmichFaceMatchingOperatorStatu
     headline: complete
       ? 'Reference library in use'
       : coverageHold
-        ? 'Current library remains in use — weaker candidate held'
+        ? 'Current library remains in use. Weaker candidate held'
         : held
-          ? 'Safety check unavailable — proposal held'
+          ? 'Safety check unavailable. Proposal held'
           : labels[activeIndex],
     held,
     steps: labels.map((label, index) => ({

@@ -3,5 +3,5 @@ import type { PageLoad } from './$types';
 
 export const load = (async ({ url }) => {
   await authenticate(url);
-  return { meta: { title: 'Settings — Cimmich' } };
+  return { meta: { title: 'Settings: Cimmich' } };
 }) satisfies PageLoad;

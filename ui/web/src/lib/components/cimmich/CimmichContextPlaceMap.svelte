@@ -173,7 +173,7 @@
   }
   /* MapLibre sizes itself from its container, and its wrapper asks for
      `height: 100%`. A `min-height` alone leaves this box's height `auto`, so
-     that percentage resolved against nothing and the map rendered at 0px —
+     that percentage resolved against nothing and the map rendered at 0px.
      present in the DOM, with a marker, painting nothing. An explicit `height`
      makes it definite. Native Immich's own map page never hit this because it
      sizes its container from the viewport. */

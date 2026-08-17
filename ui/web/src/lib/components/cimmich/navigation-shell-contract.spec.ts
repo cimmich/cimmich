@@ -35,6 +35,8 @@ describe('Cimmich navigation shell contract', () => {
     expect(cimmichSidebar).toContain('href={Route.cimmichLibrary()}');
     expect(cimmichSidebar).toContain('title="Review"');
     expect(cimmichSidebar).toContain('title="Archive Health"');
+    expect(cimmichSidebar).toContain('title="Folder Check"');
+    expect(cimmichSidebar).toContain("mode: 'folder'");
     expect(cimmichSidebar).toContain('title="Settings"');
     expect(cimmichSidebar).not.toContain('title="Smart Search"');
     expect(cimmichSidebar).not.toContain('bind:expanded');

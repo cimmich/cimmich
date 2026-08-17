@@ -21,6 +21,7 @@
     mdiCogOutline,
     mdiFileDocumentOutline,
     mdiFolderOutline,
+    mdiFolderSearchOutline,
     mdiHeart,
     mdiHeartOutline,
     mdiImageAlbum,
@@ -95,6 +96,11 @@
         { title: 'Smart Search', href: Route.cimmichSmartSearch(), icon: mdiTextSearch },
         { title: 'Review', href: Route.cimmichSteward(), icon: mdiClipboardCheckOutline },
         { title: 'Archive Health', href: Route.cimmichArchiveIntegrity(), icon: mdiShieldCheckOutline },
+        {
+          title: 'Folder Check',
+          href: Route.cimmichArchiveIntegrity({ mode: 'folder' }),
+          icon: mdiFolderSearchOutline,
+        },
         { title: 'Settings', href: Route.cimmichSettings(), icon: mdiCogOutline },
       ]}
     />
