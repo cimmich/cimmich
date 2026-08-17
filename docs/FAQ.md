@@ -31,7 +31,7 @@ deployment and multi-user operation are not currently supported.
 
 ## Which version should I install?
 
-Install [Community Preview 10](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.10)
+Install [Community Preview 11](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.11)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
 development and may be ahead of the supported release.
 

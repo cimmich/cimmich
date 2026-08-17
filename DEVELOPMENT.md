@@ -36,12 +36,14 @@ start every archive-wide query on mount.
 | Exact copies        | Cimmich complete-file digest evidence                                                       | Loads only when Exact copies is selected and pages groups from the service.                                                                                                          |
 | Possible duplicates | Immich native duplicate topology plus batched Cimmich source evidence                       | Loads only when Possible duplicates is selected.                                                                                                                                     |
 | Folder Check        | Immich native duplicate topology, direct assets in one folder, then scoped Cimmich evidence | The initial selector ranks impacted folders from one cached duplicate index. Selecting another folder reuses that index and fetches evidence only for assets in the selected groups. |
-| Backup status       | Configured backup target plus Archive Health evidence                                       | Loads only when Backup status is selected. Starting a scan is an explicit operator action.                                                                                           |
+| Backup Check        | Configured backup target plus Archive Health evidence                                       | Loads only when Backup Check is selected. Starting a scan is an explicit operator action.                                                                                            |
 
 The web orchestration lives in
 `ui/web/src/routes/(user)/cimmich/archive-integrity/+page.svelte`. Folder ranking
 and overlap calculations are pure functions in
-`ui/web/src/lib/components/cimmich/archive-folder-comparison.ts`. The service
+`ui/web/src/lib/components/cimmich/archive-folder-comparison.ts`. The bounded
+Possible duplicates presentation is isolated in
+`ui/web/src/lib/components/cimmich/ArchiveVariantComparison.svelte`. The service
 read model and endpoints live in `service/src/archive-integrity.mjs` and
 `service/src/review-routes.mjs`.
 
@@ -55,7 +57,10 @@ domain. The scanner never writes the destination, source media, or Immich.
 Archive Health evidence is deliberately non-authoritative. Exact means complete
 byte equality. A possible duplicate is a review lead. "Only here" means no
 current counterpart was found through the available exact or visual duplicate
-evidence. None of those states grants deletion authority.
+evidence. Folder comparison columns align the actual file path, bytes,
+dimensions, timestamps, location, camera and secondary Immich metadata. A
+recommended visible preservation candidate remains review-only evidence. None
+of those states grants deletion authority.
 
 ## Repository map
 

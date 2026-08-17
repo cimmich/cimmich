@@ -4,6 +4,26 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.11: Clearer People and Archive Health review
+
+- The People directory now keeps its title, result count, review modes, search,
+  sort, filters and grid size in one compact top bar. The obsolete Identity
+  checks overlay link is removed.
+- People and Explore controls now provide useful tooltips. Explore calls its
+  privacy filter Privacy bucket and removes ambiguous empty-scope copy.
+- Folder Check now opens with the selected folder, path and essential actions
+  in one compact command bar, with the result immediately below it.
+- Duplicate copies are aligned horizontally in fixed-width columns with
+  balanced 4:3 previews. Full paths, exact bytes, resolution, capture and
+  modified times, location, camera and secondary Immich metadata make each
+  reported difference inspectable without opening every photo.
+- Changed rows are highlighted and the best visible preservation candidate is
+  marked Review only. The recommendation stays visible after byte evidence
+  loads and never grants deletion authority.
+- Folder overlaps are capped initially, Possible duplicate groups load in
+  small batches, and detailed folder evidence loads for the selected
+  comparison instead of mounting the whole archive review at once.
+
 ## v1.1.0-community-preview.10: Demand-loaded Archive Health checks
 
 - Archive Health is now a first-class navigation destination for exact copies,

@@ -27,13 +27,15 @@ describe('Archive integrity layout', () => {
     const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
+    const variantComparison = await readFile('src/lib/components/cimmich/ArchiveVariantComparison.svelte', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
     const folderPage = await readFile(
       'src/routes/(user)/folders/[[photos=photos]]/[[assetId=id]]/+page.svelte',
       'utf8',
     );
-    const normalizedSource = source.replaceAll(/\s+/g, ' ');
+    const combinedSource = `${source}\n${variantComparison}`;
+    const normalizedSource = combinedSource.replaceAll(/\s+/g, ' ');
 
     expect(source).toContain('Archive Health');
     expect(source).toContain('Exact means byte-for-byte');
@@ -42,13 +44,13 @@ describe('Archive integrity layout', () => {
     expect(normalizedSource).toContain('A visual match is a review lead, not deletion proof');
     expect(variants).toContain('Immich People differ');
     expect(normalizedSource).toContain('Cimmich intelligence follows verified content');
-    expect(source).not.toContain('resolveDuplicates');
-    expect(source).not.toContain('suggestedKeepAssetIds');
-    expect(source).not.toContain('Canonical plan');
-    expect(source).toContain('Recommended to keep');
-    expect(source).toContain('No safe recommendation');
-    expect(source).toContain('Why this recommendation');
-    expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
+    expect(combinedSource).not.toContain('resolveDuplicates');
+    expect(combinedSource).not.toContain('suggestedKeepAssetIds');
+    expect(combinedSource).not.toContain('Canonical plan');
+    expect(variantComparison).toContain('Recommended to keep');
+    expect(variantComparison).toContain('No safe recommendation');
+    expect(variantComparison).toContain('Why this recommendation');
+    expect(variantComparison).toContain('archiveVariantFolderContext(allGroups, asset)');
     expect(source).toContain("title={mode === 'folder' ? undefined : data.meta.title}");
     expect(source).toContain('Back to Archive Health');
     expect(source).toContain('Open this folder in Library');
@@ -72,12 +74,12 @@ describe('Archive integrity layout', () => {
     expect(source).toContain("case 'exact':");
     expect(source).toContain("case 'folder':");
     expect(source).not.toContain('void loadFolderAssets();');
-    expect(source).toContain("folder: folderContext.path, mode: 'folder'");
+    expect(variantComparison).toContain("folder: folderContext.path, mode: 'folder'");
     expect(folderPage).toContain('Check this folder');
     expect(folderPage).toContain("mode: 'folder'");
-    expect(source.match(/data-sveltekit-reload/g)?.length).toBeGreaterThanOrEqual(6);
-    expect(source).toContain('other flagged photo');
-    expect(source).toContain('Technical details');
+    expect(combinedSource.match(/data-sveltekit-reload/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(variantComparison).toContain('other flagged photo');
+    expect(variantComparison).toContain('Technical details');
     expect(variants).toContain("status: 'hold_ambiguous'");
     expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup check');
