@@ -90,11 +90,11 @@
   let peopleThumbnailSize = $state<PeopleThumbnailSize>('medium');
   let viewMode = $state<PersonViewMode>('faces');
 
-  const viewModes: Array<{ id: PersonViewMode; label: string }> = [
-    { id: 'faces', label: 'People' },
-    { id: 'candidates', label: 'Suggestions' },
-    { id: 'possible', label: 'Possible people' },
-    { id: 'needsFace', label: 'Needs attention' },
+  const viewModes: Array<{ id: PersonViewMode; label: string; tooltip: string }> = [
+    { id: 'faces', label: 'People', tooltip: 'Browse people with accepted photos' },
+    { id: 'candidates', label: 'Suggestions', tooltip: 'People with new identity suggestions to review' },
+    { id: 'possible', label: 'Possible people', tooltip: 'Review unassigned faces that may belong together' },
+    { id: 'needsFace', label: 'Needs attention', tooltip: 'People with unresolved sorting or identity work' },
   ];
   const sortOptions: Array<{ id: PeopleSortKey; label: string }> = [
     { id: 'photos', label: '# of Photos' },
@@ -457,40 +457,50 @@
                     : mode.id === 'needsFace'
                       ? needsFaceCount
                       : null}
-              <button
-                class={[
-                  'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5',
-                  viewMode === mode.id
-                    ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
-                    : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
-                ]}
-                type="button"
-                aria-pressed={viewMode === mode.id}
-                onclick={() => (viewMode = mode.id)}
-              >
-                {mode.label}
-                {#if count !== null}
-                  <span class="text-xs opacity-65">{count}</span>
-                {/if}
-              </button>
+              <Tooltip text={mode.tooltip}>
+                {#snippet child({ props })}
+                  <button
+                    {...props}
+                    class={[
+                      'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5',
+                      viewMode === mode.id
+                        ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                        : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+                    ]}
+                    type="button"
+                    aria-pressed={viewMode === mode.id}
+                    onclick={() => (viewMode = mode.id)}
+                  >
+                    {mode.label}
+                    {#if count !== null}
+                      <span class="text-xs opacity-65">{count}</span>
+                    {/if}
+                  </button>
+                {/snippet}
+              </Tooltip>
               {#if mode.id === 'faces'}
                 <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
               {/if}
             {/each}
           </div>
           {#if viewMode !== 'possible'}
-            <label
-              class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-36 lg:w-44 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-            >
-              <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
-              <input
-                bind:value={peopleQuery}
-                class="w-full bg-transparent outline-none"
-                placeholder="Search people"
-                aria-label="Search people"
-                type="search"
-              />
-            </label>
+            <Tooltip text="Search names in the current People mode">
+              {#snippet child({ props })}
+                <label
+                  {...props}
+                  class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-36 lg:w-44 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+                >
+                  <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
+                  <input
+                    bind:value={peopleQuery}
+                    class="w-full bg-transparent outline-none"
+                    placeholder="Search people"
+                    aria-label="Search people"
+                    type="search"
+                  />
+                </label>
+              {/snippet}
+            </Tooltip>
             <div
               class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
               aria-label="People view options"
