@@ -327,7 +327,7 @@ describe('Place, Thing and Event profile information architecture', () => {
 
     // A grid item's automatic minimum size is its MIN-CONTENT width, so the nowrap
     // truncated location line grew the track past the card (194px box, 249.25px
-    // track) and every sibling was clipped by the card's overflow:hidden — while
+    // track) and every sibling was clipped by the card's overflow:hidden, while
     // `truncate` never engaged, because the track had already grown to fit.
     const cardBodies = collection.match(/<div class="grid grid-cols-\[minmax\(0,1fr\)\] gap-2 p-4 text-left">/g);
     expect(cardBodies).toHaveLength(2); // places and things share the grammar

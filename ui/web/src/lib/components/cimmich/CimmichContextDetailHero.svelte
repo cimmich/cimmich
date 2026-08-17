@@ -144,7 +144,7 @@
 
   // The strip's map MUST be told where to look. Immich's Map only auto-fits to its
   // markers when no `zoom` is supplied, and it only honours `jumpTo` when a `center`
-  // is supplied — so passing `zoom` alone (as this did) disables the auto-fit and
+  // is supplied, so passing `zoom` alone (as this did) disables the auto-fit and
   // leaves the map at the style's default centre, i.e. open ocean. Same derivation
   // as the Map tab's locator centre in CimmichContextPlaceMap.
   const locatorCenter = $derived(
@@ -155,7 +155,7 @@
 
   // Immich has already reverse-geocoded this asset to city/state/country, so ask
   // it rather than deriving a place name from coordinates. Keyed by asset id so
-  // switching places refetches, and failures stay silent — the label falls back
+  // switching places refetches, and failures stay silent. The label falls back
   // through the ladder in contextPlaceLocationLabel.
   let geocodedLocation = $state('');
   $effect(() => {
@@ -261,8 +261,8 @@
 </script>
 
 <!--
-  A hero STRIP, not a picture frame. Nobody studies the photo here — they click
-  through to the viewer or the Photos tab for that — so the image earns a band,
+  A hero STRIP, not a picture frame. Nobody studies the photo here. They click
+  through to the viewer or the Photos tab for that, so the image earns a band,
   not a column beside a column of text. The name and location sit ON the strip,
   which is why there is no copy column and no whitespace to spend. For a place
   the map takes the other half of the band, edge to edge: it is a map, and a map

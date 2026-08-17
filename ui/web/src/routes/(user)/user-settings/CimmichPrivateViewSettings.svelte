@@ -79,7 +79,7 @@
       <div class="flex flex-col gap-2 text-gray-600 dark:text-gray-300">
         <p>
           <span class="font-semibold text-gray-900 dark:text-gray-100">This password filters what is shown.</span>
-          It does not control who can reach your library — Immich does that, with your Immich account and its own sign-in.
+          It does not control who can reach your library. Immich does that with your Immich account and its own sign-in.
         </p>
         <p>
           Use it when someone is looking through your photos beside you, or when a TV is playing a slideshow: items you
@@ -137,8 +137,8 @@
                 <PasswordInput bind:value={password} autocomplete="new-password" />
               </Field>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                Any length is fine — pick something you can type quickly in front of other people. Saving closes any
-                open Private session.
+                Any length is fine. Pick something you can type quickly in front of other people. Saving closes any open
+                Private session.
               </p>
               <div class="flex justify-end gap-2">
                 <Button shape="round" size="small" variant="ghost" disabled={busy} onclick={reset}>Cancel</Button>

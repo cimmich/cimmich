@@ -598,8 +598,8 @@
                   <p class="mt-1">
                     It recognised {faceOperator.next.comparison.candidateCoverage.toFixed(2)}% of verified known
                     examples, versus {faceOperator.next.comparison.activeCoverage.toFixed(2)}% for the library currently
-                    in use—a {faceOperator.next.comparison.coverageRegression.toFixed(2)}-point drop. Cimmich permits at
-                    most a {faceOperator.next.comparison.maximumCoverageRegression.toFixed(0)}-point drop.
+                    in use, a {faceOperator.next.comparison.coverageRegression.toFixed(2)}-point drop. Cimmich permits
+                    at most a {faceOperator.next.comparison.maximumCoverageRegression.toFixed(0)}-point drop.
                   </p>
                   <p class="mt-1 font-medium">The current reviewed library remains active. No names or tags changed.</p>
                 </div>

@@ -24,7 +24,7 @@
 
   const formatConfigValue = (value: unknown): string => {
     if (value === null || value === undefined) {
-      return '—';
+      return 'Not available';
     }
     if (typeof value === 'boolean') {
       return value ? 'true' : 'false';
@@ -91,7 +91,7 @@
       }
       copyTimer = setTimeout(() => (justCopied = false), 1500);
     } catch {
-      // ignore — clipboard may be unavailable
+      // Ignore clipboard failures because it may be unavailable.
     }
   };
 </script>
@@ -129,7 +129,7 @@
       </div>
     </div>
 
-    <!-- ASCII body — what you see is what you copy -->
+    <!-- ASCII body. What you see is what you copy. -->
     <div class="flex-1 overflow-auto p-4">
       <pre
         class="m-0 overflow-auto rounded-lg border border-light-200 bg-light-100 px-4 py-3 font-mono text-xs/relaxed whitespace-pre">{asciiSummary}</pre>

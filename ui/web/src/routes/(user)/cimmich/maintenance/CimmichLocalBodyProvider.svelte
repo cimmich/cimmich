@@ -90,19 +90,19 @@
 
   <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
     <div class="rounded-2xl bg-gray-50 p-3 dark:bg-immich-dark-gray/40">
-      <p class="text-2xl font-semibold">{status?.analyzedAssets ?? '—'}</p>
-      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">of {status?.assets ?? '—'} analysed</p>
+      <p class="text-2xl font-semibold">{status?.analyzedAssets ?? 'Not available'}</p>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">of {status?.assets ?? 'not available'} analysed</p>
     </div>
     <div class="rounded-2xl bg-gray-50 p-3 dark:bg-immich-dark-gray/40">
-      <p class="text-2xl font-semibold">{status?.bodyObservations ?? '—'}</p>
+      <p class="text-2xl font-semibold">{status?.bodyObservations ?? 'Not available'}</p>
       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Bodies</p>
     </div>
     <div class="rounded-2xl bg-gray-50 p-3 dark:bg-immich-dark-gray/40">
-      <p class="text-2xl font-semibold">{status?.linkedBodies ?? '—'}</p>
+      <p class="text-2xl font-semibold">{status?.linkedBodies ?? 'Not available'}</p>
       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Linked safely</p>
     </div>
     <div class="rounded-2xl bg-gray-50 p-3 dark:bg-immich-dark-gray/40">
-      <p class="text-2xl font-semibold">{status?.noBodyAssets ?? '—'}</p>
+      <p class="text-2xl font-semibold">{status?.noBodyAssets ?? 'Not available'}</p>
       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">No Body found</p>
     </div>
   </div>

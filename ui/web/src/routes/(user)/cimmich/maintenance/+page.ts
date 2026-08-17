@@ -6,7 +6,7 @@ export const load = (async ({ url }) => {
 
   return {
     meta: {
-      title: 'Models & Guided — Cimmich',
+      title: 'Models & Guided: Cimmich',
     },
   };
 }) satisfies PageLoad;

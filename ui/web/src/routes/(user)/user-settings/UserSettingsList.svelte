@@ -138,7 +138,7 @@
   icon={mdiEyeOffOutline}
   key="cimmich-private-view"
   title="Private view password"
-  subtitle="Choose what Cimmich shows on screen — not who can sign in"
+  subtitle="Choose what Cimmich shows on screen, not who can sign in"
 >
   <CimmichPrivateViewSettings />
 </SettingAccordion>

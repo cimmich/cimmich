@@ -172,7 +172,7 @@
           >
             {#each targets as target (target.id)}
               <option value={target.id} disabled={!target.available}
-                >{target.label}{target.available ? '' : ' — unavailable'}</option
+                >{target.label}{target.available ? '' : ' (unavailable)'}</option
               >
             {/each}
           </select>

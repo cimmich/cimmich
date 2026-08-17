@@ -199,7 +199,7 @@ describe('Cimmich context collections', () => {
     });
 
     // The whole card is the link, so the cover is inside it rather than carrying
-    // its own click handler — clicking the photo still opens the place, and now
+    // its own click handler. Clicking the photo still opens the place, and now
     // cmd-click opens it in a new tab.
     const cover = getByTestId('cimmich-place-cover-place_home');
     const card = cover.closest('a');

@@ -3,7 +3,11 @@
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
-  import { buildArchiveFolderOverlap } from '$lib/components/cimmich/archive-folder-comparison';
+  import {
+    buildArchiveFolderOverlap,
+    rankArchiveFoldersByImpact,
+    type ArchiveFolderImpact,
+  } from '$lib/components/cimmich/archive-folder-comparison';
   import {
     archiveVariantFolderContext,
     archiveVariantGroupsInFolder,
@@ -78,6 +82,7 @@
   let variantsLoading = $state(false);
   let visibleVariantCount = $state(12);
   let folderAssets = $state<AssetResponseDto[]>([]);
+  let folderImpacts = $state<ArchiveFolderImpact[]>([]);
   let folderError = $state('');
   let folderLoaded = $state(false);
   let folderLoading = $state(false);
@@ -130,6 +135,7 @@
         ),
   );
   let folderOverlap = $derived(buildArchiveFolderOverlap(focusedFolder, folderAssets, variantGroups));
+  let visibleFolderImpacts = $derived(folderImpacts.slice(0, 50));
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -243,6 +249,7 @@
           }
         }
       }
+      folderImpacts = rankArchiveFoldersByImpact(nativeGroups);
       const sourceAssetIds = [...new Set(nativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
       const evidence = [];
       for (let index = 0; index < sourceAssetIds.length; index += 80) {
@@ -594,7 +601,45 @@
             </a>
           </div>
 
-          <form class="mt-5 flex flex-col gap-3 sm:flex-row" method="get" action={Route.cimmichArchiveIntegrity()}>
+          <div class="mt-5 rounded-2xl border border-violet-200 bg-white p-4 dark:border-violet-900 dark:bg-gray-950">
+            <label for="folder-impact-selector" class="text-sm font-semibold">Most impacted folders</label>
+            <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+              Ranked by distinct files with duplicate evidence in other archive folders.
+            </p>
+            <select
+              id="folder-impact-selector"
+              class="mt-3 min-h-11 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-950 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:focus:ring-violet-900"
+              bind:value={folderPathInput}
+              disabled={variantsLoading && folderImpacts.length === 0}
+            >
+              <option value="">
+                {variantsLoading && folderImpacts.length === 0
+                  ? 'Ranking archive folders…'
+                  : folderImpacts.length === 0
+                    ? 'No cross-folder impacts found'
+                    : 'Choose a high-impact folder'}
+              </option>
+              {#if focusedFolder && !visibleFolderImpacts.some((candidate) => candidate.folderPath === focusedFolder)}
+                <option value={focusedFolder}>{focusedFolder} · current folder</option>
+              {/if}
+              {#each visibleFolderImpacts as candidate, index (candidate.folderPath)}
+                <option value={candidate.folderPath}>
+                  {index + 1}. {candidate.folderPath} · {countLabel(
+                    candidate.affectedAssetCount,
+                    'affected file',
+                    'affected files',
+                  )} · {countLabel(candidate.counterpartFolderCount, 'other folder', 'other folders')}
+                </option>
+              {/each}
+            </select>
+          </div>
+
+          <form
+            data-sveltekit-reload
+            class="mt-4 flex flex-col gap-3 sm:flex-row"
+            method="get"
+            action={Route.cimmichArchiveIntegrity()}
+          >
             <input type="hidden" name="mode" value="folder" />
             <label class="min-w-0 flex-1">
               <span class="sr-only">Archive folder path</span>

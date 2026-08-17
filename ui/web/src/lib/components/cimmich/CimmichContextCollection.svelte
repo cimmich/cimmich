@@ -215,7 +215,7 @@
   // Immich already knows each place's city/state/country from its own reverse
   // geocoding, so the card asks Immich rather than formatting coordinates. Only
   // places need it, only ones with a cover asset can answer, and the batch is
-  // bounded the same way the Pets index bounds its preview fetches — a large
+  // bounded the same way the Pets index bounds its preview fetches. A large
   // collection must not turn one render into hundreds of requests.
   let geocodedByEntityId = $state<Record<string, string>>({});
 
@@ -503,7 +503,7 @@
             <!-- Same minmax(0,1fr) track cap as the place card. Things carries no
                  location line, so the blowout is latent here rather than visible,
                  but the nowrap meta row can trigger it the moment a date precision
-                 string runs long — and the two cards must stay one grammar. -->
+                 string runs long, and the two cards must stay one grammar. -->
             <div class="grid grid-cols-[minmax(0,1fr)] gap-2 p-4 text-left">
               <!-- line-clamp-2 rather than truncate, matching the place card: a
                    name is the card's subject and is worth two lines before it
@@ -1044,8 +1044,8 @@
   /* The cover box takes its height from `aspect-ratio`, not an explicit
      `height`, so a percentage height on the image has nothing definite to
      resolve against and the image falls back to its intrinsic size. It then
-     overflowed the box and was clipped from the bottom — 84px off a place
-     cover, 103px off a thing cover — which also made `object-position`
+     overflowed the box and was clipped from the bottom: 84px off a place
+     cover, 103px off a thing cover. That also made `object-position`
      inert, because an image already at its natural aspect has nothing to
      shift. Pinning to the box's edges gives a definite size in both axes, so
      `object-fit`/`object-position` govern the crop as intended. */

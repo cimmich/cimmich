@@ -4397,7 +4397,7 @@
                           <span class="min-w-0">
                             <span class="block truncate font-semibold">{suggestion.filename}</span>
                             <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
-                              Similarity {lead?.prime_score.toFixed(2) ?? '—'} ·
+                              Similarity {lead?.prime_score.toFixed(2) ?? 'Not available'} ·
                               {suggestion.candidates.length - 1}
                               {suggestion.candidates.length === 2 ? ' alternative' : ' alternatives'}
                             </span>

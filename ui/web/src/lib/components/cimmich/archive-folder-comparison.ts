@@ -1,4 +1,4 @@
-import type { AssetResponseDto } from '@immich/sdk';
+import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import { getParentPath } from '$lib/utils/tree-utils';
 import type { ArchiveVariantClassification, ArchiveVariantGroup } from './archive-variant-groups';
 
@@ -29,8 +29,74 @@ export type ArchiveFolderOverlap = {
   withinFolderOnlyAssets: AssetResponseDto[];
 };
 
+export type ArchiveFolderImpact = {
+  affectedAssetCount: number;
+  counterpartFolderCount: number;
+  duplicateGroupCount: number;
+  folderPath: string;
+};
+
 const folderOf = (asset: Pick<AssetResponseDto, 'originalPath'>) =>
   asset.originalPath ? getParentPath(asset.originalPath) : '';
+
+export const rankArchiveFoldersByImpact = (
+  variantGroups: Pick<DuplicateResponseDto, 'assets'>[],
+): ArchiveFolderImpact[] => {
+  const folders = new Map<
+    string,
+    {
+      affectedAssetIds: Set<string>;
+      counterpartFolders: Set<string>;
+      duplicateGroupCount: number;
+    }
+  >();
+
+  for (const group of variantGroups) {
+    const assetsByFolder = new Map<string, AssetResponseDto[]>();
+    for (const asset of group.assets) {
+      const folderPath = folderOf(asset);
+      if (!folderPath) {
+        continue;
+      }
+      assetsByFolder.set(folderPath, [...(assetsByFolder.get(folderPath) ?? []), asset]);
+    }
+    if (assetsByFolder.size < 2) {
+      continue;
+    }
+    for (const [folderPath, assets] of assetsByFolder) {
+      const aggregate = folders.get(folderPath) ?? {
+        affectedAssetIds: new Set<string>(),
+        counterpartFolders: new Set<string>(),
+        duplicateGroupCount: 0,
+      };
+      for (const asset of assets) {
+        aggregate.affectedAssetIds.add(asset.id);
+      }
+      for (const counterpartFolder of assetsByFolder.keys()) {
+        if (counterpartFolder !== folderPath) {
+          aggregate.counterpartFolders.add(counterpartFolder);
+        }
+      }
+      aggregate.duplicateGroupCount += 1;
+      folders.set(folderPath, aggregate);
+    }
+  }
+
+  return [...folders.entries()]
+    .map(([folderPath, aggregate]) => ({
+      affectedAssetCount: aggregate.affectedAssetIds.size,
+      counterpartFolderCount: aggregate.counterpartFolders.size,
+      duplicateGroupCount: aggregate.duplicateGroupCount,
+      folderPath,
+    }))
+    .sort(
+      (left, right) =>
+        right.affectedAssetCount - left.affectedAssetCount ||
+        right.counterpartFolderCount - left.counterpartFolderCount ||
+        right.duplicateGroupCount - left.duplicateGroupCount ||
+        left.folderPath.localeCompare(right.folderPath),
+    );
+};
 
 export const buildArchiveFolderOverlap = (
   folderPath: string,

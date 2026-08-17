@@ -195,7 +195,7 @@
     { id: 'unknown', label: 'Unknown' },
     { id: 'ignored', label: 'Ignored' },
   ];
-  // Unknown is a sibling view, never a panel stacked above the collection —
+  // Unknown is a sibling view, never a panel stacked above the collection.
   // an unbounded review queue must not displace the owner's own Pets.
   let petViewMode = $state<PetViewMode>('pets');
   let petThumbnailSize = $state<'large' | 'medium' | 'small'>('medium');
@@ -1421,7 +1421,7 @@
             class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-immich-dark-gray dark:bg-immich-dark-bg"
             aria-label="Pet view options"
           >
-            <Tooltip text={`Sort pets — ${sortLabel}`}>
+            <Tooltip text={`Sort pets: ${sortLabel}`}>
               {#snippet child({ props })}
                 <ContextMenuButton
                   {...props}

@@ -575,7 +575,7 @@
           class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-immich-dark-gray"
           href={Route.cimmichHome()}
         >
-          Not now — continue using Cimmich
+          Not now. Continue using Cimmich
         </a>
       {/if}
       <span class="self-center text-xs/5 text-gray-500 dark:text-gray-400">Nothing changes until you import.</span>

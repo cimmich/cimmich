@@ -64,7 +64,7 @@
 
   const formatConfigValue = (value: unknown): string => {
     if (value === null || value === undefined) {
-      return '—';
+      return 'Not available';
     }
     if (typeof value === 'boolean') {
       return value ? 'on' : 'off';
