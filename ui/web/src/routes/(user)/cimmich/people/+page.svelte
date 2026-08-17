@@ -440,103 +440,102 @@
       meta={cimmichLoaded
         ? `${cimmichPeople.length.toLocaleString()} ${cimmichPeople.length === 1 ? 'person' : 'people'}`
         : 'Loading people'}
-    >
-      {#snippet actions()}
-        <div
-          class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
-          role="toolbar"
-          aria-label="People views and categories"
-        >
-          {#each viewModes as mode (mode.id)}
-            {@const count =
-              mode.id === 'faces'
-                ? faceBackedCount
-                : mode.id === 'candidates'
-                  ? cimmichCandidateCount
-                  : mode.id === 'needsFace'
-                    ? needsFaceCount
-                    : null}
-            <button
-              class={[
-                'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
-                viewMode === mode.id
-                  ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
-                  : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
-              ]}
-              type="button"
-              aria-pressed={viewMode === mode.id}
-              onclick={() => (viewMode = mode.id)}
-            >
-              {mode.label}
-              {#if count !== null}
-                <span class="text-xs opacity-65">{count}</span>
-              {/if}
-            </button>
-            {#if mode.id === 'faces'}
-              <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+    />
+    <div class="flex w-full min-w-0 flex-wrap items-center gap-2">
+      <div
+        class="flex min-h-11 w-full max-w-full items-center overflow-x-auto rounded-xl bg-gray-100 p-1 sm:w-auto dark:bg-immich-dark-gray"
+        role="toolbar"
+        aria-label="People views and categories"
+      >
+        {#each viewModes as mode (mode.id)}
+          {@const count =
+            mode.id === 'faces'
+              ? faceBackedCount
+              : mode.id === 'candidates'
+                ? cimmichCandidateCount
+                : mode.id === 'needsFace'
+                  ? needsFaceCount
+                  : null}
+          <button
+            class={[
+              'inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:gap-1.5 sm:px-3 sm:text-sm',
+              viewMode === mode.id
+                ? 'bg-white text-primary shadow-sm dark:bg-black/25 dark:text-immich-dark-primary'
+                : 'text-gray-500 hover:text-immich-fg dark:text-gray-400 dark:hover:text-immich-dark-fg',
+            ]}
+            type="button"
+            aria-pressed={viewMode === mode.id}
+            onclick={() => (viewMode = mode.id)}
+          >
+            {mode.label}
+            {#if count !== null}
+              <span class="text-xs opacity-65">{count}</span>
             {/if}
-          {/each}
-        </div>
-        {#if viewMode !== 'possible'}
+          </button>
+          {#if mode.id === 'faces'}
+            <span class="mx-1 h-6 w-px shrink-0 bg-gray-300 dark:bg-gray-600" aria-hidden="true"></span>
+          {/if}
+        {/each}
+      </div>
+      {#if viewMode !== 'possible'}
+        <label
+          class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+        >
+          <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
+          <input
+            bind:value={peopleQuery}
+            class="w-full bg-transparent outline-none"
+            placeholder="Search people"
+            aria-label="Search people"
+            type="search"
+          />
+        </label>
+        <div
+          class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
+          aria-label="People view options"
+        >
+          <Tooltip text={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}>
+            {#snippet child({ props })}
+              <ContextMenuButton
+                {...props}
+                class="size-10"
+                icon={mdiSortVariant}
+                items={peopleSortActions}
+                position="top-right"
+                aria-label={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}
+              />
+            {/snippet}
+          </Tooltip>
+          <Tooltip text="Filter names and photo count">
+            {#snippet child({ props })}
+              <ContextMenuButton
+                {...props}
+                class="size-10 border-l border-gray-200 dark:border-gray-700"
+                icon={mdiFilterVariant}
+                items={peopleFilterActions}
+                position="top-right"
+                aria-label="Filter names and photo count"
+              />
+            {/snippet}
+          </Tooltip>
           <label
-            class="flex h-11 w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm focus-within:border-primary sm:w-56 lg:w-64 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+            class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+            title="Thumbnail size"
           >
-            <Icon icon={mdiMagnify} size="18" class="text-gray-500" />
-            <input
-              bind:value={peopleQuery}
-              class="w-full bg-transparent outline-none"
-              placeholder="Search people"
-              aria-label="Search people"
-              type="search"
-            />
-          </label>
-          <div
-            class="flex min-w-max items-center overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-bg"
-            aria-label="People view options"
-          >
-            <Tooltip text={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}>
-              {#snippet child({ props })}
-                <ContextMenuButton
-                  {...props}
-                  class="size-10"
-                  icon={mdiSortVariant}
-                  items={peopleSortActions}
-                  position="top-right"
-                  aria-label={viewMode === 'candidates' ? 'Sort equal review counts' : 'Sort people'}
-                />
-              {/snippet}
-            </Tooltip>
-            <Tooltip text="Filter names and photo count">
-              {#snippet child({ props })}
-                <ContextMenuButton
-                  {...props}
-                  class="size-10 border-l border-gray-200 dark:border-gray-700"
-                  icon={mdiFilterVariant}
-                  items={peopleFilterActions}
-                  position="top-right"
-                  aria-label="Filter names and photo count"
-                />
-              {/snippet}
-            </Tooltip>
-            <label
-              class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-              title="Thumbnail size"
+            <Icon icon={mdiViewGridOutline} size="19" />
+            <select
+              class="absolute inset-0 size-full cursor-pointer opacity-0"
+              bind:value={peopleThumbnailSize}
+              aria-label="Thumbnail size"
             >
-              <Icon icon={mdiViewGridOutline} size="19" />
-              <select
-                class="absolute inset-0 size-full cursor-pointer opacity-0"
-                bind:value={peopleThumbnailSize}
-                aria-label="Thumbnail size"
-              >
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-              </select>
-            </label>
-          </div>
-        {/if}
-      {/snippet}
-    </CimmichSectionHeader>
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+        </div>
+      {/if}
+    </div>
 
     {#if viewMode === 'faces'}
       <CimmichExploreFilters
