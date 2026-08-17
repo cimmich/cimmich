@@ -320,15 +320,7 @@
   };
 </script>
 
-<section class="space-y-5" aria-labelledby="folder-comparison-title">
-  <header class="min-w-0 px-1">
-    <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">Checked folder</p>
-    <h2 id="folder-comparison-title" class="mt-1 truncate text-2xl font-semibold" title={folderPath}>
-      {folderLabel(folderPath)}
-    </h2>
-    <p class="mt-1 truncate text-sm text-gray-500 dark:text-gray-400" title={folderPath}>{folderPath}</p>
-  </header>
-
+<section class="space-y-5" aria-label="Folder comparison results">
   {#if error}
     <div
       class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"

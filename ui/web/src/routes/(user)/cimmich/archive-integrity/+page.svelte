@@ -143,6 +143,7 @@
         ),
   );
   let folderOverlap = $derived(buildArchiveFolderOverlap(activeFolder, folderAssets, variantGroups));
+  let activeFolderName = $derived(activeFolder.split('/').findLast(Boolean) || activeFolder);
   let visibleFolderImpacts = $derived(folderImpacts.slice(0, 50));
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
@@ -562,45 +563,101 @@
   });
 </script>
 
-<UserPageLayout title={data.meta.title} scrollbar={false}>
-  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-4 pb-16 sm:px-6 lg:px-8">
-    <header class="rounded-3xl bg-[#111815] p-5 text-white shadow-sm sm:px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="max-w-3xl">
-          <h1 class="text-2xl font-semibold tracking-tight">{mode === 'folder' ? 'Folder Check' : 'Archive Health'}</h1>
-          <p class="mt-1 text-sm text-slate-300">
-            {mode === 'folder'
-              ? 'See what this folder shares with the rest of the archive. Nothing is changed.'
-              : 'Review exact copies, possible duplicates and independent backups. Nothing is changed.'}
-          </p>
-        </div>
-        <button
-          type="button"
-          class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-          disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
-          onclick={refreshCurrentMode}
-        >
-          <Icon
-            icon={mdiRefresh}
-            size="18"
-            class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
-              ? 'animate-spin'
-              : ''}
-          />
-          Refresh
-        </button>
-      </div>
-    </header>
-
+<UserPageLayout title={mode === 'folder' ? undefined : data.meta.title} scrollbar={false}>
+  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pb-16 sm:px-6 lg:px-8 {mode === 'folder' ? 'pt-2' : 'pt-4'}">
     {#if mode === 'folder'}
-      <a
-        data-sveltekit-reload
-        href={Route.cimmichArchiveIntegrity()}
-        class="inline-flex min-h-10 w-fit items-center gap-2 rounded-full border border-gray-300 px-4 text-sm font-semibold hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800"
+      <header
+        class="flex min-h-14 flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
       >
-        <Icon icon={mdiArrowRight} size="17" class="rotate-180" /> Back to Archive Health
-      </a>
+        <div
+          class="min-w-0 flex-1"
+          title="See what this folder shares with the rest of the archive. Nothing is changed."
+        >
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <h1 id="folder-check-title" class="text-lg font-semibold tracking-tight">Folder Check</h1>
+            {#if activeFolderName}
+              <span class="truncate text-sm font-semibold text-violet-700 dark:text-violet-300">{activeFolderName}</span
+              >
+            {/if}
+          </div>
+          {#if activeFolder}
+            <p class="truncate text-xs text-gray-500 dark:text-gray-400" title={activeFolder}>{activeFolder}</p>
+          {:else}
+            <p class="text-xs text-gray-500 dark:text-gray-400">Choose a folder to compare with the archive.</p>
+          {/if}
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <a
+            data-sveltekit-reload
+            href={Route.cimmichArchiveIntegrity()}
+            class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-800"
+            title="Back to Archive Health"
+          >
+            <Icon icon={mdiArrowRight} size="16" class="rotate-180" /> Archive Health
+          </a>
+          {#if activeFolder && focusedFolderAsset}
+            <a
+              class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-primary hover:bg-gray-100 dark:hover:bg-gray-800"
+              href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
+              title="Open this folder in Library"
+            >
+              Open folder <Icon icon={mdiArrowRight} size="16" />
+            </a>
+          {/if}
+          <button
+            type="button"
+            class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
+            disabled={loading ||
+              loadingMore ||
+              variantsLoading ||
+              folderLoading ||
+              folderRankingLoading ||
+              backupLoading}
+            onclick={refreshCurrentMode}
+            title="Run Folder Check again"
+          >
+            <Icon
+              icon={mdiRefresh}
+              size="16"
+              class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+                ? 'animate-spin'
+                : ''}
+            />
+            Refresh
+          </button>
+        </div>
+      </header>
     {:else}
+      <header class="rounded-3xl bg-[#111815] p-5 text-white shadow-sm sm:px-6">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="max-w-3xl">
+            <h1 class="text-2xl font-semibold tracking-tight">Archive Health</h1>
+            <p class="mt-1 text-sm text-slate-300">
+              Review exact copies, possible duplicates and independent backups. Nothing is changed.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
+            disabled={loading ||
+              loadingMore ||
+              variantsLoading ||
+              folderLoading ||
+              folderRankingLoading ||
+              backupLoading}
+            onclick={refreshCurrentMode}
+          >
+            <Icon
+              icon={mdiRefresh}
+              size="18"
+              class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+                ? 'animate-spin'
+                : ''}
+            />
+            Refresh
+          </button>
+        </div>
+      </header>
       <nav
         class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200 bg-white p-1 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
         aria-label="Archive health tools"
@@ -815,13 +872,6 @@
     {:else if mode === 'folder'}
       <section class="space-y-4" aria-labelledby="folder-check-title">
         {#if activeFolder}
-          <div class="flex justify-end px-1">
-            {#if focusedFolderAsset}<a
-                class="inline-flex min-h-10 items-center gap-2 font-semibold text-primary hover:underline"
-                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
-                >Open folder <Icon icon={mdiArrowRight} size="17" /></a
-              >{/if}
-          </div>
           <ArchiveFolderComparison
             error={folderError || variantError}
             folderPath={activeFolder}
