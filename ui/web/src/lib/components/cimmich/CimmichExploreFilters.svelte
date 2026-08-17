@@ -86,7 +86,7 @@
 
 <section class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-immich-dark-gray">
   <div class="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:px-4">
-    <Tooltip text="Filter this view by exact privacy, tags, places, events and things">
+    <Tooltip text="Filter this view by privacy bucket, tags, places, events and things">
       {#snippet child({ props })}
         <button
           {...props}
@@ -146,7 +146,7 @@
         </Tooltip>
       {/if}
       {#each filters.privacyTiers as tier (tier)}
-        <Tooltip text={`Remove the exact ${tier} privacy filter`}>
+        <Tooltip text={`Remove the ${tier} privacy filter`}>
           {#snippet child({ props })}
             <button
               {...props}
@@ -185,7 +185,7 @@
         <legend
           class="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wide text-gray-600 uppercase dark:text-gray-300"
         >
-          <Icon icon={mdiLockOutline} size="16" /> Exact privacy
+          <Icon icon={mdiLockOutline} size="16" /> Privacy bucket
         </legend>
         <div class="grid grid-cols-3 gap-1.5">
           {#each result?.facets.privacy ?? [] as facet (facet.id)}
@@ -193,8 +193,8 @@
             {@const protectedTier = needsViewingMode(tier)}
             <Tooltip
               text={protectedTier
-                ? `Enter ${facet.displayName} viewing mode to inspect exact ${facet.displayName} photos`
-                : `Show only photos with exact ${facet.displayName} privacy`}
+                ? `Enter ${facet.displayName} viewing mode to inspect ${facet.displayName} photos`
+                : `Show only photos in the ${facet.displayName} privacy bucket`}
             >
               {#snippet child({ props })}
                 <button

@@ -48,13 +48,15 @@ describe('Cimmich Explore protected discovery', () => {
   it('explains ambiguous top-bar and filter actions with product tooltips', async () => {
     const source = await readFile('src/lib/components/cimmich/CimmichExploreFilters.svelte', 'utf8');
 
-    expect(source).toContain('Filter this view by exact privacy, tags, places, events and things');
+    expect(source).toContain('Filter this view by privacy bucket, tags, places, events and things');
     expect(source).toContain('Matching photos out of all photos available in the current viewing mode');
     expect(source).toContain('Remove every Explore filter');
     expect(source).toContain('Remove the future capture-date filter');
-    expect(source).toContain('Remove the exact ${tier} privacy filter');
+    expect(source).toContain('Remove the ${tier} privacy filter');
     expect(source).toContain('Remove the ${group.label.toLowerCase()} filter');
-    expect(source).toContain('Show only photos with exact ${facet.displayName} privacy');
+    expect(source).toContain('Show only photos in the ${facet.displayName} privacy bucket');
+    expect(source).toContain('Privacy bucket');
+    expect(source).not.toContain('Exact privacy');
   });
 
   it('starts closed while keeping active filters visible and removable', async () => {
