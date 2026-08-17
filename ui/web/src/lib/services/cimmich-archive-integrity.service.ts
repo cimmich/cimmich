@@ -79,8 +79,69 @@ export type CimmichArchiveBackupProofPage = {
   };
 };
 
-export const getCimmichExactDuplicates = ({ limit = 24, offset = 0 } = {}) => {
+export type CimmichArchiveBackupTarget = {
+  available: boolean;
+  distinctFailureDomain: boolean;
+  id: string;
+  label: string;
+  readOnly: true;
+  storageDomain: string;
+};
+
+export type CimmichArchiveBackupScanItem = {
+  archive: null | {
+    byteLength: number;
+    contentDigest: string;
+    fileModifiedAt: string | null;
+    filenames: string[];
+    sourceAssetIds: string[];
+  };
+  backup: null | {
+    byteLength: number;
+    contentDigest: string;
+    filename: string;
+    modifiedAt: string;
+    relativePath: string;
+  };
+  changes: Array<'content_or_embedded_metadata' | 'filename_ambiguous' | 'modified_time' | 'size'>;
+  kind: 'archive_only' | 'backup_only' | 'changed' | 'exact';
+};
+
+export type CimmichArchiveBackupScan = {
+  completedAt: string | null;
+  error: string;
+  id: string;
+  items: CimmichArchiveBackupScanItem[];
+  limit?: number;
+  nextOffset?: number | null;
+  offset?: number;
+  progress: {
+    bytesHashed: number;
+    filesDiscovered: number;
+    filesHashed: number;
+    phase: 'comparing' | 'complete' | 'failed' | 'hashing' | 'inventory' | 'queued';
+  };
+  schemaVersion: 'cimmich.archive-backup-scan.v1';
+  startedAt: string;
+  status: 'complete' | 'failed' | 'queued' | 'scanning';
+  summary: null | {
+    archiveItems: number;
+    archiveOnlyItems: number;
+    backupFiles: number;
+    backupOnlyFiles: number;
+    changedFiles: number;
+    exactItems: number;
+    notExactItems: number;
+    sizeChangedFiles: number;
+  };
+  target: CimmichArchiveBackupTarget;
+};
+
+export const getCimmichExactDuplicates = ({ limit = 24, offset = 0, sourceAssetId = '' } = {}) => {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (sourceAssetId) {
+    search.set('sourceAssetId', sourceAssetId);
+  }
   return request<CimmichExactDuplicatePage>(`/v1/archive-integrity/exact-duplicates?${search.toString()}`);
 };
 
@@ -96,4 +157,25 @@ export const getCimmichArchiveBackupProof = (sourceAssetIds: string[] = []) => {
   }
   const suffix = sourceAssetIds.length > 0 ? `?${search.toString()}` : '';
   return request<CimmichArchiveBackupProofPage>(`/v1/archive-integrity/backup-proof${suffix}`);
+};
+
+export const getCimmichArchiveBackupTargets = () =>
+  request<{ items: CimmichArchiveBackupTarget[]; schemaVersion: 'cimmich.archive-backup-scan.v1' }>(
+    '/v1/archive-integrity/backup-targets',
+  );
+
+export const startCimmichArchiveBackupScan = (targetId: string) =>
+  request<CimmichArchiveBackupScan>('/v1/archive-integrity/backup-scans', {
+    body: JSON.stringify({ targetId }),
+    method: 'POST',
+  });
+
+export const getCimmichArchiveBackupScan = (
+  id: string,
+  { kind = 'all', limit = 100, offset = 0 }: { kind?: string; limit?: number; offset?: number } = {},
+) => {
+  const search = new URLSearchParams({ kind, limit: String(limit), offset: String(offset) });
+  return request<CimmichArchiveBackupScan>(
+    `/v1/archive-integrity/backup-scans/${encodeURIComponent(id)}?${search.toString()}`,
+  );
 };

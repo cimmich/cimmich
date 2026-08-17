@@ -2,11 +2,12 @@
   import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
+  import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
+  import { buildArchiveFolderOverlap } from '$lib/components/cimmich/archive-folder-comparison';
   import {
     archiveVariantFolderContext,
     archiveVariantGroupsInFolder,
     buildArchiveVariantGroups,
-    createArchiveVisualDuplicateGroup,
     type ArchiveVariantClassification,
     type ArchiveVariantGroup,
   } from '$lib/components/cimmich/archive-variant-groups';
@@ -14,7 +15,6 @@
   import {
     getCimmichArchiveBackupProof,
     getCimmichArchiveSourceEvidence,
-    getCimmichDuplicateStatus,
     getCimmichExactDuplicates,
     type CimmichArchiveBackupProofItem,
     type CimmichArchiveBackupProofPage,
@@ -22,7 +22,7 @@
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize, getAssetDuplicates, getAssetInfo, type AssetResponseDto } from '@immich/sdk';
+  import { AssetMediaSize, getAssetDuplicates, searchAssets, type AssetResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArrowRight,
@@ -71,6 +71,10 @@
   let variantsLoaded = $state(false);
   let variantsLoading = $state(false);
   let visibleVariantCount = $state(12);
+  let folderAssets = $state<AssetResponseDto[]>([]);
+  let folderError = $state('');
+  let folderLoaded = $state(false);
+  let folderLoading = $state(false);
   let backupError = $state('');
   let backupItems = $state(new Map<string, CimmichArchiveBackupProofItem>());
   let backupLoaded = $state(false);
@@ -110,14 +114,16 @@
     ).size,
   );
   let focusedFolderAsset = $derived(
-    scopedVariantGroups
-      .flatMap((group) => group.assets)
-      .find(
-        (asset) =>
-          Boolean(asset.originalPath) &&
-          asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === focusedFolder,
-      ),
+    folderAssets[0] ??
+      scopedVariantGroups
+        .flatMap((group) => group.assets)
+        .find(
+          (asset) =>
+            Boolean(asset.originalPath) &&
+            asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === focusedFolder,
+        ),
   );
+  let folderOverlap = $derived(buildArchiveFolderOverlap(focusedFolder, folderAssets, variantGroups));
   const number = new Intl.NumberFormat();
   const formatBytes = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) {
@@ -216,21 +222,6 @@
     variantError = '';
     try {
       const nativeGroups = await getAssetDuplicates();
-      if (focusedAssetId && !nativeGroups.some((group) => group.assets.some((asset) => asset.id === focusedAssetId))) {
-        const statusPage = await getCimmichDuplicateStatus([focusedAssetId]);
-        const status = statusPage.items.find(
-          (item) => item.sourceAssetId === focusedAssetId && item.kind === 'possible_version',
-        );
-        if (status) {
-          const relatedAssets = await Promise.all(
-            status.relatedSourceAssetIds.map((id) => getAssetInfo({ id }).catch(() => null)),
-          );
-          const assets = relatedAssets.filter((asset): asset is AssetResponseDto => asset !== null);
-          if (assets.length > 1) {
-            nativeGroups.push(createArchiveVisualDuplicateGroup(`cimmich-visual-${status.contentId}`, assets));
-          }
-        }
-      }
       const sourceAssetIds = [...new Set(nativeGroups.flatMap((group) => group.assets.map((asset) => asset.id)))];
       const evidence = [];
       for (let index = 0; index < sourceAssetIds.length; index += 80) {
@@ -248,9 +239,62 @@
     }
   };
 
+  const loadFolderAssets = async () => {
+    if (!focusedFolder) {
+      return;
+    }
+    folderLoading = true;
+    folderError = '';
+    try {
+      const matches: AssetResponseDto[] = [];
+      let pageNumber = 1;
+      for (let pageIndex = 0; pageIndex < 50; pageIndex += 1) {
+        const result = await searchAssets({
+          metadataSearchDto: { originalPath: focusedFolder, page: pageNumber, size: 100, withExif: true },
+        });
+        matches.push(
+          ...result.assets.items.filter((asset) => {
+            if (asset.isTrashed || asset.isOffline || !asset.originalPath) {
+              return false;
+            }
+            return asset.originalPath.slice(0, asset.originalPath.lastIndexOf('/')) === focusedFolder;
+          }),
+        );
+        if (!result.assets.nextPage) {
+          break;
+        }
+        const nextPage = Number(result.assets.nextPage);
+        if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
+          break;
+        }
+        pageNumber = nextPage;
+      }
+      folderAssets = matches.filter(
+        (asset, index, assets) => assets.findIndex((candidate) => candidate.id === asset.id) === index,
+      );
+      folderLoaded = true;
+    } catch (error_) {
+      folderError = error_ instanceof Error ? error_.message : 'Cimmich could not read every photo in this folder.';
+    } finally {
+      folderLoading = false;
+    }
+  };
+
+  const refreshCurrentMode = () => {
+    if (mode === 'exact') {
+      void load();
+      return;
+    }
+    void loadVariants();
+    if (focusedFolder) {
+      void loadFolderAssets();
+    }
+  };
+
   onMount(() => {
     void load();
     void loadVariants();
+    void loadFolderAssets();
   });
 </script>
 
@@ -266,7 +310,7 @@
           type="button"
           class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
           disabled={loading || loadingMore || variantsLoading || backupLoading}
-          onclick={() => void (mode === 'exact' ? load() : loadVariants())}
+          onclick={refreshCurrentMode}
         >
           <Icon icon={mdiRefresh} size="18" class={loading || variantsLoading || backupLoading ? 'animate-spin' : ''} />
           Refresh
@@ -346,7 +390,7 @@
         <strong>{countLabel(summary.duplicateGroups, 'group')}</strong> · {countLabel(summary.copiesInGroups, 'file')} ·
         {formatBytes(summary.reclaimableBytes)} possible space. Exact means byte-for-byte.
       </p>
-    {:else if mode === 'variants'}
+    {:else if mode === 'variants' && !focusedFolder}
       <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
         <strong>{countLabel(scopedVariantGroups.length, 'group')}</strong> · {countLabel(scopedVariantAssets, 'file')} ·
         {countLabel(scopedVariantFolders, 'folder')}. A visual match is a review lead, not deletion proof.
@@ -493,6 +537,14 @@
           </button>
         </div>
       {/if}
+    {:else if mode === 'variants' && focusedFolder}
+      <ArchiveFolderComparison
+        error={folderError || variantError}
+        folderPath={focusedFolder}
+        loaded={folderLoaded && variantsLoaded}
+        loading={folderLoading || variantsLoading}
+        overlap={folderOverlap}
+      />
     {:else if mode === 'variants'}
       <section class="space-y-4" aria-labelledby="variant-groups-title">
         <div class="flex flex-wrap items-end justify-between gap-4 px-1">

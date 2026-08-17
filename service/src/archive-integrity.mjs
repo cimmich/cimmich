@@ -1,3 +1,8 @@
+import {
+  createArchiveBackupScanner,
+  parseArchiveBackupTargets,
+} from "./archive-backup-scanner.mjs";
+
 export const archiveIntegritySchemaVersion = "cimmich.archive-integrity.v1";
 export const archiveBackupProofSchemaVersion =
   "cimmich.archive-backup-proof.v1";
@@ -50,7 +55,7 @@ const captureTime = (value) => {
   return String(value);
 };
 
-const visibleCopiesSql = (sql, visibleRank) => sql`
+const visibleCopiesSql = (sql, visibleRank, sourceAssetId = null) => sql`
   SELECT binding.content_id, binding.asset_id, binding.source_kind,
     binding.source_id, content.byte_length,
     fingerprint.content_digest,
@@ -74,9 +79,79 @@ const visibleCopiesSql = (sql, visibleRank) => sql`
     AND projection.state = 'active'
   WHERE binding.state = 'active'
     AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+    AND (
+      ${sourceAssetId}::text IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM asset_source_binding focused_binding
+        JOIN immich_asset_projection focused_projection
+          ON focused_binding.source_kind = 'immich'
+          AND focused_projection.source_id = focused_binding.source_id
+          AND focused_projection.immich_asset_id = focused_binding.external_asset_id
+          AND focused_projection.state = 'active'
+        WHERE focused_binding.content_id = binding.content_id
+          AND focused_binding.state = 'active'
+          AND focused_projection.immich_asset_id = ${sourceAssetId}
+      )
+    )
 `;
 
-export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
+export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
+  const sourceStorageDomain =
+    process.env.CIMMICH_ARCHIVE_STORAGE_DOMAIN || "archive-primary";
+  const backupScanner = createArchiveBackupScanner({
+    readManifest: async () => {
+      const visibleRank = presentationRank();
+      const rows = await sql`
+        SELECT binding.content_id, content.byte_length,
+          fingerprint.content_digest,
+          array_agg(DISTINCT projection.original_file_name)
+            FILTER (WHERE projection.original_file_name IS NOT NULL) AS filenames,
+          array_agg(DISTINCT projection.immich_asset_id) AS source_asset_ids
+        FROM asset_source_binding binding
+        JOIN asset ON asset.asset_id = binding.asset_id AND asset.state = 'active'
+        JOIN media_content content
+          ON content.content_id = binding.content_id AND content.state = 'active'
+        JOIN media_content_fingerprint fingerprint
+          ON fingerprint.content_id = content.content_id
+          AND fingerprint.hash_algorithm = 'sha256'
+          AND fingerprint.verification = 'byte_verified'
+        JOIN immich_asset_projection projection
+          ON binding.source_kind = 'immich'
+          AND projection.source_id = binding.source_id
+          AND projection.immich_asset_id = binding.external_asset_id
+          AND projection.state = 'active'
+        WHERE binding.state = 'active'
+          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${visibleRank}
+        GROUP BY binding.content_id, content.byte_length,
+          fingerprint.content_digest
+        ORDER BY fingerprint.content_digest
+      `;
+      return rows.map((row) => ({
+        byteLength: count(row.byte_length),
+        contentDigest: row.content_digest,
+        fileModifiedAt: null,
+        filenames: row.filenames ?? [],
+        sourceAssetIds: row.source_asset_ids ?? [],
+      }));
+    },
+    sourceStorageDomain,
+    targets: parseArchiveBackupTargets(
+      process.env.CIMMICH_BACKUP_SCAN_TARGETS_JSON,
+      { sourceStorageDomain },
+    ),
+  });
+
+  return {
+  async archiveIntegrityBackupTargets() {
+    return backupScanner.listTargets();
+  },
+  async archiveIntegrityStartBackupScan({ targetId } = {}) {
+    return backupScanner.start({ targetId });
+  },
+  async archiveIntegrityBackupScan({ id, kind, limit, offset } = {}) {
+    return backupScanner.get({ id, kind, limit, offset });
+  },
   async archiveIntegrityBackupProof({ sourceAssetIds } = {}) {
     const requestedIds = cleanOptionalSourceAssetIds(sourceAssetIds);
     const visibleRank = presentationRank();
@@ -244,11 +319,26 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
       schemaVersion: archiveIntegritySchemaVersion,
     };
   },
-  async exactDuplicates({ limit, offset } = {}) {
+  async exactDuplicates({ limit, offset, sourceAssetId } = {}) {
     const pageSize = Math.max(1, cleanInteger(limit, 24, 100));
     const pageOffset = cleanInteger(offset, 0, 1_000_000);
+    const focusedSourceAssetIds = cleanOptionalSourceAssetIds(sourceAssetId);
+    if (focusedSourceAssetIds.length > 1) {
+      throw Object.assign(
+        new Error("Archive integrity source asset ID is invalid"),
+        {
+          code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_ID_INVALID",
+          statusCode: 400,
+        },
+      );
+    }
+    const focusedSourceAssetId = focusedSourceAssetIds[0] || null;
     const visibleRank = presentationRank();
-    const visibleCopies = visibleCopiesSql(sql, visibleRank);
+    const visibleCopies = visibleCopiesSql(
+      sql,
+      visibleRank,
+      focusedSourceAssetId,
+    );
     const [summary = {}] = await sql`
       WITH visible_copies AS MATERIALIZED (${visibleCopies}),
       duplicate_groups AS (
@@ -338,4 +428,5 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => ({
       },
     };
   },
-});
+  };
+};

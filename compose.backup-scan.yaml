@@ -1,0 +1,13 @@
+services:
+  cimmich-api:
+    environment:
+      CIMMICH_ARCHIVE_STORAGE_DOMAIN: ${CIMMICH_ARCHIVE_STORAGE_DOMAIN:-primary-archive-disk}
+      CIMMICH_BACKUP_SCAN_TARGETS_JSON: >-
+        [{"id":"primary-backup","label":"${CIMMICH_BACKUP_SCAN_LABEL:-Primary backup}","root":"/backup/primary","storageDomain":"${CIMMICH_BACKUP_STORAGE_DOMAIN:?set a stable storage-domain ID distinct from the archive disk}"}]
+    volumes:
+      - type: bind
+        source: ${CIMMICH_BACKUP_SCAN_PATH:?set the host backup folder to scan}
+        target: /backup/primary
+        read_only: true
+        bind:
+          create_host_path: false
