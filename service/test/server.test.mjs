@@ -4339,6 +4339,53 @@ test("Archive integrity exposes read-only independent-backup readiness", async (
   assert.deepEqual(calls, [{ sourceAssetIds: "one,two" }]);
 });
 
+test("Archive integrity exposes configured targets and starts and reads bounded backup scans", async () => {
+  const calls = [];
+  const schemaVersion = "cimmich.archive-backup-scan.v1";
+  await withServer(
+    {
+      archiveIntegrityBackupScan: async (input) => {
+        calls.push(["read", input]);
+        return { id: input.id, items: [], schemaVersion, status: "scanning" };
+      },
+      archiveIntegrityBackupTargets: async () => {
+        calls.push(["targets"]);
+        return { items: [], schemaVersion };
+      },
+      archiveIntegrityStartBackupScan: async (input) => {
+        calls.push(["start", input]);
+        return { id: "scan-one", items: [], schemaVersion, status: "queued" };
+      },
+    },
+    async (root) => {
+      const targets = await fetch(
+        `${root}/v1/archive-integrity/backup-targets`,
+      );
+      assert.equal(targets.status, 200);
+      assert.deepEqual(await targets.json(), { items: [], schemaVersion });
+
+      const started = await fetch(`${root}/v1/archive-integrity/backup-scans`, {
+        body: JSON.stringify({ targetId: "nas" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(started.status, 202);
+      assert.equal((await started.json()).status, "queued");
+
+      const scan = await fetch(
+        `${root}/v1/archive-integrity/backup-scans/scan-one?kind=changed&limit=25&offset=50`,
+      );
+      assert.equal(scan.status, 200);
+      assert.equal((await scan.json()).status, "scanning");
+    },
+  );
+  assert.deepEqual(calls, [
+    ["targets"],
+    ["start", { targetId: "nas" }],
+    ["read", { id: "scan-one", kind: "changed", limit: "25", offset: "50" }],
+  ]);
+});
+
 test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
   const calls = [];
   const run = {

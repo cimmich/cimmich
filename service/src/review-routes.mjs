@@ -51,6 +51,53 @@ export const createReviewRoutes =
     }
     if (
       request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/backup-targets"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityBackupTargets(),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/archive-integrity/backup-scans"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        202,
+        await repository.archiveIntegrityStartBackupScan({
+          targetId: body.targetId,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    const backupScanMatch = url.pathname.match(
+      /^\/v1\/archive-integrity\/backup-scans\/([^/]+)$/,
+    );
+    if (request.method === "GET" && backupScanMatch) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityBackupScan({
+          id: decodeURIComponent(backupScanMatch[1]),
+          kind: url.searchParams.get("kind"),
+          limit: url.searchParams.get("limit"),
+          offset: url.searchParams.get("offset"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "GET" &&
       url.pathname === "/v1/archive-integrity/backup-proof"
     ) {
       requireProjection("asset_detail");

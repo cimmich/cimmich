@@ -104,7 +104,7 @@ this directory.
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                  | context entity, relation, asset, cover, plan and geocoding routes                                | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived        |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                | Document metadata/link/content/version routes                                                    | metadata in PostgreSQL; imported bytes in the separate content-addressed store                  |
 | Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                  | deterministic smart-search and Document queries                                                  | local read projection over confirmed truth; no search-owned authority                           |
-| Archive Health       | archive-integrity route and focused client                                                                                         | exact copies, possible-duplicate groups, inline preservation recommendation and backup proof     | fingerprints/provenance durable or reproducible; recommendations derived                        |
+| Archive Health       | archive-integrity route, folder comparator and backup-scan client                                                                  | exact copies, possible-duplicate groups, folder overlap, inline preservation recommendation and read-only backup scan/proof | fingerprints/provenance durable or reproducible; scan state and recommendations derived         |
 | Settings/setup       | settings, setup and maintenance routes                                                                                             | integration, onboarding, provider, SourcePack, Local AI and Guided operators                     | configuration and reviewed lifecycle state; model output remains observation                    |
 
 ## Identity and evidence model
@@ -297,6 +297,24 @@ each Immich `AssetResponseDto.originalPath`; it derives containing-folder and
 folder-wide flagged-photo counts across the loaded duplicate review in the
 client, so displaying and filtering folder context does not add a service query
 or matcher pass.
+
+A folder-scoped Archive Health route additionally pages Immich's path search to
+inventory every direct file in the requested folder. The client joins that
+inventory to the already loaded library-wide duplicate topology, deduplicates
+source and counterpart assets, aggregates other folders by shared source-photo
+count and preserves the existing byte-evidence classification. An unmatched
+folder file is labelled only as absent from current duplicate evidence.
+
+Backup scanning is a separate operational read model. The API accepts only a
+configured target ID; Compose binds that target below `/backup` read-only and
+configuration assigns a storage-domain ID distinct from the archive source.
+One bounded scan may run at a time. It inventories without following symlinks,
+hashes complete destination files sequentially, compares them with visible
+byte-verified archive content and keeps paginated results in API memory. Exact
+digest matches are path-independent. A same-filename digest mismatch is
+reported as changed content or embedded metadata, with size deltas when
+available; ambiguous repeated filenames remain explicit. Scan state disappears
+on API restart and never writes source media or backup files.
 
 Photo file-location actions do not attempt to launch a native file manager on
 the remote archive host. They open an explicit browser boundary dialog and

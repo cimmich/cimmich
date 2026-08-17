@@ -499,11 +499,34 @@ When evidence supports a preferred preservation candidate, it is marked on the
 photo and explained in the same group. Ambiguous or byte-incomplete groups say
 that no safe recommendation exists. Recommendations never change files.
 
+Opening Archive Health from a folder adds a folder checker. It inventories
+every direct file in that folder, then splits each current duplicate group into
+**This folder** and **Elsewhere**. Other folders are ranked by the number of
+source-folder photos they share, so large overlaps can be inspected first.
+**Only here** means no current exact or visual-duplicate lead exists elsewhere;
+it is an evidence state, not proof that no unseen or unprocessed copy exists.
+Pairs retain exact/different/incomplete byte classification and the specific
+size, dimensions, date or metadata differences already available to Archive
+Health.
+
 ### Backup proof
 
 Archive Health distinguishes byte-verified media, independently protected
 items and items still needing destination proof. Another file on the same disk
 is not an independent backup.
+
+An operator may also attach a configured independent destination read-only and
+run a backup scan. Cimmich hashes complete destination files and reports exact
+content matches, same-filename files whose content or embedded metadata changed,
+archive content without an exact destination match, and destination files not
+represented by archive bytes or filenames. Size changes are shown separately;
+exact files still match if their backup path changed.
+
+The scanner cannot browse arbitrary server paths. A destination must be mounted
+under `/backup`, registered with a stable storage-domain identity different from
+the archive disk and remain read-only. Scan state is operational and lasts only
+for the current API session; it does not change media or create preservation
+authority by itself.
 
 ## Settings, matching and optional providers
 
