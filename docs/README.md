@@ -6,28 +6,30 @@ remain available without controlling the front door.
 
 ## Use Cimmich
 
-- [Product walkthrough](WALKTHROUGH.md) — a visual tour using the fictional
+- [Product walkthrough](WALKTHROUGH.md): a visual tour using the fictional
   Cedar House archive.
-- [Install and operate](../INSTALL.md) — verify, configure, start, back up,
+- [Archive Health walkthrough](WALKTHROUGH.md#6-check-the-health-of-the-archive):
+  exact copies, possible duplicates, Folder Check and independent backup status.
+- [Install and operate](../INSTALL.md): verify, configure, start, back up,
   update, diagnose and remove Cimmich.
-- [Privacy and data control](../PRIVACY.md) — what Cimmich reads, stores, sends
+- [Privacy and data control](../PRIVACY.md): what Cimmich reads, stores, sends
   and removes.
-- [Frequently asked questions](FAQ.md) — compatibility, models, viewing modes,
+- [Frequently asked questions](FAQ.md): compatibility, models, viewing modes,
   backups, removal and licensing.
-- [Cedar House demo](../demo/cedar-house-v1/README.md) — an isolated fictional
+- [Cedar House demo](../demo/cedar-house-v1/README.md): an isolated fictional
   Immich and Cimmich stack.
 
 ## Develop and contribute
 
-- [Development guide](../DEVELOPMENT.md) — architecture, repository map,
+- [Development guide](../DEVELOPMENT.md): architecture, repository map,
   npm/pnpm workspaces and checks.
-- [Contributing guide](../CONTRIBUTING.md) — scope, boundaries, proof and pull
+- [Contributing guide](../CONTRIBUTING.md): scope, boundaries, proof and pull
   request expectations.
-- [Project governance](../GOVERNANCE.md) — product authority, releases,
+- [Project governance](../GOVERNANCE.md): product authority, releases,
   AI-assisted implementation and attribution.
-- [Security policy](../SECURITY.md) — supported versions and private
+- [Security policy](../SECURITY.md): supported versions and private
   vulnerability reporting.
-- [Release strategy](RELEASE_STRATEGY.md) — branch, bundle, tag and release
+- [Release strategy](RELEASE_STRATEGY.md): branch, bundle, tag and release
   posture.
 
 ## Product and data contracts
@@ -42,6 +44,7 @@ remain available without controlling the front door.
 - [Context entities](CONTEXT_ENTITY_V1.md)
 - [Documents](DOCUMENT_V1.md)
 - [Smart Search](BASIC_SMART_SEARCH_V1.md)
+- [Archive Health implementation](../DEVELOPMENT.md#archive-health-read-path)
 
 These documents are implementation and acceptance authorities. A newcomer does
 not need to read them to understand the product or complete the ordinary

@@ -143,20 +143,20 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
   });
 
   return {
-  async archiveIntegrityBackupTargets() {
-    return backupScanner.listTargets();
-  },
-  async archiveIntegrityStartBackupScan({ targetId } = {}) {
-    return backupScanner.start({ targetId });
-  },
-  async archiveIntegrityBackupScan({ id, kind, limit, offset } = {}) {
-    return backupScanner.get({ id, kind, limit, offset });
-  },
-  async archiveIntegrityBackupProof({ sourceAssetIds } = {}) {
-    const requestedIds = cleanOptionalSourceAssetIds(sourceAssetIds);
-    const visibleRank = presentationRank();
-    const visibleCopies = visibleCopiesSql(sql, visibleRank);
-    const [summary = {}] = await sql`
+    async archiveIntegrityBackupTargets() {
+      return backupScanner.listTargets();
+    },
+    async archiveIntegrityStartBackupScan({ targetId } = {}) {
+      return backupScanner.start({ targetId });
+    },
+    async archiveIntegrityBackupScan({ id, kind, limit, offset } = {}) {
+      return backupScanner.get({ id, kind, limit, offset });
+    },
+    async archiveIntegrityBackupProof({ sourceAssetIds } = {}) {
+      const requestedIds = cleanOptionalSourceAssetIds(sourceAssetIds);
+      const visibleRank = presentationRank();
+      const visibleCopies = visibleCopiesSql(sql, visibleRank);
+      const [summary = {}] = await sql`
       WITH visible_copies AS MATERIALIZED (${visibleCopies}),
       visible_content AS (
         SELECT content_id, max(byte_length) AS byte_length
@@ -183,9 +183,9 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
         (SELECT count(DISTINCT source_kind || ':' || source_id)
           FROM visible_copies)::int AS source_system_count
     `;
-    let items = [];
-    if (requestedIds.length > 0) {
-      const rows = await sql`
+      let items = [];
+      if (requestedIds.length > 0) {
+        const rows = await sql`
         WITH requested(source_asset_id, position) AS (
           SELECT source_asset_id, ordinality::int
           FROM unnest(${requestedIds}::text[]) WITH ORDINALITY
@@ -220,38 +220,40 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
           content.byte_length, fingerprint.content_digest
         ORDER BY requested.position
       `;
-      items = rows.map((row) => ({
-        byteLength: count(row.byte_length),
-        contentDigest: row.content_digest,
-        independentDestinationCount: 0,
-        proofState: "storage_domain_evidence_required",
-        sourceAssetId: row.source_asset_id,
-        sourceSystemCount: count(row.source_system_count),
-      }));
-    }
-    const byteVerifiedItems = count(summary.byte_verified_items);
-    return {
-      items,
-      schemaVersion: archiveBackupProofSchemaVersion,
-      summary: {
-        byteVerifiedBytes: count(summary.byte_verified_bytes),
-        byteVerifiedItems,
-        independentDestinationCount: 0,
-        independentlyProtectedItems: 0,
-        maximumSourceSystemsPerItem: count(
-          summary.maximum_source_systems_per_item,
-        ),
-        multipleSourceSystemItems: count(summary.multiple_source_system_items),
-        proofState: "storage_domain_evidence_required",
-        sourceSystemCount: count(summary.source_system_count),
-        unprovenItems: byteVerifiedItems,
-      },
-    };
-  },
-  async archiveIntegritySourceEvidence({ sourceAssetIds } = {}) {
-    const requestedIds = cleanSourceAssetIds(sourceAssetIds);
-    const visibleRank = presentationRank();
-    const rows = await sql`
+        items = rows.map((row) => ({
+          byteLength: count(row.byte_length),
+          contentDigest: row.content_digest,
+          independentDestinationCount: 0,
+          proofState: "storage_domain_evidence_required",
+          sourceAssetId: row.source_asset_id,
+          sourceSystemCount: count(row.source_system_count),
+        }));
+      }
+      const byteVerifiedItems = count(summary.byte_verified_items);
+      return {
+        items,
+        schemaVersion: archiveBackupProofSchemaVersion,
+        summary: {
+          byteVerifiedBytes: count(summary.byte_verified_bytes),
+          byteVerifiedItems,
+          independentDestinationCount: 0,
+          independentlyProtectedItems: 0,
+          maximumSourceSystemsPerItem: count(
+            summary.maximum_source_systems_per_item,
+          ),
+          multipleSourceSystemItems: count(
+            summary.multiple_source_system_items,
+          ),
+          proofState: "storage_domain_evidence_required",
+          sourceSystemCount: count(summary.source_system_count),
+          unprovenItems: byteVerifiedItems,
+        },
+      };
+    },
+    async archiveIntegritySourceEvidence({ sourceAssetIds } = {}) {
+      const requestedIds = cleanSourceAssetIds(sourceAssetIds);
+      const visibleRank = presentationRank();
+      const rows = await sql`
       WITH requested(source_asset_id, position) AS (
         SELECT source_asset_id, ordinality::int
         FROM unnest(${requestedIds}::text[]) WITH ORDINALITY
@@ -305,41 +307,41 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
       JOIN accepted_associations evidence USING (asset_id)
       ORDER BY visible.position
     `;
-    return {
-      items: rows.map((row) => ({
-        assetId: row.asset_id,
-        bodyAssignments: count(row.body_assignments),
-        contentDigest: row.content_digest,
-        faceAssignments: count(row.face_assignments),
-        headAssignments: count(row.head_assignments),
-        people: count(row.people),
-        presenceAssignments: count(row.presence_assignments),
-        sourceAssetId: row.source_asset_id,
-      })),
-      schemaVersion: archiveIntegritySchemaVersion,
-    };
-  },
-  async exactDuplicates({ limit, offset, sourceAssetId } = {}) {
-    const pageSize = Math.max(1, cleanInteger(limit, 24, 100));
-    const pageOffset = cleanInteger(offset, 0, 1_000_000);
-    const focusedSourceAssetIds = cleanOptionalSourceAssetIds(sourceAssetId);
-    if (focusedSourceAssetIds.length > 1) {
-      throw Object.assign(
-        new Error("Archive integrity source asset ID is invalid"),
-        {
-          code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_ID_INVALID",
-          statusCode: 400,
-        },
+      return {
+        items: rows.map((row) => ({
+          assetId: row.asset_id,
+          bodyAssignments: count(row.body_assignments),
+          contentDigest: row.content_digest,
+          faceAssignments: count(row.face_assignments),
+          headAssignments: count(row.head_assignments),
+          people: count(row.people),
+          presenceAssignments: count(row.presence_assignments),
+          sourceAssetId: row.source_asset_id,
+        })),
+        schemaVersion: archiveIntegritySchemaVersion,
+      };
+    },
+    async exactDuplicates({ limit, offset, sourceAssetId } = {}) {
+      const pageSize = Math.max(1, cleanInteger(limit, 24, 100));
+      const pageOffset = cleanInteger(offset, 0, 1_000_000);
+      const focusedSourceAssetIds = cleanOptionalSourceAssetIds(sourceAssetId);
+      if (focusedSourceAssetIds.length > 1) {
+        throw Object.assign(
+          new Error("Archive integrity source asset ID is invalid"),
+          {
+            code: "ARCHIVE_INTEGRITY_SOURCE_ASSET_ID_INVALID",
+            statusCode: 400,
+          },
+        );
+      }
+      const focusedSourceAssetId = focusedSourceAssetIds[0] || null;
+      const visibleRank = presentationRank();
+      const visibleCopies = visibleCopiesSql(
+        sql,
+        visibleRank,
+        focusedSourceAssetId,
       );
-    }
-    const focusedSourceAssetId = focusedSourceAssetIds[0] || null;
-    const visibleRank = presentationRank();
-    const visibleCopies = visibleCopiesSql(
-      sql,
-      visibleRank,
-      focusedSourceAssetId,
-    );
-    const [summary = {}] = await sql`
+      const [summary = {}] = await sql`
       WITH visible_copies AS MATERIALIZED (${visibleCopies}),
       duplicate_groups AS (
         SELECT content_id, max(byte_length) AS byte_length,
@@ -355,7 +357,7 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
           AS reclaimable_bytes
       FROM duplicate_groups
     `;
-    const rows = await sql`
+      const rows = await sql`
       WITH visible_copies AS MATERIALIZED (${visibleCopies}),
       duplicate_groups AS MATERIALIZED (
         SELECT content_id, max(byte_length) AS byte_length,
@@ -382,51 +384,51 @@ export const createArchiveIntegrityStore = (sql, { presentationRank }) => {
       ORDER BY group_row.reclaimable_bytes DESC, group_row.content_id,
         copy.filename NULLS LAST, copy.source_asset_id
     `;
-    const groups = [];
-    let current = null;
-    for (const row of rows) {
-      if (!current || current.contentId !== row.content_id) {
-        current = {
-          assetType: row.asset_type,
-          byteLength: count(row.byte_length),
-          contentDigest: row.content_digest,
-          contentId: row.content_id,
-          copies: [],
-          copyCount: count(row.copy_count),
-          reclaimableBytes: count(row.reclaimable_bytes),
-          redundantCopies: Math.max(0, count(row.copy_count) - 1),
-        };
-        groups.push(current);
+      const groups = [];
+      let current = null;
+      for (const row of rows) {
+        if (!current || current.contentId !== row.content_id) {
+          current = {
+            assetType: row.asset_type,
+            byteLength: count(row.byte_length),
+            contentDigest: row.content_digest,
+            contentId: row.content_id,
+            copies: [],
+            copyCount: count(row.copy_count),
+            reclaimableBytes: count(row.reclaimable_bytes),
+            redundantCopies: Math.max(0, count(row.copy_count) - 1),
+          };
+          groups.push(current);
+        }
+        current.copies.push({
+          archived: row.is_archived === true,
+          assetId: row.asset_id,
+          captureTime: captureTime(row.capture_time),
+          favorite: row.is_favorite === true,
+          filename: row.filename || "Untitled media",
+          height: row.height === null ? null : count(row.height),
+          mimeType: row.original_mime_type || null,
+          sourceAssetId: row.source_asset_id,
+          visibility: row.visibility,
+          width: row.width === null ? null : count(row.width),
+        });
       }
-      current.copies.push({
-        archived: row.is_archived === true,
-        assetId: row.asset_id,
-        captureTime: captureTime(row.capture_time),
-        favorite: row.is_favorite === true,
-        filename: row.filename || "Untitled media",
-        height: row.height === null ? null : count(row.height),
-        mimeType: row.original_mime_type || null,
-        sourceAssetId: row.source_asset_id,
-        visibility: row.visibility,
-        width: row.width === null ? null : count(row.width),
-      });
-    }
-    return {
-      groups,
-      limit: pageSize,
-      nextOffset:
-        pageOffset + groups.length < count(summary.duplicate_groups)
-          ? pageOffset + groups.length
-          : null,
-      offset: pageOffset,
-      schemaVersion: archiveIntegritySchemaVersion,
-      summary: {
-        copiesInGroups: count(summary.copies_in_groups),
-        duplicateGroups: count(summary.duplicate_groups),
-        reclaimableBytes: count(summary.reclaimable_bytes),
-        redundantCopies: count(summary.redundant_copies),
-      },
-    };
-  },
+      return {
+        groups,
+        limit: pageSize,
+        nextOffset:
+          pageOffset + groups.length < count(summary.duplicate_groups)
+            ? pageOffset + groups.length
+            : null,
+        offset: pageOffset,
+        schemaVersion: archiveIntegritySchemaVersion,
+        summary: {
+          copiesInGroups: count(summary.copies_in_groups),
+          duplicateGroups: count(summary.duplicate_groups),
+          reclaimableBytes: count(summary.reclaimable_bytes),
+          redundantCopies: count(summary.redundant_copies),
+        },
+      };
+    },
   };
 };

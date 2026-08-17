@@ -26,12 +26,12 @@ path until it has clean-install proof.
 
 ### Resource expectations
 
-| Resource | What to expect |
-| :--- | :--- |
-| Disk | Keep several gigabytes free for local image builds, Docker cache and Cimmich state. Cimmich does not duplicate the original photo library. |
-| Time | A cold first build commonly takes 4–10 minutes; network speed, CPU and Docker cache can change this substantially. |
-| CPU and memory | No minimum has been certified yet. The core stack adds a Node service, web process and PostgreSQL database beside Immich. Increase Docker's allocation if a local build is killed for memory. |
-| Optional models | Core does not need one. Local provider resource use is additional and provider-specific. |
+| Resource        | What to expect                                                                                                                                                                                |
+| :-------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Disk            | Keep several gigabytes free for local image builds, Docker cache and Cimmich state. Cimmich does not duplicate the original photo library.                                                    |
+| Time            | A cold first build commonly takes 4–10 minutes; network speed, CPU and Docker cache can change this substantially.                                                                            |
+| CPU and memory  | No minimum has been certified yet. The core stack adds a Node service, web process and PostgreSQL database beside Immich. Increase Docker's allocation if a local build is killed for memory. |
+| Optional models | Core does not need one. Local provider resource use is additional and provider-specific.                                                                                                      |
 
 `./tools/install.sh --check` reports available disk on the release-folder
 volume. Docker Desktop or another remote engine may store images elsewhere, so
@@ -97,7 +97,7 @@ reports the platform, required commands, checksum implementation, local ports,
 existing guided state and available disk. A ready new machine ends with:
 
 ```json
-{"docker":"ready","installer":"ready","state":"unchanged"}
+{ "docker": "ready", "installer": "ready", "state": "unchanged" }
 ```
 
 Do not run the installer with `sudo`.

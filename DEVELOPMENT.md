@@ -26,18 +26,49 @@ The service owns Cimmich state, migrations, jobs, decisions and projections.
 Immich remains the base photo-management product and owns authentication and
 original media.
 
+### Archive Health read path
+
+Archive Health is split into four independently loaded modes. The page must not
+start every archive-wide query on mount.
+
+| Mode                | Primary read                                                                                | Loading contract                                                                                                                                                                     |
+| :------------------ | :------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact copies        | Cimmich complete-file digest evidence                                                       | Loads only when Exact copies is selected and pages groups from the service.                                                                                                          |
+| Possible duplicates | Immich native duplicate topology plus batched Cimmich source evidence                       | Loads only when Possible duplicates is selected.                                                                                                                                     |
+| Folder Check        | Immich native duplicate topology, direct assets in one folder, then scoped Cimmich evidence | The initial selector ranks impacted folders from one cached duplicate index. Selecting another folder reuses that index and fetches evidence only for assets in the selected groups. |
+| Backup status       | Configured backup target plus Archive Health evidence                                       | Loads only when Backup status is selected. Starting a scan is an explicit operator action.                                                                                           |
+
+The web orchestration lives in
+`ui/web/src/routes/(user)/cimmich/archive-integrity/+page.svelte`. Folder ranking
+and overlap calculations are pure functions in
+`ui/web/src/lib/components/cimmich/archive-folder-comparison.ts`. The service
+read model and endpoints live in `service/src/archive-integrity.mjs` and
+`service/src/review-routes.mjs`.
+
+The optional backup scanner in `service/src/archive-backup-scanner.mjs` accepts
+only configured target IDs, refuses symlinks, reads one mounted destination
+sequentially, and keeps scan state in process memory. The supplied
+`compose.backup-scan.yaml` mounts the destination read-only at
+`/backup/primary`. A storage-domain ID must differ from the archive storage
+domain. The scanner never writes the destination, source media, or Immich.
+
+Archive Health evidence is deliberately non-authoritative. Exact means complete
+byte equality. A possible duplicate is a review lead. "Only here" means no
+current counterpart was found through the available exact or visual duplicate
+evidence. None of those states grants deletion authority.
+
 ## Repository map
 
-| Path | Purpose |
-| :--- | :--- |
-| `service/` | Independent Node service, canonical Cimmich API and tests |
-| `ui/` | Immich-derived pnpm workspace containing the Cimmich product UI |
-| `migrations/` | Ordered, forward-only Cimmich database migrations |
-| `providers/` | Optional provider adapters, manifests and pinned Python requirements |
-| `ops/` | Deployment and operational support material used by bounded environments |
-| `tools/` | Install, lifecycle, provider, migration and acceptance operators |
-| `demo/` | Licensed fictional Cedar House and Space Trip demonstration material |
-| `docs/` | Product contracts, operations, release evidence and project history |
+| Path           | Purpose                                                                                  |
+| :------------- | :--------------------------------------------------------------------------------------- |
+| `service/`     | Independent Node service, canonical Cimmich API and tests                                |
+| `ui/`          | Immich-derived pnpm workspace containing the Cimmich product UI                          |
+| `migrations/`  | Ordered, forward-only Cimmich database migrations                                        |
+| `providers/`   | Optional provider adapters, manifests and pinned Python requirements                     |
+| `ops/`         | Deployment and operational support material used by bounded environments                 |
+| `tools/`       | Install, lifecycle, provider, migration and acceptance operators                         |
+| `demo/`        | Licensed fictional Cedar House and Space Trip demonstration material                     |
+| `docs/`        | Product contracts, operations, release evidence and project history                      |
 | `compose.yaml` | Root source-build deployment definition consumed by the installer and lifecycle operator |
 
 The public tree contains code and synthetic evidence only. Real archive media,
@@ -46,10 +77,10 @@ material do not belong in the repository.
 
 ## Two deliberate JavaScript workspaces
 
-| Workspace | Runtime | Package manager | Why |
-| :--- | :--- | :--- | :--- |
-| `service/` | Node 22 | npm with `service/package-lock.json` | Cimmich's local service is a small independent application. |
-| `ui/` | Node 22 in CI; Node 24 in the production image | pnpm 11.6.0 with `ui/pnpm-lock.yaml` | The UI retains the Immich web monorepo and workspace structure. |
+| Workspace  | Runtime                                        | Package manager                      | Why                                                             |
+| :--------- | :--------------------------------------------- | :----------------------------------- | :-------------------------------------------------------------- |
+| `service/` | Node 22                                        | npm with `service/package-lock.json` | Cimmich's local service is a small independent application.     |
+| `ui/`      | Node 22 in CI; Node 24 in the production image | pnpm 11.6.0 with `ui/pnpm-lock.yaml` | The UI retains the Immich web monorepo and workspace structure. |
 
 Do not run npm inside `ui/` or pnpm inside `service/`. There is no competing
 lockfile within either workspace.

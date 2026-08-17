@@ -4,6 +4,7 @@
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
+  import ArchiveHealthHeader from '$lib/components/cimmich/ArchiveHealthHeader.svelte';
   import {
     buildArchiveFolderOverlap,
     rankArchiveFoldersByImpact,
@@ -43,7 +44,6 @@
     mdiFolderSearchOutline,
     mdiImageMultipleOutline,
     mdiInformationOutline,
-    mdiRefresh,
     mdiShieldCheckOutline,
     mdiTuneVariant,
   } from '@mdi/js';
@@ -425,77 +425,13 @@
 
 <UserPageLayout title={data.meta.title} scrollbar={false}>
   <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-4 pb-16 sm:px-6 lg:px-8">
-    <header class="rounded-3xl bg-[#111815] p-5 text-white shadow-sm sm:px-6">
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="max-w-3xl">
-          <h1 class="text-2xl font-semibold tracking-tight">Archive Health</h1>
-          <p class="mt-1 text-sm text-slate-300">
-            Check exact copies, possible duplicates, folders and independent backups. Nothing is changed here.
-          </p>
-        </div>
-        <button
-          type="button"
-          class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-          disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
-          onclick={refreshCurrentMode}
-        >
-          <Icon
-            icon={mdiRefresh}
-            size="18"
-            class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
-              ? 'animate-spin'
-              : ''}
-          />
-          Refresh
-        </button>
-      </div>
-    </header>
-
-    <nav
-      class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200 bg-white p-1 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-      aria-label="Archive integrity evidence layer"
-    >
-      <a
-        data-sveltekit-reload
-        href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'exact'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-current={mode === 'exact' ? 'page' : undefined}
-      >
-        Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
-      </a>
-      <a
-        data-sveltekit-reload
-        href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'variants'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-current={mode === 'variants' ? 'page' : undefined}
-      >
-        Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
-      </a>
-      <a
-        data-sveltekit-reload
-        href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'folder'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-current={mode === 'folder' ? 'page' : undefined}
-      >
-        Folder check
-      </a>
-      <a
-        data-sveltekit-reload
-        href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
-        class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'backup'
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-        aria-current={mode === 'backup' ? 'page' : undefined}
-      >
-        Backup status
-      </a>
-    </nav>
+    <ArchiveHealthHeader
+      exactCount={loaded ? summary.duplicateGroups : undefined}
+      {mode}
+      onRefresh={refreshCurrentMode}
+      possibleCount={variantsLoaded ? scopedVariantGroups.length : undefined}
+      refreshing={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
+    />
 
     {#if (mode === 'variants' && focusedAssetId) || (mode === 'exact' && focusedAssetId)}
       <div
