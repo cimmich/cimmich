@@ -48,8 +48,8 @@ describe('Cimmich navigation shell contract', () => {
     expect(immichSidebar).toContain("{ title: 'Review', href: Route.cimmichSteward()");
     expect(people).not.toContain('Identity checks');
     expect(people).not.toContain('Route.cimmichSteward()');
-    expect(people).not.toContain('{#snippet actions()}');
-    expect(people).toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2"');
+    expect(people).toContain('{#snippet actions()}');
+    expect(people).toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end"');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });
