@@ -177,9 +177,6 @@
             </button>
           {/each}
         </div>
-        <p class="mt-2 text-[11px]/4 text-gray-500 dark:text-gray-400">
-          “Private” means Private only, not everything this viewing mode can access.
-        </p>
       </fieldset>
 
       {#each selectionGroups as group (group.key)}
@@ -204,10 +201,6 @@
               class="mt-2 block text-left text-[11px] font-semibold tracking-normal text-primary normal-case hover:underline"
               type="button"
               onclick={() => requestViewingMode('private')}>Enter Private for protected tags & labels</button
-            >
-          {:else if group.items.length === 0 && !loading}
-            <span class="mt-2 block text-[11px] font-normal tracking-normal text-gray-500 normal-case"
-              >None in this scope</span
             >
           {/if}
         </div>

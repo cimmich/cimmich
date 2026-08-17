@@ -519,21 +519,25 @@
                   />
                 {/snippet}
               </Tooltip>
-              <label
-                class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-                title="Thumbnail size"
-              >
-                <Icon icon={mdiViewGridOutline} size="19" />
-                <select
-                  class="absolute inset-0 size-full cursor-pointer opacity-0"
-                  bind:value={peopleThumbnailSize}
-                  aria-label="Thumbnail size"
-                >
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                </select>
-              </label>
+              <Tooltip text="Thumbnail size">
+                {#snippet child({ props })}
+                  <label
+                    {...props}
+                    class="relative inline-flex size-10 cursor-pointer items-center justify-center border-l border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-950 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  >
+                    <Icon icon={mdiViewGridOutline} size="19" />
+                    <select
+                      class="absolute inset-0 size-full cursor-pointer opacity-0"
+                      bind:value={peopleThumbnailSize}
+                      aria-label="Thumbnail size"
+                    >
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </label>
+                {/snippet}
+              </Tooltip>
             </div>
           {/if}
         </div>
