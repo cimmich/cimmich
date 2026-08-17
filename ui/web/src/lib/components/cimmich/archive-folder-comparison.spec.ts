@@ -1,6 +1,6 @@
 import type { AssetResponseDto } from '@immich/sdk';
 import { describe, expect, it } from 'vitest';
-import { buildArchiveFolderOverlap } from './archive-folder-comparison';
+import { buildArchiveFolderOverlap, rankArchiveFoldersByImpact } from './archive-folder-comparison';
 import type { ArchiveVariantGroup } from './archive-variant-groups';
 
 const asset = (id: string, folder: string): AssetResponseDto =>
@@ -63,5 +63,44 @@ describe('buildArchiveFolderOverlap', () => {
 
     expect(result.folderAssetCount).toBe(1);
     expect(result.uniqueAssets.map((candidate) => candidate.id)).toEqual(['direct']);
+  });
+});
+
+describe('rankArchiveFoldersByImpact', () => {
+  it('ranks folders by distinct affected files and reports their archive reach', () => {
+    const fbook = '/archive/Fbook Download';
+    const palace = '/archive/2001 - 15 palace times';
+    const trip = '/archive/2002 - Trip';
+    const result = rankArchiveFoldersByImpact([
+      { assets: [asset('fbook-one', fbook), asset('palace-one', palace)] },
+      { assets: [asset('fbook-two', fbook), asset('palace-two', palace), asset('trip-two', trip)] },
+      { assets: [asset('fbook-two', fbook), asset('trip-two-copy', trip)] },
+      { assets: [asset('fbook-internal-a', fbook), asset('fbook-internal-b', fbook)] },
+      { assets: [asset('unpathed', '')] },
+    ]);
+
+    expect(result[0]).toEqual({
+      affectedAssetCount: 2,
+      counterpartFolderCount: 2,
+      duplicateGroupCount: 3,
+      folderPath: fbook,
+    });
+    expect(result.find((candidate) => candidate.folderPath === palace)).toEqual({
+      affectedAssetCount: 2,
+      counterpartFolderCount: 2,
+      duplicateGroupCount: 2,
+      folderPath: palace,
+    });
+    expect(result).toHaveLength(3);
+  });
+
+  it('uses counterpart reach, group count, then path as deterministic tie breakers', () => {
+    const result = rankArchiveFoldersByImpact([
+      { assets: [asset('a-one', '/archive/A'), asset('z-one', '/archive/Z')] },
+      { assets: [asset('a-two', '/archive/A'), asset('y-two', '/archive/Y')] },
+      { assets: [asset('b-one', '/archive/B'), asset('z-two', '/archive/Z')] },
+    ]);
+
+    expect(result.map((candidate) => candidate.folderPath).slice(0, 2)).toEqual(['/archive/A', '/archive/Z']);
   });
 });

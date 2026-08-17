@@ -153,7 +153,7 @@ describe('Face matching owner presentation', () => {
 
     expect(referenceLibraryJourney(status)).toMatchObject({
       activeIndex: 2,
-      headline: 'Safety check unavailable — proposal held',
+      headline: 'Safety check unavailable. Proposal held',
       held: true,
       steps: [
         { label: 'Analyse', state: 'complete' },

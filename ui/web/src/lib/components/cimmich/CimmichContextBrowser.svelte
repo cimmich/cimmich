@@ -3236,7 +3236,7 @@
         {/each}
       </div>
       <!-- Below 640px these collapse to icon-only 44x44 buttons by hiding the
-           label with `display: none` — and display:none content is EXCLUDED from
+           label with `display: none`; display:none content is EXCLUDED from
            the accessible name computation, so on a phone each of these announced
            as an unnamed button. The aria-label carries the name at every width. -->
       {#if activeDetailTab === 'photos'}
@@ -3641,7 +3641,7 @@
           <div>
             <p class="text-xs font-bold tracking-[0.16em] text-primary uppercase">Route</p>
             <h2>Build the journey in order</h2>
-            <p>Stops are Places, not text labels—so each one stays useful across your whole library.</p>
+            <p>Stops are Places, not text labels, so each one stays useful across your whole library.</p>
           </div>
           <span>{selectedEventStops.length} {selectedEventStops.length === 1 ? 'stop' : 'stops'}</span>
         </div>
@@ -3952,8 +3952,8 @@
                   }
                 }}
               >
-                <option value="location">Location — home, venue, room or yard</option>
-                <option value="geography">Geography — country, region, town or area</option>
+                <option value="location">Location: home, venue, room or yard</option>
+                <option value="geography">Geography: country, region, town or area</option>
                 {#if editorMode === 'edit'}<option value="unclassified">Needs classification</option>{/if}
               </select>
             </label>
@@ -4068,7 +4068,7 @@
                       {formSourceFolders.length === 1 ? 'source folder' : 'source folders'}</strong
                     >
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {formSourceFolders.map((folderPath) => eventFolderLabel(folderPath)).join(' · ')} — remembered for later
+                      {formSourceFolders.map((folderPath) => eventFolderLabel(folderPath)).join(' · ')} · remembered for later
                       refresh. New items arrive in Needs check.
                     </p>
                   </div>
@@ -4723,7 +4723,7 @@
               /><input
                 class="min-h-11 w-full rounded-full border border-gray-300 pr-4 pl-11 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800"
                 bind:value={folderQuery}
-                placeholder="Folder name or path — e.g. Space Trip"
+                placeholder="Folder name or path, e.g. Space Trip"
               /></label
             ><button class="context-secondary-button shrink-0" type="submit" disabled={folderSearchLoading}
               >{folderSearchLoading ? 'Searching…' : 'Find folders'}</button
@@ -6131,7 +6131,7 @@
 
   /* Wraps rather than squeezing. The entity actions moved onto this rail, and
      on a 1024px viewport they plus "Add media" cut the tab strip down to 260px
-     when it needs 534 — so "Documents" scrolled out of sight. Letting the action
+     when it needs 534, so "Documents" scrolled out of sight. Letting the action
      cluster drop to its own line keeps every tab reachable, which matters more
      than holding one row. */
   .context-profile-rail {
@@ -6152,7 +6152,7 @@
     min-width: 0;
     /* Basis set just above the widest tab strip (four tabs with counts measure
        ~534px), so the action cluster wraps to its own line rather than clipping
-       a tab. At 24rem the 1280px case sat in between — one row, with
+       a tab. At 24rem the 1280px case sat in between: one row, with
        "Documents" cut off by 6px. Biasing toward a wrap is the safer failure. */
     flex: 1 1 34rem;
     gap: 0.15rem;

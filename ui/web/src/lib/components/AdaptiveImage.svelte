@@ -13,7 +13,7 @@
   //
   // To keep the texture sharp, we size this div closer to the image's native
   // dimensions and apply a CSS counter-scale. Chrome renders these textures
-  // as a grid of small tiles backed by a shared GPU memory budget — if the
+  // as a grid of small tiles backed by a shared GPU memory budget. If the
   // texture is too large, tiles go missing and show up as transparent gaps.
   // We cap the texture size based on the device's GPU capability.
   //

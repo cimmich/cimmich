@@ -219,7 +219,7 @@
         </h3>
         <p class="mt-1 max-w-3xl text-sm/6 text-gray-700 dark:text-gray-200">
           {#if mode === 'review'}
-            These are live unresolved groups from the connected Immich library—not matcher suggestions or technical
+            These are live unresolved groups from the connected Immich library, not matcher suggestions or technical
             import exceptions. Map a clear group, keep it unknown, mark noise, or leave it for later. Cimmich never
             infers the choice.
           {:else}

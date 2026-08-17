@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const sourceFiles = async (directory: string): Promise<string[]> => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nestedFiles = await Promise.all(
+    entries.map(async (entry) => {
+      const path = join(directory, entry.name);
+      return entry.isDirectory() ? sourceFiles(path) : [path];
+    }),
+  );
+  return nestedFiles.flat();
+};
 
 describe('Archive integrity layout', () => {
+  it('keeps em dashes out of Web copy', async () => {
+    const allFiles = await sourceFiles('src');
+    const files = allFiles.filter((file) => file.endsWith('.svelte') || file.endsWith('.ts'));
+    const sources = await Promise.all(files.map(async (file) => ({ file, source: await readFile(file, 'utf8') })));
+    const violations = sources.filter(({ source }) => source.includes('\u2014')).map(({ file }) => file);
+
+    expect(violations).toEqual([]);
+  });
+
   it('keeps exact duplicate discovery explicit, inspectable and read-only', async () => {
     const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
@@ -29,7 +50,14 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
     expect(source).toContain('Folder check');
     expect(source).toContain('Check one folder against the archive');
+    expect(source).toContain('Most impacted folders');
+    expect(source).toContain('rankArchiveFoldersByImpact(nativeGroups)');
+    expect(source).toContain('affectedAssetCount');
+    expect(source).toContain('counterpartFolderCount');
+    expect(source).toContain("'affected file'");
+    expect(source).toContain("'other folder'");
     expect(source).toContain('name="folder"');
+    expect(source).toContain('<form\n            data-sveltekit-reload');
     expect(source).toContain("folder: folderContext.path, mode: 'folder'");
     expect(folderPage).toContain('Check this folder');
     expect(folderPage).toContain("mode: 'folder'");

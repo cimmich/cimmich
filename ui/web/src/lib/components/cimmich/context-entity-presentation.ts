@@ -187,7 +187,7 @@ export const contextFamilyEyebrows: Record<CimmichContextFamily, string> = {
  * ----------------------------
  *
  * A place is identified by where it is, the way a person is identified by
- * their face, so every place surface has to be able to say where — including
+ * their face, so every place surface has to be able to say where, including
  * when no map can be drawn. This returns the most specific human-readable
  * answer available and says so honestly when there is none, rather than
  * leaving the question unanswered.
@@ -220,7 +220,7 @@ export const contextPlaceGeometryLabel = (geometry: CimmichContextGeometry) => {
 /**
  * Immich already reverse-geocodes every asset to city/state/country and renders
  * exactly these three fields in its own `DetailPanelLocation`. Reuse that
- * instead of deriving a place name ourselves — it is the same intelligence the
+ * instead of deriving a place name ourselves. It is the same intelligence the
  * rest of the product shows, so a place reads consistently with the asset
  * viewer and Explore.
  */
@@ -239,11 +239,11 @@ export const formatImmichPlaceLocation = (
 /**
  * The preference ladder for stating where a place is:
  *
- *   1. the owner's own place hierarchy — owner-defined truth outranks anything
+ *   1. the owner's own place hierarchy; owner-defined truth outranks anything
  *      derived;
- *   2. Immich's reverse-geocoded city/state/country — existing product
+ *   2. Immich's reverse-geocoded city/state/country; existing product
  *      intelligence, and human-readable;
- *   3. raw coordinates from the place geometry — a last resort, because
+ *   3. raw coordinates from the place geometry; a last resort, because
  *      "29.4915°S, 153.2315°E" orients nobody;
  *   4. an honest statement that there is no location.
  *
@@ -279,7 +279,7 @@ export const contextPlaceLocationLabel = (
  * carries the human-readable name so a shared link says what it points at,
  * and an id query param keeps resolution exact when two entities share a
  * name. The id param is family-specific, so a detail URL never needs a
- * separate `family` param — `?thingId=` already means Things.
+ * separate `family` param because `?thingId=` already means Things.
  *
  * Places and Things each have their own section and named route. Events share
  * this browser but have no `[entityName]` route yet, so

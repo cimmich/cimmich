@@ -217,7 +217,7 @@ describe('Cimmich first-run Immich setup', () => {
     const { getByRole, getByText } = render(CimmichImmichSetup);
 
     await waitFor(() => expect(getByText(/Your 2 existing Cimmich People are preserved/)).toBeInTheDocument());
-    expect(getByRole('link', { name: 'Not now — continue using Cimmich' })).toHaveAttribute('href', '/cimmich');
+    expect(getByRole('link', { name: 'Not now. Continue using Cimmich' })).toHaveAttribute('href', '/cimmich');
 
     await fireEvent.click(getByRole('button', { name: 'Preview this scope' }));
     await waitFor(() => expect(getByText(/0 labelled Immich People/)).toBeInTheDocument());

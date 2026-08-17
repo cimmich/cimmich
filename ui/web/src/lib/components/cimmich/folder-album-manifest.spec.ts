@@ -13,7 +13,7 @@ describe('folder album manifest', () => {
   });
 
   it('keeps nested period context and a human qualifier', () => {
-    expect(folderAlbumTitle('/library/Set_One/Photos/2015 - PP/September/Week 1')).toBe('PP Sep 2015 — Week 1');
+    expect(folderAlbumTitle('/library/Set_One/Photos/2015 - PP/September/Week 1')).toBe('PP Sep 2015 · Week 1');
   });
 
   it('renders combined month folders as an intentional date range', () => {
@@ -44,7 +44,7 @@ describe('folder album manifest', () => {
       ],
       '/library',
     );
-    expect(rows.map(({ title }) => title)).toEqual(['PP Aug 2011 — Set One', 'PP Aug 2011 — Set Two']);
+    expect(rows.map(({ title }) => title)).toEqual(['PP Aug 2011 · Set One', 'PP Aug 2011 · Set Two']);
     expect(rows.every(({ collisionSource }) => collisionSource)).toBe(true);
   });
 
@@ -79,10 +79,10 @@ describe('folder album manifest', () => {
       '/library',
     );
     expect(rows.map(({ title }) => title)).toEqual([
-      'PP Aug 2011 — Set One',
-      'PP Aug 2011 — Set Archive · August 1',
-      'PP Aug 2011 — Set Archive · August 2',
-      'PP Aug 2011 — Media · Set One',
+      'PP Aug 2011 · Set One',
+      'PP Aug 2011 · Set Archive · August 1',
+      'PP Aug 2011 · Set Archive · August 2',
+      'PP Aug 2011 · Media · Set One',
     ]);
   });
 
@@ -104,7 +104,7 @@ describe('folder album manifest', () => {
       ],
       '/library',
     );
-    expect(rows.map(({ title }) => title)).toEqual(['PP Jan–Mar 2012 — Set One · AC', 'PP Jan–Mar 2012 — Set Archive']);
+    expect(rows.map(({ title }) => title)).toEqual(['PP Jan–Mar 2012 · Set One · AC', 'PP Jan–Mar 2012 · Set Archive']);
   });
 
   it('blocks empty and duplicate included titles but ignores excluded rows', () => {

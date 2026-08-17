@@ -81,10 +81,10 @@ export const folderAlbumTitle = (sourcePath: string) => {
     )
     .map((segment) => humanSegment(segment))
     .filter(Boolean)
-    .join(' — ');
+    .join(' · ');
   const structured = [yearSegmentQualifier, month || '', year || ''].filter(Boolean).join(' ');
   if (structured) {
-    return qualifier ? `${structured} — ${qualifier}` : structured;
+    return qualifier ? `${structured} · ${qualifier}` : structured;
   }
   return humanSegment(segments.at(-1) || 'Album');
 };
@@ -135,7 +135,7 @@ export const resolveFolderAlbumTitleCollisions = (
     const baseKey = row.title.toLocaleLowerCase();
     const collisionSource = (baseCounts.get(baseKey) || 0) > 1;
     const suffix = collectionSuffixParts(row.sourcePath, rootPath, row.title);
-    const title = collisionSource ? `${row.title} — ${suffix.context.join(' · ')}` : row.title;
+    const title = collisionSource ? `${row.title} · ${suffix.context.join(' · ')}` : row.title;
     return { ...row, collisionSource, suffix, title };
   });
 

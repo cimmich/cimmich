@@ -93,7 +93,7 @@ export const getPetMediaTimeframe = (media: CimmichPetMedia[], locale?: string) 
 
 // targetAspect must match the aspect of the frame the crop is painted into, or
 // the background axes scale unequally and the animal is distorted. Defaults to
-// square because every consumer except the hero banner is a 1:1 frame — the
+// square because every consumer except the hero banner is a 1:1 frame. The
 // circular portraits, the presentation picker, and the circular face slot.
 export const getPetMediaFocusCrop = (media: CimmichPetMedia, targetAspect = 1) => {
   const face = media.pet_face;

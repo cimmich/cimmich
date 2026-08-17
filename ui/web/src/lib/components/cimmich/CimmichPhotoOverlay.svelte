@@ -410,7 +410,7 @@
   const step2SummaryText = $derived(
     step2Item
       ? step2Item.enhancedVisualQc?.summary ||
-          `${step2Item.summaryInput.event_clause} — ${step2Item.summaryInput.reconciled_scene_correction || step2Item.summaryInput.scene_clause}`
+          `${step2Item.summaryInput.event_clause}: ${step2Item.summaryInput.reconciled_scene_correction || step2Item.summaryInput.scene_clause}`
       : '',
   );
   const knownNameOptions = $derived.by(() => {
@@ -6087,7 +6087,7 @@
             <p class="text-[11px] font-bold tracking-[0.16em] text-cyan-200/75 uppercase">{evidenceBrand} fields</p>
             <h2 class="mt-1 text-lg font-semibold">Sidecar preview</h2>
             <p class="mt-1 text-xs text-white/55">
-              What {evidenceBrand} adds now—or will add when sidecar export is enabled. Immich metadata is excluded.
+              What {evidenceBrand} adds now, or will add when sidecar export is enabled. Immich metadata is excluded.
             </p>
           </div>
           <span
