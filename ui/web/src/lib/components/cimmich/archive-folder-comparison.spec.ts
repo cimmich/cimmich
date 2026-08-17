@@ -41,6 +41,7 @@ describe('buildArchiveFolderOverlap', () => {
     );
 
     expect(result.folderAssetCount).toBe(5);
+    expect(result.groups[0]?.canonicalPlan.status).toBe('hold_ambiguous');
     expect(result.sharedAssetCount).toBe(3);
     expect(result.matchedElsewhereAssetCount).toBe(3);
     expect(result.uniqueAssets).toEqual([]);

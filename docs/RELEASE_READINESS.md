@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-17
+Updated: 2026-08-18
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 130/patch 1
 Current development source: migration-ledger schema 130/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release candidate: `v1.1.0-community-preview.10` for exact Immich 3.1.0
+Current release candidate: `v1.1.0-community-preview.11` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -54,6 +54,35 @@ The candidate requires:
 - explicit copy stating that similarity, overlap and unmatched status are not
   proof that a file is safe to delete;
 - `nanoid` 3.3.18 or newer in the resolved Web graph; and
+- the complete schema-130 service, Web, provider, migration, browser,
+  publication-scan, clean-bundle and installer-preflight release gates.
+
+Exact clean-tree commit identity, bundle hashes and hosted proof are recorded
+only after the reviewed merge produces the immutable tag target.
+
+## Community Preview 11 People and Archive Health gate - 2026-08-18
+
+Preview 11 repairs the highest-value review surfaces without changing schema,
+source-media authority or the exact Immich 3.1.0 compatibility boundary.
+
+The candidate requires:
+
+- one compact People bar containing the title, result count, review modes,
+  search, sorting, filters and grid size, with no legacy Identity checks overlay;
+- useful tooltips on People and Explore controls, Privacy bucket naming and no
+  ambiguous empty-scope copy;
+- a compact Folder Check command bar that exposes the selected folder, full
+  path, Archive Health route, folder route and Refresh action before the result;
+- fixed-width horizontal copy columns with balanced 4:3 previews and aligned
+  full paths, bytes, dimensions, capture and modified times, location, camera
+  and secondary Immich metadata;
+- pair-specific difference highlighting and one visible Review only
+  preservation recommendation that remains present after byte evidence loads;
+- capped folder-overlap disclosure, 12-group Possible duplicate paging,
+  20-asset evidence batches and selected-comparison byte-detail loading;
+- no em dash in Web source or newly maintained public documentation;
+- no private settings, internal URLs, archive data or private runtime material;
+  and
 - the complete schema-130 service, Web, provider, migration, browser,
   publication-scan, clean-bundle and installer-preflight release gates.
 

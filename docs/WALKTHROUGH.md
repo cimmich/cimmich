@@ -113,9 +113,12 @@ folders, counts and editable titles before writing; one operation receipt can
 undo only the memberships and albums created by that run. Source files and
 sidecars are never moved or rewritten.
 
-People and Person pages can also be narrowed by exact privacy tier, Tags and
-Labels, Places, Events and Things. Those filters remain visible in the URL so a
-review can be resumed or shared without silently changing its scope.
+People and Person pages can also be narrowed by Privacy bucket, Tags and
+Labels, Places, Events and Things. The People directory keeps its title, modes,
+search, sorting, filters and grid size together in one compact top bar. Helpful
+tooltips explain the controls without adding permanent instructional copy.
+Filters remain visible in the URL so a review can be resumed or shared without
+silently changing its scope.
 
 ## 6. Check the health of the archive
 
@@ -132,20 +135,25 @@ The four checks answer different questions:
   metadata become visible review evidence.
 - **Folder Check** compares one folder with the rest of the archive. Its smart
   selector ranks folders with the most duplicate impact first. Select a path to
-  see files in that folder on one side, counterparts elsewhere on the other,
-  the folders they share, and files with no current counterpart outside the
-  selected folder.
-- **Backup status** scans a configured independent destination read-only. It
+  see files in that folder beside their counterparts elsewhere, the folders
+  they share, and files with no current counterpart outside the selected
+  folder. Each copy column aligns its full path, byte size, resolution, capture
+  and modified times, location, camera and additional Immich metadata. Changed
+  rows are highlighted, and a visible preservation candidate is marked for
+  review when the available evidence supports one.
+- **Backup Check** scans a configured independent destination read-only. It
   reports exact matches, changed files, files present only in the archive, and
   files present only in the backup.
 
 Each category loads when you open it. Folder Check builds and caches the native
 duplicate index once, then scopes the detailed evidence to the selected folder.
 Moving between folder candidates does not rerun unrelated exact-copy or backup
-checks.
+checks. Possible duplicate groups appear in small batches, and Folder Check
+loads byte detail only for the comparison currently being inspected.
 
 "Only here" means that Cimmich found no current exact or visual-duplicate lead
 outside the selected folder. It is not proof that a file is safe to remove. A
+recommended visible copy is also review guidance, not deletion proof. A
 backup counts as independent only when the operator mounts a separate storage
 destination with a distinct storage-domain identity. See the
 [read-only backup scan setup](../INSTALL.md#optional-read-only-media-backup-scan).

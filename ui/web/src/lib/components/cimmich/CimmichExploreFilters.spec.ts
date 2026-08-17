@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import TestWrapper from '$lib/components/TestWrapper.svelte';
 import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
 import type {
   CimmichExploreFacetResult,
@@ -43,13 +45,30 @@ beforeEach(() => {
 });
 
 describe('Cimmich Explore protected discovery', () => {
+  it('explains ambiguous top-bar and filter actions with product tooltips', async () => {
+    const source = await readFile('src/lib/components/cimmich/CimmichExploreFilters.svelte', 'utf8');
+
+    expect(source).toContain('Filter this view by privacy bucket, tags, places, events and things');
+    expect(source).toContain('Matching photos out of all photos available in the current viewing mode');
+    expect(source).toContain('Remove every Explore filter');
+    expect(source).toContain('Remove the future capture-date filter');
+    expect(source).toContain('Remove the ${tier} privacy filter');
+    expect(source).toContain('Remove the ${group.label.toLowerCase()} filter');
+    expect(source).toContain('Show only photos in the ${facet.displayName} privacy bucket');
+    expect(source).toContain('Privacy bucket');
+    expect(source).not.toContain('Exact privacy');
+  });
+
   it('starts closed while keeping active filters visible and removable', async () => {
     const activeFilters = { ...filters, labelIds: ['label-restricted'] };
     const onchange = vi.fn();
-    const { getByRole, queryByRole } = render(CimmichExploreFilters, {
-      filters: activeFilters,
-      onchange,
-      result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+    const { getByRole, queryByRole } = render(TestWrapper, {
+      component: CimmichExploreFilters,
+      componentProps: {
+        filters: activeFilters,
+        onchange,
+        result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+      },
     });
 
     const explore = getByRole('button', { name: /Explore/ });
@@ -66,15 +85,22 @@ describe('Cimmich Explore protected discovery', () => {
     const requestedModes: string[] = [];
     const listener = (event: Event) => requestedModes.push((event as CustomEvent<{ mode: string }>).detail.mode);
     globalThis.addEventListener('cimmich:request-viewing-mode', listener);
-    const { getByRole, getByText } = render(CimmichExploreFilters, {
-      filters,
-      initiallyExpanded: true,
-      onchange,
-      result: result(0),
+    const { getByRole, getByText, queryByText } = render(TestWrapper, {
+      component: CimmichExploreFilters,
+      componentProps: {
+        filters,
+        initiallyExpanded: true,
+        onchange,
+        result: result(0),
+      },
     });
 
     expect(getByRole('button', { name: 'Private Enter to inspect' })).toBeVisible();
     expect(getByText('Enter Private for protected tags & labels')).toBeVisible();
+    expect(
+      queryByText('“Private” means Private only, not everything this viewing mode can access.'),
+    ).not.toBeInTheDocument();
+    expect(queryByText('None in this scope')).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Private Enter to inspect' }));
     expect(requestedModes).toEqual(['private']);
     expect(onchange).not.toHaveBeenCalled();
@@ -86,11 +112,14 @@ describe('Cimmich Explore protected discovery', () => {
 
   it('names first-class Labels as tags and labels when Private content is visible', () => {
     cimmichVisibilityManager.recordVisibilityStatus({ viewingMode: 'private' });
-    const { getByRole } = render(CimmichExploreFilters, {
-      filters,
-      initiallyExpanded: true,
-      onchange: vi.fn(),
-      result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+    const { getByRole } = render(TestWrapper, {
+      component: CimmichExploreFilters,
+      componentProps: {
+        filters,
+        initiallyExpanded: true,
+        onchange: vi.fn(),
+        result: result(5626, [{ count: 5626, displayName: 'Restricted', id: 'label-restricted' }]),
+      },
     });
 
     expect(getByRole('combobox', { name: 'Add tag or label filter' })).toHaveTextContent('Restricted (5,626)');

@@ -1,8 +1,9 @@
 import type { AssetResponseDto, DuplicateResponseDto } from '@immich/sdk';
 import { getParentPath } from '$lib/utils/tree-utils';
-import type { ArchiveVariantClassification, ArchiveVariantGroup } from './archive-variant-groups';
+import type { ArchiveCanonicalPlan, ArchiveVariantClassification, ArchiveVariantGroup } from './archive-variant-groups';
 
 export type ArchiveFolderComparisonGroup = {
+  canonicalPlan: ArchiveCanonicalPlan;
   classification: ArchiveVariantClassification;
   differences: string[];
   duplicateId: string;
@@ -157,6 +158,7 @@ export const buildArchiveFolderOverlap = (
     }
     return [
       {
+        canonicalPlan: group.canonicalPlan,
         classification: group.classification,
         differences: group.differences,
         duplicateId: group.duplicateId,

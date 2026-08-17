@@ -9,7 +9,8 @@ remain available without controlling the front door.
 - [Product walkthrough](WALKTHROUGH.md): a visual tour using the fictional
   Cedar House archive.
 - [Archive Health walkthrough](WALKTHROUGH.md#6-check-the-health-of-the-archive):
-  exact copies, possible duplicates, Folder Check and independent backup status.
+  exact copies, possible duplicates, aligned Folder Check evidence and an
+  independent Backup Check.
 - [Install and operate](../INSTALL.md): verify, configure, start, back up,
   update, diagnose and remove Cimmich.
 - [Privacy and data control](../PRIVACY.md): what Cimmich reads, stores, sends
@@ -52,7 +53,7 @@ installation path.
 
 ## Releases and verification
 
-- [Current named release: Community Preview 10](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.10)
+- [Current named release: Community Preview 11](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.11)
 - [Community Preview publication runbook](COMMUNITY_PREVIEW_PUBLICATION.md)
 - [Release-readiness record](RELEASE_READINESS.md)
 - [Public beta changelog](PUBLIC_BETA_CHANGELOG.md)

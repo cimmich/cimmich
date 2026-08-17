@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 10** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 11** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
@@ -58,10 +58,12 @@ owner-controlled context beside Immich.
   moving source media or writing sidecars.
 - **Archive health without deletion authority.** Compare exact bytes and
   possible duplicates, check one folder against the rest of the archive, and
-  scan a configured read-only independent backup. Each category loads only
-  when selected.
+  scan a configured read-only independent backup. Folder Check aligns paths,
+  sizes, dimensions, dates, locations and camera metadata across compact copy
+  columns, while each category loads only when selected.
 - **People exploration with context.** Filter People and a Person's photographs
-  by exact privacy tier, Tags and Labels, Places, Events and Things.
+  by Privacy bucket, Tags and Labels, Places, Events and Things. The People
+  title, modes, search, sorting, filters and grid size share one compact bar.
 - **Owner-controlled review.** Matching may suggest; the archive owner accepts,
   corrects, rejects, merges or undoes every consequential identity decision.
 - **Bounded Local AI review.** From one photo or a small selection, optional

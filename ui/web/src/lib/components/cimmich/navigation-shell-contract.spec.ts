@@ -46,6 +46,19 @@ describe('Cimmich navigation shell contract', () => {
     expect(immichSidebar).toContain('bind:expanded={$cimmichCompanionDropdown}');
     expect(immichSidebar).toContain("{ title: 'Smart Search', href: Route.cimmichSmartSearch()");
     expect(immichSidebar).toContain("{ title: 'Review', href: Route.cimmichSteward()");
+    expect(people).not.toContain('Identity checks');
+    expect(people).not.toContain('Route.cimmichSteward()');
+    expect(people).toContain('{#snippet actions()}');
+    expect(people).toContain(
+      'class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap"',
+    );
+    expect(people).not.toContain('class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:justify-end"');
+    expect(people).toContain('<Tooltip text="Thumbnail size">');
+    expect(people).toContain("tooltip: 'Browse people with accepted photos'");
+    expect(people).toContain("tooltip: 'People with new identity suggestions to review'");
+    expect(people).toContain("tooltip: 'Review unassigned faces that may belong together'");
+    expect(people).toContain("tooltip: 'People with unresolved sorting or identity work'");
+    expect(people).toContain('<Tooltip text="Search names in the current People mode">');
     expect(immichSidebar).toContain("{ title: 'Settings', href: Route.cimmichSettings()");
   });
 });
