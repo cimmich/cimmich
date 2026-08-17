@@ -4,7 +4,7 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## Source current: Demand-loaded Archive Health checks
+## v1.1.0-community-preview.10: Demand-loaded Archive Health checks
 
 - Archive Health is now a first-class navigation destination for exact copies,
   possible duplicates, Folder Check and independent backup status.

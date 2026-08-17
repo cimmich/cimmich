@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. The maintained
-Community Preview 9 advances to schema 130 without rewriting that submission.
+Community Preview 10 advances to schema 130 without rewriting that submission.
 Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible.

@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-13
+Updated: 2026-08-17
 Preserved Build Week public-demo runtime: schema 75/patch 1
 Current Community Preview release: migration-ledger schema 130/patch 1
 Current development source: migration-ledger schema 130/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release candidate: `v1.1.0-community-preview.9` for exact Immich 3.1.0
+Current release candidate: `v1.1.0-community-preview.10` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -30,6 +30,35 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 10 Archive Health gate - 2026-08-17
+
+Preview 10 makes Archive Health a first-class product surface for checking
+copies, folder overlap and an independently mounted backup without creating
+deletion authority. It also removes the repeated archive-wide work that made a
+large folder appear to rescan after selection.
+
+The candidate requires:
+
+- separate Exact copies, Possible duplicates, Folder Check and Backup status
+  categories that load only when selected;
+- a Most impacted folders selector ranked by distinct files with duplicate
+  evidence in other folders, with affected-file and counterpart-folder counts;
+- one cached native duplicate index for folder ranking and selection, followed
+  by evidence requests scoped to the selected folder rather than every archive
+  category;
+- a side-by-side folder comparison that separates shared, internal-only and
+  currently unmatched files and ranks the counterpart folders;
+- a configured backup root with a distinct storage identity, read-only access,
+  complete-file SHA-256 comparison and fail-closed path and symlink handling;
+- explicit copy stating that similarity, overlap and unmatched status are not
+  proof that a file is safe to delete;
+- `nanoid` 3.3.18 or newer in the resolved Web graph; and
+- the complete schema-130 service, Web, provider, migration, browser,
+  publication-scan, clean-bundle and installer-preflight release gates.
+
+Exact clean-tree commit identity, bundle hashes and hosted proof are recorded
+only after the reviewed merge produces the immutable tag target.
 
 ## Community Preview 9 navigation and matching-continuity gate — 2026-08-13
 
