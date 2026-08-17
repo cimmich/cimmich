@@ -1,7 +1,7 @@
 # Community Preview user journeys
 
-Updated: 2026-08-13
-Candidate: `v1.1.0-community-preview.9`
+Updated: 2026-08-17
+Candidate: `v1.1.0-community-preview.10`
 Compatibility target: exact Immich 3.1.0
 
 This is the user-facing acceptance map for the bounded Community Preview. A
@@ -25,6 +25,7 @@ recovery path agree in the signed-in product and in the named automated proof.
 | Library setup          | Inspect and start the root Compose definition or use the guarded installer, connect to Immich, preview the exact scope, import it and understand what still needs review. | Compose and installer both reject an unsupported Immich version before the Cimmich API starts. Credentials are not shown again; permission rejection stays before import; interrupted import resumes.      | `install-operator.test.mjs`; `CimmichImmichSetup.spec.ts`; `immich-onboarding-journey.mjs`; companion lifecycle acceptance. |
 | Models & Guided        | Understand that models and Guided clients are optional, inspect their state and configure one deliberately.                                                               | Core remains usable with both disabled; unsupported or unavailable providers abstain rather than manufacturing evidence.                                                                                   | maintenance component tests; synthetic and stock-Immich lifecycle acceptance.                                               |
 | Maintenance and backup | Inspect processing state, pause or resume work, create a backup and recover from an interrupted or rejected operation.                                                    | Destructive actions require exact confirmation; rejected backup inputs preserve the running installation and its counts.                                                                                   | media-operator journey; companion and public-demo lifecycle acceptance.                                                     |
+| Archive Health         | Open one first-class destination for exact copies, possible duplicates, Folder Check and independent backup status; start with the folders most affected by cross-folder duplicate evidence. | Categories load only when selected; a folder comparison reuses cached duplicate topology; an unconfigured or unsafe backup target fails closed; no result grants deletion authority.                       | `archive-integrity-layout.spec.ts`; `archive-backup-scanner.test.mjs`; all seven browser journeys.                           |
 
 ## Cross-product gates
 

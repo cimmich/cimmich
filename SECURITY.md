@@ -7,7 +7,7 @@ therefore contain unusually sensitive facts even when they contain no media.
 
 | Version                         | Supported                                 |
 | :------------------------------ | :---------------------------------------- |
-| `v1.1.0-community-preview.9`    | Yes, while Community Preview 9 is current |
+| `v1.1.0-community-preview.10`   | Yes, while Community Preview 10 is current |
 | Earlier Community Preview tags  | No; upgrade to the current named release  |
 | Public Beta and Build Week tags | No                                        |
 
