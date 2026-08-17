@@ -31,19 +31,20 @@ The simplest mental model is:
 
 ## Where to go for each job
 
-| I want to…                                    | Open               | What happens                                                                                        |
-| :-------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
-| See the shape of my memory library            | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
-| Browse or organise photos                     | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
-| Find, describe or correct a person            | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
-| Manage animals and unknown detections         | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
-| Describe where a memory happened              | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
-| Record an important object                    | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
-| Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
-| Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
-| Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
-| Understand duplicate or preservation evidence | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.    |
-| Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
+| I want to…                                      | Open               | What happens                                                                                        |
+| :---------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
+| See the shape of my memory library              | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
+| Browse or organise photos                       | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
+| Find, describe or correct a person              | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
+| Manage animals and unknown detections           | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
+| Describe where a memory happened                | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
+| Record an important object                      | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
+| Group a trip, activity or life period           | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
+| Keep records with the memories they explain     | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
+| Find a known combination                        | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
+| Understand duplicate or preservation evidence   | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.    |
+| Compare one folder with the rest of the archive | **Folder Check**   | Count shared, current-only and same-folder evidence, then inspect the largest folder overlaps.      |
+| Connect, tune or diagnose Cimmich               | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
 
@@ -499,15 +500,21 @@ When evidence supports a preferred preservation candidate, it is marked on the
 photo and explained in the same group. Ambiguous or byte-incomplete groups say
 that no safe recommendation exists. Recommendations never change files.
 
-Opening Archive Health from a folder adds a folder checker. It inventories
-every direct file in that folder, then splits each current duplicate group into
-**This folder** and **Elsewhere**. Other folders are ranked by the number of
-source-folder photos they share, so large overlaps can be inspected first.
-**Only here** means no current exact or visual-duplicate lead exists elsewhere;
-it is an evidence state, not proof that no unseen or unprocessed copy exists.
-Pairs retain exact/different/incomplete byte classification and the specific
-size, dimensions, date or metadata differences already available to Archive
-Health.
+### Folder Check
+
+Folder Check is its own Manage-sidebar destination and Archive Health tab. Paste
+an archive folder path there, or choose **Browse folders** and use **Check this
+folder** from any folder. Existing duplicate-folder links also open this same
+destination directly.
+
+It inventories every direct file in the folder, then splits each current
+duplicate group into **This folder** and **Elsewhere**. Other folders are ranked
+by the number of source-folder photos they share, so large overlaps can be
+inspected first. **Only here** means no current exact or visual-duplicate lead
+exists elsewhere; it is an evidence state, not proof that no unseen or
+unprocessed copy exists. Pairs retain exact/different/incomplete byte
+classification and the specific size, dimensions, date or metadata differences
+already available to Archive Health.
 
 ### Backup proof
 
