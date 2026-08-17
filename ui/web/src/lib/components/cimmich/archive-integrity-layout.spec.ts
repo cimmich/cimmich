@@ -87,6 +87,7 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('Check byte details');
     expect(folderComparison).toContain('Every copy is on one line. Highlighted rows contain different values.');
     expect(folderComparison).toContain('alignAssets(group.here, outsideAssets)');
+    expect(folderComparison).toContain('group block aspect-4/3 w-24');
     expect(folderComparison).toContain('Recommended to keep');
     expect(folderComparison).toContain('Review only');
     expect(folderComparison).toContain('This is a review recommendation, not deletion proof.');
