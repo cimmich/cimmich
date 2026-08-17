@@ -66,7 +66,7 @@ describe('Cimmich Explore protected discovery', () => {
     const requestedModes: string[] = [];
     const listener = (event: Event) => requestedModes.push((event as CustomEvent<{ mode: string }>).detail.mode);
     globalThis.addEventListener('cimmich:request-viewing-mode', listener);
-    const { getByRole, getByText } = render(CimmichExploreFilters, {
+    const { getByRole, getByText, queryByText } = render(CimmichExploreFilters, {
       filters,
       initiallyExpanded: true,
       onchange,
@@ -75,6 +75,10 @@ describe('Cimmich Explore protected discovery', () => {
 
     expect(getByRole('button', { name: 'Private Enter to inspect' })).toBeVisible();
     expect(getByText('Enter Private for protected tags & labels')).toBeVisible();
+    expect(
+      queryByText('“Private” means Private only, not everything this viewing mode can access.'),
+    ).not.toBeInTheDocument();
+    expect(queryByText('None in this scope')).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Private Enter to inspect' }));
     expect(requestedModes).toEqual(['private']);
     expect(onchange).not.toHaveBeenCalled();
