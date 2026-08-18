@@ -1,6 +1,7 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation';
   import CimmichDocuments from '$lib/components/cimmich/CimmichDocuments.svelte';
+  import CimmichVisualSearch from '$lib/components/cimmich/CimmichVisualSearch.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import {
@@ -26,6 +27,7 @@
     data: PageData;
   }
 
+  type SearchLens = 'documents' | 'photos' | 'visual';
   let { data }: Props = $props();
   let query = $state(data.initialLens === 'photos' ? data.initialQuery : '');
   let submittedQuery = $state(data.initialLens === 'photos' ? data.initialQuery : '');
@@ -33,16 +35,19 @@
   let error = $state<CimmichServiceError | null>(null);
   let isSearching = $state(false);
   let validationError = $state('');
-  let lens = $state<'documents' | 'photos'>(data.initialLens);
+  let lens = $state<SearchLens>(data.initialLens);
   let documentLensQuery = $state(data.initialLens === 'documents' ? data.initialQuery : '');
+  let visualLensQuery = $state(data.initialLens === 'visual' ? data.initialQuery : '');
+  let visualQueryAssetId = $state(data.initialLens === 'visual' ? data.initialQueryAssetId : '');
   let photoTab = $state<HTMLButtonElement>();
+  let visualTab = $state<HTMLButtonElement>();
   let documentTab = $state<HTMLButtonElement>();
   let searchInput = $state<HTMLInputElement>();
   let failedQuery = $state('');
   let searchGeneration = 0;
   let observedVisibilityVersion = -1;
 
-  const syncRoute = (nextLens: 'documents' | 'photos', nextQuery: string) => {
+  const syncRoute = (nextLens: SearchLens, nextQuery: string, nextQueryAssetId = '') => {
     const url = new URL(globalThis.location.href);
     url.searchParams.set('lens', nextLens);
     if (nextQuery) {
@@ -50,12 +55,21 @@
     } else {
       url.searchParams.delete('q');
     }
+    if (nextQueryAssetId) {
+      url.searchParams.set('queryAssetId', nextQueryAssetId);
+    } else {
+      url.searchParams.delete('queryAssetId');
+    }
     replaceState(url, globalThis.history.state);
   };
 
-  const selectLens = (nextLens: 'documents' | 'photos') => {
+  const selectLens = (nextLens: SearchLens) => {
     lens = nextLens;
-    syncRoute(nextLens, nextLens === 'documents' ? documentLensQuery : submittedQuery);
+    syncRoute(
+      nextLens,
+      nextLens === 'documents' ? documentLensQuery : nextLens === 'visual' ? visualLensQuery : submittedQuery,
+      nextLens === 'visual' ? visualQueryAssetId : '',
+    );
   };
 
   const updateDocumentQuery = (nextQuery: string) => {
@@ -63,14 +77,27 @@
     syncRoute('documents', nextQuery);
   };
 
+  const updateVisualState = (nextQuery: string, nextQueryAssetId: string) => {
+    visualLensQuery = nextQuery;
+    visualQueryAssetId = nextQueryAssetId;
+    syncRoute('visual', nextQuery, nextQueryAssetId);
+  };
+
   const handleLensKeydown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       return;
     }
     event.preventDefault();
-    const nextLens = event.key === 'ArrowLeft' || event.key === 'Home' ? 'photos' : 'documents';
+    const lenses: SearchLens[] = ['photos', 'visual', 'documents'];
+    const currentIndex = lenses.indexOf(lens);
+    const nextLens =
+      event.key === 'Home'
+        ? 'photos'
+        : event.key === 'End'
+          ? 'documents'
+          : lenses[(currentIndex + (event.key === 'ArrowLeft' ? -1 : 1) + lenses.length) % lenses.length];
     selectLens(nextLens);
-    void (nextLens === 'photos' ? photoTab : documentTab)?.focus();
+    void (nextLens === 'photos' ? photoTab : nextLens === 'visual' ? visualTab : documentTab)?.focus();
   };
 
   const asError = (caught: unknown) =>
@@ -140,12 +167,16 @@
         <Icon icon={mdiImageSearchOutline} size="29" />
       </span>
       <h1 class="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">
-        {lens === 'photos' ? 'Find a moment' : 'Find a document'}
+        {lens === 'photos' ? 'Find a moment' : lens === 'visual' ? 'Visual search' : 'Find a document'}
       </h1>
       <p class="mx-auto mt-3 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
         {lens === 'photos'
           ? 'Search names, pets, places, things, events and dates you have recorded in Cimmich.'
-          : 'Search titles, filenames, types, dates and confirmed links.'}
+          : lens === 'visual'
+            ? visualQueryAssetId
+              ? 'Find photos that Immich ranks as visually similar to the photo you opened.'
+              : 'Describe what a photo looks like and let Immich rank visual leads.'
+            : 'Search titles, filenames, types, dates and confirmed links.'}
       </p>
       <div
         class="mx-auto mt-6 inline-flex rounded-full bg-gray-100 p-1 dark:bg-gray-800"
@@ -162,7 +193,19 @@
           aria-selected={lens === 'photos'}
           tabindex={lens === 'photos' ? 0 : -1}
           onkeydown={handleLensKeydown}
-          onclick={() => selectLens('photos')}>Photos</button
+          onclick={() => selectLens('photos')}>Recorded facts</button
+        >
+        <button
+          bind:this={visualTab}
+          id="smart-search-visual-tab"
+          class={`min-h-11 rounded-full px-5 text-sm font-semibold ${lens === 'visual' ? 'bg-white text-primary shadow-sm dark:bg-gray-900' : 'text-gray-600 dark:text-gray-300'}`}
+          type="button"
+          role="tab"
+          aria-controls="smart-search-visual-panel"
+          aria-selected={lens === 'visual'}
+          tabindex={lens === 'visual' ? 0 : -1}
+          onkeydown={handleLensKeydown}
+          onclick={() => selectLens('visual')}>Visual search</button
         >
         <button
           bind:this={documentTab}
@@ -174,7 +217,7 @@
           aria-selected={lens === 'documents'}
           tabindex={lens === 'documents' ? 0 : -1}
           onkeydown={handleLensKeydown}
-          onclick={() => selectLens('documents')}>All documents</button
+          onclick={() => selectLens('documents')}>Documents</button
         >
       </div>
       {#if lens === 'photos'}
@@ -231,6 +274,14 @@
           heading="All documents"
           initialQuery={documentLensQuery}
           onQueryChange={updateDocumentQuery}
+        />
+      </div>
+    {:else if lens === 'visual'}
+      <div id="smart-search-visual-panel" role="tabpanel" aria-labelledby="smart-search-visual-tab">
+        <CimmichVisualSearch
+          initialQuery={visualLensQuery}
+          initialQueryAssetId={visualQueryAssetId}
+          onStateChange={updateVisualState}
         />
       </div>
     {:else}

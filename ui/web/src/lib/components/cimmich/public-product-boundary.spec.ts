@@ -44,13 +44,16 @@ describe('public Cimmich product boundary', () => {
     expect(search).toContain('initialQuery={documentLensQuery}');
   });
 
-  it('keeps draft photo text out of shared URLs and wires both search tabpanels', async () => {
+  it('keeps draft search text out of shared URLs and wires every search tabpanel', async () => {
     const search = await read('../../../routes/(user)/cimmich/smart-search/+page.svelte');
-    expect(search).toContain("nextLens === 'documents' ? documentLensQuery : submittedQuery");
+    expect(search).toContain("nextLens === 'visual' ? visualLensQuery : submittedQuery");
+    expect(search).toContain("nextLens === 'visual' ? visualQueryAssetId : ''");
     expect(search).not.toContain('submittedQuery || query.trim()');
     expect(search).toContain('aria-controls="smart-search-photos-panel"');
+    expect(search).toContain('aria-controls="smart-search-visual-panel"');
     expect(search).toContain('aria-controls="smart-search-documents-panel"');
     expect(search).toContain('id="smart-search-photos-panel" role="tabpanel"');
+    expect(search).toContain('id="smart-search-visual-panel"');
     expect(search).toContain('id="smart-search-documents-panel"');
   });
 

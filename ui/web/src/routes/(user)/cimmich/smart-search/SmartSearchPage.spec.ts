@@ -37,6 +37,7 @@ describe('Smart Search lens continuity', () => {
       data: {
         initialLens: 'documents',
         initialQuery: 'Passport',
+        initialQueryAssetId: '',
         meta: { title: 'Smart Search' },
       },
     });
@@ -57,13 +58,34 @@ describe('Smart Search lens continuity', () => {
     );
     expect(mocks.getDocuments).toHaveBeenLastCalledWith(expect.objectContaining({ query: 'Updated passport' }));
 
-    await user.click(rendered.getByRole('tab', { name: 'Photos' }));
+    await user.click(rendered.getByRole('tab', { name: 'Recorded facts' }));
     expect((mocks.replaceState.mock.lastCall?.[0] as URL).searchParams.get('q')).toBeNull();
     expect(rendered.getByRole('textbox', { name: 'Search your Cimmich library' })).toHaveValue('');
     expect(mocks.searchSmart).not.toHaveBeenCalled();
 
-    await user.click(rendered.getByRole('tab', { name: 'All documents' }));
+    await user.click(rendered.getByRole('tab', { name: 'Documents' }));
     expect(await rendered.findByRole('textbox', { name: 'Search documents' })).toHaveValue('Updated passport');
     expect((mocks.replaceState.mock.lastCall?.[0] as URL).searchParams.get('q')).toBe('Updated passport');
+  });
+
+  it('keeps Visual search separate from recorded facts', async () => {
+    const user = userEvent.setup();
+    const rendered = render(SmartSearchPage, {
+      data: {
+        initialLens: 'photos',
+        initialQuery: '',
+        initialQueryAssetId: '',
+        meta: { title: 'Smart Search' },
+      },
+    });
+
+    await user.click(rendered.getByRole('tab', { name: 'Visual search' }));
+
+    expect((mocks.replaceState.mock.lastCall?.[0] as URL).searchParams.get('lens')).toBe('visual');
+    expect(rendered.getByRole('textbox', { name: 'Describe what the photos look like' })).toBeInTheDocument();
+    expect(
+      rendered.getByText('Immich ranks visual similarity. Results are leads, not facts recorded in Cimmich.'),
+    ).toBeInTheDocument();
+    expect(mocks.searchSmart).not.toHaveBeenCalled();
   });
 });

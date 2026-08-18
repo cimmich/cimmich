@@ -24,6 +24,15 @@ describe('Route', () => {
     });
   });
 
+  describe(Route.cimmichSmartSearch.name, () => {
+    it('opens a photo-scoped visual search without encoding it as text', () => {
+      expect(Route.cimmichSmartSearch()).toBe('/cimmich/smart-search');
+      expect(Route.cimmichSmartSearch({ lens: 'visual', queryAssetId: 'asset-1' })).toBe(
+        '/cimmich/smart-search?lens=visual&queryAssetId=asset-1',
+      );
+    });
+  });
+
   describe(Route.viewCimmichPersonAsset.name, () => {
     it('preserves the Person viewer context with encoded stable identity', () => {
       expect(Route.viewCimmichPersonAsset({ id: 'asset-1', personId: 'person-1', personName: 'Rupert BP' })).toBe(

@@ -4,9 +4,17 @@ import type { PageLoad } from './$types';
 export const load = (async ({ url }) => {
   await authenticate(url);
 
+  const requestedLens = url.searchParams.get('lens');
+
   return {
-    initialLens: url.searchParams.get('lens') === 'documents' ? ('documents' as const) : ('photos' as const),
+    initialLens:
+      requestedLens === 'documents'
+        ? ('documents' as const)
+        : requestedLens === 'visual'
+          ? ('visual' as const)
+          : ('photos' as const),
     initialQuery: (url.searchParams.get('q') ?? '').trim(),
+    initialQueryAssetId: (url.searchParams.get('queryAssetId') ?? '').trim(),
     meta: {
       title: 'Smart Search',
     },

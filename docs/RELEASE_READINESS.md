@@ -510,6 +510,12 @@ Archive Health adds a demand-loaded Rotation review that requests 24 ranked
 sideways-photo leads at a time from Immich Smart Search and reuses the returned
 asset metadata without hydrating the library. Reversible rotate/Undo controls
 do not claim that a lead needs correction or infer a safe direction.
+Source-current Smart Search also exposes Immich visual ranking as its own lens,
+separate from deterministic Recorded facts. Natural-language queries and
+photo-scoped similarity both request 24 image records at a time, reuse the
+returned thumbnail metadata and filter every source ID through the current
+Cimmich visibility projection before display. The viewer toolbar can open this
+lens against the current image without changing either Immich or Cimmich data.
 Schema 122 makes the measured Face reject-noise floor authoritative for identity
 matching and retires only unreviewed candidates that should never have entered
 the queue; accepted owner decisions remain intact.

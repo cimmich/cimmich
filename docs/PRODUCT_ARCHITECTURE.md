@@ -103,8 +103,8 @@ this directory.
 | Pets                 | `routes/(user)/cimmich/pets/+page.svelte`; `CimmichPetUnknownReview`                                                                              | Pet CRUD/media/documents, Pet matching and Unknown review                                                                          | Pet profile and owner decisions durable; detector suggestions derived                                     |
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                                 | context entity, relation, asset, cover, plan and geocoding routes                                                                  | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived                  |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                               | Document metadata/link/content/version routes                                                                                      | metadata in PostgreSQL; imported bytes in the separate content-addressed store                            |
-| Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                                 | deterministic smart-search and Document queries                                                                                    | local read projection over confirmed truth; no search-owned authority                                     |
-| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder, rotation and backup modes; `ArchiveFolderComparison`, `ArchiveRotationReview` and backup-scan client | exact copies, possible-duplicate groups, direct-folder overlap, bounded face-pose rotation candidates, reversible correction commands and read-only backup scan/proof | fingerprints and correction decisions durable; folder inventory, candidate queues, scan state and recommendations derived |
+| Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`, `CimmichVisualSearch`, `CimmichVisualSimilarityAction`                                          | deterministic recorded-fact and Document queries; supported Immich `query` / `queryAssetId` visual ranking                          | local confirmed truth stays authoritative; Immich results are paged, visibility-filtered ranked leads     |
+| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder, rotation and backup modes; `ArchiveFolderComparison`, `ArchiveRotationReview` and backup-scan client | exact copies, possible-duplicate groups, direct-folder overlap, bounded Immich visual rotation leads, reversible correction commands and read-only backup scan/proof | fingerprints and correction decisions durable; folder inventory, candidate queues, scan state and recommendations derived |
 | Settings/setup       | settings, setup and maintenance routes                                                                                                            | integration, onboarding, provider, SourcePack, Local AI and Guided operators                                                       | configuration and reviewed lifecycle state; model output remains observation                              |
 
 ## Identity and evidence model
@@ -256,13 +256,23 @@ optional evidence pipeline and must not be implied by the Basic contract.
 
 ## Search
 
-Basic Smart Search deterministically resolves current visible names, aliases,
-context descriptions and ISO date selectors, then intersects recognized
-groups in PostgreSQL. It returns both the interpretation and unresolved terms.
+Recorded-facts search deterministically resolves current visible names,
+aliases, context descriptions and ISO date selectors, then intersects
+recognized groups in PostgreSQL. It returns both the interpretation and
+unresolved terms.
 
 That “abstain visibly” contract is important: broad media retrieval is not a
 valid fallback for an unrecognized query. Visibility is part of the SQL
 population before result counts and `hasMore` are calculated.
+
+Visual search is an explicitly separate client path through Immich's supported
+Smart Search API. It accepts either natural-language `query` or photo-scoped
+`queryAssetId`, requests 24 image records at a time, removes the reference photo
+from its own result set and filters the returned source IDs through Cimmich's
+current visibility projection before paint. The Immich response supplies the
+thumbnail and display metadata, so there is no per-result asset-detail fan-out.
+The product describes these results as ranked visual leads because the API
+does not return an explanation or stable similarity score.
 
 ## Archive identity and duplicate evidence
 

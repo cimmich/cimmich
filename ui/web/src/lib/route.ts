@@ -139,7 +139,8 @@ export const Route = {
     }),
   cimmichPlaces: () => '/cimmich/places',
   cimmichThings: () => '/cimmich/things',
-  cimmichSmartSearch: () => '/cimmich/smart-search',
+  cimmichSmartSearch: (params?: { lens?: 'documents' | 'photos' | 'visual'; q?: string; queryAssetId?: string }) =>
+    '/cimmich/smart-search' + asQueryString(params),
   cimmichSettings: () => '/cimmich/settings',
 
   // photos

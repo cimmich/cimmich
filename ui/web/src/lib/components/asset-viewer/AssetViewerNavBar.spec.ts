@@ -109,6 +109,7 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('id="cimmich-photo-overlay-toolbar"');
     expect(source).toContain('<CimmichSummaryAction {asset}');
     expect(source).toContain('<CimmichDuplicateIndicator sourceAssetId={asset.id} variant="navbar" />');
+    expect(source).toContain('<CimmichVisualSimilarityAction sourceAssetId={asset.id} />');
     expect(source).toContain('<CimmichFileLocationActions {asset} variant="overlay" />');
     expect(source).not.toContain('<CimmichAssetVisibility');
     expect(source).not.toContain('Tooltip text="Immich view · All photos are visible"');
@@ -123,6 +124,17 @@ describe('AssetViewerNavBar component', () => {
     expect(source).toContain('<TooltipProvider delayDuration={120}>');
     expect(source).toContain('<Tooltip text="Local AI">');
     expect(source).not.toContain('title="Local AI"');
+  });
+
+  it('routes visual similarity through the disclosed Cimmich search lens', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/lib/components/cimmich/CimmichVisualSimilarityAction.svelte'),
+      'utf8',
+    );
+
+    expect(source).toContain('<Tooltip text="Find visually similar">');
+    expect(source).toContain("Route.cimmichSmartSearch({ lens: 'visual', queryAssetId: sourceAssetId })");
+    expect(source).toContain('aria-label="Find visually similar photos"');
   });
 
   it('keeps the editable summary in a fourth Custom tab with import choices', () => {

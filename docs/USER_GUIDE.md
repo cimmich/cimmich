@@ -449,20 +449,26 @@ lifecycle and security behavior.
 
 ## Smart Search
 
-Smart Search has two lenses:
+Smart Search has three separate lenses:
 
-- **Photos** searches confirmed Person and Pet names/aliases, Place/Thing/Event
-  names and descriptions, plus exact ISO day, month or year selectors; and
-- **All documents** searches confirmed Document metadata and links.
+- **Recorded facts** searches confirmed Person and Pet names/aliases,
+  Place/Thing/Event names and descriptions, plus exact ISO day, month or year
+  selectors;
+- **Visual search** asks Immich to rank photos by a natural-language scene
+  description or by similarity to an open photo; and
+- **Documents** searches confirmed Document metadata and links.
 
 Photo selectors are intersected. A query such as “Maya at Bluewater in 2024”
 returns media satisfying the recognized combination. The response explains the
 selectors it used and lists unresolved terms rather than pretending that an
 unsupported phrase was understood.
 
-Basic Smart Search is deterministic, local and model-free. Optional semantic
-or machine-assisted interpretation must remain a separate, disclosed layer and
-cannot silently change confirmed Cimmich truth.
+Recorded facts is deterministic, local and model-free. Visual search is a
+separate, disclosed Immich layer. It pages 24 ranked leads at a time, filters
+them through the current Cimmich viewing scope and never presents its order as
+a fact or stable score. From an open image, **Find visually similar** opens the
+same lens using that photo as the reference. Neither path changes confirmed
+Cimmich truth.
 
 ## Archive Health
 
