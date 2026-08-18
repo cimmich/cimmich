@@ -99,6 +99,14 @@ test("local runtime secrets, images and browser response headers are hardened", 
     );
   }
   assert.match(publicDemoCompose, /PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
+  assert.match(
+    publicDemoGateway,
+    /location = \/cimmich \{[\s\S]*try_files \/index\.html =404;[\s\S]*\}/,
+  );
+  assert.match(
+    publicDemoGateway,
+    /location = \/cimmich\/ \{[\s\S]*try_files \/index\.html =404;[\s\S]*\}/,
+  );
   for (const compose of [companionCompose, publicDemoCompose]) {
     assert.match(
       compose,
@@ -166,6 +174,28 @@ test("local runtime secrets, images and browser response headers are hardened", 
   assert.ok(publicDemoApi);
   assert.match(publicDemoApi, /no-new-privileges:true/);
   assert.match(publicDemoApi, /cap_drop: \[ALL\]/);
+});
+
+test("the dedicated Immich companion is structurally read-only", async () => {
+  const [companion, install] = await Promise.all([
+    source("service/src/immich-companion.mjs"),
+    source("INSTALL.md"),
+  ]);
+  const allowlist = companion.match(
+    /const JSON_ROUTE_ALLOWLIST = \[(?<body>[\s\S]*?)\n\];/,
+  )?.groups?.body;
+  assert.ok(allowlist);
+  assert.doesNotMatch(allowlist, /method: "(?:DELETE|PATCH|PUT)"/);
+  assert.doesNotMatch(
+    allowlist,
+    /\/albums|\/tags|\/assets\/(?:bulk|delete|update)/,
+  );
+  assert.match(allowlist, /method: "POST", path: \/\^\\\/search\\\/metadata/);
+  assert.match(companion, /readOnly: true/);
+  assert.match(
+    install,
+    /Do not grant asset, Face, Person, user or administration write permissions/,
+  );
 });
 
 test("Vulkan deployment grants only read/write access to the render node", async () => {

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-const schemaVersion = "cimmich.bulk-album-operation.v1";
+const schemaVersion = "cimmich.bulk-album-operation.v2";
 const operationStates = new Set([
   "applied",
   "applying",
@@ -39,6 +39,19 @@ const cleanDigest = (value) => {
     );
   }
   return digest;
+};
+
+const cleanOrganizationDecisionId = (value, { required = false } = {}) => {
+  const decisionId = String(value || "").trim();
+  if (!decisionId && !required) return null;
+  if (!/^label_decision_[0-9a-f]{32}$/.test(decisionId)) {
+    throw typedError(
+      "A stable Cimmich organisation decision ID is required",
+      400,
+      "BULK_ALBUM_CHECKPOINT_DECISION_INVALID",
+    );
+  }
+  return decisionId;
 };
 
 const cleanManifest = (value) => {
@@ -141,6 +154,7 @@ const projectOperation = (row, checkpoints = []) => ({
     assetIds: checkpoint.asset_ids,
     batchSequence: Number(checkpoint.batch_sequence),
     checkpointId: checkpoint.checkpoint_id,
+    organizationDecisionId: checkpoint.organization_decision_id,
     sourcePath: checkpoint.source_path,
     state: checkpoint.state,
   })),
@@ -253,6 +267,7 @@ export const createBulkAlbumOperationStore = (sql) => {
       assetIds,
       batchSequence,
       commandId,
+      organizationDecisionId,
       operationId,
       sourcePath,
     }) {
@@ -276,6 +291,10 @@ export const createBulkAlbumOperationStore = (sql) => {
           albumCreated: albumCreated === true,
         }),
         batchSequence: sequence,
+        organizationDecisionId: cleanOrganizationDecisionId(
+          organizationDecisionId,
+          { required: !albumCreated && assetIds?.length > 0 },
+        ),
         operationId: id,
         sourcePath: cleanText(sourcePath, "Source path", 2000),
       };
@@ -317,11 +336,13 @@ export const createBulkAlbumOperationStore = (sql) => {
         await tx`
           INSERT INTO bulk_album_operation_checkpoint (
             checkpoint_id, operation_id, command_id, batch_sequence,
-            source_path, album_id, album_name, album_created, asset_ids
+            source_path, album_id, album_name, album_created, asset_ids,
+            organization_decision_id
           ) VALUES (
             ${checkpointId}, ${id}, ${command}, ${sequence},
             ${input.sourcePath}, ${input.albumId}, ${input.albumName},
-            ${input.albumCreated}, ${input.assetIds}
+            ${input.albumCreated}, ${input.assetIds},
+            ${input.organizationDecisionId}
           )
         `;
         await tx`

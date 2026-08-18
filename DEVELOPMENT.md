@@ -13,18 +13,31 @@ Cimmich is an additive companion, not an alternate Immich database writer.
 flowchart LR
     Owner["Archive owner"] --> UI["Cimmich UI in the Immich-derived web shell"]
     UI --> Gateway["Authenticated same-origin gateway"]
-    Gateway --> Immich["Supported Immich interfaces"]
+    Gateway -. "authenticated read presentation" .-> Immich["Supported Immich interfaces"]
     Gateway --> API["Cimmich service"]
     API --> DB["Separate Cimmich PostgreSQL database"]
     API --> Docs["Separate Cimmich document store"]
     API --> Providers["Optional local evidence providers"]
     Immich -. "read-only inventory and bounded media reads" .-> API
-    API -. "never writes Immich DB or source media" .-> Immich
+    API -. "read-only inventory and bounded media reads" .-> Immich
 ```
 
 The service owns Cimmich state, migrations, jobs, decisions and projections.
 Immich remains the base photo-management product and owns authentication and
 original media.
+
+### Organisation write boundary
+
+Cimmich organisation writes use `asset_label`, append-only membership events
+and exact Undo decisions in the separate Cimmich database. Schema 131 adds
+first-class kinds for ordinary labels, collections, favourite state and archive
+state. The folder manifest, Bulk Organise and selected-photo action surfaces all
+use that contract. Native Immich tags, albums, favourite state and archive state
+may be read as source filters, but Cimmich never mutates them.
+
+`public-product-boundary.spec.ts` rejects the Immich SDK mutation functions from
+those Cimmich surfaces. `security-hardening.test.mjs` separately proves that the
+long-lived companion allowlist contains no Immich update or delete method.
 
 ### Archive Health read path
 
@@ -184,6 +197,22 @@ vanity percentage or automatic threshold updates.
 Run the smallest affected test while iterating, then finish with the relevant
 workspace gate. Do not use a broad green suite to hide a missing focused test.
 
+### Face matching next-action order
+
+The operator status is a user-facing state machine. Once Enhanced and the local
+provider are ready, incomplete analysis of the currently eligible Faces takes
+priority over SourcePack rebuild, hold and review states unless current provider
+embeddings already cover that eligible set. This prevents a wider viewing mode
+from revealing new evidence while the interface continues to offer only Build
+again. Preserve that ordering with a status regression test whenever a new next
+action is introduced.
+
+The isolated public demo has two additional release contracts. Exact
+`/cimmich` and `/cimmich/` requests must serve the SPA entry point even though
+the built UI contains a `cimmich` asset directory, and `install-face-provider`
+must not require a browser owner session after the initializer and API health
+check have succeeded.
+
 ## Cross-layer and release checks
 
 Changes crossing data, provider or lifecycle boundaries may also require:
@@ -230,7 +259,8 @@ port procedure alongside the compatibility proof.
 Before changing a data path, preserve these invariants:
 
 - Immich is the base product; Cimmich owns only separate derived state.
-- Cimmich does not directly write the Immich database or source-media bytes.
+- Cimmich does not write Immich albums, memberships, tags, asset metadata,
+  database state or source-media bytes.
 - Face, Head, Body and Presence are different evidence types.
 - Model output is candidate evidence, never automatic identity authority.
 - Consequential owner decisions need visible failure, replay, conflict and Undo

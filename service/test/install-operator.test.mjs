@@ -233,6 +233,8 @@ test("guided install stops at signed-in preview and documentation separates both
     providerInstall,
     /immich-credential|refresh_immich_companion/,
   );
+  assert.doesNotMatch(providerInstall, /canonical_get/);
+  assert.match(providerInstall, /"status":"CONNECTED"/);
 
   assert.match(
     install,

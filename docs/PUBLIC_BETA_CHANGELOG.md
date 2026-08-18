@@ -4,6 +4,34 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.12: Read-only Immich boundary and matching continuity
+
+- Cimmich organisation now writes only to Cimmich-owned state. Folder manifests
+  create collections, and bulk or selected-photo tags, favourites and archive
+  choices use append-only Cimmich decisions with exact Undo. No Cimmich path
+  mutates Immich albums, memberships, tags or asset metadata.
+- Schema 131 adds first-class collection, favourite and archive organisation
+  kinds. Pre-131 browser Undo receipts are rejected so they cannot replay an
+  old Immich mutation; existing Immich data is left untouched.
+
+- Opening `/cimmich` or `/cimmich/` in the isolated public demo now reaches
+  the Cimmich application directly instead of colliding with its asset folder.
+- Newly eligible Faces now take priority over a held or pending reference pack.
+  Switching to a wider viewing mode therefore offers the missing analysis
+  before SourcePack review or rebuilding continues.
+- The public demo face-provider installer now exits successfully after its
+  checksum-verified model install, API restart and health check. It no longer
+  performs an owner-session request that could report a false failure.
+- Public demo Guided tokens are created and restored with owner-only `0600`
+  permissions, matching the documented local-secret boundary.
+- People distinguishes directory membership from photos visible in the current
+  viewing mode. Stale review hints are shown as a check in progress and the
+  Identity overview uses the loaded actionable queue instead of raw old claims.
+- Smart Search explains semantic results when no named Person, Place, Event or
+  label was resolved, so What matched is never an unexplained empty panel.
+- The final Bluewater demonstration photo now carries the same July 2022
+  capture and folder story as the Bluewater Weekend event.
+
 ## v1.1.0-community-preview.11: Clearer People and Archive Health review
 
 - The People directory now keeps its title, result count, review modes, search,

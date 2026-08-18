@@ -2,11 +2,11 @@
 
 Updated: 2026-08-18
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview release: migration-ledger schema 130/patch 1
-Current development source: migration-ledger schema 130/patch 1
+Current Community Preview release: migration-ledger schema 131/patch 1
+Current development source: migration-ledger schema 131/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release candidate: `v1.1.0-community-preview.11` for exact Immich 3.1.0
+Current release candidate: `v1.1.0-community-preview.12` for exact Immich 3.1.0
 
 ## Community Preview release contract
 
@@ -30,6 +30,42 @@ Release evidence must be produced from one clean immutable commit and include:
   recovery checks; and
 - one final receipt naming the commit, tree, artifacts, checksums, support
   boundary, known limitations and rollback path.
+
+## Community Preview 12 matching and demo-route gate - 2026-08-18
+
+Preview 12 repairs the two release-blocking defects found in an independent
+Preview 11 newcomer walkthrough, closes the related false-failure and
+explanation gaps, and enforces the corrected Immich read-only product boundary.
+
+The candidate requires:
+
+- direct `200` application responses for both `/cimmich` and `/cimmich/` in the
+  isolated demo, with deep SPA routes and static assets still intact;
+- `run_recognition` whenever eligible Face evidence exceeds analysed evidence,
+  even when the latest proposed SourcePack is held or awaiting review;
+- no authenticated integration-status request after the public demo provider
+  initializer has completed, while checksum verification, API restart and
+  health proof remain mandatory;
+- owner-only `0600` permissions for every generated or restored public-demo
+  Guided token;
+- People copy that distinguishes directory members, visible photos and people
+  with visible photos, plus review hints that cannot present stale counts as
+  current work;
+- Identity overview proposal notes derived from the loaded actionable review
+  queue rather than all historical candidate claims;
+- a useful semantic explanation when Smart Search returns results without a
+  named selector or date interpretation;
+- one consistent July 2022 capture and folder story for all Bluewater Weekend
+  demo media; and
+- schema 131 Cimmich-owned collections, tags, favourites and archive decisions,
+  with no Cimmich-originated Immich album, membership, tag or metadata writes;
+- old browser mutation receipts rejected without altering existing Immich data;
+  and
+- the complete schema-131 service, Web, provider, migration, browser,
+  publication-scan, clean-bundle and installer-preflight release gates.
+
+Exact clean-tree commit identity, bundle hashes and hosted proof are recorded
+only after the reviewed merge produces the immutable tag target.
 
 ## Community Preview 10 Archive Health gate - 2026-08-17
 
@@ -437,7 +473,7 @@ This is the go/no-go checklist for publishing Cimmich source, a downloadable
 demo and launch media. It separates product proof from legal/publication choices
 and from matching claims that have not cleared their gates.
 
-Schema 78 opened the post-submission Public Beta development line (current source is schema 128; see the header). Schema 76 added
+Schema 78 opened the post-submission Public Beta development line (current source is schema 131; see the header). Schema 76 added
 persisted Person display framing; schema 77 repairs unnamed-Person onboarding
 follow-up admission; schema 78 adds durable, provenance-bound full-library
 identity-audit runs and separate review-only queues for untagged matches and
@@ -622,6 +658,10 @@ Schema 130 durably records both ranked-query and independent-verification
 frontiers on every identity-audit run. The owner surface reports partial audit
 coverage explicitly, and legacy runs state that they predate complete limit
 reporting rather than presenting a bounded queue as exhaustive.
+Schema 131 replaces the historical Immich album, membership, tag, favourite
+and archive write paths with Cimmich-owned organisation decisions. Existing
+Immich data and legacy receipt identifiers are preserved without replay, while
+new collections and library state have Cimmich readback and exact Undo.
 Community Preview 9 advances the maintained release to schema 130 while the
 schema-128 Preview 8 tag and bundles remain immutable.
 

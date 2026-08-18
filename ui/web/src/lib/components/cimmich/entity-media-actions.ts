@@ -1,4 +1,3 @@
-import type { AssetVisibility } from '@immich/sdk';
 import {
   mdiAccountMultipleOutline,
   mdiArchiveArrowDownOutline,
@@ -129,21 +128,14 @@ export const cimmichEntityMediaActionIcon = (
 export type CimmichEntityMediaActionReceipt = {
   action: CimmichEntityMediaActionKind;
   assetCorrectionDecisionIds?: string[];
-  albumId: string;
   assetIds: string[];
   completedAt: string;
   contextDecisionIds: string[];
   label: string;
-  nativePrevious: Array<{
-    id: string;
-    isFavorite: boolean;
-    visibility: AssetVisibility;
-  }>;
+  labelDecisionIds: string[];
   presenceDecisionIds: string[];
-  sourceAssetIds: string[];
-  tagId: string;
   targetId: string;
-  version: 1;
+  version: 2;
   visibilityDecisionIds: string[];
 };
 
@@ -178,27 +170,16 @@ export const isCimmichEntityMediaActionReceipt = (value: unknown): value is Cimm
   }
   const receipt = value as Record<string, unknown>;
   return (
-    receipt.version === 1 &&
+    receipt.version === 2 &&
     actions.has(receipt.action as CimmichEntityMediaActionKind) &&
     (receipt.assetCorrectionDecisionIds === undefined || stringArray(receipt.assetCorrectionDecisionIds)) &&
-    typeof receipt.albumId === 'string' &&
     stringArray(receipt.assetIds) &&
     typeof receipt.completedAt === 'string' &&
     Number.isFinite(Date.parse(receipt.completedAt)) &&
     stringArray(receipt.contextDecisionIds) &&
     typeof receipt.label === 'string' &&
-    Array.isArray(receipt.nativePrevious) &&
-    receipt.nativePrevious.every(
-      (item) =>
-        item &&
-        typeof item === 'object' &&
-        typeof (item as Record<string, unknown>).id === 'string' &&
-        typeof (item as Record<string, unknown>).isFavorite === 'boolean' &&
-        typeof (item as Record<string, unknown>).visibility === 'string',
-    ) &&
+    stringArray(receipt.labelDecisionIds) &&
     stringArray(receipt.presenceDecisionIds) &&
-    stringArray(receipt.sourceAssetIds) &&
-    typeof receipt.tagId === 'string' &&
     typeof receipt.targetId === 'string' &&
     stringArray(receipt.visibilityDecisionIds)
   );
@@ -241,7 +222,7 @@ export const cimmichEntityMediaActionLabel = (
   currentScope?: CimmichEntityMediaScope | null,
 ) =>
   ({
-    'album-add': 'Add to album',
+    'album-add': 'Add to Cimmich collection',
     archive: 'Archive',
     'context-detach': `Remove from ${currentScope?.displayName || 'this page'}`,
     'event-attach': 'Add to Event',
@@ -253,8 +234,8 @@ export const cimmichEntityMediaActionLabel = (
     'presence-current': `Mark ${currentSubject?.displayName || 'subject'} present`,
     'presence-person': 'Mark Person present',
     'presence-pet': 'Mark Pet present',
-    'tag-add': 'Add tag',
-    'tag-remove': 'Remove tag',
+    'tag-add': 'Add Cimmich tag',
+    'tag-remove': 'Remove Cimmich tag',
     unarchive: 'Unarchive',
     unfavorite: 'Remove favourite',
     'visibility-personal': 'Set photo privacy to Personal',

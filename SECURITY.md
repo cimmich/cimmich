@@ -7,7 +7,7 @@ therefore contain unusually sensitive facts even when they contain no media.
 
 | Version                         | Supported                                 |
 | :------------------------------ | :---------------------------------------- |
-| `v1.1.0-community-preview.11`   | Yes, while Community Preview 11 is current |
+| `v1.1.0-community-preview.12`   | Yes, while Community Preview 12 is current |
 | Earlier Community Preview tags  | No; upgrade to the current named release  |
 | Public Beta and Build Week tags | No                                        |
 
@@ -30,7 +30,9 @@ source-library metadata. Use synthetic fixtures wherever possible.
 ## Security boundary
 
 Cimmich keeps its derived state in a database separate from Immich and must not
-write the Immich database or source-media bytes. Private viewing mode is a
+write Immich albums, memberships, tags, asset metadata, database state or
+source-media bytes. Cimmich collections, labels, favourites and archive choices
+are append-only decisions in Cimmich-owned state. Private viewing mode is a
 local presentation convenience inside an already authenticated Immich session;
 it is not encryption, an access-control list, a vault, or protection from a
 host administrator. Its password is owner-resettable from Settings without the

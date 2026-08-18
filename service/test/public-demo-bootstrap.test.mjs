@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   buildPublicDemoPlan,
+  captureTimeFor,
   digest,
   parseCsv,
   publicDemoExternalFolderForAsset,
@@ -158,8 +159,9 @@ test("public demo External Library has stable, human-readable nested folders", (
   );
   assert.equal(
     publicDemoExternalFolderForAsset("CHA-051"),
-    "Bluewater Weekend/2025/October",
+    "Bluewater Weekend/2022/July",
   );
+  assert.match(captureTimeFor(51), /^2022-07-17T/);
 });
 
 test("public demo plan binds exactly 51 accepted assets and all product sections", () => {

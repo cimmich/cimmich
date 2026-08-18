@@ -87,13 +87,13 @@
             >
           </div>
         {/if}
-        {#if action === 'label-add'}
+        {#if action === 'label-add' || action === 'tag-add' || action === 'album-add'}
           <div class="flex gap-2">
             <input
               class="min-w-0 flex-1 rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
               bind:value={newLabelName}
-              placeholder="Create a Cimmich label"
-              aria-label="New Cimmich label name"
+              placeholder={action === 'album-add' ? 'Create a Cimmich collection' : 'Create a Cimmich label'}
+              aria-label={action === 'album-add' ? 'New Cimmich collection name' : 'New Cimmich label name'}
             />
             <button
               class="rounded-xl border border-black/15 px-3 py-2 text-xs font-semibold hover:bg-black/5 disabled:opacity-50 dark:border-white/15 dark:hover:bg-white/5"
@@ -134,6 +134,6 @@
     <CimmichFolderAlbumManifest {rootPath} />
   {/if}
   <p class="mt-4 text-xs/5 text-immich-fg/55 dark:text-immich-dark-fg/55">
-    Cimmich labels and album memberships live in databases, not beside originals. Folder creation never moves files.
+    Collections, tags, favourites and archive choices live in Cimmich. Immich and original files remain read-only.
   </p>
 </section>

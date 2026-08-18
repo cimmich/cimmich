@@ -269,7 +269,11 @@ test("provider-unavailable status abstains while retaining Basic truth", async (
 });
 
 test("provider status separates eligible analysis from usable embeddings", async () => {
-  const makeOperator = (analysedFaces, eligibleFaces = 7) =>
+  const makeOperator = (
+    analysedFaces,
+    eligibleFaces = 7,
+    providerEmbeddings = 4,
+  ) =>
     createFaceMatchingOperator({
       matchingProvider: {
         configDigest: "a".repeat(64),
@@ -297,7 +301,7 @@ test("provider status separates eligible analysis from usable embeddings", async
               accepted_faces: 7,
               analysed_faces: analysedFaces,
               eligible_faces: eligibleFaces,
-              provider_embeddings: 4,
+              provider_embeddings: providerEmbeddings,
             },
           ];
         }
@@ -334,6 +338,15 @@ test("provider status separates eligible analysis from usable embeddings", async
     providerEmbeddings: 4,
   });
   assert.equal(scopedComplete.next.action, "compile_source_pack");
+
+  const alreadyEmbedded = await makeOperator(4, 7, 7).status();
+  assert.deepEqual(alreadyEmbedded.evidence, {
+    acceptedFaces: 7,
+    analysedFaces: 4,
+    eligibleFaces: 7,
+    providerEmbeddings: 7,
+  });
+  assert.equal(alreadyEmbedded.next.action, "run_recognition");
 
   const noEligibleEvidence = await makeOperator(0, 0).status();
   assert.deepEqual(noEligibleEvidence.next, {
@@ -379,6 +392,76 @@ test("provider status separates eligible analysis from usable embeddings", async
   assert.deepEqual((await allAbstained.status()).next, {
     action: "await_more_evidence",
     reason: "NO_USABLE_PROVIDER_EMBEDDINGS",
+  });
+});
+
+test("newly eligible faces take priority over a held proposed SourcePack", async () => {
+  const operator = createFaceMatchingOperator({
+    matchingProvider: {
+      configDigest: "a".repeat(64),
+      modelFamily: "synthetic-face",
+      modelVersion: "v1",
+      providerConfigDigest: "b".repeat(64),
+      providerId: "synthetic-provider",
+      vectorSpaceId: "synthetic-space-v1",
+    },
+    providerReceipt: { state: "ready" },
+    repository: {
+      async faceMatchingStatus() {
+        return {
+          enhanced: { enabled: true },
+          sourcePack: { activePassed: 0, awaitingReview: 1 },
+          state: "needs_operator_review",
+        };
+      },
+    },
+    sql: async (strings) => {
+      const query = strings.join("");
+      if (query.includes("WITH accepted AS")) {
+        return [
+          {
+            accepted_faces: 8,
+            analysed_faces: 4,
+            eligible_faces: 8,
+            provider_embeddings: 4,
+          },
+        ];
+      }
+      if (query.includes("WITH active AS")) {
+        return [
+          {
+            active_pack_id: null,
+            pending_rebuilds: 0,
+            proposed_pack_id: "pack-held",
+          },
+        ];
+      }
+      if (query.includes("SELECT pack.pack_id")) {
+        return [
+          {
+            evaluation_status: "untested",
+            evaluation_summary: {},
+            manifest: {
+              evaluationContext: {
+                reason: "INSUFFICIENT_BALANCED_OPEN_SET_HOLDOUT",
+                reviewability: "operator_hold_required",
+              },
+            },
+            pack_id: "pack-held",
+            predecessor_pack_id: null,
+            state: "proposed",
+          },
+        ];
+      }
+      throw new Error(`Unexpected status query: ${query}`);
+    },
+  });
+
+  const status = await operator.status();
+  assert.equal(status.latestPack.packId, "pack-held");
+  assert.deepEqual(status.next, {
+    action: "run_recognition",
+    reason: "PROVIDER_EVIDENCE_INCOMPLETE",
   });
 });
 

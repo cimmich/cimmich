@@ -11,7 +11,7 @@
     getCimmichContextEntities,
     getCimmichAssetLabels,
     getCimmichPeople,
-    getCimmichPersonAssetsPage,
+    getCimmichTagAssets,
     getCimmichVisibleMapAssetBindings,
     setCimmichVisibilityObjects,
     undoCimmichContextDecision,
@@ -23,15 +23,9 @@
     type CimmichVisibilityTier,
   } from '$lib/services/cimmich.service';
   import {
-    addAssetsToAlbum,
-    AssetVisibility,
-    bulkTagAssets,
     getAllAlbums,
     getAllTags,
-    removeAssetFromAlbum,
     searchAssets,
-    untagAssets,
-    updateAssets,
     type AlbumResponseDto,
     type AssetResponseDto,
     type MetadataSearchDto,
@@ -52,13 +46,11 @@
   import CimmichBulkPhotoPreview from './CimmichBulkPhotoPreview.svelte';
   import CimmichBulkPhotoStatus from './CimmichBulkPhotoStatus.svelte';
   import {
-    BULK_PHOTO_SORTER_BATCH_SIZE,
     BULK_PHOTO_SORTER_PAGE_SIZE,
     BULK_PHOTO_SORTER_PREVIEW_SIZE,
     buildBulkPhotoSorterSearch,
     bulkPhotoSorterActionLabel,
     bulkPhotoSorterActionNeedsTarget,
-    bulkPhotoSorterChangedAssets,
     bulkPhotoSorterFilterFingerprint,
     bulkPhotoSorterMappedIds,
     bulkPhotoSorterSameSnapshot,
@@ -78,7 +70,12 @@
   let action = $state<BulkPhotoSorterActionKind>('label-add');
   let targetId = $state('');
   let albums = $state<AlbumResponseDto[]>([]);
+  let collections = $state<CimmichAssetLabel[]>([]);
   let labels = $state<CimmichAssetLabel[]>([]);
+  let organizationStates = $state<Record<'archive' | 'favorite', CimmichAssetLabel | undefined>>({
+    archive: undefined,
+    favorite: undefined,
+  });
   let people = $state<CimmichPerson[]>([]);
   let tags = $state<TagResponseDto[]>([]);
   let places = $state<CimmichContextEntity[]>([]);
@@ -115,11 +112,11 @@
   );
   const targetOptions = $derived(
     action === 'album-add'
-      ? albums.map(({ id, albumName }) => ({ id, label: albumName }))
+      ? collections.map(({ labelId, displayName }) => ({ id: labelId, label: displayName }))
       : action === 'label-add' || action === 'label-remove'
         ? labels.map(({ labelId, displayName }) => ({ id: labelId, label: displayName }))
         : action === 'tag-add' || action === 'tag-remove'
-          ? tags.map(({ id, name }) => ({ id, label: name }))
+          ? labels.map(({ labelId, displayName }) => ({ id: labelId, label: displayName }))
           : action === 'place-attach'
             ? places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName }))
             : action === 'event-attach'
@@ -151,13 +148,26 @@
     optionsLoading = true;
     optionsError = '';
     try {
-      const [albumItems, peopleResult, tagItems, placeItems, eventItems, labelItems] = await Promise.all([
+      const [
+        albumItems,
+        peopleResult,
+        tagItems,
+        placeItems,
+        eventItems,
+        labelItems,
+        collectionItems,
+        favoriteItems,
+        archiveItems,
+      ] = await Promise.all([
         getAllAlbums({ isOwned: true }),
         getCimmichPeople(500, '', { presentation: false }),
         getAllTags(),
         getCimmichContextEntities('places', { limit: 500 }),
         getCimmichContextEntities('events', { limit: 500 }),
         getCimmichAssetLabels(),
+        getCimmichAssetLabels('', 250, 'collection'),
+        getCimmichAssetLabels('', 1, 'favorite'),
+        getCimmichAssetLabels('', 1, 'archive'),
       ]);
       albums = [...albumItems].sort((left, right) => left.albumName.localeCompare(right.albumName));
       people = peopleResult
@@ -167,6 +177,8 @@
       places = [...placeItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
       events = [...eventItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
       labels = [...labelItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
+      collections = [...collectionItems].sort((left, right) => left.displayName.localeCompare(right.displayName));
+      organizationStates = { archive: archiveItems[0], favorite: favoriteItems[0] };
     } catch (error_) {
       optionsError = `${asErrorMessage(error_)} You can still use filters and actions that do not need these lists.`;
     } finally {
@@ -219,10 +231,21 @@
     creatingLabel = true;
     optionsError = '';
     try {
-      const result = await createCimmichAssetLabel(displayName, createCimmichAssetLabelCommandId('organise-create'));
-      labels = [...labels.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort((left, right) =>
-        left.displayName.localeCompare(right.displayName),
+      const kind = action === 'album-add' ? 'collection' : 'label';
+      const result = await createCimmichAssetLabel(
+        displayName,
+        createCimmichAssetLabelCommandId(`organise-create-${kind}`),
+        kind,
       );
+      if (kind === 'collection') {
+        collections = [...collections.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort(
+          (left, right) => left.displayName.localeCompare(right.displayName),
+        );
+      } else {
+        labels = [...labels.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort(
+          (left, right) => left.displayName.localeCompare(right.displayName),
+        );
+      }
       targetId = result.label.labelId;
       newLabelName = '';
     } catch (error_) {
@@ -236,12 +259,32 @@
     void loadOptions();
   });
 
-  const loadCimmichPersonSourceIds = async (personId: string) => {
+  const loadCimmichFilterSourceIds = async () => {
+    const selected: Array<{ entityId: string; family: 'labels' | 'people' }> = [];
+    if (filters.personId) {
+      selected.push({ entityId: filters.personId, family: 'people' });
+    }
+    if (filters.cimmichCollectionId) {
+      selected.push({ entityId: filters.cimmichCollectionId, family: 'labels' });
+    }
+    if (filters.cimmichLabelId) {
+      selected.push({ entityId: filters.cimmichLabelId, family: 'labels' });
+    }
+    if (filters.cimmichState !== 'any') {
+      const stateLabel = organizationStates[filters.cimmichState];
+      if (!stateLabel) {
+        throw new Error('Cimmich library state is not ready');
+      }
+      selected.push({ entityId: stateLabel.labelId, family: 'labels' });
+    }
+    if (selected.length === 0) {
+      return undefined;
+    }
     const sourceIds = new SvelteSet<string>();
     let cursor: string | undefined;
     do {
-      progress = `Loading Cimmich appearances… ${sourceIds.size.toLocaleString()}`;
-      const page = await getCimmichPersonAssetsPage(personId, 250, cursor);
+      progress = `Loading exact Cimmich matches… ${sourceIds.size.toLocaleString()}`;
+      const page = await getCimmichTagAssets(selected, 250, cursor);
       for (const asset of page.items) {
         sourceIds.add(asset.sourceAssetId);
       }
@@ -256,12 +299,12 @@
     progress = 'Finding matching photos…';
     try {
       const fingerprint = filterFingerprint;
-      const acceptedSourceIds = filters.personId ? await loadCimmichPersonSourceIds(filters.personId) : undefined;
+      const acceptedSourceIds = await loadCimmichFilterSourceIds();
       const samples: AssetResponseDto[] = [];
       const matches = await collectAssets(
         buildBulkPhotoSorterSearch(filters),
         undefined,
-        filters.personId ? 'Finding exact Cimmich person matches' : 'Finding visible matches',
+        acceptedSourceIds ? 'Finding exact Cimmich matches' : 'Finding visible matches',
         acceptedSourceIds,
         samples,
       );
@@ -339,77 +382,6 @@
     progress = `Applying ${bulkPhotoSorterActionLabel(action)}… ${completed.toLocaleString()} of ${total.toLocaleString()}`;
   };
 
-  const applyNativeAction = async (
-    assets: AssetResponseDto[],
-    undoReceipt: BulkPhotoSorterUndoReceipt,
-    persistUndo: () => void,
-  ) => {
-    const changed = bulkPhotoSorterChangedAssets(assets, action, targetId);
-    let applied = 0;
-    for (const batch of chunkBulkPhotoSorterItems(changed)) {
-      const ids = batch.map(({ id }) => id);
-      switch (action) {
-        case 'favorite':
-        case 'unfavorite': {
-          await updateAssets({ assetBulkUpdateDto: { ids, isFavorite: action === 'favorite' } });
-
-          break;
-        }
-        case 'archive':
-        case 'unarchive': {
-          await updateAssets({
-            assetBulkUpdateDto: {
-              ids,
-              visibility: action === 'archive' ? AssetVisibility.Archive : AssetVisibility.Timeline,
-            },
-          });
-
-          break;
-        }
-        case 'tag-add': {
-          await bulkTagAssets({ tagBulkAssetsDto: { assetIds: ids, tagIds: [targetId] } });
-
-          break;
-        }
-        case 'tag-remove': {
-          await untagAssets({ id: targetId, bulkIdsDto: { ids } });
-
-          break;
-        }
-        // No default
-      }
-      undoReceipt.assetIds.push(...ids);
-      persistUndo();
-      applied += ids.length;
-      updateProgress(applied, changed.length);
-    }
-    return { applied, assetIds: changed.map(({ id }) => id) };
-  };
-
-  const applyAlbumAction = async (
-    assets: AssetResponseDto[],
-    undoReceipt: BulkPhotoSorterUndoReceipt,
-    persistUndo: () => void,
-  ) => {
-    const targetAssets = await collectAssets(
-      buildBulkPhotoSorterSearch({ ...emptyBulkPhotoSorterFilters(), albumId: targetId }),
-      undefined,
-      'Checking existing album membership',
-    );
-    const existing = new Set(targetAssets.map(({ id }) => id));
-    const assetIds = assets.map(({ id }) => id).filter((id) => !existing.has(id));
-    let applied = 0;
-    for (const batch of chunkBulkPhotoSorterItems(assetIds)) {
-      const results = await addAssetsToAlbum({ id: targetId, bulkIdsDto: { ids: batch } });
-      const changedIds = results.filter(({ success }) => success).map(({ id }) => id);
-      undoReceipt.assetIds.push(...changedIds);
-      persistUndo();
-      applied += changedIds.length;
-      updateProgress(applied, assetIds.length);
-    }
-    return { applied, assetIds: undoReceipt.assetIds };
-  };
-
   const mappedCimmichAssets = async (assets: AssetResponseDto[]) => {
     progress = 'Resolving photos in Cimmich…';
     const bindings = await getCimmichVisibleMapAssetBindings(assets.map(({ id }) => id));
@@ -479,11 +451,22 @@
     persistUndo: () => void,
   ) => {
     const mappedIds = await mappedCimmichAssets(assets);
-    const membershipAction = action === 'label-add' ? 'attach' : 'detach';
+    const membershipAction = ['label-remove', 'tag-remove', 'unarchive', 'unfavorite'].includes(action)
+      ? 'detach'
+      : 'attach';
+    const organizationTargetId =
+      action === 'archive' || action === 'unarchive'
+        ? organizationStates.archive?.labelId
+        : action === 'favorite' || action === 'unfavorite'
+          ? organizationStates.favorite?.labelId
+          : targetId;
+    if (!organizationTargetId) {
+      throw new Error('Cimmich organisation state is not ready');
+    }
     let applied = 0;
     for (const batch of chunkBulkPhotoSorterItems(mappedIds)) {
       const result = await changeCimmichAssetLabelMembership(
-        targetId,
+        organizationTargetId,
         membershipAction,
         batch,
         createCimmichAssetLabelCommandId(`organise-${membershipAction}`),
@@ -514,31 +497,29 @@
     let selectedCount = previewTotal;
     try {
       const fingerprint = filterFingerprint;
-      const snapshotPersonSourceIds = filters.personId ? await loadCimmichPersonSourceIds(filters.personId) : undefined;
+      const snapshotCimmichSourceIds = await loadCimmichFilterSourceIds();
       const snapshot = await collectAssets(
         buildBulkPhotoSorterSearch(filters),
         previewHasMore ? undefined : previewTotal,
         'Taking a stable snapshot',
-        snapshotPersonSourceIds,
+        snapshotCimmichSourceIds,
       );
       selectedCount = snapshot.length;
-      const verificationPersonSourceIds = filters.personId
-        ? await loadCimmichPersonSourceIds(filters.personId)
-        : undefined;
+      const verificationCimmichSourceIds = await loadCimmichFilterSourceIds();
       const verifiedSnapshot = await collectAssets(
         buildBulkPhotoSorterSearch(filters),
         snapshot.length,
         'Verifying the stable snapshot',
-        verificationPersonSourceIds,
+        verificationCimmichSourceIds,
       );
-      const samePersonSources =
-        !snapshotPersonSourceIds ||
-        !verificationPersonSourceIds ||
-        bulkPhotoSorterSameSnapshot([...snapshotPersonSourceIds], [...verificationPersonSourceIds]);
+      const sameCimmichSources =
+        !snapshotCimmichSourceIds ||
+        !verificationCimmichSourceIds ||
+        bulkPhotoSorterSameSnapshot([...snapshotCimmichSourceIds], [...verificationCimmichSourceIds]);
       if (
         fingerprint !== filterFingerprint ||
         (!previewHasMore && snapshot.length !== previewTotal) ||
-        !samePersonSources ||
+        !sameCimmichSources ||
         !bulkPhotoSorterSameSnapshot(
           snapshot.map(({ id }) => id),
           verifiedSnapshot.map(({ id }) => id),
@@ -590,7 +571,7 @@
             })),
             visibilityDecisionIds: [...partialUndo.visibilityDecisionIds],
           },
-          version: 1,
+          version: 2,
         });
       };
 
@@ -606,14 +587,14 @@
         selected: snapshot.length,
         skipped: snapshot.length - result.applied,
         undo: result.undo,
-        version: 1,
+        version: 2,
       });
 
       let completedReceipt: BulkPhotoSorterOperationReceipt;
 
       switch (action) {
         case 'album-add': {
-          const result = await applyAlbumAction(snapshot, partialUndo, persistPartialUndo);
+          const result = await applyLabelAction(snapshot, partialUndo, persistPartialUndo);
           completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
           break;
         }
@@ -637,7 +618,13 @@
           break;
         }
         case 'label-add':
-        case 'label-remove': {
+        case 'label-remove':
+        case 'tag-add':
+        case 'tag-remove':
+        case 'favorite':
+        case 'unfavorite':
+        case 'archive':
+        case 'unarchive': {
           const result = await applyLabelAction(snapshot, partialUndo, persistPartialUndo);
           completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
           break;
@@ -658,11 +645,10 @@
           break;
         }
         case 'folders-to-albums': {
-          throw new Error('Use the folder manifest controls below to create albums.');
+          throw new Error('Use the folder manifest controls below to create collections.');
         }
         default: {
-          const result = await applyNativeAction(snapshot, partialUndo, persistPartialUndo);
-          completedReceipt = createReceipt({ applied: result.applied, undo: result.applied ? partialUndo : null });
+          throw new Error('That Cimmich action is not available.');
         }
       }
       storeReceipt(completedReceipt);
@@ -690,7 +676,7 @@
           selected: selectedCount,
           skipped: Math.max(0, selectedCount - partialUndo.assetIds.length),
           undo: partialUndo,
-          version: 1,
+          version: 2,
         });
       }
       progress = '';
@@ -731,71 +717,11 @@
           visibilityDecisionIds: [...remaining.visibilityDecisionIds],
         },
       });
-    const undoAssetBatches = async (applyBatch: (batch: string[]) => Promise<unknown>) => {
-      while (remaining.assetIds.length > 0) {
-        const batch = remaining.assetIds.slice(0, BULK_PHOTO_SORTER_BATCH_SIZE);
-        await applyBatch(batch);
-        remaining.assetIds.splice(0, batch.length);
-        persistRemaining();
-        progress = `Undoing ${remaining.label}… ${remaining.assetIds.length.toLocaleString()} remaining`;
-      }
-    };
     undoing = true;
     error = '';
     progress = `Undoing ${remaining.label}…`;
     try {
       switch (remaining.action) {
-        case 'album-add': {
-          await undoAssetBatches(async (batch) => {
-            const results = await removeAssetFromAlbum({ id: remaining.targetId, bulkIdsDto: { ids: batch } });
-            const succeeded = new Set(results.filter(({ success }) => success).map(({ id }) => id));
-            if (succeeded.size !== batch.length) {
-              remaining.assetIds = [
-                ...batch.filter((id) => !succeeded.has(id)),
-                ...remaining.assetIds.slice(batch.length),
-              ];
-              persistRemaining();
-              throw new Error('Some album memberships could not be removed');
-            }
-          });
-
-          break;
-        }
-        case 'favorite':
-        case 'unfavorite': {
-          await undoAssetBatches(async (batch) => {
-            await updateAssets({
-              assetBulkUpdateDto: { ids: batch, isFavorite: remaining.action === 'unfavorite' },
-            });
-          });
-
-          break;
-        }
-        case 'archive':
-        case 'unarchive': {
-          await undoAssetBatches(async (batch) => {
-            await updateAssets({
-              assetBulkUpdateDto: {
-                ids: batch,
-                visibility: remaining.action === 'archive' ? AssetVisibility.Timeline : AssetVisibility.Archive,
-              },
-            });
-          });
-
-          break;
-        }
-        case 'tag-add': {
-          await undoAssetBatches((batch) => untagAssets({ id: remaining.targetId, bulkIdsDto: { ids: batch } }));
-
-          break;
-        }
-        case 'tag-remove': {
-          await undoAssetBatches((batch) =>
-            bulkTagAssets({ tagBulkAssetsDto: { assetIds: batch, tagIds: [remaining.targetId] } }),
-          );
-
-          break;
-        }
         case 'rotate-left':
         case 'rotate-right': {
           await undoBulkPhotoRotation(remaining.assetCorrectionDecisionIds, (decisionIds) => {
@@ -806,7 +732,14 @@
           break;
         }
         case 'label-add':
-        case 'label-remove': {
+        case 'label-remove':
+        case 'album-add':
+        case 'tag-add':
+        case 'tag-remove':
+        case 'favorite':
+        case 'unfavorite':
+        case 'archive':
+        case 'unarchive': {
           while (remaining.labelDecisions.length > 0) {
             const item = remaining.labelDecisions.at(-1)!;
             await undoCimmichAssetLabelDecision(item.decisionId, createCimmichAssetLabelCommandId('organise-undo'));
@@ -908,7 +841,8 @@
           <h2 class="text-xl font-semibold">1. Choose photos</h2>
         </div>
         <p class="mt-2 text-sm text-immich-fg/65 dark:text-immich-dark-fg/65">
-          Filters combine together. Leave them empty only if you really intend to target the whole library.
+          Filters combine together. Immich source filters are read-only. Leave them empty only if you really intend to
+          target the whole library.
         </p>
       </div>
       <button
@@ -957,7 +891,7 @@
         </select>
       </div>
       <label class="grid gap-1.5 text-sm font-medium"
-        >Tag
+        >Immich source tag
         <select
           class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
           bind:value={filters.tagId}
@@ -968,7 +902,7 @@
         </select>
       </label>
       <label class="grid gap-1.5 text-sm font-medium"
-        >Album
+        >Immich source album
         <select
           class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
           bind:value={filters.albumId}
@@ -976,6 +910,45 @@
         >
           <option value="">Any album</option>
           {#each albums as album (album.id)}<option value={album.id}>{album.albumName}</option>{/each}
+        </select>
+      </label>
+      <label class="grid gap-1.5 text-sm font-medium"
+        >Cimmich collection
+        <select
+          class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
+          bind:value={filters.cimmichCollectionId}
+          disabled={optionsLoading}
+          title="Find photos already placed in a Cimmich-owned collection. Immich albums are not changed."
+        >
+          <option value="">Any collection</option>
+          {#each collections as collection (collection.labelId)}<option value={collection.labelId}
+              >{collection.displayName}</option
+            >{/each}
+        </select>
+      </label>
+      <label class="grid gap-1.5 text-sm font-medium"
+        >Cimmich tag
+        <select
+          class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
+          bind:value={filters.cimmichLabelId}
+          disabled={optionsLoading}
+          title="Find photos carrying this Cimmich-owned tag. Immich tags are not changed."
+        >
+          <option value="">Any Cimmich tag</option>
+          {#each labels as label (label.labelId)}<option value={label.labelId}>{label.displayName}</option>{/each}
+        </select>
+      </label>
+      <label class="grid gap-1.5 text-sm font-medium"
+        >Cimmich library state
+        <select
+          class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
+          bind:value={filters.cimmichState}
+          disabled={optionsLoading}
+          title="Find photos marked as a favourite or archived inside Cimmich. Immich state is not changed."
+        >
+          <option value="any">Any Cimmich state</option><option value="favorite">Favourite</option><option
+            value="archive">Archived</option
+          >
         </select>
       </label>
       <label class="grid gap-1.5 text-sm font-medium"
@@ -1006,7 +979,7 @@
         </select>
       </label>
       <label class="grid gap-1.5 text-sm font-medium"
-        >Favourite
+        >Immich source favourite
         <select
           class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
           bind:value={filters.favorite}
@@ -1017,7 +990,7 @@
         </select>
       </label>
       <label class="grid gap-1.5 text-sm font-medium"
-        >Library state
+        >Immich source state
         <select
           class="rounded-xl border border-black/15 bg-transparent px-3 py-2.5 dark:border-white/15"
           bind:value={filters.visibility}
@@ -1029,7 +1002,8 @@
       </label>
     </div>
     <label class="mt-5 flex items-center gap-3 text-sm font-medium"
-      ><input class="size-4 accent-primary" type="checkbox" bind:checked={filters.notInAlbum} /> Only photos not in any album</label
+      ><input class="size-4 accent-primary" type="checkbox" bind:checked={filters.notInAlbum} /> Only photos not in any Immich
+      source album</label
     >
     <div class="mt-6 flex flex-wrap items-center gap-3">
       <button

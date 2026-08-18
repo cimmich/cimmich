@@ -135,6 +135,8 @@ the production UI build and local storage. The 51 supported API uploads take
 roughly 80 seconds on the reference workstation. With images and build layers
 cached, a full reset has typically taken **3–6 minutes**. `status` is safe to
 run at any time and reports readiness and semantic counts without secrets.
+Open either `/cimmich` or `/cimmich/` on the demo address to enter Cimmich;
+both forms are verified application routes.
 
 The uploader creates the Immich administrator, but Immich still presents its
 normal first-user onboarding. Complete Theme and Language according to your

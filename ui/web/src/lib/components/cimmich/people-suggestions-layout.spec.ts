@@ -20,6 +20,8 @@ describe('People suggestions layout', () => {
     expect(source).not.toContain('getCimmichMachineSuggestions(80)');
     expect(source).not.toContain('Full-library audit suggestions');
     expect(source).not.toContain('latest full-library audit');
+    expect(source).toContain("'people'} in directory");
+    expect(source).toContain('No photos visible in this viewing mode');
     expect(source).toContain("{#if viewMode === 'possible'}");
     expect(source).toContain('<CimmichPossiblePeople mode="active"');
     expect(source.indexOf("{#if viewMode === 'possible'}")).toBeLessThan(

@@ -106,6 +106,7 @@ const stableAssetId = (publicAssetId) =>
   `demo_asset_${publicAssetId.toLowerCase().replaceAll("-", "_")}`;
 
 export const captureTimeFor = (sequence) => {
+  if (sequence === 51) return "2022-07-17T16:00:00.000Z";
   const chapterStarts = [
     [1, "2020-03-14"],
     [9, "2020-04-18"],
@@ -151,7 +152,7 @@ export const publicDemoExternalFolderForAsset = (publicAssetId) => {
   if (sequence <= 38) return "Nora's 70th Birthday/2024/July";
   if (sequence <= 45) return "Saturday Garden Crew/2025/October";
   if (sequence <= 50) return "Household Documents/2025/October";
-  return "Bluewater Weekend/2025/October";
+  return "Bluewater Weekend/2022/July";
 };
 
 const contextCatalog = [

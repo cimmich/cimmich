@@ -6,6 +6,11 @@ Cimmich treats the user’s Immich library and any configured external-library r
 
 - The Immich companion has an exact route allowlist. It uses `GET` for records and originals, plus `POST /search/metadata` for a read-only search. It permits no Immich `PATCH`, `PUT` or `DELETE` request.
 - The display bridge is read-only and only maps Cimmich IDs to Immich IDs and filenames.
+- Cimmich organisation uses its own append-only label and membership decisions.
+  Collections, tags, favourites and archive choices never call Immich album,
+  tag or asset-update APIs.
+- The Web boundary test rejects Immich SDK mutation functions from the folder
+  manifest, Bulk Organise and selected-photo Cimmich surfaces.
 - Local media providers receive source paths for reads. The XMP importer launches a bounded reader and commits parsed evidence to Cimmich’s database; it does not write XMP or source media.
 - The production filesystem-writer inventory is locked by `service/test/source-media-immutability.test.mjs`. A new writer fails the test until its destination and purpose are reviewed here.
 

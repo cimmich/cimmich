@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 130. Schema 76 adds
+patch level 1. Current post-submission source is schema 131. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -200,9 +200,9 @@ to the supplied region, so an expanded fallback cannot borrow a neighbouring
 person's face.
 Schema 128 adds Cimmich-owned generic asset labels and a durable recovery ledger
 for folder-to-album manifests. Label membership is append-only, idempotent and
-undoable without touching Immich tag tables or source sidecars. Album writes
-remain user-session Immich operations; Cimmich checkpoints only the exact
-memberships and newly created albums needed for bounded resume and Undo.
+undoable without touching Immich tag tables or source sidecars. Schema 131
+retires the historical Immich album-write path while preserving its receipts
+and leaving existing Immich data untouched.
 Schema 129 binds the installation to one durable Immich principal independently
 of the current API-key secret. The same-origin gateway verifies `/api/users/me`
 through a bounded internal authorizer and admits owner routes only when the
@@ -213,6 +213,11 @@ Schema 130 records the eligible and admitted work at both identity-audit
 frontiers. Completed runs now project whether query ranking or independent
 image verification was bounded, and legacy runs explicitly request a fresh
 audit instead of silently presenting an incomplete queue as exhaustive.
+Schema 131 makes collections, favourite state and archive state first-class
+Cimmich-owned label kinds. Folder manifests and organiser actions now record
+only Cimmich membership decisions with exact Undo. The dedicated Immich
+companion and every Cimmich UI route remain read-only for Immich albums,
+memberships, tags, asset metadata and media.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
 atomic typed-tag replacement and standalone Head evidence, provenance-bound

@@ -6117,7 +6117,7 @@ export const createCimmichRepository = (
             ) ORDER BY lower(label.display_name), label.label_id)
             FROM current_asset_label_membership membership
             JOIN asset_label label ON label.label_id = membership.label_id
-              AND label.status = 'active'
+              AND label.status = 'active' AND label.label_kind = 'label'
             WHERE membership.asset_id = a.asset_id
           ), '[]'::jsonb) AS labels,
           (

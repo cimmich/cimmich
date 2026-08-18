@@ -1,37 +1,30 @@
 <script lang="ts">
   import {
     attachCimmichContextAssets,
+    changeCimmichAssetLabelMembership,
+    createCimmichAssetLabel,
+    createCimmichAssetLabelCommandId,
     createCimmichContextCommandId,
     createCimmichManualPresenceCommandId,
     createCimmichVisibilityCommandId,
     detachCimmichContextAssets,
     getCimmichContextEntities,
+    getCimmichAssetLabels,
     getCimmichPeople,
     getCimmichPets,
     rotateCimmichAssets,
     setCimmichManualPresence,
     setCimmichVisibilityObjects,
     undoCimmichContextDecision,
+    undoCimmichAssetLabelDecision,
     undoCimmichManualPresence,
     undoCimmichAssetCorrections,
     undoCimmichVisibilityDecision,
     type CimmichContextEntity,
+    type CimmichAssetLabel,
     type CimmichPerson,
     type CimmichPet,
   } from '$lib/services/cimmich.service';
-  import {
-    addAssetsToAlbum,
-    AssetVisibility,
-    bulkTagAssets,
-    getAllAlbums,
-    getAllTags,
-    getAssetInfo,
-    removeAssetFromAlbum,
-    untagAssets,
-    updateAssets,
-    type AlbumResponseDto,
-    type TagResponseDto,
-  } from '@immich/sdk';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
   import {
     mdiAlertCircleOutline,
@@ -94,14 +87,16 @@
   let actionGroup = $state<MediaActionGroup | null>(null);
   let targetId = $state('');
   let targetOption = $state<ComboBoxOption>();
-  let albums = $state<AlbumResponseDto[]>([]);
-  let tags = $state<TagResponseDto[]>([]);
+  let collections = $state<CimmichAssetLabel[]>([]);
+  let tags = $state<CimmichAssetLabel[]>([]);
   let people = $state<CimmichPerson[]>([]);
   let pets = $state<CimmichPet[]>([]);
   let places = $state<CimmichContextEntity[]>([]);
   let events = $state<CimmichContextEntity[]>([]);
   let objects = $state<CimmichContextEntity[]>([]);
   let loadingOptions = $state(false);
+  let creatingOrganization = $state(false);
+  let newOrganizationName = $state('');
   let busy = $state(false);
   let error = $state('');
   let progress = $state('');
@@ -175,10 +170,10 @@
         .map(({ petId, displayName }) => ({ id: petId, label: displayName, value: petId }));
     }
     if (action === 'tag-add' || action === 'tag-remove') {
-      return tags.map(({ id, name }) => ({ id, label: name, value: id }));
+      return tags.map(({ labelId, displayName }) => ({ id: labelId, label: displayName, value: labelId }));
     }
     if (action === 'album-add') {
-      return albums.map(({ id, albumName }) => ({ id, label: albumName, value: id }));
+      return collections.map(({ labelId, displayName }) => ({ id: labelId, label: displayName, value: labelId }));
     }
     return [];
   });
@@ -287,13 +282,15 @@
       try {
         switch (kind) {
           case 'album': {
-            albums = [...(await getAllAlbums({ isOwned: true }))].sort((left, right) =>
-              left.albumName.localeCompare(right.albumName),
+            collections = [...(await getCimmichAssetLabels('', 250, 'collection'))].sort((left, right) =>
+              left.displayName.localeCompare(right.displayName),
             );
             break;
           }
           case 'tag': {
-            tags = [...(await getAllTags())].sort((left, right) => left.name.localeCompare(right.name));
+            tags = [...(await getCimmichAssetLabels())].sort((left, right) =>
+              left.displayName.localeCompare(right.displayName),
+            );
             break;
           }
           case 'person': {
@@ -349,15 +346,46 @@
     targetId = '';
     targetOption = undefined;
   };
-
   const selectAction = (selectedAction: MediaUiAction) => {
     action = action === selectedAction ? null : selectedAction;
     targetId = '';
     targetOption = undefined;
+    newOrganizationName = '';
   };
-
   const selectTarget = (option: ComboBoxOption | undefined) => {
     targetId = option?.value ?? '';
+  };
+  const createOrganizationTarget = async () => {
+    const displayName = newOrganizationName.trim();
+    if (!displayName || (action !== 'album-add' && action !== 'tag-add')) {
+      return;
+    }
+    creatingOrganization = true;
+    error = '';
+    try {
+      const kind = action === 'album-add' ? 'collection' : 'label';
+      const result = await createCimmichAssetLabel(
+        displayName,
+        createCimmichAssetLabelCommandId(`entity-media-create-${kind}`),
+        kind,
+      );
+      if (kind === 'collection') {
+        collections = [...collections.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort(
+          (left, right) => left.displayName.localeCompare(right.displayName),
+        );
+      } else {
+        tags = [...tags.filter(({ labelId }) => labelId !== result.label.labelId), result.label].sort((left, right) =>
+          left.displayName.localeCompare(right.displayName),
+        );
+      }
+      targetOption = { id: result.label.labelId, label: result.label.displayName, value: result.label.labelId };
+      targetId = result.label.labelId;
+      newOrganizationName = '';
+    } catch (error_) {
+      error = `${asError(error_)} Nothing changed.`;
+    } finally {
+      creatingOrganization = false;
+    }
   };
 
   const emptyReceipt = (
@@ -366,24 +394,16 @@
   ): CimmichEntityMediaActionReceipt => ({
     action: selectedAction,
     assetCorrectionDecisionIds: [],
-    albumId: selectedAction === 'album-add' ? targetId : '',
     assetIds: [],
     completedAt: new Date().toISOString(),
     contextDecisionIds: [],
     label,
-    nativePrevious: [],
+    labelDecisionIds: [],
     presenceDecisionIds: [],
-    sourceAssetIds: [],
-    tagId: selectedAction === 'tag-add' || selectedAction === 'tag-remove' ? targetId : '',
     targetId,
-    version: 1,
+    version: 2,
     visibilityDecisionIds: [],
   });
-
-  const loadNativeAssets = async () => {
-    progress = `Checking ${selectedCount.toLocaleString()} selected ${selectedCount === 1 ? 'photo' : 'photos'}…`;
-    return Promise.all(items.map((item) => getAssetInfo({ id: item.sourceAssetId })));
-  };
 
   const apply = async () => {
     if (!canApply || !action) {
@@ -508,59 +528,42 @@
           }
           completed += 1;
         }
-      } else if (selectedAction === 'album-add') {
-        const results = await addAssetsToAlbum({
-          id: targetId,
-          bulkIdsDto: { ids: items.map(({ sourceAssetId }) => sourceAssetId) },
-        });
-        next.sourceAssetIds.push(...results.filter(({ success }) => success).map(({ id }) => id));
-      } else {
-        const nativeAssets = await loadNativeAssets();
-        if (selectedAction === 'tag-add' || selectedAction === 'tag-remove') {
-          const changed = nativeAssets.filter((asset) =>
-            selectedAction === 'tag-add'
-              ? !asset.tags?.some((tag) => tag.id === targetId)
-              : asset.tags?.some((tag) => tag.id === targetId),
-          );
-          if (changed.length > 0) {
-            await (selectedAction === 'tag-add'
-              ? bulkTagAssets({ tagBulkAssetsDto: { assetIds: changed.map(({ id }) => id), tagIds: [targetId] } })
-              : untagAssets({ id: targetId, bulkIdsDto: { ids: changed.map(({ id }) => id) } }));
-            next.sourceAssetIds.push(...changed.map(({ id }) => id));
-          }
-        } else {
-          const changed = nativeAssets.filter((asset) =>
-            selectedAction === 'favorite'
-              ? !asset.isFavorite
-              : selectedAction === 'unfavorite'
-                ? asset.isFavorite
-                : selectedAction === 'archive'
-                  ? asset.visibility !== AssetVisibility.Archive
-                  : asset.visibility === AssetVisibility.Archive,
-          );
-          next.nativePrevious.push(
-            ...changed.map(({ id, isFavorite, visibility }) => ({ id, isFavorite, visibility })),
-          );
-          if (changed.length > 0) {
-            await updateAssets({
-              assetBulkUpdateDto: {
-                ids: changed.map(({ id }) => id),
-                ...(selectedAction === 'favorite' || selectedAction === 'unfavorite'
-                  ? { isFavorite: selectedAction === 'favorite' }
-                  : {
-                      visibility: selectedAction === 'archive' ? AssetVisibility.Archive : AssetVisibility.Timeline,
-                    }),
-              },
-            });
-          }
+      } else if (
+        selectedAction === 'album-add' ||
+        selectedAction === 'tag-add' ||
+        selectedAction === 'tag-remove' ||
+        selectedAction === 'favorite' ||
+        selectedAction === 'unfavorite' ||
+        selectedAction === 'archive' ||
+        selectedAction === 'unarchive'
+      ) {
+        const systemKind =
+          selectedAction === 'favorite' || selectedAction === 'unfavorite'
+            ? 'favorite'
+            : selectedAction === 'archive' || selectedAction === 'unarchive'
+              ? 'archive'
+              : null;
+        const systemLabels = systemKind ? await getCimmichAssetLabels('', 1, systemKind) : [];
+        const organizationTargetId = systemKind ? systemLabels[0]?.labelId : targetId;
+        if (!organizationTargetId) {
+          throw new Error('Cimmich organisation state is not ready');
+        }
+        const membershipAction = ['tag-remove', 'unfavorite', 'unarchive'].includes(selectedAction)
+          ? 'detach'
+          : 'attach';
+        const result = await changeCimmichAssetLabelMembership(
+          organizationTargetId,
+          membershipAction,
+          items.map(({ assetId }) => assetId),
+          createCimmichAssetLabelCommandId('entity-media-organisation'),
+        );
+        if (result.changedAssetIds.length > 0) {
+          next.labelDecisionIds.push(result.decisionId);
+          next.assetIds.push(...result.changedAssetIds);
         }
       }
 
-      const changedCount = new Set([
-        ...next.assetIds,
-        ...next.sourceAssetIds,
-        ...next.nativePrevious.map(({ id }) => id),
-      ]).size;
+      const changedCount = new Set(next.assetIds).size;
       if (changedCount > 0) {
         storeReceipt(next);
         progress = `${changedCount.toLocaleString()} ${changedCount === 1 ? 'photo was' : 'photos were'} changed. Undo is saved.`;
@@ -573,10 +576,9 @@
       const partial =
         (next.assetCorrectionDecisionIds?.length ?? 0) > 0 ||
         next.contextDecisionIds.length > 0 ||
+        next.labelDecisionIds.length > 0 ||
         next.presenceDecisionIds.length > 0 ||
-        next.visibilityDecisionIds.length > 0 ||
-        next.sourceAssetIds.length > 0 ||
-        next.nativePrevious.length > 0;
+        next.visibilityDecisionIds.length > 0;
       if (partial) {
         storeReceipt(next);
       }
@@ -607,26 +609,8 @@
       for (const decisionId of receipt.visibilityDecisionIds) {
         await undoCimmichVisibilityDecision(decisionId, createCimmichVisibilityCommandId('entity-media-undo'));
       }
-      if (receipt.action === 'album-add' && receipt.sourceAssetIds.length > 0) {
-        await removeAssetFromAlbum({ id: receipt.albumId, bulkIdsDto: { ids: receipt.sourceAssetIds } });
-      } else if (receipt.action === 'tag-add' && receipt.sourceAssetIds.length > 0) {
-        await untagAssets({ id: receipt.tagId, bulkIdsDto: { ids: receipt.sourceAssetIds } });
-      } else if (receipt.action === 'tag-remove' && receipt.sourceAssetIds.length > 0) {
-        await bulkTagAssets({ tagBulkAssetsDto: { assetIds: receipt.sourceAssetIds, tagIds: [receipt.tagId] } });
-      } else if (receipt.action === 'favorite' || receipt.action === 'unfavorite') {
-        for (const isFavorite of [true, false]) {
-          const ids = receipt.nativePrevious.filter((item) => item.isFavorite === isFavorite).map(({ id }) => id);
-          if (ids.length > 0) {
-            await updateAssets({ assetBulkUpdateDto: { ids, isFavorite } });
-          }
-        }
-      } else if (receipt.action === 'archive' || receipt.action === 'unarchive') {
-        for (const visibility of [AssetVisibility.Timeline, AssetVisibility.Archive, AssetVisibility.Locked]) {
-          const ids = receipt.nativePrevious.filter((item) => item.visibility === visibility).map(({ id }) => id);
-          if (ids.length > 0) {
-            await updateAssets({ assetBulkUpdateDto: { ids, visibility } });
-          }
-        }
+      for (const decisionId of [...receipt.labelDecisionIds].reverse()) {
+        await undoCimmichAssetLabelDecision(decisionId, createCimmichAssetLabelCommandId('entity-media-undo'));
       }
       storeReceipt(null);
       progress = 'The selected-media action was undone.';
@@ -753,6 +737,22 @@
                 </div>
                 {#if needsTarget}
                   <div class="entity-media-combobox-field">
+                    {#if action === 'album-add' || action === 'tag-add'}
+                      <div class="entity-media-create-target">
+                        <input
+                          bind:value={newOrganizationName}
+                          aria-label={action === 'album-add' ? 'New Cimmich collection name' : 'New Cimmich tag name'}
+                          placeholder={action === 'album-add' ? 'Create collection' : 'Create tag'}
+                          disabled={busy || creatingOrganization || Boolean(receipt)}
+                        />
+                        <button
+                          type="button"
+                          onclick={() => void createOrganizationTarget()}
+                          disabled={!newOrganizationName.trim() || busy || creatingOrganization || Boolean(receipt)}
+                          >{creatingOrganization ? 'Creating…' : 'Create'}</button
+                        >
+                      </div>
+                    {/if}
                     <Combobox
                       label={action === 'place-move-within' ? 'Destination subsection' : 'Destination'}
                       options={targetOptions}
@@ -865,6 +865,26 @@
     min-width: min(20rem, 100%);
     font-size: 0.75rem;
     font-weight: 650;
+  }
+
+  .entity-media-create-target {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .entity-media-create-target input {
+    min-width: 0;
+    flex: 1;
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 0.7rem;
+    background: transparent;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .entity-media-create-target button {
+    border-radius: 0.7rem;
+    padding: 0.55rem 0.75rem;
+    font-weight: 700;
   }
 
   .entity-media-combobox-field :global([role='listbox']) {
