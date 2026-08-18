@@ -14,7 +14,6 @@
     mdiFolderOpenOutline,
     mdiRotateLeft,
     mdiRotateRight,
-    mdiUndoVariant,
   } from '@mdi/js';
   import { SvelteMap } from 'svelte/reactivity';
   import CimmichReviewPhotoMedia from './CimmichReviewPhotoMedia.svelte';
@@ -30,22 +29,10 @@
     loadingMore: boolean;
     onConfirm: (changes: CimmichAssetRotationChange[]) => Promise<boolean>;
     onLoadMore: () => void;
-    onUndo: (item: CimmichPhotoDetailReviewItem) => void;
   }
 
-  let {
-    assets,
-    busyAssetId,
-    error,
-    hasMore,
-    items,
-    loaded,
-    loading,
-    loadingMore,
-    onConfirm,
-    onLoadMore,
-    onUndo,
-  }: Props = $props();
+  let { assets, busyAssetId, error, hasMore, items, loaded, loading, loadingMore, onConfirm, onLoadMore }: Props =
+    $props();
 
   const rotationDrafts = new SvelteMap<string, number>();
 
@@ -89,8 +76,7 @@
   const draftRotation = (item: CimmichPhotoDetailReviewItem) =>
     rotationDrafts.get(item.assetId) ?? normalizedRotation(item.rotationQuarterTurns);
   const hasDraft = (item: CimmichPhotoDetailReviewItem) => rotationDrafts.has(item.assetId);
-  const needsConfirmation = (item: CimmichPhotoDetailReviewItem) => hasDraft(item) || !item.rotationDecisionId;
-  const pendingItems = $derived(items.filter((item) => needsConfirmation(item)));
+  const pendingItems = $derived(items);
 
   const rotateDraft = (item: CimmichPhotoDetailReviewItem, direction: 'left' | 'right') => {
     const next = normalizedRotation(draftRotation(item) + (direction === 'right' ? 1 : -1));
@@ -124,8 +110,9 @@
     <div>
       <h2 id="rotation-review-title" class="text-xl font-semibold">Likely rotation candidates</h2>
       <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
-        <strong>{number.format(items.length)} shown</strong>{hasMore ? ' so far' : ''}. Immich's visual index ranks
-        these as resembling sideways or 90 degree rotated photos. Review the full photo before applying a correction.
+        <strong>{number.format(items.length)} to review</strong>{hasMore ? ' in this batch' : ''}. Immich's visual index
+        ranks these as resembling sideways or 90 degree rotated photos. Review the full photo before applying a
+        correction.
       </p>
     </div>
     <div class="flex flex-wrap items-center justify-end gap-2">
@@ -143,7 +130,7 @@
         title="Save drafts and confirm every pending rotation candidate currently shown on this page"
       >
         <Icon icon={mdiContentSave} size="17" />
-        {pendingItems.length > 0 ? `Save / Confirm all (${pendingItems.length})` : 'All shown confirmed'}
+        {pendingItems.length > 0 ? `Save / Confirm all (${pendingItems.length})` : 'Batch cleared'}
       </button>
     </div>
   </div>
@@ -171,9 +158,11 @@
       class="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
     >
       <Icon icon={mdiRotateRight} size="38" class="mx-auto text-emerald-600" />
-      <h3 class="mt-3 text-lg font-semibold">No likely rotation candidates</h3>
+      <h3 class="mt-3 text-lg font-semibold">{hasMore ? 'This batch is cleared' : 'Rotation review complete'}</h3>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Immich's visual index did not return any likely sideways photos in this scope.
+        {hasMore
+          ? 'Every candidate in this batch has been confirmed. Load the next batch when you are ready.'
+          : 'No unresolved likely rotation candidates remain in this scope.'}
       </p>
     </div>
   {:else}
@@ -183,13 +172,12 @@
         {@const folderPath = asset?.originalPath ? getParentPath(asset.originalPath) : ''}
         {@const rotation = draftRotation(item)}
         {@const dirty = hasDraft(item)}
-        {@const confirmed = Boolean(item.rotationDecisionId) && !dirty}
         <article
-          class="flex min-w-0 flex-col overflow-hidden rounded-2xl border {confirmed
-            ? 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/10'
-            : 'border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg'} sm:flex-row"
+          class="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white sm:flex-row dark:border-immich-dark-gray dark:bg-immich-dark-bg"
         >
-          <div class="w-full shrink-0 sm:w-44">
+          <div
+            class="w-full shrink-0 border-b border-gray-200 bg-gray-50 sm:w-48 sm:border-r sm:border-b-0 dark:border-immich-dark-gray dark:bg-gray-900/40"
+          >
             <CimmichReviewPhotoMedia
               busy={Boolean(busyAssetId)}
               contextLabel={formatDate(asset?.exifInfo?.dateTimeOriginal ?? item.captureTime)}
@@ -206,8 +194,16 @@
               sourceAssetId={item.sourceAssetId}
               targetLabel="Review orientation"
             />
+            <div class="px-3 py-2.5">
+              <p class="text-[0.68rem] font-bold tracking-wide text-gray-500 uppercase dark:text-gray-400">
+                Why flagged
+              </p>
+              <p class="mt-0.5 text-xs/4 text-gray-700 dark:text-gray-200">
+                Visually resembles a sideways or 90° rotated photo
+              </p>
+            </div>
           </div>
-          <div class="min-w-0 flex-1 space-y-3 p-4">
+          <div class="min-w-0 flex-1 space-y-2.5 p-3.5">
             <div>
               <div class="flex min-w-0 items-start justify-between gap-2">
                 <a
@@ -216,22 +212,14 @@
                   title={item.filename}>{item.filename}</a
                 >
                 <span
-                  class="shrink-0 rounded-full {confirmed
-                    ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200'
-                    : dirty
-                      ? 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200'
-                      : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'} px-2 py-1 text-[0.68rem] font-semibold"
-                  title={confirmed
-                    ? 'This orientation has been confirmed and remains reversible'
-                    : dirty
-                      ? 'This rotation is a draft until you save it'
-                      : 'Immich ranked this as visually similar to a sideways or 90 degree rotated photo'}
+                  class="shrink-0 rounded-full {dirty
+                    ? 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200'
+                    : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'} px-2 py-1 text-[0.68rem] font-semibold"
+                  title={dirty
+                    ? 'This rotation is a draft until you save it'
+                    : 'Immich ranked this as visually similar to a sideways or 90 degree rotated photo'}
                 >
-                  {confirmed
-                    ? correctionLabel(rotation)
-                    : dirty
-                      ? `Draft: ${correctionLabel(rotation)}`
-                      : 'Needs review'}
+                  {dirty ? `Draft: ${correctionLabel(rotation)}` : 'Needs review'}
                 </span>
               </div>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -239,13 +227,19 @@
               </p>
             </div>
 
-            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs/5">
-              <dt class="font-semibold text-gray-700 dark:text-gray-200">Why flagged</dt>
-              <dd class="text-gray-600 dark:text-gray-300">Visual similarity to sideways or 90° rotated photos</dd>
-              <dt class="font-semibold text-gray-700 dark:text-gray-200">EXIF orientation</dt>
-              <dd class="text-gray-600 dark:text-gray-300">{orientationLabel(asset?.exifInfo?.orientation)}</dd>
-              <dt class="font-semibold text-gray-700 dark:text-gray-200">{dirty ? 'Draft rotation' : 'Correction'}</dt>
-              <dd class="text-gray-600 dark:text-gray-300">{correctionLabel(rotation)}</dd>
+            <dl class="grid grid-cols-2 gap-2 text-xs/4">
+              <div class="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-800/70">
+                <dt class="font-semibold text-gray-500 dark:text-gray-400">EXIF orientation</dt>
+                <dd class="mt-0.5 text-gray-800 dark:text-gray-100">
+                  {orientationLabel(asset?.exifInfo?.orientation)}
+                </dd>
+              </div>
+              <div class="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-800/70">
+                <dt class="font-semibold text-gray-500 dark:text-gray-400">
+                  {dirty ? 'Draft rotation' : 'Correction'}
+                </dt>
+                <dd class="mt-0.5 text-gray-800 dark:text-gray-100">{correctionLabel(rotation)}</dd>
+              </div>
             </dl>
 
             {#if folderPath}
@@ -282,30 +276,17 @@
               >
                 <Icon icon={mdiRotateRight} size="17" /> Rotate right
               </button>
-              {#if item.rotationDecisionId && !dirty}
-                <button
-                  class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                  type="button"
-                  disabled={Boolean(busyAssetId)}
-                  onclick={() => onUndo(item)}
-                  title="Undo the saved Cimmich rotation confirmation"
-                >
-                  <Icon icon={mdiUndoVariant} size="17" /> Undo
-                </button>
-              {/if}
               <button
                 class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 disabled:cursor-default disabled:opacity-50"
                 type="button"
-                disabled={Boolean(busyAssetId) || confirmed}
+                disabled={Boolean(busyAssetId)}
                 onclick={() => void confirmChanges([{ assetId: item.assetId, quarterTurns: rotation }])}
                 title={dirty
                   ? 'Save this rotation as a reversible Cimmich correction'
-                  : confirmed
-                    ? 'This orientation is confirmed'
-                    : 'Confirm that this photo needs no rotation'}
+                  : 'Confirm that this photo needs no rotation'}
               >
                 <Icon icon={dirty ? mdiContentSave : mdiCheck} size="17" />
-                {dirty ? 'Save' : confirmed ? 'Confirmed' : 'Confirm'}
+                {dirty ? 'Save' : 'Confirm'}
               </button>
               <a
                 class="ml-auto inline-flex min-h-9 items-center gap-1 text-xs font-semibold text-primary hover:underline"

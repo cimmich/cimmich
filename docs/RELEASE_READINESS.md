@@ -513,7 +513,10 @@ do not claim that a lead needs correction or infer a safe direction. Rotation
 buttons stage local drafts, the shared Photo Review magnifier supports full-size
 inspection, and explicit per-card or page-scoped confirmation writes only to
 the Cimmich correction ledger. The bulk count covers the candidates currently
-loaded on the page.
+loaded on the page. Confirmed records leave the active Rotation review queue
+immediately and remain filtered when that ranked batch is reloaded. The compact
+card uses the space beneath the photo for the ranking reason while keeping EXIF
+and proposed rotation together.
 Source-current Smart Search also exposes Immich visual ranking as its own lens,
 separate from deterministic Recorded facts. Natural-language queries and
 photo-scoped similarity both request 24 image records at a time, reuse the

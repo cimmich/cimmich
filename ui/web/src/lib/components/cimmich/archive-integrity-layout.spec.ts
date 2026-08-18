@@ -108,8 +108,10 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
     expect(source).toContain('<ArchiveRotationReview');
     expect(rotationReview).toContain('Likely rotation candidates');
-    expect(rotationReview).toContain("Immich's visual index ranks");
+    expect(rotationReview).toContain("Immich's visual index");
+    expect(rotationReview).toContain('ranks these as resembling sideways');
     expect(rotationReview).toContain('Why flagged');
+    expect(rotationReview).toContain('sm:w-48 sm:border-r sm:border-b-0');
     expect(rotationReview).toContain('EXIF orientation');
     expect(rotationReview).toContain('Reversible Cimmich correction');
     expect(rotationReview).toContain('Source folder unavailable');
@@ -117,12 +119,13 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('targetLabel="Review orientation"');
     expect(rotationReview).toContain("rotateDraft(item, 'left')");
     expect(rotationReview).toContain("rotateDraft(item, 'right')");
-    expect(rotationReview).toContain("dirty ? 'Save' : confirmed ? 'Confirmed' : 'Confirm'");
+    expect(rotationReview).toContain("dirty ? 'Save' : 'Confirm'");
     expect(rotationReview).toContain('Save / Confirm all (${pendingItems.length})');
     expect(rotationReview).toContain('pendingItems.map');
     expect(rotationReview).toContain('currently shown on this page');
     expect(source).toContain('changes.slice(index, index + 100)');
-    expect(rotationReview).toContain('onUndo(item)');
+    expect(source).toContain('.filter((candidate) => !candidate.rotationDecisionId)');
+    expect(rotationReview).not.toContain('Confirmed');
     expect(rotationReview).toContain('Source files and Immich metadata are unchanged');
     expect(folderComparison).toContain('Biggest overlaps');
     expect(folderComparison).toContain('Show top 6 only');

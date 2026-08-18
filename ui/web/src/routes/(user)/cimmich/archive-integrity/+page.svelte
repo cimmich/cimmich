@@ -33,7 +33,6 @@
   import {
     getCimmichAssetCorrections,
     setCimmichAssetRotations,
-    undoCimmichAssetCorrections,
     type CimmichAssetCorrectionDetails,
     type CimmichAssetRotationChange,
     type CimmichPhotoDetailReviewItem,
@@ -487,26 +486,28 @@
           ? await getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))
           : { items: [] };
       const corrections = new Map(correctionPage.items.map((item) => [item.assetId, item]));
-      const nextItems = nextAssets.map<CimmichPhotoDetailReviewItem>((asset) => {
-        const assetId = assetIdsBySource.get(asset.id) ?? asset.id;
-        const correction = corrections.get(assetId);
-        return {
-          assetId,
-          captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
-          captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
-          confidenceSignal: 0,
-          correctionDecisionIds: correction?.correctionDecisionIds ?? [],
-          filename: correction?.filename ?? asset.originalFileName,
-          location: correction?.location ?? null,
-          originalCaptureTime:
-            correction?.originalCaptureTime ?? asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
-          reason: 'immich_visual_rotation_candidate',
-          rotationDecisionId: correction?.rotationDecisionId ?? null,
-          rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
-          schemaVersion: 'cimmich.asset-correction.v1',
-          sourceAssetId: asset.id,
-        };
-      });
+      const nextItems = nextAssets
+        .map<CimmichPhotoDetailReviewItem>((asset) => {
+          const assetId = assetIdsBySource.get(asset.id) ?? asset.id;
+          const correction = corrections.get(assetId);
+          return {
+            assetId,
+            captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+            captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
+            confidenceSignal: 0,
+            correctionDecisionIds: correction?.correctionDecisionIds ?? [],
+            filename: correction?.filename ?? asset.originalFileName,
+            location: correction?.location ?? null,
+            originalCaptureTime:
+              correction?.originalCaptureTime ?? asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+            reason: 'immich_visual_rotation_candidate',
+            rotationDecisionId: correction?.rotationDecisionId ?? null,
+            rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
+            schemaVersion: 'cimmich.asset-correction.v1',
+            sourceAssetId: asset.id,
+          };
+        })
+        .filter((candidate) => !candidate.rotationDecisionId);
       const combined = append ? [...rotationItems, ...nextItems] : nextItems;
       rotationItems = [...new Map(combined.map((item) => [item.assetId, item])).values()];
       rotationAssets = new Map([
@@ -547,32 +548,13 @@
           detailsByAsset[details.assetId] = details;
         }
       }
-      rotationItems = rotationItems.map((candidate) =>
-        mergeRotationDetails(candidate, detailsByAsset[candidate.assetId]),
-      );
+      rotationItems = rotationItems
+        .map((candidate) => mergeRotationDetails(candidate, detailsByAsset[candidate.assetId]))
+        .filter((candidate) => !candidate.rotationDecisionId);
       return true;
     } catch (error_) {
       rotationError = friendlyError(error_, 'Cimmich could not save or confirm the rotation review.');
       return false;
-    } finally {
-      rotationBusyAssetId = '';
-    }
-  };
-
-  const undoCandidateRotation = async (item: CimmichPhotoDetailReviewItem) => {
-    if (!item.rotationDecisionId || rotationBusyAssetId) {
-      return;
-    }
-    rotationBusyAssetId = item.assetId;
-    rotationError = '';
-    try {
-      const result = await undoCimmichAssetCorrections([item.rotationDecisionId]);
-      const details = result.items?.find((candidate) => candidate.assetId === item.assetId) ?? result.item;
-      rotationItems = rotationItems.map((candidate) =>
-        candidate.assetId === item.assetId ? mergeRotationDetails(candidate, details) : candidate,
-      );
-    } catch (error_) {
-      rotationError = friendlyError(error_, 'Cimmich could not undo the rotation correction.');
     } finally {
       rotationBusyAssetId = '';
     }
@@ -965,7 +947,6 @@
         loadingMore={rotationLoadingMore}
         onConfirm={confirmCandidateRotations}
         onLoadMore={() => void loadRotation({ append: true })}
-        onUndo={(item) => void undoCandidateRotation(item)}
       />
     {:else}
       <ArchiveBackupProof

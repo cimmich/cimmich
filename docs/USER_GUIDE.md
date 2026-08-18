@@ -549,13 +549,17 @@ view used by Photo Review. Rotate left and Rotate right change a local draft;
 they do not write while you are still inspecting. Choose **Save** after changing
 an orientation, or **Confirm** to record that the current orientation is
 correct. **Save / Confirm all (X)** applies only to the pending candidates
-currently loaded on the page, and its count updates as decisions are made.
+currently loaded on the page. A completed card leaves this active queue
+immediately and remains absent after reload. If another ranked batch exists,
+use **Load 24 more candidates** to continue.
 
 Saved decisions are reversible Cimmich presentation corrections, including an
-explicit confirmation that no rotation is needed. Undo remains available after
-confirmation. The source file and Immich metadata are unchanged. Magnify or
-open the complete photo before deciding because visual similarity does not
-determine whether a photo needs correction or which direction is correct.
+explicit confirmation that no rotation is needed. Undo remains available from
+Photo details after confirmation. The source file and Immich metadata are
+unchanged. Magnify or open the complete photo before deciding because visual
+similarity does not determine whether a photo needs correction or which
+direction is correct. Cards place the ranking reason beneath the photo and keep
+EXIF and proposed rotation together for faster scanning.
 
 ### Backup proof
 
