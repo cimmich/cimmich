@@ -335,9 +335,13 @@ The supported response supplies both the ranked assets and visible metadata, so
 the mode does not hydrate the whole library or issue a second asset-detail fan
 out. The queue is a visual lead rather than deterministic proof and does not
 infer a safe direction. The card exposes the ranking reason, EXIF orientation,
-dimensions, capture date and source folder. Rotate and Undo use the existing
-append-only Cimmich correction ledger; they never write source media or Immich
-metadata.
+dimensions, capture date and source folder. Each card reuses the full-photo
+Photo Review magnifier. Rotate controls update client-side drafts; a per-card
+Save or Confirm action, or one page-scoped Save / Confirm all batch, commits
+absolute quarter-turn decisions to the append-only Cimmich correction ledger.
+An unchanged photo is stored as an explicit zero-turn confirmation. The batch
+is bounded to 100 unique assets, idempotent by command ID and never writes
+source media or Immich metadata. Undo continues to reverse saved decisions.
 
 The mode pages Immich's path search to inventory every direct file in the
 requested folder. The client joins that inventory to the already loaded

@@ -159,6 +159,23 @@ export const createReviewRoutes =
     }
     if (
       request.method === "POST" &&
+      url.pathname === "/v1/assets/corrections/rotation:set"
+    ) {
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        200,
+        await repository.setAssetRotations({
+          actorId: request.headers["x-cimmich-actor"],
+          changes: body.changes,
+          commandId: body.commandId,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
       url.pathname === "/v1/assets/corrections/rotation"
     ) {
       const body = await readJsonBody(request);

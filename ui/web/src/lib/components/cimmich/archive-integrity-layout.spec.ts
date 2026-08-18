@@ -24,7 +24,10 @@ describe('Archive integrity layout', () => {
   });
 
   it('keeps exact duplicate discovery explicit, inspectable and read-only', async () => {
-    const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
+    const pageSource = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
+    const exactResults = await readFile('src/lib/components/cimmich/ArchiveExactDuplicateResults.svelte', 'utf8');
+    const variantResults = await readFile('src/lib/components/cimmich/ArchiveVariantResults.svelte', 'utf8');
+    const source = [pageSource, exactResults, variantResults].join('\n');
     const pageLoad = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.ts', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
@@ -58,7 +61,7 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('Recommended to keep');
     expect(source).toContain('No safe recommendation');
     expect(source).toContain('Why this recommendation');
-    expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
+    expect(source).toContain('archiveVariantFolderContext(contextGroups, asset)');
     expect(source).toContain('title={data.meta.title}');
     expect(source).not.toContain('Back to Archive Health');
     expect(source).toContain('Open this folder in Library');
@@ -110,8 +113,14 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('EXIF orientation');
     expect(rotationReview).toContain('Reversible Cimmich correction');
     expect(rotationReview).toContain('Source folder unavailable');
-    expect(rotationReview).toContain("onRotate(item, 'left')");
-    expect(rotationReview).toContain("onRotate(item, 'right')");
+    expect(rotationReview).toContain('<CimmichReviewPhotoMedia');
+    expect(rotationReview).toContain('targetLabel="Review orientation"');
+    expect(rotationReview).toContain("rotateDraft(item, 'left')");
+    expect(rotationReview).toContain("rotateDraft(item, 'right')");
+    expect(rotationReview).toContain("dirty ? 'Save' : confirmed ? 'Confirmed' : 'Confirm'");
+    expect(rotationReview).toContain('Save / Confirm all (${pendingItems.length})');
+    expect(rotationReview).toContain('pendingItems.map');
+    expect(rotationReview).toContain('currently shown on this page');
     expect(rotationReview).toContain('onUndo(item)');
     expect(rotationReview).toContain('Source files and Immich metadata are unchanged');
     expect(folderComparison).toContain('Biggest overlaps');

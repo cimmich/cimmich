@@ -75,6 +75,21 @@ export const rotateCimmichAssets = (
     method: 'POST',
   });
 
+export type CimmichAssetRotationChange = {
+  assetId: string;
+  quarterTurns: number;
+};
+
+export const setCimmichAssetRotations = (
+  changes: CimmichAssetRotationChange[],
+  commandId = createCimmichAssetCorrectionCommandId('confirm-rotation'),
+) =>
+  request<CimmichAssetCorrectionResult>('/v1/assets/corrections/rotation:set', {
+    body: JSON.stringify({ changes, commandId }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
 export const setCimmichAssetCaptureTime = (
   assetId: string,
   captureTime: string,

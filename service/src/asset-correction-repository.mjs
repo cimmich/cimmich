@@ -15,6 +15,7 @@ export const attachAssetCorrections = (
     assetCorrectionDetails: store.details,
     assetCorrectionReview: store.review,
     rotateAssets: store.rotate,
+    setAssetRotations: store.setRotation,
     setAssetCaptureTime: store.setCaptureTime,
     setAssetPlace: store.setPlace,
     undoAssetCorrections: store.undo,

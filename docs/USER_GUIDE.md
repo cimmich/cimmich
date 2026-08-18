@@ -544,11 +544,18 @@ metadata, exposing the source folder, capture date, dimensions and recorded
 EXIF orientation. More candidates load in another bounded page only when
 requested.
 
-Rotate left and Rotate right create a reversible Cimmich presentation
-correction. The preview updates immediately and Undo remains on the candidate.
-The source file and Immich metadata are unchanged. Open the complete photo
-before deciding because visual similarity does not determine whether a photo
-needs correction or which direction is correct.
+Use the magnify control on any candidate to open the same full-photo inspection
+view used by Photo Review. Rotate left and Rotate right change a local draft;
+they do not write while you are still inspecting. Choose **Save** after changing
+an orientation, or **Confirm** to record that the current orientation is
+correct. **Save / Confirm all (X)** applies only to the pending candidates
+currently loaded on the page, and its count updates as decisions are made.
+
+Saved decisions are reversible Cimmich presentation corrections, including an
+explicit confirmation that no rotation is needed. Undo remains available after
+confirmation. The source file and Immich metadata are unchanged. Magnify or
+open the complete photo before deciding because visual similarity does not
+determine whether a photo needs correction or which direction is correct.
 
 ### Backup proof
 

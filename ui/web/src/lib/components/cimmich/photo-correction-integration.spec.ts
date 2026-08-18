@@ -33,8 +33,11 @@ describe('photo correction integration', () => {
     expect(page).toContain("{ id: 'locations', label: 'Locations' }");
     expect(page).toContain('source media and Immich');
     expect(archiveHealth).toContain("mode: 'rotation'");
-    expect(archiveHealth).toContain('rotateCimmichAssets');
+    expect(archiveHealth).toContain('setCimmichAssetRotations');
+    expect(archiveHealth).toContain('confirmCandidateRotations');
     expect(archiveHealth).toContain('undoCimmichAssetCorrections');
     expect(rotationReview).toContain("Immich's visual index");
+    expect(rotationReview).toContain('<CimmichReviewPhotoMedia');
+    expect(rotationReview).toContain('Save / Confirm all');
   });
 });

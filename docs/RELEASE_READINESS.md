@@ -509,7 +509,11 @@ and conflicting Places have deterministic Photo details queues. Source-current
 Archive Health adds a demand-loaded Rotation review that requests 24 ranked
 sideways-photo leads at a time from Immich Smart Search and reuses the returned
 asset metadata without hydrating the library. Reversible rotate/Undo controls
-do not claim that a lead needs correction or infer a safe direction.
+do not claim that a lead needs correction or infer a safe direction. Rotation
+buttons stage local drafts, the shared Photo Review magnifier supports full-size
+inspection, and explicit per-card or page-scoped confirmation writes only to
+the Cimmich correction ledger. The bulk count covers the candidates currently
+loaded on the page.
 Source-current Smart Search also exposes Immich visual ranking as its own lens,
 separate from deterministic Recorded facts. Natural-language queries and
 photo-scoped similarity both request 24 image records at a time, reuse the

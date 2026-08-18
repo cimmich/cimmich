@@ -84,6 +84,38 @@ const cleanDirection = (value) => {
   return value;
 };
 
+const cleanRotationChanges = (values) => {
+  if (!Array.isArray(values) || values.length < 1 || values.length > 100) {
+    throw typedError(
+      "Choose between 1 and 100 rotation confirmations",
+      400,
+      "ASSET_ROTATION_CHANGES_INVALID",
+    );
+  }
+  const changes = values.map((value) => ({
+    assetId: String(value?.assetId || "").trim(),
+    quarterTurns: value?.quarterTurns,
+  }));
+  if (
+    changes.some(
+      ({ assetId, quarterTurns }) =>
+        !assetId ||
+        assetId.length > 200 ||
+        !Number.isInteger(quarterTurns) ||
+        quarterTurns < 0 ||
+        quarterTurns > 3,
+    ) ||
+    new Set(changes.map(({ assetId }) => assetId)).size !== changes.length
+  ) {
+    throw typedError(
+      "Rotation confirmations require unique assets and quarter turns from 0 to 3",
+      400,
+      "ASSET_ROTATION_CHANGES_INVALID",
+    );
+  }
+  return changes;
+};
+
 const cleanCaptureTime = (value) => {
   if (typeof value !== "string") {
     throw typedError(
@@ -392,6 +424,48 @@ export const createAssetCorrectionStore = (
     });
   };
 
+  const setRotation = async ({ actorId, changes, commandId }) => {
+    const request = {
+      actorId: cleanActor(actorId),
+      changes: cleanRotationChanges(changes),
+      commandId: cleanCommandId(commandId),
+    };
+    const payloadDigest = digest(request);
+    return sql.begin(async (tx) => {
+      const replay = await commandReplay(tx, request.commandId, payloadDigest);
+      if (replay) return replay;
+      const assetIds = request.changes.map(({ assetId }) => assetId);
+      await requireAssets(tx, assetIds, presentationRank, true);
+      const decisionIds = [];
+      for (const change of request.changes) {
+        decisionIds.push(
+          await insertCorrection(tx, {
+            actorId: request.actorId,
+            assetId: change.assetId,
+            kind: "rotation",
+            quarterTurns: change.quarterTurns,
+          }),
+        );
+      }
+      const result = {
+        changed: true,
+        decisionIds,
+        items: (await detailRows(tx, assetIds, presentationRank)).map((row) =>
+          projectDetails(row, bridgeFields),
+        ),
+        replayed: false,
+        schemaVersion: assetCorrectionSchemaVersion,
+      };
+      await recordCommand(tx, {
+        commandId: request.commandId,
+        commandKind: "rotate",
+        payloadDigest,
+        result,
+      });
+      return result;
+    });
+  };
+
   const setCaptureTime = async ({
     actorId,
     assetId,
@@ -651,5 +725,13 @@ export const createAssetCorrectionStore = (
     };
   };
 
-  return { details, review, rotate, setCaptureTime, setPlace, undo };
+  return {
+    details,
+    review,
+    rotate,
+    setCaptureTime,
+    setPlace,
+    setRotation,
+    undo,
+  };
 };
