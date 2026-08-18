@@ -1,7 +1,7 @@
 # Community Preview user journeys
 
 Updated: 2026-08-18
-Candidate: `v1.1.0-community-preview.11`
+Candidate: `v1.1.0-community-preview.12`
 Compatibility target: exact Immich 3.1.0
 
 This is the user-facing acceptance map for the bounded Community Preview. A
@@ -13,7 +13,7 @@ recovery path agree in the signed-in product and in the named automated proof.
 | Area                   | A newcomer should be able to                                                                                                                                              | Empty, edge and recovery behavior                                                                                                                                                                          | Proof surface                                                                                                               |
 | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
 | Home                   | Understand what Cimmich adds, see a featured memory and move into the library without learning the data model first.                                                      | Counts and previews follow the current Viewing mode; unavailable optional features do not block the page.                                                                                                  | `home-presentation.spec.ts`; signed-in desktop and phone walkthrough.                                                       |
-| Photos and Organise    | Open one familiar Photos surface, switch between Timeline, Folders, Tags, Albums and Bulk, apply Cimmich-owned labels and preview a folder-to-album manifest before creating memberships. | Empty folders or labels explain what will make them appear; title collisions block Apply until reviewed; exact checkpoints allow the operation to be undone without removing prior memberships.              | `organise-human-first.spec.ts`; `asset-label-bulk-album-journey.mjs`; folder-manifest and Bulk walkthroughs.                |
+| Photos and Organise    | Open one familiar Photos surface, switch between Timeline, Folders, Tags, Albums and Bulk, apply Cimmich-owned labels, collections, favourites or archive choices, and preview a folder-to-collection manifest before creating memberships. | Empty folders, labels or collections explain what will make them appear; title collisions block Apply until reviewed; exact checkpoints undo only memberships created by that operation; Immich remains read-only. | `organise-human-first.spec.ts`; `asset-label-bulk-album-journey.mjs`; folder-manifest and Bulk walkthroughs; `public-product-boundary.spec.ts`. |
 | Tags                   | Start in Cimmich Tags, search, select several tags and see the intersection of their matching photos; switch to Normal Tags when wanted.                                  | No-result searches and a library with no Normal Tags say so directly and retain the mode/search controls.                                                                                                  | `tag-browser.spec.ts`; signed-in multi-select walkthrough.                                                                  |
 | People                 | Browse people visually from one compact title and control bar, filter People and Person photos by Privacy bucket, tags/labels, Places, Events and Things, understand Face/Head/Body/Presence evidence and make owner-controlled corrections. | Tooltips explain modes, search, sorting, filters and grid size; protected facets lead through the viewing-mode boundary; ambiguous identity operations retain manual correction and never accept a match automatically. | `people-*.spec.ts`; `CimmichExploreFilters.spec.ts`; `navigation-shell-contract.spec.ts`; `explore-facets.test.mjs`; signed-in collection/detail walkthrough. |
 | Pets                   | Browse pets separately from people, open a pet profile and see linked media and documents.                                                                                | Unknown pets remain review work; same-species suggestions never become automatic identity; rejected decisions have a visible history.                                                                      | `pet-*.spec.ts`; `pet-manual-journey.mjs`; `pet-document-journey.mjs`.                                                      |
@@ -47,6 +47,9 @@ recovery path agree in the signed-in product and in the named automated proof.
 - **Lifecycle:** fresh install, schema-75 Patch-6 upgrade, current-schema
   refresh, backup/restore, restart, disable and removal are tested against exact
   Immich 3.1.0 while Cimmich state remains separate.
+- **Immich read-only:** Cimmich may read native organisation as a source filter,
+  but every Cimmich collection, tag, favourite and archive action writes only
+  Cimmich-owned decision history.
 
 This matrix defines Preview acceptance; it is not a claim of stable support for
 other Immich versions, native Windows, Internet-facing deployment or automatic

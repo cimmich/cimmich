@@ -25,12 +25,11 @@ const mocks = vi.hoisted(() => {
     },
   });
   return {
-    addAlbum: vi.fn(),
     attachContext: vi.fn(),
-    bulkTag: vi.fn(),
+    changeLabel: vi.fn(),
+    createLabel: vi.fn(),
     detachContext: vi.fn(),
-    getAlbums: vi.fn(() => Promise.resolve([])),
-    getAsset: vi.fn(),
+    getLabels: vi.fn(() => Promise.resolve([])),
     getEntities: vi.fn((family: string, options: unknown): Promise<CimmichContextEntity[]> => {
       void family;
       void options;
@@ -38,45 +37,35 @@ const mocks = vi.hoisted(() => {
     }),
     getPeople: vi.fn(() => Promise.resolve([])),
     getPets: vi.fn(() => Promise.resolve([])),
-    getTags: vi.fn(() => Promise.resolve([])),
-    removeAlbum: vi.fn(),
     setPresence: vi.fn(),
     setVisibility: vi.fn(),
-    untag: vi.fn(),
+    undoLabel: vi.fn(),
     undoContext: vi.fn(),
     undoPresence: vi.fn(),
     undoVisibility: vi.fn(),
-    updateAssets: vi.fn(),
     values,
   };
 });
 
 vi.mock('$lib/services/cimmich.service', () => ({
   attachCimmichContextAssets: mocks.attachContext,
+  changeCimmichAssetLabelMembership: mocks.changeLabel,
+  createCimmichAssetLabel: mocks.createLabel,
+  createCimmichAssetLabelCommandId: () => 'label-command',
   createCimmichContextCommandId: () => 'context-command',
   createCimmichManualPresenceCommandId: () => 'presence-command',
   createCimmichVisibilityCommandId: () => 'visibility-command',
   detachCimmichContextAssets: mocks.detachContext,
   getCimmichContextEntities: mocks.getEntities,
+  getCimmichAssetLabels: mocks.getLabels,
   getCimmichPeople: mocks.getPeople,
   getCimmichPets: mocks.getPets,
   setCimmichManualPresence: mocks.setPresence,
   setCimmichVisibilityObjects: mocks.setVisibility,
   undoCimmichContextDecision: mocks.undoContext,
+  undoCimmichAssetLabelDecision: mocks.undoLabel,
   undoCimmichManualPresence: mocks.undoPresence,
   undoCimmichVisibilityDecision: mocks.undoVisibility,
-}));
-
-vi.mock('@immich/sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@immich/sdk')>()),
-  addAssetsToAlbum: mocks.addAlbum,
-  bulkTagAssets: mocks.bulkTag,
-  getAllAlbums: mocks.getAlbums,
-  getAllTags: mocks.getTags,
-  getAssetInfo: mocks.getAsset,
-  removeAssetFromAlbum: mocks.removeAlbum,
-  untagAssets: mocks.untag,
-  updateAssets: mocks.updateAssets,
 }));
 
 vi.mock('./cimmich-undo-receipt-context.svelte', () => ({
@@ -97,8 +86,7 @@ describe('CimmichEntityMediaActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.values.clear();
-    mocks.getAlbums.mockResolvedValue([]);
-    mocks.getTags.mockResolvedValue([]);
+    mocks.getLabels.mockResolvedValue([]);
     mocks.getPeople.mockResolvedValue([]);
     mocks.getPets.mockResolvedValue([]);
     mocks.getEntities.mockResolvedValue([]);
@@ -157,8 +145,7 @@ describe('CimmichEntityMediaActions', () => {
     await fireEvent.click(getByRole('button', { name: 'Add to Event' }));
     await waitFor(() => expect(mocks.getEntities).toHaveBeenCalledTimes(1));
     expect(mocks.getEntities).toHaveBeenCalledWith('events', { limit: 500 });
-    expect(mocks.getAlbums).not.toHaveBeenCalled();
-    expect(mocks.getTags).not.toHaveBeenCalled();
+    expect(mocks.getLabels).not.toHaveBeenCalled();
     expect(mocks.getPeople).not.toHaveBeenCalled();
     expect(mocks.getPets).not.toHaveBeenCalled();
     resolveEvents([]);
@@ -267,17 +254,14 @@ describe('CimmichEntityMediaActions', () => {
       globalThis.localStorage,
       {
         action: 'visibility-private',
-        albumId: '',
         assetIds: ['asset-1'],
         completedAt: new Date().toISOString(),
         contextDecisionIds: [],
         label: 'Set photo privacy to Private',
-        nativePrevious: [],
+        labelDecisionIds: [],
         presenceDecisionIds: [],
-        sourceAssetIds: ['source-1'],
-        tagId: '',
         targetId: '',
-        version: 1,
+        version: 2,
         visibilityDecisionIds: ['visibility-decision'],
       },
       { ownerId: 'owner-test', sessionId: 'session-test', viewingMode: 'standard' },

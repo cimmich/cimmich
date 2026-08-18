@@ -1,9 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 
 const read = (path: string) => readFile(new URL(path, import.meta.url), 'utf8');
 
 describe('public Cimmich product boundary', () => {
+  it('keeps Cimmich organisation writes inside Cimmich-owned state', async () => {
+    const productRoots = [
+      resolve(process.cwd(), 'src/lib/components/cimmich'),
+      resolve(process.cwd(), 'src/routes/(user)/cimmich'),
+    ];
+    const productFileGroups = await Promise.all(
+      productRoots.map((root) =>
+        readdir(root, { recursive: true }).then((entries) =>
+          entries
+            .filter((entry) => /\.(?:svelte|ts)$/.test(entry) && !entry.endsWith('.spec.ts'))
+            .map((entry) => join(root, entry)),
+        ),
+      ),
+    );
+    const productFiles = productFileGroups.flat();
+    const sources = await Promise.all(productFiles.map((file) => readFile(file, 'utf8')));
+    const combined = sources.join('\n');
+    const immichSdkImports = [...combined.matchAll(/import\s*\{([^}]*)\}\s*from '@immich\/sdk'/g)]
+      .map((match) => match[1])
+      .join('\n');
+    expect(immichSdkImports).not.toMatch(
+      /\b(?:add|bulk|create|delete|remove|replace|restore|set|trash|update|upload)[A-Z][A-Za-z0-9_]*/,
+    );
+    expect(combined).not.toMatch(
+      /\b(?:addAssetsToAlbum|bulkTagAssets|createAlbum|deleteAlbum|removeAssetFromAlbum|untagAssets|updateAssets)\b/,
+    );
+    expect(combined).toContain('changeCimmichAssetLabelMembership');
+    expect(combined).toContain("getCimmichAssetLabels('', 250, 'collection')");
+    expect(combined).toContain("getCimmichAssetLabels('', 1, 'favorite')");
+    expect(combined).toContain("getCimmichAssetLabels('', 1, 'archive')");
+  });
+
   it('does not advertise legacy proof labs or private fixture copy from Home', async () => {
     const home = await read('../../../routes/(user)/cimmich/+page.svelte');
     const coverEditor = await read('./CimmichHomeCoverEditor.svelte');
@@ -35,6 +68,9 @@ describe('public Cimmich product boundary', () => {
     const search = await read('../../../routes/(user)/cimmich/smart-search/+page.svelte');
     expect(search).toContain('Maya at Cedar House, Bluewater in 2024…');
     expect(search).not.toMatch(/Private Fixture (?:Person|Collection)|Wave[- ]?1/i);
+    expect(search).toContain('Matched by meaning');
+    expect(search).toContain('did not resolve a specific Person, Place, Event or');
+    expect(search).toContain('label from this search');
   });
 
   it('presents visibility-filtered Smart Search Documents as actionable results', async () => {

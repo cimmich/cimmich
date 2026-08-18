@@ -108,7 +108,9 @@ describe('Person profile layout', () => {
     expect(source).toContain('Awaiting confirmation');
     expect(source).toContain('const cimmichAwaitingCountHint');
     expect(source).toContain('Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)');
-    expect(source).toContain('{waitingHint.toLocaleString()} waiting');
+    expect(source).toContain('candidateFaces: cimmichIdentityLoaded ? cimmichAwaitingCounts.newMatches : 0');
+    expect(source).toContain('Checking reviews');
+    expect(source).not.toContain('{waitingHint.toLocaleString()} waiting');
     expect(source).toContain("title: isNewMatch ? 'New matches' : 'Possible mistags'");
     expect(source).toContain('const cimmichCandidateReviewItems');
     expect(source).toContain('const cimmichPersonReviewItems');

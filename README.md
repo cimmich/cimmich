@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 11** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 12** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
@@ -53,9 +53,10 @@ owner-controlled context beside Immich.
   activity, client engagement and life period at the same time.
 - **Intersection search.** Select several Cimmich tags to see only photographs
   carrying all of them, without a hidden 5,000-result ceiling.
-- **Reversible archive organisation.** Apply Cimmich-owned Labels and preview
-  folder-derived album manifests before creating collision-safe albums, without
-  moving source media or writing sidecars.
+- **Reversible archive organisation.** Apply Cimmich-owned labels, tags,
+  collections, favourites and archive choices. Folder manifests create
+  collision-safe Cimmich collections without changing Immich albums, tags,
+  memberships, metadata or source media.
 - **Archive health without deletion authority.** Compare exact bytes and
   possible duplicates, check one folder against the rest of the archive, and
   scan a configured read-only independent backup. Folder Check aligns paths,
@@ -66,6 +67,9 @@ owner-controlled context beside Immich.
   title, modes, search, sorting, filters and grid size share one compact bar.
 - **Owner-controlled review.** Matching may suggest; the archive owner accepts,
   corrects, rejects, merges or undoes every consequential identity decision.
+- **Matching that follows new evidence.** If a viewing-mode change reveals
+  more eligible Faces, Cimmich offers analysis before it returns to a held
+  reference pack or rebuild step.
 - **Bounded Local AI review.** From one photo or a small selection, optional
   local models can look for missed Faces or create derived enhancement previews
   without replacing originals or silently accepting results.
@@ -145,7 +149,8 @@ Cimmich is designed to be additive and removable:
 
 - Cimmich has its own PostgreSQL database, configuration, documents and backups.
 - Immich continues to own and serve original media.
-- Cimmich does not directly write the Immich database or source-media bytes.
+- Cimmich treats Immich as read-only. Its service and Cimmich UI paths do not
+  create, update or delete Immich albums, memberships, tags, metadata or media.
 - Product ports bind to loopback by default.
 - Core organisation works without a model or model-provider API key.
 - Optional local providers produce observations, not identity decisions.

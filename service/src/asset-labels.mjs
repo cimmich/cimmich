@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 const schemaVersion = "cimmich.asset-labels.v1";
 const commandKinds = new Set(["attach", "create", "detach", "undo"]);
+const labelKinds = new Set(["archive", "collection", "favorite", "label"]);
+const creatableLabelKinds = new Set(["collection", "label"]);
 
 const typedError = (message, statusCode, code, details) =>
   Object.assign(new Error(message), {
@@ -32,6 +34,21 @@ const cleanDisplayName = (value) =>
 
 const cleanCommand = (value) => cleanBoundedText(value, "command id", 240);
 const cleanActor = (value) => cleanBoundedText(value, "actor id", 200);
+
+export const cleanAssetLabelKind = (value, { creatable = false } = {}) => {
+  const kind = String(value || "label").trim();
+  const allowed = creatable ? creatableLabelKinds : labelKinds;
+  if (!allowed.has(kind)) {
+    throw typedError(
+      creatable
+        ? "Asset label kind must be label or collection"
+        : "Asset label kind is invalid",
+      400,
+      "ASSET_LABEL_KIND_INVALID",
+    );
+  }
+  return kind;
+};
 
 const cleanAssetIds = (value) => {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
@@ -110,6 +127,7 @@ const projectLabel = (row) => ({
   assetCount: Number(row.asset_count || 0),
   createdAt: new Date(row.created_at).toISOString(),
   displayName: row.display_name,
+  kind: row.label_kind,
   labelId: row.label_id,
   schemaVersion,
   status: row.status,
@@ -152,7 +170,8 @@ const insertMembershipEvents = async (
 };
 
 export const createAssetLabelStore = (sql, { presentationRank }) => ({
-  async assetLabels({ limit = 100, query = "" } = {}) {
+  async assetLabels({ kind = "label", limit = 100, query = "" } = {}) {
+    const labelKind = cleanAssetLabelKind(kind);
     const parsedLimit = Number.parseInt(String(limit || 100), 10);
     if (
       !Number.isInteger(parsedLimit) ||
@@ -175,7 +194,7 @@ export const createAssetLabelStore = (sql, { presentationRank }) => ({
     }
     const search = `%${normalizedQuery}%`;
     const rows = await sql`
-      SELECT label.label_id, label.display_name, label.status,
+      SELECT label.label_id, label.display_name, label.label_kind, label.status,
         label.created_at,
         count(membership.asset_id) FILTER (
           WHERE asset.state = 'active'
@@ -186,7 +205,7 @@ export const createAssetLabelStore = (sql, { presentationRank }) => ({
       LEFT JOIN current_asset_label_membership membership
         ON membership.label_id = label.label_id
       LEFT JOIN asset ON asset.asset_id = membership.asset_id
-      WHERE label.status = 'active'
+      WHERE label.status = 'active' AND label.label_kind = ${labelKind}
         AND (${normalizedQuery} = '' OR label.display_name ILIKE ${search})
       GROUP BY label.label_id
       ORDER BY lower(label.display_name), label.label_id
@@ -195,15 +214,17 @@ export const createAssetLabelStore = (sql, { presentationRank }) => ({
     return { items: rows.map(projectLabel), schemaVersion };
   },
 
-  async createAssetLabel({ actorId, commandId, displayName }) {
+  async createAssetLabel({ actorId, commandId, displayName, kind = "label" }) {
     const actor = cleanActor(actorId);
     const command = cleanCommand(commandId);
     const name = cleanDisplayName(displayName);
+    const labelKind = cleanAssetLabelKind(kind, { creatable: true });
     const normalizedName = normalizeAssetLabelName(name);
     const requestDigest = digestRequest({
       actor,
       commandKind: "create",
       displayName: name,
+      kind: labelKind,
       normalizedName,
     });
     return sql.begin(async (tx) => {
@@ -215,17 +236,19 @@ export const createAssetLabelStore = (sql, { presentationRank }) => ({
       const labelId = identifier("label");
       const inserted = await tx`
         INSERT INTO asset_label (
-          label_id, display_name, normalized_name, created_by_actor_id
-        ) VALUES (${labelId}, ${name}, ${normalizedName}, ${actor})
-        ON CONFLICT (normalized_name) DO NOTHING
-        RETURNING label_id, display_name, status, created_at
+          label_id, display_name, normalized_name, label_kind,
+          created_by_actor_id
+        ) VALUES (${labelId}, ${name}, ${normalizedName}, ${labelKind}, ${actor})
+        ON CONFLICT DO NOTHING
+        RETURNING label_id, display_name, label_kind, status, created_at
       `;
       const [label] = inserted.length
         ? inserted
         : await tx`
-            SELECT label_id, display_name, status, created_at
+            SELECT label_id, display_name, label_kind, status, created_at
             FROM asset_label
             WHERE normalized_name = ${normalizedName}
+              AND label_kind = ${labelKind}
             LIMIT 1
           `;
       const response = {

@@ -20,7 +20,7 @@ not product or machine-facing terminology.
 - database dumps, XMP sidecars, API tokens, credentials or private hostnames;
 - private-fixture-specific import configuration.
 
-Private import/evaluation tools must run read-only against their source and write only redacted aggregate reports outside this repository. Cimmich keeps its derived intelligence in a permanently separate database with separate credentials, migrations, backups and restore. It shares no schema or cross-database foreign keys with Immich and never directly writes Immich database internals or source media. The public companion may authenticate to supported Immich interfaces through the documented versioned adapter.
+Private import/evaluation tools must run read-only against their source and write only redacted aggregate reports outside this repository. Cimmich keeps its derived intelligence and organisation state in a permanently separate database with separate credentials, migrations, backups and restore. It shares no schema or cross-database foreign keys with Immich. Cimmich never creates, updates or deletes Immich albums, album memberships, tags, asset metadata, database records or source media. Collections, tags, favourites and archive choices made in Cimmich are Cimmich-owned records with exact decision history and Undo. The public companion may authenticate to supported Immich interfaces through the documented versioned read-only adapter.
 
 Schema changes are applied only by `service/bin/migrate.mjs`. The runner holds a
 cross-process PostgreSQL advisory lock, verifies an ordered SHA-256 ledger and

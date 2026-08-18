@@ -32,7 +32,9 @@
     loading && !result
       ? 'Reading this view…'
       : result
-        ? `${result.totalAssets.toLocaleString()} of ${result.availableAssets.toLocaleString()} photos${result.scope.kind === 'people' ? ` · ${result.people.length.toLocaleString()} people` : ''}`
+        ? result.scope.kind === 'people'
+          ? `${result.totalAssets.toLocaleString()}${activeCount > 0 ? ` of ${result.availableAssets.toLocaleString()}` : ''} visible photos · ${result.people.length.toLocaleString()} ${result.people.length === 1 ? 'person' : 'people'} with visible photos`
+          : `${result.totalAssets.toLocaleString()} of ${result.availableAssets.toLocaleString()} photos`
         : 'Explore this view',
   );
 

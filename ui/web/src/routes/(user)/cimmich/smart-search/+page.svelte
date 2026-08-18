@@ -326,6 +326,15 @@
                         >{/each}
                     </div>
                   {/if}
+                  {#if result.interpretation.selectors.length === 0 && !result.interpretation.dateRange && result.interpretation.unresolvedTerms.length === 0}
+                    <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-800">
+                      <p class="font-semibold">Matched by meaning</p>
+                      <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+                        Cimmich found visually similar results but did not resolve a specific Person, Place, Event or
+                        label from this search.
+                      </p>
+                    </div>
+                  {/if}
                   {#if result.interpretation.candidateSetTruncated}
                     <p
                       class="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"

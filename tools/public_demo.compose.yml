@@ -100,7 +100,7 @@ services:
       - -c
       - |
         set -eu
-        chown 1000:1000 /documents
+        chown ${CIMMICH_PUBLIC_DEMO_HOST_UID:-1000}:${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000} /documents
         chmod 700 /documents
     restart: "no"
     volumes:
@@ -123,6 +123,9 @@ services:
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
     image: ${CIMMICH_PUBLIC_DEMO_PROJECT:-cimmich-public-demo}-api:current-source
+    # Match the invoking host user so owner-only bind-mounted runtime secrets
+    # remain readable without granting group or world access.
+    user: ${CIMMICH_PUBLIC_DEMO_HOST_UID:-1000}:${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
     command:
       - /bin/sh
       - -c
@@ -179,10 +182,7 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    # Read only the two group-owned runtime secrets from the owner-only host
-    # state without exposing the complete operator-state directory.
-    group_add:
-      - ${CIMMICH_PUBLIC_DEMO_HOST_GID:-1000}
+    # Mount only the runtime inputs, not the complete operator-state directory.
     volumes:
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/display-bridge.json:/demo-state/display-bridge.json:ro
       - ${CIMMICH_PUBLIC_DEMO_STATE_ROOT:?set CIMMICH_PUBLIC_DEMO_STATE_ROOT}/immich-credential.json:/demo-state/immich-credential.json:ro

@@ -16,10 +16,12 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. The maintained
-Community Preview 11 advances to schema 130 without rewriting that submission.
+Community Preview 12 advances to schema 131 without rewriting that submission.
 Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
-schema 130 makes bounded identity-audit coverage durable and owner-visible.
+schema 130 makes bounded identity-audit coverage durable and owner-visible;
+schema 131 keeps collections, tags, favourites and archive choices in
+Cimmich-owned append-only state while Immich remains read-only.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

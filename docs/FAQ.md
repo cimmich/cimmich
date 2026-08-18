@@ -16,8 +16,9 @@ compatibility target.
 ## Does Cimmich replace or modify my Immich installation?
 
 No. It runs beside Immich with its own database, credentials, migrations,
-documents and backups. It does not directly write the Immich database or
-modify original media.
+documents and backups. Cimmich collections, tags, favourites and archive
+choices stay in that database. Cimmich does not write Immich albums,
+memberships, tags, metadata or original media.
 
 ## What does Community Preview mean?
 
@@ -31,7 +32,7 @@ deployment and multi-user operation are not currently supported.
 
 ## Which version should I install?
 
-Install [Community Preview 11](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.11)
+Install [Community Preview 12](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.12)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
 development and may be ahead of the supported release.
 

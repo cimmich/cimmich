@@ -642,7 +642,22 @@ export const createFaceMatchingOperator = ({
       };
     }
     let next = { action: "review_suggestions", reason: "MATCHING_READY" };
-    if (pendingRebuilds > 0 && activePack) {
+    if (
+      latestPack?.state === "proposed" &&
+      latestPack.evaluation.status === "passed" &&
+      latestPack.evaluation.reason === null
+    ) {
+      next = deriveSourcePackSuccessorNext(latestPack, activePack);
+    } else if (
+      latestPack?.state === "proposed" &&
+      eligibleFaces > 0 &&
+      analysedFaces < eligibleFaces
+    ) {
+      next = {
+        action: "run_recognition",
+        reason: "PROVIDER_EVIDENCE_INCOMPLETE",
+      };
+    } else if (pendingRebuilds > 0 && activePack) {
       next = {
         action: "compile_source_pack",
         reason: "SOURCE_PACK_REBUILD_PENDING",

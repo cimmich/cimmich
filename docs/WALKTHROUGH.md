@@ -107,11 +107,12 @@ People, Pets, Places, Things and Events can participate in the same search. The
 result is calculated across the complete Cimmich library rather than being
 silently capped at the first 5,000 candidates.
 
-The same Organise area can apply Cimmich-owned Labels and turn reviewed folder
-groups into albums through a collision-safe manifest. The preview shows source
-folders, counts and editable titles before writing; one operation receipt can
-undo only the memberships and albums created by that run. Source files and
-sidecars are never moved or rewritten.
+The same Organise area can apply Cimmich-owned labels, tags, favourites and
+archive choices, then turn reviewed folder groups into collections through a
+collision-safe manifest. The preview shows source folders, counts and editable
+titles before writing. One operation receipt can undo only the Cimmich
+memberships created by that run. Immich albums, tags, metadata, source files and
+sidecars remain read-only.
 
 People and Person pages can also be narrowed by Privacy bucket, Tags and
 Labels, Places, Events and Things. The People directory keeps its title, modes,

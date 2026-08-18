@@ -1,4 +1,3 @@
-import { AssetVisibility } from '@immich/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ENTITY_MEDIA_ACTION_RECEIPT_KEY,
@@ -14,17 +13,14 @@ import {
 
 const receipt: CimmichEntityMediaActionReceipt = {
   action: 'event-attach',
-  albumId: '',
   assetIds: ['asset-1'],
   completedAt: '2026-08-01T00:00:00.000Z',
   contextDecisionIds: ['decision-1'],
   label: 'Add to Event · Birthday',
-  nativePrevious: [{ id: 'source-1', isFavorite: false, visibility: AssetVisibility.Timeline }],
+  labelDecisionIds: [],
   presenceDecisionIds: [],
-  sourceAssetIds: ['source-1'],
-  tagId: '',
   targetId: 'event-1',
-  version: 1,
+  version: 2,
   visibilityDecisionIds: [],
 };
 const privateContext = { ownerId: 'owner-1', sessionId: 'session-1', viewingMode: 'private' as const };

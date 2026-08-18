@@ -5,10 +5,13 @@ export type CimmichAssetLabel = {
   assetCount: number;
   createdAt: string;
   displayName: string;
+  kind: CimmichAssetLabelKind;
   labelId: string;
   schemaVersion: 'cimmich.asset-labels.v1';
   status: 'active' | 'retired';
 };
+
+export type CimmichAssetLabelKind = 'archive' | 'collection' | 'favorite' | 'label';
 
 export type CimmichAssetLabelMembershipResult = {
   action?: 'attach' | 'detach';
@@ -25,8 +28,8 @@ export type CimmichAssetLabelMembershipResult = {
 export const createCimmichAssetLabelCommandId = (kind: string) =>
   `asset-label.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 24)}.${createCimmichUuid()}`;
 
-export const getCimmichAssetLabels = async (query = '', limit = 250) => {
-  const search = new URLSearchParams({ limit: String(Math.max(1, Math.min(250, limit))) });
+export const getCimmichAssetLabels = async (query = '', limit = 250, kind: CimmichAssetLabelKind = 'label') => {
+  const search = new URLSearchParams({ kind, limit: String(Math.max(1, Math.min(250, limit))) });
   if (query.trim()) {
     search.set('q', query.trim());
   }
@@ -36,11 +39,15 @@ export const getCimmichAssetLabels = async (query = '', limit = 250) => {
   return result.items;
 };
 
-export const createCimmichAssetLabel = (displayName: string, commandId = createCimmichAssetLabelCommandId('create')) =>
+export const createCimmichAssetLabel = (
+  displayName: string,
+  commandId = createCimmichAssetLabelCommandId('create'),
+  kind: Extract<CimmichAssetLabelKind, 'collection' | 'label'> = 'label',
+) =>
   request<{ changed: boolean; label: CimmichAssetLabel; schemaVersion: 'cimmich.asset-labels.v1' }>(
     '/v1/asset-labels',
     {
-      body: JSON.stringify({ commandId, displayName }),
+      body: JSON.stringify({ commandId, displayName, kind }),
       headers: { 'x-cimmich-actor': 'local-operator' },
       method: 'POST',
     },

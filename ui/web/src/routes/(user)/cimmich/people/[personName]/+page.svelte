@@ -650,6 +650,18 @@
       ? Math.max(data.identityReviewCount, cimmichPerson?.candidate_faces ?? 0)
       : 0,
   );
+  const cimmichEvidenceCoverageForDisplay = $derived.by(() => {
+    if (!cimmichEvidenceCoverage) {
+      return undefined;
+    }
+    return {
+      ...cimmichEvidenceCoverage,
+      review: {
+        ...cimmichEvidenceCoverage.review,
+        candidateFaces: cimmichIdentityLoaded ? cimmichAwaitingCounts.newMatches : 0,
+      },
+    };
+  });
   const cimmichIdentityAuditGroups = $derived(
     personIdentityAuditGroups({
       auditTotals: cimmichIdentityAuditTotals,
@@ -3821,9 +3833,9 @@
           {/if}
 
           {#if cimmichIdentityFilter === 'overview'}
-            {#if cimmichEvidenceCoverage}
+            {#if cimmichEvidenceCoverageForDisplay}
               <CimmichPersonEvidenceCoverage
-                coverage={cimmichEvidenceCoverage}
+                coverage={cimmichEvidenceCoverageForDisplay}
                 onopenidentity={(filter) => void openCimmichIdentityAt(filter)}
                 onopenphotos={openCimmichPhotos}
               />

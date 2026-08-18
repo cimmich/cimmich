@@ -71,6 +71,26 @@ assert.deepEqual(undoneLabel.changedAssetIds, [
 const labelsAfterUndo = await requestJson("/v1/asset-labels?q=Restricted");
 assert.equal(labelsAfterUndo.items[0].assetCount, 0);
 
+const collection = await requestJson("/v1/asset-labels", {
+  body: {
+    commandId: "acceptance.asset-label.collection.create.0001",
+    displayName: "PP Aug 2011",
+    kind: "collection",
+  },
+  method: "POST",
+});
+assert.equal(collection.label.kind, "collection");
+const collectionMembership = await requestJson(
+  `/v1/asset-labels/${collection.label.labelId}/assets:attach`,
+  {
+    body: {
+      assetIds: ["asset_service_fixture", "asset_identity_fixture"],
+      commandId: "acceptance.asset-label.collection.attach.0001",
+    },
+    method: "POST",
+  },
+);
+
 const operationBody = {
   manifest: [
     {
@@ -95,31 +115,17 @@ const operationReplay = await requestJson("/v1/bulk-album-operations", {
 });
 assert.equal(operationReplay.operationId, operation.operationId);
 
-const albumCheckpoint = await requestJson(
-  `/v1/bulk-album-operations/${operation.operationId}/checkpoints`,
-  {
-    body: {
-      albumCreated: true,
-      albumId: "synthetic-album-0001",
-      albumName: "PP Aug 2011",
-      assetIds: [],
-      batchSequence: 0,
-      commandId: "acceptance.bulk-album.checkpoint.0001",
-      sourcePath: "/library/2011_August - PP",
-    },
-    method: "POST",
-  },
-);
 const membershipCheckpoint = await requestJson(
   `/v1/bulk-album-operations/${operation.operationId}/checkpoints`,
   {
     body: {
       albumCreated: false,
-      albumId: "synthetic-album-0001",
+      albumId: collection.label.labelId,
       albumName: "PP Aug 2011",
       assetIds: ["immich-service-fixture", "immich-identity-fixture"],
-      batchSequence: 1,
-      commandId: "acceptance.bulk-album.checkpoint.0002",
+      batchSequence: 0,
+      commandId: "acceptance.bulk-album.checkpoint.0001",
+      organizationDecisionId: collectionMembership.decisionId,
       sourcePath: "/library/2011_August - PP",
     },
     method: "POST",
@@ -130,11 +136,12 @@ const checkpointReplay = await requestJson(
   {
     body: {
       albumCreated: false,
-      albumId: "synthetic-album-0001",
+      albumId: collection.label.labelId,
       albumName: "PP Aug 2011",
       assetIds: ["immich-service-fixture", "immich-identity-fixture"],
-      batchSequence: 1,
-      commandId: "acceptance.bulk-album.checkpoint.0002",
+      batchSequence: 0,
+      commandId: "acceptance.bulk-album.checkpoint.0001",
+      organizationDecisionId: collectionMembership.decisionId,
       sourcePath: "/library/2011_August - PP",
     },
     method: "POST",
@@ -151,7 +158,11 @@ await requestJson(`/v1/bulk-album-operations/${operation.operationId}`, {
 });
 const active = await requestJson("/v1/bulk-album-operations/active");
 assert.equal(active.operationId, operation.operationId);
-assert.equal(active.checkpoints.length, 2);
+assert.equal(active.checkpoints.length, 1);
+assert.equal(
+  active.checkpoints[0].organizationDecisionId,
+  collectionMembership.decisionId,
+);
 
 await requestJson(`/v1/bulk-album-operations/${operation.operationId}`, {
   body: {
@@ -160,10 +171,7 @@ await requestJson(`/v1/bulk-album-operations/${operation.operationId}`, {
   },
   method: "PATCH",
 });
-for (const [sequence, checkpoint] of [
-  membershipCheckpoint,
-  albumCheckpoint,
-].entries()) {
+for (const [sequence, checkpoint] of [membershipCheckpoint].entries()) {
   const undone = await requestJson(
     `/v1/bulk-album-operations/checkpoints/${checkpoint.checkpointId}/undo`,
     {
@@ -187,7 +195,7 @@ assert.equal(noActiveOperation.operation, null);
 
 process.stdout.write(
   `${JSON.stringify({
-    albumCheckpoints: 2,
+    collectionCheckpoints: 1,
     labelAssetsAttached: attached.changedAssetIds.length,
     labelAssetsUndone: undoneLabel.changedAssetIds.length,
     status: "PASS",

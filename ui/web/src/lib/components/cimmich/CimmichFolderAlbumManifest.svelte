@@ -1,25 +1,21 @@
 <script lang="ts">
   import {
     checkpointCimmichBulkAlbumOperation,
+    changeCimmichAssetLabelMembership,
+    createCimmichAssetLabel,
+    createCimmichAssetLabelCommandId,
     createCimmichBulkAlbumCommandId,
     createCimmichBulkAlbumOperation,
     getActiveCimmichBulkAlbumOperation,
+    getCimmichAssetLabels,
+    getCimmichVisibleMapAssetBindings,
     setCimmichBulkAlbumOperationState,
     undoCimmichBulkAlbumCheckpoint,
+    undoCimmichAssetLabelDecision,
+    type CimmichAssetLabel,
     type CimmichBulkAlbumOperation,
   } from '$lib/services/cimmich.service';
-  import {
-    addAssetsToAlbum,
-    createAlbum,
-    deleteAlbum,
-    getAlbumInfo,
-    getAllAlbums,
-    getAssetsByOriginalPath,
-    getUniqueOriginalPaths,
-    removeAssetFromAlbum,
-    searchAssets,
-    type AlbumResponseDto,
-  } from '@immich/sdk';
+  import { getAssetsByOriginalPath, getUniqueOriginalPaths } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import { mdiAlertCircleOutline, mdiCheckCircleOutline, mdiFolderPlusOutline, mdiUndoVariant } from '@mdi/js';
   import { onMount } from 'svelte';
@@ -38,7 +34,7 @@
 
   let { rootPath }: Props = $props();
   let rows = $state<FolderAlbumManifestRow[]>([]);
-  let albums = $state<AlbumResponseDto[]>([]);
+  let collections = $state<CimmichAssetLabel[]>([]);
   let discoveryProgress = $state('');
   let operationProgress = $state('');
   let error = $state('');
@@ -93,7 +89,9 @@
         while (nextIndex < paths.length) {
           const path = paths[nextIndex++]!;
           const assets = await getAssetsByOriginalPath({ path });
-          const assetIds = assets.filter((asset) => !asset.isTrashed && !asset.isOffline).map(({ id }) => id);
+          const sourceAssetIds = assets.filter((asset) => !asset.isTrashed && !asset.isOffline).map(({ id }) => id);
+          const bindings = await getCimmichVisibleMapAssetBindings(sourceAssetIds);
+          const assetIds = [...bindings.values()];
           if (assetIds.length > 0) {
             discovered.push({ assetIds, include: true, sourcePath: path, title: folderAlbumTitle(path) });
           }
@@ -106,8 +104,8 @@
         discovered.sort((left, right) => left.sourcePath.localeCompare(right.sourcePath)),
         normalizedRoot,
       );
-      albums = [...(await getAllAlbums({ isOwned: true }))].sort((left, right) =>
-        left.albumName.localeCompare(right.albumName),
+      collections = [...(await getCimmichAssetLabels('', 250, 'collection'))].sort((left, right) =>
+        left.displayName.localeCompare(right.displayName),
       );
       discoveryProgress = `${rows.length.toLocaleString()} media-bearing folders · ${rows
         .reduce((sum, row) => sum + row.assetIds.length, 0)
@@ -125,22 +123,10 @@
     rows = [...rows];
   };
 
-  const albumByTitle = (title: string) =>
-    albums.find((album) => album.albumName.localeCompare(title, undefined, { sensitivity: 'base' }) === 0);
-
-  const loadAlbumAssetIds = async (albumId: string) => {
-    const assetIds: string[] = [];
-    let page = 1;
-    while (true) {
-      const result = await searchAssets({ metadataSearchDto: { albumIds: [albumId], page, size: 500 } });
-      assetIds.push(...result.assets.items.map(({ id }) => id));
-      if (!result.assets.nextPage) {
-        return assetIds;
-      }
-      const nextPage = Number(result.assets.nextPage);
-      page = Number.isFinite(nextPage) && nextPage > page ? nextPage : page + 1;
-    }
-  };
+  const collectionByTitle = (title: string) =>
+    collections.find(
+      (collection) => collection.displayName.localeCompare(title, undefined, { sensitivity: 'base' }) === 0,
+    );
 
   const apply = async () => {
     if (!canApply) {
@@ -148,7 +134,7 @@
     }
     if (
       !globalThis.confirm(
-        `Create or reuse ${includedRows.length.toLocaleString()} albums for ${includedAssetCount.toLocaleString()} items?\n\nEvery title is shown in the manifest. Original files will not be moved or edited.`,
+        `Create or reuse ${includedRows.length.toLocaleString()} Cimmich collections for ${includedAssetCount.toLocaleString()} items?\n\nEvery title is shown in the manifest. Immich and the original files remain read-only.`,
       )
     ) {
       operationProgress = 'The reviewed manifest was cancelled. Nothing has changed.';
@@ -174,45 +160,44 @@
       let completedAlbums = 0;
       for (const row of includedRows) {
         const title = row.title.trim();
-        let album = albumByTitle(title);
-        const albumCreated = !album;
-        if (!album) {
-          album = await createAlbum({ createAlbumDto: { albumName: title } });
-          albums = [...albums, album];
-          await checkpointCimmichBulkAlbumOperation(operationId, {
-            albumCreated: true,
-            albumId: album.id,
-            albumName: title,
-            assetIds: [],
-            batchSequence: batchSequence++,
-            commandId: createCimmichBulkAlbumCommandId('album-created'),
-            sourcePath: row.sourcePath,
-          });
+        let collection = collectionByTitle(title);
+        if (!collection) {
+          const created = await createCimmichAssetLabel(
+            title,
+            createCimmichAssetLabelCommandId('folder-collection'),
+            'collection',
+          );
+          collection = created.label;
+          collections = [...collections, collection];
         }
-        const existingIds = new Set(albumCreated ? [] : await loadAlbumAssetIds(album.id));
-        const missingIds = row.assetIds.filter((assetId) => !existingIds.has(assetId));
-        for (const batch of chunkBulkPhotoSorterItems(missingIds)) {
-          const results = await addAssetsToAlbum({ id: album.id, bulkIdsDto: { ids: batch } });
-          const changedAssetIds = results.filter(({ success }) => success).map(({ id }) => id);
+        for (const batch of chunkBulkPhotoSorterItems(row.assetIds)) {
+          const result = await changeCimmichAssetLabelMembership(
+            collection.labelId,
+            'attach',
+            batch,
+            createCimmichAssetLabelCommandId('folder-collection-attach'),
+          );
+          const changedAssetIds = result.changedAssetIds;
           if (changedAssetIds.length > 0) {
             await checkpointCimmichBulkAlbumOperation(operationId, {
               albumCreated: false,
-              albumId: album.id,
+              albumId: collection.labelId,
               albumName: title,
               assetIds: changedAssetIds,
               batchSequence: batchSequence++,
-              commandId: createCimmichBulkAlbumCommandId('album-assets'),
+              commandId: createCimmichBulkAlbumCommandId('collection-assets'),
+              organizationDecisionId: result.decisionId,
               sourcePath: row.sourcePath,
             });
             appliedAssets += changedAssetIds.length;
           }
-          operationProgress = `Creating albums… ${completedAlbums.toLocaleString()} of ${includedRows.length.toLocaleString()} folders · ${appliedAssets.toLocaleString()} memberships`;
+          operationProgress = `Building collections… ${completedAlbums.toLocaleString()} of ${includedRows.length.toLocaleString()} folders · ${appliedAssets.toLocaleString()} memberships`;
         }
         completedAlbums += 1;
       }
       await setCimmichBulkAlbumOperationState(operationId, 'applied');
       activeOperation = await getActiveCimmichBulkAlbumOperation();
-      operationProgress = `${includedRows.length.toLocaleString()} albums processed · ${appliedAssets.toLocaleString()} new memberships. Exact Undo is saved.`;
+      operationProgress = `${includedRows.length.toLocaleString()} collections processed · ${appliedAssets.toLocaleString()} new memberships. Exact Undo is saved.`;
     } catch (error_) {
       await setCimmichBulkAlbumOperationState(operationId, 'partial').catch(() => undefined);
       activeOperation = await getActiveCimmichBulkAlbumOperation().catch(() => activeOperation);
@@ -235,31 +220,23 @@
         .sort((left, right) => right.batchSequence - left.batchSequence);
       let remaining = checkpoints.length;
       for (const checkpoint of checkpoints) {
-        if (checkpoint.assetIds.length > 0) {
-          const results = await removeAssetFromAlbum({
-            id: checkpoint.albumId,
-            bulkIdsDto: { ids: checkpoint.assetIds },
-          });
-          if (results.some(({ success }) => !success)) {
-            throw new Error(`Some memberships could not be removed from ${checkpoint.albumName}.`);
-          }
-        } else if (checkpoint.albumCreated) {
-          const album = await getAlbumInfo({ id: checkpoint.albumId }).catch(() => null);
-          if (album && album.assetCount === 0) {
-            await deleteAlbum({ id: checkpoint.albumId });
-          }
+        if (checkpoint.organizationDecisionId) {
+          await undoCimmichAssetLabelDecision(
+            checkpoint.organizationDecisionId,
+            createCimmichAssetLabelCommandId('folder-collection-undo'),
+          );
         }
         await undoCimmichBulkAlbumCheckpoint(
           checkpoint.checkpointId,
           createCimmichBulkAlbumCommandId('checkpoint-undo'),
         );
         remaining -= 1;
-        operationProgress = `Undoing folder albums… ${remaining.toLocaleString()} saved batches remaining`;
+        operationProgress = `Undoing folder collections… ${remaining.toLocaleString()} saved batches remaining`;
       }
       await setCimmichBulkAlbumOperationState(activeOperation.operationId, 'undone');
       activeOperation = null;
-      operationProgress = 'The folder-to-album operation was undone.';
-      albums = [...(await getAllAlbums({ isOwned: true }))];
+      operationProgress = 'The folder-to-collection operation was undone.';
+      collections = [...(await getCimmichAssetLabels('', 250, 'collection'))];
     } catch (error_) {
       activeOperation = await getActiveCimmichBulkAlbumOperation().catch(() => activeOperation);
       error = `${asErrorMessage(error_)} Completed Undo steps are saved; resume Undo to continue.`;
@@ -291,11 +268,12 @@
     <div>
       <div class="flex items-center gap-2 text-primary">
         <Icon icon={mdiFolderPlusOutline} size="22" />
-        <h3 class="font-semibold">Create albums from original folders</h3>
+        <h3 class="font-semibold">Create collections from original folders</h3>
       </div>
       <p class="mt-2 max-w-3xl text-sm opacity-70">
         Root: <strong>{normalizedRoot || 'Choose a folder above'}</strong>. Discovery reads exact folders through a
-        four-request queue. Titles stay editable and collisions are visibly qualified before any album is created.
+        four-request queue. Titles stay editable and collisions are visibly qualified before any Cimmich collection is
+        created.
       </p>
     </div>
     <button
@@ -315,8 +293,8 @@
       <div>
         <strong>Saved {activeOperation.state} operation</strong>
         <p class="mt-1 opacity-75">
-          {activeOperation.albumCount.toLocaleString()} albums · {activeOperation.assetCount.toLocaleString()} source items
-          · {activeOperation.checkpoints.filter(({ state }) => state === 'applied').length.toLocaleString()} live checkpoints
+          {activeOperation.albumCount.toLocaleString()} collections · {activeOperation.assetCount.toLocaleString()} source
+          items · {activeOperation.checkpoints.filter(({ state }) => state === 'applied').length.toLocaleString()} live checkpoints
         </p>
       </div>
       <div class="flex gap-2">
@@ -374,16 +352,16 @@
             <p class="mt-1 text-xs opacity-60">
               {row.assetIds.length.toLocaleString()} items{row.collisionSource
                 ? ' · collision qualified'
-                : ''}{albumByTitle(row.title) ? ' · existing album' : ''}
+                : ''}{collectionByTitle(row.title) ? ' · existing collection' : ''}
             </p>
           </div>
           <input
             class="min-w-0 rounded-xl border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/15"
             value={row.title}
-            aria-label={`Album title for ${row.sourcePath}`}
+            aria-label={`Collection title for ${row.sourcePath}`}
             oninput={(event) => updateRow(index, { title: event.currentTarget.value })}
           />
-          <span class="text-xs font-semibold opacity-60">{albumByTitle(row.title) ? 'Reuse' : 'Create'}</span>
+          <span class="text-xs font-semibold opacity-60">{collectionByTitle(row.title) ? 'Reuse' : 'Create'}</span>
         </div>
       {/each}
     </div>
@@ -393,7 +371,7 @@
         type="button"
         onclick={apply}
         disabled={!canApply || applying || undoing}
-        >{applying ? 'Applying manifest…' : 'Review and create albums'}</button
+        >{applying ? 'Applying manifest…' : 'Review and create collections'}</button
       >
     </div>
   {/if}

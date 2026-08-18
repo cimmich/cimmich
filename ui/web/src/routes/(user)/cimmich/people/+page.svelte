@@ -438,7 +438,7 @@
       icon={mdiAccountMultipleOutline}
       title="People"
       meta={cimmichLoaded
-        ? `${cimmichPeople.length.toLocaleString()} ${cimmichPeople.length === 1 ? 'person' : 'people'}`
+        ? `${cimmichPeople.length.toLocaleString()} ${cimmichPeople.length === 1 ? 'person' : 'people'} in directory`
         : 'Loading people'}
     >
       {#snippet actions()}
@@ -801,7 +801,7 @@
               {/if}
               <span class="w-full truncate text-xs text-gray-500 dark:text-gray-400">
                 {#if person.asset_count === 0}
-                  No photos in this view
+                  No photos visible in this viewing mode
                 {:else}
                   {person.asset_count.toLocaleString()}
                   {person.asset_count === 1 ? 'photo' : 'photos'}

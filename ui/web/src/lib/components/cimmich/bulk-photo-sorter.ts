@@ -13,6 +13,9 @@ export const BULK_PHOTO_SORTER_RECEIPT_KEY = CIMMICH_BULK_PHOTO_SORTER_RECEIPT_K
 
 export type BulkPhotoSorterFilters = {
   albumId: string;
+  cimmichCollectionId: string;
+  cimmichLabelId: string;
+  cimmichState: 'any' | 'archive' | 'favorite';
   favorite: 'any' | 'no' | 'yes';
   folder: string;
   mediaType: 'all' | 'image' | 'video';
@@ -63,7 +66,7 @@ export type BulkPhotoSorterOperationReceipt = {
   selected: number;
   skipped: number;
   undo: BulkPhotoSorterUndoReceipt | null;
-  version: 1;
+  version: 2;
 };
 
 type BulkPhotoSorterReceiptStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>;
@@ -126,7 +129,7 @@ const isOperationReceipt = (value: unknown): value is BulkPhotoSorterOperationRe
   }
   const item = value as Record<string, unknown>;
   return (
-    item.version === 1 &&
+    item.version === 2 &&
     isReceiptCount(item.applied) &&
     typeof item.completedAt === 'string' &&
     Number.isFinite(Date.parse(item.completedAt)) &&
@@ -187,6 +190,9 @@ export const createBulkPhotoSorterOperationId = () => {
 
 export const emptyBulkPhotoSorterFilters = (): BulkPhotoSorterFilters => ({
   albumId: '',
+  cimmichCollectionId: '',
+  cimmichLabelId: '',
+  cimmichState: 'any',
   favorite: 'any',
   folder: '',
   mediaType: 'all',
@@ -244,55 +250,23 @@ export const chunkBulkPhotoSorterItems = <T>(items: T[], size = BULK_PHOTO_SORTE
   return chunks;
 };
 
-export const bulkPhotoSorterChangedAssets = (
-  assets: AssetResponseDto[],
-  action: BulkPhotoSorterActionKind,
-  targetId = '',
-) => {
-  switch (action) {
-    case 'favorite': {
-      return assets.filter((asset) => !asset.isFavorite);
-    }
-    case 'unfavorite': {
-      return assets.filter((asset) => asset.isFavorite);
-    }
-    case 'archive': {
-      return assets.filter(
-        (asset) => asset.visibility !== AssetVisibility.Archive && asset.visibility !== AssetVisibility.Locked,
-      );
-    }
-    case 'unarchive': {
-      return assets.filter((asset) => asset.visibility === AssetVisibility.Archive);
-    }
-    case 'tag-add': {
-      return assets.filter((asset) => !asset.tags?.some((tag) => tag.id === targetId));
-    }
-    case 'tag-remove': {
-      return assets.filter((asset) => asset.tags?.some((tag) => tag.id === targetId));
-    }
-    default: {
-      return assets;
-    }
-  }
-};
-
 export const bulkPhotoSorterActionNeedsTarget = (action: BulkPhotoSorterActionKind) =>
   ['album-add', 'event-attach', 'place-attach', 'label-add', 'label-remove', 'tag-add', 'tag-remove'].includes(action);
 
 export const bulkPhotoSorterActionLabel = (action: BulkPhotoSorterActionKind) =>
   ({
-    'album-add': 'Add to album',
+    'album-add': 'Add to Cimmich collection',
     archive: 'Archive',
     'event-attach': 'Attach to Event',
     favorite: 'Favourite',
-    'folders-to-albums': 'Create albums from folders',
+    'folders-to-albums': 'Create collections from folders',
     'label-add': 'Add Cimmich label',
     'label-remove': 'Remove Cimmich label',
     'place-attach': 'Attach to Place',
     'rotate-left': 'Rotate left',
     'rotate-right': 'Rotate right',
-    'tag-add': 'Add tag',
-    'tag-remove': 'Remove tag',
+    'tag-add': 'Add Cimmich tag',
+    'tag-remove': 'Remove Cimmich tag',
     unarchive: 'Unarchive',
     unfavorite: 'Remove favourite',
     'visibility-personal': 'Set Cimmich visibility to Personal',
