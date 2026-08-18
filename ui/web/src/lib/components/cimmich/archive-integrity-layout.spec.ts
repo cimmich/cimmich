@@ -115,6 +115,7 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('ranks these as resembling sideways');
     expect(rotationReview).toContain('Why flagged');
     expect(rotationReview).toContain("{number.format(items.length)}{hasMore ? '+' : ''} in backlog");
+    expect(rotationReview).toContain('Checking backlog');
     expect(rotationReview).toContain('{number.format(reviewedCount)} reviewed');
     expect(rotationReview).toContain('Finding the next photos to review');
     expect(rotationReview).not.toContain('This batch is cleared');

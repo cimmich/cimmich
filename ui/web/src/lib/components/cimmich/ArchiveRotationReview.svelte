@@ -126,22 +126,28 @@
         before applying a correction.
       </p>
       <div class="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold tabular-nums">
-        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          {number.format(items.length)} ready now
-        </span>
-        <span
-          class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-          title={hasMore
-            ? 'This is the confirmed minimum. Immich has more ranked pages but does not provide a reliable total for this visual query.'
-            : 'This is the exact unresolved backlog because there are no more ranked pages.'}
-        >
-          {number.format(items.length)}{hasMore ? '+' : ''} in backlog
-        </span>
-        <span
-          class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-        >
-          {number.format(reviewedCount)} reviewed
-        </span>
+        {#if items.length === 0 && ((loading && !loaded) || loadingMore)}
+          <span class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+            Checking backlog…
+          </span>
+        {:else}
+          <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            {number.format(items.length)} ready now
+          </span>
+          <span
+            class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            title={hasMore
+              ? 'This is the confirmed minimum. Immich has more ranked pages but does not provide a reliable total for this visual query.'
+              : 'This is the exact unresolved backlog because there are no more ranked pages.'}
+          >
+            {number.format(items.length)}{hasMore ? '+' : ''} in backlog
+          </span>
+          <span
+            class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+          >
+            {number.format(reviewedCount)} reviewed
+          </span>
+        {/if}
       </div>
     </div>
     <div class="flex flex-wrap items-center justify-end gap-2">
