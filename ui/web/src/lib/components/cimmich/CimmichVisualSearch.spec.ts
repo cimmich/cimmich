@@ -50,7 +50,10 @@ describe('Cimmich visual search', () => {
       expect.objectContaining({ smartSearchDto: expect.objectContaining({ page: 1, queryAssetId: reference.id }) }),
     );
     expect(await rendered.findByRole('heading', { name: '1 visual lead' })).toBeInTheDocument();
-    expect(rendered.getByRole('link', { name: 'Open first.jpg' })).toBeInTheDocument();
+    expect(rendered.getByRole('link', { name: 'Open first.jpg' })).toHaveAttribute(
+      'href',
+      '/photos/visible-1?cimmichContext=1',
+    );
     expect(rendered.queryByRole('link', { name: 'Open hidden.jpg' })).not.toBeInTheDocument();
     expect(rendered.queryByRole('link', { name: 'Open reference.jpg' })).not.toBeInTheDocument();
 

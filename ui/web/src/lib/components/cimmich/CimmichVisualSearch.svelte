@@ -220,7 +220,7 @@
         {#each assets as asset (asset.id)}
           <a
             class="group relative aspect-square overflow-hidden rounded-2xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-gray-800"
-            href={`/photos/${encodeURIComponent(asset.id)}`}
+            href={`/photos/${encodeURIComponent(asset.id)}?cimmichContext=1`}
             aria-label={`Open ${asset.originalFileName}`}
             title={asset.originalFileName}
           >

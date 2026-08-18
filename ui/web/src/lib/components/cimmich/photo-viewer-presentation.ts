@@ -317,7 +317,12 @@ const isExplicitCimmichPhotoContext = (url: URL) => {
     return false;
   }
   const overlay = url.searchParams.get('cimmichOverlay');
-  return url.searchParams.get('organise') === '1' || overlay === 'machinery' || overlay === 'people';
+  return (
+    url.searchParams.get('cimmichContext') === '1' ||
+    url.searchParams.get('organise') === '1' ||
+    overlay === 'machinery' ||
+    overlay === 'people'
+  );
 };
 
 export const isCimmichViewingSurface = (url: URL) =>

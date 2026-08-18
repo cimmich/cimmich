@@ -117,6 +117,7 @@ describe('photo viewer presentation context', () => {
   });
 
   it('keeps explicit Cimmich Library and Face-review photo journeys inside Cimmich', () => {
+    expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichContext=1'))).toBe(true);
     expect(isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?organise=1'))).toBe(true);
     expect(
       isCimmichViewingSurface(new URL('http://localhost/photos/asset-1?cimmichFaceId=face-1&cimmichOverlay=machinery')),
