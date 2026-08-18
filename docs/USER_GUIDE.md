@@ -544,9 +544,9 @@ another bounded page until it finds unresolved work or reaches the end. The
 same Smart Search response supplies the visible cards and their Immich metadata,
 exposing the source folder, capture date, dimensions and recorded EXIF
 orientation. The queue header shows how many are ready now, how many have been
-reviewed while finding the current work and an honest upper bound for the
-remaining ranked backlog. The upper bound can fall as later pages reveal
-already reviewed photos.
+reviewed while finding the current work and the known unresolved backlog. A
+plus sign means more ranked pages exist, but Immich does not provide a reliable
+total for this visual query. The number becomes exact on the final page.
 
 Use the magnify control on any candidate to open the same full-photo inspection
 view used by Photo Review. Rotate left and Rotate right change a local draft;

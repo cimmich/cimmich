@@ -519,7 +519,8 @@ card uses the space beneath the photo for the ranking reason while keeping EXIF
 and proposed rotation together. Fully reviewed 24-result pages are skipped
 automatically until unresolved work or the true end is reached, including after
 the last visible card is confirmed. Queue badges expose the ready count,
-encountered reviewed count and an upper bound for the remaining ranked backlog
+encountered reviewed count and the known remaining backlog. A plus sign records
+that more ranked pages exist; it becomes an exact number on the final page
 without hydrating or scanning the whole archive.
 Source-current Smart Search also exposes Immich visual ranking as its own lens,
 separate from deterministic Recorded facts. Natural-language queries and

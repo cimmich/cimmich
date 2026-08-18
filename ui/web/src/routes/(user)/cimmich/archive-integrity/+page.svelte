@@ -130,7 +130,6 @@
   let rotationLoading = $state(false);
   let rotationLoadingMore = $state(false);
   let rotationNextPage = $state(1);
-  let rotationRankedTotal = $state(0);
   let rotationReviewedCount = $state(0);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
@@ -470,7 +469,6 @@
       let keepExisting = append;
       if (!append) {
         rotationReviewedCount = 0;
-        rotationRankedTotal = 0;
       }
       while (pageNumber > 0) {
         const next = await searchSmart({
@@ -527,7 +525,6 @@
             .map((asset): [string, AssetResponseDto] => [asset.id, asset]),
         ]);
         rotationReviewedCount += nextAssets.length - nextItems.length;
-        rotationRankedTotal = next.assets.total;
         rotationNextPage = Number(next.assets.nextPage) || 0;
         rotationHasMore = rotationNextPage > 0;
         if (nextItems.length > 0 || !rotationHasMore) {
@@ -965,7 +962,6 @@
     {:else if mode === 'rotation'}
       <ArchiveRotationReview
         assets={rotationAssets}
-        backlogTotal={Math.max(0, rotationRankedTotal - rotationReviewedCount)}
         busyAssetId={rotationBusyAssetId}
         error={rotationError}
         hasMore={rotationHasMore}

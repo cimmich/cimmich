@@ -344,9 +344,10 @@ records are filtered from every loaded batch and removed from the active queue
 as soon as the write returns. A fully reviewed ranked page is skipped using the
 next bounded 24-result request, and confirming the final visible card starts the
 same bounded continuation automatically. The header reports the visible ready
-count, reviewed records encountered and `Smart Search total - encountered
-reviews` as an upper bound for the unresolved ranked backlog. It does not scan
-the whole archive to manufacture an exact count. Each API request is bounded to
+count, reviewed records encountered and the known unresolved backlog. A plus
+sign records the next-page evidence because Immich does not return a reliable
+total for this visual query. The count becomes exact on the final page without
+scanning the whole archive. Each API request is bounded to
 100 unique assets and idempotent by command ID; a larger loaded page is split
 into consecutive bounded requests. Confirmation never writes source media or
 Immich metadata.

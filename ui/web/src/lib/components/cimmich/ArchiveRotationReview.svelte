@@ -20,7 +20,6 @@
 
   interface Props {
     assets: Map<string, AssetResponseDto | null>;
-    backlogTotal: number;
     busyAssetId: string;
     error: string;
     hasMore: boolean;
@@ -35,7 +34,6 @@
 
   let {
     assets,
-    backlogTotal,
     busyAssetId,
     error,
     hasMore,
@@ -133,9 +131,11 @@
         </span>
         <span
           class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-          title="Later ranked pages can contain already reviewed photos, so this count may fall further as Cimmich checks them"
+          title={hasMore
+            ? 'This is the confirmed minimum. Immich has more ranked pages but does not provide a reliable total for this visual query.'
+            : 'This is the exact unresolved backlog because there are no more ranked pages.'}
         >
-          Up to {number.format(backlogTotal)} left
+          {number.format(items.length)}{hasMore ? '+' : ''} in backlog
         </span>
         <span
           class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"

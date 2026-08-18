@@ -106,7 +106,6 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))');
     expect(source).toContain('ROTATION_PAGE_SIZE = 24');
     expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
-    expect(source).toContain('rotationRankedTotal = next.assets.total');
     expect(source).toContain('rotationReviewedCount += nextAssets.length - nextItems.length');
     expect(source).toContain('if (nextItems.length > 0 || !rotationHasMore)');
     expect(source).toContain('await loadRotation({ append: true })');
@@ -115,7 +114,7 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain("Immich's visual index");
     expect(rotationReview).toContain('ranks these as resembling sideways');
     expect(rotationReview).toContain('Why flagged');
-    expect(rotationReview).toContain('Up to {number.format(backlogTotal)} left');
+    expect(rotationReview).toContain("{number.format(items.length)}{hasMore ? '+' : ''} in backlog");
     expect(rotationReview).toContain('{number.format(reviewedCount)} reviewed');
     expect(rotationReview).toContain('Finding the next photos to review');
     expect(rotationReview).not.toContain('This batch is cleared');
