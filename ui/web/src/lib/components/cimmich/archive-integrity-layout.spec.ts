@@ -25,6 +25,7 @@ describe('Archive integrity layout', () => {
 
   it('keeps exact duplicate discovery explicit, inspectable and read-only', async () => {
     const source = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.svelte', 'utf8');
+    const pageLoad = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.ts', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
@@ -35,9 +36,17 @@ describe('Archive integrity layout', () => {
     );
     const normalizedSource = source.replaceAll(/\s+/g, ' ');
 
-    expect(source).toContain('Archive Health');
+    expect(pageLoad).toContain("title: 'Archive Health'");
+    expect(source).toContain('{#snippet buttons()}');
+    expect(source).not.toContain('<h1');
     expect(source).toContain('Exact means byte-for-byte');
     expect(source).toContain('Route.viewAsset({ id: copy.sourceAssetId })');
+    expect(source).toContain('Folder on SSD');
+    expect(source).toContain('getParentPath(originalPath)');
+    expect(source).toContain('Route.viewFolderAsset({ cimmich: 1, id: copy.sourceAssetId, path: folderPath })');
+    expect(source).toContain("Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })");
+    expect(source).toContain('loadExactPaths(page.groups)');
+    expect(source).toContain('Math.min(6, pending.length)');
     expect(source).toContain('Possible duplicates');
     expect(normalizedSource).toContain('A visual match is a review lead, not deletion proof');
     expect(variants).toContain('Immich People differ');

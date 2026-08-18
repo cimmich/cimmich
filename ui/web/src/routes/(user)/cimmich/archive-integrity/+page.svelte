@@ -76,6 +76,7 @@
   let folderPathInput = $state(initialFocusedFolder);
   let error = $state('');
   let groups = $state<CimmichExactDuplicateGroup[]>([]);
+  let exactAssetPaths = $state<Map<string, string | null>>(new Map());
   let loaded = $state(false);
   let loading = $state(false);
   let loadingMore = $state(false);
@@ -118,6 +119,7 @@
   });
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
+  const exactPathRequests: string[] = [];
   let folderRequestGeneration = 0;
   let scopedVariantGroups = $derived(
     archiveVariantGroupsInFolder(
@@ -199,6 +201,29 @@
       ?.map((tag) => tag.value)
       .filter(Boolean)
       .join(', ') || 'No Immich Tags';
+  const loadExactPaths = async (nextGroups: CimmichExactDuplicateGroup[]) => {
+    const pending = nextGroups
+      .flatMap((group) => group.copies)
+      .map((copy) => copy.sourceAssetId)
+      .filter((sourceAssetId) => !exactAssetPaths.has(sourceAssetId) && !exactPathRequests.includes(sourceAssetId));
+    exactPathRequests.push(...pending);
+    let cursor = 0;
+    const updates: Array<[string, string | null]> = [];
+    const worker = async () => {
+      while (cursor < pending.length) {
+        const sourceAssetId = pending[cursor++];
+        if (!sourceAssetId) {
+          continue;
+        }
+        const asset = await getAssetInfo({ id: sourceAssetId }).catch(() => null);
+        updates.push([sourceAssetId, asset?.originalPath || null]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, () => worker()));
+    if (updates.length > 0) {
+      exactAssetPaths = new Map([...exactAssetPaths, ...updates]);
+    }
+  };
   const load = async ({ append = false } = {}) => {
     if (append) {
       loadingMore = true;
@@ -216,6 +241,7 @@
       summary = page.summary;
       nextOffset = page.nextOffset;
       loaded = true;
+      void loadExactPaths(page.groups);
     } catch (error_) {
       error = friendlyError(error_, 'Cimmich could not read archive integrity.');
     } finally {
@@ -565,102 +591,73 @@
 </script>
 
 <UserPageLayout title={data.meta.title} scrollbar={false}>
-  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
-    <header
-      class="rounded-2xl border border-gray-200 bg-white px-3 py-2.5 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-    >
-      <div class="flex min-w-0 flex-wrap items-center gap-2">
-        <h1
-          class="mr-1 shrink-0 text-lg font-semibold tracking-tight"
-          title="Read-only checks across the archive. Nothing is changed."
+  {#snippet buttons()}
+    <div class="flex min-w-0 flex-1 items-center justify-end gap-2">
+      <nav
+        class="flex min-w-0 gap-1 overflow-x-auto rounded-full bg-gray-100 p-1 dark:bg-gray-900"
+        aria-label="Archive health checks"
+      >
+        <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'exact'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'exact' ? 'page' : undefined}
+          title="Find files whose complete bytes are identical"
         >
-          Archive Health
-        </h1>
-        <nav
-          class="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-full bg-gray-100 p-1 dark:bg-gray-900"
-          aria-label="Archive health checks"
+          Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
+        </a>
+        <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'variants'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'variants' ? 'page' : undefined}
+          title="Review visually similar files and compare their evidence"
         >
-          <a
-            href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
-            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'exact'
-              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
-              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
-            aria-current={mode === 'exact' ? 'page' : undefined}
-            title="Find files whose complete bytes are identical"
-          >
-            Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
-          </a>
-          <a
-            href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
-            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode ===
-            'variants'
-              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
-              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
-            aria-current={mode === 'variants' ? 'page' : undefined}
-            title="Review visually similar files and compare their evidence"
-          >
-            Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
-          </a>
-          <a
-            href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
-            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'folder'
-              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
-              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
-            aria-current={mode === 'folder' ? 'page' : undefined}
-            title="Compare one folder with the rest of the archive"
-          >
-            Folder check
-          </a>
-          <a
-            href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
-            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'backup'
-              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
-              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
-            aria-current={mode === 'backup' ? 'page' : undefined}
-            title="Compare the archive with a read-only independent backup"
-          >
-            Backup check
-          </a>
-        </nav>
-        <button
-          type="button"
-          class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-          disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
-          onclick={refreshCurrentMode}
-          title="Refresh only the selected check"
+          Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
+        </a>
+        <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'folder'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'folder' ? 'page' : undefined}
+          title="Compare one folder with the rest of the archive"
         >
-          <Icon
-            icon={mdiRefresh}
-            size="16"
-            class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
-              ? 'animate-spin'
-              : ''}
-          />
-          <span class="hidden sm:inline">Refresh</span>
-        </button>
-      </div>
-      {#if mode === 'folder' && activeFolder}
-        <div
-          class="mt-2 flex min-w-0 items-center gap-2 border-t border-gray-100 pt-2 text-xs dark:border-immich-dark-gray"
+          Folder check
+        </a>
+        <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'backup'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'backup' ? 'page' : undefined}
+          title="Compare the archive with a read-only independent backup"
         >
-          <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0 text-violet-600" />
-          <span class="shrink-0 font-semibold text-violet-700 dark:text-violet-300">{activeFolderName}</span>
-          <span class="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-400" title={activeFolder}
-            >{activeFolder}</span
-          >
-          {#if focusedFolderAsset}
-            <a
-              class="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 font-semibold text-primary hover:bg-gray-100 dark:hover:bg-gray-800"
-              href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
-              title="Open this folder in Library"
-            >
-              Open folder <Icon icon={mdiArrowRight} size="15" />
-            </a>
-          {/if}
-        </div>
-      {/if}
-    </header>
+          Backup check
+        </a>
+      </nav>
+      <button
+        type="button"
+        class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
+        disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
+        onclick={refreshCurrentMode}
+        title="Refresh only the selected check"
+      >
+        <Icon
+          icon={mdiRefresh}
+          size="16"
+          class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+            ? 'animate-spin'
+            : ''}
+        />
+        <span class="hidden lg:inline">Refresh</span>
+      </button>
+    </div>
+  {/snippet}
 
+  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
     {#if (mode === 'variants' && focusedAssetId) || (mode === 'exact' && focusedAssetId)}
       <div
         class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm dark:border-violet-900 dark:bg-violet-950/25"
@@ -762,6 +759,8 @@
 
               <div class="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
                 {#each group.copies as copy, copyIndex (copy.sourceAssetId)}
+                  {@const originalPath = exactAssetPaths.get(copy.sourceAssetId)}
+                  {@const folderPath = originalPath ? getParentPath(originalPath) : ''}
                   <div class="overflow-hidden rounded-2xl border border-gray-200 dark:border-immich-dark-gray">
                     <a
                       class="group relative block aspect-16/10 overflow-hidden bg-gray-100 dark:bg-gray-900"
@@ -790,6 +789,32 @@
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                           {formatDate(copy.captureTime)} · {dimensions(group, copyIndex)}
                         </p>
+                      </div>
+                      <div class="rounded-xl bg-gray-50 px-3 py-2.5 text-xs dark:bg-gray-900/70">
+                        <p class="font-semibold text-gray-950 dark:text-white">Folder on SSD</p>
+                        {#if folderPath}
+                          <a
+                            class="mt-1 block font-semibold break-all text-primary hover:underline"
+                            href={Route.viewFolderAsset({ cimmich: 1, id: copy.sourceAssetId, path: folderPath })}
+                            title={`Open ${folderPath} in Library`}
+                          >
+                            {folderPath}
+                          </a>
+                          <p class="mt-1 break-all text-gray-500 dark:text-gray-400" title={originalPath}>
+                            {originalPath}
+                          </p>
+                          <a
+                            class="mt-2 inline-flex items-center gap-1 font-semibold text-violet-700 hover:underline dark:text-violet-300"
+                            href={Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })}
+                            title={`Compare ${folderPath} with the rest of the archive`}
+                          >
+                            Check this folder <Icon icon={mdiArrowRight} size="15" />
+                          </a>
+                        {:else if originalPath === null}
+                          <p class="mt-1 text-gray-500 dark:text-gray-400">Folder unavailable</p>
+                        {:else}
+                          <p class="mt-1 text-gray-500 dark:text-gray-400">Reading folder…</p>
+                        {/if}
                       </div>
                       <div class="flex flex-wrap gap-1.5 text-[0.7rem] font-semibold">
                         <span class="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-800">{copy.visibility}</span>
@@ -832,6 +857,24 @@
     {:else if mode === 'folder'}
       <section class="space-y-4" aria-label="Folder check">
         {#if activeFolder}
+          <div
+            class="flex min-w-0 items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+          >
+            <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0 text-violet-600" />
+            <span class="shrink-0 font-semibold text-violet-700 dark:text-violet-300">{activeFolderName}</span>
+            <span class="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-400" title={activeFolder}
+              >{activeFolder}</span
+            >
+            {#if focusedFolderAsset}
+              <a
+                class="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 font-semibold text-primary hover:bg-gray-100 dark:hover:bg-gray-800"
+                href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
+                title="Open this folder in Library"
+              >
+                Open folder <Icon icon={mdiArrowRight} size="15" />
+              </a>
+            {/if}
+          </div>
           <ArchiveFolderComparison
             error={folderError || variantError}
             folderPath={activeFolder}

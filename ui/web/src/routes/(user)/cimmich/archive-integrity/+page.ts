@@ -6,7 +6,7 @@ export const load = (async ({ url }) => {
 
   return {
     meta: {
-      title: 'Archive integrity: Cimmich',
+      title: 'Archive Health',
     },
   };
 }) satisfies PageLoad;
