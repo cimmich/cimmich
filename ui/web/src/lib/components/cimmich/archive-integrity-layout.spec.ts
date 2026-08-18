@@ -99,6 +99,7 @@ describe('Archive integrity layout', () => {
     expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup check');
     expect(source).toContain('Rotation review');
+    expect(source).not.toContain("rotationHasMore ? '+'");
     expect(source).toContain("case 'rotation':");
     expect(source).toContain('searchSmart({');
     expect(source).toContain('query: ROTATION_VISUAL_QUERY');

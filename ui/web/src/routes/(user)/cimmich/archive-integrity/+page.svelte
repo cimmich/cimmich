@@ -747,9 +747,7 @@
           aria-current={mode === 'rotation' ? 'page' : undefined}
           title="Review photos Immich ranks as visually similar to sideways images"
         >
-          Rotation review {rotationLoaded
-            ? `(${number.format(rotationItems.length)}${rotationHasMore ? '+' : ''})`
-            : ''}
+          Rotation review
         </a>
         <a
           href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}

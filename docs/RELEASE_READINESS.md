@@ -523,7 +523,8 @@ the ready count while one bounded Smart Search counts that queue, then show exac
 backlog and reviewed totals within it. Evidence and correction reads are batched
 at 100 and visible cards remain usable during the count. Rotation review omits
 the image-level Undo button because the opposite rotate control already reverses
-a local draft.
+a local draft. The Archive Health tab does not display the visible page size as
+if it were the backlog.
 Source-current Smart Search also exposes Immich visual ranking as its own lens,
 separate from deterministic Recorded facts. Natural-language queries and
 photo-scoped similarity both request 24 image records at a time, reuse the

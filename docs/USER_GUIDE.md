@@ -549,7 +549,8 @@ orientation. The first usable batch appears before Cimmich counts that bounded
 500-item queue in the background. The queue header then shows the exact
 unresolved backlog and reviewed total within that queue. One bounded Smart
 Search replaces an open-ended walk through the library; source evidence and
-Cimmich decisions are checked in batches of 100.
+Cimmich decisions are checked in batches of 100. The Archive Health tab does
+not repeat the visible 24-card count as a misleading backlog estimate.
 
 Use the magnify control on any candidate to open the same full-photo inspection
 view used by Photo Review. Rotate left and Rotate right change a local draft;
