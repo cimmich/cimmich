@@ -63,7 +63,8 @@ describe('Archive integrity layout', () => {
     expect(source).toContain("'other folder'");
     expect(source).toContain('name="folder"');
     expect(source).toContain('onsubmit={submitFolder}');
-    expect(source).toContain("replaceState(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })");
+    expect(source).toContain("goto(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })");
+    expect(source).toContain('replaceState: true');
     expect(source).toContain('archiveVariantGroupsInFolder(allNativeGroups, folderPath)');
     expect(source).toContain('readArchiveEvidence(sourceAssetIds)');
     expect(source).toContain('uniqueSourceAssetIds.slice(index * 20, index * 20 + 20)');

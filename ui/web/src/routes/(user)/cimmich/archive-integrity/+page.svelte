@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { replaceState } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
@@ -464,10 +464,11 @@
     if (!folderPath) {
       return;
     }
-    activeFolder = folderPath;
-    routeSignature = `folder:${folderPath}`;
-    replaceState(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' }), globalThis.history.state);
-    void loadFolderComparison(folderPath);
+    void goto(Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' }), {
+      keepFocus: true,
+      noScroll: true,
+      replaceState: true,
+    });
   };
 
   const refreshCurrentMode = () => {
