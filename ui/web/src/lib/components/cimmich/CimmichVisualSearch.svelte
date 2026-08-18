@@ -34,7 +34,7 @@
 
   const search = async (
     event?: SubmitEvent,
-    options: { append?: boolean; requestedAssetId?: string; requestedQuery?: string } = {},
+    options: { append?: boolean; notifyState?: boolean; requestedAssetId?: string; requestedQuery?: string } = {},
   ) => {
     event?.preventDefault();
     const append = options.append ?? false;
@@ -56,7 +56,9 @@
       error = '';
       submittedQuery = nextQuery;
       queryAssetId = nextAssetId;
-      onStateChange(nextQuery, nextAssetId);
+      if (options.notifyState !== false) {
+        onStateChange(nextQuery, nextAssetId);
+      }
     }
     const requestGeneration = append ? generation : ++generation;
     try {
@@ -107,7 +109,7 @@
       (observedVisibilityVersion < 0 || visibilityVersion !== observedVisibilityVersion);
     observedVisibilityVersion = visibilityVersion;
     if (shouldSearch) {
-      void search(undefined, { requestedAssetId: queryAssetId, requestedQuery: submittedQuery });
+      void search(undefined, { notifyState: false, requestedAssetId: queryAssetId, requestedQuery: submittedQuery });
     }
   });
 </script>
