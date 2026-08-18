@@ -563,137 +563,102 @@
   });
 </script>
 
-<UserPageLayout title={mode === 'folder' ? undefined : data.meta.title} scrollbar={false}>
-  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pb-16 sm:px-6 lg:px-8 {mode === 'folder' ? 'pt-2' : 'pt-4'}">
-    {#if mode === 'folder'}
-      <header
-        class="flex min-h-14 flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-      >
-        <div
-          class="min-w-0 flex-1"
-          title="See what this folder shares with the rest of the archive. Nothing is changed."
+<UserPageLayout title={data.meta.title} scrollbar={false}>
+  <div class="mx-auto w-full max-w-7xl space-y-4 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
+    <header
+      class="rounded-2xl border border-gray-200 bg-white px-3 py-2.5 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+    >
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <h1
+          class="mr-1 shrink-0 text-lg font-semibold tracking-tight"
+          title="Read-only checks across the archive. Nothing is changed."
         >
-          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <h1 id="folder-check-title" class="text-lg font-semibold tracking-tight">Folder Check</h1>
-            {#if activeFolderName}
-              <span class="truncate text-sm font-semibold text-violet-700 dark:text-violet-300">{activeFolderName}</span
-              >
-            {/if}
-          </div>
-          {#if activeFolder}
-            <p class="truncate text-xs text-gray-500 dark:text-gray-400" title={activeFolder}>{activeFolder}</p>
-          {:else}
-            <p class="text-xs text-gray-500 dark:text-gray-400">Choose a folder to compare with the archive.</p>
-          {/if}
-        </div>
-        <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          Archive Health
+        </h1>
+        <nav
+          class="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-full bg-gray-100 p-1 dark:bg-gray-900"
+          aria-label="Archive health checks"
+        >
           <a
-            data-sveltekit-reload
-            href={Route.cimmichArchiveIntegrity()}
-            class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-800"
-            title="Back to Archive Health"
+            href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
+            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'exact'
+              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+            aria-current={mode === 'exact' ? 'page' : undefined}
+            title="Find files whose complete bytes are identical"
           >
-            <Icon icon={mdiArrowRight} size="16" class="rotate-180" /> Archive Health
+            Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
           </a>
-          {#if activeFolder && focusedFolderAsset}
+          <a
+            href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
+            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode ===
+            'variants'
+              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+            aria-current={mode === 'variants' ? 'page' : undefined}
+            title="Review visually similar files and compare their evidence"
+          >
+            Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
+          </a>
+          <a
+            href={Route.cimmichArchiveIntegrity({ mode: 'folder' })}
+            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'folder'
+              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+            aria-current={mode === 'folder' ? 'page' : undefined}
+            title="Compare one folder with the rest of the archive"
+          >
+            Folder check
+          </a>
+          <a
+            href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
+            class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'backup'
+              ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+              : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+            aria-current={mode === 'backup' ? 'page' : undefined}
+            title="Compare the archive with a read-only independent backup"
+          >
+            Backup check
+          </a>
+        </nav>
+        <button
+          type="button"
+          class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
+          disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
+          onclick={refreshCurrentMode}
+          title="Refresh only the selected check"
+        >
+          <Icon
+            icon={mdiRefresh}
+            size="16"
+            class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+              ? 'animate-spin'
+              : ''}
+          />
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+      {#if mode === 'folder' && activeFolder}
+        <div
+          class="mt-2 flex min-w-0 items-center gap-2 border-t border-gray-100 pt-2 text-xs dark:border-immich-dark-gray"
+        >
+          <Icon icon={mdiFolderOpenOutline} size="16" class="shrink-0 text-violet-600" />
+          <span class="shrink-0 font-semibold text-violet-700 dark:text-violet-300">{activeFolderName}</span>
+          <span class="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-400" title={activeFolder}
+            >{activeFolder}</span
+          >
+          {#if focusedFolderAsset}
             <a
-              class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-primary hover:bg-gray-100 dark:hover:bg-gray-800"
+              class="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 font-semibold text-primary hover:bg-gray-100 dark:hover:bg-gray-800"
               href={Route.viewFolderAsset({ cimmich: 1, id: focusedFolderAsset.id, path: activeFolder })}
               title="Open this folder in Library"
             >
-              Open folder <Icon icon={mdiArrowRight} size="16" />
+              Open folder <Icon icon={mdiArrowRight} size="15" />
             </a>
           {/if}
-          <button
-            type="button"
-            class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-            disabled={loading ||
-              loadingMore ||
-              variantsLoading ||
-              folderLoading ||
-              folderRankingLoading ||
-              backupLoading}
-            onclick={refreshCurrentMode}
-            title="Run Folder Check again"
-          >
-            <Icon
-              icon={mdiRefresh}
-              size="16"
-              class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
-                ? 'animate-spin'
-                : ''}
-            />
-            Refresh
-          </button>
         </div>
-      </header>
-    {:else}
-      <header class="rounded-3xl bg-[#111815] p-5 text-white shadow-sm sm:px-6">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="max-w-3xl">
-            <h1 class="text-2xl font-semibold tracking-tight">Archive Health</h1>
-            <p class="mt-1 text-sm text-slate-300">
-              Review exact copies, possible duplicates and independent backups. Nothing is changed.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 text-sm font-semibold hover:bg-white/15 disabled:opacity-50"
-            disabled={loading ||
-              loadingMore ||
-              variantsLoading ||
-              folderLoading ||
-              folderRankingLoading ||
-              backupLoading}
-            onclick={refreshCurrentMode}
-          >
-            <Icon
-              icon={mdiRefresh}
-              size="18"
-              class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
-                ? 'animate-spin'
-                : ''}
-            />
-            Refresh
-          </button>
-        </div>
-      </header>
-      <nav
-        class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200 bg-white p-1 dark:border-immich-dark-gray dark:bg-immich-dark-bg"
-        aria-label="Archive health tools"
-      >
-        <a
-          data-sveltekit-reload
-          href={Route.cimmichArchiveIntegrity({ mode: 'exact' })}
-          class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'exact'
-            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-          aria-current={mode === 'exact' ? 'page' : undefined}
-        >
-          Exact copies {loaded ? `(${number.format(summary.duplicateGroups)})` : ''}
-        </a>
-        <a
-          data-sveltekit-reload
-          href={Route.cimmichArchiveIntegrity({ mode: 'variants' })}
-          class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'variants'
-            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-          aria-current={mode === 'variants' ? 'page' : undefined}
-        >
-          Possible duplicates {variantsLoaded ? `(${number.format(scopedVariantGroups.length)})` : ''}
-        </a>
-        <a
-          data-sveltekit-reload
-          href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
-          class="min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold {mode === 'backup'
-            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'}"
-          aria-current={mode === 'backup' ? 'page' : undefined}
-        >
-          Backup check
-        </a>
-      </nav>
-    {/if}
+      {/if}
+    </header>
 
     {#if (mode === 'variants' && focusedAssetId) || (mode === 'exact' && focusedAssetId)}
       <div
@@ -715,20 +680,6 @@
       </div>
     {/if}
 
-    {#if mode === 'exact'}
-      <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
-        <strong>{countLabel(summary.duplicateGroups, 'group')}</strong> · {countLabel(summary.copiesInGroups, 'file')} ·
-        {formatBytes(summary.reclaimableBytes)} possible space. Exact means byte-for-byte.
-      </p>
-    {:else if mode === 'variants'}
-      <p class="px-1 text-sm text-gray-600 dark:text-gray-300">
-        <strong>{countLabel(allVariantNativeGroups.length, 'group')} found</strong> · {countLabel(
-          variantGroups.length,
-          'group',
-        )} detailed. Comparisons load in small batches. A visual match is a review lead, not deletion proof.
-      </p>
-    {/if}
-
     {#if error}
       <div
         class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
@@ -739,14 +690,22 @@
 
     {#if mode === 'exact'}
       <section class="space-y-4" aria-labelledby="exact-duplicates-title">
-        <div class="flex flex-wrap items-end justify-between gap-3 px-1">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-1">
           <div>
-            <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">
-              Review queue
+            <h2 id="exact-duplicates-title" class="text-xl font-semibold">Exact duplicate groups</h2>
+            <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
+              <strong>{countLabel(summary.duplicateGroups, 'group')}</strong> · {countLabel(
+                summary.copiesInGroups,
+                'file',
+              )} · {formatBytes(summary.reclaimableBytes)} possible space. Exact means byte-for-byte.
             </p>
-            <h2 id="exact-duplicates-title" class="mt-1 text-2xl font-semibold">Exact duplicate groups</h2>
           </div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Largest recoverable groups first</p>
+          <p
+            class="text-xs text-gray-500 dark:text-gray-400"
+            title="Groups with the most possible recoverable space appear first"
+          >
+            Largest recoverable groups first
+          </p>
         </div>
 
         {#if loading && !loaded}
@@ -870,7 +829,7 @@
         </div>
       {/if}
     {:else if mode === 'folder'}
-      <section class="space-y-4" aria-labelledby="folder-check-title">
+      <section class="space-y-4" aria-label="Folder check">
         {#if activeFolder}
           <ArchiveFolderComparison
             error={folderError || variantError}
@@ -894,7 +853,7 @@
           <div class="space-y-4 border-t border-gray-100 p-5 dark:border-immich-dark-gray">
             <div class="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 id="folder-check-title" class="text-lg font-semibold">Most impacted folders</h2>
+                <h2 class="text-lg font-semibold">Most impacted folders</h2>
                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Ranked by files that also appear in other archive folders.
                 </p>
@@ -961,9 +920,15 @@
       </section>
     {:else if mode === 'variants'}
       <section class="space-y-4" aria-labelledby="variant-groups-title">
-        <div class="flex flex-wrap items-end justify-between gap-4 px-1">
+        <div class="flex flex-wrap items-center justify-between gap-4 px-1">
           <div>
             <h2 id="variant-groups-title" class="text-xl font-semibold">Possible duplicate groups</h2>
+            <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
+              <strong>{countLabel(allVariantNativeGroups.length, 'group')} found</strong> · {countLabel(
+                variantGroups.length,
+                'group',
+              )} detailed. Comparisons load as needed. A visual match is a review lead, not deletion proof.
+            </p>
           </div>
           <div class="flex flex-wrap gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-900" aria-label="Filter variants">
             {#each [['all', 'All'], ['verified_variant', 'Different files'], ['verified_exact', 'Exact copies'], ['similarity_candidate', 'Unverified']] as option (option[0])}
@@ -1119,7 +1084,6 @@
                             >
                             <a
                               class="shrink-0 whitespace-nowrap text-primary hover:underline"
-                              data-sveltekit-reload
                               href={Route.cimmichArchiveIntegrity({ folder: folderContext.path, mode: 'folder' })}
                               >({countLabel(folderContext.otherFlaggedHere, 'other flagged photo')} here)</a
                             >

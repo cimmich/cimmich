@@ -49,10 +49,12 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('No safe recommendation');
     expect(source).toContain('Why this recommendation');
     expect(source).toContain('archiveVariantFolderContext(variantGroups, asset)');
-    expect(source).toContain("title={mode === 'folder' ? undefined : data.meta.title}");
-    expect(source).toContain('Back to Archive Health');
+    expect(source).toContain('title={data.meta.title}');
+    expect(source).not.toContain('Back to Archive Health');
     expect(source).toContain('Open this folder in Library');
-    expect(source).toContain('Run Folder Check again');
+    expect(source).toContain('Refresh only the selected check');
+    expect(source).toContain('Folder check');
+    expect(source).toContain('Compare one folder with the rest of the archive');
     expect(source).toContain('Most impacted folders');
     expect(source).toContain('rankArchiveFoldersByImpact(nativeVariantGroups)');
     expect(source).toContain('affectedAssetCount');
@@ -67,7 +69,7 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('uniqueSourceAssetIds.slice(index * 20, index * 20 + 20)');
     expect(source).toContain('nativeGroups.slice(0, 12)');
     expect(source).toContain('loadMoreVariants');
-    expect(source).toContain('Comparisons load in small batches');
+    expect(source).toContain('Comparisons load as needed');
     expect(source).toContain('This comparison took too long');
     expect(source).toContain("case 'exact':");
     expect(source).toContain("case 'folder':");
@@ -75,7 +77,7 @@ describe('Archive integrity layout', () => {
     expect(source).toContain("folder: folderContext.path, mode: 'folder'");
     expect(folderPage).toContain('Check this folder');
     expect(folderPage).toContain("mode: 'folder'");
-    expect(source.match(/data-sveltekit-reload/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(source.match(/data-sveltekit-reload/g)?.length ?? 0).toBeLessThanOrEqual(2);
     expect(source).toContain('other flagged photo');
     expect(source).toContain('Technical details');
     expect(variants).toContain("status: 'hold_ambiguous'");

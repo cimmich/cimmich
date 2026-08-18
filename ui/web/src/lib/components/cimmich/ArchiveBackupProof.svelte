@@ -126,17 +126,7 @@
   });
 </script>
 
-<section class="space-y-5" aria-labelledby="backup-proof-title">
-  <div class="flex flex-wrap items-end justify-between gap-4 px-1">
-    <div>
-      <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">
-        Backup checker
-      </p>
-      <h2 id="backup-proof-title" class="mt-1 text-2xl font-semibold">Compare an independent backup</h2>
-    </div>
-    <p class="text-sm text-gray-500 dark:text-gray-400">Read-only · complete-file SHA-256</p>
-  </div>
-
+<section class="space-y-4" aria-labelledby="backup-proof-title">
   {#if scanError}
     <div
       class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
@@ -145,7 +135,21 @@
     </div>
   {/if}
 
-  <article class="rounded-3xl border border-gray-200 bg-white p-5 dark:border-immich-dark-gray dark:bg-immich-dark-bg">
+  <article class="rounded-3xl border border-gray-200 bg-white p-4 dark:border-immich-dark-gray dark:bg-immich-dark-bg">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 id="backup-proof-title" class="text-xl font-semibold">Compare an independent backup</h2>
+        <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+          Read-only check using complete-file SHA-256 and byte length.
+        </p>
+      </div>
+      <span
+        class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+        title="Cimmich reads the backup but does not modify it"
+      >
+        Nothing is changed
+      </span>
+    </div>
     {#if !targetsLoaded}
       <p class="text-sm font-semibold">Reading backup destinations…</p>
     {:else if targets.length === 0}
