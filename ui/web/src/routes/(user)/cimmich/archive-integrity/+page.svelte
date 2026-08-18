@@ -6,6 +6,12 @@
   import ArchiveExactDuplicateResults from '$lib/components/cimmich/ArchiveExactDuplicateResults.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
   import ArchiveRotationReview from '$lib/components/cimmich/ArchiveRotationReview.svelte';
+  import {
+    ROTATION_BACKLOG_LIMIT,
+    ROTATION_MAX_PAGE,
+    ROTATION_PAGE_SIZE,
+    ROTATION_VISUAL_QUERY,
+  } from '$lib/components/cimmich/archive-rotation-backlog';
   import ArchiveVariantResults from '$lib/components/cimmich/ArchiveVariantResults.svelte';
   import {
     buildArchiveFolderOverlap,
@@ -58,8 +64,6 @@
 
   let { data }: Props = $props();
   type ArchiveHealthMode = 'exact' | 'variants' | 'folder' | 'rotation' | 'backup';
-  const ROTATION_PAGE_SIZE = 24;
-  const ROTATION_VISUAL_QUERY = 'a photo that is sideways or rotated 90 degrees';
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
   const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
@@ -478,7 +482,8 @@
         if (requestGeneration !== rotationRequestGeneration) {
           return;
         }
-        const nextAssets = next.assets.items;
+        const remainingQueueSlots = Math.max(0, ROTATION_BACKLOG_LIMIT - (pageNumber - 1) * ROTATION_PAGE_SIZE);
+        const nextAssets = next.assets.items.slice(0, remainingQueueSlots);
         const sourceEvidence =
           nextAssets.length > 0
             ? await getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))
@@ -520,7 +525,7 @@
             .filter((asset) => activeSourceIds.has(asset.id))
             .map((asset): [string, AssetResponseDto] => [asset.id, asset]),
         ]);
-        rotationNextPage = Number(next.assets.nextPage) || 0;
+        rotationNextPage = pageNumber < ROTATION_MAX_PAGE ? Number(next.assets.nextPage) || 0 : 0;
         rotationHasMore = rotationNextPage > 0;
         if (nextItems.length > 0 || !rotationHasMore) {
           break;

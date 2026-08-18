@@ -329,8 +329,9 @@ the mounted Archive Health route, while each mode requests its own detailed
 evidence only when selected. A folder selection uses a client-side route update
 and the same mode activation path as a direct `mode=folder&folder=...` link.
 
-Rotation review is activated only by `mode=rotation`. It reads the existing
-Immich Smart Search index in pages of 24 using a disclosed sideways-photo query.
+Rotation review is activated only by `mode=rotation`. It defines a finite queue
+from Immich's 500 strongest matches for a disclosed sideways-photo query and
+reads visible work in pages of 24.
 The supported response supplies both the ranked assets and visible metadata, so
 the mode does not hydrate the whole library or issue a second asset-detail fan
 out. The queue is a visual lead rather than deterministic proof and does not
@@ -344,10 +345,11 @@ records are filtered from every loaded batch and removed from the active queue
 as soon as the write returns. A fully reviewed ranked page is skipped using the
 next bounded 24-result request, and confirming the final visible card starts the
 same bounded continuation automatically. After the first useful batch renders,
-a background counter pages through only the ranked rotation result set, maps
-source evidence and reads corrections in batches of 100. The header then reports
-the exact unresolved backlog and reviewed total without delaying visible cards
-or hydrating the full archive. Immich's unreliable `total` field is not used.
+a background counter requests the 500-item ranked queue once, then maps source
+evidence and reads corrections in batches of 100. The header reports the exact
+unresolved backlog and reviewed total within that finite queue without delaying
+visible cards or walking the whole library. Immich's unreliable `total` field
+is not used.
 Draft reversal uses the opposite rotate control, so Rotation review does not
 place an Undo button over the photo controls. Each write request is bounded to
 100 unique assets and idempotent by command ID; a larger loaded page is split

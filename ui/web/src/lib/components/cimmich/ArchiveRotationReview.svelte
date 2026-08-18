@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Route } from '$lib/route';
-  import { countArchiveRotationBacklog } from './archive-rotation-backlog';
+  import { countArchiveRotationBacklog, ROTATION_BACKLOG_LIMIT } from './archive-rotation-backlog';
   import type {
     CimmichAssetRotationChange,
     CimmichPhotoDetailReviewItem,
@@ -16,6 +16,7 @@
     mdiRotateLeft,
     mdiRotateRight,
   } from '@mdi/js';
+  import { onDestroy } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichReviewPhotoMedia from './CimmichReviewPhotoMedia.svelte';
 
@@ -123,6 +124,10 @@
     }
   });
 
+  onDestroy(() => {
+    backlogCountGeneration += 1;
+  });
+
   const rotateDraft = (item: CimmichPhotoDetailReviewItem, direction: 'left' | 'right') => {
     const next = normalizedRotation(draftRotation(item) + (direction === 'right' ? 1 : -1));
     if (next === normalizedRotation(item.rotationQuarterTurns)) {
@@ -164,7 +169,7 @@
       <h2 id="rotation-review-title" class="text-xl font-semibold">Likely rotation candidates</h2>
       <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
         Immich's visual index ranks these as resembling sideways or 90 degree rotated photos. Review the full photo
-        before applying a correction.
+        before applying a correction. This queue contains its {number.format(ROTATION_BACKLOG_LIMIT)} strongest matches.
       </p>
       <div class="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold tabular-nums">
         {#if items.length === 0 && ((loading && !loaded) || loadingMore)}
@@ -178,7 +183,7 @@
           {#if backlogCounting || (backlogTotal === null && !backlogCountError)}
             <span
               class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              title="The visible review cards stay usable while Cimmich counts every ranked candidate in the background"
+              title="The visible review cards stay usable while Cimmich counts the top 500 ranked candidates in the background"
             >
               Counting exact backlog…
             </span>
@@ -194,13 +199,13 @@
           {:else}
             <span
               class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-              title="Exact unresolved total across Immich's ranked rotation results"
+              title="Exact unresolved total among Immich's 500 strongest rotation matches"
             >
               {number.format(backlogTotal ?? 0)} in backlog
             </span>
             <span
               class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-              title="Ranked rotation candidates already saved or confirmed"
+              title="Candidates already saved or confirmed within Immich's 500 strongest rotation matches"
             >
               {number.format(reviewedTotal ?? 0)} reviewed
             </span>

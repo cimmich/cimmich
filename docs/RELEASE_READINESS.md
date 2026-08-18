@@ -517,12 +517,13 @@ loaded on the page. Confirmed records leave the active Rotation review queue
 immediately and remain filtered when that ranked batch is reloaded. The compact
 card uses the space beneath the photo for the ranking reason while keeping EXIF
 and proposed rotation together. Fully reviewed 24-result pages are skipped
-automatically until unresolved work or the true end is reached, including after
-the last visible card is confirmed. Queue badges expose the ready count while a
-background pass counts every ranked rotation result, then show exact backlog and
-reviewed totals. Evidence and correction reads are batched at 100 and visible
-cards remain usable during the count. Rotation review omits the image-level Undo
-button because the opposite rotate control already reverses a local draft.
+automatically until unresolved work or the end of the explicit top-500 queue is
+reached, including after the last visible card is confirmed. Queue badges expose
+the ready count while one bounded Smart Search counts that queue, then show exact
+backlog and reviewed totals within it. Evidence and correction reads are batched
+at 100 and visible cards remain usable during the count. Rotation review omits
+the image-level Undo button because the opposite rotate control already reverses
+a local draft.
 Source-current Smart Search also exposes Immich visual ranking as its own lens,
 separate from deterministic Recorded facts. Natural-language queries and
 photo-scoped similarity both request 24 image records at a time, reuse the

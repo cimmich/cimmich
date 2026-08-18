@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { countArchiveRotationBacklog } from './archive-rotation-backlog';
+import { countArchiveRotationBacklog, ROTATION_BACKLOG_LIMIT } from './archive-rotation-backlog';
 
 const mocks = vi.hoisted(() => ({
   corrections: vi.fn(),
@@ -33,9 +33,8 @@ beforeEach(() => {
 });
 
 describe('rotation backlog count', () => {
-  it('counts every ranked page and removes reviewed rotation decisions', async () => {
-    mocks.searchSmart.mockResolvedValueOnce(resultPage(['source-1', 'source-2'], 2));
-    mocks.searchSmart.mockResolvedValueOnce(resultPage(['source-3'], null));
+  it('counts the bounded ranked queue and removes reviewed rotation decisions', async () => {
+    mocks.searchSmart.mockResolvedValueOnce(resultPage(['source-1', 'source-2', 'source-3'], 2));
     mocks.sourceEvidence.mockResolvedValue({
       items: [
         { assetId: 'asset-1', sourceAssetId: 'source-1' },
@@ -56,7 +55,10 @@ describe('rotation backlog count', () => {
       reviewedTotal: 1,
       unresolvedAssetIds: ['asset-1', 'asset-3'],
     });
-    expect(mocks.searchSmart).toHaveBeenCalledTimes(2);
+    expect(mocks.searchSmart).toHaveBeenCalledTimes(1);
+    expect(mocks.searchSmart).toHaveBeenCalledWith({
+      smartSearchDto: expect.objectContaining({ page: 1, size: ROTATION_BACKLOG_LIMIT }),
+    });
     expect(mocks.sourceEvidence).toHaveBeenCalledWith(['source-1', 'source-2', 'source-3']);
     expect(mocks.corrections).toHaveBeenCalledWith(['asset-1', 'asset-2', 'asset-3']);
   });
@@ -68,5 +70,20 @@ describe('rotation backlog count', () => {
     expect(mocks.searchSmart).toHaveBeenCalledTimes(1);
     expect(mocks.sourceEvidence).not.toHaveBeenCalled();
     expect(mocks.corrections).not.toHaveBeenCalled();
+  });
+
+  it('checks archive evidence and corrections in batches of 100', async () => {
+    const sourceIds = Array.from({ length: 101 }, (_, index) => `source-${index}`);
+    mocks.searchSmart.mockResolvedValueOnce(resultPage(sourceIds, null));
+    mocks.sourceEvidence.mockImplementation((ids: string[]) => ({
+      items: ids.map((sourceAssetId) => ({ assetId: sourceAssetId.replace('source-', 'asset-'), sourceAssetId })),
+    }));
+    mocks.corrections.mockImplementation((ids: string[]) => ({
+      items: ids.map((assetId) => ({ assetId, rotationDecisionId: null })),
+    }));
+
+    await expect(countArchiveRotationBacklog()).resolves.toMatchObject({ backlogTotal: 101, reviewedTotal: 0 });
+    expect(mocks.sourceEvidence).toHaveBeenCalledTimes(2);
+    expect(mocks.corrections).toHaveBeenCalledTimes(2);
   });
 });

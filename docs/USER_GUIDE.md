@@ -538,16 +538,18 @@ Rotation review is a demand-loaded candidate queue. It currently flags images
 that Immich's visual index ranks as resembling sideways or 90 degree rotated
 photos. These are useful ranked leads, not proof that an image needs rotation.
 
-The first 24 unresolved candidates load only after Rotation review is selected.
+Rotation review is an explicit queue of Immich's 500 strongest matches for the
+sideways-photo query. The first 24 unresolved candidates load only after
+Rotation review is selected.
 If a ranked page contains only completed reviews, Cimmich advances through
 another bounded page until it finds unresolved work or reaches the end. The
 same Smart Search response supplies the visible cards and their Immich metadata,
 exposing the source folder, capture date, dimensions and recorded EXIF
-orientation. The first usable batch appears before Cimmich counts the rest of
-the ranked rotation results in the background. The queue header then shows an
-exact unresolved backlog and exact reviewed total. This count examines only the
-ranked rotation result set and checks Cimmich decisions in batches of 100; it
-does not hydrate the full archive into the page.
+orientation. The first usable batch appears before Cimmich counts that bounded
+500-item queue in the background. The queue header then shows the exact
+unresolved backlog and reviewed total within that queue. One bounded Smart
+Search replaces an open-ended walk through the library; source evidence and
+Cimmich decisions are checked in batches of 100.
 
 Use the magnify control on any candidate to open the same full-photo inspection
 view used by Photo Review. Rotate left and Rotate right change a local draft;

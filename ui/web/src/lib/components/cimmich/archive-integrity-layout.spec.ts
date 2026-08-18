@@ -105,8 +105,10 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('type: AssetTypeEnum.Image');
     expect(source).toContain('getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))');
     expect(source).toContain('getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))');
-    expect(source).toContain('ROTATION_PAGE_SIZE = 24');
-    expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
+    expect(rotationBacklog).toContain('ROTATION_PAGE_SIZE = 24');
+    expect(rotationBacklog).toContain('ROTATION_BACKLOG_LIMIT = 500');
+    expect(rotationBacklog).not.toContain('while (page > 0)');
+    expect(source).toContain('pageNumber < ROTATION_MAX_PAGE');
     expect(source).toContain('if (nextItems.length > 0 || !rotationHasMore)');
     expect(source).toContain('await loadRotation({ append: true })');
     expect(source).toContain('<ArchiveRotationReview');
@@ -115,8 +117,8 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('ranks these as resembling sideways');
     expect(rotationReview).toContain('Why flagged');
     expect(rotationReview).toContain('countArchiveRotationBacklog');
-    expect(rotationBacklog).toContain('while (page > 0)');
     expect(rotationBacklog).toContain('EVIDENCE_BATCH_SIZE = 100');
+    expect(rotationReview).toContain("500 strongest rotation matches");
     expect(rotationReview).toContain('{number.format(backlogTotal ?? 0)} in backlog');
     expect(rotationReview).toContain('Counting exact backlog');
     expect(rotationReview).toContain('Checking backlog');
