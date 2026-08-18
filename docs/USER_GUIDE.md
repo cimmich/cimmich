@@ -31,20 +31,19 @@ The simplest mental model is:
 
 ## Where to go for each job
 
-| I want to…                                      | Open               | What happens                                                                                        |
-| :---------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
-| See the shape of my memory library              | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
-| Browse or organise photos                       | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
-| Find, describe or correct a person              | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
-| Manage animals and unknown detections           | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
-| Describe where a memory happened                | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
-| Record an important object                      | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
-| Group a trip, activity or life period           | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
-| Keep records with the memories they explain     | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
-| Find a known combination                        | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
-| Understand duplicate or preservation evidence   | **Archive Health** | Compare byte-exact copies and possible versions, with any keep recommendation beside the photos.    |
-| Compare one folder with the rest of the archive | **Folder Check**   | Count shared, current-only and same-folder evidence, then inspect the largest folder overlaps.      |
-| Connect, tune or diagnose Cimmich               | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
+| I want to…                                    | Open               | What happens                                                                                        |
+| :-------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
+| See the shape of my memory library            | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
+| Browse or organise photos                     | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
+| Find, describe or correct a person            | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
+| Manage animals and unknown detections         | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
+| Describe where a memory happened              | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
+| Record an important object                    | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
+| Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
+| Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
+| Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
+| Understand duplicate or preservation evidence | **Archive Health** | Compare exact copies, possible duplicates, one folder or an independent backup in one workspace.    |
+| Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
 
@@ -500,12 +499,17 @@ When evidence supports a preferred preservation candidate, it is marked on the
 photo and explained in the same group. Ambiguous or byte-incomplete groups say
 that no safe recommendation exists. Recommendations never change files.
 
-### Folder Check
+### Folder check
 
-Folder Check is its own Manage-sidebar destination and Archive Health tab. Paste
-an archive folder path there, or choose **Browse folders** and use **Check this
-folder** from any folder. Existing duplicate-folder links also open this same
-destination directly.
+Folder check is one of the four checks in Archive Health, beside Exact copies,
+Possible duplicates and Backup check. Paste an archive folder path there, or
+choose **Browse folders** and use **Check this folder** from any folder. Existing
+duplicate-folder links open Archive Health with Folder check already selected.
+
+The shared Archive Health command bar stays in place while the selected check
+changes. Each check loads its own evidence only when selected. Moving into
+Folder check reuses the current duplicate index instead of reloading the whole
+Archive Health page.
 
 It inventories every direct file in the folder, then splits each current
 duplicate group into **This folder** and **Elsewhere**. Other folders are ranked
