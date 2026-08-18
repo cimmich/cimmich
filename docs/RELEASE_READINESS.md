@@ -506,10 +506,10 @@ Schema 121 keeps photo corrections in Cimmich: quarter-turn presentation,
 capture-time overrides and effective Places are reversible owner decisions and
 do not mutate source files or Immich. Likely-sideways Face pose, future dates
 and conflicting Places have deterministic Photo details queues. Source-current
-Archive Health promotes the likely-sideways queue into a demand-loaded Rotation
-review with bounded Immich metadata enrichment and reversible rotate/Undo
-controls; it does not claim a safe direction or assess photos without a measured
-face.
+Archive Health adds a demand-loaded Rotation review that requests 24 ranked
+sideways-photo leads at a time from Immich Smart Search and reuses the returned
+asset metadata without hydrating the library. Reversible rotate/Undo controls
+do not claim that a lead needs correction or infer a safe direction.
 Schema 122 makes the measured Face reject-noise floor authoritative for identity
 matching and retires only unreviewed candidates that should never have entered
 the queue; accepted owner decisions remain intact.

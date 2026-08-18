@@ -96,12 +96,15 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('Backup check');
     expect(source).toContain('Rotation review');
     expect(source).toContain("case 'rotation':");
-    expect(source).toContain("getCimmichPhotoDetailReview(\n        'orientation'");
+    expect(source).toContain('searchSmart({');
+    expect(source).toContain('query: ROTATION_VISUAL_QUERY');
+    expect(source).toContain('type: AssetTypeEnum.Image');
+    expect(source).toContain('getCimmichAssetCorrections(nextAssets.map((asset) => asset.id))');
     expect(source).toContain('ROTATION_PAGE_SIZE = 24');
-    expect(source).toContain('Math.min(6, pending.length)');
+    expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
     expect(source).toContain('<ArchiveRotationReview');
     expect(rotationReview).toContain('Likely rotation candidates');
-    expect(rotationReview).toContain('A detected face appears close to');
+    expect(rotationReview).toContain("Immich's visual index ranks");
     expect(rotationReview).toContain('Why flagged');
     expect(rotationReview).toContain('EXIF orientation');
     expect(rotationReview).toContain('Reversible Cimmich correction');

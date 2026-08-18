@@ -35,6 +35,6 @@ describe('photo correction integration', () => {
     expect(archiveHealth).toContain("mode: 'rotation'");
     expect(archiveHealth).toContain('rotateCimmichAssets');
     expect(archiveHealth).toContain('undoCimmichAssetCorrections');
-    expect(rotationReview).toContain('This check currently uses face pose');
+    expect(rotationReview).toContain("Immich's visual index");
   });
 });

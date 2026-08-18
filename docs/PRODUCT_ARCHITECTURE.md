@@ -320,13 +320,14 @@ evidence only when selected. A folder selection uses a client-side route update
 and the same mode activation path as a direct `mode=folder&folder=...` link.
 
 Rotation review is activated only by `mode=rotation`. It reads the existing
-deterministic Orientation queue in pages of 24 and then enriches only those
-visible candidates through no more than six concurrent Immich asset-detail
-reads. The queue is based on current measured face roll between 55 and 125
-degrees, excludes assets with a current rotation correction, and does not infer
-a safe direction. The card exposes face roll, EXIF orientation, dimensions,
-capture date and source folder. Rotate and Undo use the existing append-only
-Cimmich correction ledger; they never write source media or Immich metadata.
+Immich Smart Search index in pages of 24 using a disclosed sideways-photo query.
+The supported response supplies both the ranked assets and visible metadata, so
+the mode does not hydrate the whole library or issue a second asset-detail fan
+out. The queue is a visual lead rather than deterministic proof and does not
+infer a safe direction. The card exposes the ranking reason, EXIF orientation,
+dimensions, capture date and source folder. Rotate and Undo use the existing
+append-only Cimmich correction ledger; they never write source media or Immich
+metadata.
 
 The mode pages Immich's path search to inventory every direct file in the
 requested folder. The client joins that inventory to the already loaded

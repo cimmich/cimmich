@@ -162,10 +162,10 @@ Place corrections. Corrections are append-only owner decisions with command
 replay, supersession and Undo; they never write source media or the Immich
 database. Deterministic Orientation, future-date and conflicting-Place queues
 surface review proposals without granting machinery correction authority.
-Archive Health presents the Orientation queue as a bounded Rotation review,
-while the broader Photo details surface retains date and Place checks. Rotation
-actions remain reversible Cimmich correction decisions and never modify Immich
-metadata or source media.
+Archive Health presents a bounded Immich visual-search candidate set as Rotation
+review, while the broader Photo details surface retains the deterministic
+Orientation, date and Place checks. Rotation actions remain reversible Cimmich
+correction decisions and never modify Immich metadata or source media.
 Schema 122 preserves difficult Face observations for owner inspection while
 excluding measured reject-noise regions from identity matching. It retires only
 their unreviewed historical Prime candidates and leaves accepted decisions

@@ -30,7 +30,7 @@
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
   import {
-    getCimmichPhotoDetailReview,
+    getCimmichAssetCorrections,
     rotateCimmichAssets,
     undoCimmichAssetCorrections,
     type CimmichAssetCorrectionDetails,
@@ -40,9 +40,11 @@
   import { getParentPath } from '$lib/utils/tree-utils';
   import {
     AssetMediaSize,
+    AssetTypeEnum,
     getAssetDuplicates,
     getAssetInfo,
     searchAssets,
+    searchSmart,
     type AssetResponseDto,
     type DuplicateResponseDto,
   } from '@immich/sdk';
@@ -68,6 +70,7 @@
   let { data }: Props = $props();
   type ArchiveHealthMode = 'exact' | 'variants' | 'folder' | 'rotation' | 'backup';
   const ROTATION_PAGE_SIZE = 24;
+  const ROTATION_VISUAL_QUERY = 'a photo that is sideways or rotated 90 degrees';
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
   const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
@@ -137,6 +140,7 @@
   let rotationLoaded = $state(false);
   let rotationLoading = $state(false);
   let rotationLoadingMore = $state(false);
+  let rotationNextPage = $state(1);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
   const exactPathRequests: string[] = [];
@@ -505,28 +509,6 @@
     }
   };
 
-  const loadRotationAssets = async (items: CimmichPhotoDetailReviewItem[], requestGeneration: number) => {
-    const pending = items
-      .map((item) => item.sourceAssetId)
-      .filter((sourceAssetId) => !rotationAssets.has(sourceAssetId));
-    let cursor = 0;
-    const updates: Array<[string, AssetResponseDto | null]> = [];
-    const worker = async () => {
-      while (cursor < pending.length) {
-        const sourceAssetId = pending[cursor++];
-        if (!sourceAssetId) {
-          continue;
-        }
-        const asset = await getAssetInfo({ id: sourceAssetId }).catch(() => null);
-        updates.push([sourceAssetId, asset]);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, () => worker()));
-    if (requestGeneration === rotationRequestGeneration && updates.length > 0) {
-      rotationAssets = new Map([...rotationAssets, ...updates]);
-    }
-  };
-
   const loadRotation = async ({ append = false } = {}) => {
     const requestGeneration = append ? rotationRequestGeneration : ++rotationRequestGeneration;
     if (append) {
@@ -536,18 +518,50 @@
       rotationError = '';
     }
     try {
-      const next = await getCimmichPhotoDetailReview(
-        'orientation',
-        ROTATION_PAGE_SIZE,
-        append ? rotationItems.length : 0,
-      );
+      const pageNumber = append ? rotationNextPage : 1;
+      const next = await searchSmart({
+        smartSearchDto: {
+          page: pageNumber,
+          query: ROTATION_VISUAL_QUERY,
+          size: ROTATION_PAGE_SIZE,
+          type: AssetTypeEnum.Image,
+        },
+      });
       if (requestGeneration !== rotationRequestGeneration) {
         return;
       }
-      rotationItems = append ? [...rotationItems, ...next.items] : next.items;
-      rotationHasMore = next.items.length === ROTATION_PAGE_SIZE;
+      const nextAssets = next.assets.items;
+      const correctionPage =
+        nextAssets.length > 0 ? await getCimmichAssetCorrections(nextAssets.map((asset) => asset.id)) : { items: [] };
+      const corrections = new Map(correctionPage.items.map((item) => [item.assetId, item]));
+      const nextItems = nextAssets.map<CimmichPhotoDetailReviewItem>((asset) => {
+        const correction = corrections.get(asset.id);
+        return {
+          assetId: asset.id,
+          captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+          captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
+          confidenceSignal: 0,
+          correctionDecisionIds: correction?.correctionDecisionIds ?? [],
+          filename: correction?.filename ?? asset.originalFileName,
+          location: correction?.location ?? null,
+          originalCaptureTime:
+            correction?.originalCaptureTime ?? asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+          reason: 'immich_visual_rotation_candidate',
+          rotationDecisionId: correction?.rotationDecisionId ?? null,
+          rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
+          schemaVersion: 'cimmich.asset-correction.v1',
+          sourceAssetId: correction?.sourceAssetId ?? asset.id,
+        };
+      });
+      const combined = append ? [...rotationItems, ...nextItems] : nextItems;
+      rotationItems = [...new Map(combined.map((item) => [item.assetId, item])).values()];
+      rotationAssets = new Map([
+        ...(append ? rotationAssets : new Map<string, AssetResponseDto | null>()),
+        ...nextAssets.map((asset): [string, AssetResponseDto] => [asset.id, asset]),
+      ]);
+      rotationNextPage = Number(next.assets.nextPage) || 0;
+      rotationHasMore = rotationNextPage > 0;
       rotationLoaded = true;
-      await loadRotationAssets(next.items, requestGeneration);
     } catch (error_) {
       if (requestGeneration === rotationRequestGeneration) {
         rotationError = friendlyError(error_, 'Cimmich could not read likely rotation candidates.');
@@ -766,7 +780,7 @@
             ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
             : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
           aria-current={mode === 'rotation' ? 'page' : undefined}
-          title="Review photos whose detected face pose suggests they may be sideways"
+          title="Review photos Immich ranks as visually similar to sideways images"
         >
           Rotation review {rotationLoaded
             ? `(${number.format(rotationItems.length)}${rotationHasMore ? '+' : ''})`

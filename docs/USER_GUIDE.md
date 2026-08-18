@@ -529,21 +529,20 @@ already available to Archive Health.
 ### Rotation review
 
 Rotation review is a demand-loaded candidate queue. It currently flags images
-where Cimmich measured a detected face between 55 and 125 degrees from upright.
-That is a useful lead, not proof that the whole photo is sideways. Images
-without a measured face are not assessed by this first version.
+that Immich's visual index ranks as resembling sideways or 90 degree rotated
+photos. These are useful ranked leads, not proof that an image needs rotation.
 
-The first 24 candidates load only after Rotation review is selected. Cimmich
-then reads Immich details for that visible page with no more than six concurrent
-requests, exposing the source folder, capture date, dimensions and recorded EXIF
-orientation beside the measured face roll. More candidates load in another
-bounded page only when requested.
+The first 24 candidates load only after Rotation review is selected. The same
+bounded Smart Search response supplies the visible cards and their Immich
+metadata, exposing the source folder, capture date, dimensions and recorded
+EXIF orientation. More candidates load in another bounded page only when
+requested.
 
 Rotate left and Rotate right create a reversible Cimmich presentation
 correction. The preview updates immediately and Undo remains on the candidate.
 The source file and Immich metadata are unchanged. Open the complete photo
-before deciding because the current face-pose signal does not determine which
-direction is correct.
+before deciding because visual similarity does not determine whether a photo
+needs correction or which direction is correct.
 
 ### Backup proof
 

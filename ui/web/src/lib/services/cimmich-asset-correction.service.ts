@@ -32,7 +32,11 @@ export type CimmichAssetCorrectionResult = {
 
 export type CimmichPhotoDetailReviewItem = CimmichAssetCorrectionDetails & {
   confidenceSignal: number;
-  reason: 'future_capture_time' | 'likely_sideways_face' | 'multiple_current_places';
+  reason:
+    | 'future_capture_time'
+    | 'immich_visual_rotation_candidate'
+    | 'likely_sideways_face'
+    | 'multiple_current_places';
 };
 
 export type CimmichPhotoDetailReviewPage = {

@@ -71,7 +71,6 @@
           ? '90° counterclockwise'
           : 'No rotation';
   };
-  const faceAngle = (item: CimmichPhotoDetailReviewItem) => Math.round(Math.abs(item.confidenceSignal));
 </script>
 
 <section class="space-y-4" aria-labelledby="rotation-review-title">
@@ -79,8 +78,8 @@
     <div>
       <h2 id="rotation-review-title" class="text-xl font-semibold">Likely rotation candidates</h2>
       <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
-        <strong>{number.format(items.length)} shown</strong>{hasMore ? ' so far' : ''}. A detected face appears close to
-        sideways. Review the full photo before applying a correction.
+        <strong>{number.format(items.length)} shown</strong>{hasMore ? ' so far' : ''}. Immich's visual index ranks
+        these as resembling sideways or 90 degree rotated photos. Review the full photo before applying a correction.
       </p>
     </div>
     <p
@@ -106,7 +105,7 @@
     >
       <div class="text-center">
         <Icon icon={mdiRotateRight} size="34" class="mx-auto animate-pulse text-amber-500" />
-        <p class="mt-3 text-sm font-semibold">Checking face orientation…</p>
+        <p class="mt-3 text-sm font-semibold">Searching Immich's visual index…</p>
       </div>
     </div>
   {:else if loaded && items.length === 0}
@@ -116,7 +115,7 @@
       <Icon icon={mdiRotateRight} size="38" class="mx-auto text-emerald-600" />
       <h3 class="mt-3 text-lg font-semibold">No likely rotation candidates</h3>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        This check currently uses face pose, so photos without detected faces are not assessed here.
+        Immich's visual index did not return any likely sideways photos in this scope.
       </p>
     </div>
   {:else}
@@ -157,9 +156,9 @@
                     : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200'} px-2 py-1 text-[0.68rem] font-semibold"
                   title={hasCorrection
                     ? 'A reversible display correction is active in Cimmich'
-                    : 'The strongest measured face is close to sideways'}
+                    : 'Immich ranked this as visually similar to a sideways or 90 degree rotated photo'}
                 >
-                  {hasCorrection ? correctionLabel(item.rotationQuarterTurns) : `${faceAngle(item)}° face roll`}
+                  {hasCorrection ? correctionLabel(item.rotationQuarterTurns) : 'Immich visual lead'}
                 </span>
               </div>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -169,7 +168,7 @@
 
             <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs/5">
               <dt class="font-semibold text-gray-700 dark:text-gray-200">Why flagged</dt>
-              <dd class="text-gray-600 dark:text-gray-300">A face is about {faceAngle(item)}° from upright</dd>
+              <dd class="text-gray-600 dark:text-gray-300">Visual similarity to sideways or 90° rotated photos</dd>
               <dt class="font-semibold text-gray-700 dark:text-gray-200">EXIF orientation</dt>
               <dd class="text-gray-600 dark:text-gray-300">{orientationLabel(asset?.exifInfo?.orientation)}</dd>
               <dt class="font-semibold text-gray-700 dark:text-gray-200">Correction</dt>
