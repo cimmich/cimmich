@@ -130,6 +130,8 @@
   let rotationLoading = $state(false);
   let rotationLoadingMore = $state(false);
   let rotationNextPage = $state(1);
+  let rotationRankedTotal = $state(0);
+  let rotationReviewedCount = $state(0);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
   const exactPathRequests: string[] = [];
@@ -460,62 +462,80 @@
       rotationLoadingMore = true;
     } else {
       rotationLoading = true;
+      rotationLoaded = false;
       rotationError = '';
     }
     try {
-      const pageNumber = append ? rotationNextPage : 1;
-      const next = await searchSmart({
-        smartSearchDto: {
-          page: pageNumber,
-          query: ROTATION_VISUAL_QUERY,
-          size: ROTATION_PAGE_SIZE,
-          type: AssetTypeEnum.Image,
-        },
-      });
-      if (requestGeneration !== rotationRequestGeneration) {
-        return;
+      let pageNumber = append ? rotationNextPage : 1;
+      let keepExisting = append;
+      if (!append) {
+        rotationReviewedCount = 0;
+        rotationRankedTotal = 0;
       }
-      const nextAssets = next.assets.items;
-      const sourceEvidence =
-        nextAssets.length > 0
-          ? await getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))
-          : { items: [] };
-      const assetIdsBySource = new Map(sourceEvidence.items.map((item) => [item.sourceAssetId, item.assetId]));
-      const correctionPage =
-        sourceEvidence.items.length > 0
-          ? await getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))
-          : { items: [] };
-      const corrections = new Map(correctionPage.items.map((item) => [item.assetId, item]));
-      const nextItems = nextAssets
-        .map<CimmichPhotoDetailReviewItem>((asset) => {
-          const assetId = assetIdsBySource.get(asset.id) ?? asset.id;
-          const correction = corrections.get(assetId);
-          return {
-            assetId,
-            captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
-            captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
-            confidenceSignal: 0,
-            correctionDecisionIds: correction?.correctionDecisionIds ?? [],
-            filename: correction?.filename ?? asset.originalFileName,
-            location: correction?.location ?? null,
-            originalCaptureTime:
-              correction?.originalCaptureTime ?? asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
-            reason: 'immich_visual_rotation_candidate',
-            rotationDecisionId: correction?.rotationDecisionId ?? null,
-            rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
-            schemaVersion: 'cimmich.asset-correction.v1',
-            sourceAssetId: asset.id,
-          };
-        })
-        .filter((candidate) => !candidate.rotationDecisionId);
-      const combined = append ? [...rotationItems, ...nextItems] : nextItems;
-      rotationItems = [...new Map(combined.map((item) => [item.assetId, item])).values()];
-      rotationAssets = new Map([
-        ...(append ? rotationAssets : new Map<string, AssetResponseDto | null>()),
-        ...nextAssets.map((asset): [string, AssetResponseDto] => [asset.id, asset]),
-      ]);
-      rotationNextPage = Number(next.assets.nextPage) || 0;
-      rotationHasMore = rotationNextPage > 0;
+      while (pageNumber > 0) {
+        const next = await searchSmart({
+          smartSearchDto: {
+            page: pageNumber,
+            query: ROTATION_VISUAL_QUERY,
+            size: ROTATION_PAGE_SIZE,
+            type: AssetTypeEnum.Image,
+          },
+        });
+        if (requestGeneration !== rotationRequestGeneration) {
+          return;
+        }
+        const nextAssets = next.assets.items;
+        const sourceEvidence =
+          nextAssets.length > 0
+            ? await getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))
+            : { items: [] };
+        const assetIdsBySource = new Map(sourceEvidence.items.map((item) => [item.sourceAssetId, item.assetId]));
+        const correctionPage =
+          sourceEvidence.items.length > 0
+            ? await getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))
+            : { items: [] };
+        const corrections = new Map(correctionPage.items.map((item) => [item.assetId, item]));
+        const nextItems = nextAssets
+          .map<CimmichPhotoDetailReviewItem>((asset) => {
+            const assetId = assetIdsBySource.get(asset.id) ?? asset.id;
+            const correction = corrections.get(assetId);
+            return {
+              assetId,
+              captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+              captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
+              confidenceSignal: 0,
+              correctionDecisionIds: correction?.correctionDecisionIds ?? [],
+              filename: correction?.filename ?? asset.originalFileName,
+              location: correction?.location ?? null,
+              originalCaptureTime:
+                correction?.originalCaptureTime ?? asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
+              reason: 'immich_visual_rotation_candidate',
+              rotationDecisionId: correction?.rotationDecisionId ?? null,
+              rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
+              schemaVersion: 'cimmich.asset-correction.v1',
+              sourceAssetId: asset.id,
+            };
+          })
+          .filter((candidate) => !candidate.rotationDecisionId);
+        const activeSourceIds = new Set(nextItems.map((item) => item.sourceAssetId));
+        const combined = keepExisting ? [...rotationItems, ...nextItems] : nextItems;
+        rotationItems = [...new Map(combined.map((item) => [item.assetId, item])).values()];
+        rotationAssets = new Map([
+          ...(keepExisting ? rotationAssets : new Map<string, AssetResponseDto | null>()),
+          ...nextAssets
+            .filter((asset) => activeSourceIds.has(asset.id))
+            .map((asset): [string, AssetResponseDto] => [asset.id, asset]),
+        ]);
+        rotationReviewedCount += nextAssets.length - nextItems.length;
+        rotationRankedTotal = next.assets.total;
+        rotationNextPage = Number(next.assets.nextPage) || 0;
+        rotationHasMore = rotationNextPage > 0;
+        if (nextItems.length > 0 || !rotationHasMore) {
+          break;
+        }
+        pageNumber = rotationNextPage;
+        keepExisting = true;
+      }
       rotationLoaded = true;
     } catch (error_) {
       if (requestGeneration === rotationRequestGeneration) {
@@ -548,9 +568,16 @@
           detailsByAsset[details.assetId] = details;
         }
       }
+      const itemCountBeforeConfirmation = rotationItems.length;
       rotationItems = rotationItems
         .map((candidate) => mergeRotationDetails(candidate, detailsByAsset[candidate.assetId]))
         .filter((candidate) => !candidate.rotationDecisionId);
+      const activeSourceIds = new Set(rotationItems.map((item) => item.sourceAssetId));
+      rotationAssets = new Map([...rotationAssets].filter(([sourceAssetId]) => activeSourceIds.has(sourceAssetId)));
+      rotationReviewedCount += itemCountBeforeConfirmation - rotationItems.length;
+      if (rotationItems.length === 0 && rotationHasMore) {
+        await loadRotation({ append: true });
+      }
       return true;
     } catch (error_) {
       rotationError = friendlyError(error_, 'Cimmich could not save or confirm the rotation review.');
@@ -938,6 +965,7 @@
     {:else if mode === 'rotation'}
       <ArchiveRotationReview
         assets={rotationAssets}
+        backlogTotal={Math.max(0, rotationRankedTotal - rotationReviewedCount)}
         busyAssetId={rotationBusyAssetId}
         error={rotationError}
         hasMore={rotationHasMore}
@@ -947,6 +975,7 @@
         loadingMore={rotationLoadingMore}
         onConfirm={confirmCandidateRotations}
         onLoadMore={() => void loadRotation({ append: true })}
+        reviewedCount={rotationReviewedCount}
       />
     {:else}
       <ArchiveBackupProof

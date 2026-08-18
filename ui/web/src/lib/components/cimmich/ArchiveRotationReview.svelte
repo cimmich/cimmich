@@ -20,6 +20,7 @@
 
   interface Props {
     assets: Map<string, AssetResponseDto | null>;
+    backlogTotal: number;
     busyAssetId: string;
     error: string;
     hasMore: boolean;
@@ -29,10 +30,23 @@
     loadingMore: boolean;
     onConfirm: (changes: CimmichAssetRotationChange[]) => Promise<boolean>;
     onLoadMore: () => void;
+    reviewedCount: number;
   }
 
-  let { assets, busyAssetId, error, hasMore, items, loaded, loading, loadingMore, onConfirm, onLoadMore }: Props =
-    $props();
+  let {
+    assets,
+    backlogTotal,
+    busyAssetId,
+    error,
+    hasMore,
+    items,
+    loaded,
+    loading,
+    loadingMore,
+    onConfirm,
+    onLoadMore,
+    reviewedCount,
+  }: Props = $props();
 
   const rotationDrafts = new SvelteMap<string, number>();
 
@@ -110,10 +124,25 @@
     <div>
       <h2 id="rotation-review-title" class="text-xl font-semibold">Likely rotation candidates</h2>
       <p class="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
-        <strong>{number.format(items.length)} to review</strong>{hasMore ? ' in this batch' : ''}. Immich's visual index
-        ranks these as resembling sideways or 90 degree rotated photos. Review the full photo before applying a
-        correction.
+        Immich's visual index ranks these as resembling sideways or 90 degree rotated photos. Review the full photo
+        before applying a correction.
       </p>
+      <div class="mt-2 flex flex-wrap gap-1.5 text-xs font-semibold tabular-nums">
+        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          {number.format(items.length)} ready now
+        </span>
+        <span
+          class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+          title="Later ranked pages can contain already reviewed photos, so this count may fall further as Cimmich checks them"
+        >
+          Up to {number.format(backlogTotal)} left
+        </span>
+        <span
+          class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+        >
+          {number.format(reviewedCount)} reviewed
+        </span>
+      </div>
     </div>
     <div class="flex flex-wrap items-center justify-end gap-2">
       <p
@@ -130,7 +159,11 @@
         title="Save drafts and confirm every pending rotation candidate currently shown on this page"
       >
         <Icon icon={mdiContentSave} size="17" />
-        {pendingItems.length > 0 ? `Save / Confirm all (${pendingItems.length})` : 'Batch cleared'}
+        {pendingItems.length > 0
+          ? `Save / Confirm all (${pendingItems.length})`
+          : loadingMore
+            ? 'Loading next batch'
+            : 'Review complete'}
       </button>
     </div>
   </div>
@@ -153,16 +186,23 @@
         <p class="mt-3 text-sm font-semibold">Searching Immich's visual index…</p>
       </div>
     </div>
+  {:else if loaded && items.length === 0 && loadingMore}
+    <div
+      class="grid min-h-40 place-items-center rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+    >
+      <div class="text-center">
+        <Icon icon={mdiRotateRight} size="30" class="mx-auto animate-pulse text-amber-500" />
+        <p class="mt-2 text-sm font-semibold">Finding the next photos to review…</p>
+      </div>
+    </div>
   {:else if loaded && items.length === 0}
     <div
       class="rounded-3xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
     >
       <Icon icon={mdiRotateRight} size="38" class="mx-auto text-emerald-600" />
-      <h3 class="mt-3 text-lg font-semibold">{hasMore ? 'This batch is cleared' : 'Rotation review complete'}</h3>
+      <h3 class="mt-3 text-lg font-semibold">Rotation review complete</h3>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        {hasMore
-          ? 'Every candidate in this batch has been confirmed. Load the next batch when you are ready.'
-          : 'No unresolved likely rotation candidates remain in this scope.'}
+        No unresolved likely rotation candidates remain in this scope.
       </p>
     </div>
   {:else}
@@ -302,7 +342,7 @@
     </div>
   {/if}
 
-  {#if hasMore}
+  {#if hasMore && items.length > 0}
     <div class="flex justify-center">
       <button
         type="button"

@@ -538,11 +538,15 @@ Rotation review is a demand-loaded candidate queue. It currently flags images
 that Immich's visual index ranks as resembling sideways or 90 degree rotated
 photos. These are useful ranked leads, not proof that an image needs rotation.
 
-The first 24 candidates load only after Rotation review is selected. The same
-bounded Smart Search response supplies the visible cards and their Immich
-metadata, exposing the source folder, capture date, dimensions and recorded
-EXIF orientation. More candidates load in another bounded page only when
-requested.
+The first 24 unresolved candidates load only after Rotation review is selected.
+If a ranked page contains only completed reviews, Cimmich advances through
+another bounded page until it finds unresolved work or reaches the end. The
+same Smart Search response supplies the visible cards and their Immich metadata,
+exposing the source folder, capture date, dimensions and recorded EXIF
+orientation. The queue header shows how many are ready now, how many have been
+reviewed while finding the current work and an honest upper bound for the
+remaining ranked backlog. The upper bound can fall as later pages reveal
+already reviewed photos.
 
 Use the magnify control on any candidate to open the same full-photo inspection
 view used by Photo Review. Rotate left and Rotate right change a local draft;
@@ -550,8 +554,9 @@ they do not write while you are still inspecting. Choose **Save** after changing
 an orientation, or **Confirm** to record that the current orientation is
 correct. **Save / Confirm all (X)** applies only to the pending candidates
 currently loaded on the page. A completed card leaves this active queue
-immediately and remains absent after reload. If another ranked batch exists,
-use **Load 24 more candidates** to continue.
+immediately and remains absent after reload. Completing the last visible card
+automatically loads the next unresolved bounded batch. **Load 24 more
+candidates** remains available while unresolved cards are visible.
 
 Saved decisions are reversible Cimmich presentation corrections, including an
 explicit confirmation that no rotation is needed. Undo remains available from
