@@ -540,10 +540,15 @@
     rotationBusyAssetId = changes.length === 1 ? changes[0].assetId : 'bulk';
     rotationError = '';
     try {
-      const result = await setCimmichAssetRotations(changes);
-      const detailsByAsset = new Map((result.items ?? []).map((details) => [details.assetId, details]));
+      const detailsByAsset: Record<string, CimmichAssetCorrectionDetails> = {};
+      for (let index = 0; index < changes.length; index += 100) {
+        const result = await setCimmichAssetRotations(changes.slice(index, index + 100));
+        for (const details of result.items ?? []) {
+          detailsByAsset[details.assetId] = details;
+        }
+      }
       rotationItems = rotationItems.map((candidate) =>
-        mergeRotationDetails(candidate, detailsByAsset.get(candidate.assetId)),
+        mergeRotationDetails(candidate, detailsByAsset[candidate.assetId]),
       );
       return true;
     } catch (error_) {

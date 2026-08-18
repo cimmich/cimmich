@@ -339,9 +339,11 @@ dimensions, capture date and source folder. Each card reuses the full-photo
 Photo Review magnifier. Rotate controls update client-side drafts; a per-card
 Save or Confirm action, or one page-scoped Save / Confirm all batch, commits
 absolute quarter-turn decisions to the append-only Cimmich correction ledger.
-An unchanged photo is stored as an explicit zero-turn confirmation. The batch
-is bounded to 100 unique assets, idempotent by command ID and never writes
-source media or Immich metadata. Undo continues to reverse saved decisions.
+An unchanged photo is stored as an explicit zero-turn confirmation. Each API
+request is bounded to 100 unique assets and idempotent by command ID; a larger
+loaded page is split into consecutive bounded requests. Confirmation never
+writes source media or Immich metadata. Undo continues to reverse saved
+decisions.
 
 The mode pages Immich's path search to inventory every direct file in the
 requested folder. The client joins that inventory to the already loaded

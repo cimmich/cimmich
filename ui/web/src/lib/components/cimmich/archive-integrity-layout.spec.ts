@@ -121,6 +121,7 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('Save / Confirm all (${pendingItems.length})');
     expect(rotationReview).toContain('pendingItems.map');
     expect(rotationReview).toContain('currently shown on this page');
+    expect(source).toContain('changes.slice(index, index + 100)');
     expect(rotationReview).toContain('onUndo(item)');
     expect(rotationReview).toContain('Source files and Immich metadata are unchanged');
     expect(folderComparison).toContain('Biggest overlaps');
