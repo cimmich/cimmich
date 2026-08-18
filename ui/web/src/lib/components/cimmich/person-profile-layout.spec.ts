@@ -206,7 +206,10 @@ describe('Person profile layout', () => {
     expect(source).toContain('size="full"');
     expect(source).toContain('data-testid="cimmich-large-photo-preview-canvas"');
     expect(source).toContain('data-testid="cimmich-preview-people-tags"');
-    expect(source).toContain('Drag, scroll, or use the arrow keys to move around the photo.');
+    expect(source).toContain('The whole photo opens fitted to the window.');
+    expect(source).toContain('aria-label="Fit photo to window"');
+    expect(source).toContain('aria-label="Zoom in"');
+    expect(source).toContain('aria-label="Zoom out"');
     expect(source).toContain('AssetMediaSize.Fullsize');
     expect(source).toContain('getCimmichAssetEvidence(sourceAssetId)');
     expect(source).not.toContain('Open full photo and machinery');

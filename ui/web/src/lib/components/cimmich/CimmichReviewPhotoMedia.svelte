@@ -10,7 +10,14 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon, Modal, ModalBody } from '@immich/ui';
-  import { mdiMagnifyPlusOutline, mdiRotateLeft, mdiRotateRight, mdiUndoVariant } from '@mdi/js';
+  import {
+    mdiFitToScreenOutline,
+    mdiMagnifyMinusOutline,
+    mdiMagnifyPlusOutline,
+    mdiRotateLeft,
+    mdiRotateRight,
+    mdiUndoVariant,
+  } from '@mdi/js';
   import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import CimmichIdentityReviewImage from './CimmichIdentityReviewImage.svelte';
@@ -19,6 +26,7 @@
     rotateIdentityReviewSource,
     type IdentityReviewCropSource,
   } from './identity-review-crop';
+  import { fitReviewPhotoPreview, reviewPhotoPreviewZoomLevels } from './review-photo-preview';
 
   type PreviewPeopleTag = {
     box: { h: number; w: number; x: number; y: number };
@@ -69,15 +77,26 @@
   let previewLoadError = $state('');
   let previewLoadGeneration = 0;
   let previewViewport = $state<HTMLElement>();
+  let previewViewportHeight = $state(1);
+  let previewViewportWidth = $state(1);
+  let previewZoom = $state(1);
   let previewDragging = $state(false);
   let previewPan = { pointerId: -1, scrollLeft: 0, scrollTop: 0, x: 0, y: 0 };
 
   const normalizedRotation = $derived(((Math.trunc(rotationQuarterTurns) % 4) + 4) % 4);
   const rotatedPreview = $derived(rotateIdentityReviewSource(image, normalizedRotation));
   const previewTransform = $derived(identityReviewSvgTransform(image.width, image.height, normalizedRotation));
-  const previewCanvasStyle = $derived(
-    `width: max(100%, min(${rotatedPreview.width}px, 2400px)); aspect-ratio: ${rotatedPreview.width} / ${rotatedPreview.height};`,
+  const previewFit = $derived(
+    fitReviewPhotoPreview(previewViewportWidth, previewViewportHeight, rotatedPreview.width, rotatedPreview.height),
   );
+  const previewCanvasWidth = $derived(previewFit.width * previewZoom);
+  const previewCanvasHeight = $derived(previewFit.height * previewZoom);
+  const previewCanvasStyle = $derived(`width: ${previewCanvasWidth}px; height: ${previewCanvasHeight}px;`);
+  const previewStageStyle = $derived(
+    `width: max(100%, ${previewCanvasWidth}px); height: max(100%, ${previewCanvasHeight}px);`,
+  );
+  const previewZoomPercent = $derived(Math.round(previewZoom * 100));
+  const maxPreviewZoom = reviewPhotoPreviewZoomLevels.at(-1)!;
   const previewTargetStyle = $derived.by(() => {
     const box = rotatedPreview.box;
     return `left: ${box.x * 100}%; top: ${box.y * 100}%; width: ${box.w * 100}%; height: ${box.h * 100}%;`;
@@ -186,17 +205,6 @@
     return `left: ${rotated.x * 100}%; top: ${rotated.y * 100}%; width: ${rotated.w * 100}%; height: ${rotated.h * 100}%;`;
   };
 
-  const centerPreview = () => {
-    if (!previewViewport) {
-      return;
-    }
-    const target = rotatedPreview.box;
-    previewViewport.scrollLeft =
-      (target.x + target.w / 2) * previewViewport.scrollWidth - previewViewport.clientWidth / 2;
-    previewViewport.scrollTop =
-      (target.y + target.h / 2) * previewViewport.scrollHeight - previewViewport.clientHeight / 2;
-  };
-
   const loadPreviewPeople = async (force = false) => {
     if ((!force && previewEvidence) || previewLoading) {
       return;
@@ -239,14 +247,52 @@
   };
 
   const openPreview = async () => {
+    previewZoom = 1;
     previewOpen = true;
     void loadPreviewPeople();
     await tick();
-    requestAnimationFrame(centerPreview);
+    if (previewViewport) {
+      previewViewport.scrollLeft = 0;
+      previewViewport.scrollTop = 0;
+    }
+  };
+
+  const setPreviewZoom = async (nextZoom: number) => {
+    if (!previewViewport || nextZoom === previewZoom) {
+      return;
+    }
+    const horizontalCentre =
+      (previewViewport.scrollLeft + previewViewport.clientWidth / 2) / Math.max(1, previewViewport.scrollWidth);
+    const verticalCentre =
+      (previewViewport.scrollTop + previewViewport.clientHeight / 2) / Math.max(1, previewViewport.scrollHeight);
+
+    previewZoom = nextZoom;
+    await tick();
+    previewViewport.scrollLeft = horizontalCentre * previewViewport.scrollWidth - previewViewport.clientWidth / 2;
+    previewViewport.scrollTop = verticalCentre * previewViewport.scrollHeight - previewViewport.clientHeight / 2;
+  };
+
+  const stepPreviewZoom = (direction: 'in' | 'out') => {
+    const available = reviewPhotoPreviewZoomLevels.filter((level) =>
+      direction === 'in' ? level > previewZoom : level < previewZoom,
+    );
+    const nextZoom = direction === 'in' ? available[0] : available.at(-1);
+    if (nextZoom !== undefined) {
+      void setPreviewZoom(nextZoom);
+    }
+  };
+
+  const resetPreviewFit = async () => {
+    previewZoom = 1;
+    await tick();
+    if (previewViewport) {
+      previewViewport.scrollLeft = 0;
+      previewViewport.scrollTop = 0;
+    }
   };
 
   const startPreviewPan = (event: PointerEvent) => {
-    if (!previewViewport || event.button !== 0) {
+    if (!previewViewport || previewZoom <= 1 || event.button !== 0) {
       return;
     }
     previewDragging = true;
@@ -281,7 +327,11 @@
   };
 
   const movePreviewWithKeyboard = (event: KeyboardEvent) => {
-    if (!previewViewport || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    if (
+      !previewViewport ||
+      previewZoom <= 1 ||
+      !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
+    ) {
       return;
     }
     event.preventDefault();
@@ -358,100 +408,142 @@
 
 {#if previewOpen}
   <Modal title={filename} icon={mdiMagnifyPlusOutline} size="full" onClose={() => (previewOpen = false)}>
-    <ModalBody class="flex min-h-0 grow overflow-hidden bg-black p-0!">
+    <ModalBody class="relative flex min-h-0 grow overflow-hidden bg-black p-0!">
+      <div
+        class="absolute top-3 left-3 z-40 flex items-center gap-1 rounded-full border border-white/20 bg-black/80 p-1 text-white shadow-lg backdrop-blur-sm"
+        aria-label="Preview zoom controls"
+      >
+        <button
+          class="grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-cyan-300"
+          type="button"
+          aria-label="Fit photo to window"
+          title="Fit photo to window"
+          onclick={() => void resetPreviewFit()}><Icon icon={mdiFitToScreenOutline} size="20" /></button
+        >
+        <button
+          class="grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:opacity-35"
+          type="button"
+          aria-label="Zoom out"
+          title="Zoom out"
+          disabled={previewZoom <= 1}
+          onclick={() => stepPreviewZoom('out')}><Icon icon={mdiMagnifyMinusOutline} size="20" /></button
+        >
+        <span class="min-w-12 text-center text-xs font-semibold tabular-nums" aria-live="polite"
+          >{previewZoomPercent}%</span
+        >
+        <button
+          class="grid size-10 place-items-center rounded-full hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:opacity-35"
+          type="button"
+          aria-label="Zoom in"
+          title="Zoom in"
+          disabled={previewZoom >= maxPreviewZoom}
+          onclick={() => stepPreviewZoom('in')}><Icon icon={mdiMagnifyPlusOutline} size="20" /></button
+        >
+      </div>
       <div
         bind:this={previewViewport}
+        bind:clientHeight={previewViewportHeight}
+        bind:clientWidth={previewViewportWidth}
         class="size-full overflow-auto overscroll-contain bg-black select-none"
         role="region"
-        aria-label={`${filename} large preview. Drag, scroll, or use the arrow keys to move around the photo.`}
+        aria-label={`${filename} large preview. The whole photo opens fitted to the window. Zoom in to inspect, then drag, scroll, or use the arrow keys to move.`}
       >
         <div
-          class="relative shrink-0 overflow-hidden bg-black"
-          style={previewCanvasStyle}
-          data-testid="cimmich-large-photo-preview-canvas"
+          class="grid min-h-full min-w-full shrink-0 place-items-center"
+          style={previewStageStyle}
+          data-testid="cimmich-large-photo-preview-stage"
         >
-          <svg
-            class="absolute inset-0 size-full"
-            viewBox={`0 0 ${rotatedPreview.width} ${rotatedPreview.height}`}
-            preserveAspectRatio="none"
-            role="img"
-            aria-label={filename}
+          <div
+            class="relative shrink-0 overflow-hidden bg-black"
+            style={previewCanvasStyle}
+            data-testid="cimmich-large-photo-preview-canvas"
           >
-            <image
-              href={getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Fullsize })}
-              width={image.width}
-              height={image.height}
-              transform={previewTransform}
+            <svg
+              class="absolute inset-0 size-full"
+              viewBox={`0 0 ${rotatedPreview.width} ${rotatedPreview.height}`}
               preserveAspectRatio="none"
-            />
-          </svg>
-
-          <button
-            class={[
-              'absolute inset-0 z-10 size-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cyan-300',
-              previewDragging ? 'cursor-grabbing' : 'cursor-grab',
-            ]}
-            style="touch-action: none;"
-            type="button"
-            aria-label={`Move around ${filename}`}
-            onkeydown={movePreviewWithKeyboard}
-            onpointerdown={startPreviewPan}
-            onpointermove={movePreviewPan}
-            onpointerup={stopPreviewPan}
-            onpointercancel={stopPreviewPan}
-          ></button>
-
-          <div class="pointer-events-none absolute inset-0 z-20" data-testid="cimmich-preview-people-tags">
-            {#each previewTags as tag (tag.id)}
-              <div
-                class="absolute border-2 border-cyan-300/90 shadow-[0_0_0_1px_rgba(0,0,0,0.65)]"
-                class:border-dashed={tag.source !== 'face'}
-                style={previewTagStyle(tag)}
-                title={`${tag.label} · already tagged`}
-              >
-                <span
-                  class="absolute -top-1 left-0 max-w-44 -translate-y-full truncate rounded-sm bg-black/82 px-2 py-1 text-xs font-semibold text-white shadow-lg"
-                  >{tag.label}</span
-                >
-              </div>
-            {/each}
-          </div>
-
-          <div class="pointer-events-none absolute inset-0 z-30" data-testid="cimmich-preview-review-target">
-            <div
-              class="absolute border-3 border-amber-300 shadow-[0_0_0_2px_rgba(0,0,0,0.8)]"
-              style={previewTargetStyle}
-              title={targetLabel}
+              role="img"
+              aria-label={filename}
             >
-              <span
-                class="absolute top-0 left-0 max-w-52 -translate-y-full truncate rounded-sm bg-amber-300 px-2 py-1 text-xs font-bold text-black shadow-lg"
-                >{targetLabel}</span
-              >
-            </div>
-          </div>
+              <image
+                href={getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Fullsize })}
+                width={image.width}
+                height={image.height}
+                transform={previewTransform}
+                preserveAspectRatio="none"
+              />
+            </svg>
 
-          {#if previewPresenceNames.length > 0}
-            <div class="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap justify-center gap-2">
-              {#each previewPresenceNames as name (name)}
-                <span
-                  class="rounded-full border border-white/25 bg-black/78 px-3 py-2 text-xs font-semibold text-white shadow-lg"
-                  >{name}</span
+            <button
+              class={[
+                'absolute inset-0 z-10 size-full border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cyan-300',
+                previewZoom <= 1 ? 'cursor-default' : previewDragging ? 'cursor-grabbing' : 'cursor-grab',
+              ]}
+              style="touch-action: none;"
+              type="button"
+              aria-label={previewZoom <= 1 ? `${filename} fitted to window` : `Move around ${filename}`}
+              onkeydown={movePreviewWithKeyboard}
+              onpointerdown={startPreviewPan}
+              onpointermove={movePreviewPan}
+              onpointerup={stopPreviewPan}
+              onpointercancel={stopPreviewPan}
+            ></button>
+
+            <div class="pointer-events-none absolute inset-0 z-20" data-testid="cimmich-preview-people-tags">
+              {#each previewTags as tag (tag.id)}
+                <div
+                  class="absolute border-2 border-cyan-300/90 shadow-[0_0_0_1px_rgba(0,0,0,0.65)]"
+                  class:border-dashed={tag.source !== 'face'}
+                  style={previewTagStyle(tag)}
+                  title={`${tag.label} · already tagged`}
                 >
+                  <span
+                    class="absolute -top-1 left-0 max-w-44 -translate-y-full truncate rounded-sm bg-black/82 px-2 py-1 text-xs font-semibold text-white shadow-lg"
+                    >{tag.label}</span
+                  >
+                </div>
               {/each}
             </div>
-          {/if}
 
-          {#if previewLoadError}
-            <div class="absolute top-4 left-4 z-30 rounded-md bg-black/78 px-3 py-2 text-xs text-white/80" role="alert">
-              <p>{previewLoadError}</p>
-              <button
-                class="mt-2 min-h-10 rounded-full px-3 font-semibold ring-1 ring-white/70"
-                type="button"
-                onclick={() => void loadPreviewPeople(true)}>Try again</button
+            <div class="pointer-events-none absolute inset-0 z-30" data-testid="cimmich-preview-review-target">
+              <div
+                class="absolute border-3 border-amber-300 shadow-[0_0_0_2px_rgba(0,0,0,0.8)]"
+                style={previewTargetStyle}
+                title={targetLabel}
               >
+                <span
+                  class="absolute top-0 left-0 max-w-52 -translate-y-full truncate rounded-sm bg-amber-300 px-2 py-1 text-xs font-bold text-black shadow-lg"
+                  >{targetLabel}</span
+                >
+              </div>
             </div>
-          {/if}
-          <span class="sr-only" aria-live="polite">{previewLoading ? 'Loading saved People tags' : ''}</span>
+
+            {#if previewPresenceNames.length > 0}
+              <div class="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap justify-center gap-2">
+                {#each previewPresenceNames as name (name)}
+                  <span
+                    class="rounded-full border border-white/25 bg-black/78 px-3 py-2 text-xs font-semibold text-white shadow-lg"
+                    >{name}</span
+                  >
+                {/each}
+              </div>
+            {/if}
+
+            {#if previewLoadError}
+              <div
+                class="absolute top-4 left-4 z-30 rounded-md bg-black/78 px-3 py-2 text-xs text-white/80"
+                role="alert"
+              >
+                <p>{previewLoadError}</p>
+                <button
+                  class="mt-2 min-h-10 rounded-full px-3 font-semibold ring-1 ring-white/70"
+                  type="button"
+                  onclick={() => void loadPreviewPeople(true)}>Try again</button
+                >
+              </div>
+            {/if}
+            <span class="sr-only" aria-live="polite">{previewLoading ? 'Loading saved People tags' : ''}</span>
+          </div>
         </div>
       </div>
     </ModalBody>

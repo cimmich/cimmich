@@ -553,7 +553,12 @@ Cimmich decisions are checked in batches of 100. The Archive Health tab does
 not repeat the visible 24-card count as a misleading backlog estimate.
 
 Use the photo's magnify control to open the same full-photo inspection view used
-by Photo Review. The adjacent photo controls rotate left or right and change a local draft;
+by Photo Review. It always opens at 100% fit, with the complete photo contained
+inside the available window instead of centring and cropping around the review
+target. Optional zoom levels from 150% to 400% resize the already loaded image
+in the browser. Drag, scroll or use the arrow keys only after zooming; **Fit
+photo to window** restores the complete context without another media request.
+The adjacent photo controls rotate left or right and change a local draft;
 the opposite rotate button reverses the draft without an overlapping Undo
 control on the image. These controls are not repeated in the card body. They do
 not write while you are still inspecting. Choose **Save** after changing

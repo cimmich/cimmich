@@ -511,8 +511,10 @@ sideways-photo leads at a time from Immich Smart Search and reuses the returned
 asset metadata without hydrating the library. Reversible rotate/Undo controls
 do not claim that a lead needs correction or infer a safe direction. Rotation
 buttons stage local drafts, the shared Photo Review magnifier supports full-size
-inspection, and explicit per-card or page-scoped confirmation writes only to
-the Cimmich correction ledger. The bulk count covers the candidates currently
+inspection. The magnifier opens with the complete image at a 100% fit based on
+both available dimensions, while bounded client-side zoom and pan reuse the
+loaded image without a follow-up media request. Explicit per-card or page-scoped
+confirmation writes only to the Cimmich correction ledger. The bulk count covers the candidates currently
 loaded on the page. Confirmed records leave the active Rotation review queue
 immediately and remain filtered when that ranked batch is reloaded. The compact
 card uses the space beneath the photo for the ranking reason while keeping EXIF

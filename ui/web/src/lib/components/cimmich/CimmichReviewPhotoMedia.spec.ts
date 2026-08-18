@@ -87,4 +87,35 @@ describe('CimmichReviewPhotoMedia preview evidence', () => {
     expect(await rendered.findByTitle('Review: Cammy')).toBeInTheDocument();
     expect(await rendered.findByTitle('Existing Person · already tagged')).toBeInTheDocument();
   });
+
+  it('opens fitted to the window and zooms without reloading review evidence', async () => {
+    mocks.getEvidence.mockReset().mockResolvedValue({
+      asset_id: 'asset-internal',
+      bodies: [],
+      faces: [],
+      identity_locators: [],
+      presence: [],
+    });
+    const rendered = render(CimmichReviewPhotoMedia, {
+      contextLabel: 'Cedar House',
+      filename: 'landscape.jpg',
+      image: { box: { h: 0.2, w: 0.15, x: 0.6, y: 0.3 }, height: 3000, width: 4000 },
+      onRotate: vi.fn(),
+      sourceAssetId: 'source-asset-1',
+    });
+
+    await fireEvent.click(rendered.getByRole('button', { name: 'Preview landscape.jpg with context' }));
+    expect(rendered.getByRole('region', { name: /The whole photo opens fitted to the window/ })).toBeInTheDocument();
+    expect(rendered.getByRole('button', { name: 'Fit photo to window' })).toBeInTheDocument();
+    expect(rendered.getByRole('button', { name: 'Zoom out' })).toBeDisabled();
+    expect(rendered.getByText('100%')).toBeInTheDocument();
+
+    await fireEvent.click(rendered.getByRole('button', { name: 'Zoom in' }));
+    expect(rendered.getByText('150%')).toBeInTheDocument();
+    expect(rendered.getByRole('button', { name: 'Zoom out' })).toBeEnabled();
+
+    await fireEvent.click(rendered.getByRole('button', { name: 'Fit photo to window' }));
+    expect(rendered.getByText('100%')).toBeInTheDocument();
+    await waitFor(() => expect(mocks.getEvidence).toHaveBeenCalledTimes(1));
+  });
 });

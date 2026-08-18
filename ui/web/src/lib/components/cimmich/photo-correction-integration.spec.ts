@@ -16,6 +16,12 @@ describe('photo correction integration', () => {
     expect(media).toContain('{contextLabel || filename}');
     expect(media).toContain("onRotate('left')");
     expect(media).toContain("onRotate('right')");
+    expect(media).toContain('fitReviewPhotoPreview');
+    expect(media).toContain('bind:clientHeight={previewViewportHeight}');
+    expect(media).toContain('bind:clientWidth={previewViewportWidth}');
+    expect(media).toContain('previewZoom = 1');
+    expect(media).not.toContain('requestAnimationFrame(centerPreview)');
+    expect(media).not.toContain('width: max(100%, min(');
     expect(controller).toContain('async undo(assetId: string, decisionId: string)');
     expect(image).toContain('stroke-width="2"');
     expect(image).toContain('stroke-dasharray="0.1 4"');

@@ -337,8 +337,12 @@ the mode does not hydrate the whole library or issue a second asset-detail fan
 out. The queue is a visual lead rather than deterministic proof and does not
 infer a safe direction. The card exposes the ranking reason, EXIF orientation,
 dimensions, capture date and source folder. Each card reuses the full-photo
-Photo Review magnifier. Rotate controls update client-side drafts; a per-card
-Save or Confirm action, or one page-scoped Save / Confirm all batch, commits
+Photo Review magnifier. That shared viewer derives one contain scale from both
+viewport dimensions, opens at a complete 100% fit and never auto-centres the
+review target. Bounded 150% to 400% zoom and pan operate by resizing the same
+loaded full-size media element in the client, so inspecting detail does not
+trigger another image or evidence request. Rotate controls update client-side
+drafts; a per-card Save or Confirm action, or one page-scoped Save / Confirm all batch, commits
 absolute quarter-turn decisions to the append-only Cimmich correction ledger.
 An unchanged photo is stored as an explicit zero-turn confirmation. Confirmed
 records are filtered from every loaded batch and removed from the active queue
