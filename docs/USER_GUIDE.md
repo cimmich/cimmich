@@ -476,7 +476,7 @@ Health toolbar taking space above the results.
 ### Exact copies
 
 Exact groups require complete-file SHA-256 equality. Every copy shows its
-containing SSD folder and full file path, with direct actions to open that
+source folder and full file path, with direct actions to open that
 folder or compare it with the rest of the archive. Results appear before those
 paths finish loading, and only the visible page is enriched. Even exact bytes
 can have different copy-local Immich People or Tags, so inspect what would be

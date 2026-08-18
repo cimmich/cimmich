@@ -41,7 +41,7 @@ describe('Archive integrity layout', () => {
     expect(source).not.toContain('<h1');
     expect(source).toContain('Exact means byte-for-byte');
     expect(source).toContain('Route.viewAsset({ id: copy.sourceAssetId })');
-    expect(source).toContain('Folder on SSD');
+    expect(source).toContain('Source folder');
     expect(source).toContain('getParentPath(originalPath)');
     expect(source).toContain('Route.viewFolderAsset({ cimmich: 1, id: copy.sourceAssetId, path: folderPath })');
     expect(source).toContain("Route.cimmichArchiveIntegrity({ folder: folderPath, mode: 'folder' })");

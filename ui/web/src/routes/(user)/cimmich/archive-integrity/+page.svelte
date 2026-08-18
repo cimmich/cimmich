@@ -791,7 +791,7 @@
                         </p>
                       </div>
                       <div class="rounded-xl bg-gray-50 px-3 py-2.5 text-xs dark:bg-gray-900/70">
-                        <p class="font-semibold text-gray-950 dark:text-white">Folder on SSD</p>
+                        <p class="font-semibold text-gray-950 dark:text-white">Source folder</p>
                         {#if folderPath}
                           <a
                             class="mt-1 block font-semibold break-all text-primary hover:underline"
