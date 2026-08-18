@@ -469,12 +469,18 @@ cannot silently change confirmed Cimmich truth.
 Archive Health is an evidence and preservation workspace. It is deliberately
 not a delete button.
 
+Its title, Exact copies, Possible duplicates, Folder check, Backup check and
+Refresh controls share the normal page header. There is no second Archive
+Health toolbar taking space above the results.
+
 ### Exact copies
 
-Exact groups require complete-file SHA-256 equality. They show copy paths,
-sizes and relevant organisation details. Even exact bytes can have different
-copy-local Immich People or Tags, so inspect what would be lost before removing
-anything outside Cimmich.
+Exact groups require complete-file SHA-256 equality. Every copy shows its
+containing SSD folder and full file path, with direct actions to open that
+folder or compare it with the rest of the archive. Results appear before those
+paths finish loading, and only the visible page is enriched. Even exact bytes
+can have different copy-local Immich People or Tags, so inspect what would be
+lost before removing anything outside Cimmich.
 
 ### Possible duplicates
 

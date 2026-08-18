@@ -305,6 +305,15 @@ Archive Health sidebar entry opens a shared command bar for `exact`, `variants`,
 browser with preserved `cimmichContext` and launch **Check this folder** from
 the current path. Existing folder evidence links route to the same mode.
 
+The shared mode switcher and selected-mode refresh action render in
+`UserPageLayout`'s existing page header, so the route does not add a second
+identity or command row. Exact-copy groups paint from the bounded Cimmich
+identity response first. The client then resolves `originalPath` only for the
+current 24-group page through Immich asset reads with concurrency capped at six,
+caches those results for the mounted route and exposes both the containing
+folder and complete path. This does not scan or hydrate the rest of the exact
+library.
+
 Mode links use client-side navigation. The duplicate index remains cached for
 the mounted Archive Health route, while each mode requests its own detailed
 evidence only when selected. A folder selection uses a client-side route update
