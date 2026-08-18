@@ -104,7 +104,7 @@ this directory.
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                                 | context entity, relation, asset, cover, plan and geocoding routes                                                                  | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived                  |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                               | Document metadata/link/content/version routes                                                                                      | metadata in PostgreSQL; imported bytes in the separate content-addressed store                            |
 | Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`                                                                                                 | deterministic smart-search and Document queries                                                                                    | local read projection over confirmed truth; no search-owned authority                                     |
-| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder and backup modes; `ArchiveFolderComparison` and backup-scan client | exact copies, possible-duplicate groups, direct-folder overlap, inline preservation recommendation and read-only backup scan/proof | fingerprints/provenance durable or reproducible; folder inventory, scan state and recommendations derived |
+| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder, rotation and backup modes; `ArchiveFolderComparison`, `ArchiveRotationReview` and backup-scan client | exact copies, possible-duplicate groups, direct-folder overlap, bounded face-pose rotation candidates, reversible correction commands and read-only backup scan/proof | fingerprints and correction decisions durable; folder inventory, candidate queues, scan state and recommendations derived |
 | Settings/setup       | settings, setup and maintenance routes                                                                                                            | integration, onboarding, provider, SourcePack, Local AI and Guided operators                                                       | configuration and reviewed lifecycle state; model output remains observation                              |
 
 ## Identity and evidence model
@@ -301,7 +301,7 @@ or matcher pass.
 Folder check is a first-class Archive Health mode rather than a separate
 navigation destination or a state hidden inside Possible duplicates. The one
 Archive Health sidebar entry opens a shared command bar for `exact`, `variants`,
-`folder` and `backup`. Operators can submit a path directly or enter the folder
+`folder`, `rotation` and `backup`. Operators can submit a path directly or enter the folder
 browser with preserved `cimmichContext` and launch **Check this folder** from
 the current path. Existing folder evidence links route to the same mode.
 
@@ -318,6 +318,15 @@ Mode links use client-side navigation. The duplicate index remains cached for
 the mounted Archive Health route, while each mode requests its own detailed
 evidence only when selected. A folder selection uses a client-side route update
 and the same mode activation path as a direct `mode=folder&folder=...` link.
+
+Rotation review is activated only by `mode=rotation`. It reads the existing
+deterministic Orientation queue in pages of 24 and then enriches only those
+visible candidates through no more than six concurrent Immich asset-detail
+reads. The queue is based on current measured face roll between 55 and 125
+degrees, excludes assets with a current rotation correction, and does not infer
+a safe direction. The card exposes face roll, EXIF orientation, dimensions,
+capture date and source folder. Rotate and Undo use the existing append-only
+Cimmich correction ledger; they never write source media or Immich metadata.
 
 The mode pages Immich's path search to inventory every direct file in the
 requested folder. The client joins that inventory to the already loaded

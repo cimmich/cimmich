@@ -42,7 +42,7 @@ The simplest mental model is:
 | Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
 | Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
 | Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
-| Understand duplicate or preservation evidence | **Archive Health** | Compare exact copies, possible duplicates, one folder or an independent backup in one workspace.    |
+| Understand duplicate or preservation evidence | **Archive Health** | Compare exact copies, possible duplicates, folders, likely rotation candidates or an independent backup. |
 | Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
 
 ## Navigation and viewing modes
@@ -469,9 +469,9 @@ cannot silently change confirmed Cimmich truth.
 Archive Health is an evidence and preservation workspace. It is deliberately
 not a delete button.
 
-Its title, Exact copies, Possible duplicates, Folder check, Backup check and
-Refresh controls share the normal page header. There is no second Archive
-Health toolbar taking space above the results.
+Its title, Exact copies, Possible duplicates, Folder check, Rotation review,
+Backup check and Refresh controls share the normal page header. There is no
+second Archive Health toolbar taking space above the results.
 
 ### Exact copies
 
@@ -507,8 +507,8 @@ that no safe recommendation exists. Recommendations never change files.
 
 ### Folder check
 
-Folder check is one of the four checks in Archive Health, beside Exact copies,
-Possible duplicates and Backup check. Paste an archive folder path there, or
+Folder check is one of the checks in Archive Health, beside Exact copies,
+Possible duplicates, Rotation review and Backup check. Paste an archive folder path there, or
 choose **Browse folders** and use **Check this folder** from any folder. Existing
 duplicate-folder links open Archive Health with Folder check already selected.
 
@@ -525,6 +525,25 @@ exists elsewhere; it is an evidence state, not proof that no unseen or
 unprocessed copy exists. Pairs retain exact/different/incomplete byte
 classification and the specific size, dimensions, date or metadata differences
 already available to Archive Health.
+
+### Rotation review
+
+Rotation review is a demand-loaded candidate queue. It currently flags images
+where Cimmich measured a detected face between 55 and 125 degrees from upright.
+That is a useful lead, not proof that the whole photo is sideways. Images
+without a measured face are not assessed by this first version.
+
+The first 24 candidates load only after Rotation review is selected. Cimmich
+then reads Immich details for that visible page with no more than six concurrent
+requests, exposing the source folder, capture date, dimensions and recorded EXIF
+orientation beside the measured face roll. More candidates load in another
+bounded page only when requested.
+
+Rotate left and Rotate right create a reversible Cimmich presentation
+correction. The preview updates immediately and Undo remains on the candidate.
+The source file and Immich metadata are unchanged. Open the complete photo
+before deciding because the current face-pose signal does not determine which
+direction is correct.
 
 ### Backup proof
 

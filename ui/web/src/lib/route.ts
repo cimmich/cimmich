@@ -111,7 +111,7 @@ export const Route = {
   cimmichArchiveIntegrity: (params?: {
     assetId?: string;
     folder?: string;
-    mode?: 'exact' | 'variants' | 'plan' | 'folder' | 'backup';
+    mode?: 'exact' | 'variants' | 'plan' | 'folder' | 'rotation' | 'backup';
   }) => '/cimmich/archive-integrity' + asQueryString(params),
   cimmichLibrary: () => '/cimmich/library',
   cimmichLibraryBulk: () => '/cimmich/library/bulk',

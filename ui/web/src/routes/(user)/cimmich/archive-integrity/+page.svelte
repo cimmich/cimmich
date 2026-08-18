@@ -4,6 +4,7 @@
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
+  import ArchiveRotationReview from '$lib/components/cimmich/ArchiveRotationReview.svelte';
   import {
     buildArchiveFolderOverlap,
     rankArchiveFoldersByImpact,
@@ -28,6 +29,13 @@
     type CimmichExactDuplicateGroup,
     type CimmichExactDuplicatePage,
   } from '$lib/services/cimmich-archive-integrity.service';
+  import {
+    getCimmichPhotoDetailReview,
+    rotateCimmichAssets,
+    undoCimmichAssetCorrections,
+    type CimmichAssetCorrectionDetails,
+    type CimmichPhotoDetailReviewItem,
+  } from '$lib/services/cimmich-asset-correction.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { getParentPath } from '$lib/utils/tree-utils';
   import {
@@ -58,17 +66,21 @@
   }
 
   let { data }: Props = $props();
+  type ArchiveHealthMode = 'exact' | 'variants' | 'folder' | 'rotation' | 'backup';
+  const ROTATION_PAGE_SIZE = 24;
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
   const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
-  let mode = $state<'exact' | 'variants' | 'folder' | 'backup'>(
+  let mode = $state<ArchiveHealthMode>(
     requestedMode === 'folder' || (requestedMode === 'variants' && initialFocusedFolder)
       ? 'folder'
       : requestedMode === 'variants' || requestedMode === 'plan'
         ? 'variants'
-        : requestedMode === 'backup'
-          ? 'backup'
-          : 'exact',
+        : requestedMode === 'rotation'
+          ? 'rotation'
+          : requestedMode === 'backup'
+            ? 'backup'
+            : 'exact',
   );
   let routeReady = $state(false);
   let routeSignature = $state(`${mode}:${initialFocusedFolder}`);
@@ -117,10 +129,19 @@
     sourceSystemCount: 0,
     unprovenItems: 0,
   });
+  let rotationAssets = $state<Map<string, AssetResponseDto | null>>(new Map());
+  let rotationBusyAssetId = $state('');
+  let rotationError = $state('');
+  let rotationHasMore = $state(false);
+  let rotationItems = $state<CimmichPhotoDetailReviewItem[]>([]);
+  let rotationLoaded = $state(false);
+  let rotationLoading = $state(false);
+  let rotationLoadingMore = $state(false);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
   const exactPathRequests: string[] = [];
   let folderRequestGeneration = 0;
+  let rotationRequestGeneration = 0;
   let scopedVariantGroups = $derived(
     archiveVariantGroupsInFolder(
       variantGroups.filter((group) => !focusedAssetId || group.assets.some((asset) => asset.id === focusedAssetId)),
@@ -484,6 +505,104 @@
     }
   };
 
+  const loadRotationAssets = async (items: CimmichPhotoDetailReviewItem[], requestGeneration: number) => {
+    const pending = items
+      .map((item) => item.sourceAssetId)
+      .filter((sourceAssetId) => !rotationAssets.has(sourceAssetId));
+    let cursor = 0;
+    const updates: Array<[string, AssetResponseDto | null]> = [];
+    const worker = async () => {
+      while (cursor < pending.length) {
+        const sourceAssetId = pending[cursor++];
+        if (!sourceAssetId) {
+          continue;
+        }
+        const asset = await getAssetInfo({ id: sourceAssetId }).catch(() => null);
+        updates.push([sourceAssetId, asset]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, pending.length) }, () => worker()));
+    if (requestGeneration === rotationRequestGeneration && updates.length > 0) {
+      rotationAssets = new Map([...rotationAssets, ...updates]);
+    }
+  };
+
+  const loadRotation = async ({ append = false } = {}) => {
+    const requestGeneration = append ? rotationRequestGeneration : ++rotationRequestGeneration;
+    if (append) {
+      rotationLoadingMore = true;
+    } else {
+      rotationLoading = true;
+      rotationError = '';
+    }
+    try {
+      const next = await getCimmichPhotoDetailReview(
+        'orientation',
+        ROTATION_PAGE_SIZE,
+        append ? rotationItems.length : 0,
+      );
+      if (requestGeneration !== rotationRequestGeneration) {
+        return;
+      }
+      rotationItems = append ? [...rotationItems, ...next.items] : next.items;
+      rotationHasMore = next.items.length === ROTATION_PAGE_SIZE;
+      rotationLoaded = true;
+      await loadRotationAssets(next.items, requestGeneration);
+    } catch (error_) {
+      if (requestGeneration === rotationRequestGeneration) {
+        rotationError = friendlyError(error_, 'Cimmich could not read likely rotation candidates.');
+      }
+    } finally {
+      if (requestGeneration === rotationRequestGeneration) {
+        rotationLoading = false;
+        rotationLoadingMore = false;
+      }
+    }
+  };
+
+  const mergeRotationDetails = (
+    candidate: CimmichPhotoDetailReviewItem,
+    details: CimmichAssetCorrectionDetails | undefined,
+  ) => (details ? { ...candidate, ...details } : candidate);
+
+  const rotateCandidate = async (item: CimmichPhotoDetailReviewItem, direction: 'left' | 'right') => {
+    if (rotationBusyAssetId) {
+      return;
+    }
+    rotationBusyAssetId = item.assetId;
+    rotationError = '';
+    try {
+      const result = await rotateCimmichAssets([item.assetId], direction);
+      const details = result.items?.find((candidate) => candidate.assetId === item.assetId) ?? result.item;
+      rotationItems = rotationItems.map((candidate) =>
+        candidate.assetId === item.assetId ? mergeRotationDetails(candidate, details) : candidate,
+      );
+    } catch (error_) {
+      rotationError = friendlyError(error_, 'Cimmich could not save the rotation correction.');
+    } finally {
+      rotationBusyAssetId = '';
+    }
+  };
+
+  const undoCandidateRotation = async (item: CimmichPhotoDetailReviewItem) => {
+    if (!item.rotationDecisionId || rotationBusyAssetId) {
+      return;
+    }
+    rotationBusyAssetId = item.assetId;
+    rotationError = '';
+    try {
+      const result = await undoCimmichAssetCorrections([item.rotationDecisionId]);
+      const details = result.items?.find((candidate) => candidate.assetId === item.assetId) ?? result.item;
+      rotationItems = rotationItems.map((candidate) =>
+        candidate.assetId === item.assetId ? mergeRotationDetails(candidate, details) : candidate,
+      );
+    } catch (error_) {
+      rotationError = friendlyError(error_, 'Cimmich could not undo the rotation correction.');
+    } finally {
+      rotationBusyAssetId = '';
+    }
+  };
+
   const submitFolder = (event: SubmitEvent) => {
     event.preventDefault();
     const folderPath = folderPathInput.trim();
@@ -514,6 +633,10 @@
       }
       return;
     }
+    if (mode === 'rotation') {
+      void loadRotation();
+      return;
+    }
     void load();
     void loadVariants({ includeBackup: true, refreshNative: true });
   };
@@ -521,14 +644,16 @@
   $effect(() => {
     const nextRequestedMode = page.url.searchParams.get('mode');
     const nextFolder = page.url.searchParams.get('folder')?.trim() ?? '';
-    const nextMode: typeof mode =
+    const nextMode: ArchiveHealthMode =
       nextRequestedMode === 'folder' || (nextRequestedMode === 'variants' && nextFolder)
         ? 'folder'
         : nextRequestedMode === 'variants' || nextRequestedMode === 'plan'
           ? 'variants'
-          : nextRequestedMode === 'backup'
-            ? 'backup'
-            : 'exact';
+          : nextRequestedMode === 'rotation'
+            ? 'rotation'
+            : nextRequestedMode === 'backup'
+              ? 'backup'
+              : 'exact';
     const nextSignature = `${nextMode}:${nextFolder}`;
     if (!routeReady || nextSignature === routeSignature) {
       return;
@@ -552,6 +677,10 @@
         } else {
           void loadFolderRanking();
         }
+        break;
+      }
+      case 'rotation': {
+        void loadRotation();
         break;
       }
       case 'backup': {
@@ -579,6 +708,10 @@
         } else {
           void loadFolderRanking();
         }
+        break;
+      }
+      case 'rotation': {
+        void loadRotation();
         break;
       }
       case 'backup': {
@@ -628,6 +761,18 @@
           Folder check
         </a>
         <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'rotation' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'rotation'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'rotation' ? 'page' : undefined}
+          title="Review photos whose detected face pose suggests they may be sideways"
+        >
+          Rotation review {rotationLoaded
+            ? `(${number.format(rotationItems.length)}${rotationHasMore ? '+' : ''})`
+            : ''}
+        </a>
+        <a
           href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
           class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'backup'
             ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
@@ -641,14 +786,28 @@
       <button
         type="button"
         class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-sm font-semibold hover:bg-gray-100 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-        disabled={loading || loadingMore || variantsLoading || folderLoading || folderRankingLoading || backupLoading}
+        disabled={loading ||
+          loadingMore ||
+          variantsLoading ||
+          folderLoading ||
+          folderRankingLoading ||
+          backupLoading ||
+          rotationLoading ||
+          rotationLoadingMore ||
+          Boolean(rotationBusyAssetId)}
         onclick={refreshCurrentMode}
         title="Refresh only the selected check"
       >
         <Icon
           icon={mdiRefresh}
           size="16"
-          class={loading || variantsLoading || folderLoading || folderRankingLoading || backupLoading
+          class={loading ||
+          variantsLoading ||
+          folderLoading ||
+          folderRankingLoading ||
+          backupLoading ||
+          rotationLoading ||
+          rotationLoadingMore
             ? 'animate-spin'
             : ''}
         />
@@ -1186,6 +1345,20 @@
           </button>
         </div>
       {/if}
+    {:else if mode === 'rotation'}
+      <ArchiveRotationReview
+        assets={rotationAssets}
+        busyAssetId={rotationBusyAssetId}
+        error={rotationError}
+        hasMore={rotationHasMore}
+        items={rotationItems}
+        loaded={rotationLoaded}
+        loading={rotationLoading}
+        loadingMore={rotationLoadingMore}
+        onLoadMore={() => void loadRotation({ append: true })}
+        onRotate={(item, direction) => void rotateCandidate(item, direction)}
+        onUndo={(item) => void undoCandidateRotation(item)}
+      />
     {:else}
       <ArchiveBackupProof
         error={backupError}

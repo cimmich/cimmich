@@ -22,11 +22,19 @@ describe('photo correction integration', () => {
     expect(image).toContain('stroke-linecap="round"');
   });
 
-  it('offers a separate Photo details review with deterministic tabs', async () => {
-    const page = await read('../../../routes/(user)/cimmich/steward/photos/+page.svelte');
+  it('offers detail checks and promotes orientation into Archive Health', async () => {
+    const [page, archiveHealth, rotationReview] = await Promise.all([
+      read('../../../routes/(user)/cimmich/steward/photos/+page.svelte'),
+      read('../../../routes/(user)/cimmich/archive-integrity/+page.svelte'),
+      read('./ArchiveRotationReview.svelte'),
+    ]);
     expect(page).toContain("{ id: 'orientation', label: 'Orientation' }");
     expect(page).toContain("{ id: 'dates', label: 'Dates' }");
     expect(page).toContain("{ id: 'locations', label: 'Locations' }");
     expect(page).toContain('source media and Immich');
+    expect(archiveHealth).toContain("mode: 'rotation'");
+    expect(archiveHealth).toContain('rotateCimmichAssets');
+    expect(archiveHealth).toContain('undoCimmichAssetCorrections');
+    expect(rotationReview).toContain('This check currently uses face pose');
   });
 });

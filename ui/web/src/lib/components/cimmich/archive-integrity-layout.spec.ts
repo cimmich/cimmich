@@ -28,6 +28,7 @@ describe('Archive integrity layout', () => {
     const pageLoad = await readFile('src/routes/(user)/cimmich/archive-integrity/+page.ts', 'utf8');
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
+    const rotationReview = await readFile('src/lib/components/cimmich/ArchiveRotationReview.svelte', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
     const folderPage = await readFile(
@@ -93,6 +94,22 @@ describe('Archive integrity layout', () => {
     expect(variants).toContain("status: 'hold_ambiguous'");
     expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup check');
+    expect(source).toContain('Rotation review');
+    expect(source).toContain("case 'rotation':");
+    expect(source).toContain("getCimmichPhotoDetailReview(\n        'orientation'");
+    expect(source).toContain('ROTATION_PAGE_SIZE = 24');
+    expect(source).toContain('Math.min(6, pending.length)');
+    expect(source).toContain('<ArchiveRotationReview');
+    expect(rotationReview).toContain('Likely rotation candidates');
+    expect(rotationReview).toContain('A detected face appears close to');
+    expect(rotationReview).toContain('Why flagged');
+    expect(rotationReview).toContain('EXIF orientation');
+    expect(rotationReview).toContain('Reversible Cimmich correction');
+    expect(rotationReview).toContain('Source folder unavailable');
+    expect(rotationReview).toContain("onRotate(item, 'left')");
+    expect(rotationReview).toContain("onRotate(item, 'right')");
+    expect(rotationReview).toContain('onUndo(item)');
+    expect(rotationReview).toContain('Source files and Immich metadata are unchanged');
     expect(folderComparison).toContain('Biggest overlaps');
     expect(folderComparison).toContain('Show top 6 only');
     expect(folderComparison).toContain('Also found elsewhere');

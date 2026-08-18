@@ -92,6 +92,7 @@ describe('Route', () => {
       expect(Route.cimmichArchiveIntegrity({ folder: '/archive/Trips/Sydney', mode: 'folder' })).toBe(
         '/cimmich/archive-integrity?folder=%2Farchive%2FTrips%2FSydney&mode=folder',
       );
+      expect(Route.cimmichArchiveIntegrity({ mode: 'rotation' })).toBe('/cimmich/archive-integrity?mode=rotation');
     });
   });
 

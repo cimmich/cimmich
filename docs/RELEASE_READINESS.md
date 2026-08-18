@@ -505,7 +505,11 @@ point, area or route geometry without changing source-photo EXIF.
 Schema 121 keeps photo corrections in Cimmich: quarter-turn presentation,
 capture-time overrides and effective Places are reversible owner decisions and
 do not mutate source files or Immich. Likely-sideways Face pose, future dates
-and conflicting Places now have separate deterministic Photo details queues.
+and conflicting Places have deterministic Photo details queues. Source-current
+Archive Health promotes the likely-sideways queue into a demand-loaded Rotation
+review with bounded Immich metadata enrichment and reversible rotate/Undo
+controls; it does not claim a safe direction or assess photos without a measured
+face.
 Schema 122 makes the measured Face reject-noise floor authoritative for identity
 matching and retires only unreviewed candidates that should never have entered
 the queue; accepted owner decisions remain intact.
