@@ -172,6 +172,11 @@ test("local runtime secrets, images and browser response headers are hardened", 
     /  cimmich-api:\n(?<body>[\s\S]*?)\n  public-demo-ui:/,
   )?.groups?.body;
   assert.ok(publicDemoApi);
+  assert.match(
+    publicDemoApi,
+    /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+  );
+  assert.doesNotMatch(publicDemoApi, /group_add:/);
   assert.match(publicDemoApi, /no-new-privileges:true/);
   assert.match(publicDemoApi, /cap_drop: \[ALL\]/);
 });

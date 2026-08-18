@@ -47,7 +47,7 @@ The candidate requires:
   initializer has completed, while checksum verification, API restart and
   health proof remain mandatory;
 - owner-only `0600` permissions for every generated or restored public-demo
-  Guided token;
+  Guided token, with the API running as the invoking host identity;
 - People copy that distinguishes directory members, visible photos and people
   with visible photos, plus review hints that cannot present stale counts as
   current work;

@@ -746,9 +746,8 @@ guided_token_file() {
   verify_sentinel
   load_environment
   ensure_guided_token
-  # Return only the owner/group-readable local file path. The dedicated runtime
-  # container receives the host group as a supplemental group; Cimmich never
-  # echoes the token through HTTP/UI.
+  # Return only the owner-readable local file path. The dedicated runtime uses
+  # the invoking host identity; Cimmich never echoes the token through HTTP/UI.
   printf '%s\n' "$GUIDED_TOKEN_FILE"
 }
 

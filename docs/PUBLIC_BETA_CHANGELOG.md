@@ -23,7 +23,8 @@ for OpenAI Build Week.
   checksum-verified model install, API restart and health check. It no longer
   performs an owner-session request that could report a false failure.
 - Public demo Guided tokens are created and restored with owner-only `0600`
-  permissions, matching the documented local-secret boundary.
+  permissions, and the API uses the invoking host identity to read them without
+  widening access.
 - People distinguishes directory membership from photos visible in the current
   viewing mode. Stale review hints are shown as a check in progress and the
   Identity overview uses the loaded actionable queue instead of raw old claims.
