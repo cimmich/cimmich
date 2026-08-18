@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  checkLatestCimmichDatabaseBackup,
   getCimmichArchiveBackupProof,
   getCimmichArchiveSourceEvidence,
+  getCimmichDatabaseBackupStatus,
   getCimmichExactDuplicates,
+  setCimmichDatabaseBackupPolicy,
+  startCimmichDatabaseBackup,
 } from './cimmich-archive-integrity.service';
 
 afterEach(() => {
@@ -96,5 +100,36 @@ describe('Cimmich Archive integrity client', () => {
       expect.any(Object),
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('reads and updates database backup health through explicit bounded operations', async () => {
+    const status = {
+      activeCheck: null,
+      activeRun: null,
+      destinations: [],
+      latestCompletedRun: null,
+      nextDueAt: null,
+      policy: { destinationIds: [], frequency: 'manual', retentionCount: 3 },
+      schemaVersion: 'cimmich.database-backup-health.v1',
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json(status))
+      .mockResolvedValueOnce(Response.json(status))
+      .mockResolvedValueOnce(Response.json({ state: 'queued' }, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ state: 'queued' }, { status: 202 }));
+
+    await getCimmichDatabaseBackupStatus();
+    await setCimmichDatabaseBackupPolicy({ destinationIds: ['mac'], frequency: 'daily', retentionCount: 3 });
+    await startCimmichDatabaseBackup(['mac']);
+    await checkLatestCimmichDatabaseBackup(['mac']);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:3101/v1/archive-integrity/database-backups',
+      'http://127.0.0.1:3101/v1/archive-integrity/database-backups/policy',
+      'http://127.0.0.1:3101/v1/archive-integrity/database-backups/runs',
+      'http://127.0.0.1:3101/v1/archive-integrity/database-backups/checks',
+    ]);
+    expect(fetchMock.mock.calls.map(([, options]) => options?.method)).toEqual([undefined, 'PUT', 'POST', 'POST']);
   });
 });

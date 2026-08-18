@@ -1,0 +1,13 @@
+services:
+  cimmich-api:
+    environment:
+      CIMMICH_DATABASE_STORAGE_DOMAIN: ${CIMMICH_DATABASE_STORAGE_DOMAIN:-cimmich-database-primary}
+      CIMMICH_DATABASE_BACKUP_TARGETS_JSON: >-
+        [{"id":"primary-database-backup","label":"${CIMMICH_DATABASE_BACKUP_LABEL:-Primary database backup}","description":"${CIMMICH_DATABASE_BACKUP_DESCRIPTION:-Independent database backup storage}","root":"/database-backup/primary","storageDomain":"${CIMMICH_DATABASE_BACKUP_STORAGE_DOMAIN:?set a stable storage-domain ID distinct from the Cimmich database disk}"}]
+    volumes:
+      - type: bind
+        source: ${CIMMICH_DATABASE_BACKUP_PATH:?set the host folder for Cimmich database backups}
+        target: /database-backup/primary
+        read_only: false
+        bind:
+          create_host_path: false

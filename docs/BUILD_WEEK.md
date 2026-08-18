@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-development continues on schema 140 without rewriting the schema-130 Community
+development continues on schema 141 without rewriting the schema-130 Community
 Preview 9 release. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
@@ -46,6 +46,9 @@ optional duplicate grouping, without weakening byte-verified exact-copy truth.
 Schema 140 stores revision-bound Smart and Enhanced visual facts while compiling
 the visible summary against current People, Context and owner truth. Standard is
 deterministic and model-free; ordinary renames never rerun a visual model.
+Schema 141 adds owner-selected independent database backup locations, durable
+Manual, Daily or Weekly policy, checksummed artifact receipts and full latest
+backup verification without touching Immich media.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

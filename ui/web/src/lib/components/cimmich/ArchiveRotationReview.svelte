@@ -8,13 +8,7 @@
   import { getParentPath } from '$lib/utils/tree-utils';
   import type { AssetResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import {
-    mdiArrowRight,
-    mdiCheck,
-    mdiContentSave,
-    mdiFolderOpenOutline,
-    mdiRotateRight,
-  } from '@mdi/js';
+  import { mdiArrowRight, mdiCheck, mdiContentSave, mdiFolderOpenOutline, mdiRotateRight } from '@mdi/js';
   import { onDestroy } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichReviewPhotoMedia from './CimmichReviewPhotoMedia.svelte';

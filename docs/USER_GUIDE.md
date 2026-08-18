@@ -577,7 +577,11 @@ similarity does not determine whether a photo needs correction or which
 direction is correct. Cards place the ranking reason beneath the photo and keep
 EXIF and proposed rotation together for faster scanning.
 
-### Backup proof
+### Backup check
+
+Backup check has two modes: **Photos** and **Database**.
+
+#### Photos
 
 Archive Health distinguishes byte-verified media, independently protected
 items and items still needing destination proof. Another file on the same disk
@@ -595,6 +599,26 @@ under `/backup`, registered with a stable storage-domain identity different from
 the archive disk and remain read-only. Scan state is operational and lasts only
 for the current API session; it does not change media or create preservation
 authority by itself.
+
+#### Database
+
+Database protection covers Cimmich's own PostgreSQL records, including People,
+review decisions, settings and generated work. It does not replace the Photos
+backup or the separate Document-store backup.
+
+Select one or more configured independent locations, choose Manual, Daily or
+Weekly, choose how many verified copies to keep, and save the schedule. **Back
+up now** creates a PostgreSQL custom-format dump at every selected location.
+Each completed card shows creation time, size, schema version, last full check
+and an abbreviated SHA-256. **Check latest** re-reads the complete dump,
+compares its recorded size and SHA-256, and asks PostgreSQL to read the restore
+catalogue. This can take time for a large database, but it runs without blocking
+the rest of Cimmich.
+
+Locations are configured by the deployment and must be on a distinct storage
+failure domain. The browser cannot enter an arbitrary server path. An
+unavailable location remains visible and scheduled work waits until the
+location is usable again.
 
 ## Settings, matching and optional providers
 

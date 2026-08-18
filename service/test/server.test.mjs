@@ -4386,6 +4386,92 @@ test("Archive integrity exposes configured targets and starts and reads bounded 
   ]);
 });
 
+test("Archive integrity exposes database backup policy, runs and latest checks", async () => {
+  const calls = [];
+  const result = {
+    destinations: [],
+    policy: { destinationIds: [], frequency: "manual", retentionCount: 3 },
+    schemaVersion: "cimmich.database-backup-health.v1",
+  };
+  await withServer(
+    {
+      archiveIntegrityCheckLatestDatabaseBackup: async (input) => {
+        calls.push(["check", input]);
+        return { state: "queued" };
+      },
+      archiveIntegrityDatabaseBackupStatus: async () => result,
+      archiveIntegritySetDatabaseBackupPolicy: async (input) => {
+        calls.push(["policy", input]);
+        return result;
+      },
+      archiveIntegrityStartDatabaseBackup: async (input) => {
+        calls.push(["run", input]);
+        return { state: "queued" };
+      },
+    },
+    async (root) => {
+      const status = await fetch(
+        `${root}/v1/archive-integrity/database-backups`,
+      );
+      assert.equal(status.status, 200);
+      assert.deepEqual(await status.json(), result);
+
+      const policy = await fetch(
+        `${root}/v1/archive-integrity/database-backups/policy`,
+        {
+          body: JSON.stringify({
+            destinationIds: ["mac"],
+            frequency: "daily",
+            retentionCount: 3,
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner",
+          },
+          method: "PUT",
+        },
+      );
+      assert.equal(policy.status, 200);
+
+      const run = await fetch(
+        `${root}/v1/archive-integrity/database-backups/runs`,
+        {
+          body: JSON.stringify({ destinationIds: ["mac"] }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(run.status, 202);
+
+      const check = await fetch(
+        `${root}/v1/archive-integrity/database-backups/checks`,
+        {
+          body: JSON.stringify({ destinationIds: ["mac"] }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      assert.equal(check.status, 202);
+    },
+  );
+  assert.deepEqual(calls, [
+    [
+      "policy",
+      {
+        actorId: "owner",
+        destinationIds: ["mac"],
+        frequency: "daily",
+        retentionCount: 3,
+      },
+    ],
+    ["run", { actorId: "owner", destinationIds: ["mac"] }],
+    ["check", { destinationIds: ["mac"] }],
+  ]);
+});
+
 test("full identity audit routes expose background status, bounded queues and explicit dismissal", async () => {
   const calls = [];
   const run = {
@@ -5123,7 +5209,7 @@ test("browser preflight permits every method the UI actually uses", async () => 
           .split(",")
           .map((value) => value.trim()),
       );
-      for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
         assert.ok(allowed.has(method), `${method} must survive preflight`);
       }
     },

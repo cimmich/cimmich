@@ -200,9 +200,9 @@ export const createCimmichServer = ({
       response.writeHead(204, {
         "access-control-allow-headers":
           "authorization,content-type,x-cimmich-actor,x-cimmich-principal-id,x-cimmich-device-id,x-cimmich-private-session,x-cimmich-surface,x-cimmich-document-metadata,x-cimmich-gps-contract",
-        // DELETE is required by /v1/visibility/credential (turning the Private
-        // filter off). It is the only DELETE route, so this widens nothing else.
-        "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
+        // DELETE is required by /v1/visibility/credential and PUT saves the
+        // database backup policy. Route authorization remains independent.
+        "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
         "access-control-allow-origin": allowedOrigin,
         vary: "Origin",
       });

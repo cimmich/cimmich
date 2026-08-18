@@ -63,6 +63,71 @@ export const createReviewRoutes =
       return true;
     }
     if (
+      request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/database-backups"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityDatabaseBackupStatus(),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "PUT" &&
+      url.pathname === "/v1/archive-integrity/database-backups/policy"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegritySetDatabaseBackupPolicy({
+          actorId: request.headers["x-cimmich-actor"],
+          destinationIds: body.destinationIds,
+          frequency: body.frequency,
+          retentionCount: body.retentionCount,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/archive-integrity/database-backups/runs"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        202,
+        await repository.archiveIntegrityStartDatabaseBackup({
+          actorId: request.headers["x-cimmich-actor"],
+          destinationIds: body.destinationIds,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/archive-integrity/database-backups/checks"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        202,
+        await repository.archiveIntegrityCheckLatestDatabaseBackup({
+          destinationIds: body.destinationIds,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
       request.method === "POST" &&
       url.pathname === "/v1/archive-integrity/backup-scans"
     ) {

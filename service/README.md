@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 140. Schema 76 adds
+patch level 1. Current post-submission source is schema 141. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -1147,6 +1147,14 @@ projection compiles those facts with current accepted People and Context so
 owner renames and classifications update immediately without another model run.
 Stale source revisions remain visible as stale history until explicitly
 refreshed; no generated summary gains identity or Context authority.
+
+Schema 141 adds Archive Health database protection. It stores only the selected
+configured destination IDs, Manual, Daily or Weekly frequency, retention count,
+run history and checksummed artifact receipts. Deployment-owned paths remain
+outside the database. Each PostgreSQL custom-format dump is restore-catalogue
+checked and SHA-256 verified before publication; Check latest re-reads the full
+artifact. The service rejects the database storage domain and never writes
+Immich media through this path.
 
 ## Database-backed tests
 

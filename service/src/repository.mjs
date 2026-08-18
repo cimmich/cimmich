@@ -957,6 +957,7 @@ export const createCimmichRepository = (
   });
   const archiveIntegrity = createArchiveIntegrityStore(sql, {
     companion: options.immichCompanion,
+    databaseBackup: options.databaseBackup,
     presentationRank,
   });
   const assetLabels = createAssetLabelStore(sql, { presentationRank });

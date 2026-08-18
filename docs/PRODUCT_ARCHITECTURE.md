@@ -7,7 +7,7 @@ contracts or release receipts.
 
 > [!IMPORTANT]
 > This document follows the **current development source** (migration-ledger
-> schema 140/patch 1 at the time of this reconciliation). The latest named
+> schema 141/patch 1 at the time of this reconciliation). The latest named
 > public release is Community Preview 9 at schema 130/patch 1. Release claims
 > belong to the named release and its changelog, not to an arbitrary checkout.
 
@@ -104,7 +104,7 @@ this directory.
 | Places/Things/Events | route shells plus `CimmichContextBrowser` and map/plan components                                                                                 | context entity, relation, asset, cover, plan and geocoding routes                                                                  | typed entities, hierarchy, links and decisions durable; nearby/media suggestions derived                  |
 | Documents            | route shell plus `CimmichDocuments`                                                                                                               | Document metadata/link/content/version routes                                                                                      | metadata in PostgreSQL; imported bytes in the separate content-addressed store                            |
 | Smart Search         | `routes/(user)/cimmich/smart-search/+page.svelte`, `CimmichVisualSearch`, `CimmichVisualSimilarityAction`                                          | deterministic recorded-fact and Document queries; supported Immich `query` / `queryAssetId` visual ranking                          | local confirmed truth stays authoritative; Immich results are paged, visibility-filtered ranked leads     |
-| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder, rotation and backup modes; `ArchiveFolderComparison`, `ArchiveRotationReview` and backup-scan client | exact copies, possible-duplicate groups, direct-folder overlap, bounded Immich visual rotation leads, reversible correction commands and read-only backup scan/proof | fingerprints and correction decisions durable; folder inventory, candidate queues, scan state and recommendations derived |
+| Archive Health       | one archive-integrity route and shared command bar for exact, variants, folder, rotation and backup modes; `ArchiveFolderComparison`, `ArchiveRotationReview`, photo backup scanner and database backup manager | exact copies, possible-duplicate groups, direct-folder overlap, bounded Immich visual rotation leads, reversible correction commands, read-only photo backup comparison and scheduled database protection | fingerprints, correction decisions, database backup policy and artifact receipts durable; folder inventory, candidate queues, photo scan state and recommendations derived |
 | Settings/setup       | settings, setup and maintenance routes                                                                                                            | integration, onboarding, provider, SourcePack, Local AI and Guided operators                                                       | configuration and reviewed lifecycle state; model output remains observation                              |
 
 ## Identity and evidence model
@@ -379,6 +379,24 @@ digest matches are path-independent. A same-filename digest mismatch is
 reported as changed content or embedded metadata, with size deltas when
 available; ambiguous repeated filenames remain explicit. Scan state disappears
 on API restart and never writes source media or backup files.
+
+Database backup health is a separate Cimmich-owned write boundary. Deployment
+configuration declares at most eight writable roots below `/database-backup`
+and assigns each a storage-domain ID different from the database volume. The
+browser selects only those declared IDs. Schema 141 stores the selected IDs,
+Manual, Daily or Weekly frequency, retained-copy count, run history and one
+checksummed artifact receipt per destination. Host paths and credentials are
+never stored in the database or returned to the browser.
+
+Each run invokes PostgreSQL `pg_dump` without a shell, writes a private partial
+file inside the destination, verifies the custom-format restore catalogue,
+calculates complete-file SHA-256 and then atomically publishes the dump and
+manifest. A later Check latest job re-reads the complete bytes and restore
+catalogue. Scheduling is restart-safe because due time derives from durable
+policy and the latest completed run; only bounded operation progress is held in
+API memory. Retention deletes only older Cimmich-created artifacts within the
+configured destination and only after a newer verified copy exists. This path
+never reads or writes Immich media.
 
 Photo file-location actions do not attempt to launch a native file manager on
 the remote archive host. They open an explicit browser boundary dialog and

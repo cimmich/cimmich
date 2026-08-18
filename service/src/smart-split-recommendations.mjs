@@ -283,7 +283,11 @@ export const buildSmartSplitRecommendations = ({
 
 export const createSmartSplitRecommendationStore = (
   sql,
-  { matchingProvider = null, presentationRank = () => 0, requireVisibleSubject },
+  {
+    matchingProvider = null,
+    presentationRank = () => 0,
+    requireVisibleSubject,
+  },
 ) => ({
   async recommendations({ personId }) {
     await requireVisibleSubject(personId);
@@ -315,10 +319,9 @@ export const createSmartSplitRecommendationStore = (
           personId: id,
         }),
         available: false,
-        unavailableReason:
-          !matchingProvider
-            ? "matching_provider_unavailable"
-            : "safe_size_limit",
+        unavailableReason: !matchingProvider
+          ? "matching_provider_unavailable"
+          : "safe_size_limit",
       };
     }
     const lineage = {

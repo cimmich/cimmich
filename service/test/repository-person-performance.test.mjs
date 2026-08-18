@@ -679,10 +679,7 @@ test("Person presentation accepts an unassigned Body containing the Person's acc
   const repository = createCimmichRepository(
     sql,
     new Map([
-      [
-        "asset-1",
-        { filename: "body.jpg", sourceAssetId: "immich-asset-1" },
-      ],
+      ["asset-1", { filename: "body.jpg", sourceAssetId: "immich-asset-1" }],
     ]),
   );
 
@@ -705,7 +702,9 @@ test("Person presentation accepts an unassigned Body containing the Person's acc
   assert.match(validation.statement, /identity\.state = 'accepted'/);
   assert.match(validation.statement, /occupied\.state = 'accepted'/);
   assert.equal(
-    statements.some(({ statement }) => statement.includes("INSERT INTO body_tag")),
+    statements.some(({ statement }) =>
+      statement.includes("INSERT INTO body_tag"),
+    ),
     false,
   );
 });
@@ -735,10 +734,13 @@ test("Person presentation rejects a Body without accepted identity continuity", 
     }),
     (error) =>
       error.statusCode === 409 &&
-      error.message === "Presentation photo is not confirmed evidence for this person",
+      error.message ===
+        "Presentation photo is not confirmed evidence for this person",
   );
   assert.equal(
-    statements.some((statement) => statement.includes("INSERT INTO person_presentation_media")),
+    statements.some((statement) =>
+      statement.includes("INSERT INTO person_presentation_media"),
+    ),
     false,
   );
 });

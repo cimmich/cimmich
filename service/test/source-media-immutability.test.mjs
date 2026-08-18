@@ -33,6 +33,7 @@ const reviewedWriters = [
   "bin/prepare-public-demo-external-library.mjs",
   "bin/refresh-public-demo-immich-companion.mjs",
   "bin/validate-recognition-provider.mjs",
+  "src/database-backup-health.mjs",
   "src/documents.mjs",
   "src/immich-companion-manager.mjs",
   "src/local-ai-service.mjs",

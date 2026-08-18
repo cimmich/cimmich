@@ -3,6 +3,10 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createAddressGeocoder } from "./address-geocoding.mjs";
+import {
+  createDatabaseBackupManager,
+  parseDatabaseBackupDestinations,
+} from "./database-backup-health.mjs";
 import { createHashLinkedAssetResolver } from "./archive-mobility.mjs";
 import {
   createInventoryProjectionBridgeRefresher,
@@ -109,6 +113,18 @@ const maintenanceSql = postgres(databaseUrl, {
     Number(process.env.CIMMICH_DATABASE_MAINTENANCE_CONNECTIONS || "1"),
   ),
   prepare: true,
+});
+const databaseBackup = createDatabaseBackupManager({
+  databaseUrl,
+  destinations: parseDatabaseBackupDestinations(
+    process.env.CIMMICH_DATABASE_BACKUP_TARGETS_JSON,
+    {
+      sourceStorageDomain:
+        process.env.CIMMICH_DATABASE_STORAGE_DOMAIN ||
+        "cimmich-database-primary",
+    },
+  ),
+  sql: maintenanceSql,
 });
 const legacyBridge = await loadDisplayBridge(
   process.env.CIMMICH_DISPLAY_BRIDGE_PATH || "",
@@ -222,6 +238,7 @@ const repository = createCimmichRepository(sql, bridge, visibility, {
   documentMaxFileBytes: runtimeConfig.documentMaxFileBytes,
   documentMaxStoreBytes: runtimeConfig.documentMaxStoreBytes,
   documentStoreRoot: runtimeConfig.documentStoreRoot,
+  databaseBackup,
   identityAuditDerivativeProvider: derivativeProvider,
   enhancedComponent,
   expectedSchemaPatchCount: releasePatches.length,
@@ -362,6 +379,7 @@ const shutdown = async (exitCode = 0) => {
   );
   await localMediaProvider.recognizer?.close?.().catch(() => {});
   await localAi.close().catch(() => {});
+  databaseBackup.close();
   await sql.end({ timeout: 5 }).catch(() => {});
   await maintenanceSql.end({ timeout: 5 }).catch(() => {});
 };
@@ -389,6 +407,7 @@ process.on("uncaughtException", () => {
 
 server.listen(port, host, () => {
   console.log(`Cimmich owner service listening on ${host}:${port}`);
+  databaseBackup.startScheduler();
   // Prewarm the People-grid snapshot variant the live page requests, so the
   // first signed-in visit after a restart is served hot. Best-effort: a cold
   // database at boot only costs the prewarm, never the boot.

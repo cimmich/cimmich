@@ -151,6 +151,70 @@ export type CimmichArchiveBackupScan = {
   target: CimmichArchiveBackupTarget;
 };
 
+export type CimmichDatabaseBackupArtifact = {
+  backupRunId: string;
+  byteLength: number;
+  contentSha256: string;
+  createdAt: string;
+  databaseSchemaVersion: number;
+  destinationId: string;
+  filename: string;
+  lastError: string;
+  storageDomain: string;
+  verificationState: 'failed' | 'missing' | 'verified';
+  verifiedAt: string;
+};
+
+export type CimmichDatabaseBackupDestination = {
+  available: boolean;
+  description: string;
+  distinctFailureDomain: true;
+  freeBytes: number | null;
+  id: string;
+  label: string;
+  latest: CimmichDatabaseBackupArtifact | null;
+  selected: boolean;
+  storageDomain: string;
+  writable: boolean;
+};
+
+export type CimmichDatabaseBackupOperation = {
+  completedAt: string | null;
+  destinationIds: string[];
+  error?: string;
+  items?: Array<{
+    destinationId: string;
+    error: string;
+    state: 'failed' | 'queued' | 'running' | 'verified';
+    verifiedAt?: string;
+  }>;
+  startedAt: string;
+  state: 'complete' | 'failed' | 'partial' | 'queued' | 'running';
+};
+
+export type CimmichDatabaseBackupStatus = {
+  activeCheck: CimmichDatabaseBackupOperation | null;
+  activeRun: (CimmichDatabaseBackupOperation & { backupRunId: string; triggerKind: 'manual' | 'scheduled' }) | null;
+  destinations: CimmichDatabaseBackupDestination[];
+  latestCompletedRun: null | {
+    backupRunId: string;
+    completedAt: string;
+    destinationIds: string[];
+    error: string;
+    startedAt: string;
+    state: 'complete' | 'partial';
+    triggerKind: 'manual' | 'scheduled';
+  };
+  nextDueAt: string | null;
+  policy: {
+    destinationIds: string[];
+    frequency: 'daily' | 'manual' | 'weekly';
+    retentionCount: number;
+    updatedAt: string;
+  };
+  schemaVersion: 'cimmich.database-backup-health.v1';
+};
+
 export const getCimmichExactDuplicates = ({ limit = 24, offset = 0, sourceAssetId = '' } = {}) => {
   const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (sourceAssetId) {
@@ -199,3 +263,28 @@ export const getCimmichArchiveBackupScan = (
     `/v1/archive-integrity/backup-scans/${encodeURIComponent(id)}?${search.toString()}`,
   );
 };
+
+export const getCimmichDatabaseBackupStatus = () =>
+  request<CimmichDatabaseBackupStatus>('/v1/archive-integrity/database-backups');
+
+export const setCimmichDatabaseBackupPolicy = (policy: {
+  destinationIds: string[];
+  frequency: 'daily' | 'manual' | 'weekly';
+  retentionCount: number;
+}) =>
+  request<CimmichDatabaseBackupStatus>('/v1/archive-integrity/database-backups/policy', {
+    body: JSON.stringify(policy),
+    method: 'PUT',
+  });
+
+export const startCimmichDatabaseBackup = (destinationIds: string[]) =>
+  request<CimmichDatabaseBackupOperation>('/v1/archive-integrity/database-backups/runs', {
+    body: JSON.stringify({ destinationIds }),
+    method: 'POST',
+  });
+
+export const checkLatestCimmichDatabaseBackup = (destinationIds: string[]) =>
+  request<CimmichDatabaseBackupOperation>('/v1/archive-integrity/database-backups/checks', {
+    body: JSON.stringify({ destinationIds }),
+    method: 'POST',
+  });

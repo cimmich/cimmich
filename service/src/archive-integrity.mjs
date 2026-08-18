@@ -161,7 +161,7 @@ const hydrateVisualSignatures = async (sql, companion, sourceAssetIds) => {
 
 export const createArchiveIntegrityStore = (
   sql,
-  { companion, presentationRank },
+  { companion, databaseBackup, presentationRank },
 ) => {
   const sourceStorageDomain =
     process.env.CIMMICH_ARCHIVE_STORAGE_DOMAIN || "archive-primary";
@@ -209,6 +209,18 @@ export const createArchiveIntegrityStore = (
   });
 
   return {
+    async archiveIntegrityDatabaseBackupStatus() {
+      return databaseBackup.status();
+    },
+    async archiveIntegritySetDatabaseBackupPolicy(input = {}) {
+      return databaseBackup.updatePolicy(input);
+    },
+    async archiveIntegrityStartDatabaseBackup(input = {}) {
+      return databaseBackup.startBackup(input);
+    },
+    async archiveIntegrityCheckLatestDatabaseBackup(input = {}) {
+      return databaseBackup.startCheck(input);
+    },
     async archiveIntegrityBackupTargets() {
       return backupScanner.listTargets();
     },

@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
-  import ArchiveBackupProof from '$lib/components/cimmich/ArchiveBackupProof.svelte';
+  import ArchiveBackupCheck from '$lib/components/cimmich/ArchiveBackupCheck.svelte';
   import ArchiveExactDuplicateResults from '$lib/components/cimmich/ArchiveExactDuplicateResults.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
   import ArchiveRotationReview from '$lib/components/cimmich/ArchiveRotationReview.svelte';
@@ -969,7 +969,7 @@
         onLoadMore={() => void loadRotation({ append: true })}
       />
     {:else}
-      <ArchiveBackupProof
+      <ArchiveBackupCheck
         error={backupError}
         exactGroupCount={summary.duplicateGroups}
         groups={variantGroups}

@@ -284,6 +284,46 @@ sequential complete-file hash scan at a time. Do not reuse the archive storage
 domain or point the mount at another folder on the archive disk; that is a copy,
 not independent backup proof.
 
+## Optional scheduled database backups
+
+Archive Health > Backup check > Database can create and verify PostgreSQL
+custom-format backups of Cimmich's own database. This protects People, review
+decisions, settings and other Cimmich-owned records. It does not copy Immich
+photo files or Cimmich's separate Document store.
+
+Create a destination directory on a physically independent disk or mounted
+network share, then add the database-backup override:
+
+```sh
+export CIMMICH_DATABASE_BACKUP_PATH=/mnt/independent-disk/cimmich-database
+export CIMMICH_DATABASE_BACKUP_LABEL='Primary database backup'
+export CIMMICH_DATABASE_BACKUP_DESCRIPTION='External drive or NAS'
+export CIMMICH_DATABASE_BACKUP_STORAGE_DOMAIN=independent-disk-id
+docker compose -f compose.yaml -f compose.database-backup.yaml up -d
+```
+
+The destination must already exist. Cimmich exposes only configured locations
+in the UI and writes below `/database-backup`; it cannot browse or write to an
+arbitrary server path. The storage-domain ID must differ from the Cimmich
+database volume. To offer more than one location, add equivalent writable
+mounts below `/database-backup` and include them in
+`CIMMICH_DATABASE_BACKUP_TARGETS_JSON`.
+
+In Archive Health, select one or more locations, choose Manual, Daily or Weekly,
+set how many verified copies to retain, then save the schedule. **Back up now**
+creates a new dump, verifies its PostgreSQL catalogue, calculates SHA-256 and
+publishes a sidecar manifest. **Check latest** re-reads every byte, compares the
+recorded size and SHA-256, and verifies the restore catalogue again. Older
+Cimmich-created artifacts are removed only after a newer verified backup has
+been recorded at that destination.
+
+For a full emergency restore, size PostgreSQL's maintenance memory for the
+largest vector index. The current representative archive requires at least
+311 MB, so use a 512 MB restore session, for example
+`PGOPTIONS='-c maintenance_work_mem=512MB' pg_restore ...`. `Check latest`
+validates the complete checksum and restore catalogue; release acceptance must
+still rehearse a full isolated restore before relying on a new backup path.
+
 ## Back up, move, restore or remove
 
 Create and inspect a backup before updates, restore or removal:
