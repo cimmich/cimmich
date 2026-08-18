@@ -552,10 +552,11 @@ Search replaces an open-ended walk through the library; source evidence and
 Cimmich decisions are checked in batches of 100. The Archive Health tab does
 not repeat the visible 24-card count as a misleading backlog estimate.
 
-Use the magnify control on any candidate to open the same full-photo inspection
-view used by Photo Review. Rotate left and Rotate right change a local draft;
+Use the photo's magnify control to open the same full-photo inspection view used
+by Photo Review. The adjacent photo controls rotate left or right and change a local draft;
 the opposite rotate button reverses the draft without an overlapping Undo
-control on the image. They do not write while you are still inspecting. Choose **Save** after changing
+control on the image. These controls are not repeated in the card body. They do
+not write while you are still inspecting. Choose **Save** after changing
 an orientation, or **Confirm** to record that the current orientation is
 correct. **Save / Confirm all (X)** applies only to the pending candidates
 currently loaded on the page. A completed card leaves this active queue

@@ -132,8 +132,9 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain('Source folder unavailable');
     expect(rotationReview).toContain('<CimmichReviewPhotoMedia');
     expect(rotationReview).toContain('targetLabel="Review orientation"');
-    expect(rotationReview).toContain("rotateDraft(item, 'left')");
-    expect(rotationReview).toContain("rotateDraft(item, 'right')");
+    expect(rotationReview).toContain('onRotate={(direction) => rotateDraft(item, direction)}');
+    expect(rotationReview).not.toContain('> Rotate left');
+    expect(rotationReview).not.toContain('> Rotate right');
     expect(rotationReview).toContain("dirty ? 'Save' : 'Confirm'");
     expect(rotationReview).not.toContain('onUndo=');
     expect(rotationReview).toContain('Save / Confirm all (${pendingItems.length})');

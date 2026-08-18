@@ -13,7 +13,6 @@
     mdiCheck,
     mdiContentSave,
     mdiFolderOpenOutline,
-    mdiRotateLeft,
     mdiRotateRight,
   } from '@mdi/js';
   import { onDestroy } from 'svelte';
@@ -366,24 +365,6 @@
             {/if}
 
             <div class="flex flex-wrap items-center gap-2">
-              <button
-                class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                type="button"
-                disabled={Boolean(busyAssetId)}
-                onclick={() => rotateDraft(item, 'left')}
-                title="Stage a 90 degree counterclockwise rotation"
-              >
-                <Icon icon={mdiRotateLeft} size="17" /> Rotate left
-              </button>
-              <button
-                class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-gray-300 px-3 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                type="button"
-                disabled={Boolean(busyAssetId)}
-                onclick={() => rotateDraft(item, 'right')}
-                title="Stage a 90 degree clockwise rotation"
-              >
-                <Icon icon={mdiRotateRight} size="17" /> Rotate right
-              </button>
               <button
                 class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-semibold text-white hover:bg-primary/90 disabled:cursor-default disabled:opacity-50"
                 type="button"

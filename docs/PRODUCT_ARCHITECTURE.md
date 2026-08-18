@@ -351,7 +351,8 @@ unresolved backlog and reviewed total within that finite queue without delaying
 visible cards or walking the whole library. Immich's unreliable `total` field
 is not used.
 Draft reversal uses the opposite rotate control, so Rotation review does not
-place an Undo button over the photo controls. Each write request is bounded to
+place an Undo button over the photo controls or repeat rotation actions in the
+card body. Each write request is bounded to
 100 unique assets and idempotent by command ID; a larger loaded page is split
 into consecutive bounded requests. Confirmation never writes source media or
 Immich metadata.
