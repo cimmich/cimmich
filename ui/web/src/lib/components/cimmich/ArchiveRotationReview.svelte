@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Route } from '$lib/route';
+  import { countArchiveRotationBacklog } from './archive-rotation-backlog';
   import type {
     CimmichAssetRotationChange,
     CimmichPhotoDetailReviewItem,
@@ -15,7 +16,7 @@
     mdiRotateLeft,
     mdiRotateRight,
   } from '@mdi/js';
-  import { SvelteMap } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import CimmichReviewPhotoMedia from './CimmichReviewPhotoMedia.svelte';
 
   interface Props {
@@ -29,23 +30,18 @@
     loadingMore: boolean;
     onConfirm: (changes: CimmichAssetRotationChange[]) => Promise<boolean>;
     onLoadMore: () => void;
-    reviewedCount: number;
   }
 
-  let {
-    assets,
-    busyAssetId,
-    error,
-    hasMore,
-    items,
-    loaded,
-    loading,
-    loadingMore,
-    onConfirm,
-    onLoadMore,
-    reviewedCount,
-  }: Props = $props();
+  let { assets, busyAssetId, error, hasMore, items, loaded, loading, loadingMore, onConfirm, onLoadMore }: Props =
+    $props();
 
+  let backlogCountError = $state('');
+  let backlogCounting = $state(false);
+  let backlogTotal = $state<number | null>(null);
+  let reviewedTotal = $state<number | null>(null);
+  let backlogCountGeneration = 0;
+  let backlogCountStarted = false;
+  const confirmedAssetIds = new SvelteSet<string>();
   const rotationDrafts = new SvelteMap<string, number>();
 
   const number = new Intl.NumberFormat();
@@ -90,6 +86,43 @@
   const hasDraft = (item: CimmichPhotoDetailReviewItem) => rotationDrafts.has(item.assetId);
   const pendingItems = $derived(items);
 
+  const countBacklog = async () => {
+    const generation = ++backlogCountGeneration;
+    backlogCounting = true;
+    backlogCountError = '';
+    try {
+      const result = await countArchiveRotationBacklog(() => generation === backlogCountGeneration);
+      if (!result || generation !== backlogCountGeneration) {
+        return;
+      }
+      const newlyConfirmed = result.unresolvedAssetIds.filter((assetId) => confirmedAssetIds.has(assetId)).length;
+      backlogTotal = Math.max(0, result.backlogTotal - newlyConfirmed);
+      reviewedTotal = result.reviewedTotal + newlyConfirmed;
+    } catch (error) {
+      if (generation === backlogCountGeneration) {
+        backlogCountError = error instanceof Error ? error.message : 'Exact backlog count is unavailable';
+      }
+    } finally {
+      if (generation === backlogCountGeneration) {
+        backlogCounting = false;
+      }
+    }
+  };
+
+  $effect(() => {
+    if (!loaded) {
+      backlogCountStarted = false;
+      backlogTotal = null;
+      reviewedTotal = null;
+      backlogCountGeneration += 1;
+      return;
+    }
+    if (!loading && !backlogCountStarted) {
+      backlogCountStarted = true;
+      void countBacklog();
+    }
+  });
+
   const rotateDraft = (item: CimmichPhotoDetailReviewItem, direction: 'left' | 'right') => {
     const next = normalizedRotation(draftRotation(item) + (direction === 'right' ? 1 : -1));
     if (next === normalizedRotation(item.rotationQuarterTurns)) {
@@ -103,8 +136,16 @@
     if (changes.length === 0 || !(await onConfirm(changes))) {
       return;
     }
+    const newlyConfirmed = changes.filter(({ assetId }) => !confirmedAssetIds.has(assetId));
     for (const { assetId } of changes) {
+      confirmedAssetIds.add(assetId);
       rotationDrafts.delete(assetId);
+    }
+    if (backlogTotal !== null) {
+      backlogTotal = Math.max(0, backlogTotal - newlyConfirmed.length);
+    }
+    if (reviewedTotal !== null) {
+      reviewedTotal += newlyConfirmed.length;
     }
   };
 
@@ -134,19 +175,36 @@
           <span class="rounded-full bg-amber-100 px-2.5 py-1 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
             {number.format(items.length)} ready now
           </span>
-          <span
-            class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-            title={hasMore
-              ? 'This is the confirmed minimum. Immich has more ranked pages but does not provide a reliable total for this visual query.'
-              : 'This is the exact unresolved backlog because there are no more ranked pages.'}
-          >
-            {number.format(items.length)}{hasMore ? '+' : ''} in backlog
-          </span>
-          <span
-            class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-          >
-            {number.format(reviewedCount)} reviewed
-          </span>
+          {#if backlogCounting || (backlogTotal === null && !backlogCountError)}
+            <span
+              class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              title="The visible review cards stay usable while Cimmich counts every ranked candidate in the background"
+            >
+              Counting exact backlog…
+            </span>
+          {:else if backlogCountError}
+            <button
+              class="rounded-full bg-red-50 px-2.5 py-1 text-red-800 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-200"
+              type="button"
+              onclick={() => void countBacklog()}
+              title={backlogCountError}
+            >
+              Retry backlog count
+            </button>
+          {:else}
+            <span
+              class="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+              title="Exact unresolved total across Immich's ranked rotation results"
+            >
+              {number.format(backlogTotal ?? 0)} in backlog
+            </span>
+            <span
+              class="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+              title="Ranked rotation candidates already saved or confirmed"
+            >
+              {number.format(reviewedTotal ?? 0)} reviewed
+            </span>
+          {/if}
         {/if}
       </div>
     </div>
@@ -235,7 +293,6 @@
                 width: Math.max(1, asset?.width ?? 1),
               }}
               onRotate={(direction) => rotateDraft(item, direction)}
-              onUndo={dirty ? () => rotationDrafts.delete(item.assetId) : undefined}
               rotationQuarterTurns={rotation}
               sourceAssetId={item.sourceAssetId}
               targetLabel="Review orientation"

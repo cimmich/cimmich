@@ -32,6 +32,7 @@ describe('Archive integrity layout', () => {
     const backupProof = await readFile('src/lib/components/cimmich/ArchiveBackupProof.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
     const rotationReview = await readFile('src/lib/components/cimmich/ArchiveRotationReview.svelte', 'utf8');
+    const rotationBacklog = await readFile('src/lib/components/cimmich/archive-rotation-backlog.ts', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
     const folderPage = await readFile(
@@ -106,7 +107,6 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))');
     expect(source).toContain('ROTATION_PAGE_SIZE = 24');
     expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
-    expect(source).toContain('rotationReviewedCount += nextAssets.length - nextItems.length');
     expect(source).toContain('if (nextItems.length > 0 || !rotationHasMore)');
     expect(source).toContain('await loadRotation({ append: true })');
     expect(source).toContain('<ArchiveRotationReview');
@@ -114,9 +114,13 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain("Immich's visual index");
     expect(rotationReview).toContain('ranks these as resembling sideways');
     expect(rotationReview).toContain('Why flagged');
-    expect(rotationReview).toContain("{number.format(items.length)}{hasMore ? '+' : ''} in backlog");
+    expect(rotationReview).toContain('countArchiveRotationBacklog');
+    expect(rotationBacklog).toContain('while (page > 0)');
+    expect(rotationBacklog).toContain('EVIDENCE_BATCH_SIZE = 100');
+    expect(rotationReview).toContain('{number.format(backlogTotal ?? 0)} in backlog');
+    expect(rotationReview).toContain('Counting exact backlog');
     expect(rotationReview).toContain('Checking backlog');
-    expect(rotationReview).toContain('{number.format(reviewedCount)} reviewed');
+    expect(rotationReview).toContain('{number.format(reviewedTotal ?? 0)} reviewed');
     expect(rotationReview).toContain('Finding the next photos to review');
     expect(rotationReview).not.toContain('This batch is cleared');
     expect(rotationReview).toContain('sm:w-48 sm:border-r sm:border-b-0');
@@ -128,12 +132,13 @@ describe('Archive integrity layout', () => {
     expect(rotationReview).toContain("rotateDraft(item, 'left')");
     expect(rotationReview).toContain("rotateDraft(item, 'right')");
     expect(rotationReview).toContain("dirty ? 'Save' : 'Confirm'");
+    expect(rotationReview).not.toContain('onUndo=');
     expect(rotationReview).toContain('Save / Confirm all (${pendingItems.length})');
     expect(rotationReview).toContain('pendingItems.map');
     expect(rotationReview).toContain('currently shown on this page');
     expect(source).toContain('changes.slice(index, index + 100)');
     expect(source).toContain('.filter((candidate) => !candidate.rotationDecisionId)');
-    expect(rotationReview).not.toContain('Confirmed');
+    expect(rotationReview).not.toContain('>Confirmed<');
     expect(rotationReview).toContain('Source files and Immich metadata are unchanged');
     expect(folderComparison).toContain('Biggest overlaps');
     expect(folderComparison).toContain('Show top 6 only');

@@ -130,7 +130,6 @@
   let rotationLoading = $state(false);
   let rotationLoadingMore = $state(false);
   let rotationNextPage = $state(1);
-  let rotationReviewedCount = $state(0);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
   const exactPathRequests: string[] = [];
@@ -467,9 +466,6 @@
     try {
       let pageNumber = append ? rotationNextPage : 1;
       let keepExisting = append;
-      if (!append) {
-        rotationReviewedCount = 0;
-      }
       while (pageNumber > 0) {
         const next = await searchSmart({
           smartSearchDto: {
@@ -524,7 +520,6 @@
             .filter((asset) => activeSourceIds.has(asset.id))
             .map((asset): [string, AssetResponseDto] => [asset.id, asset]),
         ]);
-        rotationReviewedCount += nextAssets.length - nextItems.length;
         rotationNextPage = Number(next.assets.nextPage) || 0;
         rotationHasMore = rotationNextPage > 0;
         if (nextItems.length > 0 || !rotationHasMore) {
@@ -565,13 +560,11 @@
           detailsByAsset[details.assetId] = details;
         }
       }
-      const itemCountBeforeConfirmation = rotationItems.length;
       rotationItems = rotationItems
         .map((candidate) => mergeRotationDetails(candidate, detailsByAsset[candidate.assetId]))
         .filter((candidate) => !candidate.rotationDecisionId);
       const activeSourceIds = new Set(rotationItems.map((item) => item.sourceAssetId));
       rotationAssets = new Map([...rotationAssets].filter(([sourceAssetId]) => activeSourceIds.has(sourceAssetId)));
-      rotationReviewedCount += itemCountBeforeConfirmation - rotationItems.length;
       if (rotationItems.length === 0 && rotationHasMore) {
         await loadRotation({ append: true });
       }
@@ -971,7 +964,6 @@
         loadingMore={rotationLoadingMore}
         onConfirm={confirmCandidateRotations}
         onLoadMore={() => void loadRotation({ append: true })}
-        reviewedCount={rotationReviewedCount}
       />
     {:else}
       <ArchiveBackupProof

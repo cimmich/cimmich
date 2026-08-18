@@ -343,11 +343,13 @@ An unchanged photo is stored as an explicit zero-turn confirmation. Confirmed
 records are filtered from every loaded batch and removed from the active queue
 as soon as the write returns. A fully reviewed ranked page is skipped using the
 next bounded 24-result request, and confirming the final visible card starts the
-same bounded continuation automatically. The header reports the visible ready
-count, reviewed records encountered and the known unresolved backlog. A plus
-sign records the next-page evidence because Immich does not return a reliable
-total for this visual query. The count becomes exact on the final page without
-scanning the whole archive. Each API request is bounded to
+same bounded continuation automatically. After the first useful batch renders,
+a background counter pages through only the ranked rotation result set, maps
+source evidence and reads corrections in batches of 100. The header then reports
+the exact unresolved backlog and reviewed total without delaying visible cards
+or hydrating the full archive. Immich's unreliable `total` field is not used.
+Draft reversal uses the opposite rotate control, so Rotation review does not
+place an Undo button over the photo controls. Each write request is bounded to
 100 unique assets and idempotent by command ID; a larger loaded page is split
 into consecutive bounded requests. Confirmation never writes source media or
 Immich metadata.

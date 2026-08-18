@@ -543,14 +543,16 @@ If a ranked page contains only completed reviews, Cimmich advances through
 another bounded page until it finds unresolved work or reaches the end. The
 same Smart Search response supplies the visible cards and their Immich metadata,
 exposing the source folder, capture date, dimensions and recorded EXIF
-orientation. The queue header shows how many are ready now, how many have been
-reviewed while finding the current work and the known unresolved backlog. A
-plus sign means more ranked pages exist, but Immich does not provide a reliable
-total for this visual query. The number becomes exact on the final page.
+orientation. The first usable batch appears before Cimmich counts the rest of
+the ranked rotation results in the background. The queue header then shows an
+exact unresolved backlog and exact reviewed total. This count examines only the
+ranked rotation result set and checks Cimmich decisions in batches of 100; it
+does not hydrate the full archive into the page.
 
 Use the magnify control on any candidate to open the same full-photo inspection
 view used by Photo Review. Rotate left and Rotate right change a local draft;
-they do not write while you are still inspecting. Choose **Save** after changing
+the opposite rotate button reverses the draft without an overlapping Undo
+control on the image. They do not write while you are still inspecting. Choose **Save** after changing
 an orientation, or **Confirm** to record that the current orientation is
 correct. **Save / Confirm all (X)** applies only to the pending candidates
 currently loaded on the page. A completed card leaves this active queue
