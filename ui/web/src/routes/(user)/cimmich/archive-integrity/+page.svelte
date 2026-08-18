@@ -531,13 +531,21 @@
         return;
       }
       const nextAssets = next.assets.items;
+      const sourceEvidence =
+        nextAssets.length > 0
+          ? await getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))
+          : { items: [] };
+      const assetIdsBySource = new Map(sourceEvidence.items.map((item) => [item.sourceAssetId, item.assetId]));
       const correctionPage =
-        nextAssets.length > 0 ? await getCimmichAssetCorrections(nextAssets.map((asset) => asset.id)) : { items: [] };
+        sourceEvidence.items.length > 0
+          ? await getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))
+          : { items: [] };
       const corrections = new Map(correctionPage.items.map((item) => [item.assetId, item]));
       const nextItems = nextAssets.map<CimmichPhotoDetailReviewItem>((asset) => {
-        const correction = corrections.get(asset.id);
+        const assetId = assetIdsBySource.get(asset.id) ?? asset.id;
+        const correction = corrections.get(assetId);
         return {
-          assetId: asset.id,
+          assetId,
           captureTime: asset.exifInfo?.dateTimeOriginal ?? asset.fileCreatedAt,
           captureTimeProvenance: correction?.captureTimeProvenance ?? 'source_metadata',
           confidenceSignal: 0,
@@ -550,7 +558,7 @@
           rotationDecisionId: correction?.rotationDecisionId ?? null,
           rotationQuarterTurns: correction?.rotationQuarterTurns ?? 0,
           schemaVersion: 'cimmich.asset-correction.v1',
-          sourceAssetId: correction?.sourceAssetId ?? asset.id,
+          sourceAssetId: asset.id,
         };
       });
       const combined = append ? [...rotationItems, ...nextItems] : nextItems;

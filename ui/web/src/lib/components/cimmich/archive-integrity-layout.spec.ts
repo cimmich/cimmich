@@ -99,7 +99,8 @@ describe('Archive integrity layout', () => {
     expect(source).toContain('searchSmart({');
     expect(source).toContain('query: ROTATION_VISUAL_QUERY');
     expect(source).toContain('type: AssetTypeEnum.Image');
-    expect(source).toContain('getCimmichAssetCorrections(nextAssets.map((asset) => asset.id))');
+    expect(source).toContain('getCimmichArchiveSourceEvidence(nextAssets.map((asset) => asset.id))');
+    expect(source).toContain('getCimmichAssetCorrections(sourceEvidence.items.map((item) => item.assetId))');
     expect(source).toContain('ROTATION_PAGE_SIZE = 24');
     expect(source).toContain('rotationNextPage = Number(next.assets.nextPage) || 0');
     expect(source).toContain('<ArchiveRotationReview');
