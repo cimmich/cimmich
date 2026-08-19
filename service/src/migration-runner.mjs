@@ -5,6 +5,19 @@ import path from "node:path";
 const runnerVersion = "cimmich-migration-runner.v1";
 const lockKey = "cimmich-schema-migrations-v1";
 
+export const historicalMigrationAliases = new Map([
+  [
+    131,
+    [
+      {
+        checksum:
+          "c1325ed62b480d39cbd99cfbe261ac15ee30711a520332b64a85451b9f1c5267",
+        filename: "0131_source_pack_candidate_freshness_v1.sql",
+      },
+    ],
+  ],
+]);
+
 const typedError = (message, code, details) =>
   Object.assign(new Error(message), { code, ...(details ? { details } : {}) });
 
@@ -266,7 +279,15 @@ const transaction = async (connection, operation) => {
   }
 };
 
-const assertLedger = (applied, migrations) => {
+const matchesMigrationSource = (row, expected) =>
+  (row.filename === expected.filename &&
+    row.checksum_sha256 === expected.checksum) ||
+  (historicalMigrationAliases.get(Number(row.version)) || []).some(
+    (alias) =>
+      row.filename === alias.filename && row.checksum_sha256 === alias.checksum,
+  );
+
+export const assertMigrationLedger = (applied, migrations) => {
   for (let index = 0; index < applied.length; index += 1) {
     const row = applied[index];
     const expected = migrations[index];
@@ -276,10 +297,7 @@ const assertLedger = (applied, migrations) => {
         "MIGRATION_LEDGER_INVALID",
       );
     }
-    if (
-      row.filename !== expected.filename ||
-      row.checksum_sha256 !== expected.checksum
-    ) {
+    if (!matchesMigrationSource(row, expected)) {
       throw typedError(
         "An applied migration no longer matches its recorded source",
         "MIGRATION_CHECKSUM_MISMATCH",
@@ -357,7 +375,7 @@ export const migrate = async ({
       });
       applied = await readLedger(connection);
     }
-    assertLedger(applied, migrations);
+    assertMigrationLedger(applied, migrations);
     const newlyApplied = [];
     let appliedPatches = await readPatchLedger(connection);
     assertPatchLedger(appliedPatches, patches);
@@ -413,10 +431,10 @@ export const migrate = async ({
       });
       newlyApplied.push(migration.version);
       applied = await readLedger(connection);
-      assertLedger(applied, migrations);
+      assertMigrationLedger(applied, migrations);
     }
     const finalLedger = await readLedger(connection);
-    assertLedger(finalLedger, migrations);
+    assertMigrationLedger(finalLedger, migrations);
     await applyPatchesAtBase(Number(finalLedger.at(-1)?.version || 0));
     appliedPatches = await readPatchLedger(connection);
     assertPatchLedger(appliedPatches, patches);

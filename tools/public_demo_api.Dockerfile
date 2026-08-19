@@ -71,6 +71,7 @@ COPY service/enhanced ./enhanced
 COPY providers/opencv-sface /app/providers/opencv-sface
 COPY providers/insightface-user-supplied /app/providers/insightface-user-supplied
 COPY providers/perceptual-dhash /app/providers/perceptual-dhash
+COPY providers/source-pack-numpy /app/providers/source-pack-numpy
 COPY providers/xmp-sidecar-reader /app/providers/xmp-sidecar-reader
 COPY providers/ultralytics-yolo-body /app/providers/ultralytics-yolo-body
 COPY providers/ultralytics-yolo-pose /app/providers/ultralytics-yolo-pose

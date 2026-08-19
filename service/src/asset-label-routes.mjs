@@ -7,6 +7,7 @@ export const createAssetLabelRoutes =
         response,
         200,
         await repository.assetLabels({
+          kind: url.searchParams.get("kind"),
           limit: url.searchParams.get("limit"),
           query: url.searchParams.get("q"),
         }),
@@ -23,6 +24,7 @@ export const createAssetLabelRoutes =
           actorId: request.headers["x-cimmich-actor"],
           commandId: body.commandId,
           displayName: body.displayName,
+          kind: body.kind,
         }),
         allowedOrigin,
       );

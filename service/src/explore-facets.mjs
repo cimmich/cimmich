@@ -118,7 +118,7 @@ export const createExploreFacetStore = (
         FROM current_asset_label_membership membership
         JOIN asset_facts facts ON facts.asset_id = membership.asset_id
         JOIN asset_label label ON label.label_id = membership.label_id
-          AND label.status = 'active'
+          AND label.status = 'active' AND label.label_kind = 'label'
       ), context_memberships AS MATERIALIZED (
         SELECT link.asset_id, entity.entity_id, entity.entity_kind,
           entity.display_name
@@ -193,7 +193,7 @@ export const createExploreFacetStore = (
         JOIN label_memberships membership
           ON membership.label_id = label.label_id
         JOIN asset_flags flags ON flags.asset_id = membership.asset_id
-        WHERE label.status = 'active'
+        WHERE label.status = 'active' AND label.label_kind = 'label'
         GROUP BY label.label_id
         HAVING count(DISTINCT flags.asset_id) > 0
         ORDER BY count DESC, lower(label.display_name), label.label_id

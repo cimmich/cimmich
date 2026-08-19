@@ -6,32 +6,32 @@ remain available without controlling the front door.
 
 ## Use Cimmich
 
-- [Detailed user guide](USER_GUIDE.md) — the canonical description of what
+- [Detailed user guide](USER_GUIDE.md) - the canonical description of what
   Cimmich can do and how each owner workflow works.
-- [Product walkthrough](WALKTHROUGH.md) — a visual tour using the fictional
+- [Product walkthrough](WALKTHROUGH.md) - a visual tour using the fictional
   Cedar House archive.
-- [Install and operate](../INSTALL.md) — verify, configure, start, back up,
+- [Install and operate](../INSTALL.md) - verify, configure, start, back up,
   update, diagnose and remove Cimmich.
-- [Privacy and data control](../PRIVACY.md) — what Cimmich reads, stores, sends
+- [Privacy and data control](../PRIVACY.md) - what Cimmich reads, stores, sends
   and removes.
-- [Frequently asked questions](FAQ.md) — compatibility, models, viewing modes,
+- [Frequently asked questions](FAQ.md) - compatibility, models, viewing modes,
   backups, removal and licensing.
-- [Cedar House demo](../demo/cedar-house-v1/README.md) — an isolated fictional
+- [Cedar House demo](../demo/cedar-house-v1/README.md) - an isolated fictional
   Immich and Cimmich stack.
 
 ## Develop and contribute
 
-- [Product architecture](PRODUCT_ARCHITECTURE.md) — the UX-to-code, data,
+- [Product architecture](PRODUCT_ARCHITECTURE.md) - the UX-to-code, data,
   authority, performance and acceptance map.
-- [Development guide](../DEVELOPMENT.md) — architecture, repository map,
+- [Development guide](../DEVELOPMENT.md) - architecture, repository map,
   npm/pnpm workspaces and checks.
-- [Contributing guide](../CONTRIBUTING.md) — scope, boundaries, proof and pull
+- [Contributing guide](../CONTRIBUTING.md) - scope, boundaries, proof and pull
   request expectations.
-- [Project governance](../GOVERNANCE.md) — product authority, releases,
+- [Project governance](../GOVERNANCE.md) - product authority, releases,
   AI-assisted implementation and attribution.
-- [Security policy](../SECURITY.md) — supported versions and private
+- [Security policy](../SECURITY.md) - supported versions and private
   vulnerability reporting.
-- [Release strategy](RELEASE_STRATEGY.md) — branch, bundle, tag and release
+- [Release strategy](RELEASE_STRATEGY.md) - branch, bundle, tag and release
   posture.
 
 ## Product and data contracts
@@ -55,7 +55,7 @@ installation path.
 
 ## Releases and verification
 
-- [Current named release: Community Preview 9](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.9)
+- [Current named release: Community Preview 13](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.13)
 - [Community Preview publication runbook](COMMUNITY_PREVIEW_PUBLICATION.md)
 - [Release-readiness record](RELEASE_READINESS.md)
 - [Public beta changelog](PUBLIC_BETA_CHANGELOG.md)

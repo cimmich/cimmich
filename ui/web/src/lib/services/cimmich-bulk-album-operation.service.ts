@@ -8,6 +8,7 @@ export type CimmichBulkAlbumCheckpoint = {
   assetIds: string[];
   batchSequence: number;
   checkpointId: string;
+  organizationDecisionId: string | null;
   sourcePath: string;
   state: 'applied' | 'undone';
 };
@@ -20,7 +21,7 @@ export type CimmichBulkAlbumOperation = {
   createdAt: string;
   manifest: Array<{ assetCount: number; sourcePath: string; title: string }>;
   operationId: string;
-  schemaVersion: 'cimmich.bulk-album-operation.v1';
+  schemaVersion: 'cimmich.bulk-album-operation.v2';
   snapshotDigest: string;
   sourcePath: string;
   state: 'applying' | 'applied' | 'partial' | 'undoing' | 'undone' | 'kept';
@@ -32,7 +33,7 @@ export const createCimmichBulkAlbumCommandId = (kind: string) =>
 
 export const getActiveCimmichBulkAlbumOperation = async () => {
   const result = await request<
-    CimmichBulkAlbumOperation | { operation: null; schemaVersion: 'cimmich.bulk-album-operation.v1' }
+    CimmichBulkAlbumOperation | { operation: null; schemaVersion: 'cimmich.bulk-album-operation.v2' }
   >('/v1/bulk-album-operations/active');
   return 'operation' in result ? null : result;
 };
@@ -58,10 +59,11 @@ export const checkpointCimmichBulkAlbumOperation = (
     assetIds: string[];
     batchSequence: number;
     commandId: string;
+    organizationDecisionId?: string | null;
     sourcePath: string;
   },
 ) =>
-  request<CimmichBulkAlbumCheckpoint & { schemaVersion: 'cimmich.bulk-album-operation.v1' }>(
+  request<CimmichBulkAlbumCheckpoint & { schemaVersion: 'cimmich.bulk-album-operation.v2' }>(
     `/v1/bulk-album-operations/${encodeURIComponent(operationId)}/checkpoints`,
     {
       body: JSON.stringify(input),
@@ -75,7 +77,7 @@ export const setCimmichBulkAlbumOperationState = (
   state: CimmichBulkAlbumOperation['state'],
   commandId = createCimmichBulkAlbumCommandId(state),
 ) =>
-  request<{ operationId: string; schemaVersion: 'cimmich.bulk-album-operation.v1'; state: string }>(
+  request<{ operationId: string; schemaVersion: 'cimmich.bulk-album-operation.v2'; state: string }>(
     `/v1/bulk-album-operations/${encodeURIComponent(operationId)}`,
     {
       body: JSON.stringify({ commandId, state }),
@@ -92,7 +94,7 @@ export const undoCimmichBulkAlbumCheckpoint = (
     changed: boolean;
     checkpointId: string;
     operationId: string;
-    schemaVersion: 'cimmich.bulk-album-operation.v1';
+    schemaVersion: 'cimmich.bulk-album-operation.v2';
     state: 'undone';
   }>(`/v1/bulk-album-operations/checkpoints/${encodeURIComponent(checkpointId)}/undo`, {
     body: JSON.stringify({ commandId }),

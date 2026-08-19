@@ -48,6 +48,7 @@ export const createBulkAlbumOperationRoutes =
           assetIds: body.assetIds,
           batchSequence: body.batchSequence,
           commandId: body.commandId,
+          organizationDecisionId: body.organizationDecisionId,
           operationId: decodeURIComponent(checkpointMatch[1]),
           sourcePath: body.sourcePath,
         }),

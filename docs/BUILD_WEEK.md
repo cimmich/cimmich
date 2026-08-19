@@ -1,4 +1,4 @@
-# Cimmich — OpenAI Build Week
+# Cimmich - OpenAI Build Week
 
 For a privacy-cleared mapping from dated claims to public source, tests,
 contracts and reproduction paths, see the
@@ -6,7 +6,7 @@ contracts and reproduction paths, see the
 
 ## Ten-second promise
 
-Teach your archive who matters—with the fewest possible decisions.
+Teach your archive who matters - with the fewest possible decisions.
 
 Cimmich is a local-first Memory Steward. Local computer-vision machinery finds
 and compares faces; Cimmich deterministically narrows the work; an optional
@@ -16,8 +16,8 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-development continues on schema 141 without rewriting the schema-130 Community
-Preview 9 release. Schema 129 binds one durable Immich owner and makes
+development continues on schema 142 without rewriting earlier Community
+Preview releases. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
 schema 131 prevents retired SourcePacks from leaving obsolete identity proposals
@@ -25,8 +25,8 @@ actionable while preserving them as superseded review history; schema 132 lets
 SourcePack activation follow trusted accepted identity evidence across preserved
 aliases of the same canonical physical Face without weakening manual-evidence
 or Person-consistency checks; schema 133 adds current-Prime Person refresh runs
-that can update matcher photos and propose more archive Faces—including Faces
-inside People marked Needs attention—for human review without accepting
+that can update matcher photos and propose more archive Faces - including Faces
+inside People marked Needs attention - for human review without accepting
 identity. Unmeasured legacy quality remains distinct from an explicit poor
 quality score, so a newly split Person can regain conservative Prime matcher
 photos from confirmed archive Faces.
@@ -141,13 +141,13 @@ Cimmich extends a supported Immich installation and must remain useful without
 an OpenAI account, API key, private operator infrastructure, hosted Cimmich service or
 private fixture. The supported capability ladder is explicit:
 
-1. **Core — useful without a model:** Cimmich manages, corrects, sorts and reviews
+1. **Core - useful without a model:** Cimmich manages, corrects, sorts and reviews
    the tags and model output a user already has. It does not require a detector,
    recognizer or embedding migration.
-2. **Enhanced — optional local intelligence:** Cimmich adds recommended
+2. **Enhanced - optional local intelligence:** Cimmich adds recommended
    local detection, matching, SourcePack learning and deterministic review on
    the user's own server. It remains complete and offline-capable.
-3. **Guided — opt-in agent assistance:** Cimmich's target contract exposes a model-neutral local
+3. **Guided - opt-in agent assistance:** Cimmich's target contract exposes a model-neutral local
    endpoint and versioned instruction pack that may be run by Codex, another
    hosted agent or a capable local model. The agent orchestrates local work,
    advanced QC, difficult-match diagnosis and customization; it is not a cloud

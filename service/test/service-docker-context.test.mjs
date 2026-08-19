@@ -27,6 +27,7 @@ test("service Dockerfile build context is an explicit backend allowlist", async 
     "!providers/perceptual-dhash/*.py",
     "!providers/perceptual-dhash/*.json",
     "!providers/perceptual-dhash/requirements.txt",
+    "!providers/source-pack-numpy/*.py",
     "!providers/apple-vision-summary/README.md",
     "!providers/apple-vision-summary/provider",
     "!providers/apple-vision-summary/provider.swift",
@@ -65,6 +66,7 @@ test("public-demo API build context admits the reference adapter but no weights 
   );
   assert.match(dockerfile, /COPY providers\/opencv-sface/);
   assert.match(dockerfile, /COPY providers\/perceptual-dhash/);
+  assert.match(dockerfile, /COPY providers\/source-pack-numpy/);
   assert.match(dockerfile, /CIMMICH_WITH_ULTRALYTICS_BODY/);
   assert.match(dockerfile, /requirements-linux-cpu\.txt/);
   assert.match(dockerfile, /COPY providers\/ultralytics-yolo-pose/);
@@ -81,6 +83,7 @@ test("public-demo API build context admits the reference adapter but no weights 
   assert.match(ignore, /^\*\*$/m);
   assert.ok(ignore.split("\n").includes("!providers/opencv-sface/*.py"));
   assert.ok(ignore.split("\n").includes("!providers/perceptual-dhash/*.py"));
+  assert.ok(ignore.split("\n").includes("!providers/source-pack-numpy/*.py"));
   assert.ok(ignore.split("\n").includes("!service/enhanced/**"));
   assert.ok(
     ignore.split("\n").includes("!providers/ultralytics-yolo-body/*.py"),

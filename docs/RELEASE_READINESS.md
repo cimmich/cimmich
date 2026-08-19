@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-14
+Updated: 2026-08-19
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview release: migration-ledger schema 130/patch 1
-Current development source: migration-ledger schema 141/patch 1
+Current Community Preview candidate: migration-ledger schema 142/patch 1
+Current development source: migration-ledger schema 142/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current release: `v1.1.0-community-preview.9` for exact Immich 3.1.0
+Current candidate: `v1.1.0-community-preview.13` for exact Immich 3.1.0
 
 Schema 136 adds review-only own-Person outlier evidence to Possible mistags.
 The Mac-local scorer first preserves the stronger-different-Person route, then
@@ -24,6 +24,12 @@ so a rename never requires another model run. Standard remains model-free.
 Schema 141 adds configured independent database backup destinations, durable
 frequency and retention policy, checksummed PostgreSQL custom-format artifacts,
 and a full latest-backup verification action in Archive Health.
+Schema 142 reconciles the historical schema-131 split. Public Preview 12 used
+131 for Cimmich-owned organisation while the private production line used 131
+for SourcePack candidate freshness. The migration runner accepts only the exact
+known private predecessor filename and SHA-256 as an alternate ledger record.
+Schema 142 then applies both changes replay-safely, so fresh installs, existing
+Preview 12 installs and the current private database converge on one schema.
 
 ## Community Preview release contract
 
@@ -69,7 +75,7 @@ batch Face-review output byte-for-byte with the single-Face path. The Guided
 client rejects redirects, and Compose hardens PostgreSQL, the API and optional
 face-model installer in addition to the gateway.
 
-Required proof for this gate is schema-130 migration acceptance, full synthetic
+Required proof for this gate is schema-142 migration acceptance, full synthetic
 acceptance, the service suite, Web coverage, Svelte/TypeScript/lint/format/build,
 source-shape, Compose render and the publication/privacy scan. This remains a
 local source gate: it authorizes no deployment or public release.
@@ -584,8 +590,8 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-Community Preview 9 remains schema 130; schema 141 is the current development
-source and does not revise the named public release.
+Community Preview 13 converges at schema 142; schema 142 is the current development
+source and does not revise earlier immutable releases.
 
 ## Historical Public Beta Patch 6 certification
 

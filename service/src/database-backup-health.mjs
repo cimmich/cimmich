@@ -293,6 +293,10 @@ export const createDatabaseBackupManager = ({
   };
 
   const status = async () => {
+    const activeCheckSnapshot = activeCheck
+      ? structuredClone(activeCheck)
+      : null;
+    const activeRunSnapshot = activeRun ? structuredClone(activeRun) : null;
     const [policy, artifacts, latestRun, destinationStates] = await Promise.all(
       [
         readPolicy(),
@@ -302,8 +306,8 @@ export const createDatabaseBackupManager = ({
       ],
     );
     return {
-      activeCheck,
-      activeRun,
+      activeCheck: activeCheckSnapshot,
+      activeRun: activeRunSnapshot,
       destinations: destinationStates.map((destination) => ({
         ...destination,
         latest: artifacts.get(destination.id) ?? null,

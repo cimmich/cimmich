@@ -3,6 +3,8 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assertMigrationLedger,
+  historicalMigrationAliases,
   loadMigrations,
   loadSchemaPatches,
   migrationBody,
@@ -61,6 +63,31 @@ test("the current source chain is contiguous and preserves schema-48 adoption", 
   assert.match(
     repository,
     /applied_schema_version\) !== expectedSchemaVersion/,
+  );
+});
+
+test("schema 131 accepts only the exact private-line predecessor during convergence", async () => {
+  const migrations = await loadMigrations(migrationsDirectory);
+  assert.equal(
+    migrations[130].filename,
+    "0131_cimmich_owned_organisation_v1.sql",
+  );
+  const [privateLine] = historicalMigrationAliases.get(131);
+  const applied = migrations.slice(0, 131).map((migration) => ({
+    checksum_sha256: migration.checksum,
+    filename: migration.filename,
+    version: migration.version,
+  }));
+  applied[130] = {
+    checksum_sha256: privateLine.checksum,
+    filename: privateLine.filename,
+    version: 131,
+  };
+  assert.doesNotThrow(() => assertMigrationLedger(applied, migrations));
+  applied[130] = { ...applied[130], checksum_sha256: "0".repeat(64) };
+  assert.throws(
+    () => assertMigrationLedger(applied, migrations),
+    (error) => error.code === "MIGRATION_CHECKSUM_MISMATCH",
   );
 });
 
@@ -1209,16 +1236,19 @@ test("schema 130 persists owner-visible identity audit truncation counts", async
   assert.match(source, /truncation_projection_complete/);
 });
 
-test("schema 131 retires stale SourcePack proposals at the database boundary", async () => {
+test("schema 142 converges public organisation and private SourcePack history", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(
       new URL(
-        "../../migrations/0131_source_pack_candidate_freshness_v1.sql",
+        "../../migrations/0142_public_private_schema_convergence_v1.sql",
         import.meta.url,
       ),
       "utf8",
     ),
   );
+  assert.match(source, /ADD COLUMN IF NOT EXISTS label_kind/);
+  assert.match(source, /organization_decision_id/);
+  assert.match(source, /legacy_immich_album_id/);
   assert.match(source, /source_pack_retires_candidates/);
   assert.match(source, /identity_candidate_source_pack_freshness/);
   assert.match(source, /FOR SHARE/);

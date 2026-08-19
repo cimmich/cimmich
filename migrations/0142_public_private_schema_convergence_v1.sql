@@ -1,5 +1,65 @@
 BEGIN;
 
+-- Public Preview 12 and the private production line independently used schema
+-- version 131. Reconcile both exact historical ledgers into one schema. Every
+-- operation is replay-safe because either predecessor may already be present.
+
+ALTER TABLE asset_label
+  ADD COLUMN IF NOT EXISTS label_kind text NOT NULL DEFAULT 'label' CHECK (
+    label_kind IN ('label','collection','favorite','archive')
+  );
+
+ALTER TABLE asset_label
+  DROP CONSTRAINT IF EXISTS asset_label_normalized_name_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS asset_label_kind_normalized_name_unique
+  ON asset_label(label_kind, normalized_name);
+
+CREATE UNIQUE INDEX IF NOT EXISTS asset_label_one_favorite_kind
+  ON asset_label(label_kind)
+  WHERE label_kind = 'favorite' AND status = 'active';
+
+CREATE UNIQUE INDEX IF NOT EXISTS asset_label_one_archive_kind
+  ON asset_label(label_kind)
+  WHERE label_kind = 'archive' AND status = 'active';
+
+INSERT INTO asset_label (
+  label_id, display_name, normalized_name, label_kind,
+  created_by_actor_id, privacy_class
+) VALUES
+  (
+    'label_00000000000000000000000000000001', 'Favourite',
+    '__cimmich_system_favorite__', 'favorite', 'system:migration-0142',
+    'private'
+  ),
+  (
+    'label_00000000000000000000000000000002', 'Archived',
+    '__cimmich_system_archive__', 'archive', 'system:migration-0142',
+    'private'
+  )
+ON CONFLICT DO NOTHING;
+
+ALTER TABLE bulk_album_operation_checkpoint
+  ADD COLUMN IF NOT EXISTS organization_decision_id text
+    REFERENCES asset_label_decision(decision_id),
+  ADD COLUMN IF NOT EXISTS legacy_immich_album_id text;
+
+UPDATE bulk_album_operation_checkpoint
+SET legacy_immich_album_id = album_id
+WHERE state = 'applied' AND legacy_immich_album_id IS NULL;
+
+UPDATE bulk_album_operation
+SET state = 'kept', completed_at = coalesce(completed_at, now()),
+  updated_at = now()
+WHERE state IN ('applying','applied','partial','undoing');
+
+COMMENT ON COLUMN asset_label.label_kind IS
+  'Cimmich-owned organisation kind. Collections, favourite state and archive state never mutate Immich.';
+COMMENT ON COLUMN bulk_album_operation_checkpoint.organization_decision_id IS
+  'Exact Cimmich asset-label decision used by collection Undo after schema 131.';
+COMMENT ON COLUMN bulk_album_operation_checkpoint.legacy_immich_album_id IS
+  'Preserved identifier from a pre-131 Immich album receipt. Cimmich never writes through it.';
+
 INSERT INTO producer_receipt (
   producer_receipt_id, producer_kind, producer_name, producer_version,
   started_at, completed_at, result_digest, privacy_class
@@ -12,9 +72,6 @@ INSERT INTO producer_receipt (
   completed_at = excluded.completed_at,
   result_digest = excluded.result_digest;
 
--- A machine proposal is current only while the exact evaluated SourcePack
--- that produced it remains active. Preserve the proposal as superseded audit
--- history; never leave it actionable after its evidence generation retires.
 CREATE OR REPLACE FUNCTION cimmich_supersede_source_pack_candidates(
   p_pack_id text
 ) RETURNS integer
@@ -93,10 +150,6 @@ AFTER UPDATE OF state, evaluation_status, evaluation_summary OR DELETE ON source
 FOR EACH ROW
 EXECUTE FUNCTION cimmich_retire_source_pack_candidates();
 
--- Serialize candidate creation with SourcePack retirement. FOR SHARE permits
--- concurrent candidate writers but conflicts with the pack state update, so a
--- writer either commits before retirement and is swept or observes retirement
--- and is rejected.
 CREATE OR REPLACE FUNCTION cimmich_enforce_candidate_source_pack_freshness()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -144,8 +197,6 @@ BEFORE INSERT OR UPDATE OF state, origin, evidence_refs ON identity_claim
 FOR EACH ROW
 EXECUTE FUNCTION cimmich_enforce_candidate_source_pack_freshness();
 
--- Repair all pre-existing prime-match candidates whose pack is inactive or
--- absent. The decisions above preserve full append-only review history.
 SELECT cimmich_supersede_source_pack_candidates(stale.pack_id)
 FROM (
   SELECT DISTINCT nullif(claim.evidence_refs->>'source_pack_id', '') AS pack_id

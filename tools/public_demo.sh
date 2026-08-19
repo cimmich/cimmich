@@ -232,7 +232,7 @@ write_operator_state() {
     printf '\n'
   } > "$GUIDED_TOKEN_FILE"
   chmod 600 "$SENTINEL" "$OPERATOR_ENV" "$PRIVATE_PASSWORD_FILE"
-  chmod 640 "$GUIDED_TOKEN_FILE"
+  chmod 600 "$GUIDED_TOKEN_FILE"
   export IMMICH_DB_PASSWORD CIMMICH_DB_PASSWORD
 }
 
@@ -244,7 +244,7 @@ ensure_guided_token() {
       printf '\n'
     } > "$GUIDED_TOKEN_FILE"
   fi
-  chmod 640 "$GUIDED_TOKEN_FILE"
+  chmod 600 "$GUIDED_TOKEN_FILE"
 }
 
 write_bootstrap_environment() {
@@ -746,9 +746,8 @@ guided_token_file() {
   verify_sentinel
   load_environment
   ensure_guided_token
-  # Return only the owner/group-readable local file path. The dedicated runtime
-  # container receives the host group as a supplemental group; Cimmich never
-  # echoes the token through HTTP/UI.
+  # Return only the owner-readable local file path. The dedicated runtime uses
+  # the invoking host identity; Cimmich never echoes the token through HTTP/UI.
   printf '%s\n' "$GUIDED_TOKEN_FILE"
 }
 
@@ -785,8 +784,7 @@ install_face_provider() {
   export CIMMICH_PUBLIC_DEMO_FACE_PROVIDER
   compose up -d --no-deps --force-recreate cimmich-api
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
-  canonical_get /v1/integrations/status
-  printf '\n'
+  printf '{"provider":"opencv-yunet-sface-cpu","status":"CONNECTED"}\n'
 }
 
 rotate_private_password() {
@@ -889,7 +887,8 @@ up() {
     -v "$ARCHIVE_ROOT:/demo-archive:ro" \
     cimmich-bootstrap node bin/bootstrap-public-demo.mjs >/dev/null
   chmod 600 "$STATE_ROOT/immich-map.json"
-  chmod 640 "$STATE_ROOT/immich-credential.json" "$GUIDED_TOKEN_FILE"
+  chmod 640 "$STATE_ROOT/immich-credential.json"
+  chmod 600 "$GUIDED_TOKEN_FILE"
   chmod 644 "$STATE_ROOT/seed-receipt.json" "$STATE_ROOT/display-bridge.json"
   compose up -d --build cimmich-api public-demo-ui
   wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120

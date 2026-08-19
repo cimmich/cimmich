@@ -1,5 +1,6 @@
 import type {
   CimmichPersonAssetAssociationFilter,
+  CimmichPersonAsset,
   CimmichPersonAssetPage,
   CimmichVisibilityTier,
 } from './cimmich.service';
@@ -78,5 +79,17 @@ export const createCimmichExploreClient = (request: Request, coalesce: Coalesce)
       search.set('future', '1');
     }
     return request<CimmichPersonAssetPage>(`/v1/people/${encodeURIComponent(personId)}/assets?${search.toString()}`);
+  },
+  async getPersonAssets(personId: string, limit = 5000) {
+    const result = await request<{ items: CimmichPersonAsset[] }>(
+      `/v1/people/${encodeURIComponent(personId)}/assets?limit=${Math.max(1, Math.min(5000, limit))}`,
+    );
+    return result.items;
+  },
+  async getPersonAssetNeighbors(personId: string, sourceAssetId: string) {
+    const result = await request<{ items: CimmichPersonAsset[] }>(
+      `/v1/people/${encodeURIComponent(personId)}/assets?neighborOf=${encodeURIComponent(sourceAssetId)}`,
+    );
+    return result.items;
   },
 });

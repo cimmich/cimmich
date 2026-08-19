@@ -7,9 +7,9 @@ updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
 > This guide follows the **current development source**. The latest named
-> public release is **Community Preview 9** for exact Immich 3.1.0. Features
-> marked **Source current** were completed after Preview 9 and are not a promise
-> that they exist in that release. Always install a named release rather than
+> public candidate is **Community Preview 13** for exact Immich 3.1.0. Features
+> marked **Source current** are included in this candidate but remain preview
+> capabilities. Always install a named release rather than
 > an arbitrary source snapshot.
 
 ## The product in one sentence
@@ -192,7 +192,7 @@ the imported text and save when ready. Beneath every option, the separate
 **OCR** section shows Immich's existing extracted text in reading order without
 starting another scan. See [Photo summaries](SUMMARIES.md).
 
-### File location and duplicate badges — Source current
+### File location and duplicate badges - Source current
 
 Ordinary Cimmich photo cards and the viewer can show two distinct badges:
 
@@ -228,10 +228,10 @@ that Person appears.
 
 The top-level views are:
 
-- **People** — current named identities;
-- **Suggestions** — People with matching work waiting;
-- **Possible people** — recurring unnamed groups worth investigating; and
-- **Needs attention** — identities deliberately marked for sorting or review.
+- **People** - current named identities;
+- **Suggestions** - People with matching work waiting;
+- **Possible people** - recurring unnamed groups worth investigating; and
+- **Needs attention** - identities deliberately marked for sorting or review.
 
 You can search, sort by name or photo count, set a minimum photo count, filter
 by relationship category and combine exact visibility, Tag, Label, Place,
@@ -242,17 +242,17 @@ that attention is needed, but does not lock the Person or disable matching.
 
 A Person page provides several jobs without flattening them into one gallery:
 
-- **Photos** — all currently visible accepted appearances, with Face, Body and
+- **Photos** - all currently visible accepted appearances, with Face, Body and
   Needs-check filters, ordinary selection actions and Year/Month/Week/Day
   grouping in current source;
-- **Story** — the Person's owner-written profile and visual narrative;
-- **Identity** — coverage, identity evidence, appearance evidence, review
+- **Story** - the Person's owner-written profile and visual narrative;
+- **Identity** - coverage, identity evidence, appearance evidence, review
   checks and display-photo choices;
-- **With** — accepted same-photo People plus explicit and shared-context
+- **With** - accepted same-photo People plus explicit and shared-context
   connections;
-- **Places** — linked location context;
-- **Signals** — descriptive supporting information; and
-- **Maintenance** — names, category, subject type, merge and split operations.
+- **Places** - linked location context;
+- **Signals** - descriptive supporting information; and
+- **Maintenance** - names, category, subject type, merge and split operations.
 
 Recorded/display name editing is owner-controlled. It can preserve former names
 as aliases, refuses ambiguous collisions and does not rename unrelated Immich
@@ -296,7 +296,7 @@ decisions.
 Matching scores and nearest examples explain why an item reached review. They
 do not override the photo, the region or the owner's decision.
 
-### Refresh matches — Source current
+### Refresh matches - Source current
 
 **Refresh matches** rechecks the normal pool for that Person using the current
 qualified matching information. Before starting heavier work, it asks whether
@@ -310,7 +310,7 @@ refresh does not scan every Head or every mistag in the archive, and it does
 not accept a result automatically. A result that now matches returns to the
 normal sorting pile for that Person.
 
-### Split and Smart Split — Source current
+### Split and Smart Split - Source current
 
 Use **Split** when one Person record contains more than one real identity. You
 can select shown Faces and move up to the displayed batch limit into an
@@ -350,13 +350,13 @@ connections, Documents and owner-selected Face/Hero presentation media. You
 can search, sort, edit, change presentation crops, attach/detach media and undo
 supported decisions.
 
-### Unknown and Ignored review — Source current
+### Unknown and Ignored review - Source current
 
 The Pets directory has three sibling views:
 
-- **Pets** — named profiles;
-- **Unknown** — unassigned animal observations needing a decision; and
-- **Ignored** — observations deliberately put aside, where they remain visible
+- **Pets** - named profiles;
+- **Unknown** - unassigned animal observations needing a decision; and
+- **Ignored** - observations deliberately put aside, where they remain visible
   and reversible.
 
 For one or several selected Unknown items:
@@ -499,9 +499,9 @@ library-wide duplicate pass.
 
 Similarity groups are classified as:
 
-- **Different files** — complete hashes prove the files are not exact copies;
-- **Exact copies** — complete hashes agree inside a similarity group; or
-- **Needs verification** — at least one file lacks enough byte proof.
+- **Different files** - complete hashes prove the files are not exact copies;
+- **Exact copies** - complete hashes agree inside a similarity group; or
+- **Needs verification** - at least one file lacks enough byte proof.
 
 The comparison explains dimensions, file size, dates, metadata and Cimmich
 evidence. A probable version can be a resize, edit, export or merely a strong

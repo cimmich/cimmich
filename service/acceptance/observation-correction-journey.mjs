@@ -17,8 +17,41 @@ const repository = createCimmichRepository(sql, bridge, {
   currentRank: () => 2,
 });
 const actorId = "observation-correction-acceptance";
+let insertedProjection = false;
 
 try {
+  const [existingProjection] = await sql`
+    SELECT 1 FROM immich_asset_projection
+    WHERE cimmich_asset_id = 'asset_identity_fixture'
+      AND immich_asset_id = 'source-identity-fixture'
+      AND state = 'active'
+    LIMIT 1
+  `;
+  if (!existingProjection) {
+    const [run] = await sql`
+      SELECT run_id FROM immich_inventory_run
+      WHERE source_id = 'synthetic-immich-primary' AND state = 'completed'
+      ORDER BY completed_at DESC, run_id DESC LIMIT 1
+    `;
+    assert.ok(run);
+    await sql`
+      INSERT INTO immich_asset_projection (
+        source_id, immich_asset_id, cimmich_asset_id, owner_digest,
+        input_revision, checksum, asset_type, visibility, original_mime_type,
+        capture_time, source_updated_at, width, height, duration_seconds,
+        is_archived, is_favorite, is_offline, is_trashed, state,
+        first_seen_run_id, last_seen_run_id, original_file_name
+      )
+      SELECT 'synthetic-immich-primary', 'source-identity-fixture', asset.asset_id,
+        ${"a".repeat(64)}, ${"b".repeat(64)}, 'observation-correction-checksum',
+        'image', 'timeline', asset.mime_type, asset.capture_time, now(),
+        asset.width, asset.height, asset.duration_seconds,
+        false, false, false, false, 'active', ${run.run_id}, ${run.run_id},
+        'synthetic-identity.jpg'
+      FROM asset WHERE asset.asset_id = 'asset_identity_fixture'
+    `;
+    insertedProjection = true;
+  }
   await sql`
     INSERT INTO face_observation (
       face_id, asset_id, box_x, box_y, box_w, box_h, detection_confidence,
@@ -249,5 +282,12 @@ try {
     }),
   );
 } finally {
+  if (insertedProjection) {
+    await sql`
+      DELETE FROM immich_asset_projection
+      WHERE source_id = 'synthetic-immich-primary'
+        AND immich_asset_id = 'source-identity-fixture'
+    `;
+  }
   await sql.end({ timeout: 5 });
 }

@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 141. Schema 76 adds
+patch level 1. Current post-submission source is schema 142. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -249,8 +249,8 @@ an intersecting neighbour while contradicting their own canonical Face. It does
 not change accepted identity truth or source media.
 Schema 136 extends accepted-tag review with a second, explicitly typed evidence
 route. When no different Person wins, the Mac-local scorer compares the Face
-with every other confirmed Face for its current Person—including lower-quality
-accepted evidence—and queues only strict lower-tail outliers with sufficient
+with every other confirmed Face for its current Person - including lower-quality
+accepted evidence - and queues only strict lower-tail outliers with sufficient
 support. The result remains review-only and cannot rename or accept identity.
 Schemas 49–54 add
 typed manual Face/Body/Presence truth, validated manual-recognition intake,
@@ -306,8 +306,8 @@ JSON with the intended 4xx/5xx status.
 
 `GET|POST|DELETE /v1/visibility/credential` lets the signed-in owner set, reset
 or remove the Private presentation password from Settings. Reset takes no
-previous password by design — Immich owns account access, so a forgotten screen
-filter must not become an unrecoverable lockout — and any change drops live
+previous password by design - Immich owns account access, so a forgotten screen
+filter must not become an unrecoverable lockout - and any change drops live
 Private sessions. It is owner-only: a Guided credential is refused with
 `VISIBILITY_CREDENTIAL_FORBIDDEN`. This is the only `DELETE` route, and browser
 preflight advertises it accordingly.

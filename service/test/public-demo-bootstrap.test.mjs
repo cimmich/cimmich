@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   buildPublicDemoPlan,
+  captureTimeFor,
   digest,
   parseCsv,
   publicDemoExternalFolderForAsset,
@@ -158,8 +159,9 @@ test("public demo External Library has stable, human-readable nested folders", (
   );
   assert.equal(
     publicDemoExternalFolderForAsset("CHA-051"),
-    "Bluewater Weekend/2025/October",
+    "Bluewater Weekend/2022/July",
   );
+  assert.match(captureTimeFor(51), /^2022-07-17T/);
 });
 
 test("public demo plan binds exactly 51 accepted assets and all product sections", () => {
@@ -296,19 +298,20 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(source, /compose build cimmich-api public-demo-ui/);
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_UID="\$\(id -u\)"/);
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_GID="\$\(id -g\)"/);
-  assert.match(
-    compose,
-    /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+  assert.equal(
+    compose.match(
+      /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/g,
+    )?.length,
+    2,
   );
   assert.match(
     compose,
-    /group_add:\n\s+- \$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/,
+    /chown \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\} \/documents/,
   );
-  assert.match(source, /chmod 640 "\$GUIDED_TOKEN_FILE"/);
-  assert.match(
-    source,
-    /chmod 640 "\$STATE_ROOT\/immich-credential\.json" "\$GUIDED_TOKEN_FILE"/,
-  );
+  assert.doesNotMatch(compose, /group_add:/);
+  assert.match(source, /chmod 600 "\$GUIDED_TOKEN_FILE"/);
+  assert.doesNotMatch(source, /chmod 640 "\$GUIDED_TOKEN_FILE"/);
+  assert.match(source, /chmod 640 "\$STATE_ROOT\/immich-credential\.json"/);
   assert.match(source, /destroy\)/);
   assert.match(source, /compose down --volumes --remove-orphans/);
   assert.match(source, /preflight_backup_databases/);

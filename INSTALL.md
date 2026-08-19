@@ -1,8 +1,9 @@
 # Install and operate Cimmich
 
 Cimmich runs beside Immich in its own Docker project. It keeps a separate
-database, configuration, document store and backups; it does not replace
-Immich, write the Immich database or modify original media.
+database, configuration, document store and backups. It does not replace or
+write Immich, including albums, memberships, tags, asset metadata and original
+media.
 
 The checked-in installer is the supported end-to-end path. It creates the
 private runtime configuration that the backup, restore, diagnostic and removal
@@ -12,7 +13,7 @@ complete lifecycle.
 
 ## Before you begin
 
-Community Preview 9 requires:
+Community Preview 13 requires:
 
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
@@ -174,6 +175,9 @@ Create the key in your normal Immich web interface:
 Immich may group or slightly rename permissions. Cimmich tests the exact read
 operations before import and names a missing permission without echoing the
 key.
+
+Cimmich organisation is stored only in Cimmich. Collections, tags, favourites,
+archive choices and their Undo history do not require an Immich write scope.
 
 ## 5. Connect and preview the library
 
@@ -421,7 +425,7 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 9 supports exact Immich 3.1.0. Do not bypass the preflight or
+Community Preview 13 supports exact Immich 3.1.0. Do not bypass the preflight or
 edit the claimed version. Use the supported Immich version or wait for a named
 Cimmich release that explicitly adds yours.
 

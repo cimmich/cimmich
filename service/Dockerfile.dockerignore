@@ -31,6 +31,8 @@
 !providers/perceptual-dhash/*.json
 !providers/perceptual-dhash/*.md
 !providers/perceptual-dhash/requirements.txt
+!providers/source-pack-numpy/
+!providers/source-pack-numpy/*.py
 !providers/apple-vision-summary/
 !providers/apple-vision-summary/README.md
 !providers/apple-vision-summary/provider

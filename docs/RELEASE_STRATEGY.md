@@ -31,8 +31,8 @@ Development does not stop after submission:
 - publish later maintained-product milestones as new named releases with their
   own exact commits, artifacts and verification.
 
-The current maintained release is `v1.1.0-community-preview.9` on schema
-130/patch 1. Later preview numbers must never move or replace an existing tag.
+The current maintained candidate is `v1.1.0-community-preview.13` on schema
+142/patch 1. Later preview numbers must never move or replace an existing tag.
 A stable release comes only after the installation, compatibility, usability
 and real-library boundaries are strong enough for wider promotion.
 
@@ -71,7 +71,7 @@ but they are not the documented beginner download.
 claim that inherited Immich/Rimmich work was created during the competition.
 The [Build Week evidence index](BUILD_WEEK_EVIDENCE.md) records that boundary.
 
-`v1.1.0-community-preview.9` means the exact current self-contained Community
+`v1.1.0-community-preview.13` means the exact current self-contained Community
 Preview. It does not replace or revise the submitted edition. Its named tar,
 ZIP and checksum assets remain bound to that tag while `main` continues through
 reviewed pull requests.

@@ -4,7 +4,88 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.9 — Photo navigation and matching continuity
+## v1.1.0-community-preview.13: One current product line
+
+- Public `main` and the private production deployment now use the same product
+  source. Deployment defaults, local configuration and owner data remain
+  external to the shared code.
+- Person Checks includes a visible `Refresh matches` action that reruns the
+  normal bounded matcher for that Person after owner corrections.
+- Smart Search now treats accepted photo-level Person evidence as presence.
+  A Person connection to an Event, Place or Thing no longer makes every photo
+  in that context appear to contain the Person.
+- Archive Health now shares one compact command bar across Exact copies,
+  Possible duplicates, Folder check, Rotation review and Backup check. Expensive
+  categories and detailed evidence load only when selected.
+- Folder check ranks high-impact folders, compares aligned copies, exposes full
+  paths and metadata differences, and recommends a review candidate without
+  granting deletion authority.
+- Rotation review uses Immich visual leads with fitted magnification, bounded
+  backlog counts, immediate progression and explicit confirm actions.
+- Backup check separates Photos from the Cimmich database. Database policy,
+  retention, checksummed PostgreSQL artifacts and latest-backup verification
+  remain owner-configured and require an independent destination.
+- Standard, Smart, Enhanced and Custom summaries keep accepted Cimmich facts
+  authoritative. Optional local providers remain off by default in the public
+  configuration.
+- Production API images include the local SourcePack refit scorer. Release
+  acceptance now rebuilds and activates a bounded candidate pack before it
+  verifies matching, restart persistence and provider disablement.
+- Schema 142 safely converges the exact public Preview 12 schema-131 history
+  and the exact private schema-131 history, then preserves both feature sets.
+  Compatibility remains exact Immich 3.1.0.
+
+## v1.1.0-community-preview.12: Read-only Immich boundary and matching continuity
+
+- Cimmich organisation writes only to Cimmich-owned state. Folder manifests
+  create collections, and bulk or selected-photo tags, favourites and archive
+  choices use append-only Cimmich decisions with exact Undo. No Cimmich path
+  mutates Immich albums, memberships, tags or asset metadata.
+- Schema 131 adds first-class collection, favourite and archive organisation
+  kinds. Pre-131 browser Undo receipts are rejected so they cannot replay an
+  old Immich mutation; existing Immich data is left untouched.
+- Opening `/cimmich` or `/cimmich/` in the isolated public demo reaches the
+  Cimmich application directly instead of colliding with its asset folder.
+- Newly eligible Faces take priority over a held or pending reference pack.
+  Switching to a wider viewing mode therefore offers missing analysis before
+  SourcePack review or rebuilding continues.
+- The public demo face-provider installer exits successfully after its
+  checksum-verified model install, API restart and health check.
+- Public demo Guided tokens use owner-only `0600` permissions, and the API uses
+  the invoking host identity without widening access.
+- People distinguishes directory membership from photos visible in the current
+  viewing mode. Stale review hints appear as a check in progress.
+
+## v1.1.0-community-preview.11: Clearer People and Archive Health review
+
+- The People directory keeps its title, result count, review modes, search,
+  sort, filters and grid size in one compact top bar. The obsolete Identity
+  checks overlay link is removed.
+- People and Explore controls provide useful tooltips. Explore calls its
+  privacy filter Privacy bucket and removes ambiguous empty-scope copy.
+- Folder Check opens with the selected folder, path and essential actions in
+  one compact command bar, with results immediately below it.
+- Duplicate copies align horizontally with balanced previews. Full paths,
+  exact bytes, resolution, capture and modified times, location, camera and
+  secondary Immich metadata make each difference inspectable.
+- Folder overlaps are capped initially, possible duplicate groups load in
+  small batches, and detailed evidence loads only for the selected comparison.
+
+## v1.1.0-community-preview.10: Demand-loaded Archive Health checks
+
+- Archive Health is a first-class navigation destination for exact copies,
+  possible duplicates, Folder Check and independent backup status.
+- Folder Check ranks folders by duplicate impact, compares one selected folder
+  with the rest of the archive, and separates shared, internal-only and
+  currently unmatched files.
+- The backup checker scans one configured independent destination read-only and
+  reports exact matches, changed files, archive-only files and backup-only
+  files. It refuses arbitrary paths and symlinks.
+- Archive Health categories load only when selected. Folder ranking creates one
+  cached native duplicate index, and selecting a folder scopes detailed source
+  evidence instead of rerunning every category.
+
+## v1.1.0-community-preview.9: Photo navigation and matching continuity
 
 - The exact Cimmich photo viewer again moves through its projected collection
   with previous/next controls, pointer input and Left/Right arrow keys while
@@ -21,7 +102,7 @@ for OpenAI Build Week.
   Local AI surface accumulated after Preview 8.
 - Compatibility remains exact Immich 3.1.0; the release schema is 130/patch 1.
 
-## v1.1.0-community-preview.8 — Photo privacy and portable operations
+## v1.1.0-community-preview.8: Photo privacy and portable operations
 
 - Standard and Personal now exclude higher-ranked photos before inherited
   Folder/gallery thumbnails, Timeline buckets, direct photo/video renderers,
@@ -41,7 +122,7 @@ for OpenAI Build Week.
   filters.
 - Schema remains 128/patch 1 and compatibility remains exact Immich 3.1.0.
 
-## v1.1.0-community-preview.7 — Faster review and archive organisation
+## v1.1.0-community-preview.7 - Faster review and archive organisation
 
 - People and Person share URL-backed filters for exact privacy, Cimmich-owned
   tags and labels, Places, Events and Things. Protected results remain behind
@@ -63,7 +144,7 @@ for OpenAI Build Week.
 - Schema 128/patch 1, exact Immich 3.1.0, the source-readonly boundary and the
   immutable Build Week release remain explicit.
 
-## v1.1.0-community-preview.6 — Self-contained public installation
+## v1.1.0-community-preview.6 - Self-contained public installation
 
 - The ordinary Compose and guarded-installer paths now build the API and UI
   from the exact checked-in Dockerfiles. A newcomer no longer depends on
@@ -77,7 +158,7 @@ for OpenAI Build Week.
 - Product behavior, database schema, exact Immich 3.1.0 compatibility and the
   immutable Build Week evidence remain unchanged.
 
-## v1.1.0-community-preview.5 — Unpublished operability candidate
+## v1.1.0-community-preview.5 - Unpublished operability candidate
 
 - Five real-browser journeys cover fictional-demo start, photo navigation,
   pointer use of the Viewing mode menu, all four Organise modes and true
@@ -104,7 +185,7 @@ for OpenAI Build Week.
   claimed Immich model defect.
 - Database schema and exact Immich compatibility remain unchanged.
 
-## v1.1.0-community-preview.4 — Repository trust and conventional installation
+## v1.1.0-community-preview.4 - Repository trust and conventional installation
 
 - The production Docker Compose definition now lives at root `compose.yaml`;
   experienced operators can inspect, render and start it without running a
@@ -123,7 +204,7 @@ for OpenAI Build Week.
 - Database schema, stored data, source-media boundaries and exact Immich
   compatibility are unchanged.
 
-## v1.1.0-community-preview.3 — Projected-photo viewer repair
+## v1.1.0-community-preview.3 - Projected-photo viewer repair
 
 This hotfix prevents the photo viewer from entering a Svelte reactive loop
 when it opens a photo from a Cimmich Person, Pet or other projected collection.
@@ -133,7 +214,7 @@ of subscribing the route loader to the state it writes. Preview `.2` remains
 immutable and is superseded by this release. The Build Week release remains
 unchanged.
 
-## v1.1.0-community-preview.2 — Filming-findings repair
+## v1.1.0-community-preview.2 - Filming-findings repair
 
 This repair release closes ten product problems exposed while recording the
 Community Preview walkthrough without changing the schema or supported Immich
@@ -156,7 +237,7 @@ version.
   cross-platform outside-root fixture instead of a macOS-only path.
 - The immutable Build Week release and Community Preview `.1` remain unchanged.
 
-## v1.1.0-community-preview.1 — Complete memory companion preview
+## v1.1.0-community-preview.1 - Complete memory companion preview
 
 This bounded Community Preview advances the maintained product from identity
 review into a complete local memory companion for exact Immich 3.1.0.
@@ -173,7 +254,7 @@ review into a complete local memory companion for exact Immich 3.1.0.
 - The release is intentionally bounded to macOS/Linux, single-owner local use,
   English-first UI and exactly Immich 3.1.0.
 
-## v1.0.1-beta.6 — People review, real matching operations and Pets
+## v1.0.1-beta.6 - People review, real matching operations and Pets
 
 This is a substantial public-beta update focused on making the product's
 identity machinery understandable and operable by an archive owner.

@@ -9,23 +9,23 @@ the operator supplies compatible local model files.
 
 The owner can request:
 
-- **Upscale · Quick** — a full-source 2x Lanczos resize with conservative
+- **Upscale · Quick** - a full-source 2x Lanczos resize with conservative
   sharpening; it is the fast, non-generative option;
-- **Upscale · Best** — a full-source 2x Real-ESRGAN reconstruction, processed
+- **Upscale · Best** - a full-source 2x Real-ESRGAN reconstruction, processed
   in bounded tiles with live progress;
-- **Look for missed Faces** — a fresh detector pass compared with Cimmich's
+- **Look for missed Faces** - a fresh detector pass compared with Cimmich's
   saved Face boxes;
-- **Look for missed Bodies** — available only with a separately configured
+- **Look for missed Bodies** - available only with a separately configured
   Body provider;
-- **Inspect Body pose** — an exactly-one-photo COCO17 skeleton review that
+- **Inspect Body pose** - an exactly-one-photo COCO17 skeleton review that
   requires both the Body and pose providers;
-- **Add Context** — available only for a small multi-photo set with that Body
+- **Add Context** - available only for a small multi-photo set with that Body
   provider; and
-- **Read Scene & Text** — available only with a separately configured
+- **Read Scene & Text** - available only with a separately configured
   loopback-only vision model;
-- **Summary · Smart** — a fast local visual-fact pass committed to the private,
+- **Summary · Smart** - a fast local visual-fact pass committed to the private,
   revision-bound summary projection; and
-- **Summary · Enhanced** — the heavier initial visual-fact pass, expected to
+- **Summary · Enhanced** - the heavier initial visual-fact pass, expected to
   use a separately configured stronger profile.
 
 Unavailable operations remain visible and explain the missing capability. A
@@ -186,11 +186,11 @@ they share the pinned CPU runtime.
 
 The canonical owner API provides:
 
-- `GET /v1/local-ai` — capabilities and limits;
-- `POST /v1/local-ai/jobs` — start one bounded review run;
-- `GET /v1/local-ai/jobs/:jobId` — poll progress/result;
-- `DELETE /v1/local-ai/jobs/:jobId` — cancel; and
-- `GET /v1/local-ai/jobs/:jobId/artifacts/:token` — verified derived image.
+- `GET /v1/local-ai` - capabilities and limits;
+- `POST /v1/local-ai/jobs` - start one bounded review run;
+- `GET /v1/local-ai/jobs/:jobId` - poll progress/result;
+- `DELETE /v1/local-ai/jobs/:jobId` - cancel; and
+- `GET /v1/local-ai/jobs/:jobId/artifacts/:token` - verified derived image.
 
 These routes are absent from the Guided listener. The same-origin gateway and
 durably bound Immich owner session remain the authentication perimeter.

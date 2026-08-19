@@ -31,13 +31,13 @@ describe('photo summary compiler', () => {
   it('exposes cleaned OCR readings in visual reading order for the Summary panel', () => {
     expect(
       compileCimmichOcrReadings([
-        { text: 'Palace', x1: 80, x2: 90, x3: 90, x4: 80, y1: 60, y2: 60, y3: 70, y4: 70 },
-        { text: 'ThePinkPalace.com', x1: 10, x2: 70, x3: 70, x4: 10, y1: 60, y2: 60, y3: 70, y4: 70 },
+        { text: 'Cafe', x1: 80, x2: 90, x3: 90, x4: 80, y1: 60, y2: 60, y3: 70, y4: 70 },
+        { text: 'HarbourCafe.example', x1: 10, x2: 70, x3: 70, x4: 10, y1: 60, y2: 60, y3: 70, y4: 70 },
         { text: '.', x1: 0, x2: 1, x3: 1, x4: 0, y1: 0, y2: 0, y3: 1, y4: 1 },
         { text: 'WELCOME', x1: 20, x2: 60, x3: 60, x4: 20, y1: 20, y2: 20, y3: 30, y4: 30 },
         { text: 'welcome', x1: 20, x2: 60, x3: 60, x4: 20, y1: 40, y2: 40, y3: 50, y4: 50 },
       ] as never),
-    ).toEqual(['WELCOME', 'ThePinkPalace.com']);
+    ).toEqual(['WELCOME', 'HarbourCafe.example']);
   });
 
   it('rebuilds Standard from current owner-approved facts and OCR', () => {
@@ -54,17 +54,17 @@ describe('photo summary compiler', () => {
     const text = compileCimmichStandardSummary({
       asset: {
         exifInfo: {
-          city: 'Káto Garoúna',
-          country: 'Greece',
+          city: 'Seabreeze',
+          country: 'Exampleland',
           dateTimeOriginal: '2025-12-24T12:35:23Z',
-          state: 'Ionian Islands',
+          state: 'Coastal State',
         },
       } as never,
       evidence: {
         bodies: [{ display_name: null, person_id: null }],
         contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
         faces: [
-          { display_name: 'Benji Hart', rejected_identity_claim_id: null, review_disposition: 'active' },
+          { display_name: 'Alex Morgan', rejected_identity_claim_id: null, review_disposition: 'active' },
           { display_name: null, rejected_identity_claim_id: null, review_disposition: 'active' },
         ],
         presence: [],
@@ -72,7 +72,7 @@ describe('photo summary compiler', () => {
       ocr: [],
     });
     expect(text).toBe(
-      'Benji Hart is pictured with an ATV in Káto Garoúna, Ionian Islands, Greece on December 24, 2025.',
+      'Alex Morgan is pictured with an ATV in Seabreeze, Coastal State, Exampleland on December 24, 2025.',
     );
     expect(text).not.toMatch(/review|missing|needs/i);
   });
@@ -95,15 +95,9 @@ describe('photo summary compiler', () => {
     const text = compileCimmichStandardSummary({
       asset: { exifInfo: {} } as never,
       evidence: { bodies: [], contexts: [], faces: [], presence: [] } as never,
-      ocr: [
-        { text: 'The' },
-        { text: 'pink' },
-        { text: 'Palace' },
-        { text: 'CORFU GREECE' },
-        { text: 'ThePinkPalace.com' },
-      ] as never,
+      ocr: [{ text: 'COASTAL' }, { text: 'Cafe' }, { text: 'COASTAL CAFE' }, { text: 'HarbourCafe.example' }] as never,
     });
-    expect(text).toBe('Visible text includes “CORFU GREECE”, “ThePinkPalace.com”.');
+    expect(text).toBe('Visible text includes “COASTAL CAFE”, “HarbourCafe.example”.');
   });
 
   it('adds current names to stored visual facts without mutating the model record', () => {
@@ -171,16 +165,16 @@ describe('photo summary compiler', () => {
       analysis,
       asset: {
         exifInfo: {
-          city: 'Káto Garoúna',
-          country: 'Greece',
+          city: 'Seabreeze',
+          country: 'Exampleland',
           dateTimeOriginal: '2025-12-24T12:35:23Z',
-          state: 'Ionian Islands',
+          state: 'Coastal State',
         },
       } as never,
       evidence: {
         bodies: [
-          { display_name: 'Benji Hart', person_id: 'person-benji' },
-          { display_name: 'Jani - Hup', person_id: 'person-jani' },
+          { display_name: 'Alex Morgan', person_id: 'person-alex' },
+          { display_name: 'Priya Shah', person_id: 'person-priya' },
         ],
         contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
         faces: [],
@@ -189,7 +183,7 @@ describe('photo summary compiler', () => {
       ocr: [],
     });
     expect(text).toBe(
-      'Benji Hart and Jani - Hup are outdoors with an ATV under a blue sky in Káto Garoúna, Ionian Islands, Greece on December 24, 2025. A helmet is also visible.',
+      'Alex Morgan and Priya Shah are outdoors with an ATV under a blue sky in Seabreeze, Coastal State, Exampleland on December 24, 2025. A helmet is also visible.',
     );
     expect(text).not.toMatch(/Visible details|Known things|Taken|Location:/);
     expect(text.match(/ATV/g)).toHaveLength(1);
@@ -341,7 +335,7 @@ describe('photo summary compiler', () => {
       evidence: {
         bodies: [],
         contexts: [],
-        faces: ['Aaron', 'Benji', 'Deedee', 'Mike', 'Sophie', 'Tom'].map((display_name, index) => ({
+        faces: ['Aaron', 'Alex', 'Deedee', 'Mike', 'Sophie', 'Tom'].map((display_name, index) => ({
           display_name,
           person_id: `person-${index}`,
           review_disposition: 'active',
@@ -350,7 +344,7 @@ describe('photo summary compiler', () => {
       } as never,
       ocr: [],
     });
-    expect(text).toBe('Aaron, Benji, Deedee, and 3 others are in an indoor room. A bottle is also visible.');
+    expect(text).toBe('Aaron, Alex, Deedee, and 3 others are in an indoor room. A bottle is also visible.');
   });
 
   it('resolves stable Enhanced identity tokens to the current display name', () => {
@@ -398,12 +392,12 @@ describe('photo summary compiler', () => {
         ...(evidence as unknown as Record<string, unknown>),
         faces: [
           { display_name: 'Ted', person_id: 'person-ted' },
-          { display_name: 'Jani - Hup', person_id: 'person-jani' },
+          { display_name: 'Priya Shah', person_id: 'person-priya' },
         ],
       } as never,
       ocr: [],
     });
-    expect(text).toContain('Ted rides an ATV with Jani - Hup behind him.');
+    expect(text).toContain('Ted rides an ATV with Priya Shah behind him.');
     expect(text).not.toContain('another person');
   });
 
@@ -419,31 +413,31 @@ describe('photo summary compiler', () => {
           qualityFlags: ['water droplets on lens'],
           scene: 'outdoors',
           summary:
-            '{{person:person-benji}} rides a green ATV with another person behind him under a clear blue sky. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
+            '{{person:person-alex}} rides a green ATV with another person behind him under a clear blue sky. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
           visibleText: [],
         },
       } as never,
       asset: {
         exifInfo: {
-          city: 'Káto Garoúna',
-          country: 'Greece',
+          city: 'Seabreeze',
+          country: 'Exampleland',
           dateTimeOriginal: '2025-12-24T12:35:23Z',
-          state: 'Ionian Islands',
+          state: 'Coastal State',
         },
       } as never,
       evidence: {
         bodies: [],
         contexts: [{ display_name: 'ATV', entity_kind: 'object' }],
         faces: [
-          { display_name: 'Benji Hart', person_id: 'person-benji', review_disposition: 'active' },
-          { display_name: 'Jani - Hup', person_id: 'person-jani', review_disposition: 'active' },
+          { display_name: 'Alex Morgan', person_id: 'person-alex', review_disposition: 'active' },
+          { display_name: 'Priya Shah', person_id: 'person-priya', review_disposition: 'active' },
         ],
         presence: [],
       } as never,
       ocr: [],
     });
     expect(text).toBe(
-      'Benji Hart rides a green ATV with Jani - Hup behind him under a clear blue sky in Káto Garoúna, Ionian Islands, Greece on December 24, 2025. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
+      'Alex Morgan rides a green ATV with Priya Shah behind him under a clear blue sky in Seabreeze, Coastal State, Exampleland on December 24, 2025. Both wear helmets and sunglasses, and water droplets are visible on the camera lens.',
     );
     expect(text).not.toMatch(/Known things|Known people|Taken|Location:/);
     expect(text.match(/ATV/g)).toHaveLength(1);

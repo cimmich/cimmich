@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { createFaceMatchingOperator } from "../src/face-matching-operator.mjs";
 import { createCimmichRepository } from "../src/repository.mjs";
 import { recognitionVectorDigest } from "../src/recognition-provider-contract.mjs";
+import {
+  buildSourcePackProductionRefit,
+  persistSourcePackProductionRefit,
+} from "../src/source-pack-production-refit.mjs";
 
 const databaseUrl =
   process.env.DATABASE_URL || "postgres://cimmich@postgres:5432/cimmich";
@@ -22,22 +27,27 @@ const inventoryRunId = "immich_inventory_run_owner_source_pack_fixture";
 const digest = (value) =>
   createHash("sha256").update(String(value)).digest("hex");
 
-const embeddingDimension = 24;
+const embeddingDimension = 512;
 const basisVector = (dimension, value = 1) =>
   Array.from({ length: embeddingDimension }, (_, index) =>
     index === dimension ? value : 0,
   );
+const unknownVector = (index) => {
+  const vector = basisVector(20 + (index % 246));
+  vector[266 + Math.floor(index / 246)] = 0.25;
+  return vector;
+};
 const knownPeople = Array.from({ length: 20 }, (_, index) => ({
   personId: `person_owner_pack_known_${String(index).padStart(2, "0")}`,
   vector: basisVector(index),
 }));
-const calibrationUnknownPeople = Array.from({ length: 100 }, (_, index) => ({
+const calibrationUnknownPeople = Array.from({ length: 40 }, (_, index) => ({
   personId: `person_owner_pack_calibration_unknown_${String(index).padStart(3, "0")}`,
-  vector: basisVector(20, -1),
+  vector: unknownVector(index),
 }));
-const holdoutUnknownPeople = Array.from({ length: 100 }, (_, index) => ({
+const holdoutUnknownPeople = Array.from({ length: 40 }, (_, index) => ({
   personId: `person_owner_pack_holdout_unknown_${String(index).padStart(3, "0")}`,
-  vector: basisVector(21, -1),
+  vector: unknownVector(calibrationUnknownPeople.length + index),
 }));
 const people = [
   ...knownPeople,
@@ -46,20 +56,24 @@ const people = [
 ];
 const acceptedEvidence = [
   ...knownPeople.map((_, personIndex) => ({ personIndex, year: 2020 })),
-  ...Array.from({ length: 5 }, () =>
+  ...Array.from({ length: 25 }, () =>
     knownPeople.map((_, personIndex) => ({ personIndex, year: 2021 })),
   ).flat(),
-  ...calibrationUnknownPeople.map((_, index) => ({
-    personIndex: knownPeople.length + index,
-    year: 2021,
-  })),
-  ...Array.from({ length: 5 }, () =>
+  ...Array.from({ length: 12 }, () =>
+    calibrationUnknownPeople.map((_, index) => ({
+      personIndex: knownPeople.length + index,
+      year: 2021,
+    })),
+  ).flat(),
+  ...Array.from({ length: 25 }, () =>
     knownPeople.map((_, personIndex) => ({ personIndex, year: 2022 })),
   ).flat(),
-  ...holdoutUnknownPeople.map((_, index) => ({
-    personIndex: knownPeople.length + calibrationUnknownPeople.length + index,
-    year: 2022,
-  })),
+  ...Array.from({ length: 12 }, () =>
+    holdoutUnknownPeople.map((_, index) => ({
+      personIndex: knownPeople.length + calibrationUnknownPeople.length + index,
+      year: 2022,
+    })),
+  ).flat(),
 ];
 
 try {
@@ -205,8 +219,6 @@ try {
   }
 
   const queryVector = basisVector(0);
-  queryVector[0] = 0.990148;
-  queryVector[1] = 0.140028;
   await sql`
     INSERT INTO asset (
       asset_id, content_hash, locator_token, media_kind, mime_type, width,
@@ -283,8 +295,8 @@ try {
   assert.equal(initial.state, "needs_source_pack");
   assert.equal(initial.next.action, "run_recognition");
   assert.equal(initial.evidence.analysedFaces, 0);
-  assert.equal(initial.evidence.eligibleFaces, 420);
-  assert.equal(initial.evidence.providerEmbeddings, 420);
+  assert.equal(initial.evidence.eligibleFaces, acceptedEvidence.length);
+  assert.equal(initial.evidence.providerEmbeddings, acceptedEvidence.length);
 
   const recognition = await operator.runRecognition({
     actorId: "synthetic-owner",
@@ -304,10 +316,16 @@ try {
   assert.equal(compiled.changed, true);
   assert.equal(compiled.pack.state, "proposed");
   assert.equal(compiled.plan.reviewability, "balanced_open_set_holdout_ready");
-  assert.equal(compiled.plan.calibrationQueries, 100);
-  assert.equal(compiled.plan.calibrationUnknownQueries, 100);
-  assert.equal(compiled.plan.holdoutQueries, 100);
-  assert.equal(compiled.plan.holdoutUnknownQueries, 100);
+  assert.equal(compiled.plan.calibrationQueries, knownPeople.length * 25);
+  assert.equal(
+    compiled.plan.calibrationUnknownQueries,
+    calibrationUnknownPeople.length * 12,
+  );
+  assert.equal(compiled.plan.holdoutQueries, knownPeople.length * 25);
+  assert.equal(
+    compiled.plan.holdoutUnknownQueries,
+    holdoutUnknownPeople.length * 12,
+  );
   assert.equal(compiled.plan.completePeople, 20);
   const compileReplay = await operator.compile();
   assert.equal(compileReplay.pack.packId, compiled.pack.packId);
@@ -317,7 +335,10 @@ try {
   assert.equal(evaluated.evaluation.status, "incomplete");
   assert.equal(evaluated.evaluation.reason, "OPERATOR_REVIEW_GATE_REQUIRED");
   assert.equal(evaluated.evaluation.leakage.passed, true);
-  assert.equal(evaluated.evaluation.reviewArtifact.verifiedUnknowns, 100);
+  assert.equal(
+    evaluated.evaluation.reviewArtifact.verifiedUnknowns,
+    Math.min(200, holdoutUnknownPeople.length * 12),
+  );
   assert.equal(evaluated.evaluation.reviewGateReceipt.status, "passed");
   assert.equal(evaluated.evaluation.reviewGateReceiptNullReason, null);
   const evaluationReplay = await operator.evaluate({
@@ -368,21 +389,40 @@ try {
     (error) => error.code === "FACE_MATCHING_REVIEW_ARTIFACT_MISMATCH",
   );
 
-  const readyToActivate = await operator.status();
-  assert.equal(readyToActivate.next.action, "activate_source_pack");
+  const readyToRefit = await operator.status();
+  assert.equal(readyToRefit.next.action, "prepare_production_refit");
   const reviewedEvaluationId = reviewed.pack.evaluation.evaluationId;
   assert.notEqual(reviewedEvaluationId, evaluated.evaluation.evaluationId);
+  const productionRefit = await buildSourcePackProductionRefit(sql, {
+    evaluationPackId: compiled.pack.packId,
+    pythonPath: process.env.CIMMICH_LOCAL_PYTHON_PATH || "/usr/bin/python3",
+    scriptPath: fileURLToPath(
+      new URL("../../providers/source-pack-numpy/score.py", import.meta.url),
+    ),
+  });
+  const persistedRefit = await persistSourcePackProductionRefit(
+    sql,
+    productionRefit,
+    { execute: true },
+  );
+  assert.equal(
+    persistedRefit.status,
+    "passed",
+    JSON.stringify(productionRefit.receipt),
+  );
+  const readyToActivate = await operator.status();
+  assert.equal(readyToActivate.next.action, "activate_source_pack");
   const activated = await operator.activate({
     expectedCurrentPackId: null,
-    expectedEvaluationId: reviewedEvaluationId,
-    packId: compiled.pack.packId,
+    expectedEvaluationId: persistedRefit.evaluationId,
+    packId: persistedRefit.packId,
   });
   assert.equal(activated.activated, true);
   assert.equal(activated.pack.state, "active");
   const activationReplay = await operator.activate({
     expectedCurrentPackId: null,
-    expectedEvaluationId: reviewedEvaluationId,
-    packId: compiled.pack.packId,
+    expectedEvaluationId: persistedRefit.evaluationId,
+    packId: persistedRefit.packId,
   });
   assert.equal(activationReplay.replayed, true);
   assert.equal(activationReplay.changed, false);
@@ -416,7 +456,10 @@ try {
   const disabled = createOperator(null);
   const disabledStatus = await disabled.operator.status();
   assert.equal(disabledStatus.state, "provider_disabled");
-  assert.equal(disabledStatus.evidence.acceptedFaces >= 420, true);
+  assert.equal(
+    disabledStatus.evidence.acceptedFaces >= acceptedEvidence.length,
+    true,
+  );
   assert.equal(disabledStatus.evidence.providerEmbeddings, 0);
   assert.equal(disabledStatus.latestPack, null);
   assert.equal(disabledStatus.basicIdentityTruthRetainedWhenDisabled, true);
@@ -439,7 +482,7 @@ try {
   `;
   assert.deepEqual(
     { claims, evaluations, packs },
-    { claims: 420, evaluations: 2, packs: 1 },
+    { claims: acceptedEvidence.length, evaluations: 3, packs: 2 },
   );
   assert.equal(references > 0, true);
 
@@ -450,7 +493,7 @@ try {
       backupReadiness: "database_only_state",
       basicTruthRetainedWhenDisabled: true,
       evaluationReplayStable: true,
-      inheritedAcceptedFaces: 420,
+      inheritedAcceptedFaces: acceptedEvidence.length,
       projectedReviewGateReceipt: "server_derived",
       providerRecognitionReplayStable: true,
       representativeAccuracyClaim: "none",

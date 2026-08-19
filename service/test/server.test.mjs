@@ -5209,7 +5209,14 @@ test("browser preflight permits every method the UI actually uses", async () => 
           .split(",")
           .map((value) => value.trim()),
       );
-      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+      for (const method of [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+      ]) {
         assert.ok(allowed.has(method), `${method} must survive preflight`);
       }
     },

@@ -163,6 +163,35 @@ export const createReviewRoutes =
     }
     if (
       request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/backup-targets"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityBackupTargets(),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/archive-integrity/backup-scans"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        202,
+        await repository.archiveIntegrityStartBackupScan({
+          targetId: body.targetId,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "GET" &&
       url.pathname === "/v1/archive-integrity/backup-proof"
     ) {
       requireProjection("asset_detail");

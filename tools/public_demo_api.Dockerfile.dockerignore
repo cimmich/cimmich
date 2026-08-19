@@ -27,6 +27,8 @@
 !providers/perceptual-dhash/*.json
 !providers/perceptual-dhash/*.md
 !providers/perceptual-dhash/requirements.txt
+!providers/source-pack-numpy/
+!providers/source-pack-numpy/*.py
 !providers/ultralytics-yolo-body/
 !providers/ultralytics-yolo-body/*.py
 !providers/ultralytics-yolo-body/*.json

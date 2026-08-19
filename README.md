@@ -8,7 +8,7 @@
 
 **Cimmich is an open-source, local-first memory companion for Immich.** It adds
 People, Pets, Places, Things, Events and Documents around the library you
-already own—without writing to the Immich database or modifying original
+already own - without writing to the Immich database or modifying original
 media.
 
 Photo libraries are good at storing files and grouping visible faces. They are
@@ -22,7 +22,7 @@ owner-controlled context beside Immich.
 [Contribute](CONTRIBUTING.md)
 
 > [!NOTE]
-> **OpenAI Build Week — Apps for Your Life.** Cimmich's original submission was
+> **OpenAI Build Week - Apps for Your Life.** Cimmich's original submission was
 > built with **Codex powered by GPT-5.6 Sol** and remains preserved at the exact
 > [`v1.0.0-build-week` tag and release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week):
 > [read the original submission README](https://github.com/cimmich/cimmich/blob/v1.0.0-build-week/README.md) ·
@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 9** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 13** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
@@ -53,13 +53,23 @@ owner-controlled context beside Immich.
   activity, client engagement and life period at the same time.
 - **Intersection search.** Select several Cimmich tags to see only photographs
   carrying all of them, without a hidden 5,000-result ceiling.
-- **Reversible archive organisation.** Apply Cimmich-owned Labels and preview
-  folder-derived album manifests before creating collision-safe albums, without
-  moving source media or writing sidecars.
+- **Reversible archive organisation.** Apply Cimmich-owned labels, tags,
+  collections, favourites and archive choices. Folder manifests create
+  collision-safe Cimmich collections without changing Immich albums, tags,
+  memberships, metadata or source media.
+- **Archive Health without deletion authority.** Compare exact copies and
+  possible duplicates, inspect one folder against the rest of the archive,
+  review likely rotation problems, scan independent photo backups and verify
+  scheduled Cimmich database backups. Expensive categories load only when
+  selected.
 - **People exploration with context.** Filter People and a Person's photographs
-  by exact privacy tier, Tags and Labels, Places, Events and Things.
+  by Privacy bucket, Tags and Labels, Places, Events and Things. People modes,
+  search, sorting, filters and grid size share one compact bar.
 - **Owner-controlled review.** Matching may suggest; the archive owner accepts,
   corrects, rejects, merges or undoes every consequential identity decision.
+- **Matching that follows corrections.** Refresh matches reruns the normal
+  bounded matcher for one Person after owner corrections. Newly eligible Faces
+  are offered for analysis before held reference-pack work resumes.
 - **Useful photo summaries.** Standard composes current People, Context, date,
   place and OCR without a model. Optional local Smart and Enhanced passes add
   visual detail without replacing originals or silently accepting results.
@@ -127,7 +137,7 @@ then extract the bundle:
 
 Open <http://127.0.0.1:3413>, sign in through Immich, and complete the guided
 library preview. Cimmich asks for a dedicated read-only Immich API key only in
-its signed-in Settings screen—never in `.env` or an AI conversation.
+its signed-in Settings screen - never in `.env` or an AI conversation.
 
 Read [INSTALL.md](INSTALL.md) before starting. It covers checksum verification,
 host addressing, first-run expectations, backups, updates, diagnostics and
@@ -139,7 +149,8 @@ Cimmich is designed to be additive and removable:
 
 - Cimmich has its own PostgreSQL database, configuration, documents and backups.
 - Immich continues to own and serve original media.
-- Cimmich does not directly write the Immich database or source-media bytes.
+- Cimmich treats Immich as read-only. Its service and Cimmich UI paths do not
+  create, update or delete Immich albums, memberships, tags, metadata or media.
 - Product ports bind to loopback by default.
 - Core organisation works without a model or model-provider API key.
 - Optional local providers produce observations, not identity decisions.
@@ -182,7 +193,7 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 Cimmich contains two deliberate JavaScript workspaces: a Node 22/npm service
 and an Immich-derived Node 24/pnpm UI. `ui/packages/sdk` is checked-in generated
-source—not `node_modules`.
+source - not `node_modules`.
 
 Read [DEVELOPMENT.md](DEVELOPMENT.md) before installing dependencies. Small,
 reviewable documentation, test and defect fixes are welcome under the
@@ -190,7 +201,7 @@ reviewable documentation, test and defect fixes are welcome under the
 
 ## Project history
 
-Cimmich began as a bounded **OpenAI Build Week — Apps for Your Life** project.
+Cimmich began as a bounded **OpenAI Build Week - Apps for Your Life** project.
 The exact submission remains preserved as the
 [v1.0.0 Build Week release](https://github.com/cimmich/cimmich/releases/tag/v1.0.0-build-week),
 with its [prior-work disclosure](docs/BUILD_WEEK.md) and

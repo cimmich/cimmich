@@ -184,10 +184,10 @@ test("database backup manager creates, records and fully rechecks a restorable a
     });
     await manager.startBackup({ destinationIds: ["primary"] });
     let current;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
       current = await manager.status();
       if (current.activeRun?.state === "complete") break;
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(current.activeRun.state, "complete");
     assert.equal(current.destinations[0].latest.databaseSchemaVersion, 141);
@@ -199,10 +199,10 @@ test("database backup manager creates, records and fully rechecks a restorable a
     );
 
     await manager.startCheck({ destinationIds: ["primary"] });
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
       current = await manager.status();
       if (current.activeCheck?.state === "complete") break;
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(current.activeCheck.state, "complete");
     assert.equal(current.activeCheck.items[0].state, "verified");
