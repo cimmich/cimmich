@@ -32,7 +32,9 @@ describe('Cimmich local Face provider setup', () => {
       },
     });
 
-    expect(getByRole('heading', { name: 'Set up local matching' })).toBeInTheDocument();
+    expect(getByText('Optional face analysis')).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Set up local face analysis' })).toBeInTheDocument();
+    expect(getByText(/Cimmich to rank or abstain/)).toBeInTheDocument();
     expect(getByText('./tools/companion.sh face-provider install-recommended')).toBeInTheDocument();
     expect(getByText('Runs locally on CPU')).toBeInTheDocument();
     expect(getByText('Never uploads photos or confirms an identity')).toBeInTheDocument();

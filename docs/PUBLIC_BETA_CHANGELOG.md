@@ -4,6 +4,23 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.16: Exact public product and operator truth
+
+- Cimmich is named as the matcher across README, installation, FAQ, guide,
+  installer and signed-in setup copy. Optional local face-analysis providers
+  extract observations and embeddings; they do not own matching or identity.
+- Native Windows PowerShell and WSL2 are described as untested rather than
+  unsupported. The guided path remains certified only on macOS and Linux
+  Docker hosts.
+- Immich Smart Search, Duplicate Detection and OCR are presented as optional
+  sources for visual leads, native duplicate groups and text. None is described
+  as Cimmich face-matching preparation.
+- The independent photo backup override now extends the configured guided
+  installation with its exact Compose project and generated `runtime.env`.
+  Release tests reject the superseded claims and require the complete command.
+- Product behavior, schema 142 and exact Immich 3.1.0 compatibility are
+  unchanged.
+
 ## v1.1.0-community-preview.15: Compact photo toolbar access
 
 - At widths below 640 px, the photo viewer uses one horizontally scrollable

@@ -7,7 +7,7 @@ updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
 > This guide follows the **current development source**. The latest named
-> public candidate is **Community Preview 15** for exact Immich 3.1.0. Features
+> public candidate is **Community Preview 16** for exact Immich 3.1.0. Features
 > marked **Source current** are included in this candidate but remain preview
 > capabilities. Always install a named release rather than
 > an arbitrary source snapshot.
@@ -89,20 +89,25 @@ The complete supported setup is in [INSTALL.md](../INSTALL.md). The in-product
 screen is for connecting and refreshing an already installed companion; it is
 not a substitute for backups or the operator lifecycle.
 
-### Recommended Immich processing
+### Optional Immich features Cimmich can reuse
 
-For the data Cimmich can reuse, enable **Smart Search** and **OCR** in Immich.
-Immich Facial Recognition can remain off because Cimmich handles identity
-separately; enable it only if you also want Immich's People matching.
+These are not Cimmich matching or import prerequisites. Immich **Smart Search**
+can supply visual-search, similar-photo and bounded Rotation review leads;
+**Duplicate Detection** can supply native possible-duplicate groups to Archive
+Health; and **OCR** can supply text for summaries, Documents and search. Enable
+only the capabilities you want Cimmich to reuse. Immich Facial Recognition can
+remain off because Cimmich handles identity separately; enable it only if you
+also want Immich's People matching.
 
 For an existing library, open Immich **Administration → Jobs** and run
 **Missing** in this order: **Smart Search → Duplicate Detection → OCR**. Wait
-for each queue to reach zero before starting the next one. Smart Search must
-finish first because Duplicate Detection consumes its image embeddings; if the
-two were started together, run **Duplicate Detection → Missing** again after
-Smart Search finishes. Use **All** only after changing the relevant model or
-matching configuration. New assets enter Immich's enabled processing queues
-automatically.
+for each queue to reach zero before starting the next one. This is an Immich
+dependency: Smart Search must finish first because Immich Duplicate Detection
+consumes its image embeddings. If the two were started together, run
+**Duplicate Detection → Missing** again after Smart Search finishes. Use
+**All** only after changing the relevant Immich model or processing
+configuration. New assets enter Immich's enabled processing queues
+automatically. None of these jobs prepares Cimmich face matching.
 
 ## Home
 
@@ -628,7 +633,8 @@ Settings separates ordinary product setup from optional machinery:
   inventory refresh;
 - **Experience and viewing** controls Familiar/Frontier presentation, viewing
   defaults and Private behavior;
-- **Enhanced matching** manages Cimmich's optional matcher component;
+- **Enhanced matching** manages the optional Cimmich component for
+  provider-backed candidate ranking;
 - **Face matching** runs governed recognition, SourcePack compilation,
   evaluation, review, activation and rollback;
 - **Body evidence** configures optional body-observation production;

@@ -84,7 +84,7 @@ check_requirements() {
   case "$(uname -s)" in
     Darwin) platform="macOS" ;;
     Linux) platform="Linux" ;;
-    *) fail "the guided installer currently supports macOS and Linux" ;;
+    *) fail "this Community Preview guided installer is available only on its tested macOS and Linux paths; this platform remains untested" ;;
   esac
   test -f "$ROOT/AGENT_INSTALL.md" && test -f "$ROOT/INSTALL.md" && test -f "$ROOT/README.md" ||
     fail "run this command from an intact extracted Cimmich release folder"
@@ -298,8 +298,8 @@ print_install_success() {
   say "     and a least-privilege Immich API key. The key field is write-only."
   say "  5. Preview the proposed scope before importing anything."
   say ""
-  say "Cimmich Core works without a model. Optional matching and evidence providers"
-  say "remain disabled until you deliberately configure them."
+  say "Cimmich Core works without a model, and Cimmich owns matching. Optional local"
+  say "face-analysis providers supply observations and embeddings when configured."
   say ""
   say "Keep this release folder for updates and administration. See INSTALL.md for"
   say "backup, disable, removal and the advanced installation path."
@@ -432,7 +432,7 @@ case "$prompt_value" in
 esac
 
 say ""
-say "Step 1 of 3 — Create private Cimmich configuration"
+say "Step 1 of 3: Create private Cimmich configuration"
 say "Installing Cimmich into: $STATE_ROOT"
 say ""
 
@@ -444,19 +444,19 @@ export CIMMICH_COMPANION_PRIVATE_LOCK_MODE=$private_lock_mode
 show_recovery=true
 
 say ""
-say "Step 2 of 3 — Build and start Cimmich"
+say "Step 2 of 3: Build and start Cimmich"
 say "The first local image build can take several minutes. Docker output will follow."
 "$COMPANION" up
 
 if test "$private_lock_mode" = password; then
   say ""
-  say "Step 3 of 3 — Configure the optional Private viewing password"
+  say "Step 3 of 3: Configure the optional Private viewing password"
   read_secret "Private viewing password (any non-empty value): "
   printf '%s\n' "$secret_input" | "$COMPANION" private-password configure >/dev/null
   unset secret_input
 else
   say ""
-  say "Step 3 of 3 — Private viewing uses no extra password"
+  say "Step 3 of 3: Private viewing uses no extra password"
 fi
 
 print_install_success

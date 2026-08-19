@@ -389,7 +389,7 @@
     <section id="matching-workflow" aria-labelledby="matching-workflow-title" class="scroll-mt-24 space-y-5">
       <div class="px-1">
         <p class="text-xs font-semibold tracking-[0.14em] text-violet-700 uppercase dark:text-violet-300">
-          Optional workflow
+          Owner-controlled workflow
         </p>
         <h2 id="matching-workflow-title" class="mt-1 text-2xl font-semibold">Local Face matching</h2>
         <p class="mt-1 max-w-3xl text-sm/6 text-gray-600 dark:text-gray-300">
@@ -416,8 +416,9 @@
               </p>
               <h2 id="cimmich-enhanced-title" class="mt-1 text-xl font-semibold">Enhanced matching</h2>
               <p class="mt-1 max-w-3xl text-sm/6 text-gray-600 dark:text-gray-300">
-                Core remains fully usable when this is off. Enhanced ranks possible matches using local providers; it
-                never trains on your library, names anyone automatically or activates a reference library for you.
+                Core remains fully usable when this is off. Local providers extract compatible observations and
+                embeddings; Cimmich uses approved evidence to rank or abstain. It never names anyone automatically or
+                activates a reference library for you.
               </p>
             </div>
           </div>

@@ -13,17 +13,17 @@ complete lifecycle.
 
 ## Before you begin
 
-Community Preview 15 requires:
+Community Preview 16 requires:
 
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
-- macOS or Linux;
+- a tested macOS or Linux Docker host;
 - `curl` and `openssl`;
 - either `sha256sum` or `shasum` for checksummed lifecycle operations; and
 - your normal Immich sign-in.
 
-Native Windows PowerShell is not supported. WSL2 remains an advanced, unclaimed
-path until it has clean-install proof.
+Native Windows PowerShell and WSL2 have not yet completed the clean-install
+proof required for this release. They are untested, not disproven.
 
 ### Resource expectations
 
@@ -193,15 +193,24 @@ archive choices and their Undo history do not require an Immich write scope.
    labels.
 7. Import only when the server, account and preview are what you expect.
 
-No optional model is required for core organisation. Matching and evidence
-providers remain off until deliberately configured.
+No optional model is required for core organisation. Cimmich owns matching.
+Compatible local face-analysis providers are optional inputs that extract
+observations and embeddings. Cimmich builds and evaluates reference libraries,
+ranks or abstains, and leaves every identity decision to the owner.
 
-### Recommended Immich processing for Cimmich
+### Optional Immich features Cimmich can reuse
 
-In Immich **Administration → Settings → Machine Learning**, enable **Smart
-Search** and **OCR**. Immich Facial Recognition is not required for Cimmich's
-identity workflow and can remain off unless you also use Immich People
-matching.
+These Immich features are not prerequisites for Cimmich matching or library
+import. Enable only the capabilities you want Cimmich to reuse:
+
+- **Smart Search** supplies Immich visual-search and similar-photo results,
+  including bounded Rotation review leads.
+- **Duplicate Detection** supplies native possible-duplicate groups to Archive
+  Health.
+- **OCR** supplies text for summaries, Documents and search.
+
+Immich Facial Recognition is not required for Cimmich's identity workflow and
+can remain off unless you also use Immich People matching.
 
 For an existing library, open **Administration → Jobs** and run **Missing** in
 this order:
@@ -210,13 +219,15 @@ this order:
 2. Duplicate Detection
 3. OCR
 
-Wait for each queue to reach zero before starting the next one. Smart Search
-supplies the embeddings used by Duplicate Detection; starting both together can
-leave early Duplicate Detection jobs without an embedding. If that happened,
-run **Duplicate Detection → Missing** again after Smart Search finishes. New
-assets are queued automatically while these features remain enabled. Use
-**All** only after changing the relevant model or matching configuration; it
-deliberately reprocesses already completed assets.
+Wait for each queue to reach zero before starting the next one. This order is
+an Immich processing dependency: Smart Search supplies the embeddings used by
+Immich Duplicate Detection. Starting both together can leave early Duplicate
+Detection jobs without an embedding. If that happened, run **Duplicate
+Detection → Missing** again after Smart Search finishes. New assets are queued
+automatically while these features remain enabled. Use **All** only after
+changing the relevant Immich model or processing configuration; it deliberately
+reprocesses already completed assets. None of these jobs prepares Cimmich face
+matching.
 
 After connection, you may delete or rotate the key from Immich's **Account
 Settings → API Keys**. Deleting it immediately stops Cimmich's library reads;
@@ -279,14 +290,23 @@ folder intended for verification:
 export CIMMICH_BACKUP_SCAN_PATH=/mnt/independent-photo-backup
 export CIMMICH_BACKUP_SCAN_LABEL='Primary NAS backup'
 export CIMMICH_BACKUP_STORAGE_DOMAIN='nas-volume-photos-1'
-docker compose -f compose.yaml -f compose.backup-scan.yaml up -d
+export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
+export CIMMICH_COMPANION_PROJECT=cimmich-companion
+docker compose \
+  --project-name "$CIMMICH_COMPANION_PROJECT" \
+  --env-file "$CIMMICH_COMPANION_STATE_ROOT/runtime.env" \
+  --file compose.yaml \
+  --file compose.backup-scan.yaml \
+  up --detach --wait cimmich-api
 ```
 
 The override mounts the target at `/backup/primary` read-only. Cimmich accepts
 only the configured target ID, does not follow symlinks and runs at most one
 sequential complete-file hash scan at a time. Do not reuse the archive storage
 domain or point the mount at another folder on the archive disk; that is a copy,
-not independent backup proof.
+not independent backup proof. The project and environment arguments above are
+required so this override extends the existing guided installation instead of
+starting an unrelated Compose project or losing its generated configuration.
 
 ## Optional scheduled database backups
 
@@ -425,7 +445,7 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 15 supports exact Immich 3.1.0. Do not bypass the preflight or
+Community Preview 16 supports exact Immich 3.1.0. Do not bypass the preflight or
 edit the claimed version. Use the supported Immich version or wait for a named
 Cimmich release that explicitly adds yours.
 

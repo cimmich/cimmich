@@ -188,6 +188,13 @@ test("guided install stops at signed-in preview and documentation separates both
     agentInstall,
     gateway,
     version,
+    faq,
+    walkthrough,
+    userGuide,
+    backupScanCompose,
+    setupPage,
+    providerPage,
+    matchingPage,
   ] = await Promise.all([
     readFile(installer, "utf8"),
     readFile(companion, "utf8"),
@@ -200,6 +207,28 @@ test("guided install stops at signed-in preview and documentation separates both
     readFile(join(root, "AGENT_INSTALL.md"), "utf8"),
     readFile(join(root, "tools/cimmich_gateway.conf.template"), "utf8"),
     readFile(join(root, "CIMMICH_VERSION"), "utf8"),
+    readFile(join(root, "docs/FAQ.md"), "utf8"),
+    readFile(join(root, "docs/WALKTHROUGH.md"), "utf8"),
+    readFile(join(root, "docs/USER_GUIDE.md"), "utf8"),
+    readFile(join(root, "compose.backup-scan.yaml"), "utf8"),
+    readFile(
+      join(
+        root,
+        "ui/web/src/routes/(user)/cimmich/maintenance/CimmichImmichSetup.svelte",
+      ),
+      "utf8",
+    ),
+    readFile(
+      join(
+        root,
+        "ui/web/src/routes/(user)/cimmich/maintenance/CimmichLocalFaceProvider.svelte",
+      ),
+      "utf8",
+    ),
+    readFile(
+      join(root, "ui/web/src/routes/(user)/cimmich/maintenance/+page.svelte"),
+      "utf8",
+    ),
   ]);
 
   assert.doesNotMatch(script, /["']?\$COMPANION["']? sync/);
@@ -242,7 +271,49 @@ test("guided install stops at signed-in preview and documentation separates both
   );
   assert.doesNotMatch(install, /Five-minute Docker Compose install/);
   assert.match(install, /Download a \*\*named Cimmich release bundle\*\*/);
-  assert.match(install, /Native Windows PowerShell is not supported/);
+  const publicInstallCopy = [
+    readme,
+    install,
+    faq,
+    walkthrough,
+    userGuide,
+    script,
+    setupPage,
+    providerPage,
+    matchingPage,
+  ].join("\n");
+  assert.doesNotMatch(publicInstallCopy, /optional matching/i);
+  assert.doesNotMatch(
+    publicInstallCopy,
+    /Native Windows PowerShell is not supported/i,
+  );
+  assert.doesNotMatch(publicInstallCopy, /Recommended Immich processing/i);
+  assert.match(
+    install,
+    /Native Windows PowerShell and WSL2[\s\S]*untested, not disproven/,
+  );
+  assert.match(install, /Cimmich owns matching/);
+  assert.match(
+    install,
+    /None of these jobs prepares Cimmich face[\s\S]*matching/,
+  );
+  assert.match(readme, /Cimmich's matcher may[\s\S]*use/);
+  assert.match(
+    faq,
+    /Providers extract observations and[\s\S]*embeddings; they do not own matching/,
+  );
+  assert.match(
+    userGuide,
+    /These are not Cimmich matching or import prerequisites/,
+  );
+  assert.match(
+    install,
+    /--project-name "\$CIMMICH_COMPANION_PROJECT"[\s\S]*--env-file "\$CIMMICH_COMPANION_STATE_ROOT\/runtime\.env"[\s\S]*--file compose\.yaml[\s\S]*--file compose\.backup-scan\.yaml[\s\S]*up --detach --wait cimmich-api/,
+  );
+  assert.match(
+    backupScanCompose,
+    /target: \/backup\/primary[\s\S]*read_only: true/,
+  );
   assert.match(install, /dedicated read-only Immich API key/);
   assert.match(install, /## Updating/);
   assert.match(

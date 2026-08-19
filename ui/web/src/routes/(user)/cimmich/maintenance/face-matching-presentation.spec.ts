@@ -64,6 +64,8 @@ describe('Face matching owner presentation', () => {
       label: 'Provider unavailable',
       providerLabel: 'Configured local provider unavailable',
       ready: false,
+      summary:
+        'Core remains ready and accepted identity evidence is unchanged. Cimmich cannot rank new candidates until its local analysis provider is available.',
     });
   });
 

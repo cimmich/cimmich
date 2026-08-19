@@ -199,7 +199,7 @@
         ? 'This import was already complete. Cimmich returned the original result without duplicate People or Faces.'
         : result.state === 'no_change'
           ? 'Everything in this exact preview was already current. No People, Faces or assets were duplicated.'
-          : 'Import complete. Accepted source labels are presentable now; matching remains separately governed.';
+          : 'Import complete. Accepted source labels are presentable now; Cimmich matching remains separately governed.';
       await loadStatus();
       await onChanged();
     } catch (error_) {
@@ -249,7 +249,7 @@
         </h2>
         <p class="mt-1 max-w-3xl text-sm/6 text-gray-600 dark:text-gray-300">
           {completed
-            ? 'Core is ready now. Optional local matching is a separate, owner-controlled step and never changes a name automatically.'
+            ? 'Core is ready now. Cimmich matching is owner-controlled and needs compatible local provider evidence before it can rank new candidates.'
             : 'Preview first, choose what Cimmich may admit, then import current Immich names as source-proven human truth. Core remains useful if you do this later. Cimmich never writes to the Immich database or source files.'}
         </p>
       </div>
@@ -292,8 +292,8 @@
           <div>
             <h3 class="text-lg font-semibold">Core library ready</h3>
             <p class="mt-1 max-w-3xl text-sm/6 text-emerald-950 dark:text-emerald-100">
-              Your imported library is available now. Nothing is waiting on a model, and optional matching does not run
-              until you choose and configure it.
+              Your imported library is available now. Nothing is waiting on a model. Cimmich matching can rank new
+              candidates after you configure a compatible local analysis provider and approve a reference library.
             </p>
           </div>
         </div>
@@ -340,7 +340,7 @@
             class="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 px-5 text-sm font-semibold hover:bg-white/70 dark:border-emerald-800 dark:hover:bg-emerald-950/40"
             href="#cimmich-face-matching-title"
           >
-            <Icon icon={mdiCogOutline} size="18" /> Optional matching
+            <Icon icon={mdiCogOutline} size="18" /> Set up matching
           </a>
           <button
             type="button"
@@ -669,24 +669,25 @@
   {#if connectionReady && status}
     <aside
       class="mt-6 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-900 dark:bg-violet-950/20"
-      aria-labelledby="recommended-immich-processing-title"
+      aria-labelledby="optional-immich-features-title"
     >
       <div class="flex items-start gap-3">
         <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-600 text-white">
           <Icon icon={mdiDatabaseSearchOutline} size="19" />
         </span>
         <div class="min-w-0 flex-1">
-          <h3 id="recommended-immich-processing-title" class="font-semibold">Recommended Immich processing</h3>
+          <h3 id="optional-immich-features-title" class="font-semibold">Optional Immich features</h3>
           <div class="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
             <span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">Smart Search · On</span>
             <span class="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-900">OCR · On</span>
             <span class="rounded-full bg-gray-200 px-3 py-1.5 text-gray-800">Facial Recognition · Off</span>
           </div>
           <p class="mt-3 text-sm/6 text-gray-700 dark:text-gray-200">
-            Existing library: run <strong>Missing</strong> for Smart Search → Duplicate Detection → OCR, waiting for
-            each queue to finish. If Smart Search and Duplicates ran together, run Duplicate Detection Missing again.
-            Use
-            <strong>All</strong> only after changing a model. Cimmich handles identity separately.
+            Cimmich can reuse Smart Search for visual leads, Duplicate Detection for Archive Health, and OCR for text.
+            None prepares Cimmich face matching. For an existing library, run <strong>Missing</strong> for Smart Search
+            → Duplicate Detection → OCR, waiting for each queue to finish. That order is an Immich dependency. If Smart
+            Search and Duplicates ran together, run Duplicate Detection Missing again. Use <strong>All</strong> only after
+            changing an Immich model or processing configuration.
           </p>
           {#if status.connection.principal?.isAdmin}
             <div class="mt-4 flex flex-wrap gap-3">

@@ -19,7 +19,8 @@ const stateCopy: Record<
   needs_review_policy: {
     label: 'Policy needed',
     nextAction: 'Complete the reviewed score and margin policy for the active pack.',
-    summary: 'The current reference library is missing a complete reviewed suggestion policy, so matching remains off.',
+    summary:
+      'The current reference library is missing a complete reviewed suggestion policy, so Cimmich will not rank new candidates.',
   },
   needs_source_pack: {
     label: 'Build references',
@@ -51,7 +52,7 @@ export const faceMatchingPresentation = (status: FaceMatchingStatus) => {
           label: 'Provider unavailable',
           nextAction: 'Restore or reinstall the configured local provider, then refresh this status.',
           summary:
-            'Core remains ready and accepted identity evidence is unchanged, but optional matching is unavailable.',
+            'Core remains ready and accepted identity evidence is unchanged. Cimmich cannot rank new candidates until its local analysis provider is available.',
         }
       : action === 'hold_source_pack'
         ? {

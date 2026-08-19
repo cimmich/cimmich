@@ -187,7 +187,8 @@ describe('Cimmich first-run Immich setup', () => {
 
     await waitFor(() => expect(getByText('Immich owner')).toBeInTheDocument());
     expect(queryByText('owner-fixture')).not.toBeInTheDocument();
-    expect(getByRole('heading', { name: 'Recommended Immich processing' })).toBeInTheDocument();
+    expect(getByRole('heading', { name: 'Optional Immich features' })).toBeInTheDocument();
+    expect(getByText(/None prepares Cimmich face matching/)).toBeInTheDocument();
     expect(getByText('Smart Search · On')).toBeInTheDocument();
     expect(getByText('OCR · On')).toBeInTheDocument();
     expect(getByText('Facial Recognition · Off')).toBeInTheDocument();
@@ -281,7 +282,7 @@ describe('Cimmich first-run Immich setup', () => {
     expect(getByText(/deliberately did not guess/)).toBeInTheDocument();
     expect(getByRole('link', { name: 'People' })).toHaveAttribute('href', '/cimmich/people');
     expect(getByRole('link', { name: 'Open Cimmich' })).toHaveAttribute('href', '/cimmich');
-    expect(getByRole('link', { name: 'Optional matching' })).toHaveAttribute('href', '#cimmich-face-matching-title');
+    expect(getByRole('link', { name: 'Set up matching' })).toHaveAttribute('href', '#cimmich-face-matching-title');
     expect(queryByRole('button', { name: 'Preview this scope' })).not.toBeInTheDocument();
 
     await fireEvent.click(getByRole('button', { name: 'Update import' }));

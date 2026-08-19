@@ -66,13 +66,13 @@ Cimmich records four evidence types separately:
 - **Body:** an appearance or body observation;
 - **Presence:** the owner's knowledge that someone is in the photograph.
 
-Only appropriate, owner-confirmed evidence can support optional matching. A
+Only appropriate, owner-confirmed evidence can support Cimmich matching. A
 Body or Presence record can complete the memory without silently becoming a
 face reference.
 
 Native Immich manual face assignments do not train or damage Immich's
-recognition model. Cimmich's separate evidence types govern what its own
-optional matching may use; they do not repair or retrain Immich.
+recognition model. Cimmich's separate evidence types govern what its matcher
+may use; they do not repair or retrain Immich.
 
 ## 4. Review a suggestion before it becomes a decision
 

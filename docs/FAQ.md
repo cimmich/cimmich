@@ -29,12 +29,13 @@ Compose, use the checked-in installer, maintain a Cimmich backup and report
 reproducible problems. Workflows and schemas may still change.
 
 The current named release supports exact Immich 3.1.0 on tested macOS and Linux
-Docker hosts. Native Windows PowerShell, other Immich versions, Internet-facing
-deployment and multi-user operation are not currently supported.
+Docker hosts. Native Windows PowerShell and WSL2 are untested in this release.
+Other Immich versions, Internet-facing deployment and multi-user operation are
+not currently supported.
 
 ## Which version should I install?
 
-Install [Community Preview 15](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.15)
+Install [Community Preview 16](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.16)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
 development and may be ahead of the supported release.
 
@@ -65,9 +66,10 @@ No model weights are bundled with Cimmich.
 
 ## Does Cimmich identify people automatically?
 
-No. Optional matching can rank candidates from compatible, owner-confirmed
-evidence, but only the archive owner can accept who it belongs to. Cimmich can
-decline to suggest anyone, and no released model can accept an identity.
+No. Cimmich matching can rank or abstain using compatible, owner-confirmed
+evidence from an optional local face-analysis provider, but only the archive
+owner can accept who it belongs to. Providers extract observations and
+embeddings; they do not own matching or accept an identity.
 
 ## Why separate Face, Head, Body and Presence?
 
@@ -84,9 +86,10 @@ hold an observation as Unknown.
 
 ## What are Enhanced and Guided?
 
-**Enhanced** is Cimmich's optional matching component, off by default. Once the
-owner configures compatible local evidence, it can use approved examples to
-rank candidates. The owner still accepts, corrects or rejects them.
+**Enhanced** is an optional Cimmich component for provider-backed candidate
+ranking. A compatible local provider extracts observations and embeddings;
+Cimmich builds and evaluates the reference library, ranks or abstains, and
+keeps every acceptance, correction or rejection with the owner.
 
 **Guided** is an optional authenticated machine-readable interface. Software
 chosen by the operator can discover only the operations and viewing level it

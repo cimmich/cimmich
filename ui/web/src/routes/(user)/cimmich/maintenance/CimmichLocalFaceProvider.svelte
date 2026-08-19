@@ -74,25 +74,25 @@
       </span>
       <div class="min-w-0">
         <p class="text-xs font-semibold tracking-[0.14em] text-gray-500 uppercase dark:text-gray-400">
-          Optional face matching
+          Optional face analysis
         </p>
         <h2 id="cimmich-provider-title" class="mt-1 text-xl font-semibold">
           {ready
             ? 'Local provider connected'
             : unavailable
               ? 'Local provider needs attention'
-              : 'Set up local matching'}
+              : 'Set up local face analysis'}
         </h2>
         <p class="mt-2 max-w-3xl text-sm/6 text-gray-700 dark:text-gray-200">
           {#if ready}
-            Cimmich can analyse accepted Faces locally through bounded, owner-started passes. Every suggested identity
-            still requires your review.
+            This provider can extract Face observations and embeddings through bounded, owner-started passes. Cimmich
+            owns candidate ranking, and every suggested identity still requires your review.
           {:else if unavailable}
             Core remains ready, but Cimmich cannot use the configured provider. Reinstall or restore its local model
             files, then refresh this status. No name, tag or accepted evidence was changed.
           {:else}
-            Core is already ready. Add the recommended local provider only if you want Cimmich to rank possible Face
-            matches for your review.
+            Core is already ready. Add the recommended local provider only if you want provider-backed Face observations
+            and embeddings for Cimmich to rank or abstain from.
           {/if}
         </p>
       </div>
@@ -166,8 +166,9 @@
       </div>
     </div>
     <p class="mt-4 text-xs/5 text-gray-600 dark:text-gray-300">
-      The command asks Docker to download and verify two official OpenCV model files. Matching remains off afterward
-      until you explicitly turn on Enhanced.
+      The command asks Docker to download and verify two official OpenCV model files. The provider remains inactive
+      until you explicitly turn on Enhanced. Installing it does not activate a reference library or change a matching
+      decision.
     </p>
   {/if}
 

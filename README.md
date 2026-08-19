@@ -36,7 +36,7 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 15** supports exact Immich 3.1.0 on tested macOS and Linux
+> **Community Preview 16** supports exact Immich 3.1.0 on tested macOS and Linux
 > Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
@@ -79,8 +79,7 @@ owner-controlled context beside Immich.
 **Cimmich keeps Face, Head, Body and Presence evidence in its own system.
 Native Immich manual face assignments do not train or damage Immich's
 recognition model.** The distinction is about recording different kinds of
-owner knowledge and controlling which evidence Cimmich's optional matching may
-use.
+owner knowledge and controlling which evidence Cimmich's matcher may use.
 
 <table>
   <tr>
@@ -184,8 +183,8 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 - Community Preview, not a general-availability release.
 - Exact Immich 3.1.0 only; each additional version needs its own compatibility
   proof.
-- Tested guided-install hosts are macOS and Linux. Native Windows PowerShell is
-  not supported.
+- Tested guided-install hosts are macOS and Linux. Native Windows PowerShell
+  and WSL2 are untested in this release.
 - Internet-facing and multi-user deployment are not supported.
 - No biometric-accuracy or demographic-fairness claim is made.
 
