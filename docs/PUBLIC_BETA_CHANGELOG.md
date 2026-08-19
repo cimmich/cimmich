@@ -4,6 +4,17 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.15: Compact photo toolbar access
+
+- At widths below 640 px, the photo viewer uses one horizontally scrollable
+  action row. Cimmich People and Context remain clickable instead of sitting
+  beneath the parent toolbar.
+- The 320 px Face bulk-edit journey now opens an explicit Cimmich photo context,
+  requires the People action to be visible, and completes within the normal
+  30-second test limit.
+- Product source remains shared between public `main` and private deployments.
+  Schema 142 and the supported exact Immich 3.1.0 boundary are unchanged.
+
 ## v1.1.0-community-preview.14: Browser acceptance reliability
 
 - The 320 px Face bulk-edit reflow journey now has a 60-second test budget so

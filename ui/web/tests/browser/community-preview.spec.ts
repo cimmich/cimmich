@@ -188,7 +188,6 @@ test('Person Overview exposes Needs attention, Merge and bulk Split without hidd
 });
 
 test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
-  test.setTimeout(60_000);
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/cimmich/home');
   await page
@@ -199,9 +198,10 @@ test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Viewing mode: Personal' }).first()).toBeVisible();
   try {
     const targetAssetId = readDemoAssetId('CHA-035');
-    await page.goto(`/photos/${targetAssetId}`);
+    await page.goto(`/photos/${targetAssetId}?cimmichContext=1`);
     await expect.poll(() => new URL(page.url()).pathname).toBe(`/photos/${targetAssetId}`);
     const peopleAction = page.getByTestId('cimmich-people-view');
+    await expect(peopleAction).toBeVisible();
     if ((await peopleAction.getAttribute('aria-pressed')) !== 'true') {
       await peopleAction.click();
     }

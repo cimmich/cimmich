@@ -107,9 +107,9 @@
 />
 
 <div
-  class="grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center bg-linear-to-b from-black/40 px-3 drop-shadow-[0_0_1px_rgba(0,0,0,0.4)] transition-transform duration-200"
+  class="flex h-16 items-center overflow-x-auto bg-linear-to-b from-black/40 px-3 drop-shadow-[0_0_1px_rgba(0,0,0,0.4)] transition-transform duration-200 sm:grid sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:overflow-visible"
 >
-  <div class="dark flex items-center gap-1">
+  <div class="dark flex shrink-0 items-center gap-1">
     <CimmichViewingMode
       variant="overlay"
       restorePreference={false}
@@ -120,7 +120,7 @@
 
   {#if photoPresentable && isCimmichSurface}
     <div
-      class="dark mx-2 flex min-w-0 items-center justify-center gap-0.5 overflow-x-auto text-white *:shrink-0"
+      class="dark mx-2 flex min-w-0 shrink-0 items-center justify-center gap-0.5 overflow-x-visible text-white *:shrink-0 sm:shrink sm:overflow-x-auto"
       data-testid="cimmich-photo-tools"
       aria-label="Cimmich photo tools"
     >
@@ -141,7 +141,7 @@
 
   {#if photoPresentable}
     <div
-      class="dark -m-1 flex min-w-0 items-center gap-2 overflow-x-auto p-1 *:shrink-0"
+      class="dark -m-1 flex min-w-0 shrink-0 items-center gap-2 overflow-x-visible p-1 *:shrink-0 sm:shrink sm:overflow-x-auto"
       data-testid="asset-viewer-navbar-actions"
     >
       {#if assetViewerManager.isImageLoading}

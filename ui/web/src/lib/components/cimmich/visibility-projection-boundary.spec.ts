@@ -38,7 +38,9 @@ describe('Cimmich visibility projection boundary', () => {
     expect(overlay).toContain('<Portal target="#cimmich-photo-overlay-toolbar">');
     expect(overlay).toContain('class="pointer-events-auto flex shrink-0 items-center gap-1"');
     expect(navbar).toContain('id="cimmich-photo-overlay-toolbar"');
-    expect(navbar).toContain('items-center justify-center gap-0.5 overflow-x-auto');
+    expect(navbar).toContain(
+      'items-center justify-center gap-0.5 overflow-x-visible text-white *:shrink-0 sm:shrink sm:overflow-x-auto',
+    );
     expect(overlay).not.toContain('fixed top-17');
   });
 
