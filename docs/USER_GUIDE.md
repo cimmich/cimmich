@@ -8,7 +8,7 @@ updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
 > This guide follows the **current development source**. The latest named
-> public candidate is **Community Preview 16** for exact Immich 3.1.0. Always
+> public candidate is **Community Preview 17** for exact Immich 3.1.0. Always
 > install a named release rather than an arbitrary source snapshot.
 
 ## The product in one sentence

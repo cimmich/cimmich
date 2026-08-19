@@ -4,14 +4,32 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.17: Verified beginner installation and matching guide
+
+- A user who downloads either the tar bundle or the ZIP can now verify that
+  single archive without the absent alternative causing a false checksum
+  failure. The publication gate replays this exact one-bundle case on macOS and
+  GNU/Linux.
+- The database-backup Compose example now extends the installer-managed
+  project with its generated `runtime.env`, so required guided configuration is
+  retained instead of starting an unrelated or incomplete stack.
+- The public README, walkthrough, FAQ and guides lead with Cimmich's matcher,
+  the Confirm and Refresh loop, tested or untested platform truth, and direct
+  product-site and Guide routes.
+- Five fictional Cedar House product captures show new matches, possible
+  mistags, evidence correction and the resulting Person review state. No
+  private archive media, settings or evaluation results are included.
+- Product behavior, schema 142 and exact Immich 3.1.0 compatibility are
+  unchanged.
+
 ## v1.1.0-community-preview.16: Exact public product and operator truth
 
 - Cimmich is named as the matcher across README, installation, FAQ, guide,
   installer and signed-in setup copy. Optional local face-analysis providers
   extract observations and embeddings; they do not own matching or identity.
 - Native Windows PowerShell and WSL2 are described as untested rather than
-  unsupported. The guided path remains certified only on macOS and Linux
-  Docker hosts.
+  unsupported. The guided path has been exercised on macOS and Linux Docker
+  hosts.
 - Immich Smart Search, Duplicate Detection and OCR are presented as optional
   sources for visual leads, native duplicate groups and text. None is described
   as Cimmich face-matching preparation.

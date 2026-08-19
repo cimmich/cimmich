@@ -34,7 +34,7 @@ search and return to the photos that matter.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 16 is actively being tested.** Its guided Docker install
+> **Community Preview 17 is actively being tested.** Its guided Docker install
 > has been exercised on macOS and Linux with exact Immich 3.1.0. Windows has not
 > yet been tested. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
@@ -107,6 +107,13 @@ what was happening and how each part of the archive connects.
 - **Make every detail work harder.** Add or correct a name, relationship, event,
   place or document once; Cimmich carries it into people, stories, filters and
   search.
+- **Protect and inspect the archive.** Archive Health compares exact and
+  possible duplicates, checks one folder against the rest of the archive,
+  reviews likely rotation problems, scans independent photo backups and
+  verifies scheduled Cimmich database backups without deleting source media.
+- **Explore People with context.** Filter People and their photographs by
+  Privacy bucket, Tags and Labels, Places, Events and Things while keeping Face,
+  Head, Body and Presence evidence distinct.
 - **Keep what you add.** Cimmich stores its knowledge separately from Immich and
   lets you export your decisions and linked documents.
 

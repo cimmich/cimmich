@@ -6,7 +6,7 @@ Current Community Preview candidate: migration-ledger schema 142/patch 1
 Current development source: migration-ledger schema 142/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate: `v1.1.0-community-preview.16` for exact Immich 3.1.0
+Current candidate: `v1.1.0-community-preview.17` for exact Immich 3.1.0
 
 Schema 136 adds review-only own-Person outlier evidence to Possible mistags.
 The Mac-local scorer first preserves the stronger-different-Person route, then
@@ -43,6 +43,7 @@ Release evidence must be produced from one clean immutable commit and include:
 
 - privacy/publication scan and reconciled public documentation;
 - named tar/ZIP bundles plus `SHA256SUMS`, with installer preflight from both;
+- one-archive checksum acceptance and guided database-backup Compose rendering;
 - service, web, Svelte, TypeScript, formatting, lint and production build;
 - measured Web coverage across the Cimmich component, manager and service
   modules, with higher per-file floors for privacy/session, mutation,
@@ -591,7 +592,7 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-Community Preview 16 remains at schema 142; schema 142 is the current
+Community Preview 17 remains at schema 142; schema 142 is the current
 development source and does not revise earlier immutable releases.
 
 ## Historical Public Beta Patch 6 certification

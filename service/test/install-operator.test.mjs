@@ -267,7 +267,7 @@ test("guided install stops at signed-in preview and documentation separates both
 
   assert.match(
     install,
-    /checked-in installer is the supported end-to-end path/,
+    /checked-in installer is the tested end-to-end path for this preview/,
   );
   assert.doesNotMatch(install, /Five-minute Docker Compose install/);
   assert.match(install, /Download a \*\*named Cimmich release bundle\*\*/);
@@ -310,6 +310,12 @@ test("guided install stops at signed-in preview and documentation separates both
     install,
     /--project-name "\$CIMMICH_COMPANION_PROJECT"[\s\S]*--env-file "\$CIMMICH_COMPANION_STATE_ROOT\/runtime\.env"[\s\S]*--file compose\.yaml[\s\S]*--file compose\.backup-scan\.yaml[\s\S]*up --detach --wait cimmich-api/,
   );
+  assert.match(install, /shasum -a 256 --ignore-missing -c SHA256SUMS/);
+  assert.match(install, /sha256sum --ignore-missing -c SHA256SUMS/);
+  assert.match(
+    install,
+    /--project-name "\$CIMMICH_COMPANION_PROJECT"[\s\S]*--env-file "\$CIMMICH_COMPANION_STATE_ROOT\/runtime\.env"[\s\S]*--file compose\.yaml[\s\S]*--file compose\.database-backup\.yaml[\s\S]*up --detach --wait cimmich-api/,
+  );
   assert.match(
     backupScanCompose,
     /target: \/backup\/primary[\s\S]*read_only: true/,
@@ -334,8 +340,8 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.doesNotMatch(readme, /docker compose up --detach --build --wait/);
   assert.doesNotMatch(readme, /ghcr\.io\/cimmich/);
   assert.match(readme, /DEVELOPMENT\.md/);
-  assert.match(readme, /Reversible archive organisation/);
-  assert.match(readme, /People exploration with context/);
+  assert.match(readme, /Protect and inspect the archive/);
+  assert.match(readme, /Explore People with context/);
   assert.match(
     readme,
     /Native Immich manual face assignments do not train or damage Immich's\s+recognition model/,
@@ -448,7 +454,7 @@ test("guided install stops at signed-in preview and documentation separates both
   assert.match(agentInstall, /Guided V2 starts after Cimmich is running/);
   assert.match(
     agentInstall,
-    /no model, Enhanced component or SourcePack became active/,
+    /no optional face-analysis provider or SourcePack became active/,
   );
   assert.match(agentInstall, /IMMICH_COMPANION_VERSION_UNSUPPORTED/);
 });

@@ -89,6 +89,9 @@ jobs:
             sh -n "$script"
           done
 
+      - name: Verify beginner install documentation
+        run: tools/run_install_docs_acceptance.sh
+
   provider-contracts:
     name: Provider contract tests
     runs-on: ubuntu-latest

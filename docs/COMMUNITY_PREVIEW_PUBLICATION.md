@@ -8,8 +8,8 @@ working tree.
 
 - the exact candidate commit and tree recorded in `docs/RELEASE_READINESS.md`;
 - one release directory whose name ends in that candidate's short commit;
-- `cimmich-v1.1.0-community-preview.16.tar.gz`,
-  `cimmich-v1.1.0-community-preview.16.zip` and `SHA256SUMS` from that directory;
+- `cimmich-v1.1.0-community-preview.17.tar.gz`,
+  `cimmich-v1.1.0-community-preview.17.zip` and `SHA256SUMS` from that directory;
 - a final independent PASS that names those exact hashes; and
 - owner approval to publish.
 
@@ -37,7 +37,10 @@ not a publication source. Never choose a bundle by filename alone.
    untested rather than proven failure.
 9. Confirm the public repository has no tag with the intended release name.
 10. From both extracted bundles, confirm Compose renders with local Cimmich image
-   names and build both checked-in API/UI Dockerfiles successfully.
+    names and build both checked-in API/UI Dockerfiles successfully.
+11. Run `tools/run_install_docs_acceptance.sh` from the clean candidate. It must
+    verify each named archive alone and render the database-backup override with
+    the guided project and generated runtime environment.
 
 Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
@@ -45,11 +48,11 @@ Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
 The candidate is certified on canonical public `main`. Do not introduce a
 release-only product branch. Create the annotated tag
-`v1.1.0-community-preview.16` at the exact certified `main` commit. If the
+`v1.1.0-community-preview.17` at the exact certified `main` commit. If the
 commit or tree changes, certification does not carry forward: rebuild and
 reverify before tagging.
 
-Create a full GitHub release titled **Cimmich v1.1.0: Community Preview 16** from
+Create a full GitHub release titled **Cimmich v1.1.0: Community Preview 17** from
 that tag. Attach the two named bundles and `SHA256SUMS`; do not substitute
 GitHub's automatic source archives for the beginner install bundles.
 
