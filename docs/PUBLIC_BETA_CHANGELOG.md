@@ -4,6 +4,16 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.14: Browser acceptance reliability
+
+- The 320 px Face bulk-edit reflow journey now has a 60-second test budget so
+  its cleanup is not forced to share the default 30-second limit with several
+  full-page navigations and signed-in mode changes.
+- The CI label now reports all browser journeys instead of the stale seven-test
+  count. The suite currently contains eight journeys.
+- Product behavior, schema 142 and the one-product-line boundary introduced in
+  Preview 13 are unchanged.
+
 ## v1.1.0-community-preview.13: One current product line
 
 - Public `main` and the private production deployment now use the same product

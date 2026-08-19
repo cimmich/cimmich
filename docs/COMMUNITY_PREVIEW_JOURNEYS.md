@@ -1,7 +1,7 @@
 # Community Preview user journeys
 
 Updated: 2026-08-11
-Candidate: `v1.1.0-community-preview.13`
+Candidate: `v1.1.0-community-preview.14`
 Compatibility target: exact Immich 3.1.0
 
 This is the user-facing acceptance map for the bounded Community Preview. A

@@ -6,7 +6,7 @@ authority.
 
 > [!NOTE]
 > Apple Vision as the automatic native-macOS Smart provider is **Source
-> current** and included in Community Preview 13.
+> current** and included in Community Preview 14.
 
 ## Standard
 

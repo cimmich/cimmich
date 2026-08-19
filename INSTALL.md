@@ -13,7 +13,7 @@ complete lifecycle.
 
 ## Before you begin
 
-Community Preview 13 requires:
+Community Preview 14 requires:
 
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
@@ -425,7 +425,7 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 13 supports exact Immich 3.1.0. Do not bypass the preflight or
+Community Preview 14 supports exact Immich 3.1.0. Do not bypass the preflight or
 edit the claimed version. Use the supported Immich version or wait for a named
 Cimmich release that explicitly adds yours.
 

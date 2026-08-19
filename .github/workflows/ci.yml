@@ -225,7 +225,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" -C "$RUNNER_TEMP"
           test "$(find "$CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT/media" -type f -name '*.png' | wc -l)" -eq 51
 
-      - name: Run all seven browser journeys against an isolated demo
+      - name: Run all browser journeys against an isolated demo
         env:
           CIMMICH_E2E_STATE_ROOT: ${{ runner.temp }}/cimmich-public-demo-ci
           CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT: ${{ runner.temp }}/cedar-house-v1

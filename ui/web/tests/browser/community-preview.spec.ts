@@ -188,6 +188,7 @@ test('Person Overview exposes Needs attention, Merge and bulk Split without hidd
 });
 
 test('bulk Face editing stays inside a 320px reflow viewport', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/cimmich/home');
   await page
