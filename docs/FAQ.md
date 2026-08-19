@@ -36,7 +36,7 @@ outside this preview's tested boundary.
 
 ## Which version should I install?
 
-Install [Community Preview 17](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.17)
+Install [Community Preview 18](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.18)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
 development and may be ahead of the named release.
 
@@ -61,9 +61,11 @@ biometric accuracy, demographic fairness or real-person consistency.
 
 ## Do I need an AI model?
 
-No. Core organisation uses human-owned and inherited library context. Optional
-local evidence providers and optional Guided clients are separately configured.
-No model weights are bundled with Cimmich.
+Not for core organisation. People matching does require a compatible local
+face-analysis provider to supply observations and embeddings. Cimmich remains
+the matcher: it builds and evaluates the reference library, ranks or abstains,
+and keeps identity acceptance with the archive owner. No model weights are
+bundled with Cimmich.
 
 ## Does Cimmich identify people automatically?
 

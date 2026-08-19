@@ -101,7 +101,7 @@ check_requirements() {
   docker info >/dev/null 2>&1 || fail "Docker is installed but is not running"
   if test "$verbose" = true; then
     ok "Intact Cimmich release folder"
-    ok "Supported platform: $platform"
+    ok "Tested platform: $platform"
     ok "Docker installed"
     ok "Docker Compose v2 available"
     ok "Docker engine running"

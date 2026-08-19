@@ -4,6 +4,25 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.18: Exact Refresh and repository launch truth
+
+- Person Refresh is described as rebuilding that Person's Core matching set
+  from current confirmed Face evidence, then searching again with the current
+  calibrated matching policy. SourcePack proposal and activation remain a
+  separate governed lifecycle.
+- The user guide names the primary Person tabs shown by the product: Photos,
+  Identity, Details, Connections and Documents.
+- First-run guidance follows Settings, Library connection and Connect your
+  existing Immich library. Installer output and release readiness say tested
+  platform rather than implying a broader support commitment.
+- The FAQ states the exact boundary: core organisation does not require a
+  model, People matching requires compatible local face-analysis evidence, and
+  Cimmich remains the matcher and owner-governed decision system.
+- Publication instructions now derive archive names, tag and title from the
+  release identity instead of hard-coding the previous preview.
+- Product behavior, schema 142 and exact Immich 3.1.0 compatibility are
+  unchanged.
+
 ## v1.1.0-community-preview.17: Verified beginner installation and matching guide
 
 - A user who downloads either the tar bundle or the ZIP can now verify that

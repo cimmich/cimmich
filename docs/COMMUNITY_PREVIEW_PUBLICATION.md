@@ -7,9 +7,11 @@ working tree.
 ## Required inputs
 
 - the exact candidate commit and tree recorded in `docs/RELEASE_READINESS.md`;
+- the exact `<release-tag>` recorded in `CIMMICH_VERSION` and the matching
+  human-readable release title;
 - one release directory whose name ends in that candidate's short commit;
-- `cimmich-v1.1.0-community-preview.17.tar.gz`,
-  `cimmich-v1.1.0-community-preview.17.zip` and `SHA256SUMS` from that directory;
+- `cimmich-<release-tag>.tar.gz`, `cimmich-<release-tag>.zip` and
+  `SHA256SUMS` from that directory;
 - a final independent PASS that names those exact hashes; and
 - owner approval to publish.
 
@@ -48,13 +50,13 @@ Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.
 
 The candidate is certified on canonical public `main`. Do not introduce a
 release-only product branch. Create the annotated tag
-`v1.1.0-community-preview.17` at the exact certified `main` commit. If the
+`<release-tag>` at the exact certified `main` commit. If the
 commit or tree changes, certification does not carry forward: rebuild and
 reverify before tagging.
 
-Create a full GitHub release titled **Cimmich v1.1.0: Community Preview 17** from
-that tag. Attach the two named bundles and `SHA256SUMS`; do not substitute
-GitHub's automatic source archives for the beginner install bundles.
+Create a full GitHub release whose title matches the candidate named in
+`CIMMICH_VERSION`. Attach the two named bundles and `SHA256SUMS`; do not
+substitute GitHub's automatic source archives for the beginner install bundles.
 
 Container images are optional distribution artifacts, not a public-install
 gate. Do not reference a registry package in the Compose defaults, README or

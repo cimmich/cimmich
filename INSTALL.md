@@ -13,7 +13,7 @@ complete lifecycle.
 
 ## Before you begin
 
-Community Preview 17 requires:
+Community Preview 18 requires:
 
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
@@ -188,7 +188,8 @@ archive choices and their Undo history do not require an Immich write scope.
    Immich-derived web foundation.
 2. Sign in with your normal Immich account. Cimmich does not create a second
    user account.
-3. Open **Cimmich Settings → Connect your existing Immich library**.
+3. Open **Cimmich Settings → Library connection**, then choose
+   **Connect your existing Immich library**.
 4. Paste the dedicated key only into Cimmich's write-only API-key field.
 5. Verify the reported Immich version, account and permissions.
 6. Preview the exact library lanes, media counts and inherited People/Face
@@ -473,7 +474,7 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 17 is tested with exact Immich 3.1.0. Do not bypass the
+Community Preview 18 is tested with exact Immich 3.1.0. Do not bypass the
 preflight or edit the claimed version. Use the tested Immich version or wait for
 a named Cimmich release that explicitly tests yours.
 

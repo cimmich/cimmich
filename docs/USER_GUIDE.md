@@ -8,7 +8,7 @@ updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
 > This guide follows the **current development source**. The latest named
-> public candidate is **Community Preview 17** for exact Immich 3.1.0. Always
+> public candidate is **Community Preview 18** for exact Immich 3.1.0. Always
 > install a named release rather than an arbitrary source snapshot.
 
 ## The product in one sentence
@@ -74,9 +74,10 @@ the [privacy guide](../PRIVACY.md) and
 
 ## First-run connection
 
-After signing in with Immich, open **Settings → Connection and import**. Enter a
-dedicated read-only Immich API key and preview the exact account, permissions,
-library lanes and counts before confirming an import.
+After signing in with Immich, open **Settings → Library connection**, then
+choose **Connect your existing Immich library**. Enter a dedicated read-only
+Immich API key and preview the exact account, permissions, library lanes and
+counts before confirming an import.
 
 Cimmich imports a neutral inventory into its own database. It does not copy
 original media into the source tree, rewrite sidecars or use the Immich
@@ -248,14 +249,11 @@ A Person page provides several jobs without flattening them into one gallery:
 - **Photos** - all currently visible accepted appearances, with Face, Body and
   Needs-check filters, ordinary selection actions and Year/Month/Week/Day
   grouping in current source;
-- **Story** - the Person's owner-written profile and visual narrative;
 - **Identity** - coverage, identity evidence, appearance evidence, review
   checks and display-photo choices;
-- **With** - accepted same-photo People plus explicit and shared-context
-  connections;
-- **Places** - linked location context;
-- **Signals** - descriptive supporting information; and
-- **Maintenance** - names, category, subject type, merge and split operations.
+- **Details** - names, aliases and the owner-written profile;
+- **Connections** - linked People, Events, Places and Things; and
+- **Documents** - records connected to the Person.
 
 Recorded/display name editing is owner-controlled. It can preserve former names
 as aliases, refuses ambiguous collisions and does not rename unrelated Immich
@@ -301,9 +299,13 @@ do not override the photo, the region or the owner's decision.
 
 ### Refresh matches
 
-**Refresh matches** rechecks the normal pool for that Person using the current
-qualified matching information. Before starting heavier work, it asks whether
-that Person actually has either of the two extra review populations:
+**Refresh matches** rebuilds that Person's Core matching set from current
+confirmed Face evidence, then searches again using the current calibrated
+matching policy. New possibilities return as review work; Refresh never accepts
+an identity automatically.
+
+Before starting heavier work, Refresh asks whether that Person actually has
+either of the two extra review populations:
 
 - observations already marked as **that Person's Heads**; and
 - observations currently sitting in **that Person's Possible mistags** lane.

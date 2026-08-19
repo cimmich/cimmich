@@ -95,8 +95,9 @@ without teaching the face matcher from the wrong region. Presence can record
 that the Person belongs to the memory even when no useful region is visible.
 
 After confirming or correcting the current work, press **Refresh matches** on
-that Person. Cimmich re-evaluates the current evidence, tests the updated
-matching approach, keeps it only when it passes its checks and looks again.
+that Person. Cimmich rebuilds that Person's Core matching set from current
+confirmed Face evidence, then searches again using the current calibrated
+matching policy.
 
 ![Maya Chen's live Checks view with a new match and possible mistag returned for review](assets/screenshots/matching-checks-live-preview12.webp)
 

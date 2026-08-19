@@ -8,7 +8,7 @@ contracts or release receipts.
 > [!IMPORTANT]
 > This document follows the **current development source** (migration-ledger
 > schema 142/patch 1 at the time of this reconciliation). The latest named
-> public candidate is Community Preview 17 at schema 142/patch 1. Release claims
+> public candidate is Community Preview 18 at schema 142/patch 1. Release claims
 > belong to the named release and its changelog, not to an arbitrary checkout.
 
 ## Architectural promise

@@ -34,7 +34,7 @@ search and return to the photos that matter.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 17 is actively being tested.** Its guided Docker install
+> **Community Preview 18 is actively being tested.** Its guided Docker install
 > has been exercised on macOS and Linux with exact Immich 3.1.0. Windows has not
 > yet been tested. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
@@ -46,9 +46,9 @@ search and return to the photos that matter.
 ### Confirm a person. Refresh. Find the next ones.
 
 Every confirmation and correction gives Cimmich better evidence. Press Refresh
-and it searches again, tries an updated matching approach, keeps it only when it
-passes its checks, and brings the next possibilities back to you. You never
-manage embeddings. You just say who it is.
+and Cimmich rebuilds what it knows about that person from the Faces you have
+confirmed, then searches again and brings the next possibilities back to you.
+You never manage embeddings. You just say who it is.
 
 The review experience has four parts:
 
@@ -57,8 +57,8 @@ The review experience has four parts:
    stronger fit.
 3. **Head and Body.** Keep the Person attached to a difficult photo without
    treating that region as Face evidence.
-4. **Refresh.** Cimmich searches again with your latest confirmations and
-   corrections, and keeps the updated matcher only if it passes its checks.
+4. **Refresh.** Cimmich rebuilds that Person's Core matching set from your
+   latest confirmed Faces, then searches again for more review work.
 
 <table>
   <tr>
