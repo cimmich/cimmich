@@ -129,10 +129,10 @@ const assertPersisted = async () => {
       (selector) => selector.entityKind === "place",
     ),
   );
-  assert.deepEqual(search.items.map((item) => item.assetId).sort(), [
-    "asset_identity_fixture",
-    "asset_service_fixture",
-  ]);
+  assert.deepEqual(
+    search.items.map((item) => item.assetId),
+    ["asset_identity_fixture"],
+  );
 };
 
 if (phase === "write" || phase === "all") {

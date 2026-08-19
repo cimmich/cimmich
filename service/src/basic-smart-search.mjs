@@ -589,21 +589,6 @@ export const createBasicSmartSearch = (
             AND association.authority_state = 'accepted'
           WHERE selector.selector_kind = 'subject'
           UNION
-          SELECT selector.selector_index, association.asset_id
-          FROM selected_selector selector
-          JOIN current_context_relation relation
-            ON relation.target_kind = selector.entity_kind
-            AND relation.target_id IN (
-              SELECT jsonb_array_elements_text(selector.ids)
-            )
-          JOIN context_entity source ON source.entity_id = relation.entity_id
-            AND source.status = 'active'
-            AND cimmich_visibility_context_entity_rank(source.entity_id)
-              <= ${visibleRank}
-          JOIN current_context_asset association
-            ON association.entity_id = source.entity_id
-          WHERE selector.selector_kind = 'subject'
-          UNION
           SELECT target.selector_index, association.asset_id
           FROM context_target target
           JOIN current_context_asset association

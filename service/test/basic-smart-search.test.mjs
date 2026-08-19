@@ -82,11 +82,7 @@ test("Basic Smart Search recognizes named subjects, context and year without pri
   assert.match(calls[1].statement, /cimmich_visibility_asset_rank/);
   assert.match(calls[1].statement, /WITH RECURSIVE selected_selector/);
   assert.match(calls[1].statement, /selector_asset_match/);
-  assert.match(calls[1].statement, /current_context_relation relation/);
-  assert.match(
-    calls[1].statement,
-    /relation\.target_kind = selector\.entity_kind/,
-  );
+  assert.doesNotMatch(calls[1].statement, /current_context_relation relation/);
   assert.match(
     calls[1].statement,
     /child\.parent_entity_id = parent\.entity_id/,
@@ -268,6 +264,7 @@ test("Basic Smart Search keeps AND semantics across distinct matched terms", asy
       },
     ],
   );
+  assert.doesNotMatch(calls[1].statement, /current_context_relation relation/);
 });
 
 test("Basic Smart Search does not AND description-only collisions onto an exact subject and place intent", async () => {

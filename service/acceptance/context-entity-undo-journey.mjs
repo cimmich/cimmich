@@ -471,7 +471,7 @@ try {
   );
   assert.equal(
     relationSearch.items.some((item) => item.assetId === "asset_split_fixture"),
-    true,
+    false,
   );
   const personThingDetached = await request(
     `/v1/objects/${relatedThing.detail.entity.entityId}/relations:detach`,
