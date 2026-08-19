@@ -1,19 +1,20 @@
 # Cimmich FAQ
 
-For a complete feature-by-feature explanation, start with the
-[Cimmich user guide](USER_GUIDE.md).
+For a friendly walkthrough with exact tasks, open the
+[Cimmich Guide](https://benjihagenhart.com/cimmich/guide/). The
+[repository user guide](USER_GUIDE.md) is the complete reference.
 
 ## What is Cimmich?
 
-Cimmich is an open-source, local-first memory companion for Immich. It adds a
-separate layer for People, Pets, Places, Things, Events, Documents, search,
-viewing modes and owner-controlled identity evidence. Immich remains the photo
-management system.
+Cimmich is the open-source, local-first matcher and memory layer for Immich.
+Confirm and correct people, Refresh the matcher with that evidence, and review
+what it finds next. Cimmich also connects People, Pets, Places, Things, Events
+and Documents beside the photo library Immich continues to own.
 
 ## Is Cimmich part of Immich?
 
 No. Cimmich is an unofficial independent project and is not affiliated with or
-endorsed by Immich or OpenAI. “Immich” describes the supported base product and
+endorsed by Immich or OpenAI. “Immich” describes the tested base product and
 compatibility target.
 
 ## Does Cimmich replace or modify my Immich installation?
@@ -28,16 +29,16 @@ The preview is for technically comfortable Immich users who can inspect Docker
 Compose, use the checked-in installer, maintain a Cimmich backup and report
 reproducible problems. Workflows and schemas may still change.
 
-The current named release supports exact Immich 3.1.0 on tested macOS and Linux
-Docker hosts. Native Windows PowerShell and WSL2 are untested in this release.
+The current named release is being tested with exact Immich 3.1.0 on macOS and
+Linux Docker hosts. Native Windows PowerShell and WSL2 have not yet been tested.
 Other Immich versions, Internet-facing deployment and multi-user operation are
-not currently supported.
+outside this preview's tested boundary.
 
 ## Which version should I install?
 
 Install [Community Preview 16](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.16)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
-development and may be ahead of the supported release.
+development and may be ahead of the named release.
 
 ## Why does Cimmich look like Immich?
 
@@ -86,8 +87,8 @@ hold an observation as Unknown.
 
 ## What are Enhanced and Guided?
 
-**Enhanced** is an optional Cimmich component for provider-backed candidate
-ranking. A compatible local provider extracts observations and embeddings;
+**Enhanced** is an owner-controlled strategy inside Cimmich's matcher. A
+compatible local provider extracts observations and embeddings;
 Cimmich builds and evaluates the reference library, ranks or abstains, and
 keeps every acceptance, correction or rejection with the owner.
 
@@ -98,7 +99,7 @@ requests itself.
 
 ## Does local-first mean nothing can ever leave my computer?
 
-Core Cimmich and its supported local operators do not require a hosted model.
+Core Cimmich and its built-in local operators do not require a hosted model.
 If you enable map services or connect external software through Guided, data
 may leave according to that service or client's behavior and the access you
 grant it. Local Cimmich cannot make third-party software private.
@@ -124,7 +125,7 @@ session.
 ## How do I install Cimmich?
 
 Download and verify the named release bundle, then follow
-[INSTALL.md](../INSTALL.md). The supported end-to-end path is the checked-in
+[INSTALL.md](../INSTALL.md). The tested end-to-end path is the checked-in
 installer:
 
 ```sh
@@ -153,8 +154,9 @@ revoke it later from Immich. See the
 
 A cold source build commonly takes 4–10 minutes while locked dependencies and
 container layers are prepared. Hardware, network and Docker cache state vary.
-Use `./tools/install.sh --status` or `./tools/companion.sh doctor` rather than
-repeatedly recreating the stack. No CPU or memory minimum has been certified;
+Use `./tools/install.sh --status` rather than repeatedly recreating the stack.
+The [Cimmich Guide](https://benjihagenhart.com/cimmich/guide/#trouble) covers
+deeper checks. No CPU or memory minimum has been certified;
 the [install guide](../INSTALL.md#resource-expectations) states the current
 resource boundary without inventing one.
 

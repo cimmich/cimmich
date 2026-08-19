@@ -29,8 +29,14 @@ not a publication source. Never choose a bundle by filename alone.
    the host state unchanged.
 6. Confirm README, FAQ, changelog, `CIMMICH_VERSION`, release notes and the
    release title all name the same Community Preview and exact Immich 3.1.0.
-7. Confirm the public repository has no tag with the intended release name.
-8. From both extracted bundles, confirm Compose renders with local Cimmich image
+7. In a directory containing only one named bundle plus `SHA256SUMS`, replay the
+   documented user checksum command and require an `OK` exit without treating
+   the absent alternative archive as a failure.
+8. Confirm the README and release notes link to the current product site and
+   Guide, name Cimmich as the matcher and describe platform claims as tested or
+   untested rather than proven failure.
+9. Confirm the public repository has no tag with the intended release name.
+10. From both extracted bundles, confirm Compose renders with local Cimmich image
    names and build both checked-in API/UI Dockerfiles successfully.
 
 Any mismatch returns the candidate to HOLD and requires a rebuilt candidate.

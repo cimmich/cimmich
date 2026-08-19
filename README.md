@@ -4,20 +4,18 @@
   <img src="docs/assets/cimmich-logo.png" alt="Cimmich astronaut inside a four-colour focus frame" width="200">
 </p>
 
-> **Complete the picture.**
+> **The archive already contains the story. Cimmich helps you keep it connected.**
 
-**Cimmich is an open-source, local-first memory companion for Immich.** It adds
-People, Pets, Places, Things, Events and Documents around the library you
-already own - without writing to the Immich database or modifying original
-media.
+**Cimmich is the open-source, local-first memory layer for Immich.** Confirm a
+person, press Refresh, and Cimmich uses what it learned to find the next
+possibilities. Then connect People, Pets, Places, Things, Events and Documents
+so each detail becomes another way back through the archive.
 
-Photo libraries are good at storing files and grouping visible faces. They are
-less good at preserving the overlapping context that makes a photograph
-meaningful: the person you know was present without a visible face, the place
-and event it belongs to, or the document that explains it. Cimmich adds that
-owner-controlled context beside Immich.
+Your archive already holds the hard part: the names, relationships and stories
+only you can recognise. Cimmich turns that knowledge into new ways to browse,
+search and return to the photos that matter.
 
-[Read the user guide](docs/USER_GUIDE.md) · [See the walkthrough](docs/WALKTHROUGH.md) · [Install Cimmich](INSTALL.md) ·
+[Explore the product](https://benjihagenhart.com/cimmich/) · [Open the Guide](https://benjihagenhart.com/cimmich/guide/) · [Install Cimmich](INSTALL.md) ·
 [Try fictional data](demo/cedar-house-v1/README.md) · [Understand privacy](PRIVACY.md) ·
 [Contribute](CONTRIBUTING.md)
 
@@ -36,45 +34,81 @@ owner-controlled context beside Immich.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 16** supports exact Immich 3.1.0 on tested macOS and Linux
-> Docker hosts. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
+> **Community Preview 16 is actively being tested.** Its guided Docker install
+> has been exercised on macOS and Linux with exact Immich 3.1.0. Windows has not
+> yet been tested. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.
 
 ![Cimmich Home showing the fictional Cedar House memory library](docs/assets/screenshots/home.webp)
 
+## The matcher improves with you
+
+### Confirm a person. Refresh. Find the next ones.
+
+Every confirmation and correction gives Cimmich better evidence. Press Refresh
+and it searches again, tries an updated matching approach, keeps it only when it
+passes its checks, and brings the next possibilities back to you. You never
+manage embeddings. You just say who it is.
+
+The review experience has four parts:
+
+1. **New matches.** Review a Face Cimmich thinks may belong to someone.
+2. **Possible mistags.** Revisit an existing tag when someone else is a much
+   stronger fit.
+3. **Head and Body.** Keep the Person attached to a difficult photo without
+   treating that region as Face evidence.
+4. **Refresh.** Cimmich searches again with your latest confirmations and
+   corrections, and keeps the updated matcher only if it passes its checks.
+
+<table>
+  <tr>
+    <td width="33%">
+      <img src="docs/assets/screenshots/new-match-confirm-preview12.webp" alt="Cimmich New matches showing Maya Chen suggested for a previously untagged Face with a Confirm Maya Chen action">
+      <br><strong>Confirm a new match.</strong> Cimmich finds the candidate. The
+      owner decides whether the Person is right.
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/possible-mistag-preview12.webp" alt="Cimmich Possible mistags showing an existing Maya Chen tag that the matcher believes is a stronger match for Samira Patel">
+      <br><strong>Question the tag.</strong> Sometimes the identity is wrong.
+      Sometimes the evidence type is.
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/head-correction-preview12.webp" alt="Cimmich retaining Maya Chen on the photo while the selected region is reclassified from Face to Head">
+      <br><strong>Correct the evidence.</strong> Change Face to Head or Body
+      without losing the Person tag.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3">
+      <img src="docs/assets/screenshots/matching-checks-live-preview12.webp" alt="Maya Chen's live Checks view with one new match and one possible mistag ready for review">
+      <br><strong>Review what comes back.</strong> New possibilities and doubtful
+      existing tags wait together in the Person's Checks view.
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3">
+      <img src="docs/assets/screenshots/tag-kept-appearance-preview12.webp" alt="Maya Chen's Appearance view retaining separate Head and Body photos after evidence correction">
+      <br><strong>Keep the tag. Fix the evidence.</strong> Head and Body preserve
+      the person-to-photo relationship without teaching the Face matcher from
+      the wrong region.
+    </td>
+  </tr>
+</table>
+
 ## What Cimmich adds
 
-- **People beyond face recognition.** Face, Head, Body and Presence remain
-  separate kinds of evidence, so knowing someone is in a photograph does not
-  require pretending that a usable face is visible.
-- **A connected memory library.** People, Pets, Places, Things, Events and
-  Documents have visual directories, relationships and counts.
-- **Overlapping context.** One photograph can belong to a trip, recurring
-  activity, client engagement and life period at the same time.
-- **Intersection search.** Select several Cimmich tags to see only photographs
-  carrying all of them, without a hidden 5,000-result ceiling.
-- **Reversible archive organisation.** Apply Cimmich-owned labels, tags,
-  collections, favourites and archive choices. Folder manifests create
-  collision-safe Cimmich collections without changing Immich albums, tags,
-  memberships, metadata or source media.
-- **Archive Health without deletion authority.** Compare exact copies and
-  possible duplicates, inspect one folder against the rest of the archive,
-  review likely rotation problems, scan independent photo backups and verify
-  scheduled Cimmich database backups. Expensive categories load only when
-  selected.
-- **People exploration with context.** Filter People and a Person's photographs
-  by Privacy bucket, Tags and Labels, Places, Events and Things. People modes,
-  search, sorting, filters and grid size share one compact bar.
-- **Owner-controlled review.** Matching may suggest; the archive owner accepts,
-  corrects, rejects, merges or undoes every consequential identity decision.
-- **Matching that follows corrections.** Refresh matches reruns the normal
-  bounded matcher for one Person after owner corrections. Newly eligible Faces
-  are offered for analysis before held reference-pack work resumes.
-- **Useful photo summaries.** Standard composes current People, Context, date,
-  place and OCR without a model. Optional local Smart and Enhanced passes add
-  visual detail without replacing originals or silently accepting results.
-- **Presentation modes.** Standard, Personal and optional password-gated
-  Private modes control what is comfortable to show on a shared screen.
+Immich is where your photos live. Cimmich helps you remember who is in them,
+what was happening and how each part of the archive connects.
+
+- **Matching that improves with use.** Confirm and correct people, then Refresh
+  so Cimmich can re-evaluate its matching evidence and search again.
+- **Bring the story together.** Connect people, pets, places, events, things and
+  documents so every detail becomes another way back through the archive.
+- **Make every detail work harder.** Add or correct a name, relationship, event,
+  place or document once; Cimmich carries it into people, stories, filters and
+  search.
+- **Keep what you add.** Cimmich stores its knowledge separately from Immich and
+  lets you export your decisions and linked documents.
 
 **Cimmich keeps Face, Head, Body and Presence evidence in its own system.
 Native Immich manual face assignments do not train or damage Immich's
@@ -110,15 +144,15 @@ owner knowledge and controlling which evidence Cimmich's matcher may use.
 
 The screenshots use the fictional, rights-cleared Cedar House demonstration
 archive. The invitation image is an annotated product capture; the others show
-the named interface directly. They demonstrate product behavior, not biometric
-accuracy or demographic fairness. [Take the full product tour](docs/WALKTHROUGH.md).
+the named interface directly. [Explore the product and open the exact steps in
+the Guide](https://benjihagenhart.com/cimmich/guide/).
 
 ## Is the Community Preview for you?
 
-| A reasonable fit today                                            | Not yet a supported fit                                                |
+| A reasonable fit for testing today                                | Not yet proved by this preview                                         |
 | :---------------------------------------------------------------- | :--------------------------------------------------------------------- |
 | You already run exact Immich 3.1.0                                | You need compatibility with another Immich version                     |
-| You can run the checked-in installer and inspect its Compose file | You need a one-click native Windows installer                          |
+| You can run the checked-in installer and inspect its Compose file | A tested Windows installation path                                     |
 | You can keep a separate Cimmich backup                            | You need stable APIs and schemas across releases                       |
 | You want a local, single-owner companion                          | You need Internet-facing or multi-user deployment                      |
 | You want inspectable suggestions and manual decisions             | You need automatic identity acceptance or certified biometric accuracy |
@@ -165,8 +199,8 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
 
 | I want to…                                               | Start here                                           |
 | :------------------------------------------------------- | :--------------------------------------------------- |
-| See everything the product can do and how to use it      | [Detailed user guide](docs/USER_GUIDE.md)            |
-| Take a short visual tour                                 | [Product walkthrough](docs/WALKTHROUGH.md)           |
+| Explore the product and follow the exact tasks           | [Cimmich Guide](https://benjihagenhart.com/cimmich/guide/) |
+| Read the complete repository reference                   | [Detailed user guide](docs/USER_GUIDE.md)            |
 | Install, update, back up or remove it                    | [Installation and operations](INSTALL.md)            |
 | Understand data and network behavior                     | [Privacy guide](PRIVACY.md)                          |
 | Understand or generate photo summaries                   | [Photo summaries](docs/SUMMARIES.md)                 |
@@ -185,7 +219,11 @@ Read the plain-language [privacy guide](PRIVACY.md), the technical
   proof.
 - Tested guided-install hosts are macOS and Linux. Native Windows PowerShell
   and WSL2 are untested in this release.
-- Internet-facing and multi-user deployment are not supported.
+- Internet-facing and multi-user deployment are outside this preview's tested
+  boundary.
+- Face-detector and embedding-model weights are not bundled. Compatible local
+  face-analysis providers extract observations and embeddings; Cimmich owns
+  matching, reference evaluation and the review workflow.
 - No biometric-accuracy or demographic-fairness claim is made.
 
 ## Develop and contribute

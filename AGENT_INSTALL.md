@@ -29,8 +29,8 @@ The assistant must:
   or source media;
 - never run a Cimmich remove, reset, restore or destructive lifecycle command;
 - never import until the owner has seen and approved the exact preview;
-- never install a model, enable Enhanced matching or activate a reference
-  library unless the owner separately asks for it.
+- never install an optional face-analysis provider or activate or refresh a
+  reference library unless the owner separately asks for it.
 
 If a secret is required, the owner enters it directly into the local hidden
 terminal prompt or Cimmich's write-only browser field. The assistant does not
@@ -62,8 +62,9 @@ Keep the command attached to an interactive terminal. Let the owner answer its
 Immich-address, Private-view and final confirmation prompts. If a hidden Private
 password prompt appears, the owner types it directly.
 
-The installer must report that exact Immich 3.1.0 is reachable and supported
-before it creates Cimmich configuration or starts its database. If it reports
+The installer must report that exact Immich 3.1.0 is reachable and matches this
+preview's tested version before it creates Cimmich configuration or starts its
+database. If it reports
 `IMMICH_COMPANION_VERSION_UNSUPPORTED`, stop: no Cimmich migration or import
 should have begun, and the assistant must not bypass that preflight.
 
@@ -104,7 +105,7 @@ Guided credential.
 Verify:
 
 - the expected Immich account and server;
-- the supported Immich version;
+- the tested Immich version;
 - read-only asset, Face and Person permissions;
 - the selected media and visibility lanes;
 - the previewed media, People and unnamed Face-group counts; and
@@ -128,7 +129,7 @@ Then verify:
 - unresolved imported identity groups appear in Review;
 - technical import exceptions remain receipt history rather than automatic
   identity decisions; and
-- no model, Enhanced component or SourcePack became active.
+- no optional face-analysis provider or SourcePack became active.
 
 Report the final counts, any held Review work and the exact next optional action.
 Installation and Core setup are complete at this point.
@@ -147,5 +148,6 @@ release folder → installer → owner authentication → preview approval
 → Guided import/resume → verified Core
 ```
 
-Optional recognition and matching are a separate owner decision after Core is
-working.
+Cimmich's matcher is part of the product. Installing an optional face-analysis
+provider or refreshing its reference evidence remains a separate owner decision
+after Core is working.

@@ -1,23 +1,21 @@
 # Cimmich user guide
 
-This is the detailed guide to what Cimmich can do and how the pieces fit
-together from an archive owner's point of view. For a shorter visual
-introduction, use the [product walkthrough](WALKTHROUGH.md). For installation,
+This is the detailed repository reference for what Cimmich can do and how the
+pieces fit together from an archive owner's point of view. For a friendly
+visual introduction with exact tasks, open the
+[Cimmich Guide](https://benjihagenhart.com/cimmich/guide/). For installation,
 updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
 > This guide follows the **current development source**. The latest named
-> public candidate is **Community Preview 16** for exact Immich 3.1.0. Features
-> marked **Source current** are included in this candidate but remain preview
-> capabilities. Always install a named release rather than
-> an arbitrary source snapshot.
+> public candidate is **Community Preview 16** for exact Immich 3.1.0. Always
+> install a named release rather than an arbitrary source snapshot.
 
 ## The product in one sentence
 
-Cimmich is a local-first companion that keeps owner-controlled people,
-identity evidence, pets, places, things, events, documents and archive-health
-knowledge beside an existing Immich library without rewriting original media
-or directly writing the Immich database.
+Cimmich is a local-first memory layer whose matcher improves from confirmed and
+corrected Face evidence, while keeping People, Pets, Places, Things, Events,
+Documents and archive-health knowledge beside Immich.
 
 The simplest mental model is:
 
@@ -85,7 +83,7 @@ original media into the source tree, rewrite sidecars or use the Immich
 database as its own storage. If the scope is wrong, stop at the preview and fix
 the key or selected lanes first.
 
-The complete supported setup is in [INSTALL.md](../INSTALL.md). The in-product
+The complete tested setup path is in [INSTALL.md](../INSTALL.md). The in-product
 screen is for connecting and refreshing an already installed companion; it is
 not a substitute for backups or the operator lifecycle.
 
@@ -197,7 +195,7 @@ the imported text and save when ready. Beneath every option, the separate
 **OCR** section shows Immich's existing extracted text in reading order without
 starting another scan. See [Photo summaries](SUMMARIES.md).
 
-### File location and duplicate badges - Source current
+### File location and duplicate badges
 
 Ordinary Cimmich photo cards and the viewer can show two distinct badges:
 
@@ -301,7 +299,7 @@ decisions.
 Matching scores and nearest examples explain why an item reached review. They
 do not override the photo, the region or the owner's decision.
 
-### Refresh matches - Source current
+### Refresh matches
 
 **Refresh matches** rechecks the normal pool for that Person using the current
 qualified matching information. Before starting heavier work, it asks whether
@@ -315,7 +313,7 @@ refresh does not scan every Head or every mistag in the archive, and it does
 not accept a result automatically. A result that now matches returns to the
 normal sorting pile for that Person.
 
-### Split and Smart Split - Source current
+### Split and Smart Split
 
 Use **Split** when one Person record contains more than one real identity. You
 can select shown Faces and move up to the displayed batch limit into an
@@ -355,7 +353,7 @@ connections, Documents and owner-selected Face/Hero presentation media. You
 can search, sort, edit, change presentation crops, attach/detach media and undo
 supported decisions.
 
-### Unknown and Ignored review - Source current
+### Unknown and Ignored review
 
 The Pets directory has three sibling views:
 
@@ -683,7 +681,12 @@ Cimmich does not silently:
    presentation choice.
 4. Use the visible retry or refresh control once. Repeatedly recreating the
    stack is rarely the right recovery path.
-5. Run `./tools/companion.sh doctor` for a redacted operator report.
+5. Export the installer-managed state root, then run a redacted operator report:
+
+   ```sh
+   export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
+   ./tools/companion.sh doctor
+   ```
 6. Use [INSTALL.md](../INSTALL.md) for lifecycle problems and
    [FAQ.md](FAQ.md) for common product boundaries.
 

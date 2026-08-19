@@ -6,8 +6,10 @@ remain available without controlling the front door.
 
 ## Use Cimmich
 
-- [Detailed user guide](USER_GUIDE.md) - the canonical description of what
-  Cimmich can do and how each owner workflow works.
+- [Cimmich product site](https://benjihagenhart.com/cimmich/) - the product
+  story, matching walkthrough and approachable task-led Guide.
+- [Detailed user guide](USER_GUIDE.md) - the complete repository reference for
+  what Cimmich can do and how each owner workflow works.
 - [Product walkthrough](WALKTHROUGH.md) - a visual tour using the fictional
   Cedar House archive.
 - [Install and operate](../INSTALL.md) - verify, configure, start, back up,

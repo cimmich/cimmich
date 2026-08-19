@@ -36,6 +36,12 @@ The current maintained candidate is `v1.1.0-community-preview.16` on schema
 A stable release comes only after the installation, compatibility, usability
 and real-library boundaries are strong enough for wider promotion.
 
+Community Previews are published as GitHub full releases so
+`/releases/latest` resolves to the current named install bundle. That transport
+choice does not make them general-availability releases: the Community Preview
+name, active-testing copy and exact compatibility statement define their
+maturity.
+
 Every public-beta release intended for newcomers must include three named
 assets in addition to GitHub's automatic source archives:
 

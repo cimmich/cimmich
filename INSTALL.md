@@ -5,7 +5,7 @@ database, configuration, document store and backups. It does not replace or
 write Immich, including albums, memberships, tags, asset metadata and original
 media.
 
-The checked-in installer is the supported end-to-end path. It creates the
+The checked-in installer is the tested end-to-end path for this preview. It creates the
 private runtime configuration that the backup, restore, diagnostic and removal
 commands use. The root `compose.yaml` remains fully inspectable, but a raw
 `docker compose up` does not create that operator state and is not a second
@@ -18,6 +18,8 @@ Community Preview 16 requires:
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
 - a tested macOS or Linux Docker host;
+- outbound access for Docker images and locked Debian, PyPI, npm and pnpm
+  dependencies during a cold build, unless every required artifact is cached;
 - `curl` and `openssl`;
 - either `sha256sum` or `shasum` for checksummed lifecycle operations; and
 - your normal Immich sign-in.
@@ -65,18 +67,18 @@ Check the downloaded bundle before extracting it.
 macOS:
 
 ```sh
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 --ignore-missing -c SHA256SUMS
 ```
 
 Linux:
 
 ```sh
-sha256sum -c SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-The file you intend to run must report `OK`. `SHA256SUMS` detects corruption or
-a mismatched bundle; by itself it is an integrity check, not independent proof
-of publisher identity.
+The bundle you downloaded must report `OK`; the missing alternative archive is
+ignored. `SHA256SUMS` detects corruption or a mismatched bundle; by itself it is
+an integrity check, not independent proof of publisher identity.
 
 After extracting the bundle, open a terminal in that folder and confirm:
 
@@ -233,6 +235,23 @@ After connection, you may delete or rotate the key from Immich's **Account
 Settings → API Keys**. Deleting it immediately stops Cimmich's library reads;
 create and verify a new dedicated key to reconnect.
 
+## Next: start matching
+
+Cimmich is installed once the expected account, version and library import are
+visible. To start the matching loop, follow the
+[matching task in the Cimmich Guide](https://benjihagenhart.com/cimmich/guide/#matching):
+
+1. Open **Settings → Models & Guided → Local Face matching**.
+2. Connect a compatible local face-analysis provider. It extracts observations
+   and embeddings; Cimmich remains the matcher.
+3. Turn on **Enhanced**, then follow the current action until **Face matching**
+   reports **Ready** and **Reference library** names the library in use.
+4. Open a Person, choose **Identity → Checks**, confirm or correct the review
+   items, then use **Refresh matches** on that Person.
+
+Refresh re-evaluates that Person with the latest confirmed evidence. New matches
+and possible mistakes return to Checks for the owner to review.
+
 ## Normal operation
 
 The installer uses this state root by default. Export it before calling the
@@ -323,13 +342,22 @@ export CIMMICH_DATABASE_BACKUP_PATH=/mnt/independent-disk/cimmich-database
 export CIMMICH_DATABASE_BACKUP_LABEL='Primary database backup'
 export CIMMICH_DATABASE_BACKUP_DESCRIPTION='External drive or NAS'
 export CIMMICH_DATABASE_BACKUP_STORAGE_DOMAIN=independent-disk-id
-docker compose -f compose.yaml -f compose.database-backup.yaml up -d
+export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
+export CIMMICH_COMPANION_PROJECT=cimmich-companion
+docker compose \
+  --project-name "$CIMMICH_COMPANION_PROJECT" \
+  --env-file "$CIMMICH_COMPANION_STATE_ROOT/runtime.env" \
+  --file compose.yaml \
+  --file compose.database-backup.yaml \
+  up --detach --wait cimmich-api
 ```
 
 The destination must already exist. Cimmich exposes only configured locations
 in the UI and writes below `/database-backup`; it cannot browse or write to an
 arbitrary server path. The storage-domain ID must differ from the Cimmich
-database volume. To offer more than one location, add equivalent writable
+database volume. The project and environment arguments are required so the
+override extends the configured guided installation. To offer more than one
+location, add equivalent writable
 mounts below `/database-backup` and include them in
 `CIMMICH_DATABASE_BACKUP_TARGETS_JSON`.
 
@@ -445,9 +473,9 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 16 supports exact Immich 3.1.0. Do not bypass the preflight or
-edit the claimed version. Use the supported Immich version or wait for a named
-Cimmich release that explicitly adds yours.
+Community Preview 16 is tested with exact Immich 3.1.0. Do not bypass the
+preflight or edit the claimed version. Use the tested Immich version or wait for
+a named Cimmich release that explicitly tests yours.
 
 ### The API key is rejected
 

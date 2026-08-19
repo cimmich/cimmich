@@ -4,12 +4,9 @@ This walkthrough uses **Cedar House**, Cimmich's fictional, rights-cleared
 demonstration archive. It shows how the product fits around Immich without
 requiring access to anybody's private library.
 
-> [!NOTE]
-> Cedar House demonstrates product behavior and lifecycle controls. It is not a
-> biometric-accuracy, demographic-fairness or real-person consistency benchmark.
-
+[Explore the product](https://benjihagenhart.com/cimmich/) · [Open the Guide](https://benjihagenhart.com/cimmich/guide/) ·
 [Install Cimmich](../INSTALL.md) · [Run the isolated demo](../demo/cedar-house-v1/README.md) ·
-[Read the privacy guide](../PRIVACY.md) · [Use the detailed guide](USER_GUIDE.md)
+[Use the detailed reference](USER_GUIDE.md)
 
 This is the short visual tour. For every current section, review action and
 owner boundary, continue with the [detailed user guide](USER_GUIDE.md).
@@ -74,29 +71,48 @@ Native Immich manual face assignments do not train or damage Immich's
 recognition model. Cimmich's separate evidence types govern what its matcher
 may use; they do not repair or retrain Immich.
 
-## 4. Review a suggestion before it becomes a decision
+## 4. Confirm, correct and Refresh
 
-![An annotated product capture showing Maya identified in a fictional space photograph without a visible face](assets/screenshots/presence.webp)
+Open a Person, then choose **Identity → Checks**. This is where Cimmich turns
+what the owner confirms into the next round of useful review.
 
-Some of the most valuable photographs do not contain a clear face. The owner
-can add Body or Presence evidence directly on the photograph, inspect the
-result, and later correct or remove it.
+![Cimmich New matches showing Maya Chen suggested for a previously untagged Face](assets/screenshots/new-match-confirm-preview12.webp)
 
-Optional models may propose observations, but they do not accept an identity.
-Consequential identity changes remain visible, confirmation-gated and
-reversible.
+**New matches** brings back Faces Cimmich thinks may belong to this Person. The
+owner confirms the identity, chooses somebody else or rejects the observation.
+
+![Cimmich Possible mistags showing an existing Maya Chen tag with a stronger competing identity](assets/screenshots/possible-mistag-preview12.webp)
+
+**Possible mistags** revisits an existing tag when another Person is a much
+stronger fit or the Face is an outlier against this Person's confirmed set.
+Sometimes the Person is wrong. Sometimes the tag is right but the evidence type
+is not.
+
+![Cimmich retaining Maya Chen while changing a selected region from Face to Head](assets/screenshots/head-correction-preview12.webp)
+
+Changing **Face** to **Head** or **Body** keeps the Person attached to the photo
+without teaching the face matcher from the wrong region. Presence can record
+that the Person belongs to the memory even when no useful region is visible.
+
+After confirming or correcting the current work, press **Refresh matches** on
+that Person. Cimmich re-evaluates the current evidence, tests the updated
+matching approach, keeps it only when it passes its checks and looks again.
+
+![Maya Chen's live Checks view with a new match and possible mistag returned for review](assets/screenshots/matching-checks-live-preview12.webp)
+
+New possibilities and doubtful existing tags return to the same Checks view.
+Repeat the loop as the archive becomes better described:
 
 ```mermaid
 flowchart LR
-    Suggest["Cimmich suggests"] --> Inspect["Owner inspects the photo and evidence"]
-    Inspect --> Decide["Accept, correct or reject"]
-    Decide --> Record["Decision and provenance are recorded"]
-    Record --> Undo["Owner can undo or replace the decision"]
+    Confirm["Confirm or correct"] --> Refresh["Refresh this Person"]
+    Refresh --> Evaluate["Cimmich evaluates the update"]
+    Evaluate --> Review["Review what returns"]
+    Review --> Confirm
 ```
 
-This is the core control loop: a score can bring something to review, but it
-cannot decide who a person is. Undo is part of the decision contract, not a
-best-effort cleanup after the fact.
+Follow the exact setup and review steps in the
+[Cimmich Guide](https://benjihagenhart.com/cimmich/guide/#matching).
 
 ## 5. Combine context instead of searching one label at a time
 
