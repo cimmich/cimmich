@@ -6,7 +6,7 @@ Previous Community Preview: migration-ledger schema 142/patch 1
 Current Community Preview candidate: migration-ledger schema 156/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate: `v1.1.0-community-preview.21` for exact Immich 3.1.0
+Current candidate: `v1.1.0-community-preview.22` for exact Immich 3.1.0
 
 Schema 136 adds review-only own-Person outlier evidence to Possible mistags.
 The Mac-local scorer first preserves the stronger-different-Person route, then
@@ -85,7 +85,7 @@ relations and hierarchy. Its analysis workspace adds computed starting
 questions, purpose-specific lenses, a synchronized strongest-connections rail,
 one-hop focus and shortest visible path tracing. Recorded links render
 separately from photo-derived evidence. These are bounded read projections: they
-create no inferred relationship truth. Community Preview 21 keeps Discover and
+create no inferred relationship truth. Community Preview 22 keeps Discover and
 Person memory webs Experimental and off by default; one explicit browser-local
 setting reveals them, while disabling the experiment clears the projection and
 preserves recorded facts.
@@ -651,7 +651,7 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-Community Preview 18 remains immutable at schema 142. Community Preview 21 is
+Community Preview 18 remains immutable at schema 142. Community Preview 22 is
 the schema-156 candidate and does not revise earlier immutable releases.
 
 ## Historical Public Beta Patch 6 certification

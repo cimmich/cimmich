@@ -9,6 +9,24 @@ SERVICE_IMAGE="cimmich-service-acceptance:$RUN_ID"
 FACE_REVIEW_DATABASE="cimmich_face_review_test"
 IMAGE=pgvector/pgvector:0.8.2-pg17-trixie
 
+reject_rg_matches() {
+  message=$1
+  shift
+  scan_status=0
+  "$@" || scan_status=$?
+  case "$scan_status" in
+    0)
+      echo "$message" >&2
+      exit 1
+      ;;
+    1) ;;
+    *)
+      echo "$message: ripgrep exited with status $scan_status" >&2
+      exit 1
+      ;;
+  esac
+}
+
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
@@ -692,24 +710,26 @@ if ! command -v rg >/dev/null 2>&1; then
   exit 1
 fi
 
-if rg -n -P --hidden \
-  --glob '!tools/run_synthetic_acceptance.sh' \
-  --glob '!tools/run_publication_scan.sh' \
-  --glob '!docs/PRIVACY_BOUNDARY.md' \
-  --glob '!tests/sql/001_intelligence_acceptance.sql' \
-  --glob '!**/.git' \
-  --glob '!**/.git/**' \
-  --glob '!**/node_modules/**' \
-  --glob '!**/.svelte-kit/**' \
-  --glob '!**/build/**' \
-  --glob '!**/coverage/**' \
-  --glob '!**/test-results/**' \
-  "(/Users/|/home/|BEGIN [A-Z ]*PRIVATE KEY|(?i:(?:api[_-]?key|password)\\s*=\\s*['\"](?![<\${])(?!password['\"])(?!auth\\.)[^'\"]{8,}['\"]))" "$ROOT"; then
-  echo "privacy leakage scan failed" >&2
-  exit 1
-fi
+(
+  cd "$ROOT"
+  reject_rg_matches "privacy leakage scan failed" rg -n -P --hidden \
+    --glob '!tools/run_synthetic_acceptance.sh' \
+    --glob '!tools/run_publication_scan.sh' \
+    --glob '!docs/PRIVACY_BOUNDARY.md' \
+    --glob '!tests/sql/001_intelligence_acceptance.sql' \
+    --glob '!.git' \
+    --glob '!**/.git/**' \
+    --glob '!**/node_modules/**' \
+    --glob '!**/.svelte-kit/**' \
+    --glob '!**/build/**' \
+    --glob '!**/coverage/**' \
+    --glob '!**/test-results/**' \
+    "(/Users/|/home/|BEGIN [A-Z ]*PRIVATE KEY|(?i:(?:api[_-]?key|password)\\s*=\\s*['\"](?![<\${])(?!password['\"])(?!auth\\.)[^'\"]{8,}['\"]))" \
+    .
+)
 
-if rg -n "person_profile|private_notes|gender_identity_kind" \
+reject_rg_matches "Person Profile matching/model-input isolation scan failed" \
+  rg -n "person_profile|private_notes|gender_identity_kind" \
   "$ROOT/service/src/local-face-recognition-worker.mjs" \
   "$ROOT/service/src/recognition-job-commit.mjs" \
   "$ROOT/service/src/prime-curator.mjs" \
@@ -717,19 +737,15 @@ if rg -n "person_profile|private_notes|gender_identity_kind" \
   "$ROOT/service/src/source-pack.mjs" \
   "$ROOT/service/src/source-pack-repository.mjs" \
   "$ROOT/service/src/source-pack-rebuild-worker.mjs" \
-  "$ROOT/service/src/memory-steward.mjs"; then
-  echo "Person Profile matching/model-input isolation scan failed" >&2
-  exit 1
-fi
+  "$ROOT/service/src/memory-steward.mjs"
 
-if rg -n "from .*immich|IMMICH_|localStorage|console\." \
+reject_rg_matches "Person Profile local ownership/log isolation scan failed" \
+  rg -n "from .*immich|IMMICH_|localStorage|console\." \
   "$ROOT/service/src/person-profile.mjs" \
-  "$ROOT/service/src/person-details-display.mjs"; then
-  echo "Person Profile local ownership/log isolation scan failed" >&2
-  exit 1
-fi
+  "$ROOT/service/src/person-details-display.mjs"
 
-if rg -n "cimmich_document|document_link|document_label|source_filename" \
+reject_rg_matches "Document matching/model-input isolation scan failed" \
+  rg -n "cimmich_document|document_link|document_label|source_filename" \
   "$ROOT/service/src/local-face-recognition-worker.mjs" \
   "$ROOT/service/src/recognition-job-commit.mjs" \
   "$ROOT/service/src/prime-curator.mjs" \
@@ -737,15 +753,10 @@ if rg -n "cimmich_document|document_link|document_label|source_filename" \
   "$ROOT/service/src/source-pack.mjs" \
   "$ROOT/service/src/source-pack-repository.mjs" \
   "$ROOT/service/src/source-pack-rebuild-worker.mjs" \
-  "$ROOT/service/src/memory-steward.mjs"; then
-  echo "Document matching/model-input isolation scan failed" >&2
-  exit 1
-fi
+  "$ROOT/service/src/memory-steward.mjs"
 
-if rg -n "from .*immich|process\.env\.IMMICH_|localStorage|sessionStorage|indexedDB|console\.|fetch\(" \
-  "$ROOT/service/src/documents.mjs"; then
-  echo "Document local ownership/network/log isolation scan failed" >&2
-  exit 1
-fi
+reject_rg_matches "Document local ownership/network/log isolation scan failed" \
+  rg -n "from .*immich|process\.env\.IMMICH_|localStorage|sessionStorage|indexedDB|console\.|fetch\(" \
+  "$ROOT/service/src/documents.mjs"
 
 echo "Cimmich synthetic acceptance: PASS"

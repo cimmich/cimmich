@@ -22,3 +22,27 @@ test("full synthetic acceptance isolates concurrent disposable runs", async () =
   assert.match(source, /docker image rm "\$SERVICE_IMAGE"/);
   assert.doesNotMatch(source, /127\.0\.0\.1:55432/);
 });
+
+test("full synthetic acceptance applies relative privacy-scan exclusions", async () => {
+  const source = await readFile(acceptance, "utf8");
+  const scanStart = source.indexOf('(\n  cd "$ROOT"\n  reject_rg_matches');
+  const scanEnd = source.indexOf("\n)\n", scanStart);
+
+  assert.notEqual(scanStart, -1);
+  assert.notEqual(scanEnd, -1);
+  const scan = source.slice(scanStart, scanEnd);
+  assert.match(scan, /reject_rg_matches "privacy leakage scan failed"/);
+  assert.match(scan, /--glob '!tools\/run_synthetic_acceptance\.sh'/);
+  assert.match(scan, /--glob '!tools\/run_publication_scan\.sh'/);
+  assert.match(scan, /\n    \.$/);
+  assert.doesNotMatch(scan, /\\\n    "\$ROOT"$/);
+});
+
+test("full synthetic acceptance treats ripgrep errors as failures", async () => {
+  const source = await readFile(acceptance, "utf8");
+
+  assert.match(source, /reject_rg_matches\(\)/);
+  assert.match(source, /"\$@" \|\| scan_status=\$\?/);
+  assert.match(source, /1\) ;;/);
+  assert.match(source, /ripgrep exited with status \$scan_status/);
+});

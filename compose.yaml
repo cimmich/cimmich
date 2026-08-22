@@ -70,7 +70,7 @@ services:
 
   cimmich-face-provider-init:
     profiles: [face-provider]
-    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.21}
+    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.22}
     command:
       [
         "/bin/sh",
@@ -92,7 +92,7 @@ services:
       context: .
       dockerfile: tools/public_demo_api.Dockerfile
       target: production
-    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.21}
+    image: ${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.22}
     environment:
       CIMMICH_ALLOWED_HOSTS: ${CIMMICH_ALLOWED_HOSTS:-127.0.0.1,localhost,cimmich-api}
       CIMMICH_ALLOWED_ORIGINS: ${CIMMICH_ALLOWED_ORIGINS:-http://127.0.0.1:${CIMMICH_COMPANION_UI_PORT:-3413},http://localhost:${CIMMICH_COMPANION_UI_PORT:-3413}}
@@ -185,7 +185,7 @@ services:
         PUBLIC_CIMMICH_API_URL: /cimmich-api
         PUBLIC_CIMMICH_DEFAULT_EXPERIENCE: ${CIMMICH_DEFAULT_EXPERIENCE:-companion}
         PUBLIC_CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT: ${CIMMICH_LOCAL_AI_EXPERIMENTAL_DEFAULT:-false}
-    image: ${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.21}
+    image: ${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.22}
     environment:
       PUBLIC_CIMMICH_API_URL: /cimmich-api
       PUBLIC_CIMMICH_DEFAULT_EXPERIENCE: ${CIMMICH_DEFAULT_EXPERIENCE:-companion}

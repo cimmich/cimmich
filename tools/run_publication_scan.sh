@@ -8,23 +8,37 @@ fail() {
   exit 1
 }
 
+reject_rg_matches() {
+  message=$1
+  shift
+  scan_status=0
+  "$@" || scan_status=$?
+  case "$scan_status" in
+    0) fail "$message" ;;
+    1) ;;
+    *) fail "$message: ripgrep exited with status $scan_status" ;;
+  esac
+}
+
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v rg >/dev/null 2>&1 || fail "ripgrep (rg) is required"
 
 git -C "$ROOT" ls-files --error-unmatch tools/run_publication_scan.sh >/dev/null 2>&1 ||
   fail "the publication scanner must be tracked"
 
-if git -C "$ROOT" ls-files | rg -n '\.(db|sqlite|sqlite3|dump|pem|p12|pfx|key|onnx|pt|pth|npy|npz)$'; then
-  fail "a database, credential container, key or model artifact is tracked"
-fi
+tracked_files=$(git -C "$ROOT" ls-files) || fail "tracked-file inventory could not be read"
+printf '%s\n' "$tracked_files" |
+  reject_rg_matches "a database, credential container, key or model artifact is tracked" \
+    rg -n '\.(db|sqlite|sqlite3|dump|pem|p12|pfx|key|onnx|pt|pth|npy|npz)$'
 
 # Private names are checked below through token-window digests so the scanner
 # can reject them without publishing the values it is meant to keep private.
 # Internal paths and infrastructure identifiers remain safe to express as
 # generic patterns here.
-if (
+(
   cd "$ROOT"
-  rg -n -P --hidden \
+  reject_rg_matches "private rehearsal or internal infrastructure text remains" \
+    rg -n -P --hidden \
     --glob '!tools/run_publication_scan.sh' \
     --glob '!tools/run_synthetic_acceptance.sh' \
     --glob '!.git' \
@@ -35,9 +49,7 @@ if (
     --glob '!**/coverage/**' \
     '(?:/Users/[A-Za-z0-9._-]+/|/home/(?!example(?:/|$))[A-Za-z0-9._-]+/|[A-Za-z]:\\Users\\[A-Za-z0-9._-]+\\|/Volumes/(?!Cedar-House(?:/|$))[A-Za-z0-9._ -]+/|10\.0\.0\.1|admin@cimmich\.local|RUI[\\/]Core|MBCX|\bKern\b|(?i:cimmich[-_ ]?x1|x1[-_ ]?(?:runtime|deploy|host)))' \
     .
-); then
-  fail "private rehearsal or internal infrastructure text remains"
-fi
+)
 
 if ! node --input-type=module - "$ROOT" <<'NODE'
 import { createHash } from "node:crypto";
@@ -265,9 +277,9 @@ then
   fail "private rehearsal text remains"
 fi
 
-if (
+(
   cd "$ROOT"
-  rg -n -P --hidden \
+  reject_rg_matches "credential-shaped material remains" rg -n -P --hidden \
     --glob '!tools/run_publication_scan.sh' \
     --glob '!tools/run_synthetic_acceptance.sh' \
     --glob '!docs/PRIVACY_BOUNDARY.md' \
@@ -280,9 +292,7 @@ if (
     --glob '!**/coverage/**' \
     "BEGIN [A-Z ]*PRIVATE KEY|(?i:(?:api[_-]?key|password)\\s*=\\s*['\"](?![<\${])(?!password['\"])(?!auth\\.)[^'\"]{8,}['\"])" \
     .
-); then
-  fail "credential-shaped material remains"
-fi
+)
 
 printf '{"candidate":"public","scan":"passed","trackedFiles":%s}\n' \
   "$(git -C "$ROOT" ls-files | wc -l | tr -d ' ')"

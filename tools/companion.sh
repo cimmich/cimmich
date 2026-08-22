@@ -24,8 +24,8 @@ ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
-API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.21}
-UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.21}
+API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.22}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.22}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
