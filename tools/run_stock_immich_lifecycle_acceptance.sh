@@ -23,6 +23,7 @@ test "$ACCEPTANCE_TMP_ROOT" != "/" || { printf 'stock acceptance: temporary root
 STAGE="${ACCEPTANCE_TMP_ROOT}/${PROJECT}"
 test ! -e "$STAGE" || { printf 'stock acceptance: stage already exists\n' >&2; exit 2; }
 RESTORE_CONTAINER="${PROJECT}-restore"
+ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
 : "${CIMMICH_LOCAL_PYTHON_PATH:?Set CIMMICH_LOCAL_PYTHON_PATH to isolated OpenCV 4.11 Python}"
 : "${CIMMICH_OPENCV_DETECTOR_MODEL_PATH:?Set CIMMICH_OPENCV_DETECTOR_MODEL_PATH}"
@@ -51,7 +52,10 @@ cleanup() {
   docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
   if test -f "$STAGE/.cimmich-stock-acceptance" &&
     test "$(cat "$STAGE/.cimmich-stock-acceptance")" = "$PROJECT"; then
-    rm -rf "$STAGE"
+    docker run --rm -v "$STAGE:/target" "$ALPINE_IMAGE" sh -c \
+      'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+      >/dev/null 2>&1 || true
+    rmdir "$STAGE" >/dev/null 2>&1 || true
   fi
   return "$status"
 }

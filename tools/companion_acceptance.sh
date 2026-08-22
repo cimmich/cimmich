@@ -38,6 +38,7 @@ SECURITY_PROOF="$STAGE/security-proof"
 IMMICH_PORT=${CIMMICH_COMPANION_ACCEPTANCE_IMMICH_PORT:-22849}
 API_PORT=${CIMMICH_COMPANION_ACCEPTANCE_API_PORT:-3421}
 UI_PORT=${CIMMICH_COMPANION_ACCEPTANCE_UI_PORT:-3423}
+ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
 : "${CIMMICH_PUBLIC_FIXTURE_IMAGE:?Set CIMMICH_PUBLIC_FIXTURE_IMAGE}"
 : "${CIMMICH_PUBLIC_FIXTURE_SHA256:?Set CIMMICH_PUBLIC_FIXTURE_SHA256}"
@@ -52,7 +53,10 @@ cleanup() {
   docker volume rm "$COLLISION_PROJECT-database" >/dev/null 2>&1 || true
   if test -f "$HARNESS_ROOT/.cimmich-companion-acceptance" &&
     test "$(cat "$HARNESS_ROOT/.cimmich-companion-acceptance")" = "$COMPANION_PROJECT"; then
-    rm -rf "$HARNESS_ROOT"
+    docker run --rm -v "$HARNESS_ROOT:/target" "$ALPINE_IMAGE" sh -c \
+      'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+      >/dev/null 2>&1 || true
+    rmdir "$HARNESS_ROOT" >/dev/null 2>&1 || true
   fi
   return "$status"
 }

@@ -33,6 +33,7 @@ test("release dependency policy is fail-closed and CI actions are immutable", as
   for (const action of [
     "actions/checkout",
     "actions/setup-node",
+    "actions/setup-python",
     "actions/cache",
   ]) {
     assert.match(
@@ -70,6 +71,10 @@ test("release dependency policy is fail-closed and CI actions are immutable", as
     assert.match(workspace, new RegExp(`${patchedDependency}@`));
   }
   assert.match(perceptualRequirements, /^Pillow==12\.3\.0$/m);
+  assert.match(
+    workflow,
+    /full-release-lifecycle:[\s\S]*name: Use Python 3\.12[\s\S]*python-version: "3\.12"[\s\S]*python -m pip install[\s\S]*CIMMICH_LOCAL_PYTHON_PATH=%s\\n' "\$\(command -v python\)"/,
+  );
 });
 
 test("local runtime secrets, images and browser response headers are hardened", async () => {
@@ -297,6 +302,14 @@ test("release lifecycle stages are portable across macOS and Linux runners", asy
   assert.match(stock, /if ! mkdir "\$STAGE"/);
   assert.match(companion, /\.cimmich-companion-acceptance/);
   assert.match(publicDemo, /\.cimmich-public-demo-acceptance/);
+  for (const script of [stock, companion, publicDemo]) {
+    assert.match(script, /alpine:3\.22@sha256:[0-9a-f]{64}/);
+    assert.match(
+      script,
+      /find \/target -mindepth 1 -maxdepth 1 -exec rm -rf -- \{\} \+/,
+    );
+    assert.match(script, /rmdir "\$(?:STAGE|HARNESS_ROOT)"/);
+  }
   assert.match(bootstrap, /CONTAINER_ID=/);
   assert.match(bootstrap, /docker container inspect "\$CONTAINER"/);
   assert.match(bootstrap, /docker rm -f "\$CONTAINER_ID"/);

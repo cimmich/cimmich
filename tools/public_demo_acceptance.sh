@@ -34,6 +34,7 @@ PORTABLE_BACKUP_ROOT="$PORTABLE_BACKUP_PARENT/$PROJECT-backup"
 UNHEALTHY_BACKUP_PARENT="$HARNESS_ROOT/unhealthy"
 UNHEALTHY_BACKUP_ROOT="$UNHEALTHY_BACKUP_PARENT/$PROJECT-backup"
 PRIVACY_PROOF_ROOT="$HARNESS_ROOT/privacy-proof"
+ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
 run_demo() {
   CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" \
@@ -54,7 +55,10 @@ cleanup() {
   fi
   if test -f "$HARNESS_ROOT/.cimmich-public-demo-acceptance" &&
     test "$(cat "$HARNESS_ROOT/.cimmich-public-demo-acceptance")" = "$PROJECT"; then
-    rm -rf "$HARNESS_ROOT"
+    docker run --rm -v "$HARNESS_ROOT:/target" "$ALPINE_IMAGE" sh -c \
+      'find /target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+      >/dev/null 2>&1 || true
+    rmdir "$HARNESS_ROOT" >/dev/null 2>&1 || true
   fi
   return "$status"
 }
