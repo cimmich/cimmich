@@ -286,13 +286,14 @@ test("backup restore validates hostile input before replacing owner state", asyn
 });
 
 test("release lifecycle stages are portable across macOS and Linux runners", async () => {
-  const [stock, companion, publicDemo, bootstrap, stockCompose] = await Promise.all([
-    source("tools/run_stock_immich_lifecycle_acceptance.sh"),
-    source("tools/companion_acceptance.sh"),
-    source("tools/public_demo_acceptance.sh"),
-    source("tools/run_public_demo_bootstrap_acceptance.sh"),
-    source("ops/stock-immich-v3.1.0.compose.yml"),
-  ]);
+  const [stock, companion, publicDemo, bootstrap, stockCompose] =
+    await Promise.all([
+      source("tools/run_stock_immich_lifecycle_acceptance.sh"),
+      source("tools/companion_acceptance.sh"),
+      source("tools/public_demo_acceptance.sh"),
+      source("tools/run_public_demo_bootstrap_acceptance.sh"),
+      source("ops/stock-immich-v3.1.0.compose.yml"),
+    ]);
 
   for (const script of [stock, companion, publicDemo, bootstrap]) {
     assert.doesNotMatch(script, /\/private\/tmp/);
