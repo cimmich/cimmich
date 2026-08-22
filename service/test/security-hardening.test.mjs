@@ -75,6 +75,10 @@ test("release dependency policy is fail-closed and CI actions are immutable", as
     workflow,
     /full-release-lifecycle:[\s\S]*name: Use Python 3\.12[\s\S]*python-version: "3\.12"[\s\S]*python -m pip install[\s\S]*CIMMICH_LOCAL_PYTHON_PATH=%s\\n' "\$\(command -v python\)"/,
   );
+  assert.match(
+    workflow,
+    /full-release-lifecycle:[\s\S]*name: Enable pinned pnpm[\s\S]*run: corepack enable[\s\S]*name: Scan and statically verify extracted tar and ZIP payloads[\s\S]*name: Prove custom-project companion install, backup, restore and removal[\s\S]*name: Install public-demo browser dependencies from the extracted bundle[\s\S]*cd "\$CIMMICH_TAR_ROOT\/ui"[\s\S]*pnpm install --frozen-lockfile[\s\S]*cd web[\s\S]*pnpm exec playwright install --with-deps chromium[\s\S]*name: Prove the public demo lifecycle/,
+  );
 });
 
 test("local runtime secrets, images and browser response headers are hardened", async () => {

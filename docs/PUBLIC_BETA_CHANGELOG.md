@@ -4,7 +4,7 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.25: Final V1 closeout
+## v1.1.0-community-preview.26: Final V1 closeout
 
 - Discover and Person memory webs are now explicitly Experimental and off by
   default. An owner can opt in from Cimmich experience settings, turn the
@@ -25,6 +25,11 @@ for OpenAI Build Week.
 - Release CI exercises exact Preview 18 upgrade and rollback plus migration,
   synthetic, stock-Immich, companion and public-demo lifecycles from extracted
   tar and ZIP payloads before exact-tag container publication.
+- The tag-only public-demo gate enables the repository-pinned pnpm and installs
+  its browser dependencies from the extracted tar payload before running the
+  journey. Preview 25 was withdrawn before any release or asset publication
+  when this missing release-runner prerequisite was exposed; its tag will not
+  be reused.
 - Release lifecycle staging follows the host temporary directory with a
   portable `/tmp` fallback. Run identifiers are whole-string validated,
   collision checks and ownership sentinels constrain cleanup, concurrent

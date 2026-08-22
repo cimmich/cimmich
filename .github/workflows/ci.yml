@@ -264,6 +264,9 @@ jobs:
           cache: npm
           cache-dependency-path: service/package-lock.json
 
+      - name: Enable pinned pnpm
+        run: corepack enable
+
       - name: Use Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -333,6 +336,13 @@ jobs:
 
       - name: Prove custom-project companion install, backup, restore and removal
         run: "$CIMMICH_ZIP_ROOT/tools/companion_acceptance.sh"
+
+      - name: Install public-demo browser dependencies from the extracted bundle
+        run: |
+          cd "$CIMMICH_TAR_ROOT/ui"
+          pnpm install --frozen-lockfile
+          cd web
+          pnpm exec playwright install --with-deps chromium
 
       - name: Prove the public demo lifecycle
         run: "$CIMMICH_TAR_ROOT/tools/public_demo_acceptance.sh"
