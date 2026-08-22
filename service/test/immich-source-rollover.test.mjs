@@ -47,26 +47,26 @@ const database = () => {
       return [
         {
           ambiguous_metadata_projections: 2,
-          historical_evidence_assets: 20,
+          historical_evidence_assets: 8,
           jobs_to_pause: 0,
-          metadata_equivalent_projections: 27,
-          predecessor_only_assets: 78,
-          projections: 4044,
-          shared_asset_projections: 3968,
-          source_bindings: 4044,
-          unmatched_projections: 51,
+          metadata_equivalent_projections: 11,
+          predecessor_only_assets: 3,
+          projections: 24,
+          shared_asset_projections: 20,
+          source_bindings: 24,
+          unmatched_projections: 4,
         },
       ];
     }
     if (statement.includes("UPDATE immich_asset_projection")) {
-      return Array.from({ length: 4044 }, () => ({ cimmich_asset_id: "a" }));
+      return Array.from({ length: 24 }, () => ({ cimmich_asset_id: "a" }));
     }
     if (statement.includes("UPDATE asset_source_binding")) {
-      return Array.from({ length: 4044 }, () => ({ binding_id: "b" }));
+      return Array.from({ length: 24 }, () => ({ binding_id: "b" }));
     }
     if (statement.includes("UPDATE media_job")) return [];
     if (statement.includes("UPDATE asset\n")) {
-      return Array.from({ length: 78 }, () => ({ asset_id: "a" }));
+      return Array.from({ length: 3 }, () => ({ asset_id: "a" }));
     }
     return [];
   };
@@ -89,9 +89,9 @@ test("Immich source rollover dry-run is bounded and mutation-free", async () => 
   const result = await rolloverImmichInventorySource({ ...command, sql });
 
   assert.equal(result.applied, false);
-  assert.equal(result.before.projections, 4044);
-  assert.equal(result.before.shared_asset_projections, 3968);
-  assert.equal(result.before.predecessor_only_assets, 78);
+  assert.equal(result.before.projections, 24);
+  assert.equal(result.before.shared_asset_projections, 20);
+  assert.equal(result.before.predecessor_only_assets, 3);
   assert.equal(result.schemaVersion, immichSourceRolloverSchemaVersion);
   assert.equal(
     statements.some(({ statement }) =>
@@ -124,9 +124,9 @@ test("Immich source rollover retires the predecessor without deleting intelligen
   });
 
   assert.equal(result.applied, true);
-  assert.equal(result.changedProjections, 4044);
-  assert.equal(result.changedBindings, 4044);
-  assert.equal(result.missingAssets, 78);
+  assert.equal(result.changedProjections, 24);
+  assert.equal(result.changedBindings, 24);
+  assert.equal(result.missingAssets, 3);
   assert.equal(result.pausedJobs, 0);
   assert.equal(result.replayed, false);
   const sourceUpdate = statements.find(({ statement }) =>

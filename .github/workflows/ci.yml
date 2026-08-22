@@ -48,7 +48,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes ripgrep
 
-      - name: Install service dependencies
+      - name: Install provider acceptance dependencies
         working-directory: service
         run: npm ci
 
@@ -247,13 +247,15 @@ jobs:
           fi
 
   full-release-lifecycle:
-    name: Full release lifecycle
+    name: Required release lifecycles and extracted bundles
     if: startsWith(github.ref, 'refs/tags/v') || inputs.full_release == true
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Use Node.js 22
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -268,11 +270,62 @@ jobs:
           sudo apt-get install --yes ripgrep
 
       - name: Install service dependencies
-        working-directory: service
-        run: npm ci
+        run: |
+          python3 -m pip install --disable-pip-version-check \
+            numpy==1.26.4 opencv-python-headless==4.11.0.86 Pillow==12.3.0
 
-      - name: Prove fresh, concurrent, interrupted and resumed migrations
-        run: tools/run_migration_runner_acceptance.sh
+      - name: Fetch rights-cleared acceptance media and provider models
+        env:
+          CEDAR_ARCHIVE_SHA256: 937b5859635af6f1b775dcbab1e28411b2e6f4a6182b72e003e3ccdda455347f
+        run: |
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" \
+            https://github.com/cimmich/cimmich/releases/download/v1.0.0-build-week/cimmich-cedar-house-v1.tar.gz
+          printf '%s  %s\n' "$CEDAR_ARCHIVE_SHA256" "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/cimmich-cedar-house-v1.tar.gz" -C "$RUNNER_TEMP"
+          fixture=$(find "$RUNNER_TEMP/cedar-house-v1/media" -type f -name '*.png' | sort | head -n 1)
+          test -n "$fixture"
+          printf 'CIMMICH_PUBLIC_FIXTURE_IMAGE=%s\n' "$fixture" >> "$GITHUB_ENV"
+          printf 'CIMMICH_PUBLIC_FIXTURE_SHA256=%s\n' "$(sha256sum "$fixture" | awk '{print $1}')" >> "$GITHUB_ENV"
+          printf 'CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT=%s\n' "$RUNNER_TEMP/cedar-house-v1" >> "$GITHUB_ENV"
+          printf 'CIMMICH_LOCAL_PYTHON_PATH=%s\n' "$(command -v python3)" >> "$GITHUB_ENV"
+          sh providers/opencv-sface/install-models.sh "$RUNNER_TEMP/cimmich-face-models"
+          printf 'CIMMICH_OPENCV_DETECTOR_MODEL_PATH=%s\n' "$RUNNER_TEMP/cimmich-face-models/face_detection_yunet_2023mar.onnx" >> "$GITHUB_ENV"
+          printf 'CIMMICH_OPENCV_RECOGNIZER_MODEL_PATH=%s\n' "$RUNNER_TEMP/cimmich-face-models/face_recognition_sface_2021dec.onnx" >> "$GITHUB_ENV"
+
+      - name: Build and extract both named release bundles
+        run: |
+          version=$(tr -d '\r\n' < CIMMICH_VERSION)
+          tools/build_install_bundle.sh "$version" "$RUNNER_TEMP/release"
+          mkdir -p "$RUNNER_TEMP/tar" "$RUNNER_TEMP/zip"
+          tar -xzf "$RUNNER_TEMP/release/cimmich-$version.tar.gz" -C "$RUNNER_TEMP/tar"
+          unzip -q "$RUNNER_TEMP/release/cimmich-$version.zip" -d "$RUNNER_TEMP/zip"
+          printf 'CIMMICH_TAR_ROOT=%s\n' "$RUNNER_TEMP/tar/cimmich-$version" >> "$GITHUB_ENV"
+          printf 'CIMMICH_ZIP_ROOT=%s\n' "$RUNNER_TEMP/zip/cimmich-$version" >> "$GITHUB_ENV"
+
+      - name: Scan and statically verify extracted tar and ZIP payloads
+        run: |
+          for extracted in "$CIMMICH_TAR_ROOT" "$CIMMICH_ZIP_ROOT"; do
+            git -C "$extracted" init -q
+            git -C "$extracted" add -f .
+            "$extracted/tools/run_publication_scan.sh"
+            "$extracted/tools/install.sh" --help >/dev/null
+            for script in "$extracted"/tools/*.sh; do sh -n "$script"; done
+          done
+          npm --prefix "$CIMMICH_TAR_ROOT/service" ci
+          npm --prefix "$CIMMICH_ZIP_ROOT/service" ci
+
+      - name: Prove exact Preview 18, fresh, concurrent, interrupted and resumed migrations
+        run: "$CIMMICH_TAR_ROOT/tools/run_migration_runner_acceptance.sh"
 
       - name: Prove the full disposable synthetic product lifecycle
-        run: tools/run_synthetic_acceptance.sh
+        run: "$CIMMICH_TAR_ROOT/tools/run_synthetic_acceptance.sh"
+
+      - name: Prove stock Immich isolation lifecycle
+        run: "$CIMMICH_ZIP_ROOT/tools/run_stock_immich_lifecycle_acceptance.sh"
+
+      - name: Prove custom-project companion install, backup, restore and removal
+        run: "$CIMMICH_ZIP_ROOT/tools/companion_acceptance.sh"
+
+      - name: Prove the public demo lifecycle
+        run: "$CIMMICH_TAR_ROOT/tools/public_demo_acceptance.sh"

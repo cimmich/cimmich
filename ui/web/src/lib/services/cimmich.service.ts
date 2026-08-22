@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/public';
 import { createCimmichUuid } from '$lib/utils/cimmich-uuid';
+import type { CimmichContextTypeKind } from './cimmich-context-types';
 import { deferredFaceReviewPath } from './cimmich-deferred-face-review';
 import { createCimmichExploreClient } from './cimmich-explore.service';
 import {
@@ -17,6 +18,18 @@ import type { CimmichPersonEvidenceCoverage } from './cimmich-person-evidence-co
 import { coalesceCimmichRequest } from './cimmich-request-coalescer';
 import { cimmichTimeoutDiagnostic, cimmichUnavailableDiagnostic } from './cimmich-request-diagnostic';
 import type { CimmichSmartSplitRecommendations } from './cimmich-smart-split.types';
+import type {
+  CimmichPrivateCredentialStatus,
+  CimmichViewingMode,
+  CimmichViewingModeMutationResult,
+  CimmichVisibilityMutationResult,
+  CimmichVisibilityObject,
+  CimmichVisibilityProjectionRegistry,
+  CimmichVisibilityScope,
+  CimmichVisibilityStatus,
+  CimmichVisibilitySurface,
+  CimmichVisibilityTier,
+} from './cimmich-visibility.types';
 
 export * from './cimmich-asset-correction.service';
 export * from './cimmich-asset-label.service';
@@ -33,11 +46,13 @@ export type {
   CimmichFaceOwnerReviewMatchBatch,
 } from './cimmich-face-review-comparison-client';
 export type { CimmichIdentityCandidate } from './cimmich-identity-review-types';
+export type { CimmichContextTypeKind } from './cimmich-context-types';
 export type {
   CimmichFaceIdentityBatchResult,
   CimmichFaceIdentitySelector,
 } from './cimmich-face-identity-batch.service';
 export type { CimmichIdentityAuditRun } from './cimmich-identity-audit-types';
+export type * from './cimmich-visibility.types';
 export type {
   CimmichPersonEvidenceCoverage,
   CimmichPersonEvidenceCoverageContext,
@@ -53,126 +68,8 @@ export type CimmichSummary = {
   suggestions_ready: number | null;
   user_decisions: number;
 };
-export type CimmichViewingMode = 'personal' | 'private' | 'standard';
-export type CimmichVisibilityTier = CimmichViewingMode;
-export type CimmichVisibilityScope =
-  | 'album'
-  | 'asset'
-  | 'collection'
-  | 'context_entity'
-  | 'document'
-  | 'person'
-  | 'pet';
-export type CimmichVisibilitySurface =
-  | 'ambient'
-  | 'background'
-  | 'casting'
-  | 'export'
-  | 'frame'
-  | 'interactive'
-  | 'notification'
-  | 'share'
-  | 'slideshow';
-export type CimmichVisibilityStatus = {
-  capabilities: {
-    album: boolean;
-    asset: boolean;
-    collection: boolean;
-    document: boolean;
-    entityProfile: boolean;
-  };
-  forcedStandard: boolean;
-  inactivitySeconds: number;
-  maxPrivateSessionSeconds: number;
-  principalBound: boolean;
-  principalId: string;
-  privateAuthorized: boolean;
-  privateConfigured: boolean;
-  schemaVersion: 'cimmich.visibility.v1';
-  surface: CimmichVisibilitySurface;
-  viewingMode: CimmichViewingMode;
-};
-
-export type CimmichViewingModeMutationResult = CimmichVisibilityStatus & {
-  applied: boolean;
-  intentSequence: number;
-};
-
-export type CimmichPrivateCredentialStatus = {
-  algorithm: string | null;
-  configured: boolean;
-  principalId: string;
-  privateLockMode: 'none' | 'password';
-  /** Names what the password actually protects: what is shown, not who may sign in. */
-  protectionKind: 'presentation_filter';
-  schemaVersion: 'cimmich.visibility.v1';
-  updatedAt: string | null;
-};
-
-export type CimmichVisibilityObject = {
-  decisionId: string | null;
-  explicit: boolean;
-  objectId: string;
-  objectScope: CimmichVisibilityScope;
-  revision: number;
-  schemaVersion?: 'cimmich.visibility.v1';
-  visibilityTier: CimmichVisibilityTier;
-};
-
-export type CimmichVisibilityMutationResult = {
-  decisionId: string;
-  objects: CimmichVisibilityObject[];
-  replayed: boolean;
-  schemaVersion: 'cimmich.visibility.v1';
-  supersedesDecisionId?: string;
-};
-
-export type CimmichVisibilityProjectionSurfaceKey =
-  | 'asset_detail'
-  | 'asset_evidence'
-  | 'basic_search'
-  | 'events'
-  | 'machine_suggestions'
-  | 'people'
-  | 'person_assets'
-  | 'person_review'
-  | 'pet_media'
-  | 'pets'
-  | 'places'
-  | 'smart_search'
-  | 'summary';
-
-export type CimmichVisibilityProjection = {
-  assetDerived: boolean;
-  coverageState: 'blocked' | 'enforced';
-  reasonCode: string | null;
-  routeFamily: string;
-  surfaceKey: CimmichVisibilityProjectionSurfaceKey;
-};
-
-export type CimmichVisibilityProjectionRegistry = {
-  items: CimmichVisibilityProjection[];
-  allRegisteredSurfacesEnforced: boolean;
-  schemaVersion: 'cimmich.visibility-projection.v1';
-};
-
 export type CimmichContextFamily = 'events' | 'objects' | 'places';
 export type CimmichContextEntityKind = 'event' | 'object' | 'place';
-export type CimmichContextTypeKind =
-  | 'activity'
-  | 'area'
-  | 'collectible'
-  | 'device'
-  | 'equipment'
-  | 'event'
-  | 'life_period'
-  | 'other'
-  | 'point'
-  | 'property'
-  | 'route'
-  | 'trip'
-  | 'unlocated'
-  | 'vehicle';
 export type CimmichContextDatePrecision = 'approximate' | 'exact' | 'month' | 'unknown' | 'year';
 export type CimmichPlaceRole = 'geography' | 'location' | 'unclassified';
 export type CimmichContextGeometryProvenance = 'confirmed' | 'contextual' | 'manual' | 'photo_gps';
@@ -186,6 +83,13 @@ export type CimmichContextGeometry =
   | ({ points: Array<{ latitude: number; longitude: number }> } & CimmichContextGeometryMetadata)
   | null;
 
+export type CimmichContextCoverCrop = {
+  h: number;
+  w: number;
+  x: number;
+  y: number;
+};
+
 export type CimmichEventRecurrence = {
   frequency: 'daily' | 'monthly' | 'weekly' | 'yearly';
   interval: number;
@@ -198,6 +102,7 @@ export type CimmichContextEntity = {
   assetCount: number;
   childCount?: number;
   coverAssetId: string | null;
+  coverCrop?: CimmichContextCoverCrop | null;
   coverMode?: 'automatic' | 'explicit';
   dateEnd: string | null;
   datePrecision: CimmichContextDatePrecision;
@@ -247,8 +152,10 @@ export type CimmichPlaceRollupAsset = CimmichContextAsset & {
 export type CimmichContextRelation = {
   direction?: 'incoming' | 'outgoing';
   linkedAt: string;
+  relationOrigin?: 'connection_fact' | 'context_relation' | 'relationship_context';
   relationId: string;
   relationKind: 'companion' | 'location' | 'object' | 'parent' | 'participant' | 'related';
+  relationshipLabel?: string | null;
   sortOrder?: number | null;
   targetId: string;
   targetKind: 'event' | 'object' | 'person' | 'pet' | 'place';
@@ -2443,6 +2350,36 @@ let cimmichVisibilityIntentSequence: number | undefined;
 let cimmichVisibilityPrincipalId: string | undefined;
 let cimmichVisibilityPrivateToken: string | undefined;
 
+type CimmichRuntimeWindow = Window & {
+  __cimmichPrivateSessionRuntimeV1?: { token: string | undefined };
+};
+
+const privateSessionRuntime = () => {
+  if (globalThis.window === undefined) {
+    return undefined;
+  }
+  const runtime = globalThis.window as CimmichRuntimeWindow;
+  if (!runtime.__cimmichPrivateSessionRuntimeV1) {
+    Object.defineProperty(runtime, '__cimmichPrivateSessionRuntimeV1', {
+      value: { token: undefined },
+    });
+  }
+  return runtime.__cimmichPrivateSessionRuntimeV1;
+};
+
+const currentPrivateSessionToken = () => {
+  const runtime = privateSessionRuntime();
+  return runtime ? runtime.token : cimmichVisibilityPrivateToken;
+};
+
+const setPrivateSessionToken = (token: string | undefined) => {
+  cimmichVisibilityPrivateToken = token;
+  const runtime = privateSessionRuntime();
+  if (runtime) {
+    runtime.token = token;
+  }
+};
+
 const visibilityDeviceStorageKey = 'cimmich.visibility.device-id.v1';
 const visibilityIntentSequenceStorageKey = 'cimmich.visibility.intent-sequence.v1';
 const visibilityPrincipalStorageKey = 'cimmich.visibility.principal-id.v1';
@@ -2500,17 +2437,17 @@ const bindVisibilityPrincipalId = (value: string) => {
 };
 
 export const createCimmichViewingModeIntentSequence = () => {
-  if (cimmichVisibilityIntentSequence === undefined) {
-    let storedSequenceText: string | null = null;
-    try {
-      storedSequenceText = globalThis.localStorage?.getItem(visibilityIntentSequenceStorageKey) ?? null;
-    } catch {
-      // Storage may be unavailable in SSR or privacy-restricted browsers.
-    }
-    const storedSequence = storedSequenceText === null ? Number.NaN : Number(storedSequenceText);
-    cimmichVisibilityIntentSequence =
-      Number.isSafeInteger(storedSequence) && storedSequence >= 0 ? storedSequence : Date.now();
+  // All tabs share one visibility device on the server, so every intent must
+  // advance beyond the latest sequence written by any tab in this browser.
+  let storedSequenceText: string | null = null;
+  try {
+    storedSequenceText = globalThis.localStorage?.getItem(visibilityIntentSequenceStorageKey) ?? null;
+  } catch {
+    // Storage may be unavailable in SSR or privacy-restricted browsers.
   }
+  const storedSequence = storedSequenceText === null ? Number.NaN : Number(storedSequenceText);
+  const sharedSequence = Number.isSafeInteger(storedSequence) && storedSequence >= 0 ? storedSequence : 0;
+  cimmichVisibilityIntentSequence = Math.max(cimmichVisibilityIntentSequence ?? Date.now(), sharedSequence);
   if (cimmichVisibilityIntentSequence >= Number.MAX_SAFE_INTEGER) {
     throw new CimmichServiceError('Viewing mode intent sequence is exhausted for this session', {
       code: 'VISIBILITY_INTENT_SEQUENCE_EXHAUSTED',
@@ -2528,7 +2465,7 @@ export const createCimmichViewingModeIntentSequence = () => {
 
 const visibilityHeaders = (surface: CimmichVisibilitySurface = 'interactive') => ({
   ...(visibilityPrincipalId() ? { 'x-cimmich-principal-id': cimmichVisibilityPrincipalId } : {}),
-  ...(cimmichVisibilityPrivateToken ? { 'x-cimmich-private-session': cimmichVisibilityPrivateToken } : {}),
+  ...(currentPrivateSessionToken() ? { 'x-cimmich-private-session': currentPrivateSessionToken() } : {}),
   'x-cimmich-device-id': visibilityDeviceId(),
   'x-cimmich-surface': surface,
 });
@@ -2867,6 +2804,13 @@ export const createCimmichCommandId = (kind: string) =>
 export const createCimmichPersonProfileCommandId = (kind: string) =>
   `profile.${kind.replaceAll(/[^A-Za-z0-9_.:-]+/g, '-').slice(0, 28)}.${createCimmichUuid()}`;
 
+export const createCimmichRelationshipCategory = (personId: string, commandId: string, name: string) =>
+  request<CimmichPersonProfileMutationResult>(`/v1/people/${encodeURIComponent(personId)}/relationship-categories`, {
+    body: JSON.stringify({ commandId, name }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
 export const createCimmichPersonProfileItemId = () => `profile-item.${createCimmichUuid()}`;
 
 export const createCimmichVisibilityCommandId = (kind: string) =>
@@ -2955,7 +2899,7 @@ export const visibilityRequest = async <T>(
       error instanceof CimmichServiceError &&
       (error.code === 'VISIBILITY_PRIVATE_SESSION_EXPIRED' || error.code === 'VISIBILITY_PRIVATE_SESSION_REQUIRED')
     ) {
-      cimmichVisibilityPrivateToken = undefined;
+      setPrivateSessionToken(undefined);
     }
     throw error;
   }
@@ -3106,7 +3050,12 @@ export const deleteCimmichObject = (
 
 export const setCimmichPlaceCover = (
   placeId: string,
-  input: { commandId: string; expectedRevision: number; sourceAssetId: string | null },
+  input: {
+    commandId: string;
+    coverCrop?: CimmichContextCoverCrop | null;
+    expectedRevision: number;
+    sourceAssetId: string | null;
+  },
 ) =>
   request<CimmichPlaceCoverResult>(`/v1/places/${encodeURIComponent(placeId)}/cover`, {
     body: JSON.stringify(input),
@@ -3116,7 +3065,12 @@ export const setCimmichPlaceCover = (
 
 export const setCimmichObjectCover = (
   objectId: string,
-  input: { commandId: string; expectedRevision: number; sourceAssetId: string | null },
+  input: {
+    commandId: string;
+    coverCrop?: CimmichContextCoverCrop | null;
+    expectedRevision: number;
+    sourceAssetId: string | null;
+  },
 ) =>
   request<CimmichObjectCoverResult>(`/v1/objects/${encodeURIComponent(objectId)}/cover`, {
     body: JSON.stringify(input),
@@ -3126,7 +3080,12 @@ export const setCimmichObjectCover = (
 
 export const setCimmichEventCover = (
   eventId: string,
-  input: { commandId: string; expectedRevision: number; sourceAssetId: string | null },
+  input: {
+    commandId: string;
+    coverCrop?: CimmichContextCoverCrop | null;
+    expectedRevision: number;
+    sourceAssetId: string | null;
+  },
 ) =>
   request<CimmichEventCoverResult>(`/v1/events/${encodeURIComponent(eventId)}/cover`, {
     body: JSON.stringify(input),
@@ -3451,7 +3410,7 @@ export const unlockCimmichPrivateMode = async (password: string) => {
     body: JSON.stringify({ password }),
     method: 'POST',
   });
-  cimmichVisibilityPrivateToken = result.privateSessionToken;
+  setPrivateSessionToken(result.privateSessionToken);
   return { expiresAt: result.expiresAt, schemaVersion: result.schemaVersion, viewingMode: result.viewingMode };
 };
 
@@ -3468,7 +3427,7 @@ export const setCimmichPrivateCredential = async (password: string) => {
     body: JSON.stringify({ password }),
     method: 'POST',
   });
-  cimmichVisibilityPrivateToken = undefined;
+  setPrivateSessionToken(undefined);
   return result;
 };
 
@@ -3476,7 +3435,7 @@ export const clearCimmichPrivateCredential = async () => {
   const result = await visibilityRequest<CimmichPrivateCredentialStatus>('/v1/visibility/credential', {
     method: 'DELETE',
   });
-  cimmichVisibilityPrivateToken = undefined;
+  setPrivateSessionToken(undefined);
   return result;
 };
 
@@ -3489,7 +3448,7 @@ export const lockCimmichPrivateMode = async (
       method: 'POST',
     });
   } finally {
-    cimmichVisibilityPrivateToken = undefined;
+    setPrivateSessionToken(undefined);
   }
 };
 

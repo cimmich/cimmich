@@ -4,10 +4,10 @@ import { constants, createReadStream } from "node:fs";
 import {
   access,
   chmod,
+  link,
   lstat,
   readFile,
   realpath,
-  rename,
   stat,
   statfs,
   unlink,
@@ -134,25 +134,58 @@ const databaseEnvironment = (databaseUrl) => {
   };
 };
 
-const defaultRunCommand = (command, args, environment) =>
+const defaultRunCommand = (
+  command,
+  args,
+  environment,
+  timeoutMs = 15 * 60 * 1000,
+) =>
   new Promise((resolveCommand, reject) => {
     const child = spawn(command, args, {
       env: environment,
       stdio: ["ignore", "ignore", "pipe"],
     });
+    let settled = false;
     let stderr = "";
     child.stderr.on("data", (chunk) => {
       stderr = `${stderr}${chunk}`.slice(-32_000);
     });
-    child.once("error", reject);
+    const finish = (callback, { preserveKillDeadline = false } = {}) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (!preserveKillDeadline) clearTimeout(killDeadline);
+      callback();
+    };
+    let killDeadline = null;
+    const deadline = setTimeout(() => {
+      child.kill("SIGTERM");
+      killDeadline = setTimeout(() => child.kill("SIGKILL"), 1000);
+      killDeadline.unref?.();
+      finish(
+        () =>
+          reject(
+            typedError(
+              "DATABASE_BACKUP_PROCESS_TIMEOUT",
+              `${basename(command)} exceeded its execution deadline`,
+              500,
+            ),
+          ),
+        { preserveKillDeadline: true },
+      );
+    }, timeoutMs);
+    deadline.unref?.();
+    child.once("error", (error) => finish(() => reject(error)));
     child.once("close", (code) => {
       if (code === 0) {
-        resolveCommand();
+        finish(resolveCommand);
         return;
       }
-      reject(
-        new Error(
-          `${basename(command)} failed${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+      finish(() =>
+        reject(
+          new Error(
+            `${basename(command)} failed${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+          ),
         ),
       );
     });
@@ -408,6 +441,8 @@ export const createDatabaseBackupManager = ({
       destination.root,
       `.${filename}.${randomUUID()}.partial`,
     );
+    let artifactPublished = false;
+    let manifestPublished = false;
     try {
       await runCommand(
         pgDump,
@@ -430,7 +465,12 @@ export const createDatabaseBackupManager = ({
         hashFile(temporaryPath),
         stat(temporaryPath),
       ]);
-      await rename(temporaryPath, finalPath);
+      // A hard-link publication is atomic and fails if another process has
+      // already published this exact run-owned name. rename() would silently
+      // replace a prior valid artifact on POSIX.
+      await link(temporaryPath, finalPath);
+      artifactPublished = true;
+      await unlink(temporaryPath);
       const manifest = {
         byteLength: Number(metadata.size),
         contentSha256,
@@ -446,6 +486,7 @@ export const createDatabaseBackupManager = ({
         `${JSON.stringify(manifest, null, 2)}\n`,
         { flag: "wx", mode: 0o600 },
       );
+      manifestPublished = true;
       await recordArtifact({
         byteLength: Number(metadata.size),
         contentSha256,
@@ -457,8 +498,11 @@ export const createDatabaseBackupManager = ({
       return { ...manifest, state: "verified" };
     } catch (error) {
       await unlink(temporaryPath).catch(() => {});
-      await unlink(finalPath).catch(() => {});
-      await unlink(join(destination.root, `${filename}.json`)).catch(() => {});
+      if (artifactPublished) await unlink(finalPath).catch(() => {});
+      if (manifestPublished)
+        await unlink(join(destination.root, `${filename}.json`)).catch(
+          () => {},
+        );
       throw error;
     }
   };
@@ -500,7 +544,7 @@ export const createDatabaseBackupManager = ({
         UPDATE cimmich_database_backup_run SET state = 'running'
         WHERE backup_run_id = ${runId}
       `;
-      const filename = `cimmich-database-${startedAt.replaceAll(":", "-")}.dump`;
+      const filename = `cimmich-database-${startedAt.replaceAll(":", "-")}-${runId.slice(-12)}.dump`;
       let completed = 0;
       const errors = [];
       for (const destinationId of destinationIds) {

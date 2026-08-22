@@ -101,6 +101,9 @@ export const projectPersonAssetRow = ({ bridge, row: input }) => {
   };
 };
 
+export const projectPersonAssetRows = ({ bridge, rows }) =>
+  rows.map((row) => projectPersonAssetRow({ bridge, row }));
+
 export const projectPersonAssetSummary = (row) => ({
   body: Number(row?.confirmed_body_count || 0),
   bodyCandidate: Number(row?.body_candidate_count || 0),

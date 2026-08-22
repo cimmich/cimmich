@@ -4,7 +4,7 @@
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize } from '@immich/sdk';
   import { Icon } from '@immich/ui';
-  import { mdiCheckCircleOutline } from '@mdi/js';
+  import { mdiAlertCircleOutline, mdiCheckCircleOutline, mdiDeleteClockOutline } from '@mdi/js';
   import CimmichDuplicateIndicator from './CimmichDuplicateIndicator.svelte';
   import { handleCimmichMediaCardClick } from './media-card-selection';
   import { personFaceCropStyle, personPhotoDateLabel, type PersonPhotoView } from './person-photo-gallery';
@@ -67,6 +67,17 @@
       </span>
     </a>
     <CimmichDuplicateIndicator sourceAssetId={asset.sourceAssetId} />
+    {#if asset.sourceState && asset.sourceState !== 'active'}
+      <span
+        class="pointer-events-none absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-full bg-red-700/95 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg"
+        title={asset.sourceState === 'trashed'
+          ? 'This photo is in Immich trash and can be removed from Cimmich in Archive Health.'
+          : 'This photo is no longer in the Immich library and can be removed from Cimmich in Archive Health.'}
+      >
+        <Icon icon={asset.sourceState === 'trashed' ? mdiDeleteClockOutline : mdiAlertCircleOutline} size="14" />
+        {asset.sourceState === 'trashed' ? 'In Immich trash' : 'Missing from Immich'}
+      </span>
+    {/if}
     {#if selectionMode}
       <button
         class="absolute top-2 right-2 z-10 grid size-9 place-items-center rounded-full border-2 border-white bg-black/55 text-white shadow-lg"

@@ -686,6 +686,28 @@ test("asset search requires an explicit visibility and preserves stable paginati
   });
 });
 
+test("asset search can include soft-deleted rows for database-presence inventory", async () => {
+  const calls = [];
+  const companion = createImmichCompanion({
+    apiBaseUrl: "http://immich.test",
+    apiKey: "synthetic-secret-key",
+    fetchImpl: readyFetch(calls),
+  });
+  await companion.listAssets({
+    includeDeleted: true,
+    visibility: "timeline",
+  });
+  const request = calls.find((call) => call.url.endsWith("/search/metadata"));
+  assert.equal(JSON.parse(request.options.body).withDeleted, true);
+  await assert.rejects(
+    companion.listAssets({
+      includeDeleted: "true",
+      visibility: "timeline",
+    }),
+    (error) => error.code === "IMMICH_COMPANION_INCLUDE_DELETED_INVALID",
+  );
+});
+
 test("asset search can request path-free People only for targeted discovery", async () => {
   const calls = [];
   const companion = createImmichCompanion({

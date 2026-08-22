@@ -341,6 +341,9 @@ describe('photo viewer presentation context', () => {
     ).toBe(
       'Cimmich details are unavailable. Import this photo into Cimmich, or switch to a viewing mode that can show it.',
     );
+    expect(photoEvidenceLoadErrorMessage({ code: 'ASSET_DISPLAY_NOT_FOUND' }, { isTrashed: true })).toBe(
+      'This photo is in Immich trash. Its Cimmich details are unavailable here; remove its Cimmich record from Archive Health when ready.',
+    );
     expect(photoEvidenceLoadErrorMessage(new Error('Cimmich service is unavailable'))).toBe(
       'Cimmich service is unavailable',
     );

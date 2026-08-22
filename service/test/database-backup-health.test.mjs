@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -29,6 +36,18 @@ test("database backup destination configuration rejects arbitrary roots and the 
       ]),
     ),
   );
+});
+
+test("database backup publication and subprocesses fail closed", async () => {
+  const source = await readFile(
+    new URL("../src/database-backup-health.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /child\.kill\("SIGTERM"\)/);
+  assert.match(source, /child\.kill\("SIGKILL"\)/);
+  assert.match(source, /await link\(temporaryPath, finalPath\)/);
+  assert.match(source, /flag: "wx"/);
+  assert.match(source, /runId\.slice\(-12\)/);
 });
 
 test("database backup manager creates, records and fully rechecks a restorable artifact", async () => {
@@ -206,6 +225,26 @@ test("database backup manager creates, records and fully rechecks a restorable a
     }
     assert.equal(current.activeCheck.state, "complete");
     assert.equal(current.activeCheck.items[0].state, "verified");
+
+    await manager.startBackup({ destinationIds: ["primary"] });
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      current = await manager.status();
+      if (
+        current.activeRun?.state === "complete" &&
+        current.activeRun.backupRunId !== state.runs[0].backup_run_id
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const artifacts = (await readdir(root)).filter((name) =>
+      name.endsWith(".dump"),
+    );
+    assert.equal(artifacts.length, 2);
+    assert.notEqual(artifacts[0], artifacts[1]);
+    assert.equal(
+      await readFile(join(root, filename), "utf8"),
+      "restorable custom-format test backup",
+    );
   } finally {
     manager.close();
     await rm(temporary, { force: true, recursive: true });

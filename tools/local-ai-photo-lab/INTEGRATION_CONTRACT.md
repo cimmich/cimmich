@@ -1,7 +1,7 @@
 # Cimmich Local AI integration contract
 
 This contract defines the later adapter. This branch intentionally contains no
-Cimmich API, queue, database, viewer, or X1 integration.
+Cimmich API, queue, database, viewer, or live-deployment integration.
 
 ## Operator surface
 

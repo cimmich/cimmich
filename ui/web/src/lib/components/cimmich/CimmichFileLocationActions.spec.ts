@@ -4,8 +4,8 @@ import CimmichFileLocationActions from './CimmichFileLocationActions.svelte';
 
 const asset = {
   id: '8156f9c7-2e50-403d-a1ce-adbcc69cf981',
-  originalFileName: '3151_1129695250736_4472755_n.jpg',
-  originalPath: '/archive/Benji/B_Archive/Photos/2009 - Ben/3151_1129695250736_4472755_n.jpg',
+  originalFileName: 'cedar-house-2009-001.jpg',
+  originalPath: '/library/Cedar_House/Photos/2009 - Cedar/cedar-house-2009-001.jpg',
 };
 
 describe('CimmichFileLocationActions', () => {
@@ -17,12 +17,12 @@ describe('CimmichFileLocationActions', () => {
     expect(rendered.getByRole('dialog', { name: 'Open this location in Cimmich?' })).toBeInTheDocument();
     expect(rendered.getByText('Remote library')).toBeInTheDocument();
     expect(rendered.getByText(/stored on your library server/)).toBeInTheDocument();
-    expect(rendered.queryByText(/X1/)).not.toBeInTheDocument();
+    expect(rendered.queryByText(/Open archive host/i)).not.toBeInTheDocument();
     expect(rendered.getByText(/browser cannot open the file manager on another machine/i)).toBeInTheDocument();
-    expect(rendered.getByText('/archive/Benji/B_Archive/Photos/2009 - Ben')).toBeInTheDocument();
+    expect(rendered.getByText('/library/Cedar_House/Photos/2009 - Cedar')).toBeInTheDocument();
     expect(rendered.getByRole('link', { name: 'Open folder view' })).toHaveAttribute(
       'href',
-      '/folders?organise=1&path=%2Farchive%2FBenji%2FB_Archive%2FPhotos%2F2009%20-%20Ben',
+      '/folders?organise=1&path=%2Flibrary%2FCedar_House%2FPhotos%2F2009%20-%20Cedar',
     );
   });
 

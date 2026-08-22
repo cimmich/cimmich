@@ -25,8 +25,8 @@ const reviewItem = (faceId: string, assetId = 'asset-1'): CimmichPersonReviewIte
   qualityMeasurements: {},
   sourceAssetId: 'source-asset-1',
   suggestedPerson: {
-    displayName: 'Chloe',
-    personId: 'person-chloe',
+    displayName: 'Maya',
+    personId: 'person-maya',
     reference: null,
     score: faceId === 'face-1' ? 0.59 : 0.54,
   },
@@ -78,7 +78,7 @@ describe('New matches ordering', () => {
       auditTotals: { accepted_contradiction: 0, untagged_match: 3 },
       candidateOnlyItems: [],
       collisionFaceIds: new Set(),
-      personName: 'Chloe',
+      personName: 'Maya',
       reviewItems: [lowerScore, higherScoreLowMargin, higherScoreHighMargin],
     });
     expect(newMatches?.items.map(({ faceId }) => faceId)).toEqual([
@@ -95,8 +95,8 @@ describe('personAwaitingCounts', () => {
     const mistagCollision = {
       ...reviewItem('face-mistag'),
       assignedPerson: {
-        displayName: 'Amy',
-        personId: 'person-amy',
+        displayName: 'Samira',
+        personId: 'person-samira',
         reference: null,
         score: 1,
       },
@@ -131,18 +131,18 @@ describe('currentIdentityComparison', () => {
 
   it('identifies a decisive live disagreement with the original proposal', () => {
     const result = currentIdentityComparison(reviewItem('face-1'), [
-      match('person-hollie', 'Hollie', 0.999_999, 1),
-      match('person-chloe', 'Chloe', 0.8, 2),
+      match('person-nora', 'Nora', 0.999_999, 1),
+      match('person-maya', 'Maya', 0.8, 2),
     ]);
 
     expect(result.decisiveDisagreement).toBe(true);
-    expect(result.leader?.display_name).toBe('Hollie');
+    expect(result.leader?.display_name).toBe('Nora');
   });
 
   it('does not displace the original proposal for a narrow comparison lead', () => {
     const result = currentIdentityComparison(reviewItem('face-1'), [
-      match('person-hollie', 'Hollie', 0.84, 1),
-      match('person-chloe', 'Chloe', 0.8, 2),
+      match('person-nora', 'Nora', 0.84, 1),
+      match('person-maya', 'Maya', 0.8, 2),
     ]);
 
     expect(result.decisiveDisagreement).toBe(false);

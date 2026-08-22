@@ -49,6 +49,8 @@ import { createPersonCreateStore } from "./person-create.mjs";
 import { createPersonCandidateSummary } from "./person-candidate-summary.mjs";
 import { createPersonMatchRefreshStore } from "./person-match-refresh-repository.mjs";
 import { createPersonEvidenceCoverageStore } from "./person-evidence-coverage.mjs";
+import { createMemoryGraphDiscovery } from "./memory-graph-discovery.mjs";
+import { createConnectionFactStore } from "./connection-facts.mjs";
 import { createBulkPersonCandidateAcceptor } from "./bulk-person-candidate-accept.mjs";
 import { createSmartSplitRecommendationStore } from "./smart-split-recommendations.mjs";
 import { createPossiblePeopleStore } from "./possible-people.mjs";
@@ -67,6 +69,7 @@ import {
   createAssetDisplayResolver,
 } from "./asset-display-resolver.mjs";
 import { createAssetLabelStore } from "./asset-labels.mjs";
+import { createAssetPresentationRepository } from "./asset-presentation-repository.mjs";
 import { createBulkAlbumOperationStore } from "./bulk-album-operations.mjs";
 import {
   createExploreFacetStore,
@@ -74,6 +77,7 @@ import {
 } from "./explore-facets.mjs";
 import { bridgeFields } from "./bridge-fields.mjs";
 import * as personPage from "./person-page-projections.mjs";
+import { createRepositoryImmichAssetActivity } from "./immich-asset-activity.mjs";
 import { createPersonNameStore } from "./person-names.mjs";
 import {
   readAcceptedPhysicalFaceClaims,
@@ -839,6 +843,16 @@ export const createCimmichRepository = (
     options.expectedSchemaPatchCount ?? -1,
   );
   const presentationRank = () => visibility?.currentRank() ?? 0;
+  const memoryGraphDiscovery = createMemoryGraphDiscovery({
+    bridge,
+    presentationRank,
+    sql,
+  });
+  const connectionFacts = createConnectionFactStore({
+    presentationRank,
+    sql,
+  });
+  const immichAssetActivity = createRepositoryImmichAssetActivity(options, sql);
   const faceMatches = createFaceMatches({
     cleanLimit,
     matcherPolicyVersion: machineMatcherPolicyVersion,
@@ -1479,59 +1493,14 @@ export const createCimmichRepository = (
       );
     }
   };
+  const assetPresentationRepository = createAssetPresentationRepository({
+    presentationRank,
+    sql,
+  });
   const repository = {
+    ...assetPresentationRepository,
     whenMaintenanceIdle() {
       return waitForMaintenanceIdle(maintenanceSql);
-    },
-    async filterPresentableAssetSourceIds({ sourceAssetIds }) {
-      if (
-        !Array.isArray(sourceAssetIds) ||
-        sourceAssetIds.length < 1 ||
-        sourceAssetIds.length > 500
-      ) {
-        throw typedError(
-          "Photo presentation filtering requires between 1 and 500 source asset IDs",
-          400,
-          "PRESENTATION_ASSET_IDS_INVALID",
-        );
-      }
-      const normalized = sourceAssetIds.map((value) =>
-        String(value || "").trim(),
-      );
-      if (
-        normalized.some(
-          (value) =>
-            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-              value,
-            ),
-        ) ||
-        new Set(normalized).size !== normalized.length
-      ) {
-        throw typedError(
-          "Photo presentation source asset IDs must be unique UUIDs",
-          400,
-          "PRESENTATION_ASSET_IDS_INVALID",
-        );
-      }
-      const rows = await sql`
-        SELECT projection.immich_asset_id AS source_asset_id,
-          projection.cimmich_asset_id AS asset_id
-        FROM immich_asset_projection projection
-        JOIN asset ON asset.asset_id = projection.cimmich_asset_id
-          AND asset.state = 'active'
-        WHERE projection.state = 'active'
-          AND projection.immich_asset_id = ANY(${normalized})
-          AND cimmich_visibility_asset_rank(asset.asset_id) <= ${presentationRank()}
-        ORDER BY projection.immich_asset_id
-      `;
-      return {
-        assets: rows.map((row) => ({
-          assetId: row.asset_id,
-          sourceAssetId: row.source_asset_id,
-        })),
-        schemaVersion: "cimmich.presentable-assets.v1",
-        sourceAssetIds: rows.map((row) => row.source_asset_id),
-      };
     },
     async filterVisibleMapAssetSourceIds(input) {
       try {
@@ -2329,6 +2298,7 @@ export const createCimmichRepository = (
 
     getPersonProfile: personProfiles.getPersonProfile,
     patchPersonProfile: personProfiles.patchPersonProfile,
+    createPersonRelationshipCategory: personProfiles.createRelationshipCategory,
     getPersonProfileDisplayDefaults:
       personProfiles.getPersonProfileDisplayDefaults,
     patchPersonProfileDisplayDefaults:
@@ -5986,10 +5956,10 @@ export const createCimmichRepository = (
           lower(body_projection.original_file_name) AS filename
         FROM standalone_body_interest_assets interest
         JOIN asset body_asset ON body_asset.asset_id = interest.asset_id
-          AND body_asset.state = 'active'
+          AND body_asset.state IN ('active','missing')
         JOIN immich_asset_projection body_projection
           ON body_projection.cimmich_asset_id = body_asset.asset_id
-          AND body_projection.state = 'active'
+          AND body_projection.state IN ('active','suspected_missing','missing')
       ), usable_face_exports AS MATERIALIZED (
         SELECT face.asset_id, face_asset.content_hash,
           face_asset.capture_time, face_asset.width, face_asset.height,
@@ -5998,10 +5968,10 @@ export const createCimmichRepository = (
         JOIN face_observation face ON face.face_id = identity.face_id
           AND face.state = 'valid'
         JOIN asset face_asset ON face_asset.asset_id = face.asset_id
-          AND face_asset.state = 'active'
+          AND face_asset.state IN ('active','missing')
         JOIN immich_asset_projection face_projection
           ON face_projection.cimmich_asset_id = face_asset.asset_id
-          AND face_projection.state = 'active'
+          AND face_projection.state IN ('active','suspected_missing','missing')
         LEFT JOIN body_hint_faces body_hint
           ON body_hint.person_id = identity.person_id
           AND body_hint.face_id = identity.face_id
@@ -6134,7 +6104,7 @@ export const createCimmichRepository = (
           ON same_photo_face.asset_id = a.asset_id
         LEFT JOIN face_crops face_crop ON face_crop.asset_id = a.asset_id
         WHERE association.person_id = ${id}
-          AND a.state = 'active'
+          AND a.state IN ('active','missing')
           AND cimmich_visibility_asset_rank(a.asset_id) <= ${visibleRank}
         GROUP BY a.asset_id, a.media_kind, a.mime_type, a.width, a.height,
           a.capture_time, visibility.visibility_tier, same_photo_face.asset_id,
@@ -6333,8 +6303,8 @@ export const createCimmichRepository = (
 
       const hasMore = paged && rows.length > boundedLimit;
       const pageRows = hasMore ? rows.slice(0, boundedLimit) : rows;
-      const items = pageRows.map((row) =>
-        personPage.projectPersonAssetRow({ bridge, row }),
+      const items = await immichAssetActivity.decorate(
+        personPage.projectPersonAssetRows({ bridge, rows: pageRows }),
       );
       if (!paged) return items;
       const last = pageRows.at(-1);
@@ -10203,7 +10173,17 @@ export const createCimmichRepository = (
   Object.assign(repository, bulkAlbumOperations);
   Object.assign(repository, exploreFacets);
   Object.assign(repository, {
+    connectionModifiers: connectionFacts.listModifiers,
+    connectionTypes: connectionFacts.listTypes,
+    createConnectionModifier: connectionFacts.createModifier,
+    createConnectionType: connectionFacts.createType,
+    dismissConnectionSuggestion: connectionFacts.dismissSuggestion,
+    discoverMemoryGraph: memoryGraphDiscovery.read,
+    personConnectionFacts: connectionFacts.readPerson,
     personEvidenceCoverage: personEvidenceCoverage.read,
+    recordConnectionFact: connectionFacts.record,
+    recordConnectionHub: connectionFacts.recordHub,
+    retractConnectionFact: connectionFacts.retract,
     smartSplitRecommendations: smartSplitRecommendations.recommendations,
   });
   attachAssetCorrections(repository, sql, bridge, presentationRank);

@@ -6,7 +6,10 @@ import { createReviewRoutes } from "./review-routes.mjs";
 import { createAssetLabelRoutes } from "./asset-label-routes.mjs";
 import { createAssetVisibilityRoutes } from "./asset-visibility-routes.mjs";
 import { createBulkAlbumOperationRoutes } from "./bulk-album-operation-routes.mjs";
+import { createArchiveMissingFileScanRoutes } from "./archive-missing-file-scan-routes.mjs";
 import { createLocalAiRoutes } from "./local-ai-routes.mjs";
+import { createMemoryGraphRoutes } from "./memory-graph-routes.mjs";
+import { createImmichInventoryRefresh } from "./immich-inventory-refresh.mjs";
 import { exactFaceIdentitySelector } from "./face-identity-selector.mjs";
 import {
   attachProjectionSnapshotInvalidation,
@@ -24,7 +27,11 @@ import {
   observeRequestTiming,
   safeRouteFamily,
 } from "./request-diagnostics.mjs";
-
+import {
+  readBinaryBody,
+  readDocumentMetadataHeader,
+  readJsonBody,
+} from "./request-body-readers.mjs";
 const jsonHeaders = { "content-type": "application/json; charset=utf-8" };
 
 const requestHostname = (authority) => {
@@ -56,83 +63,6 @@ const sendJson = (response, statusCode, body, origin = "") => {
   response.end(`${JSON.stringify(projectedBody)}\n`);
 };
 
-const readJsonBody = async (request, maximumBytes = 32_768) => {
-  // Chunks are Buffers: concatenating strings per chunk decodes each chunk
-  // separately, so a multi-byte UTF-8 character split across a TCP boundary
-  // became U+FFFD (or broke JSON.parse) non-deterministically.
-  const chunks = [];
-  let bytes = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    bytes += buffer.length;
-    chunks.push(buffer);
-    if (bytes > maximumBytes) {
-      throw Object.assign(new Error("Request body too large"), {
-        code: "REQUEST_BODY_TOO_LARGE",
-        statusCode: 413,
-      });
-    }
-  }
-  if (bytes === 0) return {};
-  const body = Buffer.concat(chunks).toString("utf8");
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw Object.assign(new Error("Request body must be valid JSON"), {
-      code: "REQUEST_JSON_INVALID",
-      statusCode: 400,
-    });
-  }
-};
-
-const readBinaryBody = async (request, maximum = 25 * 1024 * 1024) => {
-  const chunks = [];
-  let bytes = 0;
-  for await (const chunk of request) {
-    bytes += chunk.length;
-    if (bytes > maximum) {
-      throw Object.assign(new Error("Document content is too large"), {
-        code: "DOCUMENT_TOO_LARGE",
-        statusCode: 413,
-      });
-    }
-    chunks.push(chunk);
-  }
-  if (!bytes) {
-    throw Object.assign(new Error("Document content is required"), {
-      code: "DOCUMENT_CONTENT_INVALID",
-      statusCode: 400,
-    });
-  }
-  return Buffer.concat(chunks, bytes);
-};
-
-const readDocumentMetadataHeader = (request) => {
-  const encoded = String(request.headers["x-cimmich-document-metadata"] || "");
-  if (
-    !encoded ||
-    encoded.length > 12_000 ||
-    !/^[A-Za-z0-9_-]+$/.test(encoded)
-  ) {
-    throw Object.assign(new Error("Document metadata header is invalid"), {
-      code: "DOCUMENT_METADATA_INVALID",
-      statusCode: 400,
-    });
-  }
-  try {
-    const decoded = Buffer.from(encoded, "base64url").toString("utf8");
-    const value = JSON.parse(decoded);
-    if (!value || typeof value !== "object" || Array.isArray(value))
-      throw new Error();
-    return value;
-  } catch {
-    throw Object.assign(new Error("Document metadata header is invalid"), {
-      code: "DOCUMENT_METADATA_INVALID",
-      statusCode: 400,
-    });
-  }
-};
-
 export const createCimmichServer = ({
   addressGeocoder,
   allowedHosts = new Set(["127.0.0.1", "localhost"]),
@@ -158,6 +88,9 @@ export const createCimmichServer = ({
   if (!["canonical", "combined", "guided"].includes(surfacePolicy)) {
     throw new Error("Cimmich server surface policy is invalid");
   }
+  const inventoryRefresh = createImmichInventoryRefresh({
+    inventory: immichInventory,
+  });
   const requireProjection = (surfaceKey) =>
     visibility?.requireProjection?.(surfaceKey);
   const extensionRoutes = [
@@ -175,6 +108,18 @@ export const createCimmichServer = ({
     ),
     createBulkAlbumOperationRoutes(repository, readJsonBody, sendJson),
     createReviewRoutes(repository, requireProjection, readJsonBody, sendJson),
+    createMemoryGraphRoutes(
+      repository,
+      requireProjection,
+      readJsonBody,
+      sendJson,
+    ),
+    createArchiveMissingFileScanRoutes({
+      inventory: immichInventory,
+      inventoryScan: inventoryRefresh,
+      requireProjection,
+      sendJson,
+    }),
     ...(surfacePolicy === "guided"
       ? []
       : [createLocalAiRoutes(localAi, readJsonBody, sendJson, sendBinary)]),
@@ -1668,6 +1613,24 @@ export const createCimmichServer = ({
         );
         return;
       }
+      const personRelationshipCategoryMatch = url.pathname.match(
+        /^\/v1\/people\/([^/]+)\/relationship-categories$/,
+      );
+      if (request.method === "POST" && personRelationshipCategoryMatch) {
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          201,
+          await repository.createPersonRelationshipCategory({
+            actorId: request.headers["x-cimmich-actor"],
+            commandId: body.commandId,
+            name: body.name,
+            personId: decodeURIComponent(personRelationshipCategoryMatch[1]),
+          }),
+          allowedOrigin,
+        );
+        return;
+      }
       if (request.method === "PATCH" && personProfileMatch) {
         const body = await readJsonBody(request);
         sendJson(
@@ -2623,9 +2586,14 @@ export const createCimmichServer = ({
         const body = await readJsonBody(request);
         const keys = Object.keys(body);
         if (
-          keys.length !== 3 ||
+          (keys.length !== 3 && keys.length !== 4) ||
           !keys.every((key) =>
-            ["commandId", "expectedRevision", "sourceAssetId"].includes(key),
+            [
+              "commandId",
+              "coverCrop",
+              "expectedRevision",
+              "sourceAssetId",
+            ].includes(key),
           )
         ) {
           throw Object.assign(new Error("Context cover body is invalid"), {
@@ -2643,6 +2611,9 @@ export const createCimmichServer = ({
           }[family.entityKind]({
             actorId: request.headers["x-cimmich-actor"],
             commandId: body.commandId,
+            ...(Object.hasOwn(body, "coverCrop")
+              ? { coverCrop: body.coverCrop }
+              : {}),
             entityId: decodeURIComponent(contextCoverMatch[2]),
             expectedRevision: body.expectedRevision,
             sourceAssetId: body.sourceAssetId,

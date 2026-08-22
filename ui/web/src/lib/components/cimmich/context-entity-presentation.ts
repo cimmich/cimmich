@@ -25,7 +25,30 @@ export const contextPlaceNearbyRadii = [
   { label: '100 m', value: 100 },
   { label: '500 m', value: 500 },
   { label: '2 km', value: 2000 },
+  { label: '10 km', value: 10_000 },
+  { label: '50 km', value: 50_000 },
 ] as const;
+
+export const selectContextPlaceNearbyCandidates = <T extends { distanceMeters: number }>(
+  candidates: T[],
+  radius: number,
+  maximum = 160,
+  minimumInside = 24,
+) => {
+  const sorted = [...candidates].sort((left, right) => left.distanceMeters - right.distanceMeters);
+  const inside = sorted
+    .filter(({ distanceMeters }) => distanceMeters <= radius)
+    .slice(0, maximum)
+    .map((candidate) => ({ ...candidate, beyondRadius: false }));
+  if (inside.length >= minimumInside || inside.length >= maximum) {
+    return inside;
+  }
+  const beyond = sorted
+    .filter(({ distanceMeters }) => distanceMeters > radius)
+    .slice(0, maximum - inside.length)
+    .map((candidate) => ({ ...candidate, beyondRadius: true }));
+  return [...inside, ...beyond];
+};
 
 export const formatContextPlaceDistance = (distanceMeters: number) => {
   const distance = Math.max(0, distanceMeters);
@@ -244,11 +267,11 @@ export const formatImmichPlaceLocation = (
  *   2. Immich's reverse-geocoded city/state/country; existing product
  *      intelligence, and human-readable;
  *   3. raw coordinates from the place geometry; a last resort, because
- *      "29.4915°S, 153.2315°E" orients nobody;
+ *      "35.1234°S, 120.5678°E" orients nobody;
  *   4. an honest statement that there is no location.
  *
  * Coordinates sat at rung 2 in the first version of this, which meant a place
- * Immich already knew as "Gulmarrad, New South Wales, Australia" was shown as a
+ * Immich already knew as "Willow, Cedar Region, Exampleland" was shown as a
  * number pair.
  */
 export const contextPlaceLocationLabel = (
@@ -460,7 +483,7 @@ export const resolveContextRouteEntity = <T extends { displayName: string; entit
 
 export const contextTypeKinds: Record<CimmichContextEntityKind, CimmichContextTypeKind[]> = {
   event: ['trip', 'event', 'activity', 'life_period'],
-  object: ['vehicle', 'property', 'device', 'collectible', 'equipment', 'other'],
+  object: ['vehicle', 'property', 'device', 'collectible', 'equipment', 'organisation', 'group', 'other'],
   place: ['point', 'area', 'route', 'unlocated'],
 };
 
@@ -477,6 +500,8 @@ export const objectTypeFilters: Array<{ label: string; value: ContextTypeFilter 
   { label: 'Devices', value: 'device' },
   { label: 'Collectibles', value: 'collectible' },
   { label: 'Equipment', value: 'equipment' },
+  { label: 'Organisations', value: 'organisation' },
+  { label: 'Groups', value: 'group' },
   { label: 'Other', value: 'other' },
 ];
 
@@ -511,9 +536,11 @@ export const contextTypeDescription = (kind: CimmichContextTypeKind) => {
     collectible: 'A particular item you keep',
     device: 'A named phone, camera or other device',
     equipment: 'Equipment with its own history',
+    group: 'A social, community or interest group',
     event: 'One occasion or bounded moment',
     life_period: 'A longer chapter of life',
     other: 'Another durable thing',
+    organisation: 'An employer, business or organisation',
     point: 'One specific location',
     property: 'A home, building or property',
     route: 'A path, journey or recurring route',
@@ -752,4 +779,37 @@ export const contextRelationGroups = (
       relations: relations.filter((relation) => definition.targetKinds.includes(relation.targetKind)),
     }))
     .filter((group) => group.relations.length > 0);
+};
+
+export type ContextRelationTarget = {
+  key: string;
+  relations: [CimmichContextRelation, ...CimmichContextRelation[]];
+  relationshipLabels: string[];
+  targetId: string;
+  targetKind: CimmichContextRelation['targetKind'];
+  targetName: string;
+};
+
+export const contextRelationTargets = (relations: CimmichContextRelation[]): ContextRelationTarget[] => {
+  const targets = new Map<string, ContextRelationTarget>();
+  for (const relation of relations) {
+    const key = `${relation.targetKind}:${relation.targetId}`;
+    const existing = targets.get(key);
+    if (existing) {
+      existing.relations.push(relation);
+      if (relation.relationshipLabel && !existing.relationshipLabels.includes(relation.relationshipLabel)) {
+        existing.relationshipLabels.push(relation.relationshipLabel);
+      }
+      continue;
+    }
+    targets.set(key, {
+      key,
+      relations: [relation],
+      relationshipLabels: relation.relationshipLabel ? [relation.relationshipLabel] : [],
+      targetId: relation.targetId,
+      targetKind: relation.targetKind,
+      targetName: relation.targetName,
+    });
+  }
+  return [...targets.values()];
 };

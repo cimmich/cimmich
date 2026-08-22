@@ -28,7 +28,8 @@ export const planAppleSmartProposalImport = ({
   resultRows,
 }) => {
   if (
-    manifest?.schemaVersion !== "cimmich.apple-vision-benji-full-manifest.v1" ||
+    manifest?.schemaVersion !==
+      "cimmich.apple-vision-summary-proposal-manifest.v1" ||
     !Array.isArray(manifest.assets) ||
     !Array.isArray(resultRows)
   ) {

@@ -4,7 +4,7 @@ import { visibilityRequest } from '$lib/services/cimmich.service';
 type PresentationClient = (sourceAssetIds: string[]) => Promise<{ sourceAssetIds: string[] }>;
 
 const getCimmichPresentableAssetIds = (sourceAssetIds: string[]) =>
-  visibilityRequest<{ sourceAssetIds: string[] }>('/v1/visibility/assets/presentable', {
+  visibilityRequest<{ sourceAssetIds: string[] }>('/v1/visibility/assets/viewable', {
     body: JSON.stringify({ sourceAssetIds }),
     method: 'POST',
   });

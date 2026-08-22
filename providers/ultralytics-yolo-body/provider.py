@@ -26,6 +26,20 @@ HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 100
 MAX_RUNTIME_THREADS = 16
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
+
+
+def validate_image_dimensions(image: Any) -> None:
+    width, height = image.size
+    if (
+        width < 1
+        or height < 1
+        or width > MAX_DECODED_DIMENSION
+        or height > MAX_DECODED_DIMENSION
+        or width * height > MAX_DECODED_PIXELS
+    ):
+        raise ProviderError("source image exceeds its decoded pixel bound")
 
 
 class ProviderError(Exception):
@@ -176,7 +190,9 @@ def presentation_image(image_input: Any, quarter_turns: int) -> Any:
         from PIL import Image, ImageOps
 
         if isinstance(image_input, (str, Path)):
+            Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
             with Image.open(image_input) as opened:
+                validate_image_dimensions(opened)
                 image = np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
         else:
             image = np.asarray(image_input)
@@ -322,7 +338,9 @@ def decode_resident_image(encoded: bytes) -> Any:
         import numpy as np
         from PIL import Image, ImageOps
 
+        Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
         with Image.open(BytesIO(encoded)) as opened:
+            validate_image_dimensions(opened)
             return np.asarray(ImageOps.exif_transpose(opened).convert("RGB"))
     except (OSError, ValueError) as error:
         raise ProviderError(

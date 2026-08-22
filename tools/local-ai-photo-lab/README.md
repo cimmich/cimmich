@@ -1,7 +1,7 @@
 # Cimmich Local AI Photo Lab
 
 Standalone, local-only experimentation for one photo or an explicit photo set.
-This lab does not connect to Cimmich's API, database, viewer, queues, or X1
+This lab does not connect to Cimmich's API, database, viewer, queues, or a live
 runtime.
 
 The two primary product lanes are progressive local upscaling and cross-photo
@@ -292,7 +292,7 @@ timeout. This favors stable local memory use over archive-scale throughput.
   optional Linux/amd64 ncnn Vulkan provider instead validates a complete native
   x4 artifact before one x2 Lanczos reduction, and fails closed on runtime,
   dimension, fidelity, or seam errors. Both providers emit live progress.
-  The verified X1 container uses Mesa 25 or newer for its Radeon 780M; Mesa 22
+  The verified reference container uses Mesa 25 or newer for its Radeon 780M; Mesa 22
   may enumerate that GPU but submit invalid command streams and is unsupported.
   Runtime depends strongly on source dimensions and hardware, so product
   acceptance records measured deployment times rather than promising a

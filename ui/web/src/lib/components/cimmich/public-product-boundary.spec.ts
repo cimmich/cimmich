@@ -71,13 +71,14 @@ describe('public Cimmich product boundary', () => {
   it('projects explicit context relations back onto Person connections', async () => {
     const person = await read(['../../../routes/(user)/cimmich', 'people', '[personName]', '+page.svelte'].join('/'));
     const secondary = await read('../cimmich/person-secondary-projections.ts');
+    const card = await read('../cimmich/CimmichPersonConnectionCard.svelte');
     const service = await read('../../services/cimmich.service.ts');
 
     expect(service).toContain('/v1/people/${encodeURIComponent(personId)}/connections');
     expect(secondary).not.toContain('getCimmichPersonConnections');
     expect(person).toContain('getCimmichPersonConnections(cimmichPerson.person_id)');
     expect(person).toContain('connection.coverAssetId');
-    expect(person).toContain("connection.metaLabel || 'Connected'");
+    expect(card).toContain("connection.metaLabel || 'Connected'");
   });
 
   it('keeps both supported new-Person paths explicit in the photo workflow', async () => {

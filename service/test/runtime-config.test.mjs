@@ -32,6 +32,9 @@ test("runtime configuration accepts exact local origins and an absolute document
   assert.equal(config.allTrustedShortlistPackId, "");
   assert.equal(config.allTrustedShortlistEvaluationReceiptDigest, "");
   assert.equal(config.runtimeMode, "production");
+  assert.equal(config.optionalEgressEnabled, false);
+  assert.equal(config.ownerGatewayRequired, true);
+  assert.equal(config.visibilityTestMode, false);
 });
 
 test("all-trusted shortlist is explicit and requires durable evaluation binding", () => {
@@ -99,6 +102,10 @@ test("runtime configuration fails closed on ambiguous network and storage values
     { CIMMICH_GUIDED_IMMICH_PUBLIC_URL: "https://example.test/not-api" },
     { CIMMICH_GUIDED_PUBLIC_URL: "https://example.test/path" },
     { CIMMICH_ALL_TRUSTED_SHORTLIST_ENABLED: "yes" },
+    { CIMMICH_OPTIONAL_EGRESS_ENABLED: "yes" },
+    { CIMMICH_OWNER_GATEWAY_REQUIRED: "yes" },
+    { CIMMICH_VISIBILITY_TEST_MODE: "yes" },
+    { CIMMICH_VISIBILITY_TEST_MODE: "true" },
     { CIMMICH_ALL_TRUSTED_SHORTLIST_ENABLED: "true" },
     {
       CIMMICH_ALL_TRUSTED_SHORTLIST_ENABLED: "true",

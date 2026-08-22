@@ -70,6 +70,11 @@ class NoisyModel(Model):
 
 
 class ProviderTest(unittest.TestCase):
+    def test_decoded_image_dimensions_are_bounded(self):
+        image = SimpleNamespace(size=(provider.MAX_DECODED_DIMENSION + 1, 1))
+        with self.assertRaisesRegex(provider.ProviderError, "decoded pixel bound"):
+            provider.validate_image_dimensions(image)
+
     def test_runtime_enforces_the_manifest_thread_budget(self):
         manifest = {"execution": {"threads": 6}}
         provider.configure_runtime(manifest, torch_module=TorchRuntime)

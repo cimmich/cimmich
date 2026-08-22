@@ -1,6 +1,7 @@
 import { AssetVisibility, type AssetResponseDto } from '@immich/sdk';
 import '@testing-library/jest-dom';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
 import CimmichTagBrowser from './CimmichTagBrowser.svelte';
 
 const mocks = vi.hoisted(() => ({
@@ -57,10 +58,12 @@ const asset = (id: string) =>
 
 const deferred = <T>() => {
   let resolve = (_: T) => {};
-  const promise = new Promise<T>((next) => {
+  let reject = (_: Error) => {};
+  const promise = new Promise<T>((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 };
 
 describe('CimmichTagBrowser', () => {
@@ -242,5 +245,28 @@ describe('CimmichTagBrowser', () => {
     await staleAsset.promise;
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getByTestId('tag-result-gallery')).toHaveTextContent('source_new');
+  });
+
+  it('clears selected tags and disclosed photos while a visibility reprojection is pending and after failure', async () => {
+    const reprojection = deferred<ReturnType<typeof person>[]>();
+    mocks.getPersonAssets.mockResolvedValue({
+      items: [{ assetId: 'asset_private', sourceAssetId: 'source_private' }],
+      nextCursor: null,
+      summary: { total: 1 },
+    });
+    const rendered = render(CimmichTagBrowser, { tags: [] });
+    await rendered.findByText('Alex Example');
+    await fireEvent.click(rendered.getByRole('checkbox', { name: /Alex Example/ }));
+    await waitFor(() => expect(rendered.getByTestId('tag-result-gallery')).toHaveTextContent('source_private'));
+
+    mocks.getPeople.mockReturnValueOnce(reprojection.promise);
+    cimmichVisibilityManager.notify();
+
+    await waitFor(() => expect(rendered.queryByTestId('tag-result-gallery')).not.toBeInTheDocument());
+    expect(rendered.queryByRole('button', { name: 'Remove Alex Example' })).not.toBeInTheDocument();
+
+    reprojection.reject(new Error('replacement tag directory unavailable'));
+    expect(await rendered.findByRole('alert')).toHaveTextContent('People could not be loaded');
+    expect(rendered.queryByTestId('tag-result-gallery')).not.toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { featureFlagsManager } from '$lib/managers/feature-flags-manager.svelte';
   import { Route } from '$lib/route';
-  import { cimmichCompanionDropdown } from '$lib/stores/cimmich-experience.store';
+  import { cimmichCompanionDropdown, cimmichDiscoverExperiment } from '$lib/stores/cimmich-experience.store';
   import { recentAlbumsDropdown } from '$lib/stores/preferences.store';
   import { NavbarGroup, NavbarItem } from '@immich/ui';
   import {
@@ -18,6 +18,7 @@
     mdiArchiveArrowDownOutline,
     mdiCalendarBlankOutline,
     mdiCogOutline,
+    mdiCompassOutline,
     mdiFileDocumentOutline,
     mdiFolderOutline,
     mdiHeart,
@@ -85,6 +86,9 @@
       bind:expanded={$cimmichCompanionDropdown}
       items={[
         { title: 'Library', href: Route.cimmichLibrary(), icon: mdiImageMultipleOutline },
+        ...($cimmichDiscoverExperiment
+          ? [{ title: 'Discover', href: Route.cimmichDiscover(), icon: mdiCompassOutline }]
+          : []),
         { title: 'People', href: Route.cimmichPeople(), icon: mdiAccountOutline, activeIcon: mdiAccount },
         { title: 'Pets', href: Route.cimmichPets(), icon: mdiPawOutline },
         { title: 'Places', href: Route.cimmichPlaces(), icon: mdiMapOutline, activeIcon: mdiMap },

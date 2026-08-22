@@ -16,7 +16,7 @@ remains the only identity authority.
 ## Current verified build
 
 The tagged Build Week release remains preserved on schema 75. Post-submission
-development continues on schema 142 without rewriting earlier Community
+development continues on schema 156 without rewriting earlier Community
 Preview releases. Schema 129 binds one durable Immich owner and makes
 the same-origin gateway compare each live Immich session with that principal;
 schema 130 makes bounded identity-audit coverage durable and owner-visible;
@@ -49,6 +49,33 @@ deterministic and model-free; ordinary renames never rerun a visual model.
 Schema 141 adds owner-selected independent database backup locations, durable
 Manual, Daily or Weekly policy, checksummed artifact receipts and full latest
 backup verification without touching Immich media.
+Schemas 143–148 add explicit Archive Health management for records outside the
+active Immich source. Trash rows and definitively absent current-source rows are
+immediately removable from Cimmich; disabled predecessor sources and source
+reachability are irrelevant, and the automatic metadata-only refresh does not
+read originals or admit media. Explicitly retired source links remain retired
+across later inventory and per-photo activity refreshes.
+Current schema-154 development also adds owner-created relationship categories,
+durable typed Person–Person and Person–Place facts, a compact Person Connections
+command surface and a first-class Discover page. A typed fact may be directional,
+current or past, dated and noted. Explainable co-worker/workplace leads are shown
+for explicit confirmation or dismissal and are never silently saved.
+Every Person relationship offers **Former** as the seeded historical modifier.
+Historical facts render as, for example, **Partner (Former)** or **Co-worker
+(Former)**; the standalone **Ex** type is retired rather than encoding time as
+a relationship. Owner-created modifiers such as **Childhood** and **School**
+are reusable, may be combined on one fact and appear in Person and Discover
+projections without manufacturing new relationship types.
+Person-to-Person facts may also name an existing Place, Event or Thing as their
+shared context—for example **Housemate (Former) @ Cedar House**. Reusing one
+context across several reviewed facts makes the shared hub visible from each
+Person, the context detail and Discover without inventing Person-to-Place facts.
+Discover is a question-led analysis workspace over an interactive web of
+visible People, Pets, Places, Events and Things. Computed starting questions,
+Overview/People/Places/Recorded lenses, a synchronized readable rail, one-hop
+focus and shortest visible paths help investigate the web. Accepted shared-photo
+evidence remains visually distinct from recorded relations and hierarchy, so
+the interface does not manufacture relationship truth.
 Real-library rehearsals remain private and outside the publication tree. Public
 claims are grounded in the rights-cleared synthetic fixtures and reproducible
 release gates.

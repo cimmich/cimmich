@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { providerSubprocessEnvironment } from "./provider-subprocess-env.mjs";
+import { createSubprocessTerminator } from "./subprocess-termination.mjs";
 import {
   recordXmpCoordinateFrame,
   xmpSidecarRepairReceiptId,
@@ -800,10 +802,13 @@ const failXmpSidecarRun = async (sql, { error, runId }) => {
 };
 
 export const scanXmpSidecars = async function* ({
+  environment = process.env,
   limitAssets,
+  maxOutputBytes = 16 * 1024 * 1024,
   providerPath,
   pythonPath,
   root,
+  timeoutMs = 5 * 60 * 1000,
 }) {
   const child = spawn(
     cleanText(pythonPath, "Python path", 1000),
@@ -815,16 +820,41 @@ export const scanXmpSidecars = async function* ({
       String(limitAssets),
     ],
     {
+      env: providerSubprocessEnvironment(environment),
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  const { clearKillTimer, terminate } = createSubprocessTerminator(child);
   // Register lifecycle listeners before consuming stdout. A fast reader can
   // exit while the importer is still resolving emitted packets; attaching the
   // close listener afterwards would then wait forever for an event already
   // delivered.
   const completion = new Promise((resolve) => {
     child.once("error", (error) => resolve({ error }));
-    child.once("close", (code) => resolve({ code }));
+    child.once("close", (code) => {
+      clearKillTimer();
+      resolve({ code });
+    });
+  });
+  let lifecycleError = null;
+  const deadline = setTimeout(() => {
+    lifecycleError = Object.assign(new Error("XMP reader timed out"), {
+      code: "XMP_SIDECAR_PROVIDER_TIMEOUT",
+    });
+    terminate();
+  }, timeoutMs);
+  deadline.unref?.();
+  let outputBytes = 0;
+  child.stdout.on("data", (chunk) => {
+    outputBytes += chunk.length;
+    if (outputBytes > maxOutputBytes && !lifecycleError) {
+      lifecycleError = Object.assign(
+        new Error("XMP reader output exceeded its bound"),
+        { code: "XMP_SIDECAR_PROVIDER_OUTPUT_LIMIT" },
+      );
+      terminate();
+    }
   });
   let stderr = "";
   child.stderr.setEncoding("utf8");
@@ -839,7 +869,7 @@ export const scanXmpSidecars = async function* ({
     try {
       value = JSON.parse(line);
     } catch {
-      child.kill();
+      terminate();
       throw Object.assign(new Error("XMP reader output is invalid"), {
         code: "XMP_SIDECAR_PROVIDER_INVALID",
       });
@@ -847,7 +877,7 @@ export const scanXmpSidecars = async function* ({
     if (value?.kind === "header") {
       exactKeys(value, ["kind", "schemaVersion"], "provider header");
       if (headerSeen || value.schemaVersion !== xmpSidecarReaderVersion) {
-        child.kill();
+        terminate();
         throw Object.assign(new Error("XMP reader header is invalid"), {
           code: "XMP_SIDECAR_PROVIDER_INVALID",
         });
@@ -856,7 +886,7 @@ export const scanXmpSidecars = async function* ({
       continue;
     }
     if (!headerSeen || summarySeen) {
-      child.kill();
+      terminate();
       throw Object.assign(new Error("XMP reader sequence is invalid"), {
         code: "XMP_SIDECAR_PROVIDER_INVALID",
       });
@@ -874,6 +904,8 @@ export const scanXmpSidecars = async function* ({
     yield { kind: "asset", value };
   }
   const completed = await completion;
+  clearTimeout(deadline);
+  if (lifecycleError) throw lifecycleError;
   if (completed.error || completed.code !== 0 || !headerSeen || !summarySeen) {
     throw Object.assign(new Error("XMP reader failed"), {
       code: "XMP_SIDECAR_PROVIDER_FAILED",

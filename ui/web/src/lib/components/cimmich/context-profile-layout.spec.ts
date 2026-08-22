@@ -37,17 +37,30 @@ describe('Place, Thing and Event profile information architecture', () => {
     expect(source).toContain('<span>From <small>Optional</small></span>');
     expect(source).toContain("relation.direction === 'incoming'");
     expect(source).toContain('await getCimmichContextEntity(activeFamily, selectedEntityId)');
-    expect(source).toContain('onclick={() => void removeRelation(relation)}');
+    expect(source).toContain('onclick={() => void removeRelation(removableRelation)}');
     expect(source).not.toContain("{#if relation.direction !== 'incoming'}");
+    expect(source).toContain(
+      "relation.relationOrigin === 'connection_fact' || relation.relationOrigin === 'relationship_context'",
+    );
+    expect(source).toContain('{#each target.relationshipLabels as relationshipLabel (relationshipLabel)}');
+    expect(source).toContain("target.relations.filter(({ relationOrigin }) => relationOrigin === 'context_relation')");
+    expect(source).toContain('contextRelationTargets(group.relations)');
+    expect(source).toContain('{visibleRelationTargetCount}');
+    expect(source).toContain('{#each group.targets as target (target.key)}');
   });
 
-  it('keeps folder admission additive and removes the indistinguishable legacy Main choice', async () => {
+  it('reviews folder media before any additive selection and removes the indistinguishable legacy Main choice', async () => {
     const browser = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
     const presentation = await read('src/lib/components/cimmich/context-entity-presentation.ts');
 
-    expect(browser).toContain('eventFolderAdmission(visible');
-    expect(browser).toContain('new Set((selected?.assets ?? []).map((asset) => asset.sourceAssetId).filter(Boolean))');
-    expect(browser).toContain('Existing roles stay unchanged.');
+    expect(browser).toContain('const openAssetFolder = async (folderPath: string)');
+    expect(browser).toContain(
+      'folderAssetIds = { ...folderAssetIds, [folderPath]: visible.map((asset) => asset.id) };',
+    );
+    expect(browser).toContain('Nothing is selected automatically.');
+    expect(browser).toContain('setVisiblePickerAssetsSelected(activeFolderAssets, true)');
+    expect(browser).toContain('eventFolderAdmission(assets');
+    expect(browser).not.toContain('const addEventFolder = async');
     expect(presentation).toContain("manual: 'Legacy main'");
     expect(presentation).toContain("event: ['direct', 'route_stop', 'context', 'needs_check']");
   });

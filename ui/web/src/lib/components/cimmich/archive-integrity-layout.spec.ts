@@ -34,6 +34,7 @@ describe('Archive integrity layout', () => {
     const databaseBackup = await readFile('src/lib/components/cimmich/DatabaseBackupHealth.svelte', 'utf8');
     const folderComparison = await readFile('src/lib/components/cimmich/ArchiveFolderComparison.svelte', 'utf8');
     const rotationReview = await readFile('src/lib/components/cimmich/ArchiveRotationReview.svelte', 'utf8');
+    const missingFiles = await readFile('src/lib/components/cimmich/ArchiveMissingFiles.svelte', 'utf8');
     const rotationBacklog = await readFile('src/lib/components/cimmich/archive-rotation-backlog.ts', 'utf8');
     const variants = await readFile('src/lib/components/cimmich/archive-variant-groups.ts', 'utf8');
     const maintenance = await readFile('src/routes/(user)/cimmich/maintenance/+page.svelte', 'utf8');
@@ -42,6 +43,7 @@ describe('Archive integrity layout', () => {
       'utf8',
     );
     const normalizedSource = source.replaceAll(/\s+/g, ' ');
+    const normalizedMissingFiles = missingFiles.replaceAll(/\s+/g, ' ');
 
     expect(pageLoad).toContain("title: 'Archive Health'");
     expect(source).toContain('{#snippet buttons()}');
@@ -100,6 +102,23 @@ describe('Archive integrity layout', () => {
     expect(variants).toContain("status: 'hold_ambiguous'");
     expect(variants).toContain('originalCaptureExtensions');
     expect(source).toContain('Backup check');
+    expect(source).toContain('Missing files');
+    expect(source).toContain("case 'missing':");
+    expect(missingFiles).toContain('Missing from Immich');
+    expect(normalizedMissingFiles).toContain('Immich offline flag');
+    expect(normalizedMissingFiles).toContain('no longer found in that current Immich catalogue appears here');
+    expect(normalizedMissingFiles).toContain('checks the active Immich source automatically');
+    expect(missingFiles).toContain('Remove from Cimmich');
+    expect(missingFiles).toContain('Remove all ${summary.trashed.toLocaleString()} from Cimmich');
+    expect(missingFiles).toContain('getAssetMediaUrl({ id: sourceAssetId, size: AssetMediaSize.Thumbnail })');
+    expect(missingFiles).toContain('Route.viewTrashedAsset({ id: item.sourceAssetId })');
+    expect(missingFiles).toContain('Route.viewFolderAsset({ cimmich: 1, id: item.sourceAssetId, path: folderPath })');
+    expect(missingFiles).toContain('Local address');
+    expect(missingFiles).toContain('<CimmichFileLocationActions asset={location} variant="detail" />');
+    expect(missingFiles).toContain('Unavailable: this record is not in the current Immich catalogue.');
+    expect(missingFiles).toContain('createCimmichUuid()');
+    expect(missingFiles).not.toContain('crypto.randomUUID()');
+    expect(missingFiles).not.toContain('Check Immich catalogue');
     expect(source).toContain('Rotation review');
     expect(source).not.toContain("rotationHasMore ? '+'");
     expect(source).toContain("case 'rotation':");
@@ -149,7 +168,9 @@ describe('Archive integrity layout', () => {
     expect(folderComparison).toContain('Biggest overlaps');
     expect(folderComparison).toContain('Show top 6 only');
     expect(folderComparison).toContain('Also found elsewhere');
-    expect(folderComparison).toContain('No match elsewhere');
+    expect(folderComparison).toContain('Unique to this folder');
+    expect(folderComparison).toContain('Repeats within this folder are counted separately.');
+    expect(folderComparison).not.toContain('No match elsewhere');
     expect(folderComparison).toContain('Repeated only inside');
     expect(folderComparison).toContain('Check byte details');
     expect(folderComparison).toContain('Every copy is on one line. Highlighted rows contain different values.');

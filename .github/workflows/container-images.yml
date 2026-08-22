@@ -1,20 +1,88 @@
 name: Container images
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing exact v* tag to publish or rebuild after its CI has passed
+        required: true
+        type: string
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
-  packages: write
 
 jobs:
+  resolve-release:
+    name: Resolve exact release tag
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      is_release_tag: ${{ steps.release.outputs.is_release_tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+    steps:
+      - name: Check out candidate source with tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release_tag }}
+
+      - name: Resolve one exact v* tag at HEAD
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          release_sha=$(git rev-parse HEAD)
+          release_tags=$(git tag --points-at HEAD | grep '^v' || true)
+          release_tag=$(printf '%s\n' "$release_tags" | awk 'NF { value=$0; count+=1 } END { if (count == 1) print value }')
+          if test -n "$REQUESTED_TAG"; then
+            test "$REQUESTED_TAG" = "$release_tag" || {
+              echo "manual rebuild must name the one exact v* tag at HEAD" >&2
+              exit 1
+            }
+          fi
+          if test -n "$release_tag"; then
+            printf '%s\n' "$release_tag" | grep -Eq '^v[A-Za-z0-9._-]+$'
+            curl --fail --silent --show-error \
+              -H "authorization: Bearer $GH_TOKEN" \
+              -H 'accept: application/vnd.github+json' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs?branch=$release_tag&event=push&status=completed&per_page=100" \
+              -o "$RUNNER_TEMP/cimmich-ci-runs.json"
+            node -e '
+              const fs = require("node:fs");
+              const [path, sha, tag] = process.argv.slice(1);
+              const runs = JSON.parse(fs.readFileSync(path, "utf8")).workflow_runs || [];
+              if (!runs.some((run) => run.name === "Cimmich CI" &&
+                run.conclusion === "success" && run.head_sha === sha &&
+                run.head_branch === tag)) process.exit(2);
+            ' "$RUNNER_TEMP/cimmich-ci-runs.json" "$release_sha" "$release_tag" || {
+              echo "exact release tag has no successful Cimmich CI run" >&2
+              exit 1
+            }
+          fi
+          {
+            printf 'release_sha=%s\n' "$release_sha"
+            printf 'release_tag=%s\n' "$release_tag"
+            if test -n "$release_tag"; then
+              printf 'is_release_tag=true\n'
+            else
+              printf 'is_release_tag=false\n'
+            fi
+          } >> "$GITHUB_OUTPUT"
+
   publish:
     name: Publish ${{ matrix.image }}
+    needs: resolve-release
+    if: needs.resolve-release.outputs.is_release_tag == 'true'
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -31,6 +99,9 @@ jobs:
     steps:
       - name: Check out exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve-release.outputs.release_sha }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -48,7 +119,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
-            type=ref,event=tag
+            type=raw,value=${{ needs.resolve-release.outputs.release_tag }}
             type=sha,prefix=sha-
 
       - name: Build and publish image with SBOM and provenance

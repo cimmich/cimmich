@@ -107,11 +107,12 @@ export const Route = {
   cimmichActivities: () => '/cimmich/activities',
   cimmichActivity: ({ id }: { id: string }) => `/cimmich/activities/${encodeURIComponent(id)}`,
   cimmichDocuments: () => '/cimmich/documents',
+  cimmichDiscover: () => '/cimmich/discover',
   cimmichEvents: () => '/cimmich/events',
   cimmichArchiveIntegrity: (params?: {
     assetId?: string;
     folder?: string;
-    mode?: 'exact' | 'variants' | 'plan' | 'folder' | 'rotation' | 'backup';
+    mode?: 'exact' | 'variants' | 'plan' | 'folder' | 'rotation' | 'backup' | 'missing';
   }) => '/cimmich/archive-integrity' + asQueryString(params),
   cimmichLibrary: () => '/cimmich/library',
   cimmichLibraryBulk: () => '/cimmich/library/bulk',

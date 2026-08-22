@@ -7,8 +7,9 @@ visual introduction with exact tasks, open the
 updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
-> This guide follows the **current development source**. The latest named
-> public candidate is **Community Preview 18** for exact Immich 3.1.0. Always
+> This guide follows the **Community Preview 20 candidate**, schema 156/patch 1,
+> for exact Immich 3.1.0. Community Preview 18 remains immutable at schema 142.
+> Always
 > install a named release rather than an arbitrary source snapshot.
 
 ## The product in one sentence
@@ -29,19 +30,20 @@ The simplest mental model is:
 
 ## Where to go for each job
 
-| I want to…                                    | Open               | What happens                                                                                        |
-| :-------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
-| See the shape of my memory library            | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                             |
-| Browse or organise photos                     | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                    |
-| Find, describe or correct a person            | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                          |
-| Manage animals and unknown detections         | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                         |
-| Describe where a memory happened              | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                 |
-| Record an important object                    | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                     |
-| Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                           |
-| Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                        |
-| Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.           |
+| I want to…                                    | Open               | What happens                                                                                             |
+| :-------------------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------- |
+| See the shape of my memory library            | **Home**           | Featured media and bounded summaries lead into each Cimmich collection.                                  |
+| Browse or organise photos                     | **Library**        | The familiar Immich timeline opens with Cimmich context, filters and bulk tools.                         |
+| Follow connections across the archive         | **Discover (Experimental)** | Opt in to the mid-build memory web, then see which People appear together and which photos, Events, Places or Things explain each connection. |
+| Find, describe or correct a person            | **People**         | Browse people, review suggestions, inspect evidence and manage one Person.                               |
+| Manage animals and unknown detections         | **Pets**           | Create Pet profiles, manage media and review Unknown or Ignored detections.                              |
+| Describe where a memory happened              | **Places**         | Build geographic and named-location hierarchies, maps and journeys.                                      |
+| Record an important object                    | **Things**         | Create vehicles, properties, devices, collectibles, equipment and other Things.                          |
+| Group a trip, activity or life period         | **Events**         | Create overlapping memories, chapters, dates, participants and locations.                                |
+| Keep records with the memories they explain   | **Documents**      | Import or reference documents, version them and link them to other subjects.                             |
+| Find a known combination                      | **Smart Search**   | Intersect confirmed names, aliases, context and exact dates; search Documents separately.                |
 | Understand duplicate or preservation evidence | **Archive Health** | Compare exact copies, possible duplicates, folders, likely rotation candidates or an independent backup. |
-| Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access. |
+| Connect, tune or diagnose Cimmich             | **Settings**       | Manage the Immich connection, presentation profile, matching, optional providers and Guided access.      |
 
 ## Navigation and viewing modes
 
@@ -71,6 +73,87 @@ Private mode is not encryption, an access-control list, a second Immich account
 or protection from the host administrator. It is a presentation boundary. See
 the [privacy guide](../PRIVACY.md) and
 [Private viewing operations](VISIBILITY_PRIVATE_OPERATIONS.md).
+
+## Discover (Experimental)
+
+**Discover** and the related Person memory webs are useful but still mid-build,
+so Community Preview 20 keeps them off by default. Open **Settings → Cimmich
+experience** and choose **Show Discover** to opt in. The choice is local to that
+browser and reversible; hiding Discover clears the current web projection but
+does not delete any recorded relationship facts. A direct Discover URL shows
+the same honest enable prompt instead of silently opting in.
+
+Once enabled, Discover opens directly onto the current bounded web. Switch between Overview, People &
+bonds, Places and Recorded lenses; search or filter memory types; choose
+Compact, Balanced or Roomy spacing; then pan, zoom, fit or drag individual
+memories into a useful arrangement. Labels appear progressively as you zoom or
+inspect local context. **Lines** controls topology and **Relationships** adds
+collision-aware recorded Person labels along their lines.
+
+Select a memory to inspect its evidence, focus on its immediate neighbourhood,
+or trace the shortest visible path to another memory. **Insights** opens useful
+calculated starting points and strongest visible connections only when wanted;
+the same on-demand rail keeps selected connections and path steps readable
+without permanently shrinking the canvas.
+
+The web joins visible People, Pets, Places, Events and Things. Solid lines are
+recorded relationships or hierarchy; dashed lines are accepted shared-photo
+evidence. Shared photos remain evidence of connection, not a manufactured
+relationship claim. Circular nodes represent People, Pets, Places and Things;
+discrete Events use diamonds, while time-spanning Life periods use labelled
+outlines around their members. The outline replaces participant spokes so the
+period reads as shared context rather than another point. Discover reads one
+privacy-projected graph and creates no new durable truth.
+
+### Describe a Person's connections
+
+Open a Person and choose **Connections**. Select **Describe connection** on a
+Person or Place card to record what the connection means. Person choices include
+Partner, Boyfriend, Girlfriend, Best friend, Friend, Enemy, Co-worker and Family.
+Every Person label, including one you create, offers **Former** as a modifier
+with optional From/To dates. You can create and reuse other modifiers such as
+**Childhood** or **School**, and apply several to one fact. Place choices include Works/Worked here, Lives/Lived
+here, Studies/Studied here, Born here and Visited. Place connections retain
+their Current/Past choice. A connection may include a private note. **Create
+your own** adds a reusable directional label when the built-in catalogue does
+not fit. A connection can carry more than one fact.
+
+When describing a connection between two People, **Linked context** can name an
+existing Place, Event, Life period, Trip, Activity or Thing where or during
+which that relationship applied. Search and select **Cedar House**, for
+example, to record **Housemate (Former) @ Cedar House**. The context is not a
+modifier: it is the shared hub that can connect several People and remains
+independently unlinkable without removing the Housemate fact. The context page
+then shows both People and Discover can group the reviewed relationships around
+that hub. Cimmich does not infer a Person-to-Place fact from this link.
+
+Recorded facts appear on the Person and feed Discover. Cimmich may also show a
+**Possible connection to confirm** when existing facts form a useful lead. For
+example, if two People are recorded as co-workers and one has a recorded past
+workplace, Cimmich can offer that workplace to the other Person. The card names
+the facts behind the lead. **Confirm** records it; **Dismiss** hides that exact
+lead. Until Confirm is chosen, it is not relationship truth and does not enter
+the graph as a recorded fact.
+
+Switch Connections from **List** to **Web** to arrange, pan and zoom the
+Person's local memory graph. **People** is the default view: only People are
+points, so a Place or Life period cannot masquerade as another Person. Separate
+view buttons appear for the context types that actually exist — Life periods,
+Events, Trips, Activities, Places and Things. In a context view People remain
+points while the selected context type becomes a labelled enclosure around its
+visible members. Contexts with the same members nest rather than drawing over
+one another. A persistent **In this web** rail contains only the types relevant
+to the active view and keeps its members available as direct jump targets.
+These views filter the same visibility-projected graph used by full Discover;
+they do not create a second Person-only source of truth. The full exact labels
+remain available in the connection rail either way.
+
+Inside the expanded **People** section, choose **Add several** to author a
+shared Home, Employer or Group. Create a new hub or select an existing one,
+choose several People, then assign each Person's role, Current/Former state,
+optional dates and reusable modifiers. The review step submits the complete set
+once. Cimmich records every reviewed row in one transaction, or records none if
+any row is invalid.
 
 ## First-run connection
 
@@ -251,9 +334,35 @@ A Person page provides several jobs without flattening them into one gallery:
   grouping in current source;
 - **Identity** - coverage, identity evidence, appearance evidence, review
   checks and display-photo choices;
-- **Details** - names, aliases and the owner-written profile;
-- **Connections** - linked People, Events, Places and Things; and
+- **Details** - names, aliases and the owner-written profile, including your
+  own reusable relationship labels created in **At a glance**;
+- **Connections** - linked People, Events, Places and Things. **Add to** sits in
+  the main Person tab bar and can choose an existing context or create and
+  connect a new Event, Life period, Trip, Activity, Place or Thing without
+  leaving the Person. Each connection type heading is a disclosure control, so
+  long sections can be independently opened or closed. **Connect people
+  through…** creates or selects a shared Home, Employer or Group and records
+  several People's reviewed roles in one atomic confirmation; and
 - **Documents** - records connected to the Person.
+
+To describe a Person-to-Person connection, choose a built-in label such as
+Partner, Boyfriend, Girlfriend, Best friend or Co-worker, or create your own.
+Add **Former** when that relationship belongs in the past. Cimmich then
+records and displays the historical form, such as **Partner (Former)** or
+**Housemate (Former)**, with optional from/to dates. **Former** is a state, so
+there is no separate **Ex** label. Other reusable modifiers stay attached to
+their relationship in brackets—for example, **Friend (Childhood)** or
+**Friend (Childhood, School)**—without creating a new relationship type. The
+middle dot separates distinct facts, such as **Friend (Childhood) · Housemate
+(Former)**. Person-to-Place connections retain their
+Current/Past choice for meanings such as Works here and Worked here.
+
+Use the **Add** control inside Places to connect a Place that is not already on
+the Person. The existing-Place and relationship fields are searchable: start
+typing a Place such as a home or employer, choose the intended result, then
+choose meanings such as Lives here, Worked here or Visited. This records a
+Person-to-Place connection fact; it does not make the Person an Event
+participant.
 
 Recorded/display name editing is owner-controlled. It can preserve former names
 as aliases, refuses ambiguous collisions and does not rename unrelated Immich
@@ -392,8 +501,29 @@ geography?”
 A Place can include Photos, Journey, Map, Plan, Connections and Documents.
 Depending on its type you can add subdivisions, inspect child roll-ups, attach
 or detach photos, build route stops, set an explicit cover and record geometry.
-GPS-nearby photos can be offered as suggestions; proximity is evidence for
-review, not an automatic Place tag.
+After choosing a cover, use **Frame cover** on the hero to drag the photo and
+zoom it against the final wide banner before saving. The framing belongs to the
+Place record; it does not crop or edit the underlying Immich or source photo.
+**Add media** can select from human-readable source **Folders**, existing Immich
+**Albums**, recent visible **Library** media and, for a located Place, **Nearby**
+GPS media. Folder and Album selection is explicit and bounded; trashed, offline
+or privacy-hidden items are excluded before selection. Opening a Folder or
+Album shows its visible images without selecting any of them. Choose individual
+images, or deliberately use **Select all visible**; nothing is attached until
+the final Add media confirmation.
+**Add media → Nearby** offers 100 m, 500 m, 2 km, 10 km and 50 km views. Results
+inside the chosen distance come first; when that would leave the picker sparse,
+the closest visible GPS-tagged photos beyond the limit remain available and are
+labelled with their distance. Proximity is evidence for review, not an
+automatic Place tag.
+
+After selecting photos already assigned directly to a Place, **Organise → Move
+to another Place** searches for a destination, attaches the selection there and
+removes its current Place assignment. That Cimmich operation leaves GPS
+unchanged. **Photo details → Update GPS from Place** is a separate explicit
+operation: choose a searchable Place with point geometry to write its
+coordinates to the selected Immich assets. It changes Immich metadata, not the
+source files.
 
 Address lookup is an optional disclosed online path. Only the typed query is
 sent to the configured service; library media and identity evidence are not.
@@ -408,7 +538,8 @@ action deletes source media.
 
 Things record important objects such as vehicles, properties, devices,
 collectibles and equipment. A Thing can have aliases, descriptions, an
-explicit cover, Photos, Connections and Documents.
+explicit cover, Photos, Connections and Documents. **Frame cover** pans and
+zooms the selected photo for the wide hero without editing the media itself.
 
 Use a Thing when the object itself is part of the memory record. Object
 detections or region proposals remain evidence until reviewed; they do not
@@ -423,6 +554,9 @@ recurrence.
 
 An Event can contain chapters or moments, link People, Pets, Places and Things,
 attach photos in different roles and keep related Documents. The same photo may
+be part of several memories. Event, Trip, Activity and Life-period heroes use
+the same **Frame cover** editor, so a portrait or square source can be positioned
+and zoomed for the wide banner without changing the original photo.
 belong to several Events when that matches real life.
 
 Event dates and parent hierarchy help navigation and search. They do not alter
@@ -481,7 +615,7 @@ Archive Health is an evidence and preservation workspace. It is deliberately
 not a delete button.
 
 Its title, Exact copies, Possible duplicates, Folder check, Rotation review,
-Backup check and Refresh controls share the normal page header. There is no
+Missing files, Backup check and Refresh controls share the normal page header. There is no
 second Archive Health toolbar taking space above the results.
 
 ### Exact copies
@@ -581,6 +715,31 @@ unchanged. Magnify or open the complete photo before deciding because visual
 similarity does not determine whether a photo needs correction or which
 direction is correct. Cards place the ranking reason beneath the photo and keep
 EXIF and proposed rotation together for faster scanning.
+
+### Missing files
+
+Missing files manages Cimmich records that are no longer in the active Immich
+source. Opening the view automatically refreshes the normal timeline, archive
+and hidden lanes. Disabled predecessor sources are excluded. An asset in Immich
+trash is shown immediately as **In Immich trash**. An asset absent from a
+successful complete refresh of the current source is shown as **Not found in
+current Immich**. Both are immediately eligible for **Remove from Cimmich**;
+there is no second-check ceremony.
+
+An unavailable Immich service, disconnected source folder, Immich offline flag
+or failed refresh cannot qualify a record for removal. Exact inline checks on
+Person photo cards follow the same rule: only an Immich trash response or a
+definitive missing database row changes Cimmich state. Locked media remains an
+explicit import boundary and is not silently classified by this check.
+
+Removal is a two-click, explicit Cimmich command. Select individual records for
+mixed review, or use **Remove all … from Cimmich** on the trash summary to
+retire every currently counted Immich-trash link without loading or selecting
+each page. The bulk command is locked to the displayed count and refuses if the
+trash set changes before confirmation. It retires only the affected Immich
+bindings. If an underlying Cimmich asset has another active or unresolved
+source binding, that asset remains. Source media and the Immich database are
+never written by this action.
 
 ### Backup check
 
@@ -689,6 +848,7 @@ Cimmich does not silently:
    export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
    ./tools/companion.sh doctor
    ```
+
 6. Use [INSTALL.md](../INSTALL.md) for lifecycle problems and
    [FAQ.md](FAQ.md) for common product boundaries.
 

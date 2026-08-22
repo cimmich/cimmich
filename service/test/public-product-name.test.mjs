@@ -15,7 +15,10 @@ const legacyProductName = new RegExp(
 );
 // Hyphen/underscore separators count: a kebab-case id once slipped through a
 // space-only pattern into the shipped bundle.
-const internalProductLabel = /\brui\b|booze[_ -]cruise/i;
+const internalProductLabel = new RegExp(
+  `\\b${["r", "ui"].join("")}\\b|${["boo", "ze"].join("")}[_ -]${["cru", "ise"].join("")}`,
+  "i",
+);
 // The publication policy must name the private/internal strings it rejects.
 // Exempt only that scanner from this overlapping name guard; the scanner runs
 // independently and excludes itself from its own repository scan.

@@ -14,6 +14,7 @@
   import { mdiShieldAlertOutline } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import {
+    CIMMICH_VIEWING_MODE_PREFERENCE_KEY,
     loadCimmichViewingModePreference,
     saveCimmichViewingModePreference,
   } from './cimmich-viewing-mode-preference';
@@ -162,16 +163,24 @@
     }
   };
 
+  const handleViewingModePreferenceChange = (event: StorageEvent) => {
+    if (event.key === CIMMICH_VIEWING_MODE_PREFERENCE_KEY) {
+      void loadStatus();
+    }
+  };
+
   onMount(() => {
     void loadStatus();
     document.addEventListener('visibilitychange', handleVisibilityChange);
     globalThis.addEventListener('cimmich:visibility-changed', handleExternalVisibilityChange);
+    globalThis.addEventListener('storage', handleViewingModePreferenceChange);
     refreshTimer = globalThis.window.setInterval(() => void loadStatus(), 30_000);
   });
 
   onDestroy(() => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     globalThis.removeEventListener('cimmich:visibility-changed', handleExternalVisibilityChange);
+    globalThis.removeEventListener('storage', handleViewingModePreferenceChange);
     if (refreshTimer) {
       globalThis.window.clearInterval(refreshTimer);
     }

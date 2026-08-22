@@ -21,7 +21,7 @@ export const requireIdentityAuditScoringRoute = (
   if (localScorer || databaseScoringEnabled) return;
   throw Object.assign(
     new Error(
-      "Run the identity audit from the paired Mac worker; X1 database scoring is disabled",
+      "Run the identity audit from the paired Mac worker; database scoring is disabled",
     ),
     {
       code: "IDENTITY_AUDIT_LOCAL_WORKER_REQUIRED",

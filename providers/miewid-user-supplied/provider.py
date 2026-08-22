@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local, weight-free MiewID embedding adapter for Cimmich Pet evaluation."""
+"""Fail-closed placeholder for the retired MiewID evaluation adapter."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from PIL import Image, ImageOps
 INPUT_SIZE = 440
 EMBEDDING_DIMENSION = 2152
 SCHEMA_VERSION = "cimmich.pet-reid-embedding.v1"
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
 
 
 def select_device(requested: str):
@@ -31,35 +33,13 @@ def select_device(requested: str):
 
 
 def load_local_model(model_path: Path, device):
-    import timm
-    from transformers import AutoModel
-
     path = model_path.expanduser().resolve(strict=True)
     if not path.is_dir():
         raise ValueError("model path must be a local snapshot directory")
-
-    # The upstream model constructor asks timm for generic ImageNet weights
-    # before Transformers loads the complete MiewID checkpoint. Suppress that
-    # redundant fetch so a downloaded snapshot works with networking disabled.
-    original_create_model = timm.create_model
-
-    def create_offline_model(*args, **kwargs):
-        kwargs["pretrained"] = False
-        return original_create_model(*args, **kwargs)
-
-    timm.create_model = create_offline_model
-    try:
-        model = AutoModel.from_pretrained(
-            str(path),
-            local_files_only=True,
-            trust_remote_code=True,
-        )
-    finally:
-        timm.create_model = original_create_model
-
-    model.eval()
-    model.to(device)
-    return model
+    raise RuntimeError(
+        "MiewID is disabled: its snapshot requires unreviewed publisher Python "
+        "and Cimmich V1 does not execute remote model code"
+    )
 
 
 def validate_box(raw: Any) -> tuple[float, float, float, float] | None:
@@ -164,6 +144,16 @@ def embed_records(
                     f"record {record['id']} cropContext must be between 1 and 12"
                 )
             with Image.open(image_path) as source:
+                if (
+                    source.width < 1
+                    or source.height < 1
+                    or source.width > MAX_DECODED_DIMENSION
+                    or source.height > MAX_DECODED_DIMENSION
+                    or source.width * source.height > MAX_DECODED_PIXELS
+                ):
+                    raise ValueError(
+                        f"record {record['id']} image exceeds its decoded pixel bound"
+                    )
                 crop = pet_crop(
                     source,
                     validate_box(record.get("box")),
@@ -204,9 +194,12 @@ def main() -> None:
 
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-    device = select_device(args.device)
     records = read_records(args.input)
-    model = load_local_model(args.model, device)
+    # Deliberately fail before importing Torch/Transformers. Re-enabling this
+    # provider requires a reviewed, immutable code artifact and digest-bound
+    # checkpoint contract; a local Hugging Face snapshot is not that boundary.
+    model = load_local_model(args.model, None)
+    device = select_device(args.device)
     embeddings = embed_records(
         model,
         records,

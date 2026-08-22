@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   CimmichServiceError,
   type CimmichExploreFilters,
@@ -458,6 +458,13 @@ describe('Cimmich viewing mode intent client contract', () => {
       method: 'POST',
     });
     fetchMock.mockRestore();
+  });
+
+  it('advances beyond an intent sequence written by another browser tab', () => {
+    const first = createCimmichViewingModeIntentSequence();
+    localStorage.setItem('cimmich.visibility.intent-sequence.v1', String(first + 100));
+
+    expect(createCimmichViewingModeIntentSequence()).toBe(first + 101);
   });
 });
 
@@ -1238,6 +1245,20 @@ describe('Cimmich Person projection page client contract', () => {
 });
 
 describe('Cimmich Visibility client contract', () => {
+  afterEach(() => {
+    for (const storage of [globalThis.localStorage, globalThis.sessionStorage]) {
+      storage.removeItem('cimmich.visibility.device-id.v1');
+      storage.removeItem('cimmich.visibility.intent-sequence.v1');
+      storage.removeItem('cimmich.visibility.principal-id.v1');
+    }
+    const runtime = (globalThis.window as Window & { __cimmichPrivateSessionRuntimeV1?: { token: string | undefined } })
+      .__cimmichPrivateSessionRuntimeV1;
+    if (runtime) {
+      runtime.token = undefined;
+    }
+    vi.restoreAllMocks();
+  });
+
   it('persists the non-secret device binding across full module reloads', async () => {
     const deviceStorageKey = 'cimmich.visibility.device-id.v1';
     const intentStorageKey = 'cimmich.visibility.intent-sequence.v1';
@@ -1278,7 +1299,9 @@ describe('Cimmich Visibility client contract', () => {
     expect(reloadedDevice).toBe(firstDevice);
     expect(reloadedHeaders.get('x-cimmich-principal-id')).toBe('local-primary');
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(reloadedModule.createCimmichViewingModeIntentSequence()).toBe(firstSequence + 1);
+    const reloadedSequence = reloadedModule.createCimmichViewingModeIntentSequence();
+    expect(reloadedSequence).toBeGreaterThan(firstSequence);
+    expect(globalThis.localStorage.getItem(intentStorageKey)).toBe(String(reloadedSequence));
     globalThis.localStorage.removeItem(deviceStorageKey);
     globalThis.localStorage.removeItem(intentStorageKey);
     globalThis.localStorage.removeItem(principalStorageKey);
@@ -1338,6 +1361,45 @@ describe('Cimmich Visibility client contract', () => {
     expect(boundHeaders.get('x-cimmich-device-id')).toBe(firstHeaders.get('x-cimmich-device-id'));
     expect(privateHeaders.get('x-cimmich-private-session')).toBe('opaque-test-token');
     expect(privateHeaders.get('x-cimmich-surface')).toBe('interactive');
+    fetchMock.mockRestore();
+  });
+
+  it('shares a fresh Private unlock with a separately loaded client module without persisting the token', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({
+          expiresAt: '2026-07-16T12:15:00.000Z',
+          privateSessionToken: 'cross-module-private-token',
+          schemaVersion: 'cimmich.visibility.v1',
+          viewingMode: 'private',
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ items: [], schemaVersion: 'cimmich.document.v1' }))
+      .mockResolvedValueOnce(Response.json({ schemaVersion: 'cimmich.visibility.v1', viewingMode: 'standard' }))
+      .mockResolvedValueOnce(Response.json({ items: [], schemaVersion: 'cimmich.document.v1' }));
+
+    vi.resetModules();
+    const unlockClient = await import('./cimmich.service');
+    await unlockClient.unlockCimmichPrivateMode('test-password-from-user');
+    vi.resetModules();
+    const documentsClient = await import('./cimmich.service');
+    await documentsClient.getCimmichDocuments();
+
+    const documentHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
+    expect(documentHeaders.get('x-cimmich-private-session')).toBe('cross-module-private-token');
+    await documentsClient.lockCimmichPrivateMode();
+    vi.resetModules();
+    const lockedClient = await import('./cimmich.service');
+    await lockedClient.getCimmichDocuments();
+
+    const lockedHeaders = new Headers(fetchMock.mock.calls[3]?.[1]?.headers);
+    expect(lockedHeaders.get('x-cimmich-private-session')).toBeNull();
+    const storedValues = (storage: Storage) =>
+      Array.from({ length: storage.length }, (_, index) => storage.getItem(storage.key(index) ?? ''));
+    expect([...storedValues(globalThis.localStorage), ...storedValues(globalThis.sessionStorage)]).not.toContain(
+      'cross-module-private-token',
+    );
     fetchMock.mockRestore();
   });
 

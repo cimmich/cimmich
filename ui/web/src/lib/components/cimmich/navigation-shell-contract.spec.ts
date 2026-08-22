@@ -33,6 +33,9 @@ describe('Cimmich navigation shell contract', () => {
     expect(cimmichSidebar).toContain('href={Route.cimmichHome()}');
     expect(cimmichSidebar).toContain('title="Library"');
     expect(cimmichSidebar).toContain('href={Route.cimmichLibrary()}');
+    expect(cimmichSidebar).toContain('{#if $cimmichDiscoverExperiment}');
+    expect(cimmichSidebar).toContain('title="Discover"');
+    expect(cimmichSidebar).toContain('href={Route.cimmichDiscover()}');
     expect(cimmichSidebar).not.toContain('title="Review"');
     expect(cimmichSidebar).toContain('title="Archive Health"');
     expect(cimmichSidebar).not.toContain('title="Folder Check"');
@@ -44,6 +47,8 @@ describe('Cimmich navigation shell contract', () => {
     expect(immichSidebar).toContain('href={Route.cimmichHome()}');
     expect(immichSidebar).toContain('bind:expanded={$cimmichCompanionDropdown}');
     expect(immichSidebar).toContain("{ title: 'Smart Search', href: Route.cimmichSmartSearch()");
+    expect(immichSidebar).toContain('$cimmichDiscoverExperiment');
+    expect(immichSidebar).toContain("{ title: 'Discover', href: Route.cimmichDiscover()");
     expect(immichSidebar).not.toContain("title: 'Folder Check'");
     expect(immichSidebar).not.toContain("{ title: 'Review', href: Route.cimmichSteward()");
     expect(people).not.toContain('Identity checks');

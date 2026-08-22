@@ -108,9 +108,9 @@ a supported Vulkan GPU can select the guarded accelerator path with:
 
 The image contains a digest-pinned upstream Real-ESRGAN ncnn Vulkan runtime and
 its licence, but no model weights. The Linux image also pins a Trixie-generation
-Mesa 25 userspace: the X1 Radeon 780M acceptance run proved that Bookworm's
-Mesa 22 can enumerate the device while producing kernel-rejected command
-streams. Host Vulkan libraries are not mounted into the container. Best remains
+Mesa 25 userspace: the reference Radeon 780M acceptance run proved that
+Bookworm's Mesa 22 can enumerate the device while producing kernel-rejected
+command streams. Host Vulkan libraries are not mounted into the container. Best remains
 unavailable unless the runtime is executable and both external model files are
 present. The numerical providers retain a separately pinned Python 3.11 runtime
 so the newer GPU userspace does not silently change their wheel ABI. The Vulkan
@@ -170,8 +170,8 @@ geometry review from silently acquiring cross-photo identity-support behavior.
 On Linux/amd64, `compose.local-ai-body.yaml` builds the exact optional CPU
 runtime and points the API at `body/yolo11n.pt` plus
 `body/yolo11n-cpu.json` in the existing read-only Local AI model volume. The
-accepted X1 manifest uses the measured 1024px/four-thread profile. Saved Cimmich
-quarter-turns are applied for inference and review presentation while model
+accepted reference-host manifest uses the measured 1024px/four-thread profile.
+Saved Cimmich quarter-turns are applied for inference and review presentation while model
 boxes remain in source coordinates for exact comparison. The
 checkpoint and manifest remain deployment-owned and are not copied into the
 image or release source. The provider enforces the manifest's declared CPU

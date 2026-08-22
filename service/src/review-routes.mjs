@@ -19,6 +19,43 @@ export const createReviewRoutes =
     }
     if (
       request.method === "GET" &&
+      url.pathname === "/v1/archive-integrity/missing-files"
+    ) {
+      requireProjection("asset_detail");
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityMissingFiles({
+          limit: url.searchParams.get("limit"),
+          offset: url.searchParams.get("offset"),
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/archive-integrity/missing-files:remove"
+    ) {
+      requireProjection("asset_detail");
+      const body = await readJsonBody(request);
+      sendJson(
+        response,
+        200,
+        await repository.archiveIntegrityRemoveMissingFiles({
+          actorId: request.headers["x-cimmich-actor"],
+          commandId: body.commandId,
+          expectedCount: body.expectedCount,
+          selection: body.selection,
+          sourceId: body.sourceId,
+          sourceAssetIds: body.sourceAssetIds,
+        }),
+        allowedOrigin,
+      );
+      return true;
+    }
+    if (
+      request.method === "GET" &&
       url.pathname === "/v1/archive-integrity/exact-duplicates"
     ) {
       requireProjection("asset_detail");

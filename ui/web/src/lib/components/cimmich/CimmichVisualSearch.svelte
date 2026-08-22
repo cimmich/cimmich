@@ -5,6 +5,7 @@
   import { AssetMediaSize, AssetTypeEnum, searchSmart, type AssetResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import { mdiArrowRight, mdiImageSearchOutline, mdiMagnify } from '@mdi/js';
+  import { beginCimmichProjection } from './cimmich-projection-boundary';
 
   interface Props {
     initialQuery?: string;
@@ -60,7 +61,13 @@
         onStateChange(nextQuery, nextAssetId);
       }
     }
-    const requestGeneration = append ? generation : ++generation;
+    const requestGeneration = append
+      ? generation
+      : (generation = beginCimmichProjection(generation, () => {
+          assets = [];
+          loaded = false;
+          nextPage = 1;
+        }));
     try {
       const response = await searchSmart({
         smartSearchDto: {

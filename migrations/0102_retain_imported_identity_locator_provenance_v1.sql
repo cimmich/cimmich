@@ -20,9 +20,8 @@ SET completed_at = excluded.completed_at,
 
 -- The schema-102 source cleanup removed all runtime readers and writers for
 -- imported_identity_locator. The service tree itself never produced rows, but
--- private archive import operators legitimately may have populated the table:
--- X1 retained 1,459 source rectangles, including 371 unresolved owner-placement
--- records. Removing an unused runtime path must not erase that provenance.
+-- private archive import operators legitimately may have populated the table.
+-- Removing an unused runtime path must not erase that provenance.
 --
 -- Keep the exact schema-81/82 table and rows dormant. A future product decision
 -- may restore a bounded owner-review projection or migrate this evidence into a

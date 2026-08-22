@@ -2,12 +2,15 @@
   import { page } from '$app/state';
   import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
   import { Route } from '$lib/route';
+  import { cimmichDiscoverExperiment } from '$lib/stores/cimmich-experience.store';
   import { NavbarGroup, NavbarItem } from '@immich/ui';
   import {
     mdiAccount,
     mdiAccountOutline,
     mdiCalendarBlankOutline,
     mdiCogOutline,
+    mdiCompass,
+    mdiCompassOutline,
     mdiFileDocumentOutline,
     mdiHome,
     mdiHomeOutline,
@@ -35,6 +38,15 @@
     isActive={() => page.url.pathname === Route.cimmichHome()}
   />
   <NavbarItem title="Library" href={Route.cimmichLibrary()} icon={mdiImageMultipleOutline} isActive={isLibraryActive} />
+  {#if $cimmichDiscoverExperiment}
+    <NavbarItem
+      title="Discover"
+      href={Route.cimmichDiscover()}
+      icon={mdiCompassOutline}
+      activeIcon={mdiCompass}
+      isActive={() => isSectionActive(Route.cimmichDiscover())}
+    />
+  {/if}
 
   <NavbarGroup title="Browse" size="tiny" />
 

@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
     getPets: vi.fn(() => Promise.resolve([])),
     setPresence: vi.fn(),
     setVisibility: vi.fn(),
+    updateAssets: vi.fn(),
     undoLabel: vi.fn(),
     undoContext: vi.fn(),
     undoPresence: vi.fn(),
@@ -68,6 +69,11 @@ vi.mock('$lib/services/cimmich.service', () => ({
   undoCimmichVisibilityDecision: mocks.undoVisibility,
 }));
 
+vi.mock('@immich/sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@immich/sdk')>()),
+  updateAssets: mocks.updateAssets,
+}));
+
 vi.mock('./cimmich-undo-receipt-context.svelte', () => ({
   CIMMICH_ENTITY_MEDIA_ACTION_RECEIPT_KEY: 'cimmich.entity-media-action.receipt.v1',
   currentCimmichUndoReceiptContext: () => ({
@@ -91,6 +97,26 @@ const items = [
   { assetId: 'asset-2', directlyAssigned: true, filename: 'two.jpg', sourceAssetId: 'source-2' },
 ];
 
+const contextEntity = (
+  entity: Pick<CimmichContextEntity, 'displayName' | 'entityId' | 'entityKind' | 'geometry' | 'status' | 'typeKind'>,
+): CimmichContextEntity => ({
+  aliases: [],
+  assetCount: 0,
+  childCount: 0,
+  coverAssetId: null,
+  dateEnd: null,
+  datePrecision: 'unknown',
+  dateStart: null,
+  description: '',
+  directoryVisibility: 'listed',
+  geographyEntityId: null,
+  parentEntityId: null,
+  placeRole: entity.entityKind === 'place' ? 'location' : null,
+  revision: 1,
+  subtreeAssetCount: 0,
+  ...entity,
+});
+
 describe('CimmichEntityMediaActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,11 +125,12 @@ describe('CimmichEntityMediaActions', () => {
     mocks.getPeople.mockResolvedValue([]);
     mocks.getPets.mockResolvedValue([]);
     mocks.getEntities.mockResolvedValue([]);
+    mocks.updateAssets.mockResolvedValue({});
   });
 
   it('starts neutrally and presents page-aware actions through an icon-led category bar', async () => {
     const { getByRole, getByText, queryByLabelText, queryByText } = renderWithTooltips(CimmichEntityMediaActions, {
-      currentScope: { displayName: 'Gulmarrad', entityId: 'place-1', family: 'places' },
+      currentScope: { displayName: 'Willow Community Garden', entityId: 'place-1', family: 'places' },
       currentSubject: { displayName: 'Avery Example', subjectId: 'person-1', subjectKind: 'person' },
       items,
       onClear: vi.fn(),
@@ -120,7 +147,7 @@ describe('CimmichEntityMediaActions', () => {
     expect(queryByLabelText('Destination')).not.toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'Organise' }));
     expect(getByRole('button', { name: 'Add to Event' })).toBeInTheDocument();
-    expect(getByRole('button', { name: 'Remove from Gulmarrad' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Remove from Willow Community Garden' })).toBeInTheDocument();
     await fireEvent.click(getByRole('button', { name: 'People & pets' }));
     expect(getByRole('button', { name: 'Mark Avery Example present' })).toBeInTheDocument();
   });
@@ -128,7 +155,7 @@ describe('CimmichEntityMediaActions', () => {
   it('keeps parent-scope actions available for photos already inside a subsection', async () => {
     const onMoveWithinPlace = vi.fn();
     const { getByRole, queryByRole } = renderWithTooltips(CimmichEntityMediaActions, {
-      currentScope: { displayName: "Parent's Home", entityId: 'parent-home', family: 'places' },
+      currentScope: { displayName: 'Cedar House', entityId: 'cedar-house', family: 'places' },
       items: [{ ...items[0], directlyAssigned: false }],
       moveWithinPlaceTargets: [{ depth: 0, entityId: 'office', label: 'Office', path: 'Office' }],
       onClear: vi.fn(),
@@ -136,8 +163,8 @@ describe('CimmichEntityMediaActions', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Organise' }));
-    expect(getByRole('button', { name: "Move within Parent's Home" })).toBeInTheDocument();
-    expect(queryByRole('button', { name: "Remove from Parent's Home" })).not.toBeInTheDocument();
+    expect(getByRole('button', { name: 'Move within Cedar House' })).toBeInTheDocument();
+    expect(queryByRole('button', { name: 'Remove from Cedar House' })).not.toBeInTheDocument();
   });
 
   it('loads only the current destination list and deduplicates a slow request', async () => {
@@ -290,15 +317,15 @@ describe('CimmichEntityMediaActions', () => {
   it('moves directly to an explicitly selected deeper Place subsection', async () => {
     const onMoveWithinPlace = vi.fn(() => Promise.resolve(true));
     const { getByLabelText, getByRole, getByText } = renderWithTooltips(CimmichEntityMediaActions, {
-      currentScope: { displayName: 'Gulmarrad', entityId: 'place-root', family: 'places' },
+      currentScope: { displayName: 'Willow Community Garden', entityId: 'place-root', family: 'places' },
       items,
       moveWithinPlaceTargets: [
-        { depth: 0, entityId: 'place-home', label: "Parent's Home", path: "Parent's Home" },
+        { depth: 0, entityId: 'place-home', label: 'Cedar House', path: 'Cedar House' },
         {
           depth: 1,
           entityId: 'place-office',
           label: 'Office',
-          path: "Parent's Home › Office",
+          path: 'Cedar House › Office',
         },
       ],
       onClear: vi.fn(),
@@ -306,19 +333,118 @@ describe('CimmichEntityMediaActions', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Organise' }));
-    await fireEvent.click(getByRole('button', { name: 'Move within Gulmarrad' }));
+    await fireEvent.click(getByRole('button', { name: 'Move within Willow Community Garden' }));
     const destination = getByLabelText('Destination subsection');
     expect(getByRole('button', { name: 'Move 2' })).toBeDisabled();
 
     await fireEvent.focus(destination);
-    expect(getByRole('option', { name: "Parent's Home" })).toBeInTheDocument();
-    const office = getByRole('option', { name: "Office Parent's Home › Office" });
+    expect(getByRole('option', { name: 'Cedar House' })).toBeInTheDocument();
+    const office = getByRole('option', { name: 'Office Cedar House › Office' });
     expect(office).toHaveStyle({ paddingInlineStart: '2.25rem' });
-    expect(getByText("Parent's Home › Office")).toBeInTheDocument();
+    expect(getByText('Cedar House › Office')).toBeInTheDocument();
 
     await fireEvent.click(office);
     expect(getByRole('button', { name: 'Move 2' })).toBeEnabled();
     await fireEvent.click(getByRole('button', { name: 'Move 2' }));
     await waitFor(() => expect(onMoveWithinPlace).toHaveBeenCalledWith('place-office'));
+  });
+
+  it('moves selected photos to another Place with one recoverable attach and detach sequence', async () => {
+    mocks.getEntities.mockResolvedValue([
+      contextEntity({
+        displayName: 'Cedar House',
+        entityId: 'place-cedar',
+        entityKind: 'place',
+        geometry: { latitude: -27.5321, longitude: 152.9854 },
+        status: 'active',
+        typeKind: 'point',
+      }),
+      contextEntity({
+        displayName: 'Juniper House',
+        entityId: 'place-juniper',
+        entityKind: 'place',
+        geometry: { latitude: -27.5, longitude: 153 },
+        status: 'active',
+        typeKind: 'point',
+      }),
+    ]);
+    mocks.attachContext.mockResolvedValue({
+      changedAssetIds: ['asset-1'],
+      decisionId: 'attach-decision',
+      undo: { eligible: true },
+    });
+    mocks.detachContext.mockResolvedValue({
+      changedAssetIds: ['asset-1'],
+      decisionId: 'detach-decision',
+      undo: { eligible: true },
+    });
+    const { getByLabelText, getByRole } = renderWithTooltips(CimmichEntityMediaActions, {
+      currentScope: { displayName: 'Cedar House', entityId: 'place-cedar', family: 'places' },
+      items: [items[0]],
+      onClear: vi.fn(),
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Organise' }));
+    await fireEvent.click(getByRole('button', { name: 'Move to another Place' }));
+    const destination = await waitFor(() => getByLabelText('Destination'));
+    await fireEvent.focus(destination);
+    await fireEvent.click(getByRole('option', { name: 'Juniper House' }));
+    await fireEvent.click(getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(mocks.detachContext).toHaveBeenCalledOnce());
+    expect(mocks.attachContext).toHaveBeenCalledWith('places', 'place-juniper', 'context-command', [
+      { assetId: 'asset-1', associationKind: 'captured_at' },
+    ]);
+    expect(mocks.detachContext).toHaveBeenCalledWith('places', 'place-cedar', 'context-command', ['asset-1']);
+  });
+
+  it('updates selected photo GPS from a typed Place without rewriting source files', async () => {
+    mocks.getEntities.mockResolvedValue([
+      contextEntity({
+        displayName: 'Cedar House',
+        entityId: 'place-cedar',
+        entityKind: 'place',
+        geometry: { latitude: -27.5321, longitude: 152.9854 },
+        status: 'active',
+        typeKind: 'point',
+      }),
+      contextEntity({
+        displayName: 'Unlocated Place',
+        entityId: 'place-unlocated',
+        entityKind: 'place',
+        geometry: null,
+        status: 'active',
+        typeKind: 'unlocated',
+      }),
+    ]);
+    const onClear = vi.fn();
+    const { getByLabelText, getByRole, getByText, queryByRole } = renderWithTooltips(CimmichEntityMediaActions, {
+      items,
+      onClear,
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Photo details' }));
+    await fireEvent.click(getByRole('button', { name: 'Update GPS from Place' }));
+    expect(
+      getByText(
+        'Writes the chosen Place coordinates to the selected photos in Immich. Source files are not rewritten.',
+      ),
+    ).toBeInTheDocument();
+    const source = await waitFor(() => getByLabelText('GPS source Place'));
+    await fireEvent.focus(source);
+    expect(queryByRole('option', { name: /Unlocated Place/ })).not.toBeInTheDocument();
+    await fireEvent.click(getByRole('option', { name: /Cedar House/ }));
+    await fireEvent.click(getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(mocks.updateAssets).toHaveBeenCalledWith({
+        assetBulkUpdateDto: {
+          ids: ['source-1', 'source-2'],
+          latitude: -27.5321,
+          longitude: 152.9854,
+        },
+      }),
+    );
+    expect(onClear).toHaveBeenCalledOnce();
   });
 });

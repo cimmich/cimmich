@@ -21,6 +21,9 @@ import cv2
 import numpy as np
 from PIL import Image, ImageFile, ImageOps
 
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
+
 from provider import (
     UserSuppliedInsightFaceProvider,
     canonical_json,
@@ -81,7 +84,16 @@ def decode_image(encoded: bytes) -> np.ndarray:
         # their complete pixel raster; permit that bounded recovery before
         # failing the observation as unreadable.
         ImageFile.LOAD_TRUNCATED_IMAGES = True
+        Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
         with Image.open(BytesIO(encoded)) as opened:
+            if (
+                opened.width < 1
+                or opened.height < 1
+                or opened.width > MAX_DECODED_DIMENSION
+                or opened.height > MAX_DECODED_DIMENSION
+                or opened.width * opened.height > MAX_DECODED_PIXELS
+            ):
+                raise ValueError("source image exceeds its decoded pixel bound")
             oriented = ImageOps.exif_transpose(opened).convert("RGB")
             image = cv2.cvtColor(np.asarray(oriented), cv2.COLOR_RGB2BGR)
     except (OSError, ValueError):

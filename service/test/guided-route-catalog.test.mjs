@@ -121,6 +121,8 @@ test("Guided request catalogue preserves canonical nested shapes and closed enum
       "device",
       "collectible",
       "equipment",
+      "organisation",
+      "group",
       "other",
     ],
     places: ["point", "area", "route", "unlocated"],

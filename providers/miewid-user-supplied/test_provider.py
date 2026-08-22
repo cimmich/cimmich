@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 
 from PIL import Image
@@ -30,6 +31,11 @@ class ProviderTest(unittest.TestCase):
         image = Image.new("RGB", (1000, 500))
         crop = provider.pet_crop(image, None, context=4.0)
         self.assertEqual(crop.size, image.size)
+
+    def test_model_loading_fails_closed_before_remote_code_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, "does not execute remote model code"):
+                provider.load_local_model(Path(directory), None)
 
 
 if __name__ == "__main__":

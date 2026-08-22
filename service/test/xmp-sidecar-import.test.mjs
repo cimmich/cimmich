@@ -134,6 +134,73 @@ test("reader hashes paired bytes, emits no paths, and collapses MWG/Microsoft du
   }
 });
 
+test("XMP subprocess receives a scrubbed environment and bounded lifetime", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "cimmich-xmp-process-"));
+  try {
+    const safeProvider = path.join(root, "safe.py");
+    await writeFile(
+      safeProvider,
+      `import json, os
+if "DATABASE_URL" in os.environ or "IMMICH_API_KEY" in os.environ:
+    raise SystemExit(9)
+print(json.dumps({"kind":"header","schemaVersion":"cimmich.xmp-sidecar-reader.v4"}))
+print(json.dumps({"emittedAssets":0,"kind":"summary","scannedSidecars":0,"skippedSidecars":0}))
+`,
+    );
+    const values = [];
+    for await (const entry of scanXmpSidecars({
+      environment: {
+        DATABASE_URL: "postgres://secret",
+        IMMICH_API_KEY: "do-not-inherit",
+        PATH: process.env.PATH,
+      },
+      limitAssets: 1,
+      providerPath: safeProvider,
+      pythonPath: "/usr/bin/python3",
+      root,
+      timeoutMs: 1000,
+    })) {
+      values.push(entry);
+    }
+    assert.deepEqual(values, [
+      {
+        kind: "summary",
+        value: {
+          emittedAssets: 0,
+          kind: "summary",
+          scannedSidecars: 0,
+          skippedSidecars: 0,
+        },
+      },
+    ]);
+
+    const slowProvider = path.join(root, "slow.py");
+    await writeFile(
+      slowProvider,
+      `import json, time
+print(json.dumps({"kind":"header","schemaVersion":"cimmich.xmp-sidecar-reader.v4"}), flush=True)
+time.sleep(10)
+`,
+    );
+    await assert.rejects(
+      async () => {
+        for await (const _entry of scanXmpSidecars({
+          limitAssets: 1,
+          providerPath: slowProvider,
+          pythonPath: "/usr/bin/python3",
+          root,
+          timeoutMs: 25,
+        })) {
+          // The timeout is asserted after the child is terminated.
+        }
+      },
+      { code: "XMP_SIDECAR_PROVIDER_TIMEOUT" },
+    );
+  } finally {
+    await rm(root, { recursive: true });
+  }
+});
+
 test("reader projects orientation-6 MWG regions into the EXIF-transposed display frame", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "cimmich-xmp-orientation-"));
   try {
@@ -153,7 +220,7 @@ test("reader projects orientation-6 MWG regions into the EXIF-transposed display
           stDim:w="4272" stDim:h="2848" stDim:unit="pixel"/>
         </mwg-rs:AppliedToDimensions>
         <mwg-rs:RegionList><rdf:Bag><rdf:li><rdf:Description
-          mwg-rs:Name="Pete Marques 1" mwg-rs:Type="Face">
+          mwg-rs:Name="Theo Vale 1" mwg-rs:Type="Face">
           <mwg-rs:Area stArea:x="0.32596" stArea:y="0.651861"
             stArea:w="0.218867" stArea:h="0.20611" stArea:unit="normalized"/>
         </rdf:Description></rdf:li><rdf:li><rdf:Description
@@ -174,7 +241,7 @@ test("reader projects orientation-6 MWG regions into the EXIF-transposed display
       values.push(entry);
     }
     const face = values[0].value.faces.find(
-      ({ rawName }) => rawName === "Pete Marques 1",
+      ({ rawName }) => rawName === "Theo Vale 1",
     );
     assert.equal(face.exifOrientation, 6);
     assert.deepEqual(face.sourceDimensions, { height: 2848, width: 4272 });

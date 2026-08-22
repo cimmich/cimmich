@@ -1,6 +1,10 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { get } from 'svelte/store';
-import { cimmichExperience, cimmichLocalAiExperiment } from '$lib/stores/cimmich-experience.store';
+import {
+  cimmichDiscoverExperiment,
+  cimmichExperience,
+  cimmichLocalAiExperiment,
+} from '$lib/stores/cimmich-experience.store';
 import CimmichExperienceSettings from './CimmichExperienceSettings.svelte';
 
 describe('Cimmich experience settings', () => {
@@ -8,6 +12,19 @@ describe('Cimmich experience settings', () => {
     localStorage.clear();
     cimmichExperience.set('companion');
     cimmichLocalAiExperiment.set(false);
+    cimmichDiscoverExperiment.set(false);
+  });
+
+  it('keeps Discover separate, off and reversible without changing the chosen shell', async () => {
+    const rendered = render(CimmichExperienceSettings);
+    const button = rendered.getByRole('button', { name: 'Show Discover' });
+
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    await fireEvent.click(button);
+
+    expect(get(cimmichExperience)).toBe('companion');
+    expect(get(cimmichDiscoverExperiment)).toBe(true);
+    expect(rendered.getByRole('button', { name: 'Hide Discover' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('prominently offers Frontier Workspace without forcing it', async () => {

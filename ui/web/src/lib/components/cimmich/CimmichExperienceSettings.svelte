@@ -1,11 +1,16 @@
 <script lang="ts">
-  import { cimmichExperience, cimmichLocalAiExperiment } from '$lib/stores/cimmich-experience.store';
+  import {
+    cimmichDiscoverExperiment,
+    cimmichExperience,
+    cimmichLocalAiExperiment,
+  } from '$lib/stores/cimmich-experience.store';
   import { Icon } from '@immich/ui';
   import { mdiCreationOutline, mdiFlaskOutline, mdiViewDashboardOutline, mdiViewListOutline } from '@mdi/js';
 
   const useFrontier = () => ($cimmichExperience = 'frontier');
   const useCompanion = () => ($cimmichExperience = 'companion');
   const toggleLocalAi = () => ($cimmichLocalAiExperiment = !$cimmichLocalAiExperiment);
+  const toggleDiscover = () => ($cimmichDiscoverExperiment = !$cimmichDiscoverExperiment);
 </script>
 
 <section
@@ -59,6 +64,44 @@
       </button>
     {/if}
   </div>
+</section>
+
+<section
+  class="flex flex-col justify-between gap-5 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center dark:border-immich-dark-gray dark:bg-immich-dark-bg"
+  aria-labelledby="discover-experiment-title"
+>
+  <div class="flex min-w-0 items-start gap-3">
+    <span
+      class="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+    >
+      <Icon icon={mdiFlaskOutline} size="22" />
+    </span>
+    <div>
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 id="discover-experiment-title" class="font-semibold">Discover and memory webs</h2>
+        <span
+          class="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-amber-800 uppercase dark:bg-amber-950 dark:text-amber-200"
+        >
+          Experimental
+        </span>
+      </div>
+      <p class="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-300">
+        Show the Discover workspace and Person memory webs. These read your existing relationship facts without changing
+        them, but their layout, explanations and navigation are still mid-build.
+      </p>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full px-5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary {$cimmichDiscoverExperiment
+      ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-100'
+      : 'border border-gray-300 bg-white text-gray-800 hover:border-primary hover:text-primary dark:border-gray-600 dark:bg-immich-dark-gray dark:text-white'}"
+    aria-pressed={$cimmichDiscoverExperiment}
+    onclick={toggleDiscover}
+  >
+    {$cimmichDiscoverExperiment ? 'Hide Discover' : 'Show Discover'}
+  </button>
 </section>
 
 <section

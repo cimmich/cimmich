@@ -11,7 +11,7 @@ describe('Cimmich experience deployment defaults', () => {
     expect(resolveCimmichExperienceDefault('frontier')).toBe('frontier');
   });
 
-  it('keeps Local AI controls off unless the deployment explicitly opts in', () => {
+  it('keeps optional experiments off unless the deployment explicitly opts in', () => {
     expect(resolveCimmichExperimentDefault(undefined)).toBe(false);
     expect(resolveCimmichExperimentDefault('false')).toBe(false);
     expect(resolveCimmichExperimentDefault('true')).toBe(true);

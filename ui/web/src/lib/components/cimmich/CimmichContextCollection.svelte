@@ -1,32 +1,21 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
-  import type {
-    CimmichContextEntity,
-    CimmichContextFamily,
-    CimmichContextTypeKind,
-    CimmichPlaceRole,
-  } from '$lib/services/cimmich.service';
+  import type { CimmichContextEntity, CimmichContextFamily, CimmichPlaceRole } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
   import { AssetMediaSize, getAssetInfo } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import CimmichGpsPlaceDiscovery from './CimmichGpsPlaceDiscovery.svelte';
+  import { iconForContextType } from './context-entity-icons';
   import { normalizeGpsPlaceName } from './gps-place-discovery';
   import {
     mdiCalendarBlankOutline,
     mdiCameraOutline,
-    mdiCellphone,
-    mdiDiamondStone,
-    mdiHomeOutline,
     mdiMapMarkerOutline,
     mdiMapMarkerMultipleOutline,
     mdiMapOutline,
     mdiImageMultipleOutline,
     mdiPackageVariantClosed,
     mdiPlus,
-    mdiRepeat,
-    mdiRoadVariant,
-    mdiToolboxOutline,
-    mdiWalk,
   } from '@mdi/js';
   import {
     contextEventYear,
@@ -261,23 +250,6 @@
   const eventPreviewIds = (entity: CimmichContextEntity) =>
     entity.previewAssetIds?.length ? entity.previewAssetIds : entity.coverAssetId ? [entity.coverAssetId] : [];
 
-  const iconForType = (type: CimmichContextTypeKind) => {
-    const icons: Partial<Record<CimmichContextTypeKind, string>> = {
-      activity: mdiRepeat,
-      area: mdiMapOutline,
-      collectible: mdiDiamondStone,
-      device: mdiCellphone,
-      equipment: mdiToolboxOutline,
-      event: mdiCalendarBlankOutline,
-      life_period: mdiWalk,
-      point: mdiMapMarkerOutline,
-      property: mdiHomeOutline,
-      route: mdiRoadVariant,
-      trip: mdiRoadVariant,
-    };
-    return icons[type] ?? mdiPackageVariantClosed;
-  };
-
   const eventCardClass = (entity: CimmichContextEntity) =>
     entity.typeKind === 'trip'
       ? 'context-event-card context-event-card--trip'
@@ -494,10 +466,11 @@
                   loading="lazy"
                 />
               {:else}
-                <Icon icon={iconForType(entity.typeKind)} size="38" />
+                <Icon icon={iconForContextType(entity.typeKind)} size="38" />
               {/if}
               <span class="context-cover-chip"
-                ><Icon icon={iconForType(entity.typeKind)} size="14" /> {humanizeContextKind(entity.typeKind)}</span
+                ><Icon icon={iconForContextType(entity.typeKind)} size="14" />
+                {humanizeContextKind(entity.typeKind)}</span
               >
             </div>
             <!-- Same minmax(0,1fr) track cap as the place card. Things carries no
@@ -588,10 +561,10 @@
                         />
                       {/each}
                     {:else}
-                      <span><Icon icon={iconForType(entity.typeKind)} size="36" /></span>
+                      <span><Icon icon={iconForContextType(entity.typeKind)} size="36" /></span>
                     {/if}
                     <span class="context-event-kind"
-                      ><Icon icon={iconForType(entity.typeKind)} size="14" />
+                      ><Icon icon={iconForContextType(entity.typeKind)} size="14" />
                       {contextTypeLabel(entity.typeKind)}</span
                     >
                   </div>

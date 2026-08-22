@@ -43,7 +43,7 @@ const currentAsset = (overrides = {}) => ({
 });
 const manifest = (assets) => ({
   assets,
-  schemaVersion: "cimmich.apple-vision-benji-full-manifest.v1",
+  schemaVersion: "cimmich.apple-vision-summary-proposal-manifest.v1",
 });
 
 test("plans only exact current source and asset matches", () => {

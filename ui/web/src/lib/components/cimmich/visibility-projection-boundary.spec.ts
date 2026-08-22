@@ -9,6 +9,8 @@ describe('Cimmich visibility projection boundary', () => {
     'src/lib/components/cimmich/CimmichPhotoOverlay.svelte',
     'src/lib/components/cimmich/CimmichAppearancesPanel.svelte',
     'src/lib/components/cimmich/CimmichContextBrowser.svelte',
+    'src/lib/components/cimmich/CimmichTagBrowser.svelte',
+    'src/lib/components/cimmich/CimmichVisualSearch.svelte',
     'src/lib/components/cimmich/CimmichDocuments.svelte',
     'src/routes/(user)/cimmich/+page.svelte',
     'src/routes/(user)/cimmich/pets/+page.svelte',
@@ -21,6 +23,27 @@ describe('Cimmich visibility projection boundary', () => {
     expect(contents).toContain('cimmichVisibilityManager.version');
     expect(contents).toMatch(/(?:generation|Generation)/);
     expect(contents).toMatch(/(?:generation|Generation)\s*!==|(?:generation|Generation)\s*===/);
+  });
+
+  it.each([
+    ['Home', 'src/routes/(user)/cimmich/+page.svelte', 'summary = undefined'],
+    ['Context detail', 'src/lib/components/cimmich/CimmichContextBrowser.svelte', 'clearSelectedProjection'],
+    ['Visual Search', 'src/lib/components/cimmich/CimmichVisualSearch.svelte', 'assets = []'],
+    ['Organise Tags', 'src/lib/components/cimmich/CimmichTagBrowser.svelte', 'cimmichOptions = []'],
+  ])('%s synchronously clears the previously disclosed projection', (_surface, path, resetEvidence) => {
+    const contents = source(path);
+    expect(contents).toContain('beginCimmichProjection');
+    expect(contents).toContain(resetEvidence);
+  });
+
+  it('invalidates dependent Home-cover and Context-detail requests at the same privacy boundary', () => {
+    const home = source('src/routes/(user)/cimmich/+page.svelte');
+    const context = source('src/lib/components/cimmich/CimmichContextBrowser.svelte');
+
+    expect(home).toMatch(/beginCimmichProjection[\s\S]{0,300}coverGeneration \+= 1/);
+    expect(context).toMatch(/clearSelectedProjection[\s\S]{0,300}connectionPresentationGeneration \+= 1/);
+    expect(context).toMatch(/clearSelectedProjection[\s\S]{0,300}nearbyGeneration \+= 1/);
+    expect(context).toMatch(/clearSelectedProjection[\s\S]{0,300}photoLocationGeneration \+= 1/);
   });
 
   it('re-discovers current eligible identity correction Undo after navigation or reload', () => {

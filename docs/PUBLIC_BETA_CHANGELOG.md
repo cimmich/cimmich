@@ -4,6 +4,34 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
+## v1.1.0-community-preview.20: Final V1 closeout
+
+- Discover and Person memory webs are now explicitly Experimental and off by
+  default. An owner can opt in from Cimmich experience settings, turn the
+  surfaces off without losing recorded facts, or follow an honest enable prompt
+  from a direct Discover URL. Local AI remains a separate opt-in experiment.
+- Privacy-projected Home, Context detail, Visual Search and Tags state clears
+  synchronously on a viewing-mode generation change and only publishes a
+  successful response for the current generation.
+- Schema 156 binds consequential relationship commands to actor, operation and
+  canonical payload, stores exact replay responses and makes relationship event
+  histories append-only.
+- Optional provider subprocesses use bounded execution and decoded-image
+  limits. The user-supplied MiewID adapter no longer executes unpinned remote
+  publisher code.
+- The guided lifecycle durably reuses its configured Compose project, rejects
+  mismatches and collisions, and takes a quiesced database-plus-Documents
+  snapshot with content-digest verification.
+- Release CI exercises exact Preview 18 upgrade and rollback plus migration,
+  synthetic, stock-Immich, companion and public-demo lifecycles from extracted
+  tar and ZIP payloads before exact-tag container publication.
+- Oversized UI and service responsibilities were extracted into focused
+  modules without raising source-shape ceilings. Publication scanning covers
+  tracked names and paths as well as textual contents.
+- Compatibility remains exact Immich 3.1.0. The guided path remains tested on
+  macOS and Linux; Windows, Internet-facing and multi-user operation remain
+  outside the Community Preview boundary.
+
 ## v1.1.0-community-preview.18: Exact Refresh and repository launch truth
 
 - Person Refresh is described as rebuilding that Person's Core matching set

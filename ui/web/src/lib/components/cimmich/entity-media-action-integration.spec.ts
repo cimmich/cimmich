@@ -31,7 +31,10 @@ describe('shared entity media action integration', () => {
   });
 
   it('starts with no implied action and provides an icon-led action bar plus typeable destination', async () => {
-    const source = await read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte');
+    const [source, styles] = await Promise.all([
+      read('src/lib/components/cimmich/CimmichEntityMediaActions.svelte'),
+      read('src/lib/components/cimmich/CimmichEntityMediaActions.css'),
+    ]);
 
     expect(source).toContain('$state<MediaUiAction | null>(null)');
     expect(source).toContain('Selected photo actions');
@@ -44,8 +47,8 @@ describe('shared entity media action integration', () => {
     expect(source).toContain('clearSelectionOnInput');
     expect(source).not.toContain('globalThis.confirm');
     expect(source).not.toContain('This changes only the selected photos.');
-    expect(source).toContain(".entity-media-combobox-field :global([role='listbox'])");
-    expect(source).toContain('z-index: 50');
+    expect(styles).toContain(".entity-media-combobox-field [role='listbox']");
+    expect(styles).toContain('z-index: 50');
   });
 
   it('persists one exact Undo receipt and blocks a second action until disposition', async () => {

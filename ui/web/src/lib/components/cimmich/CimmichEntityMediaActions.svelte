@@ -1,4 +1,5 @@
 <script lang="ts">
+  import './CimmichEntityMediaActions.css';
   import {
     attachCimmichContextAssets,
     changeCimmichAssetLabelMembership,
@@ -26,10 +27,12 @@
     type CimmichPet,
   } from '$lib/services/cimmich.service';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
+  import { updateAssets } from '@immich/sdk';
   import {
     mdiAlertCircleOutline,
     mdiCheckCircleOutline,
     mdiClose,
+    mdiCrosshairsGps,
     mdiImageMove,
     mdiSelectAll,
     mdiUndoVariant,
@@ -80,7 +83,8 @@
   }: Props = $props();
 
   type PlaceMoveAction = 'place-move-within';
-  type MediaUiAction = CimmichEntityMediaActionKind | PlaceMoveAction;
+  type PlaceLocationAction = 'gps-update-from-place' | 'place-move';
+  type MediaUiAction = CimmichEntityMediaActionKind | PlaceLocationAction | PlaceMoveAction;
   type MediaActionGroup = 'context' | 'library' | 'metadata' | 'presence' | 'privacy';
 
   let action = $state<MediaUiAction | null>(null);
@@ -114,9 +118,11 @@
       ...(currentScope?.family === 'places' && moveWithinPlaceTargets.length > 0 && onMoveWithinPlace
         ? (['place-move-within'] as const)
         : []),
+      ...(currentScope?.family === 'places' && allDirectlyAssigned ? (['place-move'] as const) : []),
       'event-attach',
       'place-attach',
       'object-attach',
+      'gps-update-from-place',
       ...(currentSubject ? (['presence-current'] as const) : []),
       'presence-person',
       'presence-pet',
@@ -137,7 +143,10 @@
     return result;
   });
   const needsTarget = $derived(
-    action === 'place-move-within' || (action ? cimmichEntityMediaActionNeedsTarget(action) : false),
+    action === 'place-move-within' ||
+      action === 'place-move' ||
+      action === 'gps-update-from-place' ||
+      (action ? cimmichEntityMediaActionNeedsTarget(action) : false),
   );
   const targetOptions = $derived.by<ComboBoxOption[]>(() => {
     if (action === 'place-move-within') {
@@ -153,8 +162,23 @@
     if (action === 'event-attach') {
       return events.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
     }
-    if (action === 'place-attach') {
-      return places.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
+    if (action === 'place-attach' || action === 'place-move' || action === 'gps-update-from-place') {
+      return places
+        .filter(
+          ({ entityId, geometry, typeKind }) =>
+            (action !== 'place-move' || entityId !== currentScope?.entityId) &&
+            (action !== 'gps-update-from-place' ||
+              (typeKind === 'point' && Boolean(geometry && 'latitude' in geometry))),
+        )
+        .map(({ entityId, displayName, geometry }) => ({
+          description:
+            action === 'gps-update-from-place' && geometry && 'latitude' in geometry
+              ? `${geometry.latitude.toFixed(5)}, ${geometry.longitude.toFixed(5)}`
+              : undefined,
+          id: entityId,
+          label: displayName,
+          value: entityId,
+        }));
     }
     if (action === 'object-attach') {
       return objects.map(({ entityId, displayName }) => ({ id: entityId, label: displayName, value: entityId }));
@@ -191,12 +215,17 @@
   const actionGroupDefinitions: Array<{ actions: MediaUiAction[]; icon: string; id: MediaActionGroup; label: string }> =
     [
       {
-        actions: ['place-move-within', 'event-attach', 'place-attach', 'object-attach', 'context-detach'],
+        actions: ['place-move-within', 'place-move', 'event-attach', 'place-attach', 'object-attach', 'context-detach'],
         icon: mdiImageMove,
         id: 'context',
         label: 'Organise',
       },
-      ...CIMMICH_ENTITY_MEDIA_ACTION_GROUPS.map((group) => ({ ...group, actions: [...group.actions] })),
+      ...CIMMICH_ENTITY_MEDIA_ACTION_GROUPS.map(
+        (group): { actions: MediaUiAction[]; icon: string; id: MediaActionGroup; label: string } => ({
+          ...group,
+          actions: group.id === 'metadata' ? [...group.actions, 'gps-update-from-place'] : [...group.actions],
+        }),
+      ),
     ];
   const actionGroups = $derived(
     actionGroupDefinitions
@@ -211,12 +240,27 @@
   const actionLabel = (selectedAction: MediaUiAction) =>
     selectedAction === 'place-move-within'
       ? `Move within ${currentScope?.displayName || 'this Place'}`
-      : cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
+      : selectedAction === 'place-move'
+        ? 'Move to another Place'
+        : selectedAction === 'gps-update-from-place'
+          ? 'Update GPS from Place'
+          : cimmichEntityMediaActionLabel(selectedAction, currentSubject, currentScope);
 
   const actionIcon = (selectedAction: MediaUiAction) =>
     selectedAction === 'place-move-within'
       ? mdiImageMove
-      : cimmichEntityMediaActionIcon(selectedAction, currentSubject);
+      : selectedAction === 'place-move'
+        ? mdiImageMove
+        : selectedAction === 'gps-update-from-place'
+          ? mdiCrosshairsGps
+          : cimmichEntityMediaActionIcon(selectedAction, currentSubject);
+
+  const actionDescription = (selectedAction: MediaUiAction) =>
+    selectedAction === 'place-move'
+      ? `Moves the selected media out of ${currentScope?.displayName || 'this Place'} and into the chosen Place. GPS is unchanged.`
+      : selectedAction === 'gps-update-from-place'
+        ? 'Writes the chosen Place coordinates to the selected photos in Immich. Source files are not rewritten.'
+        : '';
 
   const asError = (caught: unknown) =>
     caught instanceof Error ? caught.message : 'The action could not be completed.';
@@ -255,6 +299,10 @@
         return 'pet';
       }
       case 'place-attach': {
+        return 'place';
+      }
+      case 'place-move':
+      case 'gps-update-from-place': {
         return 'place';
       }
       case 'tag-add':
@@ -436,9 +484,44 @@
       }
       return;
     }
-    const next = emptyReceipt(selectedAction, label);
+    if (selectedAction === 'gps-update-from-place') {
+      const place = places.find(({ entityId }) => entityId === targetId);
+      const geometry = place?.geometry;
+      if (!geometry || !('latitude' in geometry)) {
+        error = 'Choose a Place with a saved point location. Nothing changed.';
+        progress = '';
+        busy = false;
+        return;
+      }
+      try {
+        await updateAssets({
+          assetBulkUpdateDto: {
+            ids: items.map(({ sourceAssetId }) => sourceAssetId),
+            latitude: geometry.latitude,
+            longitude: geometry.longitude,
+          },
+        });
+        progress = `${applyingCount.toLocaleString()} ${applyingCount === 1 ? 'photo now uses' : 'photos now use'} ${place.displayName} GPS in Immich. Source files were not rewritten.`;
+        action = null;
+        actionGroup = null;
+        targetId = '';
+        targetOption = undefined;
+        onClear();
+        await onChanged?.();
+      } catch (error_) {
+        error = `${asError(error_)} Nothing changed.`;
+        progress = '';
+      } finally {
+        busy = false;
+      }
+      return;
+    }
+    const receiptAction = (
+      selectedAction === 'place-move' ? 'place-attach' : selectedAction
+    ) as CimmichEntityMediaActionKind;
+    const next = emptyReceipt(receiptAction, label);
     try {
-      const visibilityTier = cimmichEntityMediaActionVisibilityTier(selectedAction);
+      const visibilityTier = cimmichEntityMediaActionVisibilityTier(receiptAction);
       if (selectedAction === 'rotate-left' || selectedAction === 'rotate-right') {
         const result = await rotateCimmichAssets(
           items.map(({ assetId }) => assetId),
@@ -473,6 +556,28 @@
         if (result.decisionId && result.undo?.eligible) {
           next.contextDecisionIds.push(result.decisionId);
           next.assetIds.push(...(result.changedAssetIds ?? items.map(({ assetId }) => assetId)));
+        }
+      } else if (selectedAction === 'place-move' && currentScope?.family === 'places') {
+        const attached = await attachCimmichContextAssets(
+          'places',
+          targetId,
+          createCimmichContextCommandId('entity-media-move-attach'),
+          items.map(({ assetId }) => ({ assetId, associationKind: 'captured_at' })),
+        );
+        if (attached.decisionId && attached.undo?.eligible) {
+          next.contextDecisionIds.push(attached.decisionId);
+          next.assetIds.push(...(attached.changedAssetIds ?? items.map(({ assetId }) => assetId)));
+          storeReceipt(next);
+        }
+        const detached = await detachCimmichContextAssets(
+          'places',
+          currentScope.entityId,
+          createCimmichContextCommandId('entity-media-move-detach'),
+          items.map(({ assetId }) => assetId),
+        );
+        if (detached.decisionId && detached.undo?.eligible) {
+          next.contextDecisionIds.push(detached.decisionId);
+          next.assetIds.push(...(detached.changedAssetIds ?? items.map(({ assetId }) => assetId)));
         }
       } else if (selectedAction === 'context-detach' && currentScope) {
         const result = await detachCimmichContextAssets(
@@ -734,6 +839,7 @@
               <div class="entity-media-detail">
                 <div class="entity-media-detail-copy">
                   <strong>{actionLabel(action)}</strong>
+                  {#if actionDescription(action)}<p>{actionDescription(action)}</p>{/if}
                 </div>
                 {#if needsTarget}
                   <div class="entity-media-combobox-field">
@@ -754,7 +860,11 @@
                       </div>
                     {/if}
                     <Combobox
-                      label={action === 'place-move-within' ? 'Destination subsection' : 'Destination'}
+                      label={action === 'place-move-within'
+                        ? 'Destination subsection'
+                        : action === 'gps-update-from-place'
+                          ? 'GPS source Place'
+                          : 'Destination'}
                       options={targetOptions}
                       bind:selectedOption={targetOption}
                       placeholder={loadingOptions
@@ -789,240 +899,3 @@
     {/if}
   </section>
 {/if}
-
-<style>
-  .entity-media-actions {
-    margin-top: 1rem;
-    display: grid;
-    gap: 0.75rem;
-    border: 1px solid color-mix(in srgb, currentColor 13%, transparent);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--immich-primary-color) 5%, transparent);
-    padding: 0.875rem;
-  }
-
-  .entity-media-receipt {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.625rem;
-  }
-
-  .entity-media-workspace {
-    display: grid;
-    gap: 0.625rem;
-  }
-
-  .entity-media-toolbar {
-    display: flex;
-    min-width: 0;
-    min-height: 3.25rem;
-    align-items: center;
-    gap: 0.25rem;
-    overflow-x: auto;
-    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, currentColor 3%, transparent);
-    padding: 0.35rem;
-    scrollbar-width: thin;
-  }
-
-  .entity-media-selection-tools,
-  .entity-media-category-tools {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 0.2rem;
-  }
-
-  .entity-media-category-tools {
-    margin-inline-start: auto;
-  }
-
-  .entity-media-count {
-    flex: 0 0 auto;
-    padding-inline: 0.55rem 0.65rem;
-    font-size: 0.8125rem;
-    white-space: nowrap;
-  }
-
-  .entity-media-divider {
-    width: 1px;
-    height: 1.75rem;
-    flex: 0 0 1px;
-    margin-inline: 0.25rem;
-    background: color-mix(in srgb, currentColor 15%, transparent);
-  }
-
-  .entity-media-receipt p {
-    font-size: 0.75rem;
-    opacity: 0.65;
-  }
-
-  .entity-media-combobox-field {
-    display: grid;
-    gap: 0.25rem;
-    min-width: min(20rem, 100%);
-    font-size: 0.75rem;
-    font-weight: 650;
-  }
-
-  .entity-media-create-target {
-    display: flex;
-    gap: 0.4rem;
-  }
-
-  .entity-media-create-target input {
-    min-width: 0;
-    flex: 1;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    border-radius: 0.7rem;
-    background: transparent;
-    padding: 0.55rem 0.7rem;
-  }
-
-  .entity-media-create-target button {
-    border-radius: 0.7rem;
-    padding: 0.55rem 0.75rem;
-    font-weight: 700;
-  }
-
-  .entity-media-combobox-field :global([role='listbox']) {
-    z-index: 50;
-  }
-
-  button {
-    min-height: 2.5rem;
-    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-    border-radius: 0.75rem;
-    background: transparent;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8125rem;
-    font-weight: 650;
-  }
-
-  button:hover:not(:disabled) {
-    background: color-mix(in srgb, currentColor 7%, transparent);
-  }
-
-  button:disabled,
-  .entity-media-group:disabled,
-  .entity-media-option:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
-
-  .entity-media-tool,
-  .entity-media-group {
-    display: inline-flex;
-    width: 2.5rem;
-    min-width: 2.5rem;
-    min-height: 2.5rem;
-    align-items: center;
-    justify-content: center;
-    border-color: transparent;
-    border-radius: 0.65rem;
-    padding: 0;
-    color: var(--immich-primary-color);
-  }
-
-  .entity-media-tool {
-    color: currentColor;
-  }
-
-  .entity-media-group--active {
-    border-color: var(--immich-primary-color);
-    background: var(--immich-primary-color);
-    color: white;
-  }
-
-  .entity-media-panel {
-    display: grid;
-    gap: 0.625rem;
-    border: 1px solid color-mix(in srgb, currentColor 11%, transparent);
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, currentColor 2.5%, transparent);
-    padding: 0.75rem;
-  }
-
-  .entity-media-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-
-  .entity-media-option {
-    display: inline-flex;
-    min-height: 2.6rem;
-    align-items: center;
-    gap: 0.45rem;
-    border-radius: 999px;
-  }
-
-  .entity-media-option--active {
-    border-color: var(--immich-primary-color);
-    background: var(--immich-primary-color);
-    color: white;
-  }
-
-  .entity-media-detail {
-    display: grid;
-    grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 22rem) auto;
-    align-items: end;
-    gap: 0.75rem;
-    border-radius: 0.875rem;
-    background: color-mix(in srgb, currentColor 4.5%, transparent);
-    padding: 0.75rem;
-  }
-
-  .entity-media-detail-copy {
-    align-self: center;
-  }
-
-  .entity-media-apply {
-    border-color: transparent;
-    background: var(--immich-primary-color);
-    color: white;
-    padding-inline: 1.25rem;
-  }
-
-  .entity-media-receipt {
-    align-items: center;
-    border-radius: 0.75rem;
-    background: color-mix(in srgb, #10b981 11%, transparent);
-    padding: 0.625rem;
-    color: color-mix(in srgb, #047857 88%, currentColor);
-  }
-
-  .entity-media-progress,
-  .entity-media-error {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-  }
-
-  .entity-media-error {
-    color: #b91c1c;
-  }
-
-  :global(.dark) .entity-media-receipt {
-    color: #a7f3d0;
-  }
-
-  :global(.dark) .entity-media-error {
-    color: #fca5a5;
-  }
-
-  @media (max-width: 640px) {
-    .entity-media-detail {
-      grid-template-columns: 1fr;
-    }
-
-    .entity-media-combobox-field,
-    .entity-media-apply {
-      width: 100%;
-    }
-  }
-</style>
