@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -232,6 +241,19 @@ test("backup restore validates hostile input before replacing owner state", asyn
   );
   assert.match(companion, /createGunzip/);
   assert.match(companion, /parts\.includes\("\.\."\)/);
+  assert.match(companion, /archive_validation_status=0/);
+  assert.match(
+    companion,
+    /2\) fail "backup archive contains unsafe members: \$archive_name"/,
+  );
+  assert.match(
+    companion,
+    /3\) fail "backup archive is unreadable: \$archive_name"/,
+  );
+  assert.match(
+    companion,
+    /\*\) fail "backup archive validation could not run: \$archive_name"/,
+  );
   assert.match(
     companion,
     /until docker exec "\$preflight_database" psql -U cimmich -d cimmich/,
@@ -256,6 +278,147 @@ test("backup restore validates hostile input before replacing owner state", asyn
     assert.match(companionAcceptance, new RegExp(adversarialCase));
   }
   assert.match(publicDemo, /backup archive contains links or special files/);
+});
+
+test("release lifecycle stages are portable across macOS and Linux runners", async () => {
+  const [stock, companion, publicDemo, bootstrap] = await Promise.all([
+    source("tools/run_stock_immich_lifecycle_acceptance.sh"),
+    source("tools/companion_acceptance.sh"),
+    source("tools/public_demo_acceptance.sh"),
+    source("tools/run_public_demo_bootstrap_acceptance.sh"),
+  ]);
+
+  for (const script of [stock, companion, publicDemo, bootstrap]) {
+    assert.doesNotMatch(script, /\/private\/tmp/);
+    assert.match(script, /TMPDIR:-\/tmp/);
+    assert.doesNotMatch(script, /\bsha256sum\b/);
+  }
+  assert.match(stock, /\.cimmich-stock-acceptance/);
+  assert.match(stock, /if ! mkdir "\$STAGE"/);
+  assert.match(companion, /\.cimmich-companion-acceptance/);
+  assert.match(publicDemo, /\.cimmich-public-demo-acceptance/);
+  assert.match(bootstrap, /CONTAINER_ID=/);
+  assert.match(bootstrap, /docker container inspect "\$CONTAINER"/);
+  assert.match(bootstrap, /docker rm -f "\$CONTAINER_ID"/);
+  assert.match(bootstrap, /CONTAINER_ID=\$\(docker run/);
+});
+
+test("release lifecycle run IDs cannot escape or collide with owned stages", async () => {
+  const scratch = await mkdtemp(join(tmpdir(), "cimmich-acceptance-safety-"));
+  const canary = join(scratch, "outside-canary");
+  await writeFile(canary, "keep\n");
+
+  try {
+    for (const [script, runIdName] of [
+      [
+        "tools/run_stock_immich_lifecycle_acceptance.sh",
+        "CIMMICH_STOCK_RUN_ID",
+      ],
+      ["tools/companion_acceptance.sh", "CIMMICH_COMPANION_ACCEPTANCE_RUN_ID"],
+      [
+        "tools/public_demo_acceptance.sh",
+        "CIMMICH_PUBLIC_DEMO_ACCEPTANCE_RUN_ID",
+      ],
+      [
+        "tools/run_public_demo_bootstrap_acceptance.sh",
+        "CIMMICH_DEMO_ACCEPTANCE_RUN_ID",
+      ],
+    ]) {
+      for (const invalidRunId of [
+        "x/../../outside-canary",
+        "Uppercase",
+        "under_score",
+        "trailing-",
+        "a".repeat(33),
+      ]) {
+        const result = spawnSync("/bin/sh", [resolve(root, script)], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            TMPDIR: scratch,
+            [runIdName]: invalidRunId,
+          },
+        });
+        assert.equal(result.status, 2, `${script} must reject ${invalidRunId}`);
+        assert.match(result.stderr, /invalid run ID|run ID is too long/);
+        assert.equal(await readFile(canary, "utf8"), "keep\n");
+      }
+    }
+
+    for (const [script, collision] of [
+      ["tools/run_stock_immich_lifecycle_acceptance.sh", "cimmich-stock-safe"],
+      [
+        "tools/companion_acceptance.sh",
+        "cimmich-companion-acceptance-safe-harness",
+      ],
+      [
+        "tools/public_demo_acceptance.sh",
+        "cimmich-public-demo-acceptance-safe-harness",
+      ],
+    ]) {
+      await mkdir(join(scratch, collision));
+      const runIdName =
+        script === "tools/run_stock_immich_lifecycle_acceptance.sh"
+          ? "CIMMICH_STOCK_RUN_ID"
+          : script === "tools/companion_acceptance.sh"
+            ? "CIMMICH_COMPANION_ACCEPTANCE_RUN_ID"
+            : "CIMMICH_PUBLIC_DEMO_ACCEPTANCE_RUN_ID";
+      const result = spawnSync("/bin/sh", [resolve(root, script)], {
+        encoding: "utf8",
+        env: { ...process.env, TMPDIR: scratch, [runIdName]: "safe" },
+      });
+      assert.equal(result.status, 2, `${script} must reject a stage collision`);
+      assert.match(result.stderr, /already exists/);
+    }
+
+    const projectResult = spawnSync(
+      "/bin/sh",
+      [resolve(root, "tools/public_demo.sh"), "status"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CIMMICH_PUBLIC_DEMO_PROJECT:
+            "cimmich-public-demo-safe/../../outside-canary",
+          CIMMICH_PUBLIC_DEMO_STATE_ROOT: join(scratch, "state"),
+        },
+      },
+    );
+    assert.equal(projectResult.status, 1);
+    assert.match(projectResult.stderr, /safe-suffix/);
+    assert.equal(await readFile(canary, "utf8"), "keep\n");
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+});
+
+test("portable checksum helper works with shasum as the only checksum command", async () => {
+  const probe = spawnSync("/bin/sh", ["-c", "command -v shasum"], {
+    encoding: "utf8",
+  });
+  assert.equal(probe.status, 0);
+  const shasumPath = probe.stdout.trim();
+  assert.ok(shasumPath);
+
+  const scratch = await mkdtemp(join(tmpdir(), "cimmich-shasum-only-"));
+  const commandRoot = join(scratch, "bin");
+  const fixture = join(scratch, "fixture.txt");
+  await mkdir(commandRoot);
+  await symlink(shasumPath, join(commandRoot, "shasum"));
+  await writeFile(fixture, "portable\n");
+
+  try {
+    const result = spawnSync(
+      "/bin/sh",
+      [resolve(root, "tools/sha256.sh"), "generate", fixture],
+      { encoding: "utf8", env: { ...process.env, PATH: commandRoot } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const expected = createHash("sha256").update("portable\n").digest("hex");
+    assert.equal(result.stdout.trim().split(/\s+/)[0], expected);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 });
 
 test("companion removal refuses unknown state before destructive teardown", async () => {

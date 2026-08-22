@@ -2,28 +2,38 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+CHECKSUM="$ROOT/tools/sha256.sh"
 SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 RUN_ID=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_RUN_ID:-$$}
+case "$RUN_ID" in
+  ''|*[!a-z0-9-]*|[!a-z0-9]*|*-) printf 'public-demo acceptance: invalid run ID\n' >&2; exit 2 ;;
+esac
+test "${#RUN_ID}" -le 32 || { printf 'public-demo acceptance: run ID is too long\n' >&2; exit 2; }
 PROJECT="cimmich-public-demo-acceptance-$RUN_ID"
-if test -d /private/tmp; then
-  DEFAULT_TMP_ROOT=/private/tmp
-else
-  DEFAULT_TMP_ROOT=/tmp
-fi
+DEFAULT_TMP_ROOT=${TMPDIR:-/tmp}
 ACCEPTANCE_TMP_ROOT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_TMP_ROOT:-$DEFAULT_TMP_ROOT}
-STATE_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT"
+case "$ACCEPTANCE_TMP_ROOT" in
+  /*) ;;
+  *) printf 'public-demo acceptance: temporary root must be absolute\n' >&2; exit 2 ;;
+esac
+mkdir -p "$ACCEPTANCE_TMP_ROOT"
+ACCEPTANCE_TMP_ROOT=$(CDPATH= cd -- "$ACCEPTANCE_TMP_ROOT" && pwd -P)
+test "$ACCEPTANCE_TMP_ROOT" != "/" || { printf 'public-demo acceptance: temporary root is unsafe\n' >&2; exit 2; }
+HARNESS_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-harness"
+test ! -e "$HARNESS_ROOT" || { printf 'public-demo acceptance: harness root already exists\n' >&2; exit 2; }
+STATE_ROOT="$HARNESS_ROOT/$PROJECT"
 ARCHIVE_ROOT=${CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT:?Set CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT to the complete Cedar House V1 bundle}
 IMMICH_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_IMMICH_PORT:-22959}
 API_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_API_PORT:-3401}
 OWNER_API_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_OWNER_API_PORT:-3402}
 UI_PORT=${CIMMICH_PUBLIC_DEMO_ACCEPTANCE_UI_PORT:-3403}
 COMPOSE_OVERRIDE="$ROOT/tools/public_demo.acceptance.override.yml"
-BACKUP_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-backup"
-PORTABLE_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-portable"
+BACKUP_ROOT="$HARNESS_ROOT/$PROJECT-backup"
+PORTABLE_BACKUP_PARENT="$HARNESS_ROOT/portable"
 PORTABLE_BACKUP_ROOT="$PORTABLE_BACKUP_PARENT/$PROJECT-backup"
-UNHEALTHY_BACKUP_PARENT="$ACCEPTANCE_TMP_ROOT/$PROJECT-unhealthy"
+UNHEALTHY_BACKUP_PARENT="$HARNESS_ROOT/unhealthy"
 UNHEALTHY_BACKUP_ROOT="$UNHEALTHY_BACKUP_PARENT/$PROJECT-backup"
-PRIVACY_PROOF_ROOT="$ACCEPTANCE_TMP_ROOT/$PROJECT-privacy-proof"
+PRIVACY_PROOF_ROOT="$HARNESS_ROOT/privacy-proof"
 
 run_demo() {
   CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" \
@@ -42,10 +52,10 @@ cleanup() {
   if test -f "$STATE_ROOT/.cimmich-public-demo"; then
     run_demo destroy "--confirm=$PROJECT" >/dev/null 2>&1 || true
   fi
-  rm -rf "$BACKUP_ROOT"
-  rm -rf "$PORTABLE_BACKUP_PARENT"
-  rm -rf "$UNHEALTHY_BACKUP_PARENT"
-  rm -rf "$PRIVACY_PROOF_ROOT"
+  if test -f "$HARNESS_ROOT/.cimmich-public-demo-acceptance" &&
+    test "$(cat "$HARNESS_ROOT/.cimmich-public-demo-acceptance")" = "$PROJECT"; then
+    rm -rf "$HARNESS_ROOT"
+  fi
   return "$status"
 }
 
@@ -79,13 +89,16 @@ assert_restore_rejected_preserves_state() {
 
 rewrite_checksums() {
   backup_root=$1
-  (cd "$backup_root" && sha256sum cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz external-library.tgz operator-state.tgz manifest.txt > SHA256SUMS)
+  (cd "$backup_root" && "$CHECKSUM" generate cimmich.dump immich.dump immich-library.tgz cimmich-documents.tgz cimmich-face-models.tgz external-library.tgz operator-state.tgz manifest.txt > SHA256SUMS)
 }
 
 build_portable_backup_copy() {
   mkdir -p "$PORTABLE_BACKUP_PARENT"
   cp -R "$BACKUP_ROOT" "$PORTABLE_BACKUP_ROOT"
 }
+umask 077
+mkdir "$HARNESS_ROOT"
+printf '%s\n' "$PROJECT" > "$HARNESS_ROOT/.cimmich-public-demo-acceptance"
 trap cleanup EXIT INT TERM
 
 assert_code() {
@@ -202,7 +215,6 @@ prove_runtime_secret_boundary() {
   assert_secret_absent "$secret_file" "$PRIVACY_PROOF_ROOT/$prefix-process-argv.txt"
 }
 
-umask 077
 mkdir -p "$PRIVACY_PROOF_ROOT"
 grep -q 'CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE: password' "$ROOT/tools/public_demo.compose.yml"
 grep -q -- '--password-stdin' "$ROOT/tools/public_demo.sh"
@@ -408,7 +420,7 @@ assert_typed_error "$PRIVACY_PROOF_ROOT/post-lock-token-response.json" VISIBILIT
 
 prove_runtime_secret_boundary "$private_password_file" fresh
 prove_runtime_secret_boundary "$guided_token_file" fresh-guided
-first_private_password=$(sha256sum "$private_password_file" | cut -d ' ' -f 1)
+first_private_password=$("$CHECKSUM" generate "$private_password_file" | cut -d ' ' -f 1)
 
 # An unhealthy runtime must fail before any backup directory is created.
 api_id=$(docker ps -q \
@@ -431,7 +443,7 @@ done
 
 printf '{"apiKey":"synthetic-upload-only-guided-key"}\n' > "$STATE_ROOT/immich-guided-credential.json"
 chmod 600 "$STATE_ROOT/immich-guided-credential.json"
-first_guided_upload_credential=$(sha256sum "$STATE_ROOT/immich-guided-credential.json" | cut -d ' ' -f 1)
+first_guided_upload_credential=$("$CHECKSUM" generate "$STATE_ROOT/immich-guided-credential.json" | cut -d ' ' -f 1)
 
 # A deliberately owner-like database marker and a document-volume marker prove
 # that lifecycle commands preserve more than the public semantic count tuple.
@@ -540,7 +552,7 @@ if run_demo stop unexpected > "$PRIVACY_PROOF_ROOT/stop-ambiguous.txt" 2>&1; the
 fi
 assert_lifecycle_marker owner-state-preserved
 
-first_receipt=$(sha256sum "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
+first_receipt=$("$CHECKSUM" generate "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
 stopped=$(run_demo stop | tail -n 1)
 printf '%s\n' "$stopped" | grep -q '"state":"stopped"'
 run_demo up >/dev/null
@@ -557,9 +569,9 @@ assert_lifecycle_marker owner-state-preserved
 
 reset=$(run_demo reset "--confirm=$PROJECT" | tail -n 1)
 printf '%s\n' "$reset" | grep -q '"counts":"51:9:12:5:4:0"'
-second_receipt=$(sha256sum "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
+second_receipt=$("$CHECKSUM" generate "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
 test "$first_receipt" != "$second_receipt"
-second_private_password=$(sha256sum "$STATE_ROOT/private-password" | cut -d ' ' -f 1)
+second_private_password=$("$CHECKSUM" generate "$STATE_ROOT/private-password" | cut -d ' ' -f 1)
 test "$first_private_password" != "$second_private_password"
 if CIMMICH_PUBLIC_DEMO_PROJECT="$PROJECT" CIMMICH_PUBLIC_DEMO_STATE_ROOT="$STATE_ROOT" \
   CIMMICH_PUBLIC_DEMO_ARCHIVE_ROOT="$ARCHIVE_ROOT" CIMMICH_PUBLIC_DEMO_IMMICH_PORT="$IMMICH_PORT" \
@@ -582,11 +594,11 @@ printf '%s\n' "$restore" | grep -q '"status":"RESTORED"'
 printf '%s\n' "$restore" | grep -q "\"backupSchemaVersion\":$SCHEMA_VERSION"
 printf '%s\n' "$restore" | grep -q "\"restoredSchemaVersion\":$SCHEMA_VERSION"
 assert_lifecycle_marker owner-state-preserved
-restored_receipt=$(sha256sum "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
+restored_receipt=$("$CHECKSUM" generate "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)
 test "$restored_receipt" = "$first_receipt"
-restored_private_password=$(sha256sum "$STATE_ROOT/private-password" | cut -d ' ' -f 1)
+restored_private_password=$("$CHECKSUM" generate "$STATE_ROOT/private-password" | cut -d ' ' -f 1)
 test "$restored_private_password" = "$first_private_password"
-restored_guided_upload_credential=$(sha256sum "$STATE_ROOT/immich-guided-credential.json" | cut -d ' ' -f 1)
+restored_guided_upload_credential=$("$CHECKSUM" generate "$STATE_ROOT/immich-guided-credential.json" | cut -d ' ' -f 1)
 test "$restored_guided_upload_credential" = "$first_guided_upload_credential"
 restored_guided_upload_mode=$(stat -f '%Lp' "$STATE_ROOT/immich-guided-credential.json" 2>/dev/null || stat -c '%a' "$STATE_ROOT/immich-guided-credential.json")
 test "$restored_guided_upload_mode" = 600
@@ -603,7 +615,7 @@ test -s "$STATE_ROOT/.cimmich-public-demo"
 run_demo up >/dev/null
 resumed_state=$(run_demo status)
 printf '%s\n' "$resumed_state" | grep -q '"counts":"51:9:12:5:4:0"'
-test "$(sha256sum "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)" = "$first_receipt"
+test "$("$CHECKSUM" generate "$STATE_ROOT/seed-receipt.json" | cut -d ' ' -f 1)" = "$first_receipt"
 
 run_demo destroy "--confirm=$PROJECT" >/dev/null
 set +e

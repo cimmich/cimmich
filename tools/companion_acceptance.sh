@@ -5,11 +5,26 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 STOCK_COMPOSE="$ROOT/ops/stock-immich-v3.1.0.compose.yml"
 RUN_ID=${CIMMICH_COMPANION_ACCEPTANCE_RUN_ID:-$$}
+case "$RUN_ID" in
+  ''|*[!a-z0-9-]*|[!a-z0-9]*|*-) printf 'companion acceptance: invalid run ID\n' >&2; exit 2 ;;
+esac
+test "${#RUN_ID}" -le 32 || { printf 'companion acceptance: run ID is too long\n' >&2; exit 2; }
 STOCK_PROJECT="cimmich-companion-stock-${RUN_ID}"
 COMPANION_PROJECT="cimmich-companion-acceptance-${RUN_ID}"
 COLLISION_PROJECT="cimmich-companion-collision-${RUN_ID}"
-STAGE="/private/tmp/${COMPANION_PROJECT}"
-STOCK_STAGE="/private/tmp/${STOCK_PROJECT}"
+DEFAULT_TMP_ROOT=${TMPDIR:-/tmp}
+ACCEPTANCE_TMP_ROOT=${CIMMICH_COMPANION_ACCEPTANCE_TMP_ROOT:-$DEFAULT_TMP_ROOT}
+case "$ACCEPTANCE_TMP_ROOT" in
+  /*) ;;
+  *) printf 'companion acceptance: temporary root must be absolute\n' >&2; exit 2 ;;
+esac
+mkdir -p "$ACCEPTANCE_TMP_ROOT"
+ACCEPTANCE_TMP_ROOT=$(CDPATH= cd -- "$ACCEPTANCE_TMP_ROOT" && pwd -P)
+test "$ACCEPTANCE_TMP_ROOT" != "/" || { printf 'companion acceptance: temporary root is unsafe\n' >&2; exit 2; }
+HARNESS_ROOT="${ACCEPTANCE_TMP_ROOT}/${COMPANION_PROJECT}-harness"
+test ! -e "$HARNESS_ROOT" || { printf 'companion acceptance: harness root already exists\n' >&2; exit 2; }
+STAGE="$HARNESS_ROOT/companion"
+STOCK_STAGE="$HARNESS_ROOT/stock"
 STATE_ROOT="$STAGE/state"
 COLLISION_STATE_ROOT="$STAGE/collision-state"
 BACKUP_ROOT="$STAGE/${COMPANION_PROJECT}-backup"
@@ -35,10 +50,12 @@ cleanup() {
   docker compose --project-name "$STOCK_PROJECT" --file "$STOCK_COMPOSE" \
     down --volumes --remove-orphans >/dev/null 2>&1 || true
   docker volume rm "$COLLISION_PROJECT-database" >/dev/null 2>&1 || true
-  rm -rf "$STAGE" "$STOCK_STAGE"
+  if test -f "$HARNESS_ROOT/.cimmich-companion-acceptance" &&
+    test "$(cat "$HARNESS_ROOT/.cimmich-companion-acceptance")" = "$COMPANION_PROJECT"; then
+    rm -rf "$HARNESS_ROOT"
+  fi
   return "$status"
 }
-trap cleanup EXIT INT TERM
 
 companion_compose() {
   docker compose --project-name "$COMPANION_PROJECT" \
@@ -68,6 +85,10 @@ assert_restore_rejected_preserves_state() {
   "$ROOT/tools/companion.sh" status >/dev/null
 }
 
+umask 077
+mkdir "$HARNESS_ROOT"
+printf '%s\n' "$COMPANION_PROJECT" > "$HARNESS_ROOT/.cimmich-companion-acceptance"
+trap cleanup EXIT INT TERM
 mkdir -p "$STAGE" "$SECURITY_PROOF" "$STOCK_STAGE/immich-library" \
   "$STOCK_STAGE/immich-database" "$STOCK_STAGE/immich-model-cache" \
   "$STOCK_STAGE/cimmich-database"

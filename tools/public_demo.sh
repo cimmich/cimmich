@@ -59,7 +59,14 @@ sha256_verify_manifest() {
 
 validate_project() {
   case "$PROJECT" in
-    cimmich-public-demo | cimmich-public-demo-[a-z0-9-]*) ;;
+    cimmich-public-demo) ;;
+    cimmich-public-demo-*)
+      project_suffix=${PROJECT#cimmich-public-demo-}
+      case "$project_suffix" in
+        ''|*[!a-z0-9-]*|[!a-z0-9]*|*-) fail "project must be cimmich-public-demo or cimmich-public-demo-<safe-suffix>" ;;
+      esac
+      test "${#PROJECT}" -le 63 || fail "project must be at most 63 characters"
+      ;;
     *) fail "project must be cimmich-public-demo or cimmich-public-demo-<safe-suffix>" ;;
   esac
 }

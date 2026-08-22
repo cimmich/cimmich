@@ -2,11 +2,26 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+CHECKSUM="$ROOT/tools/sha256.sh"
 SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 COMPOSE_FILE="$ROOT/ops/stock-immich-v3.1.0.compose.yml"
 RUN_ID=${CIMMICH_STOCK_RUN_ID:-$$}
+case "$RUN_ID" in
+  ''|*[!a-z0-9-]*|[!a-z0-9]*|*-) printf 'stock acceptance: invalid run ID\n' >&2; exit 2 ;;
+esac
+test "${#RUN_ID}" -le 32 || { printf 'stock acceptance: run ID is too long\n' >&2; exit 2; }
 PROJECT="cimmich-stock-${RUN_ID}"
-STAGE=${CIMMICH_STOCK_STAGE:-"/private/tmp/${PROJECT}"}
+DEFAULT_TMP_ROOT=${TMPDIR:-/tmp}
+ACCEPTANCE_TMP_ROOT=${CIMMICH_STOCK_TMP_ROOT:-$DEFAULT_TMP_ROOT}
+case "$ACCEPTANCE_TMP_ROOT" in
+  /*) ;;
+  *) printf 'stock acceptance: temporary root must be absolute\n' >&2; exit 2 ;;
+esac
+mkdir -p "$ACCEPTANCE_TMP_ROOT"
+ACCEPTANCE_TMP_ROOT=$(CDPATH= cd -- "$ACCEPTANCE_TMP_ROOT" && pwd -P)
+test "$ACCEPTANCE_TMP_ROOT" != "/" || { printf 'stock acceptance: temporary root is unsafe\n' >&2; exit 2; }
+STAGE="${ACCEPTANCE_TMP_ROOT}/${PROJECT}"
+test ! -e "$STAGE" || { printf 'stock acceptance: stage already exists\n' >&2; exit 2; }
 RESTORE_CONTAINER="${PROJECT}-restore"
 
 : "${CIMMICH_LOCAL_PYTHON_PATH:?Set CIMMICH_LOCAL_PYTHON_PATH to isolated OpenCV 4.11 Python}"
@@ -34,10 +49,20 @@ cleanup() {
   status=$?
   docker rm -f "$RESTORE_CONTAINER" >/dev/null 2>&1 || true
   docker compose -f "$COMPOSE_FILE" down --remove-orphans >/dev/null 2>&1 || true
+  if test -f "$STAGE/.cimmich-stock-acceptance" &&
+    test "$(cat "$STAGE/.cimmich-stock-acceptance")" = "$PROJECT"; then
+    rm -rf "$STAGE"
+  fi
   return "$status"
 }
-trap cleanup EXIT INT TERM
 
+umask 077
+if ! mkdir "$STAGE"; then
+  printf 'stock acceptance: stage already exists\n' >&2
+  exit 2
+fi
+printf '%s\n' "$PROJECT" > "$STAGE/.cimmich-stock-acceptance"
+trap cleanup EXIT INT TERM
 mkdir -p "$IMMICH_UPLOAD_ROOT" "$IMMICH_DB_ROOT" \
   "$IMMICH_MODEL_CACHE_ROOT" "$CIMMICH_DB_ROOT"
 
@@ -63,7 +88,7 @@ CIMMICH_OPENCV_PROVIDER_ROOT="$ROOT/providers/opencv-sface" \
 
 docker compose -f "$COMPOSE_FILE" exec -T cimmich-database \
   pg_dump -U cimmich -d cimmich -Fc > "$BACKUP"
-BACKUP_SHA256=$(sha256sum "$BACKUP" | cut -d ' ' -f 1)
+BACKUP_SHA256=$("$CHECKSUM" generate "$BACKUP" | cut -d ' ' -f 1)
 
 API_KEY=$(node -e \
   "const fs=require('fs');process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1])).apiKey)" \
@@ -75,7 +100,7 @@ ASSET_ID=$(node -e \
 docker compose -f "$COMPOSE_FILE" stop cimmich-database >/dev/null
 curl -fsS "$IMMICH_API_URL/server/version" >/dev/null
 OUTAGE_DIGEST=$(curl -fsS -H "x-api-key: $API_KEY" \
-  "$IMMICH_API_URL/assets/$ASSET_ID/original" | sha256sum | cut -d ' ' -f 1)
+  "$IMMICH_API_URL/assets/$ASSET_ID/original" | "$CHECKSUM" generate - | cut -d ' ' -f 1)
 test "$OUTAGE_DIGEST" = "$CIMMICH_PUBLIC_FIXTURE_SHA256"
 
 docker compose -f "$COMPOSE_FILE" start cimmich-database >/dev/null
@@ -113,7 +138,7 @@ docker compose -f "$COMPOSE_FILE" stop cimmich-database >/dev/null
 docker compose -f "$COMPOSE_FILE" rm -sf cimmich-database >/dev/null
 curl -fsS "$IMMICH_API_URL/server/version" >/dev/null
 REMOVAL_DIGEST=$(curl -fsS -H "x-api-key: $API_KEY" \
-  "$IMMICH_API_URL/assets/$ASSET_ID/original" | sha256sum | cut -d ' ' -f 1)
+  "$IMMICH_API_URL/assets/$ASSET_ID/original" | "$CHECKSUM" generate - | cut -d ' ' -f 1)
 test "$REMOVAL_DIGEST" = "$CIMMICH_PUBLIC_FIXTURE_SHA256"
 
 printf '{"backupSha256":"%s","cimmichDatabase":"separate","cimmichDisableKeepsImmichReady":true,"cimmichRemoveKeepsImmichReady":true,"fixtureSha256":"%s","immichVersion":"3.1.0","independentRestore":{"identityClaims":0,"projectedAssets":1,"embeddings":1},"schemaPatchLevel":1,"schemaVersion":%s,"sourceMutation":"none-during-cimmich-run","status":"PASS"}\n' \

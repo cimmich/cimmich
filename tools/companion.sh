@@ -24,8 +24,8 @@ ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
-API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.22}
-UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.22}
+API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.23}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.23}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -577,6 +577,7 @@ validate_tar_archive() {
   # human-readable output cannot be the authority for traversal validation.
   # Parse the decompressed USTAR headers as a stream, retaining at most one
   # chunk plus a header while rejecting links, devices and unsafe raw names.
+  archive_validation_status=0
   docker run --rm -v "$backup_path:/backup:ro" "$NODE_IMAGE" node -e '
     const { createReadStream } = require("node:fs");
     const { createGunzip } = require("node:zlib");
@@ -585,14 +586,15 @@ validate_tar_archive() {
     let remaining = 0;
     let entries = 0;
     let ended = false;
-    const fail = () => process.exit(2);
+    const invalid = () => process.exit(2);
+    const unreadable = () => process.exit(3);
     const text = (block, start, length) => {
       const bytes = block.subarray(start, start + length);
       const zero = bytes.indexOf(0);
       return bytes.subarray(0, zero < 0 ? bytes.length : zero).toString("utf8");
     };
-    const input = createReadStream(archive).on("error", fail);
-    const gunzip = createGunzip().on("error", fail);
+    const input = createReadStream(archive).on("error", unreadable);
+    const gunzip = createGunzip().on("error", unreadable);
     gunzip.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
       while (buffer.length) {
@@ -609,27 +611,33 @@ validate_tar_archive() {
           ended = true;
           continue;
         }
-        if (ended || ++entries > 1000000) fail();
+        if (ended || ++entries > 1000000) invalid();
         const name = text(block, 0, 100);
         const prefix = text(block, 345, 155);
         const fullName = prefix ? `${prefix}/${name}` : name;
         const parts = fullName.split("/");
         if (!fullName || fullName.startsWith("/") || fullName.includes("\\") ||
-            /[\u0000-\u001f\u007f]/u.test(fullName) || parts.includes("..")) fail();
+            /[\u0000-\u001f\u007f]/u.test(fullName) || parts.includes("..")) invalid();
         const type = block[156];
-        if (![0, 48, 53].includes(type)) fail();
+        if (![0, 48, 53].includes(type)) invalid();
         const sizeText = text(block, 124, 12).trim();
-        if (!/^[0-7]+$/.test(sizeText || "0")) fail();
+        if (!/^[0-7]+$/.test(sizeText || "0")) invalid();
         const size = Number.parseInt(sizeText || "0", 8);
-        if (!Number.isSafeInteger(size) || size < 0 || (type === 53 && size !== 0)) fail();
+        if (!Number.isSafeInteger(size) || size < 0 || (type === 53 && size !== 0)) invalid();
         remaining = Math.ceil(size / 512) * 512;
       }
     });
     gunzip.on("end", () => {
-      if (remaining || (buffer.length && !buffer.every((byte) => byte === 0))) fail();
+      if (remaining || (buffer.length && !buffer.every((byte) => byte === 0))) invalid();
     });
     input.pipe(gunzip);
-  ' "/backup/$archive_name" || fail "backup archive contains unsafe members: $archive_name"
+  ' "/backup/$archive_name" || archive_validation_status=$?
+  case "$archive_validation_status" in
+    0) ;;
+    2) fail "backup archive contains unsafe members: $archive_name" ;;
+    3) fail "backup archive is unreadable: $archive_name" ;;
+    *) fail "backup archive validation could not run: $archive_name" ;;
+  esac
   members=$(docker run --rm -v "$backup_path:/backup:ro" "$ALPINE_IMAGE" \
     tar -tzf "/backup/$archive_name") || fail "backup archive is unreadable: $archive_name"
   if printf '%s\n' "$members" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then

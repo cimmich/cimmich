@@ -6,7 +6,7 @@ that implement it. It is the engineering companion to the
 contracts or release receipts.
 
 > [!IMPORTANT]
-> This document follows the **Community Preview 22 candidate** (migration-ledger
+> This document follows the **Community Preview 23 candidate** (migration-ledger
 > schema 156/patch 1). Community Preview 18 remains immutable at schema
 > 142/patch 1. Release claims
 > belong to the named release and its changelog, not to an arbitrary checkout.

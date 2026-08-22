@@ -4,7 +4,7 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.22: Final V1 closeout
+## v1.1.0-community-preview.23: Final V1 closeout
 
 - Discover and Person memory webs are now explicitly Experimental and off by
   default. An owner can opt in from Cimmich experience settings, turn the
@@ -25,6 +25,14 @@ for OpenAI Build Week.
 - Release CI exercises exact Preview 18 upgrade and rollback plus migration,
   synthetic, stock-Immich, companion and public-demo lifecycles from extracted
   tar and ZIP payloads before exact-tag container publication.
+- Release lifecycle staging follows the host temporary directory with a
+  portable `/tmp` fallback. Run identifiers are whole-string validated,
+  collision checks and ownership sentinels constrain cleanup, concurrent
+  bootstrap containers are isolated, and checksums support both `sha256sum`
+  and `shasum`.
+- Companion backup validation distinguishes unsafe archive members, unreadable
+  gzip data and an unavailable validator runtime instead of misreporting every
+  validator failure as unsafe backup content.
 - Oversized UI and service responsibilities were extracted into focused
   modules without raising source-shape ceilings. Publication scanning covers
   tracked names and paths as well as textual contents.
