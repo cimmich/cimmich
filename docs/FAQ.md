@@ -36,7 +36,7 @@ outside this preview's tested boundary.
 
 ## Which version should I install?
 
-Install [Community Preview 20](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.20)
+Install [Community Preview 21](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.21)
 and use its Cimmich tar or ZIP plus `SHA256SUMS`. `main` contains living
 development and may be ahead of the named release.
 

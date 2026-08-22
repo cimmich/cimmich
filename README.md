@@ -34,7 +34,7 @@ search and return to the photos that matter.
 > endorsed by Immich or OpenAI.
 
 > [!NOTE]
-> **Community Preview 20 is the current named preview.** Its guided Docker install
+> **Community Preview 21 is the current named preview.** Its guided Docker install
 > has been exercised on macOS and Linux with exact Immich 3.1.0. Windows has not
 > yet been tested. Install the [latest named release](https://github.com/cimmich/cimmich/releases/latest),
 > not an arbitrary snapshot of `main`.

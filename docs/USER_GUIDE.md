@@ -7,7 +7,7 @@ visual introduction with exact tasks, open the
 updates, backups and removal, use [INSTALL.md](../INSTALL.md).
 
 > [!IMPORTANT]
-> This guide follows the **Community Preview 20 candidate**, schema 156/patch 1,
+> This guide follows the **Community Preview 21 candidate**, schema 156/patch 1,
 > for exact Immich 3.1.0. Community Preview 18 remains immutable at schema 142.
 > Always
 > install a named release rather than an arbitrary source snapshot.
@@ -77,7 +77,7 @@ the [privacy guide](../PRIVACY.md) and
 ## Discover (Experimental)
 
 **Discover** and the related Person memory webs are useful but still mid-build,
-so Community Preview 20 keeps them off by default. Open **Settings → Cimmich
+so Community Preview 21 keeps them off by default. Open **Settings → Cimmich
 experience** and choose **Show Discover** to opt in. The choice is local to that
 browser and reversible; hiding Discover clears the current web projection but
 does not delete any recorded relationship facts. A direct Discover URL shows

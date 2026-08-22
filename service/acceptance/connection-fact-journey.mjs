@@ -180,7 +180,7 @@ if (phase === "write" || phase === "all") {
     `/v1/people/${profilePersonId}/connection-facts`,
     { body: coworkerBody, method: "POST" },
   );
-  assert.equal(coworkerReplay.replayed, true);
+  assert.deepEqual(coworkerReplay, coworker);
   const coworkerFromOtherSide = await request(
     `/v1/people/${coworkerPersonId}/connection-facts`,
     {

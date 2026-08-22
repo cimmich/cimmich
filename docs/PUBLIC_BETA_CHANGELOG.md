@@ -4,7 +4,7 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.20: Final V1 closeout
+## v1.1.0-community-preview.21: Final V1 closeout
 
 - Discover and Person memory webs are now explicitly Experimental and off by
   default. An owner can opt in from Cimmich experience settings, turn the
