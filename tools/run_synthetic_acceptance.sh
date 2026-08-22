@@ -542,6 +542,8 @@ docker exec "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_test -d cimmich_test
 docker exec "$SERVICE_CONTAINER" node acceptance/pet-manual-journey.mjs
 docker exec -e CIMMICH_CONTEXT_PHASE=write "$SERVICE_CONTAINER" \
   node acceptance/context-search-journey.mjs
+docker exec -e CIMMICH_CONNECTION_FACT_PHASE=write "$SERVICE_CONTAINER" \
+  node acceptance/connection-fact-journey.mjs
 docker exec "$SERVICE_CONTAINER" node acceptance/context-entity-undo-journey.mjs
 docker exec -e CIMMICH_PET_DOCUMENT_PHASE=write "$SERVICE_CONTAINER" \
   node acceptance/pet-document-journey.mjs
@@ -569,6 +571,8 @@ docker exec -e CIMMICH_DOCUMENT_LEGACY_PET_PHASE=readback "$SERVICE_CONTAINER" \
   node acceptance/document-legacy-pet-journey.mjs
 docker exec -e CIMMICH_CONTEXT_PHASE=readback "$SERVICE_CONTAINER" \
   node acceptance/context-search-journey.mjs
+docker exec -e CIMMICH_CONNECTION_FACT_PHASE=readback "$SERVICE_CONTAINER" \
+  node acceptance/connection-fact-journey.mjs
 docker exec -e CIMMICH_DOCUMENT_PHASE=readback "$SERVICE_CONTAINER" \
   node acceptance/document-journey.mjs
 docker exec -e CIMMICH_DOCUMENT_DIGEST_REPAIR_PHASE=corrupt "$SERVICE_CONTAINER" \

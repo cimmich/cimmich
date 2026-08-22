@@ -9,6 +9,8 @@
   import TagAction from '$lib/components/timeline/actions/TagAction.svelte';
   import { assetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
+  import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
+  import { getCimmichArchiveSourceEvidence } from '$lib/services/cimmich-archive-integrity.service';
   import type { Viewport } from '$lib/managers/timeline-manager/types';
   import {
     getCimmichContextEntities,
@@ -32,6 +34,7 @@
     type CimmichTagFamily,
     type TagBrowserOption,
   } from './tag-browser';
+  import { beginCimmichProjection } from './cimmich-projection-boundary';
 
   type TagSource = 'cimmich' | 'normal';
   interface Props {
@@ -68,6 +71,7 @@
   let directoryGeneration = 0;
   let directoryQueryTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   let resultGeneration = 0;
+  let observedVisibilityVersion = -1;
 
   const normalOptions = $derived(normalTagOptions(tags));
   const allOptions = $derived(source === 'cimmich' ? cimmichOptions : normalOptions);
@@ -282,7 +286,16 @@
     if (generation !== resultGeneration) {
       return;
     }
-    resultAssets = pageNumber === 1 ? response.assets.items : [...resultAssets, ...response.assets.items];
+    const evidence =
+      response.assets.items.length > 0
+        ? await getCimmichArchiveSourceEvidence(response.assets.items.map(({ id }) => id))
+        : { items: [] };
+    if (generation !== resultGeneration) {
+      return;
+    }
+    const visibleSourceIds = new Set(evidence.items.map(({ sourceAssetId }) => sourceAssetId));
+    const visibleAssets = response.assets.items.filter(({ id }) => visibleSourceIds.has(id));
+    resultAssets = pageNumber === 1 ? visibleAssets : [...resultAssets, ...visibleAssets];
     totalMatches = response.assets.total;
     normalNextPage = Number(response.assets.nextPage) || 0;
   };
@@ -455,7 +468,6 @@
   };
 
   onMount(() => {
-    void loadDirectory();
     if (initialPath) {
       const initial = normalOptions.find((option) => option.label === initialPath);
       if (initial) {
@@ -463,6 +475,39 @@
         selectedOptionCache.set(initial.id, initial);
         void refreshResults();
       }
+    }
+  });
+
+  $effect(() => {
+    const visibilityVersion = cimmichVisibilityManager.version;
+    if (visibilityVersion === observedVisibilityVersion) {
+      return;
+    }
+    observedVisibilityVersion = visibilityVersion;
+    directoryGeneration = beginCimmichProjection(directoryGeneration, () => {
+      clearDirectorySearchTimeout();
+      resultGeneration += 1;
+      assetMultiSelectManager.clear();
+      selectedIds.clear();
+      selectedOptionCache.clear();
+      assetCache.clear();
+      cimmichOptions = [];
+      directoryBoundedFamilies = [];
+      directoryError = '';
+      resultAssets = [];
+      matchedCimmichIds = [];
+      loadedCimmichSourceCount = 0;
+      singlePersonCursor = null;
+      singlePersonId = '';
+      cimmichTagCursor = null;
+      totalMatches = 0;
+      normalNextPage = 0;
+      resultError = '';
+      resultWarning = '';
+      resultsLoading = false;
+    });
+    if (source === 'cimmich') {
+      void loadDirectory(query.trim().length >= 2 ? query.trim() : '');
     }
   });
 

@@ -1,4 +1,4 @@
-// X1 has eight physical cores. PostgreSQL's parallel planner left the vector
+// The reference host has eight physical cores. PostgreSQL's parallel planner left the vector
 // aggregation leader-bound even when it launched workers, so score the stable
 // deterministic frontier through six independent connections. Each shard is
 // deliberately serial: six real query leaders leave two host cores available

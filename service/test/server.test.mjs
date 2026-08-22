@@ -343,6 +343,46 @@ test("Person connections are read before the generic Person route", async () => 
   ]);
 });
 
+test("Discover returns a bounded multi-entity memory graph", async () => {
+  const calls = [];
+  const repository = {
+    discoverMemoryGraph: async (input) => {
+      calls.push(["discover", input]);
+      return {
+        countsByKind: { event: 1, object: 0, person: 1, pet: 0, place: 1 },
+        edges: [{ edgeId: "event:weekend--person:maya" }],
+        nodes: [{ nodeId: "person:maya" }, { nodeId: "event:weekend" }],
+        scope: { edgeLimit: 48 },
+      };
+    },
+  };
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const response = await fetch(
+        `${root}/v1/discover/memory-graph?edgeLimit=48`,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        countsByKind: { event: 1, object: 0, person: 1, pet: 0, place: 1 },
+        edges: [{ edgeId: "event:weekend--person:maya" }],
+        nodes: [{ nodeId: "person:maya" }, { nodeId: "event:weekend" }],
+        schemaVersion: "cimmich.memory-graph.v1",
+        scope: { edgeLimit: 48 },
+      });
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "people"],
+    ["discover", { edgeLimit: "48" }],
+  ]);
+});
+
 test("Person evidence coverage is read before the generic Person route", async () => {
   const calls = [];
   const projection = {
@@ -393,6 +433,17 @@ test("companion routes expose status, explicit visibility pages and exact assets
     },
   };
   const immichInventory = {
+    synchronize: async (input) => {
+      calls.push(["missing-scan", input]);
+      return {
+        run: { runId: "inventory-run-2" },
+        source: {
+          activeAssets: 2,
+          missingAssets: 1,
+          suspectedMissingAssets: 1,
+        },
+      };
+    },
     status: async () => ({
       schemaVersion: "cimmich.immich-inventory.v1",
       source: { activeAssets: 3, sourceId: "synthetic-primary" },
@@ -409,6 +460,27 @@ test("companion routes expose status, explicit visibility pages and exact assets
       assert.equal(inventory.status, 200);
       assert.equal((await inventory.json()).source.activeAssets, 3);
 
+      const started = await fetch(
+        `${root}/v1/archive-integrity/missing-files/scan`,
+        { method: "POST" },
+      );
+      assert.equal(started.status, 202);
+      assert.equal((await started.json()).scan.state, "running");
+      let scanStatus;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        scanStatus = await (
+          await fetch(`${root}/v1/archive-integrity/missing-files/scan`)
+        ).json();
+        if (scanStatus.scan.state === "complete") break;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      assert.deepEqual(scanStatus.scan.result, {
+        activeAssets: 2,
+        missingAssets: 1,
+        runId: "inventory-run-2",
+        suspectedMissingAssets: 1,
+      });
+
       const page = await fetch(
         `${root}/v1/companion/assets?visibility=archive&cursor=2&limit=40&updatedAfter=2026-01-01T00%3A00%3A00Z`,
       );
@@ -424,6 +496,13 @@ test("companion routes expose status, explicit visibility pages and exact assets
     { immichCompanion, immichInventory },
   );
   assert.deepEqual(calls, [
+    [
+      "missing-scan",
+      {
+        cataloguePresenceOnly: true,
+        visibilities: ["timeline", "archive", "hidden"],
+      },
+    ],
     [
       "list",
       {
@@ -809,18 +888,18 @@ test("map asset filtering keeps visibility ahead of a bounded exact source-ID pr
   ]);
 });
 
-test("shared photo presentation filtering keeps visibility ahead of media rendering", async () => {
+test("legacy photo presentation clients use the privacy-aware viewer boundary", async () => {
   const calls = [];
   const visibility = {
     requireProjection: (surface) => calls.push(["visibility", surface]),
     runRequest: (_request, _response, run) => run(),
   };
   const repository = {
-    filterPresentableAssetSourceIds: async (input) => {
-      calls.push(["filter", input]);
+    filterViewableAssetSourceIds: async (input) => {
+      calls.push(["viewable", input]);
       return {
         assets: [],
-        schemaVersion: "cimmich.presentable-assets.v1",
+        schemaVersion: "cimmich.viewable-assets.v1",
         sourceAssetIds: [],
       };
     },
@@ -837,7 +916,7 @@ test("shared photo presentation filtering keeps visibility ahead of media render
       assert.equal(response.status, 200);
       assert.deepEqual(await response.json(), {
         assets: [],
-        schemaVersion: "cimmich.presentable-assets.v1",
+        schemaVersion: "cimmich.viewable-assets.v1",
         sourceAssetIds: [],
       });
     },
@@ -845,7 +924,57 @@ test("shared photo presentation filtering keeps visibility ahead of media render
   );
   assert.deepEqual(calls, [
     ["visibility", "map_assets"],
-    ["filter", { sourceAssetIds: ["11111111-1111-4111-8111-111111111111"] }],
+    ["viewable", { sourceAssetIds: ["11111111-1111-4111-8111-111111111111"] }],
+  ]);
+});
+
+test("photo viewer filtering uses the dedicated privacy-aware trash boundary", async () => {
+  const calls = [];
+  const visibility = {
+    requireProjection: (surface) => calls.push(["visibility", surface]),
+    runRequest: (_request, _response, run) => run(),
+  };
+  const repository = {
+    filterViewableAssetSourceIds: async (input) => {
+      calls.push(["viewable", input]);
+      return {
+        assets: [
+          {
+            assetId: "asset-trash",
+            sourceAssetId: "22222222-2222-4222-8222-222222222222",
+          },
+        ],
+        schemaVersion: "cimmich.viewable-assets.v1",
+        sourceAssetIds: ["22222222-2222-4222-8222-222222222222"],
+      };
+    },
+  };
+  await withServer(
+    repository,
+    async (root) => {
+      const sourceAssetIds = ["22222222-2222-4222-8222-222222222222"];
+      const response = await fetch(`${root}/v1/visibility/assets/viewable`, {
+        body: JSON.stringify({ sourceAssetIds }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        assets: [
+          {
+            assetId: "asset-trash",
+            sourceAssetId: "22222222-2222-4222-8222-222222222222",
+          },
+        ],
+        schemaVersion: "cimmich.viewable-assets.v1",
+        sourceAssetIds,
+      });
+    },
+    { visibility },
+  );
+  assert.deepEqual(calls, [
+    ["visibility", "map_assets"],
+    ["viewable", { sourceAssetIds: ["22222222-2222-4222-8222-222222222222"] }],
   ]);
 });
 
@@ -1113,7 +1242,7 @@ test("authenticated address route forwards only bounded query inputs", async () 
     {},
     async (root) => {
       const response = await fetch(
-        `${root}/v1/geocoding/addresses?q=12%20River%20Street&limit=5`,
+        `${root}/v1/geocoding/addresses?q=12%20Cedar%20Lane&limit=5`,
       );
       assert.equal(response.status, 200);
       assert.equal(
@@ -1123,7 +1252,7 @@ test("authenticated address route forwards only bounded query inputs", async () 
     },
     { addressGeocoder },
   );
-  assert.deepEqual(calls, [{ limit: "5", query: "12 River Street" }]);
+  assert.deepEqual(calls, [{ limit: "5", query: "12 Cedar Lane" }]);
 });
 
 test("Place delete route is exact and keeps visibility ahead of repository dispatch", async () => {
@@ -2012,12 +2141,12 @@ test("Face match batch route compares competing regions without identity authori
     items: [
       {
         faceId: "face-one",
-        matches: [{ display_name: "Aga", person_id: "aga", similarity: 0.6 }],
+        matches: [{ display_name: "Maya", person_id: "maya", similarity: 0.6 }],
       },
       {
         faceId: "face-two",
         matches: [
-          { display_name: "Pete", person_id: "pete", similarity: 0.55 },
+          { display_name: "Theo", person_id: "theo", similarity: 0.55 },
         ],
       },
     ],
@@ -3273,6 +3402,10 @@ test("Person Profile V1 routes preserve private aggregate and display command bo
         calls.push(["patch-profile", input]);
         return { status: "applied" };
       },
+      createPersonRelationshipCategory: async (input) => {
+        calls.push(["create-relationship", input]);
+        return { status: "applied" };
+      },
       getPersonProfileDisplayDefaults: async () => {
         calls.push(["get-defaults"]);
         return { fields: [] };
@@ -3318,6 +3451,22 @@ test("Person Profile V1 routes preserve private aggregate and display command bo
       );
       assert.equal(
         (
+          await fetch(
+            `${root}/v1/people/person%2Fone/relationship-categories`,
+            {
+              body: JSON.stringify({
+                commandId: "profile-relationship-0001",
+                name: "Mentor",
+              }),
+              headers,
+              method: "POST",
+            },
+          )
+        ).status,
+        201,
+      );
+      assert.equal(
+        (
           await fetch(`${root}/v1/people/person%2Fone/profile`, {
             body: JSON.stringify({
               about: "Private About",
@@ -3359,6 +3508,15 @@ test("Person Profile V1 routes preserve private aggregate and display command bo
       },
     ],
     ["get-profile", { personId: "person/one" }],
+    [
+      "create-relationship",
+      {
+        actorId: "profile-editor",
+        commandId: "profile-relationship-0001",
+        name: "Mentor",
+        personId: "person/one",
+      },
+    ],
     [
       "patch-profile",
       {
@@ -3911,6 +4069,7 @@ test("context routes preserve typed family scope, bounded inputs and command ide
         await fetch(`${root}/v1/events/event%2Fone/cover`, {
           body: JSON.stringify({
             commandId: "context.cover.event-one",
+            coverCrop: { h: 0.4, w: 1, x: 0, y: 0.2 },
             expectedRevision: 9,
             sourceAssetId: "source-three",
           }),
@@ -3984,6 +4143,7 @@ test("context routes preserve typed family scope, bounded inputs and command ide
     {
       actorId: "context-reviewer",
       commandId: "context.cover.event-one",
+      coverCrop: { h: 0.4, w: 1, x: 0, y: 0.2 },
       entityId: "event/one",
       expectedRevision: 9,
       sourceAssetId: "source-three",
@@ -4288,6 +4448,103 @@ test("Archive integrity reads bounded duplicate status without mutation", async 
     },
   );
   assert.deepEqual(calls, [{ sourceAssetIds: "one,two" }]);
+});
+
+test("Archive integrity lists and explicitly retires selected inactive-library records", async () => {
+  const calls = [];
+  const page = {
+    items: [],
+    schemaVersion: "cimmich.archive-missing-files.v2",
+    summary: { missing: 1, total: 2, trashed: 1 },
+  };
+  await withServer(
+    {
+      archiveIntegrityMissingFiles: async (input) => {
+        calls.push(["list", input]);
+        return page;
+      },
+      archiveIntegrityRemoveMissingFiles: async (input) => {
+        calls.push(["remove", input]);
+        return {
+          removedSourceAssetIds: input.sourceAssetIds || ["all-trash"],
+          schemaVersion: "cimmich.archive-missing-files.v2",
+        };
+      },
+    },
+    async (root) => {
+      const listed = await fetch(
+        `${root}/v1/archive-integrity/missing-files?limit=25&offset=50`,
+      );
+      assert.equal(listed.status, 200);
+      assert.deepEqual(await listed.json(), page);
+
+      const removed = await fetch(
+        `${root}/v1/archive-integrity/missing-files:remove`,
+        {
+          body: JSON.stringify({
+            commandId: "archive-missing-command-1",
+            sourceAssetIds: ["asset-one"],
+            sourceId: "immich-primary",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(removed.status, 200);
+      assert.deepEqual((await removed.json()).removedSourceAssetIds, [
+        "asset-one",
+      ]);
+
+      const removedTrash = await fetch(
+        `${root}/v1/archive-integrity/missing-files:remove`,
+        {
+          body: JSON.stringify({
+            commandId: "archive-trash-all-command-1",
+            expectedCount: 12,
+            selection: "trashed",
+            sourceId: "cedar-house-archive",
+          }),
+          headers: {
+            "content-type": "application/json",
+            "x-cimmich-actor": "owner",
+          },
+          method: "POST",
+        },
+      );
+      assert.equal(removedTrash.status, 200);
+      assert.deepEqual((await removedTrash.json()).removedSourceAssetIds, [
+        "all-trash",
+      ]);
+    },
+  );
+  assert.deepEqual(calls, [
+    ["list", { limit: "25", offset: "50" }],
+    [
+      "remove",
+      {
+        actorId: "owner",
+        commandId: "archive-missing-command-1",
+        expectedCount: undefined,
+        selection: undefined,
+        sourceAssetIds: ["asset-one"],
+        sourceId: "immich-primary",
+      },
+    ],
+    [
+      "remove",
+      {
+        actorId: "owner",
+        commandId: "archive-trash-all-command-1",
+        expectedCount: 12,
+        selection: "trashed",
+        sourceAssetIds: undefined,
+        sourceId: "cedar-house-archive",
+      },
+    ],
+  ]);
 });
 
 test("Archive integrity reads bounded source evidence without mutation", async () => {

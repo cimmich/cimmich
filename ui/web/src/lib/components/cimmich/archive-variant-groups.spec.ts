@@ -47,7 +47,7 @@ const evidence = (sourceAssetId: string, contentDigest: string): CimmichArchiveS
 
 describe('Archive variant grouping', () => {
   it('reports every other flagged photo in the folder across review groups', () => {
-    const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
+    const current = asset('current', { originalPath: '/library/Cedar/2009/current.jpg' });
     const groups: DuplicateResponseDto[] = [
       {
         assets: [current, asset('counterpart', { originalPath: '/archive/PV/copy.jpg' })],
@@ -56,7 +56,7 @@ describe('Archive variant grouping', () => {
       },
       {
         assets: [
-          asset('other-flagged', { originalPath: '/archive/Ben/2009/other.jpg' }),
+          asset('other-flagged', { originalPath: '/library/Cedar/2009/other.jpg' }),
           asset('other-copy', { originalPath: '/archive/Phone/other.jpg' }),
         ],
         duplicateId: 'another-group',
@@ -66,7 +66,7 @@ describe('Archive variant grouping', () => {
 
     expect(archiveVariantFolderContext(groups, current)).toEqual({
       otherFlaggedHere: 1,
-      path: '/archive/Ben/2009',
+      path: '/library/Cedar/2009',
     });
   });
 
@@ -77,19 +77,19 @@ describe('Archive variant grouping', () => {
   });
 
   it('keeps an explicit zero when the likely-same group has no folder peer', () => {
-    const current = asset('current', { originalPath: '/archive/Ben/2009/current.jpg' });
+    const current = asset('current', { originalPath: '/library/Cedar/2009/current.jpg' });
 
     expect(archiveVariantFolderContext([{ assets: [current] }], current)).toEqual({
       otherFlaggedHere: 0,
-      path: '/archive/Ben/2009',
+      path: '/library/Cedar/2009',
     });
   });
 
   it('filters the review to groups with at least one file in the requested folder', () => {
-    const matching = { assets: [asset('one', { originalPath: '/archive/Ben/2009/one.jpg' })] };
-    const elsewhere = { assets: [asset('two', { originalPath: '/archive/Ben/2010/two.jpg' })] };
+    const matching = { assets: [asset('one', { originalPath: '/library/Cedar/2009/one.jpg' })] };
+    const elsewhere = { assets: [asset('two', { originalPath: '/library/Cedar/2010/two.jpg' })] };
 
-    expect(archiveVariantGroupsInFolder([matching, elsewhere], '/archive/Ben/2009')).toEqual([matching]);
+    expect(archiveVariantGroupsInFolder([matching, elsewhere], '/library/Cedar/2009')).toEqual([matching]);
   });
 
   it('separates transformed variants from verified exact bytes and explains copy-local differences', () => {

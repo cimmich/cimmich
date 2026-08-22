@@ -1,4 +1,5 @@
 <script lang="ts">
+  import './CimmichContextBrowser.css';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -6,6 +7,7 @@
   import CimmichContextCollection from './CimmichContextCollection.svelte';
   import CimmichPlaceCollectionControls from './CimmichPlaceCollectionControls.svelte';
   import CimmichContextDetailHero from './CimmichContextDetailHero.svelte';
+  import CimmichContextCoverFramingDialog from './CimmichContextCoverFramingDialog.svelte';
   import CimmichPlaceCanvas from './CimmichPlaceCanvas.svelte';
   import CimmichPlacePlan from './CimmichPlacePlan.svelte';
   import CimmichContextPlaceMap from './CimmichContextPlaceMap.svelte';
@@ -55,6 +57,8 @@
     undoCimmichContextDecision,
     updateCimmichContextEntity,
     type CimmichContextDetail,
+    type CimmichContextAsset,
+    type CimmichContextCoverCrop,
     type CimmichContextDatePrecision,
     type CimmichContextEntity,
     type CimmichContextFamily,
@@ -71,7 +75,14 @@
   } from '$lib/services/cimmich.service';
   import { ENTITY_MEDIA_SELECTION_LIMIT, type CimmichEntityMediaItem } from './entity-media-actions';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { AssetMediaSize, getMapMarkers, searchAssets, type AssetResponseDto } from '@immich/sdk';
+  import {
+    AssetMediaSize,
+    getAllAlbums,
+    getMapMarkers,
+    searchAssets,
+    type AlbumResponseDto,
+    type AssetResponseDto,
+  } from '@immich/sdk';
   import { Icon, toastManager } from '@immich/ui';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { onDestroy, untrack } from 'svelte';
@@ -92,6 +103,7 @@
     mdiFolderMultipleOutline,
     mdiFilterVariant,
     mdiGroup,
+    mdiImageAlbum,
     mdiImageMultipleOutline,
     mdiLinkPlus,
     mdiMagnify,
@@ -124,8 +136,10 @@
     contextPlaceDescendants,
     contextPlaceLineage,
     contextPlaceNearbyRadii,
+    selectContextPlaceNearbyCandidates,
     contextPlacePointDistanceMeters,
     contextRelationGroups,
+    contextRelationTargets,
     eventTypeFilters,
     objectTypeFilters,
     contextTypeDescription,
@@ -149,6 +163,7 @@
     eventFolderLabel,
     eventLineage,
   } from './event-folder-graph';
+  import { beginCimmichProjection } from './cimmich-projection-boundary';
 
   interface Props {
     families: CimmichContextFamily[];
@@ -200,10 +215,16 @@
   let libraryLoaded = $state(false);
   let libraryLoading = $state(false);
   let libraryQuery = $state('');
-  let assetPickerMode = $state<'folders' | 'library' | 'nearby'>('library');
+  let assetPickerMode = $state<'albums' | 'folders' | 'library' | 'nearby'>('library');
   let assetPickerPurpose = $state<'attach' | 'seed-event'>('attach');
   let nearbyAssets = $state<
-    Array<{ distanceMeters: number; latitude: number; longitude: number; sourceAssetId: string }>
+    Array<{
+      beyondRadius: boolean;
+      distanceMeters: number;
+      latitude: number;
+      longitude: number;
+      sourceAssetId: string;
+    }>
   >([]);
   let nearbyError = $state('');
   let nearbyLoading = $state(false);
@@ -227,6 +248,14 @@
   let folderError = $state('');
   let selectedFolderPaths = $state<string[]>([]);
   let folderAssetIds = $state<Record<string, string[]>>({});
+  let activeFolderPath = $state('');
+  let albums = $state<AlbumResponseDto[]>([]);
+  let albumsLoaded = $state(false);
+  let albumsLoading = $state(false);
+  let albumQuery = $state('');
+  let albumError = $state('');
+  let albumAssetIds = $state<Record<string, string[]>>({});
+  let activeAlbumId = $state('');
   let associationKind = $state('manual');
   let undoDecisionId = $state<string | null>(null);
   let showArchived = $state(false);
@@ -259,6 +288,7 @@
   let selectedPlaceAssetIds = $state<string[]>([]);
   let mediaSelectionMode = $state(false);
   let showDeleteContext = $state(false);
+  let coverFramingAsset = $state<CimmichContextAsset | null>(null);
   let showCollectionFilters = $state(false);
   let collectionTypeFilter = $state<ContextTypeFilter>('all');
   let placeCollectionView = $state<'atlas' | 'geography' | 'gps' | 'locations'>('locations');
@@ -266,6 +296,33 @@
   let placeSortMode = $state<'name' | 'photos-asc' | 'photos-desc'>('name');
   let deleteContextError = $state('');
   let deleteContextCommandId = $state('');
+
+  const clearSelectedProjection = () => {
+    connectionPresentationGeneration += 1;
+    nearbyGeneration += 1;
+    photoLocationGeneration += 1;
+    selected = null;
+    selectedPlacePlans = [];
+    selectedGeographyGroup = '';
+    selectedGeographyGroupEntityIds = [];
+    selectedLoading = false;
+    nearbyAssets = [];
+    nearbyError = '';
+    nearbyLoading = false;
+    photoLocationAssets = [];
+    photoLocationError = '';
+    photoLocationLoading = false;
+    connectionPresentations = {};
+    connectionPresentationKey = '';
+    selectedPlaceAssetIds = [];
+    mediaSelectionMode = false;
+    mediaMenuAssetId = null;
+    coverFramingAsset = null;
+    showEditor = false;
+    showAssetPicker = false;
+    showRelationPicker = false;
+    showPhotoLocationPicker = false;
+  };
 
   const relatedIds = $derived(
     new Set(
@@ -347,9 +404,23 @@
   const filteredLibraryAssets = $derived(
     libraryAssets.filter((asset) => asset.originalFileName.toLowerCase().includes(libraryQuery.trim().toLowerCase())),
   );
+  const filteredAlbums = $derived(
+    albums.filter((album) => album.albumName.toLocaleLowerCase().includes(albumQuery.trim().toLocaleLowerCase())),
+  );
+  const assetPickerLimit = $derived(activeFamily === 'events' ? 1000 : 100);
   const folderCandidates = $derived(
     eventFolderCandidates(folderSearchStarted ? folderSearchAssets : libraryAssets).slice(0, 16),
   );
+  const assetsForPickerIds = (ids: string[]) => {
+    const byId = new Map(libraryAssets.map((asset) => [asset.id, asset]));
+    return ids.flatMap((id) => {
+      const asset = byId.get(id);
+      return asset ? [asset] : [];
+    });
+  };
+  const activeFolderAssets = $derived(assetsForPickerIds(folderAssetIds[activeFolderPath] ?? []));
+  const activeAlbumAssets = $derived(assetsForPickerIds(albumAssetIds[activeAlbumId] ?? []));
+  const activeAlbum = $derived(albums.find(({ id }) => id === activeAlbumId) ?? null);
   const selectedAssetIds = $derived(
     new Set(
       (activeFamily === 'places' ? selected?.subtreeAssets : selected?.assets)?.map((asset) => asset.sourceAssetId),
@@ -547,7 +618,13 @@
         sourceAssetId: asset.sourceAssetId,
       })),
   );
-  const visibleRelationGroups = $derived(contextRelationGroups(activeFamily, selected?.relations ?? []));
+  const visibleRelationGroups = $derived(
+    contextRelationGroups(activeFamily, selected?.relations ?? []).map((group) => ({
+      label: group.label,
+      targets: contextRelationTargets(group.relations),
+    })),
+  );
+  const visibleRelationTargetCount = $derived(contextRelationTargets(selected?.relations ?? []).length);
   const selectedEventStops = $derived.by(() =>
     (selected?.relations ?? [])
       .filter((relation) => relation.relationKind === 'location' && relation.targetKind === 'place')
@@ -903,9 +980,10 @@
   };
 
   const openDetailById = async (entityId: string, includeArchived: boolean) => {
-    const generation = ++detailRequestGeneration;
-    selectedGeographyGroup = '';
-    selectedGeographyGroupEntityIds = [];
+    const generation = (detailRequestGeneration = beginCimmichProjection(
+      detailRequestGeneration,
+      clearSelectedProjection,
+    ));
     selectedLoading = true;
     eventMediaLane = 'main';
     placeMediaLane = 'all';
@@ -1716,7 +1794,7 @@
     }
   };
 
-  const loadVisibleEventFolderAssets = async (folderPath: string, limit = 1000) => {
+  const loadVisibleEventFolderAssets = async (folderPath: string, limit = assetPickerLimit) => {
     const matches: AssetResponseDto[] = [];
     let pageNumber = 1;
     for (let pageIndex = 0; pageIndex < 10 && matches.length < limit; pageIndex += 1) {
@@ -1745,53 +1823,98 @@
     return uniqueMatches.filter((asset) => visibleIds.has(asset.id));
   };
 
-  const addEventFolder = async (folderPath: string) => {
-    if (selectedFolderPaths.includes(folderPath)) {
-      const remainingFolders = selectedFolderPaths.filter((path) => path !== folderPath);
-      const remainingFolderIds = new Set(remainingFolders.flatMap((path) => folderAssetIds[path] ?? []));
-      const removedIds = new Set(folderAssetIds[folderPath]);
-      selectedSourceIds = selectedSourceIds.filter((id) => !removedIds.has(id) || remainingFolderIds.has(id));
-      selectedFolderPaths = remainingFolders;
-      folderAssetIds = Object.fromEntries(Object.entries(folderAssetIds).filter(([path]) => path !== folderPath));
-      return;
-    }
+  const storePickerAssets = (assets: AssetResponseDto[]) => {
+    libraryAssets = [...libraryAssets, ...assets].filter(
+      (asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index,
+    );
+  };
+
+  const applyAssetPickerSelection = (nextIds: string[]) => {
+    selectedSourceIds = nextIds;
+    const selectedIds = new Set(nextIds);
+    selectedFolderPaths = Object.entries(folderAssetIds)
+      .filter(([, ids]) => ids.some((id) => selectedIds.has(id)))
+      .map(([path]) => path);
+  };
+
+  const openAssetFolder = async (folderPath: string) => {
     folderSearchLoading = true;
     folderError = '';
     try {
-      const visible = await loadVisibleEventFolderAssets(folderPath);
-      const capacity = Math.max(0, 1000 - selectedSourceIds.length);
-      const admission = eventFolderAdmission(visible, {
-        alreadyLinkedIds:
-          assetPickerPurpose === 'attach'
-            ? new Set((selected?.assets ?? []).map((asset) => asset.sourceAssetId).filter(Boolean))
-            : new Set<string>(),
-        capacity,
-        selectedIds: new Set(selectedSourceIds),
-      });
-      const added = admission.additions;
-      if (added.length === 0) {
-        folderError = admission.alreadyLinkedCount
-          ? `${admission.alreadyLinkedCount.toLocaleString()} ${admission.alreadyLinkedCount === 1 ? 'photo is' : 'photos are'} already in this event. Nothing was reclassified.`
-          : capacity === 0
-            ? 'The 1,000-item import limit is already reached.'
-            : 'No new visible media was found.';
+      const visible = await loadVisibleEventFolderAssets(folderPath, assetPickerLimit);
+      if (visible.length === 0) {
+        folderError = 'No visible media was found in that folder.';
         return;
       }
-      libraryAssets = [...libraryAssets, ...added].filter(
-        (asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index,
-      );
-      selectedSourceIds = [...selectedSourceIds, ...added.map((asset) => asset.id)];
-      selectedFolderPaths = [...selectedFolderPaths, folderPath];
-      folderAssetIds = { ...folderAssetIds, [folderPath]: added.map((asset) => asset.id) };
-      if (admission.alreadyLinkedCount > 0) {
-        folderError = `Selected ${added.length.toLocaleString()} new ${added.length === 1 ? 'photo' : 'photos'} and skipped ${admission.alreadyLinkedCount.toLocaleString()} already in this event. Existing roles stay unchanged.`;
-      } else if (admission.truncatedCount > 0) {
-        folderError = `Added the first ${added.length.toLocaleString()} visible items. Refine the folder if you need a narrower memory.`;
-      }
+      storePickerAssets(visible);
+      folderAssetIds = { ...folderAssetIds, [folderPath]: visible.map((asset) => asset.id) };
+      activeFolderPath = folderPath;
     } catch {
       folderError = 'That folder could not be loaded. Nothing has changed.';
     } finally {
       folderSearchLoading = false;
+    }
+  };
+
+  const loadAlbums = async () => {
+    if (albumsLoaded || albumsLoading) {
+      return;
+    }
+    albumsLoading = true;
+    albumError = '';
+    try {
+      albums = [...(await getAllAlbums({}))].sort(
+        (left, right) => left.albumName.localeCompare(right.albumName) || left.id.localeCompare(right.id),
+      );
+      albumsLoaded = true;
+    } catch {
+      albumError = 'Albums could not be loaded. Nothing has changed.';
+    } finally {
+      albumsLoading = false;
+    }
+  };
+
+  const loadVisibleAlbumAssets = async (albumId: string, limit = assetPickerLimit) => {
+    const matches: AssetResponseDto[] = [];
+    let pageNumber = 1;
+    for (let pageIndex = 0; pageIndex < 10 && matches.length < limit; pageIndex += 1) {
+      const result = await searchAssets({
+        metadataSearchDto: { albumIds: [albumId], page: pageNumber, size: 100, withExif: true },
+      });
+      matches.push(...result.assets.items.filter((asset) => !asset.isTrashed && !asset.isOffline));
+      if (!result.assets.nextPage) {
+        break;
+      }
+      const nextPage = Number(result.assets.nextPage);
+      if (!Number.isInteger(nextPage) || nextPage <= pageNumber) {
+        break;
+      }
+      pageNumber = nextPage;
+    }
+    const uniqueMatches = matches
+      .filter((asset, index, items) => items.findIndex((candidate) => candidate.id === asset.id) === index)
+      .slice(0, limit);
+    const visibleBindings = await getCimmichVisibleMapAssetBindings(uniqueMatches.map((asset) => asset.id));
+    const visibleIds = new Set(visibleBindings.keys());
+    return uniqueMatches.filter((asset) => visibleIds.has(asset.id));
+  };
+
+  const openAssetAlbum = async (albumId: string) => {
+    albumsLoading = true;
+    albumError = '';
+    try {
+      const visible = await loadVisibleAlbumAssets(albumId, assetPickerLimit);
+      if (visible.length === 0) {
+        albumError = 'No visible media was found in that album.';
+        return;
+      }
+      storePickerAssets(visible);
+      albumAssetIds = { ...albumAssetIds, [albumId]: visible.map((asset) => asset.id) };
+      activeAlbumId = albumId;
+    } catch {
+      albumError = 'That album could not be loaded. Nothing has changed.';
+    } finally {
+      albumsLoading = false;
     }
   };
 
@@ -1904,45 +2027,32 @@
     nearbyError = '';
     try {
       const markers = await getMapMarkers({});
-      const candidates = markers
-        .map((marker) => ({
-          distanceMeters: contextPlacePointDistanceMeters(point, {
+      const candidates = selectContextPlaceNearbyCandidates(
+        markers
+          .map((marker) => ({
+            distanceMeters: contextPlacePointDistanceMeters(point, {
+              latitude: marker.lat,
+              longitude: marker.lon,
+            }),
             latitude: marker.lat,
             longitude: marker.lon,
-          }),
-          latitude: marker.lat,
-          longitude: marker.lon,
-          sourceAssetId: marker.id,
-        }))
-        .filter((candidate) => candidate.distanceMeters <= radius && !selectedAssetIds.has(candidate.sourceAssetId))
-        .sort(
-          (left, right) =>
-            left.distanceMeters - right.distanceMeters || left.sourceAssetId.localeCompare(right.sourceAssetId),
-        )
-        .slice(0, 160);
+            sourceAssetId: marker.id,
+          }))
+          .filter((candidate) => !selectedAssetIds.has(candidate.sourceAssetId))
+          .sort(
+            (left, right) =>
+              left.distanceMeters - right.distanceMeters || left.sourceAssetId.localeCompare(right.sourceAssetId),
+          ),
+        radius,
+      );
 
-      const visible: typeof candidates = [];
-      for (let index = 0; index < candidates.length; index += 12) {
-        const batch = candidates.slice(index, index + 12);
-        const results = await Promise.allSettled(
-          batch.map((candidate) => getCimmichAssetEvidence(candidate.sourceAssetId)),
-        );
-        if (generation !== nearbyGeneration) {
-          return;
-        }
-        for (const [resultIndex, result] of results.entries()) {
-          if (result.status === 'fulfilled') {
-            const candidate = batch[resultIndex];
-            if (candidate) {
-              visible.push(candidate);
-            }
-          }
-        }
-        if (visible.length >= 100) {
-          break;
-        }
+      const visibleBindings = await getCimmichVisibleMapAssetBindings(
+        candidates.map(({ sourceAssetId }) => sourceAssetId),
+      );
+      if (generation !== nearbyGeneration) {
+        return;
       }
-      nearbyAssets = visible.slice(0, 100);
+      nearbyAssets = candidates.filter(({ sourceAssetId }) => visibleBindings.has(sourceAssetId)).slice(0, 100);
     } catch {
       nearbyAssets = [];
       nearbyError = 'Nearby media could not be checked. Your library is still available.';
@@ -1961,6 +2071,8 @@
     }
     if (mode === 'nearby') {
       void loadNearbyAssets();
+    } else if (mode === 'albums') {
+      void loadAlbums();
     } else if ((mode === 'library' || mode === 'folders') && !libraryLoaded) {
       void loadLibrary();
     }
@@ -1985,6 +2097,11 @@
     folderSearchStarted = false;
     selectedFolderPaths = [];
     folderAssetIds = {};
+    activeFolderPath = '';
+    albumAssetIds = {};
+    activeAlbumId = '';
+    albumQuery = '';
+    albumError = '';
     showAssetPicker = true;
     assetPickerMode = nearbyPlacePoint ? 'nearby' : 'library';
     if (assetPickerMode === 'nearby') {
@@ -2005,6 +2122,11 @@
     eventSeedAttachCommandId = createCimmichContextCommandId('event-seed-attach');
     selectedFolderPaths = [];
     folderAssetIds = {};
+    activeFolderPath = '';
+    albumAssetIds = {};
+    activeAlbumId = '';
+    albumQuery = '';
+    albumError = '';
     folderQuery = '';
     folderSearchAssets = [];
     folderSearchStarted = false;
@@ -2034,11 +2156,36 @@
     if (selectedAssetIds.has(sourceAssetId)) {
       return;
     }
-    selectedSourceIds = selectedSourceIds.includes(sourceAssetId)
+    const nextIds = selectedSourceIds.includes(sourceAssetId)
       ? selectedSourceIds.filter((id) => id !== sourceAssetId)
-      : selectedSourceIds.length < (activeFamily === 'events' ? 1000 : 100)
+      : selectedSourceIds.length < assetPickerLimit
         ? [...selectedSourceIds, sourceAssetId]
         : selectedSourceIds;
+    applyAssetPickerSelection(nextIds);
+  };
+
+  const setVisiblePickerAssetsSelected = (assets: AssetResponseDto[], shouldSelect: boolean) => {
+    const visibleIds = new Set(assets.map((asset) => asset.id));
+    if (!shouldSelect) {
+      applyAssetPickerSelection(selectedSourceIds.filter((id) => !visibleIds.has(id)));
+      return;
+    }
+    const admission = eventFolderAdmission(assets, {
+      alreadyLinkedIds: assetPickerPurpose === 'attach' ? selectedAssetIds : new Set<string>(),
+      capacity: Math.max(0, assetPickerLimit - selectedSourceIds.length),
+      selectedIds: new Set(selectedSourceIds),
+    });
+    applyAssetPickerSelection([...selectedSourceIds, ...admission.additions.map((asset) => asset.id)]);
+    const message = admission.truncatedCount
+      ? `Selected the first ${admission.additions.length.toLocaleString()} available items up to the ${assetPickerLimit.toLocaleString()}-item limit.`
+      : admission.alreadyLinkedCount
+        ? `Selected ${admission.additions.length.toLocaleString()} available items. ${admission.alreadyLinkedCount.toLocaleString()} already connected ${admission.alreadyLinkedCount === 1 ? 'item keeps its' : 'items keep their'} existing roles unchanged.`
+        : '';
+    if (assetPickerMode === 'folders') {
+      folderError = message;
+    } else if (assetPickerMode === 'albums') {
+      albumError = message;
+    }
   };
 
   const attachAssets = async () => {
@@ -2348,7 +2495,7 @@
     }
   };
 
-  const changeContextCover = async (sourceAssetId: string | null) => {
+  const changeContextCover = async (sourceAssetId: string | null, coverCrop: CimmichContextCoverCrop | null = null) => {
     if (!selected || !['event', 'object', 'place'].includes(selected.entity.entityKind)) {
       return;
     }
@@ -2364,6 +2511,7 @@
             : setCimmichObjectCover;
       const result = await setCover(selected.entity.entityId, {
         commandId: createCimmichContextCommandId(sourceAssetId ? `${coverKind}-cover` : `${coverKind}-cover-auto`),
+        coverCrop,
         expectedRevision: selected.entity.revision,
         sourceAssetId,
       });
@@ -2375,10 +2523,22 @@
         entity.entityId === result.detail.entity.entityId ? result.detail.entity : entity,
       );
       mediaMenuAssetId = null;
+      return true;
     } catch (error_) {
       error = asError(error_);
+      return false;
     } finally {
       isSaving = false;
+    }
+  };
+
+  const saveContextCoverFraming = async (crop: CimmichContextCoverCrop) => {
+    if (!coverFramingAsset) {
+      return;
+    }
+    const saved = await changeContextCover(coverFramingAsset.sourceAssetId, crop);
+    if (saved) {
+      coverFramingAsset = null;
     }
   };
 
@@ -2667,6 +2827,13 @@
     if (!selected) {
       return;
     }
+    if (relation.relationOrigin === 'connection_fact') {
+      error = new CimmichServiceError('Open the Person to edit this recorded relationship.', {
+        code: 'CONNECTION_FACT_OWNER_REQUIRED',
+        status: 409,
+      });
+      return;
+    }
     if (relation.direction === 'incoming' && !['event', 'object', 'place'].includes(relation.targetKind)) {
       error = new CimmichServiceError('This connection cannot be changed from the current record.', {
         code: 'CONTEXT_RELATION_OWNER_UNAVAILABLE',
@@ -2792,7 +2959,11 @@
 
   const contextRelationRoute = (relation: CimmichContextRelation) => {
     if (relation.targetKind === 'person') {
-      return `/cimmich/people/${encodeURIComponent(relation.targetName)}?personId=${encodeURIComponent(relation.targetId)}`;
+      const search = new SvelteURLSearchParams({ personId: relation.targetId });
+      if (relation.relationOrigin === 'connection_fact' || relation.relationOrigin === 'relationship_context') {
+        search.set('mode', 'connections');
+      }
+      return `/cimmich/people/${encodeURIComponent(relation.targetName)}?${search.toString()}`;
     }
     if (relation.targetKind === 'pet') {
       return `/cimmich/pets?entityId=${encodeURIComponent(relation.targetId)}`;
@@ -2816,7 +2987,9 @@
       return;
     }
     const targetKind = relations[0].targetKind;
-    const ids = relations.map((relation) => relation.targetId).join(',');
+    const ids = contextRelationTargets(relations)
+      .map(({ targetId }) => targetId)
+      .join(',');
     const root =
       targetKind === 'person'
         ? '/cimmich/people'
@@ -2860,13 +3033,20 @@
         if (requestedFamily) {
           activeFamily = requestedFamily;
         }
-        detailRequestGeneration += 1;
+        detailRequestGeneration = beginCimmichProjection(detailRequestGeneration, clearSelectedProjection);
         entities = [];
         libraryAssets = [];
         libraryLoaded = false;
         selectedSourceIds = [];
-        if (showAssetPicker && assetPickerMode === 'library') {
+        selectedFolderPaths = [];
+        folderAssetIds = {};
+        activeFolderPath = '';
+        albumAssetIds = {};
+        activeAlbumId = '';
+        if (showAssetPicker && (assetPickerMode === 'library' || assetPickerMode === 'folders')) {
           void loadLibrary();
+        } else if (showAssetPicker && assetPickerMode === 'nearby') {
+          void loadNearbyAssets();
         }
         if (!requestedEntityId && !requestedName) {
           selected = null;
@@ -3034,6 +3214,7 @@
         detail={selected}
         {entities}
         family={activeFamily}
+        onFrameCover={(asset) => (coverFramingAsset = asset)}
         onOpenPlan={() => selectDetailTab('plan')}
         plans={selectedPlacePlans}
       />
@@ -3231,7 +3412,7 @@
             {#if tab.value === 'photos'}<span
                 >{activeFamily === 'places' ? placeDetailAssetCount : selected.assets.length}</span
               >{/if}
-            {#if tab.value === 'connections'}<span>{selected.relations.length}</span>{/if}
+            {#if tab.value === 'connections'}<span>{visibleRelationTargetCount}</span>{/if}
             {#if tab.value === 'journey'}<span>{selectedEventStops.length}</span>{/if}
           </button>
         {/each}
@@ -3742,14 +3923,18 @@
               <section class="context-relation-group" aria-label={group.label}>
                 <div class="context-relation-group-header">
                   <p class="context-relation-group-title">{group.label}</p>
-                  <button class="context-relation-visit" type="button" onclick={() => visitRelated(group.relations)}>
+                  <button
+                    class="context-relation-visit"
+                    type="button"
+                    onclick={() => visitRelated(group.targets.map(({ relations }) => relations[0]))}
+                  >
                     Visit related
                   </button>
                 </div>
                 <ul class="context-relation-cards">
-                  {#each group.relations as relation (relation.relationId)}
-                    {@const presentation =
-                      connectionPresentations[connectionKey(relation.targetKind, relation.targetId)]}
+                  {#each group.targets as target (target.key)}
+                    {@const relation = target.relations[0]}
+                    {@const presentation = connectionPresentations[connectionKey(target.targetKind, target.targetId)]}
                     <li class="context-relation-card">
                       <div class="context-relation-identity">
                         {#if presentation?.sourceAssetId}
@@ -3759,21 +3944,28 @@
                             style:object-position={presentation.objectPosition}
                           />
                         {:else}
-                          <span aria-hidden="true">{relation.targetName.slice(0, 1).toLocaleUpperCase()}</span>
+                          <span aria-hidden="true">{target.targetName.slice(0, 1).toLocaleUpperCase()}</span>
                         {/if}
-                        <p>{relation.targetName}</p>
+                        <div class="context-relation-copy">
+                          <p>{target.targetName}</p>
+                          {#each target.relationshipLabels as relationshipLabel (relationshipLabel)}
+                            <span>{relationshipLabel}</span>
+                          {/each}
+                        </div>
                       </div>
                       <div class="context-relation-actions">
                         <button type="button" onclick={() => void goto(contextRelationRoute(relation))}>Show</button>
-                        <button
-                          class="context-relation-remove"
-                          type="button"
-                          aria-label={`Remove connection to ${relation.targetName}`}
-                          title={`Remove connection to ${relation.targetName}`}
-                          disabled={isSaving}
-                          onclick={() => void removeRelation(relation)}
-                          ><Icon icon={mdiTrashCanOutline} size="17" /></button
-                        >
+                        {#each target.relations.filter(({ relationOrigin }) => relationOrigin === 'context_relation') as removableRelation (removableRelation.relationId)}
+                          <button
+                            class="context-relation-remove"
+                            type="button"
+                            aria-label={`Remove connection to ${target.targetName}`}
+                            title={`Remove connection to ${target.targetName}`}
+                            disabled={isSaving}
+                            onclick={() => void removeRelation(removableRelation)}
+                            ><Icon icon={mdiTrashCanOutline} size="17" /></button
+                          >
+                        {/each}
                       </div>
                     </li>
                   {/each}
@@ -4515,6 +4707,17 @@
   </div>
 {/if}
 
+{#if selected && coverFramingAsset}
+  <CimmichContextCoverFramingDialog
+    asset={coverFramingAsset}
+    crop={selected.entity.coverCrop ?? null}
+    entityName={selected.entity.displayName}
+    onclose={() => (coverFramingAsset = null)}
+    onsave={(crop) => void saveContextCoverFraming(crop)}
+    saving={isSaving}
+  />
+{/if}
+
 {#if showPhotoLocationPicker}
   <div
     class="fixed inset-0 z-110 flex items-end justify-center bg-black/60 sm:items-center sm:p-6"
@@ -4615,8 +4818,7 @@
             {assetPickerPurpose === 'seed-event' ? 'Choose photos for this memory' : 'Add media'}
           </h2>
           <p class="mt-1 text-sm text-gray-500">
-            {selectedSourceIds.length}/{activeFamily === 'events' ? '1,000' : '100'} selected{assetPickerPurpose ===
-            'seed-event'
+            {selectedSourceIds.length}/{assetPickerLimit.toLocaleString()} selected{assetPickerPurpose === 'seed-event'
               ? associationKind === 'needs_check'
                 ? ' · Folder candidates wait for your decision before joining Main.'
                 : ' · You are choosing these as the defining memory.'
@@ -4649,45 +4851,57 @@
         >
       </div>
       <div class="space-y-3 p-4 sm:px-6">
-        {#if nearbyPlacePoint || activeFamily === 'events'}
-          <div class="flex gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Choose media source">
-            {#if nearbyPlacePoint}<button
-                class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
-                class:bg-white={assetPickerMode === 'nearby'}
-                class:text-primary={assetPickerMode === 'nearby'}
-                class:shadow-sm={assetPickerMode === 'nearby'}
-                class:dark:bg-gray-700={assetPickerMode === 'nearby'}
-                type="button"
-                aria-pressed={assetPickerMode === 'nearby'}
-                onclick={() => selectAssetPickerMode('nearby')}
-                ><Icon icon={mdiMapMarkerOutline} size="18" /> Nearby</button
-              >{/if}
-            {#if activeFamily === 'events'}<button
-                class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
-                class:bg-white={assetPickerMode === 'folders'}
-                class:text-primary={assetPickerMode === 'folders'}
-                class:shadow-sm={assetPickerMode === 'folders'}
-                class:dark:bg-gray-700={assetPickerMode === 'folders'}
-                type="button"
-                aria-pressed={assetPickerMode === 'folders'}
-                onclick={() => selectAssetPickerMode('folders')}
-                ><Icon icon={mdiFolderMultipleOutline} size="18" /> Folders</button
-              >{/if}<button
-              class="min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition"
-              class:bg-white={assetPickerMode === 'library'}
-              class:text-primary={assetPickerMode === 'library'}
-              class:shadow-sm={assetPickerMode === 'library'}
-              class:dark:bg-gray-700={assetPickerMode === 'library'}
+        <div class="flex gap-1 rounded-full bg-gray-100 p-1 dark:bg-gray-800" aria-label="Choose media source">
+          {#if nearbyPlacePoint}<button
+              class="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition"
+              class:bg-white={assetPickerMode === 'nearby'}
+              class:text-primary={assetPickerMode === 'nearby'}
+              class:shadow-sm={assetPickerMode === 'nearby'}
+              class:dark:bg-gray-700={assetPickerMode === 'nearby'}
               type="button"
-              aria-pressed={assetPickerMode === 'library'}
-              onclick={() => selectAssetPickerMode('library')}
-              ><Icon icon={mdiImageMultipleOutline} size="18" /> Library</button
-            >
-          </div>
-        {/if}
+              aria-pressed={assetPickerMode === 'nearby'}
+              onclick={() => selectAssetPickerMode('nearby')}
+              ><Icon icon={mdiMapMarkerOutline} size="18" /> Nearby</button
+            >{/if}
+          <button
+            class="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition"
+            class:bg-white={assetPickerMode === 'folders'}
+            class:text-primary={assetPickerMode === 'folders'}
+            class:shadow-sm={assetPickerMode === 'folders'}
+            class:dark:bg-gray-700={assetPickerMode === 'folders'}
+            type="button"
+            aria-pressed={assetPickerMode === 'folders'}
+            onclick={() => selectAssetPickerMode('folders')}
+            ><Icon icon={mdiFolderMultipleOutline} size="18" /> Folders</button
+          ><button
+            class="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition"
+            class:bg-white={assetPickerMode === 'albums'}
+            class:text-primary={assetPickerMode === 'albums'}
+            class:shadow-sm={assetPickerMode === 'albums'}
+            class:dark:bg-gray-700={assetPickerMode === 'albums'}
+            type="button"
+            aria-pressed={assetPickerMode === 'albums'}
+            onclick={() => selectAssetPickerMode('albums')}><Icon icon={mdiImageAlbum} size="18" /> Albums</button
+          ><button
+            class="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition"
+            class:bg-white={assetPickerMode === 'library'}
+            class:text-primary={assetPickerMode === 'library'}
+            class:shadow-sm={assetPickerMode === 'library'}
+            class:dark:bg-gray-700={assetPickerMode === 'library'}
+            type="button"
+            aria-pressed={assetPickerMode === 'library'}
+            onclick={() => selectAssetPickerMode('library')}
+            ><Icon icon={mdiImageMultipleOutline} size="18" /> Library</button
+          >
+        </div>
         {#if assetPickerMode === 'nearby' && nearbyPlacePoint}
           <div class="flex items-center justify-between gap-4">
-            <p class="text-sm text-gray-500 dark:text-gray-400">Closest GPS-tagged media</p>
+            <div>
+              <p class="text-sm font-medium">Closest GPS-tagged media</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                Inside the chosen distance first; nearest photos beyond it stay visible when needed.
+              </p>
+            </div>
             <div class="flex gap-1" aria-label="Nearby distance">
               {#each contextPlaceNearbyRadii as radius (radius.value)}
                 <button
@@ -4702,51 +4916,118 @@
             </div>
           </div>
         {:else if assetPickerMode === 'folders'}
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          {#if activeFolderPath}
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                class="context-secondary-button inline-flex shrink-0 items-center gap-2"
+                type="button"
+                onclick={() => {
+                  activeFolderPath = '';
+                  folderError = '';
+                }}><Icon icon={mdiArrowLeft} size="18" /> All folders</button
+              >
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold">{eventFolderLabel(activeFolderPath)}</p>
+                <p class="truncate text-xs text-gray-500 dark:text-gray-400" title={activeFolderPath}>
+                  {activeFolderPath}
+                </p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button
+                  class="context-secondary-button"
+                  type="button"
+                  onclick={() => setVisiblePickerAssetsSelected(activeFolderAssets, true)}>Select all visible</button
+                ><button
+                  class="context-secondary-button"
+                  type="button"
+                  disabled={!activeFolderAssets.some((asset) => selectedSourceIds.includes(asset.id))}
+                  onclick={() => setVisiblePickerAssetsSelected(activeFolderAssets, false)}>Clear visible</button
+                >
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Review this folder and choose individual images below. Nothing is selected automatically.
+            </p>
+          {:else}
             <div>
               <p class="text-sm font-semibold">Browse folders</p>
               <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                Recent visible folders are ready below. Search only when you need something else.
+                Open a folder to review its visible images before choosing anything.
               </p>
             </div>
-          </div>
-          <form
-            class="mt-3 flex gap-2"
-            onsubmit={(event) => {
-              event.preventDefault();
-              void searchEventFolders();
-            }}
-          >
-            <label class="relative min-w-0 flex-1"
-              ><span class="sr-only">Search folders</span><Icon
+            <form
+              class="mt-3 flex gap-2"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void searchEventFolders();
+              }}
+            >
+              <label class="relative min-w-0 flex-1"
+                ><span class="sr-only">Search folders</span><Icon
+                  class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-gray-500"
+                  icon={mdiMagnify}
+                  size="19"
+                /><input
+                  class="min-h-11 w-full rounded-full border border-gray-300 pr-4 pl-11 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800"
+                  bind:value={folderQuery}
+                  placeholder="Folder name or path, e.g. Space Trip"
+                /></label
+              ><button class="context-secondary-button shrink-0" type="submit" disabled={folderSearchLoading}
+                >{folderSearchLoading ? 'Searching…' : 'Find folders'}</button
+              >
+            </form>
+          {/if}
+        {:else if assetPickerMode === 'albums'}
+          {#if activeAlbum}
+            <div class="flex flex-wrap items-center gap-3">
+              <button
+                class="context-secondary-button inline-flex shrink-0 items-center gap-2"
+                type="button"
+                onclick={() => {
+                  activeAlbumId = '';
+                  albumError = '';
+                }}><Icon icon={mdiArrowLeft} size="18" /> All albums</button
+              >
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold">{activeAlbum.albumName}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {activeAlbumAssets.length.toLocaleString()} visible
+                </p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button
+                  class="context-secondary-button"
+                  type="button"
+                  onclick={() => setVisiblePickerAssetsSelected(activeAlbumAssets, true)}>Select all visible</button
+                ><button
+                  class="context-secondary-button"
+                  type="button"
+                  disabled={!activeAlbumAssets.some((asset) => selectedSourceIds.includes(asset.id))}
+                  onclick={() => setVisiblePickerAssetsSelected(activeAlbumAssets, false)}>Clear visible</button
+                >
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              Review this album and choose individual images below. Nothing is selected automatically.
+            </p>
+          {:else}
+            <div>
+              <p class="text-sm font-semibold">Browse albums</p>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Open an album to review the media visible in this privacy mode before choosing anything.
+              </p>
+            </div>
+            <label class="relative mt-3 block"
+              ><span class="sr-only">Filter albums by name</span><Icon
                 class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-gray-500"
                 icon={mdiMagnify}
                 size="19"
               /><input
                 class="min-h-11 w-full rounded-full border border-gray-300 pr-4 pl-11 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-gray-700 dark:bg-gray-800"
-                bind:value={folderQuery}
-                placeholder="Folder name or path, e.g. Space Trip"
+                bind:value={albumQuery}
+                placeholder="Type an album name"
               /></label
-            ><button class="context-secondary-button shrink-0" type="submit" disabled={folderSearchLoading}
-              >{folderSearchLoading ? 'Searching…' : 'Find folders'}</button
             >
-          </form>
-          {#if selectedFolderPaths.length > 0}
-            <div class="flex flex-wrap gap-2" aria-label="Selected folders">
-              {#each selectedFolderPaths as folderPath (folderPath)}
-                <button
-                  class="rounded-full bg-primary/10 px-3 py-2 text-xs font-semibold text-primary"
-                  type="button"
-                  title={folderPath}
-                  aria-label={`Remove folder ${eventFolderLabel(folderPath)}`}
-                  onclick={() => void addEventFolder(folderPath)}
-                  ><Icon icon={mdiFolderMultipleOutline} size="15" />
-                  {eventFolderLabel(folderPath)} ·
-                  {(folderAssetIds[folderPath] ?? []).length}
-                  <Icon icon={mdiClose} size="14" /></button
-                >
-              {/each}
-            </div>
           {/if}
         {:else}
           <label class="relative block"
@@ -4803,7 +5084,7 @@
                 <button
                   class="relative aspect-square overflow-hidden rounded-xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:bg-gray-800"
                   type="button"
-                  aria-label={`${selectedSourceIds.includes(asset.sourceAssetId) ? 'Remove' : 'Select'} media ${formatContextPlaceDistance(asset.distanceMeters)} away`}
+                  aria-label={`${selectedSourceIds.includes(asset.sourceAssetId) ? 'Remove' : 'Select'} media ${formatContextPlaceDistance(asset.distanceMeters)} away${asset.beyondRadius ? ', beyond chosen distance' : ''}`}
                   aria-pressed={selectedSourceIds.includes(asset.sourceAssetId)}
                   onclick={() => toggleAsset(asset.sourceAssetId)}
                   ><img
@@ -4813,7 +5094,7 @@
                     loading="lazy"
                   /><span
                     class="absolute bottom-1 left-1 rounded-full bg-black/65 px-2 py-1 text-[11px] font-semibold text-white backdrop-blur-sm"
-                    >{formatContextPlaceDistance(asset.distanceMeters)}</span
+                    >{asset.beyondRadius ? 'Nearest · ' : ''}{formatContextPlaceDistance(asset.distanceMeters)}</span
                   >{#if selectedSourceIds.includes(asset.sourceAssetId)}<span
                       class="absolute inset-0 flex items-center justify-center bg-primary/45 text-white"
                       ><span class="flex size-8 items-center justify-center rounded-full bg-primary"
@@ -4827,6 +5108,37 @@
         {:else if assetPickerMode === 'folders'}
           {#if folderSearchLoading || (!folderSearchStarted && libraryLoading)}
             <p class="py-16 text-center text-sm text-gray-500" role="status">Searching visible folder paths…</p>
+          {:else if activeFolderPath}
+            <div class="grid grid-cols-3 gap-1 sm:grid-cols-5 lg:grid-cols-8" aria-label="Folder media">
+              {#each activeFolderAssets as asset (asset.id)}
+                <button
+                  class="relative aspect-square overflow-hidden rounded-xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed dark:bg-gray-800"
+                  class:opacity-45={selectedAssetIds.has(asset.id)}
+                  type="button"
+                  disabled={selectedAssetIds.has(asset.id)}
+                  title={selectedAssetIds.has(asset.id) ? 'Already connected here' : asset.originalFileName}
+                  aria-label={selectedAssetIds.has(asset.id)
+                    ? `${asset.originalFileName}, already connected here`
+                    : `${selectedSourceIds.includes(asset.id) ? 'Remove' : 'Select'} ${asset.originalFileName}`}
+                  aria-pressed={selectedSourceIds.includes(asset.id)}
+                  onclick={() => toggleAsset(asset.id)}
+                  ><img
+                    class="size-full object-cover"
+                    src={getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Thumbnail })}
+                    alt=""
+                    loading="lazy"
+                  />{#if selectedAssetIds.has(asset.id)}<span
+                      class="absolute inset-x-1 bottom-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white"
+                      >Connected</span
+                    >{:else if selectedSourceIds.includes(asset.id)}<span
+                      class="absolute inset-0 flex items-center justify-center bg-primary/45 text-white"
+                      ><span class="flex size-8 items-center justify-center rounded-full bg-primary"
+                        ><Icon icon={mdiCheck} size="19" /></span
+                      ></span
+                    >{/if}</button
+                >
+              {/each}
+            </div>
           {:else if folderCandidates.length === 0}
             <div class="py-16 text-center">
               <Icon class="mx-auto text-gray-400" icon={mdiFolderMultipleOutline} size="34" />
@@ -4836,7 +5148,7 @@
               <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
                 {folderSearchStarted
                   ? 'Try another part of the folder name or path. Nothing has changed.'
-                  : 'External-library folders appear here automatically. Immich-managed storage paths stay hidden. You can choose several, and subfolders are included.'}
+                  : 'External-library folders appear here automatically. Immich-managed storage paths stay hidden. Opening a folder never selects its media.'}
               </p>
             </div>
           {:else}
@@ -4857,13 +5169,14 @@
             </div>
             <div class="grid gap-2 sm:grid-cols-2">
               {#each folderCandidates as folder (folder.path)}
+                {@const selectedCount = (folderAssetIds[folder.path] ?? []).filter((id) =>
+                  selectedSourceIds.includes(id),
+                ).length}
                 <button
                   class="flex min-h-20 items-center gap-3 rounded-2xl border border-gray-200 p-4 text-left transition hover:border-primary dark:border-gray-700"
-                  class:border-primary={selectedFolderPaths.includes(folder.path)}
                   type="button"
                   title={folder.path}
-                  aria-pressed={selectedFolderPaths.includes(folder.path)}
-                  onclick={() => void addEventFolder(folder.path)}
+                  onclick={() => void openAssetFolder(folder.path)}
                 >
                   <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
                     ><Icon icon={mdiFolderMultipleOutline} size="22" /></span
@@ -4871,9 +5184,80 @@
                     ><strong class="block truncate">{folder.label}</strong><small
                       class="mt-1 block truncate text-gray-500">{folder.path}</small
                     ></span
-                  ><span class="shrink-0 text-xs font-semibold text-gray-500"
-                    >{folder.assetCount}{folderSearchStarted ? '+' : ' recent'}</span
-                  >
+                  ><span class="shrink-0 text-right text-xs font-semibold text-gray-500"
+                    >{selectedCount
+                      ? `${selectedCount.toLocaleString()} selected`
+                      : `${folder.assetCount}${folderSearchStarted ? '+' : ' recent'}`}</span
+                  ><Icon class="shrink-0 text-gray-400" icon={mdiChevronRight} size="18" />
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {:else if assetPickerMode === 'albums'}
+          {#if albumsLoading}
+            <p class="py-16 text-center text-sm text-gray-500" role="status">Loading albums…</p>
+          {:else if activeAlbum}
+            <div class="grid grid-cols-3 gap-1 sm:grid-cols-5 lg:grid-cols-8" aria-label="Album media">
+              {#each activeAlbumAssets as asset (asset.id)}
+                <button
+                  class="relative aspect-square overflow-hidden rounded-xl bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed dark:bg-gray-800"
+                  class:opacity-45={selectedAssetIds.has(asset.id)}
+                  type="button"
+                  disabled={selectedAssetIds.has(asset.id)}
+                  title={selectedAssetIds.has(asset.id) ? 'Already connected here' : asset.originalFileName}
+                  aria-label={selectedAssetIds.has(asset.id)
+                    ? `${asset.originalFileName}, already connected here`
+                    : `${selectedSourceIds.includes(asset.id) ? 'Remove' : 'Select'} ${asset.originalFileName}`}
+                  aria-pressed={selectedSourceIds.includes(asset.id)}
+                  onclick={() => toggleAsset(asset.id)}
+                  ><img
+                    class="size-full object-cover"
+                    src={getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Thumbnail })}
+                    alt=""
+                    loading="lazy"
+                  />{#if selectedAssetIds.has(asset.id)}<span
+                      class="absolute inset-x-1 bottom-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white"
+                      >Connected</span
+                    >{:else if selectedSourceIds.includes(asset.id)}<span
+                      class="absolute inset-0 flex items-center justify-center bg-primary/45 text-white"
+                      ><span class="flex size-8 items-center justify-center rounded-full bg-primary"
+                        ><Icon icon={mdiCheck} size="19" /></span
+                      ></span
+                    >{/if}</button
+                >
+              {/each}
+            </div>
+          {:else if filteredAlbums.length === 0}
+            <div class="py-16 text-center">
+              <Icon class="mx-auto text-gray-400" icon={mdiImageAlbum} size="34" />
+              <p class="mt-3 font-semibold">{albumQuery.trim() ? 'No albums matched' : 'No albums yet'}</p>
+              <p class="mx-auto mt-1 max-w-lg text-sm text-gray-500 dark:text-gray-400">
+                {albumQuery.trim()
+                  ? 'Try another part of the album name. Nothing has changed.'
+                  : 'Albums you can access in Immich will appear here.'}
+              </p>
+            </div>
+          {:else}
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {#each filteredAlbums as album (album.id)}
+                {@const selectedCount = (albumAssetIds[album.id] ?? []).filter((id) =>
+                  selectedSourceIds.includes(id),
+                ).length}
+                <button
+                  class="grid min-h-24 grid-cols-[4.5rem_1fr_auto] items-center gap-3 overflow-hidden rounded-2xl border border-gray-200 p-2 text-left transition hover:border-primary dark:border-gray-700"
+                  type="button"
+                  onclick={() => void openAssetAlbum(album.id)}
+                >
+                  <span class="grid size-18 place-items-center rounded-xl bg-primary/10 text-primary"
+                    ><Icon icon={mdiImageAlbum} size="26" /></span
+                  ><span class="min-w-0"
+                    ><strong class="block truncate">{album.albumName}</strong><small
+                      class="mt-1 block text-gray-500 dark:text-gray-400"
+                      >{selectedCount
+                        ? `${selectedCount.toLocaleString()} selected`
+                        : `${album.assetCount.toLocaleString()} ${album.assetCount === 1 ? 'item' : 'items'}`}</small
+                    ></span
+                  ><Icon class="text-gray-400" icon={mdiChevronRight} size="19" />
                 </button>
               {/each}
             </div>
@@ -4913,6 +5297,12 @@
           role="status"
         >
           {folderError}
+        </p>{/if}
+      {#if albumError}<p
+          class="mx-5 mb-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/35 dark:text-amber-100"
+          role="status"
+        >
+          {albumError}
         </p>{/if}
       <div class="flex justify-end gap-3 border-t border-gray-200 p-4 sm:px-6 dark:border-gray-800">
         <button
@@ -5088,1380 +5478,3 @@
     onconfirm={(deleteTags) => void confirmContextDelete(deleteTags)}
   />
 {/if}
-
-<style>
-  :global(.context-primary-button),
-  :global(.context-secondary-button),
-  :global(.context-danger-button),
-  :global(.context-icon-button) {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    transition: 150ms;
-  }
-  :global(.context-primary-button) {
-    background: rgb(var(--immich-primary));
-    color: white;
-    padding: 0 1.1rem;
-  }
-  :global(.context-primary-button:hover) {
-    filter: brightness(0.94);
-  }
-  :global(.context-primary-button:disabled),
-  :global(.context-secondary-button:disabled),
-  :global(.context-danger-button:disabled) {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-  :global(.context-secondary-button) {
-    border: 1px solid rgb(209 213 219);
-    padding: 0 1.1rem;
-  }
-  :global(.dark .context-secondary-button) {
-    border-color: rgb(75 85 99);
-  }
-  :global(.context-danger-button) {
-    border: 1px solid rgb(252 165 165);
-    padding: 0 1.1rem;
-    color: rgb(185 28 28);
-  }
-  :global(.context-danger-button:hover) {
-    background: rgb(254 242 242);
-  }
-  :global(.dark .context-danger-button) {
-    border-color: rgb(127 29 29);
-    color: rgb(252 165 165);
-  }
-  :global(.dark .context-danger-button:hover) {
-    background: rgb(69 10 10 / 0.35);
-  }
-  :global(.context-icon-button) {
-    width: 44px;
-    flex: none;
-  }
-
-  /* Two overlay controls only: back, and settings. */
-  .context-hero-back,
-  .context-hero-settings {
-    position: absolute;
-    z-index: 12;
-    top: 16px;
-  }
-
-  .context-hero-back {
-    left: 16px;
-  }
-
-  .context-hero-settings {
-    right: 16px;
-  }
-
-  .context-hero-control {
-    display: inline-flex;
-    width: 42px;
-    min-height: 42px;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    border: 1px solid rgb(255 255 255 / 0.2);
-    border-radius: 999px;
-    background: rgb(15 23 42 / 0.72);
-    color: white;
-    font-size: 0.82rem;
-    font-weight: 700;
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.16);
-    backdrop-filter: blur(12px);
-  }
-
-  .context-hero-control:hover,
-  .context-hero-control:focus-visible {
-    background: rgb(15 23 42 / 0.9);
-    outline: 2px solid white;
-    outline-offset: 2px;
-  }
-  :global(.context-primary-button:focus-visible),
-  :global(.context-secondary-button:focus-visible),
-  :global(.context-danger-button:focus-visible),
-  :global(.context-icon-button:focus-visible) {
-    outline: 2px solid rgb(var(--immich-primary));
-    outline-offset: 2px;
-  }
-  :global(.context-field) {
-    display: grid;
-    gap: 0.45rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-  }
-  :global(.context-field small) {
-    margin-left: 0.35rem;
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: rgb(107 114 128);
-  }
-  :global(.context-field input),
-  :global(.context-field select),
-  :global(.context-field textarea) {
-    min-height: 44px;
-    width: 100%;
-    border-radius: 0.85rem;
-    border: 1px solid rgb(209 213 219);
-    background: transparent;
-    padding: 0.65rem 0.8rem;
-    font-size: 0.875rem;
-    font-weight: 400;
-    outline: none;
-  }
-  :global(.dark .context-field input),
-  :global(.dark .context-field select),
-  :global(.dark .context-field textarea) {
-    border-color: rgb(75 85 99);
-    background: rgb(31 41 55);
-  }
-  :global(.context-field input:focus),
-  :global(.context-field select:focus),
-  :global(.context-field textarea:focus) {
-    border-color: rgb(var(--immich-primary));
-    box-shadow: 0 0 0 2px rgb(var(--immich-primary) / 0.18);
-  }
-
-  .context-type-choice-grid {
-    display: grid;
-    gap: 12px;
-    margin-top: 16px;
-  }
-
-  .context-event-seed-summary,
-  .context-event-form-guidance {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid rgb(var(--immich-primary) / 0.22);
-    border-radius: 18px;
-    background: rgb(var(--immich-primary) / 0.06);
-    padding: 14px 16px;
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-event-seed-summary {
-    align-items: center;
-    margin-top: 14px;
-    font-size: 0.82rem;
-    font-weight: 700;
-  }
-
-  .context-event-form-guidance > span {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    flex: none;
-    place-items: center;
-    border-radius: 13px;
-    background: rgb(var(--immich-primary) / 0.12);
-  }
-
-  .context-event-form-guidance strong,
-  .context-event-form-guidance p,
-  .context-event-form-guidance small {
-    display: block;
-  }
-
-  .context-event-form-guidance p {
-    margin-top: 3px;
-    color: rgb(75 85 99);
-    font-size: 0.78rem;
-    line-height: 1.45;
-  }
-
-  .context-event-form-guidance small {
-    margin-top: 7px;
-    font-size: 0.72rem;
-    font-weight: 800;
-  }
-
-  :global(.dark) .context-event-form-guidance p {
-    color: rgb(209 213 219);
-  }
-
-  .context-recurrence-card {
-    border: 1px solid rgb(229 231 235);
-    border-radius: 20px;
-    background: rgb(249 250 251);
-    padding: 16px;
-  }
-
-  :global(.dark) .context-recurrence-card {
-    border-color: rgb(55 65 81);
-    background: rgb(31 41 55 / 0.55);
-  }
-
-  .context-recurrence-toggle {
-    display: flex;
-    min-height: 44px;
-    cursor: pointer;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .context-recurrence-toggle input {
-    width: 20px;
-    height: 20px;
-    accent-color: rgb(var(--immich-primary));
-  }
-
-  .context-recurrence-toggle strong,
-  .context-recurrence-toggle small {
-    display: block;
-  }
-
-  .context-recurrence-toggle small {
-    margin-top: 2px;
-    color: rgb(107 114 128);
-    font-size: 0.75rem;
-  }
-
-  .context-recurrence-rule {
-    display: grid;
-    grid-template-columns: minmax(90px, 0.45fr) minmax(150px, 1fr);
-    gap: 12px;
-    margin-top: 14px;
-  }
-
-  .context-weekday-picker {
-    margin-top: 14px;
-  }
-
-  .context-weekday-picker legend {
-    margin-bottom: 7px;
-    color: rgb(75 85 99);
-    font-size: 0.72rem;
-    font-weight: 700;
-  }
-
-  .context-weekday-picker > div {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(38px, 1fr));
-    gap: 6px;
-  }
-
-  .context-weekday-picker button {
-    min-height: 40px;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 999px;
-    color: rgb(75 85 99);
-    font-size: 0.75rem;
-    font-weight: 800;
-  }
-
-  .context-weekday-picker button:hover,
-  .context-weekday-picker button:focus-visible,
-  .context-weekday-picker .context-weekday--active {
-    border-color: rgb(var(--immich-primary) / 0.55);
-    background: rgb(var(--immich-primary) / 0.11);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  .context-weekday-picker p {
-    margin-top: 8px;
-    color: rgb(185 28 28);
-    font-size: 0.75rem;
-  }
-
-  :global(.dark) .context-weekday-picker button {
-    border-color: rgb(75 85 99);
-    color: rgb(209 213 219);
-  }
-
-  .context-type-choice {
-    display: grid;
-    min-height: 116px;
-    align-content: center;
-    justify-items: start;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 20px;
-    padding: 16px;
-    text-align: left;
-    transition: 140ms ease;
-  }
-
-  :global(.dark) .context-type-choice {
-    border-color: rgb(55 65 81);
-  }
-
-  .context-type-choice:hover,
-  .context-type-choice:focus-visible {
-    border-color: rgb(var(--immich-primary) / 0.65);
-    background: rgb(var(--immich-primary) / 0.07);
-    box-shadow: 0 10px 24px rgb(15 23 42 / 0.1);
-    outline: none;
-  }
-
-  .context-type-choice > span,
-  .context-chosen-type > span:first-child {
-    display: grid;
-    width: 38px;
-    height: 38px;
-    place-items: center;
-    border-radius: 13px;
-    background: rgb(var(--immich-primary) / 0.1);
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-type-choice strong {
-    margin-top: 10px;
-    font-size: 0.95rem;
-  }
-
-  .context-type-choice small,
-  .context-chosen-type small {
-    display: block;
-    margin-top: 3px;
-    color: rgb(107 114 128);
-    font-size: 0.75rem;
-    font-weight: 450;
-    line-height: 1.35;
-  }
-
-  .context-chosen-type {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border: 1px solid rgb(var(--immich-primary) / 0.28);
-    border-radius: 18px;
-    background: rgb(var(--immich-primary) / 0.06);
-    padding: 12px;
-  }
-
-  .context-chosen-type button {
-    min-height: 36px;
-    border-radius: 999px;
-    padding: 0 12px;
-    color: rgb(var(--immich-primary));
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .context-chosen-type button:hover,
-  .context-chosen-type button:focus-visible {
-    background: rgb(var(--immich-primary) / 0.1);
-    outline: none;
-  }
-
-  .context-editor-map {
-    height: 330px;
-    overflow: hidden;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 20px;
-    background: rgb(243 244 246);
-  }
-
-  .context-editor-map-shell {
-    position: relative;
-  }
-
-  .context-place-search {
-    position: absolute;
-    z-index: 12;
-    top: 12px;
-    right: 48px;
-    left: 48px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    filter: drop-shadow(0 8px 18px rgb(15 23 42 / 0.2));
-  }
-
-  .context-place-search > label {
-    display: flex;
-    min-width: 0;
-    height: 42px;
-    align-items: center;
-    gap: 9px;
-    border-radius: 13px 0 0 13px;
-    background: rgb(255 255 255 / 0.96);
-    padding: 0 12px;
-    color: rgb(107 114 128);
-    backdrop-filter: blur(12px);
-  }
-
-  .context-place-search input {
-    min-width: 0;
-    flex: 1;
-    border: 0;
-    background: transparent;
-    color: rgb(17 24 39);
-    font-size: 0.82rem;
-    outline: none;
-  }
-
-  .context-place-search > button {
-    min-width: 76px;
-    border-left: 1px solid rgb(229 231 235);
-    border-radius: 0 13px 13px 0;
-    background: rgb(255 255 255 / 0.96);
-    padding: 0 12px;
-    color: rgb(var(--immich-primary));
-    font-size: 0.75rem;
-    font-weight: 750;
-    backdrop-filter: blur(12px);
-  }
-
-  .context-place-search > button:disabled {
-    color: rgb(156 163 175);
-  }
-
-  .context-place-search-results,
-  .context-place-search-error {
-    grid-column: 1 / -1;
-    overflow: hidden;
-    border-top: 1px solid rgb(229 231 235);
-    border-radius: 0 0 13px 13px;
-    background: rgb(255 255 255 / 0.98);
-  }
-
-  .context-place-search-results {
-    max-height: 210px;
-    overflow-y: auto;
-  }
-
-  .context-place-search-results button {
-    display: grid;
-    width: 100%;
-    min-height: 50px;
-    align-content: center;
-    border-bottom: 1px solid rgb(229 231 235);
-    padding: 7px 12px;
-    color: rgb(17 24 39);
-    text-align: left;
-  }
-
-  .context-place-search-results button:hover,
-  .context-place-search-results button:focus-visible {
-    background: rgb(var(--immich-primary) / 0.08);
-    outline: none;
-  }
-
-  .context-place-search-results strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.78rem;
-  }
-
-  .context-place-search-results small {
-    margin-top: 2px;
-    color: rgb(107 114 128);
-    font-size: 0.66rem;
-    font-weight: 650;
-  }
-
-  .context-place-search-error {
-    padding: 9px 12px;
-    color: rgb(75 85 99);
-    font-size: 0.72rem;
-    line-height: 1.4;
-  }
-
-  .context-place-search-attribution {
-    grid-column: 1 / -1;
-    justify-self: end;
-    border-radius: 0 0 10px 10px;
-    background: rgb(255 255 255 / 0.94);
-    padding: 3px 7px;
-    color: rgb(75 85 99);
-    font-size: 0.58rem;
-    text-decoration: none;
-  }
-
-  :global(.dark) .context-place-search > label,
-  :global(.dark) .context-place-search > button,
-  :global(.dark) .context-place-search-results,
-  :global(.dark) .context-place-search-error,
-  :global(.dark) .context-place-search-attribution {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39 / 0.96);
-  }
-
-  :global(.dark) .context-place-search input,
-  :global(.dark) .context-place-search-results button {
-    color: rgb(243 244 246);
-  }
-
-  :global(.dark) .context-place-search-attribution,
-  :global(.dark) .context-place-search-results small {
-    color: rgb(156 163 175);
-  }
-
-  :global(.dark) .context-place-search-results button {
-    border-color: rgb(55 65 81);
-  }
-
-  :global(.dark) .context-editor-map {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39);
-  }
-
-  .context-add-map-button {
-    display: flex;
-    min-height: 56px;
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    border: 1px dashed rgb(156 163 175);
-    border-radius: 18px;
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-add-map-button:hover,
-  .context-add-map-button:focus-visible {
-    border-color: rgb(var(--immich-primary));
-    background: rgb(var(--immich-primary) / 0.06);
-    outline: none;
-  }
-
-  .context-map-mode-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  .context-map-action {
-    display: inline-flex;
-    min-height: 36px;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 999px;
-    padding: 0 12px;
-    color: rgb(75 85 99);
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  :global(.dark) .context-map-action {
-    border-color: rgb(75 85 99);
-    color: rgb(209 213 219);
-  }
-
-  .context-map-action:hover,
-  .context-map-action:focus-visible,
-  .context-map-action--active {
-    border-color: rgb(var(--immich-primary) / 0.6);
-    background: rgb(var(--immich-primary) / 0.08);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  .context-detail-lane {
-    min-height: 38px;
-    flex: 0 0 auto;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 999px;
-    padding: 0 15px;
-    color: rgb(75 85 99);
-    font-size: 0.78rem;
-    font-weight: 700;
-  }
-
-  .context-detail-lane span {
-    margin-left: 6px;
-    color: rgb(107 114 128);
-    font-size: 0.7rem;
-  }
-
-  .context-detail-lane-note {
-    margin-top: 7px;
-    color: rgb(107 114 128);
-    font-size: 0.75rem;
-  }
-
-  :global(.dark) .context-detail-lane {
-    border-color: rgb(55 65 81);
-    color: rgb(209 213 219);
-  }
-
-  .context-detail-lane:hover,
-  .context-detail-lane:focus-visible,
-  .context-detail-lane--active {
-    border-color: rgb(var(--immich-primary) / 0.45);
-    background: rgb(var(--immich-primary) / 0.1);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  .context-journey {
-    margin-top: 28px;
-  }
-
-  .context-journey-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 24px;
-  }
-
-  .context-journey-heading h2 {
-    margin-top: 4px;
-    font-size: 1.25rem;
-    font-weight: 650;
-  }
-
-  .context-journey-heading p:not(:first-child),
-  .context-journey-note {
-    margin-top: 5px;
-    max-width: 620px;
-    color: rgb(107 114 128);
-    font-size: 0.8rem;
-    line-height: 1.55;
-  }
-
-  .context-journey-heading > span {
-    flex: none;
-    color: rgb(107 114 128);
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .context-journey-empty {
-    display: grid;
-    width: 100%;
-    min-height: 190px;
-    margin-top: 18px;
-    place-items: center;
-    align-content: center;
-    border: 1px dashed rgb(209 213 219);
-    border-radius: 28px;
-    padding: 24px;
-    text-align: center;
-  }
-
-  .context-journey-empty > span {
-    display: grid;
-    width: 48px;
-    height: 48px;
-    place-items: center;
-    border-radius: 16px;
-    background: rgb(var(--immich-primary) / 0.1);
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-journey-empty strong {
-    margin-top: 12px;
-  }
-
-  .context-journey-empty small {
-    margin-top: 4px;
-    color: rgb(107 114 128);
-  }
-
-  .context-journey-empty:hover,
-  .context-journey-empty:focus-visible {
-    border-color: rgb(var(--immich-primary) / 0.55);
-    background: rgb(var(--immich-primary) / 0.035);
-    outline: none;
-  }
-
-  .context-stop-list {
-    display: grid;
-    margin-top: 18px;
-  }
-
-  .context-stop-list li {
-    position: relative;
-    display: grid;
-    min-height: 72px;
-    grid-template-columns: 42px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 14px;
-  }
-
-  .context-stop-list li:not(:last-child)::after {
-    position: absolute;
-    top: 57px;
-    bottom: -15px;
-    left: 20px;
-    width: 2px;
-    background: rgb(var(--immich-primary) / 0.19);
-    content: '';
-  }
-
-  .context-stop-number {
-    z-index: 1;
-    display: grid;
-    width: 42px;
-    height: 42px;
-    place-items: center;
-    border: 1px solid rgb(var(--immich-primary) / 0.32);
-    border-radius: 14px;
-    background: white;
-    color: rgb(var(--immich-primary));
-    font-size: 0.78rem;
-    font-weight: 850;
-  }
-
-  :global(.dark) .context-stop-number {
-    background: rgb(17 24 39);
-  }
-
-  .context-stop-copy strong,
-  .context-stop-copy small {
-    display: block;
-  }
-
-  .context-stop-copy small {
-    margin-top: 3px;
-    color: rgb(107 114 128);
-    font-size: 0.72rem;
-  }
-
-  .context-stop-actions {
-    display: flex;
-    gap: 4px;
-  }
-
-  .context-stop-actions button {
-    display: grid;
-    width: 40px;
-    min-height: 40px;
-    place-items: center;
-    border-radius: 999px;
-    color: rgb(75 85 99);
-  }
-
-  .context-stop-actions button:hover:not(:disabled),
-  .context-stop-actions button:focus-visible:not(:disabled) {
-    background: rgb(243 244 246);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  .context-stop-actions button:disabled {
-    opacity: 0.28;
-  }
-
-  .context-stop-actions .context-stop-remove:hover:not(:disabled) {
-    background: rgb(254 242 242);
-    color: rgb(185 28 28);
-  }
-
-  .context-journey-note {
-    margin-top: 18px;
-  }
-
-  .context-relation-group {
-    width: fit-content;
-    max-width: 100%;
-    border: 1px solid rgb(229 231 235);
-    border-radius: 24px;
-    background: white;
-    padding: 16px;
-  }
-
-  :global(.dark) .context-relation-group {
-    border-color: rgb(31 41 55);
-    background: rgb(17 24 39);
-  }
-
-  .context-relation-group-title {
-    padding: 0 4px;
-    color: rgb(107 114 128);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  .context-relation-group-header,
-  .context-relation-actions,
-  .context-related-filter {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .context-relation-visit,
-  .context-relation-actions > button:first-child,
-  .context-related-filter button {
-    min-height: 36px;
-    border-radius: 999px;
-    padding: 0 12px;
-    color: rgb(var(--immich-primary));
-    font-size: 0.74rem;
-    font-weight: 750;
-  }
-
-  .context-relation-visit {
-    border: 1px solid rgb(var(--immich-primary) / 0.22);
-    background: rgb(var(--immich-primary) / 0.06);
-  }
-
-  .context-relation-visit:hover,
-  .context-relation-visit:focus-visible,
-  .context-relation-actions > button:first-child:hover,
-  .context-relation-actions > button:first-child:focus-visible,
-  .context-related-filter button:hover,
-  .context-related-filter button:focus-visible {
-    background: rgb(var(--immich-primary) / 0.1);
-    outline: none;
-  }
-
-  .context-relation-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-  }
-
-  .context-relation-card {
-    width: min(220px, calc(100vw - 80px));
-    flex: 0 1 220px;
-    overflow: hidden;
-    border: 1px solid rgb(229 231 235);
-    border-radius: 18px;
-    background: rgb(249 250 251);
-  }
-
-  :global(.dark) .context-relation-card {
-    border-color: rgb(55 65 81);
-    background: rgb(31 41 55 / 0.72);
-  }
-
-  .context-relation-identity {
-    display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
-    min-height: 64px;
-    align-items: center;
-    gap: 11px;
-    padding: 8px 10px;
-  }
-
-  .context-relation-identity img,
-  .context-relation-identity > span {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-  }
-
-  .context-relation-identity img {
-    background: rgb(229 231 235);
-    object-fit: cover;
-  }
-
-  .context-relation-identity > span {
-    display: grid;
-    place-items: center;
-    background: rgb(var(--immich-primary) / 0.12);
-    color: rgb(var(--immich-primary));
-    font-size: 1rem;
-    font-weight: 800;
-  }
-
-  .context-relation-identity p {
-    overflow: hidden;
-    font-size: 0.86rem;
-    font-weight: 700;
-    line-height: 1.25;
-    text-overflow: ellipsis;
-  }
-
-  .context-relation-actions {
-    min-height: 42px;
-    border-top: 1px solid rgb(229 231 235);
-    padding: 3px 6px 3px 10px;
-  }
-
-  :global(.dark) .context-relation-actions {
-    border-color: rgb(55 65 81);
-  }
-
-  .context-relation-remove {
-    display: grid;
-    width: 36px;
-    height: 36px;
-    place-items: center;
-    border-radius: 999px;
-    color: rgb(107 114 128);
-  }
-
-  .context-relation-remove:hover,
-  .context-relation-remove:focus-visible {
-    background: rgb(239 68 68 / 0.1);
-    color: rgb(220 38 38);
-    outline: none;
-  }
-
-  .context-relation-target-picker {
-    position: relative;
-  }
-
-  .context-relation-target-picker > label {
-    display: flex;
-    min-height: 44px;
-    align-items: center;
-    gap: 9px;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 0.85rem;
-    padding: 0 12px;
-    color: rgb(107 114 128);
-  }
-
-  :global(.dark) .context-relation-target-picker > label {
-    border-color: rgb(75 85 99);
-    background: rgb(31 41 55);
-  }
-
-  .context-relation-target-picker input {
-    min-width: 0;
-    min-height: 42px;
-    flex: 1;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font-size: 0.875rem;
-    outline: none;
-  }
-
-  .context-relation-target-picker > label:focus-within {
-    border-color: rgb(var(--immich-primary));
-    box-shadow: 0 0 0 2px rgb(var(--immich-primary) / 0.18);
-  }
-
-  .context-relation-target-results {
-    position: absolute;
-    z-index: 4;
-    top: calc(100% + 6px);
-    right: 0;
-    left: 0;
-    overflow-y: auto;
-    max-height: 240px;
-    border: 1px solid rgb(209 213 219);
-    border-radius: 16px;
-    background: white;
-    padding: 6px;
-    box-shadow: 0 18px 42px rgb(15 23 42 / 0.2);
-  }
-
-  :global(.dark) .context-relation-target-results {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39);
-  }
-
-  .context-relation-target-results button,
-  .context-relation-target-results p {
-    width: 100%;
-    min-height: 42px;
-    border-radius: 11px;
-    padding: 10px 12px;
-    text-align: left;
-  }
-
-  .context-relation-target-results button:hover,
-  .context-relation-target-results button:focus-visible {
-    background: rgb(var(--immich-primary) / 0.1);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  .context-relation-target-results p,
-  .context-relation-target-hint {
-    color: rgb(107 114 128);
-    font-size: 0.78rem;
-    font-weight: 450;
-  }
-
-  .context-relation-target-hint {
-    margin-top: 7px;
-    padding-left: 3px;
-  }
-
-  .context-relation-target-selected {
-    display: flex;
-    min-height: 40px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-top: 8px;
-    border-radius: 13px;
-    background: rgb(var(--immich-primary) / 0.09);
-    padding: 0 8px 0 12px;
-    color: rgb(var(--immich-primary));
-    font-size: 0.82rem;
-    font-weight: 700;
-  }
-
-  .context-relation-target-selected button {
-    display: grid;
-    width: 34px;
-    height: 34px;
-    place-items: center;
-    border-radius: 999px;
-  }
-
-  .context-relation-target-selected button:hover,
-  .context-relation-target-selected button:focus-visible {
-    background: rgb(var(--immich-primary) / 0.12);
-    outline: none;
-  }
-
-  .context-related-filter {
-    margin: 24px 0 14px;
-    border: 1px solid rgb(var(--immich-primary) / 0.22);
-    border-radius: 18px;
-    background: rgb(var(--immich-primary) / 0.06);
-    padding: 12px 14px;
-  }
-
-  .context-related-filter p {
-    font-size: 0.86rem;
-    font-weight: 750;
-  }
-
-  .context-related-filter span {
-    display: block;
-    margin-top: 2px;
-    color: rgb(107 114 128);
-    font-size: 0.7rem;
-  }
-
-  /* Wraps rather than squeezing. The entity actions moved onto this rail, and
-     on a 1024px viewport they plus "Add media" cut the tab strip down to 260px
-     when it needs 534, so "Documents" scrolled out of sight. Letting the action
-     cluster drop to its own line keeps every tab reachable, which matters more
-     than holding one row. */
-  .context-profile-rail {
-    display: flex;
-    min-width: 0;
-    flex-wrap: wrap;
-    align-items: stretch;
-    row-gap: 0.5rem;
-    border-bottom: 1px solid rgb(229 231 235);
-  }
-
-  :global(.dark) .context-profile-rail {
-    border-color: rgb(31 41 55);
-  }
-
-  .context-profile-tabs {
-    display: flex;
-    min-width: 0;
-    /* Basis set just above the widest tab strip (four tabs with counts measure
-       ~534px), so the action cluster wraps to its own line rather than clipping
-       a tab. At 24rem the 1280px case sat in between: one row, with
-       "Documents" cut off by 6px. Biasing toward a wrap is the safer failure. */
-    flex: 1 1 34rem;
-    gap: 0.15rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .context-profile-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .context-profile-tab {
-    position: relative;
-    display: inline-flex;
-    min-height: 3.25rem;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 0.45rem;
-    border-bottom: 2px solid transparent;
-    padding: 0 0.9rem;
-    color: rgb(75 85 99);
-    font-size: 0.86rem;
-    font-weight: 680;
-    white-space: nowrap;
-  }
-
-  :global(.dark) .context-profile-tab {
-    color: rgb(209 213 219);
-  }
-
-  .context-profile-tab:hover {
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-profile-tab:focus-visible {
-    border-radius: 0.7rem 0.7rem 0 0;
-    outline: 2px solid rgb(var(--immich-primary));
-    outline-offset: -3px;
-  }
-
-  .context-profile-tab--active {
-    border-bottom-color: rgb(var(--immich-primary));
-    color: rgb(var(--immich-primary));
-  }
-
-  /* The count inherited the active tab's primary colour over a translucent
-     grey pill, measuring 3.28:1 at 10.88px. It now carries its own colour so
-     it stays legible on both the active and inactive tab, and is large enough
-     to be read at a glance. */
-  .context-profile-tab > span {
-    display: inline-grid;
-    min-width: 1.35rem;
-    height: 1.35rem;
-    place-items: center;
-    border-radius: 999px;
-    background: rgb(107 114 128 / 0.18);
-    padding: 0 0.35rem;
-    color: rgb(55 65 81);
-    font-size: 0.75rem;
-  }
-
-  :global(.dark) .context-profile-tab > span {
-    background: rgb(148 163 184 / 0.22);
-    color: rgb(229 231 235);
-  }
-
-  .context-profile-action {
-    align-self: center;
-    flex: 0 0 auto;
-    margin-left: 0.75rem;
-  }
-
-  .context-profile-add-media {
-    display: grid;
-    width: 2.75rem;
-    height: 2.75rem;
-    place-items: center;
-    border: 1px solid rgb(229 231 235);
-    border-radius: 0.75rem;
-    background: white;
-    color: rgb(75 85 99);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
-    transition:
-      background 160ms ease,
-      border-color 160ms ease,
-      color 160ms ease;
-  }
-
-  .context-profile-add-media:hover,
-  .context-profile-add-media:focus-visible {
-    border-color: rgb(var(--immich-primary) / 0.45);
-    background: rgb(243 244 246);
-    color: rgb(var(--immich-primary));
-    outline: none;
-  }
-
-  :global(.dark) .context-profile-add-media {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39);
-    color: rgb(209 213 219);
-  }
-
-  :global(.dark) .context-profile-add-media:hover,
-  :global(.dark) .context-profile-add-media:focus-visible {
-    border-color: rgb(var(--immich-primary) / 0.55);
-    background: rgb(31 41 55);
-    color: rgb(var(--immich-primary));
-  }
-
-  .context-place-photo-options {
-    display: flex;
-    overflow: hidden;
-    border: 1px solid rgb(229 231 235);
-    border-radius: 0.75rem;
-    background: white;
-    color: rgb(107 114 128);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
-  }
-
-  :global(.dark) .context-place-photo-options {
-    border-color: rgb(55 65 81);
-    background: rgb(17 24 39);
-    color: rgb(156 163 175);
-  }
-
-  .context-place-photo-options label {
-    position: relative;
-    display: inline-grid;
-    width: 2.75rem;
-    height: 2.75rem;
-    cursor: pointer;
-    place-items: center;
-    transition:
-      background 160ms ease,
-      color 160ms ease;
-  }
-
-  .context-place-photo-options label + label {
-    border-left: 1px solid rgb(229 231 235);
-  }
-
-  :global(.dark) .context-place-photo-options label + label {
-    border-color: rgb(55 65 81);
-  }
-
-  .context-place-photo-options label:hover,
-  .context-place-photo-options label:focus-within {
-    background: rgb(243 244 246);
-    color: rgb(var(--immich-primary));
-  }
-
-  :global(.dark) .context-place-photo-options label:hover,
-  :global(.dark) .context-place-photo-options label:focus-within {
-    background: rgb(31 41 55);
-  }
-
-  .context-place-photo-options select {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    cursor: pointer;
-    opacity: 0;
-  }
-
-  .context-editor-record {
-    display: grid;
-    gap: 0.75rem;
-    margin-top: 1.25rem;
-    border-top: 1px solid rgb(229 231 235);
-    padding-top: 1.25rem;
-  }
-
-  :global(.dark) .context-editor-record {
-    border-color: rgb(31 41 55);
-  }
-
-  .context-editor-record-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .context-editor-record-row > div {
-    min-width: 0;
-    flex: 1 1 16rem;
-  }
-
-  .context-editor-record-title {
-    font-size: 0.9rem;
-    font-weight: 650;
-  }
-
-  .context-editor-record-note {
-    margin-top: 2px;
-    color: rgb(75 85 99);
-    font-size: 0.8rem;
-    line-height: 1.45;
-  }
-
-  :global(.dark) .context-editor-record-note {
-    color: rgb(156 163 175);
-  }
-
-  .context-editor-danger {
-    display: inline-flex;
-    min-height: 2.75rem;
-    flex: none;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid rgb(220 38 38 / 0.4);
-    border-radius: 0.85rem;
-    padding: 0 1rem;
-    color: rgb(185 28 28);
-    font-size: 0.85rem;
-    font-weight: 650;
-  }
-
-  .context-editor-danger:hover {
-    background: rgb(254 242 242);
-  }
-
-  :global(.dark) .context-editor-danger {
-    color: rgb(252 165 165);
-  }
-
-  :global(.dark) .context-editor-danger:hover {
-    background: rgb(127 29 29 / 0.28);
-  }
-
-  .context-place-photo--selected {
-    outline: 4px solid var(--color-primary);
-    outline-offset: -4px;
-  }
-
-  .context-place-photo-select {
-    position: absolute;
-    top: 0.5rem;
-    left: 0.5rem;
-    z-index: 2;
-    display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
-    place-items: center;
-    border: 2px solid white;
-    border-radius: 999px;
-    background: rgb(0 0 0 / 0.55);
-    color: white;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
-  }
-
-  .context-place-photo-select--active {
-    border-color: var(--color-primary);
-    background: var(--color-primary);
-  }
-
-  @media (min-width: 640px) {
-    .context-type-choice-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-height: 800px) {
-    .context-editor-map {
-      height: 220px;
-    }
-  }
-
-  @media (max-width: 520px) {
-    :global(.context-profile-settings) {
-      width: 2.75rem;
-      flex: 0 0 2.75rem;
-      padding: 0;
-    }
-
-    :global(.context-profile-settings span) {
-      display: none;
-    }
-
-    .context-profile-tab {
-      padding: 0 0.7rem;
-      font-size: 0.8rem;
-    }
-
-    .context-profile-tab :global(svg) {
-      display: none;
-    }
-
-    .context-profile-action {
-      width: 2.75rem;
-      padding: 0;
-    }
-
-    .context-profile-action span {
-      display: none;
-    }
-
-    .context-place-search {
-      right: 10px;
-      left: 48px;
-    }
-
-    .context-place-search > button {
-      min-width: 62px;
-      padding: 0 9px;
-    }
-  }
-</style>

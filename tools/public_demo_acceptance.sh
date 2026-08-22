@@ -103,6 +103,25 @@ assert_typed_error() {
   grep -q "\"code\":\"$code\"" "$response_file"
 }
 
+assert_ui_chunk_revalidation() {
+  ui_html=$(curl -fsS "http://127.0.0.1:$UI_PORT/cimmich/documents")
+  ui_chunk=$(printf '%s\n' "$ui_html" | sed -n 's/.*href="\(\/_app\/immutable\/[^"?]*\.js\)".*/\1/p' | head -n 1)
+  test -n "$ui_chunk" || {
+    printf 'Public UI did not expose a production chunk URL\n' >&2
+    return 1
+  }
+  ui_headers=$(curl -fsSI "http://127.0.0.1:$UI_PORT$ui_chunk" | tr -d '\r')
+  printf '%s\n' "$ui_headers" | grep -qi '^Cache-Control: no-cache$'
+  ui_etag=$(printf '%s\n' "$ui_headers" | sed -n 's/^[Ee][Tt][Aa][Gg]:[[:space:]]*//p' | head -n 1)
+  test -n "$ui_etag" || {
+    printf 'Public UI production chunk did not expose an ETag\n' >&2
+    return 1
+  }
+  ui_revalidation_code=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ui_etag" \
+    "http://127.0.0.1:$UI_PORT$ui_chunk")
+  assert_code "$ui_revalidation_code" 304
+}
+
 post_visibility() {
   path=$1
   device=$2
@@ -213,6 +232,7 @@ printf '%s\n' "$first" | grep -q '"ui":"ready"'
 
 state=$(run_demo status)
 test "$state" = "$first"
+assert_ui_chunk_revalidation
 
 CIMMICH_E2E_BASE_URL="http://127.0.0.1:$UI_PORT" \
   CIMMICH_E2E_STATE_ROOT="$STATE_ROOT" \

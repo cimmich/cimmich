@@ -43,11 +43,11 @@ describe('entity media actions', () => {
     expect(cimmichEntityMediaActionNeedsTarget('visibility-private')).toBe(false);
     expect(
       cimmichEntityMediaActionLabel('context-detach', null, {
-        displayName: 'Gulmarrad',
+        displayName: 'Willow Community Garden',
         entityId: 'place-1',
         family: 'places',
       }),
-    ).toBe('Remove from Gulmarrad');
+    ).toBe('Remove from Willow Community Garden');
   });
 
   it('persists only complete versioned Undo receipts', () => {

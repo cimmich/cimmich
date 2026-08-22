@@ -148,6 +148,7 @@ exit 97
     );
     await mkdir(stateRoot);
     const runtime =
+      "CIMMICH_COMPANION_PROJECT=cimmich-version-preflight-test\n" +
       "CIMMICH_IMMICH_API_URL=http://host.docker.internal:2283/api\n";
     await writeFile(join(stateRoot, "runtime.env"), runtime, { mode: 0o600 });
 

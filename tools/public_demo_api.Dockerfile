@@ -3,7 +3,7 @@ FROM postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7
 FROM python:3.11-slim-trixie@sha256:90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff AS python-runtime
 
 # Trixie's Mesa 25 userspace is the minimum verified RADV generation for the
-# X1's Radeon 780M. Bookworm's Mesa 22 enumerates the GPU but the kernel rejects
+# reference Radeon 780M host. Bookworm's Mesa 22 enumerates the GPU but the kernel rejects
 # its command stream, so keeping the runtime generation explicit is a safety
 # requirement rather than a cosmetic base-image refresh.
 FROM node:22-trixie-slim@sha256:db8a96a63e5264607ada2d206758876ebbed6a12be2ada7517793cbfb0c2a29c AS runtime

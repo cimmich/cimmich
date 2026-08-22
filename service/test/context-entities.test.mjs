@@ -11,6 +11,7 @@ const eventRow = {
   aliases: [],
   asset_count: 8,
   cover_asset_id: "asset-cover",
+  cover_crop: { h: 0.4, w: 1, x: 0, y: 0.2 },
   date_end: null,
   date_precision: "exact",
   date_start: "2026-01-01",
@@ -38,7 +39,7 @@ const eventRow = {
 
 test("Related context edges project reciprocally without a duplicate write", async () => {
   const source = await readFile(
-    new URL("../src/context-entities.mjs", import.meta.url),
+    new URL("../src/context-relation-projections.mjs", import.meta.url),
     "utf8",
   );
   assert.match(
@@ -50,6 +51,41 @@ test("Related context edges project reciprocally without a duplicate write", asy
   assert.match(source, /AND link\.relation_kind = 'related'/);
   assert.match(source, /\.\.\.incomingContextRelations\.map/);
   assert.match(source, /direction: "incoming"/);
+});
+
+test("Person-to-Place and Person-to-Thing facts project back onto context reads", async () => {
+  const source = await readFile(
+    new URL("../src/context-relation-projections.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /const incomingPersonFacts/);
+  assert.match(source, /FROM current_connection_fact fact/);
+  assert.match(source, /fact\.target_kind = \$\{entity\.entity_kind\}/);
+  assert.match(source, /fact\.target_id = \$\{entity\.entity_id\}/);
+  assert.match(source, /relation_origin: "connection_fact"/);
+  const contextSource = await readFile(
+    new URL("../src/context-entities.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    contextSource,
+    /relationshipLabel: row\.relationship_label \|\| null/,
+  );
+});
+
+test("relationship contexts project both Person endpoints onto the context read", async () => {
+  const source = await readFile(
+    new URL("../src/context-relation-projections.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /const relationshipContextFacts/);
+  assert.match(source, /FROM current_connection_fact_context fact_context/);
+  assert.match(source, /fact\.target_kind = 'person'/);
+  assert.match(
+    source,
+    /' with ' \|\| endpoint\.other_name AS relationship_label/,
+  );
+  assert.match(source, /relation_origin: "relationship_context"/);
 });
 
 test("Event collection projection bounds visible Main previews in the list query", async () => {
@@ -72,6 +108,12 @@ test("Event collection projection bounds visible Main previews in the list query
     "source-asset-main-c",
   ]);
   assert.equal(items[0].coverAssetId, "source-asset-cover");
+  assert.deepEqual(items[0].coverCrop, {
+    h: 0.4,
+    w: 1,
+    x: 0,
+    y: 0.2,
+  });
   assert.equal(items[0].coverMode, "explicit");
   assert.equal(items[0].assetCount, 8);
   assert.equal(items[0].subtreeAssetCount, 11);

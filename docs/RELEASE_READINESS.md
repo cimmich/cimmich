@@ -1,12 +1,12 @@
 # Cimmich release-readiness checklist
 
-Updated: 2026-08-19
+Updated: 2026-08-23
 Preserved Build Week public-demo runtime: schema 75/patch 1
-Current Community Preview candidate: migration-ledger schema 142/patch 1
-Current development source: migration-ledger schema 142/patch 1
+Previous Community Preview: migration-ledger schema 142/patch 1
+Current Community Preview candidate: migration-ledger schema 156/patch 1
 Preserved submission identity: `v1.0.0-build-week` at
 `9b40c1b3b353f4e2e10aa91462ad821793ef043b`
-Current candidate: `v1.1.0-community-preview.18` for exact Immich 3.1.0
+Current candidate: `v1.1.0-community-preview.19` for exact Immich 3.1.0
 
 Schema 136 adds review-only own-Person outlier evidence to Possible mistags.
 The Mac-local scorer first preserves the stronger-different-Person route, then
@@ -28,8 +28,67 @@ Schema 142 reconciles the historical schema-131 split. Public Preview 12 used
 131 for Cimmich-owned organisation while the private production line used 131
 for SourcePack candidate freshness. The migration runner accepts only the exact
 known private predecessor filename and SHA-256 as an alternate ledger record.
-Schema 142 then applies both changes replay-safely, so fresh installs, existing
-Preview 12 installs and the current private database converge on one schema.
+Schema 143 adds replay-safe Archive Health retirement for records outside the
+active Immich library. Schema 144 makes deleted-row catalogue reads explicit,
+and any pre-upgrade partial inventory is closed without absence reconciliation.
+Schema 145 separates that metadata-only catalogue-presence scan from normal
+inventory enrichment. Only the explicit deleted-row-complete mode may reconcile
+absence; it never reads source bytes or admits new media. Schema 146 treats
+Immich trash and first complete absence from the active source as immediately
+removable Cimmich state, excludes disabled predecessor sources, adds inline
+Person-card status and count-locked bulk trash retirement, and removes the
+user-operated scan ceremony.
+Schema 147 lets that single count-locked bulk command retain more than 100
+source asset IDs in its durable audit receipt; the command remains atomic and
+Cimmich-only.
+Schema 148 makes that explicit retirement durable across catalogue, ordinary
+inventory and exact per-photo activity refreshes, and reapplies existing
+receipts to any links a prior refresh incorrectly revived.
+Schema 149 admits replay-safe owner-created relationship categories. Person
+Connections can add the Person to an existing context or create and link a new
+Event, Life period, Trip, Activity, Place or Thing in one local workflow.
+Schema 150 separates typed graph facts from Person categories and generic
+context links. Directional Person relationships and temporal Person–Place facts
+are owner-authored, append-only and privacy projected. Explainable
+co-worker/workplace candidates remain unrecorded until explicitly confirmed,
+and dismissals are durable.
+Schema 151 makes **Former** the temporal state for every Person relationship,
+including owner-created labels. Existing timeless Person facts become current;
+legacy **Ex** facts become **Partner (Former)** before the standalone Ex type is
+retired. The append-only event history and any dates or notes are preserved.
+Schema 152 makes **Former** the seeded historical connection modifier and adds
+reusable owner-created qualifiers such as **Childhood** or **School**. Several
+qualifiers may describe one fact without multiplying the relationship-type
+catalogue. Existing former facts gain the seeded modifier in place; selecting
+or removing it remains the explicit control over historical validity.
+Schema 153 adds atomic shared-connection hubs: Homes are Places, while
+Employers and Groups are explicit Thing kinds. One reviewed command records
+every selected Person's role, dates, modifiers and current/former state, or
+records nothing if any row is invalid.
+Schema 154 attaches existing Places, Events or Things to a Person-to-Person
+fact as explicit relationship context. Attach and detach remain append-only;
+context detail reciprocally projects both People, and Discover uses the context
+as a shared hub without persisting inferred Person-to-context relationships.
+Schema 155 persists a normalized hero crop beside an explicit Context cover.
+Life periods and the shared Event, Trip, Activity, Place and Thing detail hero
+can be panned and zoomed; the revision-checked command and Undo keep cover and
+framing atomic without changing Immich or source media.
+Schema 156 adds one actor-, operation- and payload-bound command ledger for
+typed relationship writes and enforces append-only relationship event history.
+Identical commands replay their exact stored response; actor, operation or
+payload drift fails closed rather than borrowing authority from a command ID.
+The Person Connections surface keeps that action in the primary tab bar and
+uses independently collapsible typed sections. The new Discover destination
+adds one bounded, visibility-projected Memory-web read joining People, Pets,
+Places, Events and Things through current shared-photo evidence, recorded
+relations and hierarchy. Its analysis workspace adds computed starting
+questions, purpose-specific lenses, a synchronized strongest-connections rail,
+one-hop focus and shortest visible path tracing. Recorded links render
+separately from photo-derived evidence. These are bounded read projections: they
+create no inferred relationship truth. Community Preview 19 keeps Discover and
+Person memory webs Experimental and off by default; one explicit browser-local
+setting reveals them, while disabling the experiment clears the projection and
+preserves recorded facts.
 
 ## Community Preview release contract
 
@@ -128,7 +187,7 @@ The candidate gates closed locally with:
   pass against all 51 rights-cleared assets;
 - root Compose render, guarded non-mutating installer check and zero known
   production web or service dependency vulnerabilities: pass; and
-- signed-in X1 photo-presentation walkthrough: Private revealed the protected
+- signed-in reference-host photo-presentation walkthrough: Private revealed the protected
   photo in Folder and direct viewer, Personal and Standard hid it in Folder,
   Timeline and direct viewer, an in-place rank drop removed mounted media
   immediately, and Private persisted across ordinary routes.
@@ -139,7 +198,7 @@ recorded only after the reviewed merge produces the immutable tag target.
 ## Community Preview 7 archive-review and organisation gate — 2026-08-10
 
 Preview 7 promotes the schema-127 physical-Face review line and the schema-128
-archive-organisation line that were already exercised against the private X1
+archive-organisation line that were already exercised against a private reference
 archive. It does not publish private archive data, identities, paths, model
 weights or runtime configuration.
 
@@ -271,7 +330,7 @@ deliberate npm service / pnpm Immich-derived UI boundary and establishes that
 The maintainability gate records the existing oversized production files,
 fails if any grows and refuses new production files over 1,000 lines. Existing
 source concentration remains explicit debt rather than being represented as
-already refactored. Database schema, product behavior and X1 data are unchanged.
+already refactored. Database schema, product behavior and deployment data are unchanged.
 
 The Preview 4 source candidate closes its local gates with:
 
@@ -592,8 +651,8 @@ Schema 131 transactionally supersedes Prime identity candidates whenever their
 SourcePack stops being active, rejects new candidates from stale or
 policy-mismatched packs, and requires the active pack at every review/accept
 read boundary. Historical proposals remain auditable but cannot stay actionable.
-Community Preview 18 remains at schema 142; schema 142 is the current
-development source and does not revise earlier immutable releases.
+Community Preview 18 remains immutable at schema 142. Community Preview 19 is
+the schema-156 candidate and does not revise earlier immutable releases.
 
 ## Historical Public Beta Patch 6 certification
 

@@ -180,8 +180,8 @@ test("asset evidence keeps one tagged Body over a near-identical raw detection",
       box_w: 0.4104175365,
       box_x: 0.5890605428,
       box_y: 0.3413828125,
-      person_id: "person_benji",
-      supporting_face_id: "face_benji",
+      person_id: "person_maya",
+      supporting_face_id: "face_maya",
     },
   ]);
 

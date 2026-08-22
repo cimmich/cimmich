@@ -804,6 +804,7 @@ export const createImmichCompanion = ({
 
   const listAssets = async ({
     cursor = "",
+    includeDeleted = false,
     includePeople = false,
     limit = 100,
     updatedAfter = "",
@@ -819,6 +820,13 @@ export const createImmichCompanion = ({
       );
     }
     const normalizedLimit = Number(limit);
+    if (typeof includeDeleted !== "boolean") {
+      throw companionError(
+        "IMMICH_COMPANION_INCLUDE_DELETED_INVALID",
+        "Immich deleted-asset inclusion must be boolean",
+        400,
+      );
+    }
     if (typeof includePeople !== "boolean") {
       throw companionError(
         "IMMICH_COMPANION_INCLUDE_PEOPLE_INVALID",
@@ -866,7 +874,7 @@ export const createImmichCompanion = ({
           page,
           size: normalizedLimit,
           visibility: normalizedVisibility,
-          withDeleted: false,
+          withDeleted: includeDeleted,
           withExif: false,
           withPeople: includePeople,
           withStacked: false,

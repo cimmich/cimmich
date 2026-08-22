@@ -135,16 +135,16 @@ describe('findExactManualPhotoTagPerson', () => {
 
 describe('searchManualPhotoTagPeople', () => {
   const subjects = [
-    { id: 'person-pete', kind: 'person' as const, name: 'Pete Marques' },
+    { id: 'person-theo', kind: 'person' as const, name: 'Theo Vale' },
     { aliases: ['Peter H'], id: 'person-peter', kind: 'person' as const, name: 'Peter Hart' },
-    { id: 'person-jo', kind: 'person' as const, name: 'Jo Pete' },
-    { id: 'pet-pete', kind: 'pet' as const, name: 'Pete' },
+    { id: 'person-jo', kind: 'person' as const, name: 'Jo Theo' },
+    { id: 'pet-theo', kind: 'pet' as const, name: 'Theo' },
   ];
 
   it('returns bounded existing People while the owner types, with prefix matches first', () => {
-    expect(searchManualPhotoTagPeople(subjects, 'Pete', 2).map((subject) => subject.id)).toEqual([
-      'person-pete',
-      'person-peter',
+    expect(searchManualPhotoTagPeople(subjects, 'Theo', 2).map((subject) => subject.id)).toEqual([
+      'person-theo',
+      'person-jo',
     ]);
   });
 

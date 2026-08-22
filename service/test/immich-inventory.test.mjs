@@ -29,6 +29,32 @@ const asset = (overrides = {}) => ({
   ...overrides,
 });
 
+test("catalogue-presence inventory alone requests soft-deleted rows", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../src/immich-inventory.mjs", import.meta.url), "utf8"),
+  );
+  const reconciliationSource = await import("node:fs/promises").then(
+    ({ readFile }) =>
+      readFile(
+        new URL("../src/immich-inventory-reconciliation.mjs", import.meta.url),
+        "utf8",
+      ),
+  );
+  assert.match(
+    source,
+    /companion\.listAssets\(\{[\s\S]+includeDeleted: cataloguePresenceOnly,[\s\S]+visibility/,
+  );
+  assert.match(
+    source,
+    /cataloguePresenceOnly\s*\?\s*"recordCataloguePresencePage"/,
+  );
+  assert.match(source, /!cataloguePresenceOnly &&\s*resumedRun/);
+  assert.match(
+    reconciliationSource,
+    /UPDATE asset_source_binding binding SET[\s\S]+FROM archive_missing_file_command retirement/,
+  );
+});
+
 test("provider-disabled inventory admits projections without manufacturing media jobs", () => {
   assert.equal(normalizeInventoryJob(null), null);
   assert.deepEqual(

@@ -20,13 +20,13 @@ describe('Cimmich Place deletion', () => {
   it('keeps Cimmich tags by default and explains the media/Immich safety boundary', async () => {
     const onconfirm = vi.fn();
     const { getByRole, getByText } = render(CimmichPlaceDeleteDialog, {
-      displayName: 'Parents House - Gulmarrad',
+      displayName: 'Cedar House - Willow',
       oncancel: vi.fn(),
       onconfirm,
       tagCount: 3,
     });
 
-    expect(getByRole('dialog', { name: 'Delete Parents House - Gulmarrad?' })).toBeInTheDocument();
+    expect(getByRole('dialog', { name: 'Delete Cedar House - Willow?' })).toBeInTheDocument();
     expect(getByText(/This cannot be undone/)).toBeInTheDocument();
     expect(getByText('Your photos and videos are untouched.')).toBeInTheDocument();
     expect(getByText(/does not alter raw media or write to the Immich database/)).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe('Cimmich Place deletion', () => {
   it('makes deleting the Place tags a distinct explicit choice', async () => {
     const onconfirm = vi.fn();
     const { getByRole } = render(CimmichPlaceDeleteDialog, {
-      displayName: 'Parents House',
+      displayName: 'Cedar House',
       oncancel: vi.fn(),
       onconfirm,
       tagCount: 1,

@@ -1,0 +1,17 @@
+export type CimmichContextTypeKind =
+  | 'activity'
+  | 'area'
+  | 'collectible'
+  | 'device'
+  | 'equipment'
+  | 'event'
+  | 'group'
+  | 'life_period'
+  | 'organisation'
+  | 'other'
+  | 'point'
+  | 'property'
+  | 'route'
+  | 'trip'
+  | 'unlocated'
+  | 'vehicle';

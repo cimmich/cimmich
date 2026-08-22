@@ -23,10 +23,12 @@ import {
   contextPlaceHierarchy,
   contextPlaceMapProjection,
   contextPlaceNearbyRadii,
+  selectContextPlaceNearbyCandidates,
   contextPlacePointDistanceMeters,
   contextPlaceSearchQualityLabel,
   contextPlaceRoleLabel,
   contextRelationGroups,
+  contextRelationTargets,
   contextTypeKinds,
   contextTypeDescription,
   contextTypeLabel,
@@ -104,7 +106,7 @@ describe('Cimmich context entity presentation', () => {
     expect(contextFamilyKind).toEqual({ events: 'event', objects: 'object', places: 'place' });
     expect(contextTypeKinds).toEqual({
       event: ['trip', 'event', 'activity', 'life_period'],
-      object: ['vehicle', 'property', 'device', 'collectible', 'equipment', 'other'],
+      object: ['vehicle', 'property', 'device', 'collectible', 'equipment', 'organisation', 'group', 'other'],
       place: ['point', 'area', 'route', 'unlocated'],
     });
     expect(contextAssociationKinds).toEqual({
@@ -124,6 +126,8 @@ describe('Cimmich context entity presentation', () => {
       'device',
       'collectible',
       'equipment',
+      'organisation',
+      'group',
       'other',
     ]);
     expect(eventTypeFilters.map((filter) => filter.value)).toEqual(['all', 'trip', 'event', 'activity', 'life_period']);
@@ -340,6 +344,8 @@ describe('Cimmich context entity presentation', () => {
       { label: '100 m', value: 100 },
       { label: '500 m', value: 500 },
       { label: '2 km', value: 2000 },
+      { label: '10 km', value: 10_000 },
+      { label: '50 km', value: 50_000 },
     ]);
     expect(formatContextPlaceDistance(0)).toBe('At this place');
     expect(formatContextPlaceDistance(23.7)).toBe('24 m');
@@ -350,6 +356,31 @@ describe('Cimmich context entity presentation', () => {
         { latitude: -33.8688, longitude: 151.2104 },
       ),
     ).toBeCloseTo(102, -1);
+  });
+
+  it('keeps the nearest photos visible beyond a sparse radius without displacing sufficient nearby results', () => {
+    const sparse = selectContextPlaceNearbyCandidates(
+      [
+        { distanceMeters: 4200, id: 'farther' },
+        { distanceMeters: 120, id: 'inside' },
+        { distanceMeters: 2600, id: 'nearest-outside' },
+      ],
+      2000,
+    );
+    expect(sparse.map(({ beyondRadius, id }) => ({ beyondRadius, id }))).toEqual([
+      { beyondRadius: false, id: 'inside' },
+      { beyondRadius: true, id: 'nearest-outside' },
+      { beyondRadius: true, id: 'farther' },
+    ]);
+
+    const dense = selectContextPlaceNearbyCandidates(
+      Array.from({ length: 30 }, (_, index) => ({ distanceMeters: index + 1, id: `inside-${index}` })).concat([
+        { distanceMeters: 3000, id: 'outside' },
+      ]),
+      2000,
+    );
+    expect(dense).toHaveLength(30);
+    expect(dense.some(({ id }) => id === 'outside')).toBe(false);
   });
 
   it('uses product language for media associations without changing stored values', () => {
@@ -407,6 +438,40 @@ describe('Cimmich context entity presentation', () => {
       'Related things',
     ]);
   });
+
+  it('combines several connection reasons under one visible target', () => {
+    const relations: import('$lib/services/cimmich.service').CimmichContextRelation[] = [
+      {
+        linkedAt: '2026-08-22T00:00:00Z',
+        relationId: 'fact_lived_here',
+        relationKind: 'related',
+        relationOrigin: 'connection_fact',
+        relationshipLabel: 'Lived here',
+        targetId: 'person_maya',
+        targetKind: 'person',
+        targetName: 'Maya Chen',
+      },
+      {
+        linkedAt: '2026-08-22T00:00:01Z',
+        relationId: 'context_housemate',
+        relationKind: 'related',
+        relationOrigin: 'relationship_context',
+        relationshipLabel: 'Housemate (Former) with Alex Chen',
+        targetId: 'person_maya',
+        targetKind: 'person',
+        targetName: 'Maya Chen',
+      },
+    ];
+
+    expect(contextRelationTargets(relations)).toEqual([
+      expect.objectContaining({
+        key: 'person:person_maya',
+        relationshipLabels: ['Lived here', 'Housemate (Former) with Alex Chen'],
+        relations,
+        targetName: 'Maya Chen',
+      }),
+    ]);
+  });
 });
 
 describe('place location labels', () => {
@@ -416,14 +481,14 @@ describe('place location labels', () => {
   ) => ({ geometry, typeKind });
 
   it('formats a point as signed-hemisphere coordinates', () => {
-    // Parent's Home on the real archive: southern and eastern hemispheres.
-    expect(formatContextCoordinate(-29.491_547, 153.231_453)).toBe('29.4915°S, 153.2315°E');
+    // The fictional Cedar House fixture uses southern and eastern hemispheres.
+    expect(formatContextCoordinate(-35.1234, 120.5678)).toBe('35.1234°S, 120.5678°E');
     expect(formatContextCoordinate(48.8584, -2.2945)).toBe('48.8584°N, 2.2945°W');
   });
 
   it("composes Immich's own reverse-geocoded fields, the way DetailPanelLocation does", () => {
-    expect(formatImmichPlaceLocation({ city: 'Gulmarrad', state: 'New South Wales', country: 'Australia' })).toBe(
-      'Gulmarrad, New South Wales, Australia',
+    expect(formatImmichPlaceLocation({ city: 'Willow', state: 'Cedar Region', country: 'Exampleland' })).toBe(
+      'Willow, Cedar Region, Exampleland',
     );
     // Partial geocoding is normal; skip the blanks rather than leaving commas.
     expect(formatImmichPlaceLocation({ city: null, state: '  ', country: 'Australia' })).toBe('Australia');
@@ -434,30 +499,30 @@ describe('place location labels', () => {
   it('prefers the containing hierarchy over everything, because it is owner-defined truth', () => {
     expect(
       contextPlaceLocationLabel(
-        place({ latitude: -29.491_547, longitude: 153.231_453 }),
-        ['Australia', 'New South Wales', "Parent's Home"],
-        'Gulmarrad, New South Wales, Australia',
+        place({ latitude: -35.1234, longitude: 120.5678 }),
+        ['Exampleland', 'Cedar Region', 'Cedar House'],
+        'Willow, Cedar Region, Exampleland',
       ),
-    ).toBe('Australia / New South Wales');
+    ).toBe('Exampleland / Cedar Region');
   });
 
   it("prefers Immich's geocoded name over raw coordinates when there is no hierarchy", () => {
     expect(
       contextPlaceLocationLabel(
-        place({ latitude: -29.491_547, longitude: 153.231_453 }),
-        ["Parent's Home"],
-        'Gulmarrad, New South Wales, Australia',
+        place({ latitude: -35.1234, longitude: 120.5678 }),
+        ['Cedar House'],
+        'Willow, Cedar Region, Exampleland',
       ),
-    ).toBe('Gulmarrad, New South Wales, Australia');
+    ).toBe('Willow, Cedar Region, Exampleland');
   });
 
   it('falls back to coordinates only when Immich has no geocoded name', () => {
-    expect(contextPlaceLocationLabel(place({ latitude: -29.491_547, longitude: 153.231_453 }), ["Parent's Home"])).toBe(
-      '29.4915°S, 153.2315°E',
+    expect(contextPlaceLocationLabel(place({ latitude: -35.1234, longitude: 120.5678 }), ['Cedar House'])).toBe(
+      '35.1234°S, 120.5678°E',
     );
-    expect(
-      contextPlaceLocationLabel(place({ latitude: -29.491_547, longitude: 153.231_453 }), ["Parent's Home"], '   '),
-    ).toBe('29.4915°S, 153.2315°E');
+    expect(contextPlaceLocationLabel(place({ latitude: -35.1234, longitude: 120.5678 }), ['Cedar House'], '   ')).toBe(
+      '35.1234°S, 120.5678°E',
+    );
   });
 
   it('describes areas by centre and routes by start plus point count', () => {
@@ -501,13 +566,13 @@ describe('named context detail routes', () => {
   });
 
   it('builds a named place href carrying the id, with no family param needed', () => {
-    expect(getContextDetailHref(at('/cimmich/places?family=places'), 'places', 'place_1', "Parent's Home")).toBe(
-      "/cimmich/places/Parent's%20Home?placeId=place_1",
+    expect(getContextDetailHref(at('/cimmich/places?family=places'), 'places', 'place_1', 'Cedar House')).toBe(
+      '/cimmich/places/Cedar%20House?placeId=place_1',
     );
   });
 
   it('builds data-derived country pages and keeps a country root in its own group', () => {
-    expect(contextPlaceCountryLabel('Gulmarrad, New South Wales, Australia')).toBe('Australia');
+    expect(contextPlaceCountryLabel('Willow, Cedar Region, Exampleland')).toBe('Exampleland');
     expect(contextPlaceCountryLabel('Australia')).toBe('Australia');
     expect(getContextGeographyGroupHref(at('/cimmich/places?family=places'), 'New Zealand')).toBe(
       '/cimmich/places/New%20Zealand?geographyGroup=New+Zealand',
@@ -573,11 +638,11 @@ describe('named context detail routes', () => {
 
   it('resolves by id first, then by name, so a name-only link still lands', () => {
     const entities = [
-      { displayName: "Parent's Home", entityId: 'place_1' },
+      { displayName: 'Cedar House', entityId: 'place_1' },
       { displayName: 'Beach House', entityId: 'place_2' },
     ];
     expect(resolveContextRouteEntity(entities, { entityId: 'place_2' })?.entityId).toBe('place_2');
-    expect(resolveContextRouteEntity(entities, { name: "  parent's home  " })?.entityId).toBe('place_1');
+    expect(resolveContextRouteEntity(entities, { name: '  cedar house  ' })?.entityId).toBe('place_1');
     // A stale id must not strand a still-valid name.
     expect(resolveContextRouteEntity(entities, { entityId: 'place_gone', name: 'Beach House' })?.entityId).toBe(
       'place_2',

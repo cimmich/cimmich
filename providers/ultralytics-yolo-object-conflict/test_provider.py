@@ -48,6 +48,11 @@ def digest(value):
 
 
 class ProviderTest(unittest.TestCase):
+    def test_decoded_image_dimensions_are_bounded(self):
+        image = type("Image", (), {"size": (provider.MAX_DECODED_DIMENSION + 1, 1)})()
+        with self.assertRaisesRegex(provider.ProviderError, "decoded pixel bound"):
+            provider.validate_image_dimensions(image)
+
     def fixture(self):
         root = Path(tempfile.mkdtemp())
         model = root / "objects.pt"

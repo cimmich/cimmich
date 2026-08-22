@@ -351,7 +351,6 @@ case ${1:-} in
     test "$#" -eq 1 || fail "--status does not accept another argument"
     check_requirements false
     export CIMMICH_COMPANION_STATE_ROOT=$STATE_ROOT
-    export CIMMICH_COMPANION_PROJECT=$PROJECT
     "$COMPANION" status
     finished=true
     exit 0
@@ -361,7 +360,6 @@ case ${1:-} in
     show_recovery=true
     check_requirements false
     export CIMMICH_COMPANION_STATE_ROOT=$STATE_ROOT
-    export CIMMICH_COMPANION_PROJECT=$PROJECT
     "$COMPANION" up
     complete_private_password_after_resume
     print_install_success

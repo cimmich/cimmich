@@ -370,10 +370,10 @@
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">These files have a match in another folder.</p>
         </div>
         <div class="bg-white p-5 dark:bg-immich-dark-bg">
-          <dt class="text-sm font-semibold text-amber-700 dark:text-amber-300">No match elsewhere</dt>
+          <dt class="text-sm font-semibold text-amber-700 dark:text-amber-300">Unique to this folder</dt>
           <dd class="mt-1 text-2xl font-semibold">{overlap.uniqueAssets.length.toLocaleString()}</dd>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            No current exact or visual match outside this folder.
+            No current exact or visual match anywhere else. Repeats within this folder are counted separately.
           </p>
         </div>
         <div class="bg-white p-5 dark:bg-immich-dark-bg">
@@ -680,7 +680,7 @@
         class="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-immich-dark-gray dark:bg-immich-dark-bg"
       >
         <summary class="cursor-pointer px-5 py-4 font-semibold"
-          >No match elsewhere ({overlap.uniqueAssets.length.toLocaleString()})</summary
+          >Unique to this folder ({overlap.uniqueAssets.length.toLocaleString()})</summary
         >
         <div class="grid gap-3 border-t border-gray-100 p-4 sm:grid-cols-2 lg:grid-cols-4 dark:border-immich-dark-gray">
           {#each overlap.uniqueAssets.slice(0, visibleUniqueCount) as asset (asset.id)}

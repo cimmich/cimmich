@@ -9,21 +9,21 @@ import {
 
 describe('folder album manifest', () => {
   it('keeps an unknown collection acronym beside the humanized month', () => {
-    expect(folderAlbumTitle('/library/Set_One/Photos/2011_August - PP')).toBe('PP Aug 2011');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/2011_August - CH')).toBe('CH Aug 2011');
   });
 
   it('keeps nested period context and a human qualifier', () => {
-    expect(folderAlbumTitle('/library/Set_One/Photos/2015 - PP/September/Week 1')).toBe('PP Sep 2015 · Week 1');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/2015 - CH/September/Week 1')).toBe('CH Sep 2015 · Week 1');
   });
 
   it('renders combined month folders as an intentional date range', () => {
-    expect(folderAlbumTitle('/library/Set_One/Photos/2012 - PP AC/JanMarch')).toBe('PP AC Jan–Mar 2012');
-    expect(folderAlbumTitle('/library/Set_One/Photos/2012 - PP AC/NovDec')).toBe('PP AC Nov–Dec 2012');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/2012 - CH WH/JanMarch')).toBe('CH WH Jan–Mar 2012');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/2012 - CH WH/NovDec')).toBe('CH WH Nov–Dec 2012');
   });
 
   it('preserves unknown owner acronyms instead of inventing meanings', () => {
-    expect(folderAlbumTitle('/library/Set_One/Photos/2014_AC')).toBe('AC 2014');
-    expect(folderAlbumTitle('/library/Set_One/Photos/AC')).toBe('AC');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/2014_WH')).toBe('WH 2014');
+    expect(folderAlbumTitle('/library/Cedar_House/Photos/WH')).toBe('WH');
   });
 
   it('visibly qualifies repeated titles without merging folders', () => {
@@ -32,19 +32,19 @@ describe('folder album manifest', () => {
         {
           assetIds: ['a'],
           include: true,
-          sourcePath: '/library/Set_One/2011_August - PP',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Cedar_House/2011_August - CH',
+          title: 'CH Aug 2011',
         },
         {
           assetIds: ['b'],
           include: true,
-          sourcePath: '/library/Set_Two/2011_August - PP',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Willow_House/2011_August - CH',
+          title: 'CH Aug 2011',
         },
       ],
       '/library',
     );
-    expect(rows.map(({ title }) => title)).toEqual(['PP Aug 2011 · Set One', 'PP Aug 2011 · Set Two']);
+    expect(rows.map(({ title }) => title)).toEqual(['CH Aug 2011 · Cedar House', 'CH Aug 2011 · Willow House']);
     expect(rows.every(({ collisionSource }) => collisionSource)).toBe(true);
   });
 
@@ -54,35 +54,35 @@ describe('folder album manifest', () => {
         {
           assetIds: ['north'],
           include: true,
-          sourcePath: '/library/Archive/Set_One/Photos/2011_August - PP',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Archive/Cedar_House/Photos/2011_August - CH',
+          title: 'CH Aug 2011',
         },
         {
           assetIds: ['one'],
           include: true,
-          sourcePath: '/library/Archive/Set_Archive/Photos/2011 - PP/August_1',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Archive/Orchard_House/Photos/2011 - CH/August_1',
+          title: 'CH Aug 2011',
         },
         {
           assetIds: ['two'],
           include: true,
-          sourcePath: '/library/Archive/Set_Archive/Photos/2011 - PP/August_2',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Archive/Orchard_House/Photos/2011 - CH/August_2',
+          title: 'CH Aug 2011',
         },
         {
           assetIds: ['media'],
           include: true,
-          sourcePath: '/library/Media/Archive/Set_One/Photos/2011_August - PP',
-          title: 'PP Aug 2011',
+          sourcePath: '/library/Media/Archive/Cedar_House/Photos/2011_August - CH',
+          title: 'CH Aug 2011',
         },
       ],
       '/library',
     );
     expect(rows.map(({ title }) => title)).toEqual([
-      'PP Aug 2011 · Set One',
-      'PP Aug 2011 · Set Archive · August 1',
-      'PP Aug 2011 · Set Archive · August 2',
-      'PP Aug 2011 · Media · Set One',
+      'CH Aug 2011 · Cedar House',
+      'CH Aug 2011 · Orchard House · August 1',
+      'CH Aug 2011 · Orchard House · August 2',
+      'CH Aug 2011 · Media · Cedar House',
     ]);
   });
 
@@ -92,19 +92,22 @@ describe('folder album manifest', () => {
         {
           assetIds: ['north'],
           include: true,
-          sourcePath: '/library/Archive/Set_One/Photos/2012 - PP AC/JanMarch',
-          title: 'PP Jan–Mar 2012',
+          sourcePath: '/library/Archive/Cedar_House/Photos/2012 - CH WH/JanMarch',
+          title: 'CH Jan–Mar 2012',
         },
         {
           assetIds: ['other'],
           include: true,
-          sourcePath: '/library/Archive/Set_Archive/Photos/2012 - PP/JanMarch',
-          title: 'PP Jan–Mar 2012',
+          sourcePath: '/library/Archive/Orchard_House/Photos/2012 - CH/JanMarch',
+          title: 'CH Jan–Mar 2012',
         },
       ],
       '/library',
     );
-    expect(rows.map(({ title }) => title)).toEqual(['PP Jan–Mar 2012 · Set One · AC', 'PP Jan–Mar 2012 · Set Archive']);
+    expect(rows.map(({ title }) => title)).toEqual([
+      'CH Jan–Mar 2012 · Cedar House · WH',
+      'CH Jan–Mar 2012 · Orchard House',
+    ]);
   });
 
   it('blocks empty and duplicate included titles but ignores excluded rows', () => {

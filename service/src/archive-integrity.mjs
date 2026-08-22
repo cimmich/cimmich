@@ -2,6 +2,7 @@ import {
   createArchiveBackupScanner,
   parseArchiveBackupTargets,
 } from "./archive-backup-scanner.mjs";
+import { createArchiveMissingFileStore } from "./archive-missing-files.mjs";
 
 export const archiveIntegritySchemaVersion = "cimmich.archive-integrity.v1";
 export const archiveBackupProofSchemaVersion =
@@ -207,8 +208,10 @@ export const createArchiveIntegrityStore = (
       { sourceStorageDomain },
     ),
   });
+  const missingFiles = createArchiveMissingFileStore(sql);
 
   return {
+    ...missingFiles,
     async archiveIntegrityDatabaseBackupStatus() {
       return databaseBackup.status();
     },

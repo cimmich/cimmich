@@ -43,6 +43,7 @@
   } from '@mdi/js';
   import { Icon } from '@immich/ui';
   import { tick } from 'svelte';
+  import CimmichRelationshipEditor from './CimmichRelationshipEditor.svelte';
   import { keyboardTabs } from './keyboard-tabs';
 
   type EditorView = 'defaults' | 'display' | 'profile';
@@ -154,7 +155,7 @@
   let privateNotesDraft = $state('');
   let privateNotesEditorElement = $state<HTMLTextAreaElement>();
   let pronounsDraft = $state('');
-  let relationshipEditorElement = $state<HTMLFieldSetElement>();
+  let relationshipEditorElement = $state<HTMLDivElement>();
   let relationshipDraft = $state<string[]>([]);
   let removeConfirmId = $state('');
 
@@ -1441,19 +1442,15 @@
             ></textarea>
           </label>
 
-          <fieldset class="grid gap-2" bind:this={relationshipEditorElement}>
-            <legend class="text-sm font-semibold">Relationship</legend>
-            <div class="flex flex-wrap gap-2">
-              {#each profile.relationshipCatalog as category (category.categoryId)}
-                <button
-                  class={`min-h-11 rounded-full border px-4 text-sm font-medium ${relationshipDraft.includes(category.categoryId) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 hover:border-gray-500 dark:border-immich-dark-gray'}`}
-                  type="button"
-                  aria-pressed={relationshipDraft.includes(category.categoryId)}
-                  onclick={() => toggleRelationship(category.categoryId)}>{category.name}</button
-                >
-              {/each}
-            </div>
-          </fieldset>
+          <div bind:this={relationshipEditorElement}>
+            <CimmichRelationshipEditor
+              {onprofilechange}
+              onselectedchange={(value) => (relationshipDraft = value)}
+              ontoggle={toggleRelationship}
+              {profile}
+              selectedIds={relationshipDraft}
+            />
+          </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="grid gap-2 text-sm font-semibold">
@@ -1927,19 +1924,15 @@
           </div>
           {#if inlineTarget === 'at_a_glance'}
             <div class="mt-4 grid gap-4">
-              <fieldset class="grid gap-2" bind:this={relationshipEditorElement}>
-                <legend class="text-sm font-semibold">Relationship</legend>
-                <div class="flex flex-wrap gap-2">
-                  {#each profile.relationshipCatalog as category (category.categoryId)}
-                    <button
-                      class={`min-h-11 rounded-full border px-4 text-sm font-medium ${relationshipDraft.includes(category.categoryId) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 hover:border-gray-500 dark:border-immich-dark-gray'}`}
-                      type="button"
-                      aria-pressed={relationshipDraft.includes(category.categoryId)}
-                      onclick={() => toggleRelationship(category.categoryId)}>{category.name}</button
-                    >
-                  {/each}
-                </div>
-              </fieldset>
+              <div bind:this={relationshipEditorElement}>
+                <CimmichRelationshipEditor
+                  {onprofilechange}
+                  onselectedchange={(value) => (relationshipDraft = value)}
+                  ontoggle={toggleRelationship}
+                  {profile}
+                  selectedIds={relationshipDraft}
+                />
+              </div>
               <div class="grid gap-4 sm:grid-cols-2">
                 <label class="grid gap-2 text-sm font-semibold">
                   Gender identity

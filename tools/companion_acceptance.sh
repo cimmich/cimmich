@@ -7,9 +7,11 @@ STOCK_COMPOSE="$ROOT/ops/stock-immich-v3.1.0.compose.yml"
 RUN_ID=${CIMMICH_COMPANION_ACCEPTANCE_RUN_ID:-$$}
 STOCK_PROJECT="cimmich-companion-stock-${RUN_ID}"
 COMPANION_PROJECT="cimmich-companion-acceptance-${RUN_ID}"
+COLLISION_PROJECT="cimmich-companion-collision-${RUN_ID}"
 STAGE="/private/tmp/${COMPANION_PROJECT}"
 STOCK_STAGE="/private/tmp/${STOCK_PROJECT}"
 STATE_ROOT="$STAGE/state"
+COLLISION_STATE_ROOT="$STAGE/collision-state"
 BACKUP_ROOT="$STAGE/${COMPANION_PROJECT}-backup"
 PORTABLE_ROOT="$STAGE/${COMPANION_PROJECT}-portable"
 RECEIPT="$STAGE/immich-bootstrap.json"
@@ -32,6 +34,7 @@ cleanup() {
     "$ROOT/tools/companion.sh" remove "--confirm=$COMPANION_PROJECT" >/dev/null 2>&1 || true
   docker compose --project-name "$STOCK_PROJECT" --file "$STOCK_COMPOSE" \
     down --volumes --remove-orphans >/dev/null 2>&1 || true
+  docker volume rm "$COLLISION_PROJECT-database" >/dev/null 2>&1 || true
   rm -rf "$STAGE" "$STOCK_STAGE"
   return "$status"
 }
@@ -95,6 +98,19 @@ node -e \
   "const fs=require('fs');const v=JSON.parse(fs.readFileSync(process.argv[1]));fs.writeFileSync(process.argv[2],v.apiKey+'\n',{mode:0o600})" \
   "$RECEIPT" "$API_KEY_FILE"
 
+docker volume create "$COLLISION_PROJECT-database" >/dev/null
+if CIMMICH_COMPANION_STATE_ROOT="$COLLISION_STATE_ROOT" \
+  CIMMICH_COMPANION_PROJECT="$COLLISION_PROJECT" \
+  "$ROOT/tools/companion.sh" configure \
+    "http://host.docker.internal:${IMMICH_PORT}" > "$STAGE/collision.txt" 2>&1; then
+  printf 'pre-existing Docker project resource was not rejected\n' >&2
+  exit 1
+fi
+grep -q 'Docker resources already use project' "$STAGE/collision.txt"
+test ! -e "$COLLISION_STATE_ROOT/runtime.env"
+docker volume rm "$COLLISION_PROJECT-database" >/dev/null
+printf 'phase=project-collision-denial result=PASS\n'
+
 export CIMMICH_COMPANION_STATE_ROOT="$STATE_ROOT"
 export CIMMICH_COMPANION_PROJECT="$COMPANION_PROJECT"
 export CIMMICH_COMPANION_API_PORT="$API_PORT"
@@ -152,6 +168,16 @@ owner_request() {
 printf 'phase=companion-configure result=PASS\n'
 "$ROOT/tools/companion.sh" up >/dev/null
 printf 'phase=companion-up result=PASS\n'
+unset CIMMICH_COMPANION_PROJECT
+"$ROOT/tools/companion.sh" status >/dev/null
+if CIMMICH_COMPANION_PROJECT="${COMPANION_PROJECT}-wrong" \
+  "$ROOT/tools/companion.sh" status > "$STAGE/project-mismatch.txt" 2>&1; then
+  printf 'caller project mismatch was not rejected\n' >&2
+  exit 1
+fi
+grep -q 'does not match configured project' "$STAGE/project-mismatch.txt"
+export CIMMICH_COMPANION_PROJECT="$COMPANION_PROJECT"
+printf 'phase=durable-project-identity result=PASS\n'
 onboarding_status=$(owner_request GET /v1/onboarding/immich)
 printf '%s' "$onboarding_status" | grep -q '"permissionVerification":"verified"'
 printf '%s' "$onboarding_status" | grep -q '"next":"preview"'
@@ -264,8 +290,37 @@ curl --fail --silent --show-error "http://127.0.0.1:${UI_PORT}/api/server/versio
 
 companion_compose exec -T cimmich-api sh -c \
   'cp /app/providers/opencv-sface/provider-manifest.json /config/cimmich-matching-provider.json'
-"$ROOT/tools/companion.sh" backup "$BACKUP_ROOT" >/dev/null
+companion_compose exec -T cimmich-api sh -c \
+  'mkdir -p /documents/release-acceptance && printf "original-document-bytes\n" > /documents/release-acceptance/exact.txt && dd if=/dev/zero of=/documents/release-acceptance/quiesce-padding.bin bs=1048576 count=32 2>/dev/null'
+EXACT_PERSON_ID=$(companion_compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+  "SELECT person_id FROM person WHERE status='active' ORDER BY person_id LIMIT 1")
+EXACT_PERSON_NAME=$(companion_compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+  "SELECT display_name FROM person WHERE person_id='$EXACT_PERSON_ID'")
+"$ROOT/tools/companion.sh" backup "$BACKUP_ROOT" > "$STAGE/backup.json" &
+backup_pid=$!
+observed_quiesce=false
+i=0
+while kill -0 "$backup_pid" >/dev/null 2>&1; do
+  if ! companion_compose ps --status running --services | grep -qx cimmich-api; then
+    observed_quiesce=true
+    if companion_compose exec -T cimmich-api sh -c \
+      'printf "concurrent-mutation\n" > /documents/release-acceptance/exact.txt' \
+      > "$STAGE/quiesced-mutation.txt" 2>&1; then
+      printf 'Document mutation succeeded while backup was quiesced\n' >&2
+      exit 1
+    fi
+    break
+  fi
+  i=$((i + 1))
+  test "$i" -lt 600 || break
+  sleep 0.1
+done
+wait "$backup_pid"
+test "$observed_quiesce" = true
 "$ROOT/tools/companion.sh" portable-export "$PORTABLE_ROOT" >/dev/null
+grep -q '"snapshotProtocol":"cimmich.quiesced-db-documents.v1"' "$BACKUP_ROOT/manifest.json"
+grep -q '"documentStateDigest":"[0-9a-f]\{64\}"' "$BACKUP_ROOT/manifest.json"
+printf 'phase=quiesced-db-documents-snapshot result=PASS\n'
 test ! -e "$PORTABLE_ROOT/config.tgz"
 test ! -e "$PORTABLE_ROOT/face-provider.tgz"
 test "$(awk 'NF == 2 { print $2 }' "$PORTABLE_ROOT/SHA256SUMS" | sort | tr '\n' ':')" = \
@@ -363,6 +418,11 @@ assert_restore_rejected_preserves_state checksum-mismatch
 cp "$SECURITY_PROOF/cimmich.dump" "$BACKUP_ROOT/cimmich.dump"
 cp "$SECURITY_PROOF/SHA256SUMS" "$BACKUP_ROOT/SHA256SUMS"
 
+companion_compose exec -T cimmich-database psql -v ON_ERROR_STOP=1 -U cimmich -d cimmich -c \
+  "UPDATE person SET display_name='same-count-post-backup-mutation' WHERE person_id='$EXACT_PERSON_ID'" >/dev/null
+companion_compose exec -T cimmich-api sh -c \
+  'printf "post-backup-document-mutation\n" > /documents/release-acceptance/exact.txt'
+
 "$ROOT/tools/companion.sh" disable >/dev/null
 curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/version" |
   grep -q '"minor":1'
@@ -370,6 +430,11 @@ curl --fail --silent --show-error "http://127.0.0.1:${IMMICH_PORT}/api/server/ve
 "$ROOT/tools/companion.sh" restore "$BACKUP_ROOT" \
   "--confirm=$COMPANION_PROJECT" >/dev/null
 "$ROOT/tools/companion.sh" status >/dev/null
+test "$(companion_compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+  "SELECT display_name FROM person WHERE person_id='$EXACT_PERSON_ID'")" = "$EXACT_PERSON_NAME"
+test "$(companion_compose exec -T cimmich-api sh -c \
+  'cat /documents/release-acceptance/exact.txt')" = original-document-bytes
+printf 'phase=exact-content-restore result=PASS\n'
 "$ROOT/tools/companion.sh" portable-restore "$PORTABLE_ROOT" \
   "--confirm=$COMPANION_PROJECT" >/dev/null
 "$ROOT/tools/companion.sh" status >/dev/null

@@ -92,4 +92,20 @@ describe('CimmichViewingMode preference restoration', () => {
 
     await waitFor(() => expect(localStorage.getItem(CIMMICH_VIEWING_MODE_PREFERENCE_KEY)).toBe('personal'));
   });
+
+  it('refreshes from server truth when another tab changes the viewing mode preference', async () => {
+    const { findByRole } = render(CimmichViewingMode);
+    await findByRole('button', { name: 'Viewing mode: Private' });
+    service.getStatus.mockResolvedValue(service.status('personal'));
+    localStorage.setItem(CIMMICH_VIEWING_MODE_PREFERENCE_KEY, 'personal');
+
+    globalThis.dispatchEvent(
+      new StorageEvent('storage', {
+        key: CIMMICH_VIEWING_MODE_PREFERENCE_KEY,
+        newValue: 'personal',
+      }),
+    );
+
+    expect(await findByRole('button', { name: 'Viewing mode: Personal' })).toBeVisible();
+  });
 });

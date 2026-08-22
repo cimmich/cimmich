@@ -4,18 +4,18 @@ import test from "node:test";
 import { createAddressGeocoder } from "../src/address-geocoding.mjs";
 
 const feature = (overrides = {}) => ({
-  geometry: { coordinates: [153.12, -29.47], type: "Point" },
+  geometry: { coordinates: [120.57, -35.12], type: "Point" },
   properties: {
-    city: "Gulmarrad",
-    country: "Australia",
+    city: "Willow",
+    country: "Exampleland",
     housenumber: "12",
-    name: "River Street",
+    name: "Cedar Lane",
     osm_id: 42,
     osm_key: "place",
     osm_type: "N",
-    postcode: "2463",
-    state: "New South Wales",
-    street: "River Street",
+    postcode: "0000",
+    state: "Cedar Region",
+    street: "Cedar Lane",
     type: "house",
     ...overrides,
   },
@@ -32,9 +32,9 @@ test("Photon results are bounded, attributed, deterministic and cached by digest
   });
   const first = await geocoder.search({
     limit: 5,
-    query: "  12  River Street ",
+    query: "  12  Cedar Lane ",
   });
-  const second = await geocoder.search({ limit: 5, query: "12 River Street" });
+  const second = await geocoder.search({ limit: 5, query: "12 Cedar Lane" });
   assert.deepEqual(first, second);
   assert.equal(calls.length, 1);
   assert.equal(first.schemaVersion, "cimmich.address-geocoding.v1");
@@ -42,12 +42,12 @@ test("Photon results are bounded, attributed, deterministic and cached by digest
   assert.equal(first.items[0].precision, "address");
   assert.equal(first.items[0].matchQuality, "exact");
   assert.equal(first.items[0].matchReason, "exact_address");
-  assert.equal(first.items[0].addressLine, "12 River Street");
+  assert.equal(first.items[0].addressLine, "12 Cedar Lane");
   assert.equal(first.attribution.label, "© OpenStreetMap contributors");
   assert.match(calls[0], /photon\.komoot\.io/);
   assert.match(calls[0], /\/structured\?/);
   assert.match(calls[0], /housenumber=12/);
-  assert.match(calls[0], /street=River\+Street/);
+  assert.match(calls[0], /street=Cedar\+Lane/);
 });
 
 test("structured-first exactness rejects the Bennelong false positive", async () => {
@@ -129,10 +129,12 @@ test("the Epping control resolves once as a query-consistent exact address", asy
           features: [
             feature({
               city: "Sydney",
+              country: "Australia",
               district: "Lane Cove North",
               housenumber: "15",
               name: "Epping Road",
               postcode: "2066",
+              state: "New South Wales",
               street: "Epping Road",
             }),
           ],
@@ -179,10 +181,12 @@ test("unit, range, alphanumeric and comma forms retain conservative exactness", 
             features: [
               feature({
                 city: "Sydney",
+                country: "Australia",
                 district: "Lane Cove",
                 housenumber: entry.providerNumber,
                 name: "Epping Road",
                 postcode: "2066",
+                state: "New South Wales",
                 street: "Epping Road",
               }),
             ],

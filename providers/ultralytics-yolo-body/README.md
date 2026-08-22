@@ -9,8 +9,8 @@ checkpoint. The Cedar House validation artifact remains local-only because its
 download/provenance record is incomplete even though its filename matches an
 Ultralytics model.
 
-The accepted X1 profile is the 1024px detector for small and crowded people.
-On the representative private slice it completed 11 photos in about 0.61 seconds
+The accepted reference-host profile is the 1024px detector for small and
+crowded people. On the representative private slice it completed 11 photos in about 0.61 seconds
 after warm-up at four CPU threads, retained more true people than 640px, and
 kept the empty landscape negative empty. Pose/keypoint enrichment is a distinct
 replaceable stage; this detector does not pretend a detection-only checkpoint

@@ -1,4 +1,14 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import {
+  cleanContextActor as cleanActor,
+  cleanContextCommandId as cleanCommandId,
+  contextCommandDigest as digest,
+} from "./context-command-contract.mjs";
+import {
+  contextEntityLabels as entityLabels,
+  contextTargetKindByRelationKind as targetKindByRelationKind,
+} from "./context-entity-kinds.mjs";
+import { loadContextRelationProjections } from "./context-relation-projections.mjs";
 
 const schemaVersion = "cimmich.context-entity.v1";
 const eventCoverSchemaVersion = "cimmich.event-cover.v1";
@@ -12,22 +22,14 @@ const coverSchemaVersions = Object.freeze({
   object: objectCoverSchemaVersion,
   place: placeCoverSchemaVersion,
 });
-const entityLabels = Object.freeze({
-  event: "Event",
-  object: "Thing",
-  place: "Place",
-});
 const entityKinds = new Set(["place", "object", "event"]);
 const typedKinds = {
   event: new Set(["trip", "event", "activity", "life_period"]),
-  object: new Set([
-    "vehicle",
-    "property",
-    "device",
-    "collectible",
-    "equipment",
-    "other",
-  ]),
+  object: new Set(
+    "vehicle property device collectible equipment organisation group other".split(
+      " ",
+    ),
+  ),
   place: new Set(["point", "area", "route", "unlocated"]),
 };
 const datePrecisions = new Set([
@@ -58,12 +60,6 @@ const relationKinds = new Set([
   "related",
 ]);
 const targetKinds = new Set(["person", "pet", "place", "object", "event"]);
-const targetKindByRelationKind = Object.freeze({
-  companion: "pet",
-  location: "place",
-  object: "object",
-  participant: "person",
-});
 
 const typedError = (message, statusCode, code, details) =>
   Object.assign(new Error(message), {
@@ -71,47 +67,6 @@ const typedError = (message, statusCode, code, details) =>
     statusCode,
     ...(details ? { details } : {}),
   });
-
-const canonicalValue = (value) => {
-  if (Array.isArray(value)) return value.map(canonicalValue);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, nested]) => [key, canonicalValue(nested)]),
-    );
-  }
-  return value;
-};
-
-const digest = (value) =>
-  createHash("sha256")
-    .update(JSON.stringify(canonicalValue(value)))
-    .digest("hex");
-
-const cleanActor = (value) => {
-  const actor = String(value || "").trim();
-  if (!actor || actor.length > 120) {
-    throw typedError(
-      "A Cimmich actor of 1 to 120 characters is required",
-      400,
-      "CONTEXT_ACTOR_REQUIRED",
-    );
-  }
-  return actor;
-};
-
-const cleanCommandId = (value) => {
-  const commandId = String(value || "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,119}$/.test(commandId)) {
-    throw typedError(
-      "A stable commandId of 8 to 120 safe characters is required",
-      400,
-      "CONTEXT_COMMAND_ID_INVALID",
-    );
-  }
-  return commandId;
-};
 
 const cleanEntityId = (value, field = "entityId") => {
   const entityId = String(value || "").trim();
@@ -859,9 +814,33 @@ const canonicalAliases = (aliases) =>
       left.localeCompare(right),
   );
 
+const cleanCoverCrop = (value) => {
+  if (value === undefined || value === null) return null;
+  const crop = Object.fromEntries(
+    ["x", "y", "w", "h"].map((key) => [key, Number(value?.[key])]),
+  );
+  if (
+    Object.values(crop).some((number) => !Number.isFinite(number)) ||
+    crop.x < 0 ||
+    crop.y < 0 ||
+    crop.w <= 0 ||
+    crop.h <= 0 ||
+    crop.x + crop.w > 1.000001 ||
+    crop.y + crop.h > 1.000001
+  ) {
+    throw typedError(
+      "coverCrop must be a normalized x/y/w/h box",
+      400,
+      "CONTEXT_COVER_CROP_INVALID",
+    );
+  }
+  return crop;
+};
+
 const entityStateSnapshot = (row, aliases) => ({
   aliases: canonicalAliases(aliases),
   coverAssetId: row.cover_asset_id || null,
+  coverCrop: row.cover_crop || null,
   dateEnd: projectDate(row.date_end),
   datePrecision: row.date_precision,
   dateStart: projectDate(row.date_start),
@@ -909,6 +888,7 @@ const projectEntityRow = (row, { bridgeFields } = {}) => ({
     row.effective_cover_asset_id ?? row.cover_asset_id,
     bridgeFields,
   ),
+  coverCrop: row.cover_crop || null,
   coverMode:
     row.selected_cover_asset_id &&
     row.selected_cover_asset_id ===
@@ -1224,23 +1204,11 @@ const loadDetail = async (
     ORDER BY link.relation_kind, lower(coalesce(subject.display_name, target.display_name, '')),
       link.target_id
   `;
-  // Related context connections are conceptually symmetric even though the
-  // append-only relation ledger has one owning side. Project the inverse so a
-  // Thing→Event or Thing→Place connection is visible from both memories
-  // without manufacturing a second persisted edge.
-  const incomingContextRelations = await executor`
-          SELECT link.link_id, source.entity_kind AS target_kind,
-            source.entity_id AS target_id, link.relation_kind,
-            link.created_at, link.sort_order, source.display_name AS target_name
-          FROM current_context_relation link
-          JOIN context_entity source ON source.entity_id = link.entity_id
-            AND source.status IN ('active','hidden')
-          WHERE link.target_kind = ${entity.entity_kind}
-            AND link.target_id = ${entity.entity_id}
-            AND link.relation_kind = 'related'
-            AND cimmich_visibility_context_entity_rank(source.entity_id) <= ${presentationRank()}
-          ORDER BY source.entity_kind, lower(source.display_name), source.entity_id
-        `;
+  const projectedRelations = await loadContextRelationProjections({
+    entity,
+    executor,
+    presentationRank: presentationRank(),
+  });
   const projectedSubtreeAssets = subtreeAssets.map((row) => ({
     assetId: row.asset_id,
     assignedEntityIds: row.assigned_entity_ids || [],
@@ -1299,11 +1267,12 @@ const loadDetail = async (
       );
     })(),
     relations: [
-      ...relations.map((row) => ({ ...row, direction: "outgoing" })),
-      ...incomingContextRelations.map((row) => ({
+      ...relations.map((row) => ({
         ...row,
-        direction: "incoming",
+        direction: "outgoing",
+        relation_origin: "context_relation",
       })),
+      ...projectedRelations,
     ]
       .filter(
         (row, index, rows) =>
@@ -1311,14 +1280,18 @@ const loadDetail = async (
             (candidate) =>
               candidate.target_kind === row.target_kind &&
               candidate.target_id === row.target_id &&
-              candidate.relation_kind === row.relation_kind,
+              candidate.relation_kind === row.relation_kind &&
+              candidate.relation_origin === row.relation_origin &&
+              candidate.relationship_label === row.relationship_label,
           ) === index,
       )
       .map((row) => ({
         direction: row.direction,
         linkedAt: row.created_at,
+        relationOrigin: row.relation_origin,
         relationId: row.link_id,
         relationKind: row.relation_kind,
+        relationshipLabel: row.relationship_label || null,
         sortOrder: row.sort_order === null ? null : Number(row.sort_order),
         targetId: row.target_id,
         targetKind: row.target_kind,
@@ -2840,12 +2813,14 @@ export const createContextEntityStore = (
     entityId,
     entityKind,
     expectedRevision,
+    coverCrop,
     sourceAssetId,
   }) => {
     const actor = cleanActor(actorId);
     const revision = cleanExpectedRevision(expectedRevision);
     const normalizedSourceAssetId =
       sourceAssetId === null ? null : String(sourceAssetId || "").trim();
+    const normalizedCoverCrop = cleanCoverCrop(coverCrop);
     if (
       sourceAssetId !== null &&
       (!normalizedSourceAssetId || normalizedSourceAssetId.length > 200)
@@ -2856,6 +2831,13 @@ export const createContextEntityStore = (
         "CONTEXT_COVER_INPUT_INVALID",
       );
     }
+    if (normalizedCoverCrop && !normalizedSourceAssetId) {
+      throw typedError(
+        "coverCrop requires sourceAssetId",
+        400,
+        "CONTEXT_COVER_ASSET_REQUIRED",
+      );
+    }
     return sql.begin(async (tx) => {
       const command = await beginCommand(tx, {
         actorId: actor,
@@ -2864,6 +2846,7 @@ export const createContextEntityStore = (
         payload: {
           entityId: cleanEntityId(entityId),
           expectedRevision: revision,
+          coverCrop: normalizedCoverCrop,
           sourceAssetId: normalizedSourceAssetId,
         },
       });
@@ -2912,7 +2895,11 @@ export const createContextEntityStore = (
         }
       }
       const previousCoverAssetId = entity.cover_asset_id || null;
-      if (previousCoverAssetId === nextCoverAssetId) {
+      const previousCoverCrop = entity.cover_crop || null;
+      if (
+        previousCoverAssetId === nextCoverAssetId &&
+        digest(previousCoverCrop) === digest(normalizedCoverCrop)
+      ) {
         const detail = await loadDetail(tx, {
           bridgeFields,
           entityId: entity.entity_id,
@@ -2942,7 +2929,9 @@ export const createContextEntityStore = (
         actorId: actor,
         entityId: entity.entity_id,
         note: nextCoverAssetId
-          ? `Set explicit ${entityLabels[entityKind]} cover`
+          ? previousCoverAssetId === nextCoverAssetId
+            ? `Update ${entityLabels[entityKind]} cover framing`
+            : `Set explicit ${entityLabels[entityKind]} cover`
           : `Restore automatic ${entityLabels[entityKind]} cover`,
         reasonCode: nextCoverAssetId
           ? `context_${entityKind}_cover_set`
@@ -2950,6 +2939,7 @@ export const createContextEntityStore = (
       });
       await tx`
         UPDATE context_entity SET cover_asset_id = ${nextCoverAssetId},
+          cover_crop = ${normalizedCoverCrop ? tx.json(normalizedCoverCrop) : null},
           revision = revision + 1, updated_at = now()
         WHERE entity_id = ${entity.entity_id}
       `;
@@ -2984,7 +2974,12 @@ export const createContextEntityStore = (
           ${`contextop_${randomUUID().replaceAll("-", "")}`},
           ${command.commandId}, ${entity.entity_id}, 'cover', 'set',
           ${decisionId}, 'active', ${tx.json([
-            { nextCoverAssetId, previousCoverAssetId },
+            {
+              nextCoverAssetId,
+              nextCoverCrop: normalizedCoverCrop,
+              previousCoverAssetId,
+              previousCoverCrop,
+            },
           ])}
         )
       `;
@@ -4037,7 +4032,9 @@ export const createContextEntityStore = (
         const [item] = snapshot;
         if (
           snapshot.length !== 1 ||
-          (entity.cover_asset_id || null) !== (item.nextCoverAssetId || null)
+          (entity.cover_asset_id || null) !== (item.nextCoverAssetId || null) ||
+          digest(entity.cover_crop || null) !==
+            digest(item.nextCoverCrop || null)
         ) {
           throw typedError(
             "Context projection changed after this decision",
@@ -4353,7 +4350,8 @@ export const createContextEntityStore = (
         } else if (operation.operation_scope === "cover") {
           await tx`
             UPDATE context_entity
-            SET cover_asset_id = ${item.previousCoverAssetId || null}
+            SET cover_asset_id = ${item.previousCoverAssetId || null},
+              cover_crop = ${item.previousCoverCrop ? tx.json(item.previousCoverCrop) : null}
             WHERE entity_id = ${entity.entity_id}
           `;
         } else if (operation.action === "create") {

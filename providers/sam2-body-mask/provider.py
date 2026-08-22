@@ -18,6 +18,8 @@ REQUEST_SCHEMA = "cimmich.sam2-body-mask-request.v1"
 RESULT_SCHEMA = "cimmich.body-mask-result.v1"
 MANIFEST_SCHEMA = "cimmich.body-mask-provider.v1"
 MAX_HEADER_BYTES = 1024 * 1024
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
 PUBLIC_ID = __import__("re").compile(r"^[a-z0-9](?:[a-z0-9._-]{0,95})$")
 
 
@@ -275,7 +277,17 @@ def execute(request: dict, image_bytes: bytes, manifest: dict, checkpoint: Path,
     from sam2.sam2_image_predictor import SAM2ImagePredictor
 
     try:
-        image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
+        Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
+        with Image.open(io.BytesIO(image_bytes)) as opened:
+            if (
+                opened.width < 1
+                or opened.height < 1
+                or opened.width > MAX_DECODED_DIMENSION
+                or opened.height > MAX_DECODED_DIMENSION
+                or opened.width * opened.height > MAX_DECODED_PIXELS
+            ):
+                raise ProviderError("source image exceeds its decoded pixel bound")
+            image = ImageOps.exif_transpose(opened).convert("RGB")
     except Exception as error:
         raise ProviderError("source image is invalid") from error
     width, height, _ = fit_size(image.width, image.height, manifest["mask"]["maxSide"])

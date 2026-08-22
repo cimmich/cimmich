@@ -57,7 +57,7 @@ installation path.
 
 ## Releases and verification
 
-- [Current named release: Community Preview 18](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.18)
+- [Current named release: Community Preview 19](https://github.com/cimmich/cimmich/releases/tag/v1.1.0-community-preview.19)
 - [Community Preview publication runbook](COMMUNITY_PREVIEW_PUBLICATION.md)
 - [Release-readiness record](RELEASE_READINESS.md)
 - [Public beta changelog](PUBLIC_BETA_CHANGELOG.md)

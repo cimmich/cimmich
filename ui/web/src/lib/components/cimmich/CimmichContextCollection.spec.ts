@@ -186,7 +186,7 @@ describe('Cimmich context collections', () => {
       entities: [
         entity({
           coverAssetId: 'asset_cover',
-          displayName: "Parent's Home",
+          displayName: 'Cedar House',
           entityId: 'place_home',
           entityKind: 'place',
           typeKind: 'point',
@@ -232,7 +232,7 @@ describe('Cimmich context collections', () => {
         }),
         entity({
           assetCount: 3,
-          displayName: "Parent's Home",
+          displayName: 'Cedar House',
           entityId: 'place_home',
           entityKind: 'place',
           placeRole: 'location',
@@ -250,7 +250,7 @@ describe('Cimmich context collections', () => {
     const { getAllByRole, getByRole, getByText, queryByText } = rendered;
 
     expect(getByRole('heading', { name: /^No geography set$/ })).toBeInTheDocument();
-    expect(getByText("Parent's Home")).toBeInTheDocument();
+    expect(getByText('Cedar House')).toBeInTheDocument();
     expect(queryByText('Each name is unique')).not.toBeInTheDocument();
     expect(queryByText('Zagreb, Croatia')).not.toBeInTheDocument();
 
@@ -269,7 +269,7 @@ describe('Cimmich context collections', () => {
       controlledPlaceView: 'geography',
     });
     await waitFor(() => expect(getByText('2 saved records need consolidation')).toBeInTheDocument());
-    expect(queryByText("Parent's Home")).not.toBeInTheDocument();
+    expect(queryByText('Cedar House')).not.toBeInTheDocument();
 
     await rendered.rerender({
       ...props,
@@ -290,7 +290,7 @@ describe('Cimmich context collections', () => {
       entity({
         assetCount: 3,
         childCount: 1,
-        displayName: "Parent's Home",
+        displayName: 'Cedar House',
         entityId: 'place_home',
         entityKind: 'place',
         subtreeAssetCount: 12,
@@ -315,8 +315,8 @@ describe('Cimmich context collections', () => {
       onOpen: vi.fn(),
     });
 
-    expect(main.getByRole('link', { name: /Parent's Home/ })).toHaveTextContent('12 photos');
-    expect(main.getByRole('link', { name: /Parent's Home/ })).toHaveTextContent('1 subplace');
+    expect(main.getByRole('link', { name: /Cedar House/ })).toHaveTextContent('12 photos');
+    expect(main.getByRole('link', { name: /Cedar House/ })).toHaveTextContent('1 subplace');
     expect(main.queryByRole('link', { name: /Yard/ })).not.toBeInTheDocument();
     main.unmount();
 

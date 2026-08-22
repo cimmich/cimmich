@@ -17,10 +17,13 @@ describe('app-wide Cimmich photo presentation boundary', () => {
 
   it('keeps direct viewers black until the current asset is admitted', () => {
     const viewer = source('src/lib/components/asset-viewer/AssetViewer.svelte');
+    const presentation = source('src/lib/managers/cimmich-asset-presentation-manager.ts');
     expect(viewer).toContain('{:else if !presentationAllowed}');
     expect(viewer).toContain('Photo hidden in this viewing mode');
     expect(viewer).toContain("{:else if viewerKind === 'StackVideoViewer'}");
     expect(viewer).toContain('presentationAllowed && assetViewerManager.isShowCimmichOverlay');
+    expect(presentation).toContain("'/v1/visibility/assets/viewable'");
+    expect(presentation).not.toContain("'/v1/visibility/assets/presentable'");
   });
 
   it('keeps exact subject viewers out of the full timeline while retaining bounded adjacent navigation', () => {

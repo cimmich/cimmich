@@ -5,6 +5,13 @@ import {
   normalizeContentFingerprint,
   sourceBindingId,
 } from "./archive-mobility.mjs";
+import { mapWithConcurrency } from "./bounded-map.mjs";
+import { recordImmichCataloguePresencePage } from "./immich-catalogue-presence.mjs";
+import { reconcileMobilityBindings } from "./immich-inventory-reconciliation.mjs";
+import {
+  projectInventoryLane as projectLane,
+  projectInventoryRun as projectRun,
+} from "./immich-inventory-projection.mjs";
 
 export const IMMICH_INVENTORY_SCHEMA_VERSION = "cimmich.immich-inventory.v1";
 const VISIBILITIES = ["timeline", "archive", "hidden", "locked"];
@@ -38,22 +45,6 @@ const digest = (value) =>
       typeof value === "string" ? value : JSON.stringify(canonicalize(value)),
     )
     .digest("hex");
-const mapWithConcurrency = async (items, concurrency, project) => {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await project(items[index], index);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
-};
 const requiredText = (value, label, maximum = 200) => {
   const normalized = String(value || "").trim();
   if (!normalized || normalized.length > maximum) {
@@ -61,7 +52,6 @@ const requiredText = (value, label, maximum = 200) => {
   }
   return normalized;
 };
-
 const requiredDigest = (value, label) => {
   const normalized = requiredText(value, label, 64);
   if (!DIGEST_PATTERN.test(normalized)) {
@@ -82,7 +72,6 @@ const optionalDimension = (value, label) => {
   const normalized = optionalInteger(value, label);
   return normalized === 0 ? null : normalized;
 };
-
 const requiredTimestamp = (value, label) => {
   const normalized = requiredText(value, label, 80);
   // A zone-less ISO timestamp parses in the server's local zone, so the same
@@ -370,27 +359,6 @@ export const projectInventoryCoverage = ({
   };
 };
 
-const projectRun = (row) => ({
-  completedAt: row.completed_at || null,
-  immichVersion: row.immich_version,
-  observedAssetCount: Number(row.observed_asset_count),
-  pageCount: Number(row.page_count),
-  runId: row.run_id,
-  snapshotId: row.snapshot_id,
-  sourceId: row.source_id,
-  selectedVisibilities: row.selected_visibilities || [...VISIBILITIES],
-  startedAt: row.started_at,
-  state: row.state,
-});
-
-const projectLane = (row) => ({
-  cursor: row.cursor,
-  observedItemCount: Number(row.observed_item_count),
-  pageCount: Number(row.page_count),
-  state: row.state,
-  visibility: row.visibility,
-});
-
 const pauseSupersededJobs = async (sql, { assetId, inputRevision }) => {
   await sql`
     WITH paused AS (
@@ -412,74 +380,6 @@ const pauseSupersededJobs = async (sql, { assetId, inputRevision }) => {
       job_id, 'paused', attempt_count, checkpoint_revision,
       '{"reason":"input_revision_superseded"}'::jsonb
     FROM paused
-  `;
-};
-
-const reconcileMobilityBindings = async (sql, runId) => {
-  await sql`
-    UPDATE asset_source_binding binding SET
-      state = CASE projection.state
-        WHEN 'active' THEN 'active'
-        WHEN 'suspected_missing' THEN 'offline'
-        WHEN 'missing' THEN 'missing'
-        ELSE 'superseded'
-      END,
-      last_seen_at = projection.last_seen_at
-    FROM immich_asset_projection projection, immich_inventory_run run
-    WHERE run.run_id = ${runId}
-      AND projection.source_id = run.source_id
-      AND binding.source_kind = 'immich'
-      AND binding.source_id = projection.source_id
-      AND binding.external_asset_id = projection.immich_asset_id
-  `;
-  await sql`
-    INSERT INTO asset_source_binding_event (
-      event_id, binding_id, asset_id, content_id, input_revision,
-      event_kind, producer_receipt_id
-    )
-    SELECT
-      'source_binding_event_' || substr(encode(digest(
-        binding.binding_id || E'\x1f' || binding.asset_id || E'\x1f'
-          || coalesce(binding.input_revision, '') || E'\x1f'
-          || binding.state, 'sha256'
-      ), 'hex'), 1, 40),
-      binding.binding_id, binding.asset_id, binding.content_id,
-      binding.input_revision,
-      CASE binding.state
-        WHEN 'offline' THEN 'offline'
-        WHEN 'missing' THEN 'missing'
-        WHEN 'superseded' THEN 'superseded'
-        ELSE 'observed'
-      END,
-      'receipt_cimmich_hash_linked_archive_mobility_v1'
-    FROM asset_source_binding binding
-    JOIN immich_inventory_run run ON run.run_id = ${runId}
-      AND run.source_id = binding.source_id
-    WHERE binding.source_kind = 'immich'
-    ON CONFLICT (binding_id, asset_id, input_revision, event_kind) DO NOTHING
-  `;
-  await sql`
-    UPDATE asset SET state = CASE
-      WHEN EXISTS (
-        SELECT 1 FROM asset_source_binding binding
-        WHERE binding.asset_id = asset.asset_id
-          AND binding.state = 'active'
-      ) THEN 'active'
-      WHEN EXISTS (
-        SELECT 1 FROM asset_source_binding binding
-        WHERE binding.asset_id = asset.asset_id
-          AND binding.state IN ('offline','missing')
-      ) THEN 'missing'
-      ELSE asset.state
-    END
-    WHERE asset.asset_id IN (
-      SELECT binding.asset_id
-      FROM asset_source_binding binding
-      JOIN immich_inventory_run run ON run.run_id = ${runId}
-        AND run.source_id = binding.source_id
-      WHERE binding.source_kind = 'immich'
-    )
-      AND asset.state IN ('active','missing')
   `;
 };
 
@@ -506,6 +406,7 @@ const createImmichInventoryLedger = (
   },
 
   async beginScoped({
+    catalogueIncludesDeleted = false,
     immichVersion,
     principalDigest,
     sourceId,
@@ -516,7 +417,8 @@ const createImmichInventoryLedger = (
         ${requiredText(sourceId, "sourceId", 120)},
         ${requiredText(immichVersion, "immichVersion", 80)},
         ${requiredDigest(principalDigest, "principalDigest")},
-        ${visibilities}
+        ${visibilities},
+        ${catalogueIncludesDeleted}
       )
     `;
     return projectRun(row);
@@ -1098,6 +1000,14 @@ const createImmichInventoryLedger = (
     });
   },
 
+  async recordCataloguePresencePage({ page, runId, sourceId }) {
+    return recordImmichCataloguePresencePage(sql, {
+      normalized: normalizeInventoryPage(page),
+      runId,
+      sourceId,
+    });
+  },
+
   async status({ lockedAccessState = "unknown", sourceId }) {
     const normalizedSourceId = requiredText(sourceId, "sourceId", 120);
     const [summary] = await sql`
@@ -1340,9 +1250,15 @@ export const createImmichInventorySynchronizer = ({
     },
 
     async synchronize({
+      cataloguePresenceOnly = false,
       maxPages = Number.POSITIVE_INFINITY,
       visibilities = VISIBILITIES,
     } = {}) {
+      if (typeof cataloguePresenceOnly !== "boolean") {
+        throw new Error(
+          "Immich inventory cataloguePresenceOnly must be boolean",
+        );
+      }
       if (
         maxPages !== Number.POSITIVE_INFINITY &&
         (!Number.isInteger(maxPages) || maxPages < 1)
@@ -1362,8 +1278,7 @@ export const createImmichInventorySynchronizer = ({
         visibilities.includes(visibility),
       );
       // A crashed run normally resumes in place, but when the Immich version
-      // or principal changed before the resume, begin_scoped refuses the
-      // mismatched processing run forever and nothing else fails it - the
+      // or principal changed, begin_scoped refuses the mismatched run; the
       // migration-time sweep (0089) ran exactly once at deploy. Recover here,
       // before any companion dependency, with 0089's deliberate cutoff: a day
       // is far beyond any bounded run and cannot affect a live checkpoint.
@@ -1383,6 +1298,7 @@ export const createImmichInventorySynchronizer = ({
         requiredText(companionStatus.principal?.userId, "principal.userId"),
       );
       let run = await ledger.beginScoped({
+        catalogueIncludesDeleted: cataloguePresenceOnly,
         immichVersion: companionStatus.immichVersion,
         principalDigest,
         sourceId: normalizedSourceId,
@@ -1393,7 +1309,6 @@ export const createImmichInventorySynchronizer = ({
       let processedPages = 0;
       let admittedAssetCount = 0;
       const admittedAssets = [];
-
       while (true) {
         for (const visibility of selectedVisibilities) {
           let lane = (await ledger.lanes({ runId: run.runId })).find(
@@ -1402,10 +1317,15 @@ export const createImmichInventorySynchronizer = ({
           while (lane.state !== "completed") {
             const page = await companion.listAssets({
               cursor: lane.cursor,
+              includeDeleted: cataloguePresenceOnly,
               limit: normalizedPageSize,
               visibility,
             });
-            const recorded = await ledger.recordPage({
+            const recorded = await ledger[
+              cataloguePresenceOnly
+                ? "recordCataloguePresencePage"
+                : "recordPage"
+            ]({
               job: normalizedJob,
               page: { cursor: lane.cursor, page, visibility },
               runId: run.runId,
@@ -1452,12 +1372,14 @@ export const createImmichInventorySynchronizer = ({
           });
         }
         if (
+          !cataloguePresenceOnly &&
           resumedRun &&
           !freshRolloverUsed &&
           admittedAssetCount === 0 &&
           processedPages < maxPages
         ) {
           const freshRun = await ledger.beginScoped({
+            catalogueIncludesDeleted: cataloguePresenceOnly,
             immichVersion: companionStatus.immichVersion,
             principalDigest,
             sourceId: normalizedSourceId,

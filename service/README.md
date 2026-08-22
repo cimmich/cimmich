@@ -5,7 +5,7 @@ PostgreSQL Intelligence store. It provides summary, Person and identity-review
 reads plus transactional user accept/reject decisions.
 
 The preserved recording runtime remains on migration-ledger-derived schema 75,
-patch level 1. Current post-submission source is schema 142. Schema 76 adds
+patch level 1. Current post-submission source is schema 156. Schema 76 adds
 explicit Face, Body and Hero presentation selections with persisted framing.
 Schema 77 admits the two explicit unnamed-Person follow-up reasons used by the
 restart-safe onboarding import, so those groups are held for Review instead of
@@ -596,9 +596,10 @@ the source Face into matching authority.
 - unchanged assets reuse their deterministic completed/pending job; a changed
   `inputRevision` pauses obsolete uncompleted work and enqueues one new work
   identity;
-- one full all-lane absence becomes `suspected_missing` and pauses work. Only a
-  second complete absence becomes `missing`; reappearance restores the same
-  stable Cimmich asset and resumes the exact paused job;
+- a deleted-row-complete catalogue refresh treats Immich trash or one complete
+  absence as `missing` immediately. Source-folder disconnection, Immich offline
+  metadata and service unavailability do not qualify. Reappearance restores the
+  same stable Cimmich asset and resumes the exact paused job;
 - the upstream principal is stored only as a digest and cannot silently change
   under an existing source ID. Paths, profiles, People, tags and EXIF are not
   persisted by inventory. Schema 66 persists only the current bounded display
@@ -606,7 +607,7 @@ the source Face into matching authority.
   restart without reopening source media.
 
 This gate proves static synthetic Immich pagination, interruption, unchanged
-replay, changed revision, two-pass absence and re-entry. The source-owned
+replay, changed revision, authoritative absence and re-entry. The source-owned
 [guided installer](../INSTALL.md) brings up the isolated stack without accepting
 an API key in Terminal or importing before signed-in preview. The advanced
 `tools/companion.sh` lifecycle additionally proves configure/up/sync/status,
@@ -1155,6 +1156,95 @@ outside the database. Each PostgreSQL custom-format dump is restore-catalogue
 checked and SHA-256 verified before publication; Check latest re-reads the full
 artifact. The service rejects the database storage domain and never writes
 Immich media through this path.
+
+Schema 142 replay-safely converges the public and private schema-131 histories
+without changing their stored product truth. Schema 143 adds the replay-safe
+Archive Health command ledger for retiring records outside the active Immich
+library. Source reachability, Immich's offline flag and failed or interrupted
+refreshes cannot qualify a record. Removal
+supersedes only the selected Immich source binding and tombstones its Cimmich
+asset only when no other usable binding remains; it never deletes source or
+Immich media.
+
+Schema 144 makes deleted-row catalogue reads explicit rather than conflating
+them with ordinary asset search. The migration fails any pre-upgrade partial
+inventory without absence reconciliation before new complete runs can begin.
+
+Schema 145 gives that check its own resumable catalogue-presence mode. It
+updates only known projection presence from Immich metadata, does not read
+original bytes, import new media or enqueue analysis, and is the only scoped
+inventory mode allowed to reconcile absence. Ordinary inventory remains
+backward compatible but cannot advance missing-file evidence. A resumed
+catalogue check completes only its one requested pass.
+
+Schema 146 makes the active library the user-facing boundary. A known Immich
+trash row or a definitive first complete absence is immediately marked missing,
+listed in Archive Health and eligible for explicit Cimmich-only removal. Person
+photo cards perform bounded exact status checks and mark the record inline.
+Transient companion, authentication, network and source-folder failures never
+become absence evidence.
+
+Schema 147 removes the obsolete 100-ID ceiling from the missing-file command
+receipt. Count-locked bulk trash retirement still executes as one transaction,
+but its durable audit now retains every retired source asset ID regardless of
+the Archive Health total.
+
+Schema 148 treats that durable command receipt as permanent Cimmich management
+truth. Catalogue-presence, ordinary inventory and exact per-photo activity
+refreshes cannot reactivate a retired source binding, and the migration repairs
+bindings and now-unbound assets revived by the earlier refresh behavior.
+
+Schema 149 lets the archive owner create a relationship label directly in a
+Person's At a glance editor. The same command adds that durable catalogue entry
+to the current Person with replay-safe Person Profile command identity.
+
+Schema 150 adds owner-authored typed graph facts between People and between a
+Person and a Place. Facts retain direction, current or past validity, optional
+dates and notes in an append-only event ledger. Co-worker plus workplace facts
+may produce an explainable confirm-or-dismiss lead, but a lead never becomes
+recorded truth without an explicit owner command.
+
+Schema 151 makes every Person relationship current or former, automatically
+derives the historical display label with a **(Former)** suffix and retires the
+standalone Ex type. Existing Person facts are superseded append-only as current;
+legacy Ex facts are superseded as Partner (Former), preserving dates and notes.
+
+Schema 152 models Former as the seeded historical connection modifier and adds
+owner-created reusable qualifiers. One typed fact can therefore remain Friend
+while also carrying Childhood, School or both. Modifier membership is stored
+against each immutable fact event; current projections and Discover render the
+same modifier snapshot.
+
+Schema 153 adds atomic shared-connection hubs. Homes remain Places; employers
+and social groups become explicit Organisation and Group Things. One reviewed
+command can create or select the hub and record two to fifty Person roles with
+independent current/former state, dates and reusable modifiers. Person-to-Thing
+facts use the same append-only event ledger and feed the same bounded graph.
+
+Schema 154 lets one Person-to-Person relationship fact name the Place, Event or
+Thing where or during which it applied. The context attachment is append-only,
+privacy-projected and independently removable without deleting either the
+relationship or the context. Reciprocal context detail reads expose both People,
+and Discover can use the shared context as a hub without manufacturing a second
+Person-to-context fact.
+
+Schema 155 gives Event, Life period, Trip, Activity, Place and Thing covers a
+durable normalized hero crop. The same revision-checked cover command now saves
+the selected asset and its framing together; Undo restores both. Framing is
+Cimmich presentation truth only and does not edit Immich media or source files.
+
+Schema 156 binds every relationship type, modifier, fact, retraction and
+suggestion-decision command to one actor, operation, canonical request digest
+and durable response. Exact retries return the stored response; actor, operation
+or payload drift conflicts. The same migration makes relationship event history
+append-only and serializes database-backup runs across service processes.
+
+`GET /v1/discover/memory-graph` is a bounded, visibility-first read model over
+active accepted Person/photo associations, context media, current Event, Place
+and Thing relations, and context hierarchy. It returns mixed Person, Pet,
+Place, Event and Thing nodes with deduplicated evidence edges, representative
+projected assets and bounded weights. The result derives navigation evidence
+only; it does not persist or infer a relationship.
 
 ## Database-backed tests
 

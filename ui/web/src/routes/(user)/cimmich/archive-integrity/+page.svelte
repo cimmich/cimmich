@@ -5,6 +5,7 @@
   import ArchiveBackupCheck from '$lib/components/cimmich/ArchiveBackupCheck.svelte';
   import ArchiveExactDuplicateResults from '$lib/components/cimmich/ArchiveExactDuplicateResults.svelte';
   import ArchiveFolderComparison from '$lib/components/cimmich/ArchiveFolderComparison.svelte';
+  import ArchiveMissingFiles from '$lib/components/cimmich/ArchiveMissingFiles.svelte';
   import ArchiveRotationReview from '$lib/components/cimmich/ArchiveRotationReview.svelte';
   import {
     ROTATION_BACKLOG_LIMIT,
@@ -18,6 +19,7 @@
     rankArchiveFoldersByImpact,
     type ArchiveFolderImpact,
   } from '$lib/components/cimmich/archive-folder-comparison';
+  import { archiveHealthMode, type ArchiveHealthMode } from '$lib/components/cimmich/archive-health-mode';
   import {
     archiveVariantGroupsInFolder,
     buildArchiveVariantGroups,
@@ -63,21 +65,10 @@
   }
 
   let { data }: Props = $props();
-  type ArchiveHealthMode = 'exact' | 'variants' | 'folder' | 'rotation' | 'backup';
   const focusedAssetId = page.url.searchParams.get('assetId')?.trim() ?? '';
   const initialFocusedFolder = page.url.searchParams.get('folder')?.trim() ?? '';
   const requestedMode = page.url.searchParams.get('mode');
-  let mode = $state<ArchiveHealthMode>(
-    requestedMode === 'folder' || (requestedMode === 'variants' && initialFocusedFolder)
-      ? 'folder'
-      : requestedMode === 'variants' || requestedMode === 'plan'
-        ? 'variants'
-        : requestedMode === 'rotation'
-          ? 'rotation'
-          : requestedMode === 'backup'
-            ? 'backup'
-            : 'exact',
-  );
+  let mode = $state<ArchiveHealthMode>(archiveHealthMode(requestedMode, initialFocusedFolder));
   let routeReady = $state(false);
   let routeSignature = $state(`${mode}:${initialFocusedFolder}`);
   let activeFolder = $state(initialFocusedFolder);
@@ -134,6 +125,7 @@
   let rotationLoading = $state(false);
   let rotationLoadingMore = $state(false);
   let rotationNextPage = $state(1);
+  let missingRefreshRevision = $state(0);
   let nativeVariantGroups = $state<DuplicateResponseDto[] | null>(null);
   let nativeVariantGroupsRequest: Promise<DuplicateResponseDto[]> | null = null;
   const exactPathRequests: string[] = [];
@@ -596,6 +588,10 @@
   };
 
   const refreshCurrentMode = () => {
+    if (mode === 'missing') {
+      missingRefreshRevision += 1;
+      return;
+    }
     if (mode === 'exact') {
       void load();
       return;
@@ -623,16 +619,7 @@
   $effect(() => {
     const nextRequestedMode = page.url.searchParams.get('mode');
     const nextFolder = page.url.searchParams.get('folder')?.trim() ?? '';
-    const nextMode: ArchiveHealthMode =
-      nextRequestedMode === 'folder' || (nextRequestedMode === 'variants' && nextFolder)
-        ? 'folder'
-        : nextRequestedMode === 'variants' || nextRequestedMode === 'plan'
-          ? 'variants'
-          : nextRequestedMode === 'rotation'
-            ? 'rotation'
-            : nextRequestedMode === 'backup'
-              ? 'backup'
-              : 'exact';
+    const nextMode = archiveHealthMode(nextRequestedMode, nextFolder);
     const nextSignature = `${nextMode}:${nextFolder}`;
     if (!routeReady || nextSignature === routeSignature) {
       return;
@@ -667,6 +654,10 @@
         void loadVariants({ includeBackup: true });
         break;
       }
+      case 'missing': {
+        missingRefreshRevision += 1;
+        break;
+      }
     }
   });
 
@@ -696,6 +687,9 @@
       case 'backup': {
         void load();
         void loadVariants({ includeBackup: true });
+        break;
+      }
+      case 'missing': {
         break;
       }
     }
@@ -748,6 +742,16 @@
           title="Review photos Immich ranks as visually similar to sideways images"
         >
           Rotation review
+        </a>
+        <a
+          href={Route.cimmichArchiveIntegrity({ mode: 'missing' })}
+          class="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-sm font-semibold {mode === 'missing'
+            ? 'bg-white text-gray-950 shadow-sm dark:bg-gray-700 dark:text-white'
+            : 'text-gray-600 hover:bg-white/70 dark:text-gray-300 dark:hover:bg-gray-800'}"
+          aria-current={mode === 'missing' ? 'page' : undefined}
+          title="Find Cimmich records absent from complete Immich catalogue checks"
+        >
+          Missing files
         </a>
         <a
           href={Route.cimmichArchiveIntegrity({ mode: 'backup' })}
@@ -822,7 +826,9 @@
       </div>
     {/if}
 
-    {#if mode === 'exact'}
+    {#if mode === 'missing'}
+      <ArchiveMissingFiles refreshRevision={missingRefreshRevision} />
+    {:else if mode === 'exact'}
       <ArchiveExactDuplicateResults
         assetPaths={exactAssetPaths}
         {groups}

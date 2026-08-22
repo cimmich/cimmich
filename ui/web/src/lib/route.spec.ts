@@ -87,6 +87,12 @@ describe('Route', () => {
     });
   });
 
+  describe(Route.cimmichDiscover.name, () => {
+    it('opens the first-class Cimmich discovery workspace', () => {
+      expect(Route.cimmichDiscover()).toBe('/cimmich/discover');
+    });
+  });
+
   describe(Route.cimmichSetup.name, () => {
     it('keeps newcomer library setup separate from advanced maintenance', () => {
       expect(Route.cimmichSetup()).toBe('/cimmich/setup');
@@ -102,6 +108,7 @@ describe('Route', () => {
         '/cimmich/archive-integrity?folder=%2Farchive%2FTrips%2FSydney&mode=folder',
       );
       expect(Route.cimmichArchiveIntegrity({ mode: 'rotation' })).toBe('/cimmich/archive-integrity?mode=rotation');
+      expect(Route.cimmichArchiveIntegrity({ mode: 'missing' })).toBe('/cimmich/archive-integrity?mode=missing');
     });
   });
 

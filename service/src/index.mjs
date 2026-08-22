@@ -60,8 +60,7 @@ const [releaseMigrations, releasePatches] = await Promise.all([
 ]);
 const expectedSchemaVersion = releaseMigrations.at(-1)?.version || 0;
 
-const optionalEgressEnabled =
-  process.env.CIMMICH_OPTIONAL_EGRESS_ENABLED === "true";
+const optionalEgressEnabled = runtimeConfig.optionalEgressEnabled;
 const addressGeocoder = optionalEgressEnabled ? createAddressGeocoder() : null;
 const immichCompanion = await createImmichCompanionManager({
   apiBaseUrl: process.env.IMMICH_API_URL || "",
@@ -75,8 +74,7 @@ const sql = postgres(databaseUrl, {
   ),
   prepare: true,
 });
-const ownerGatewayRequired =
-  process.env.CIMMICH_OWNER_GATEWAY_REQUIRED === "true";
+const ownerGatewayRequired = runtimeConfig.ownerGatewayRequired;
 const immichWebOrigin = String(
   process.env.CIMMICH_IMMICH_WEB_ORIGIN || "",
 ).trim();
@@ -149,7 +147,7 @@ const visibility = createVisibilityService({
     process.env.CIMMICH_VISIBILITY_PRIVATE_LOCK_MODE || "password",
   runtimeMode: runtimeConfig.runtimeMode,
   sql,
-  testMode: process.env.CIMMICH_VISIBILITY_TEST_MODE === "true",
+  testMode: runtimeConfig.visibilityTestMode,
   testPassword: process.env.CIMMICH_VISIBILITY_TEST_PASSWORD || "",
   unlockMaxConcurrent:
     process.env.CIMMICH_VISIBILITY_PRIVATE_MAX_CONCURRENT_UNLOCKS,

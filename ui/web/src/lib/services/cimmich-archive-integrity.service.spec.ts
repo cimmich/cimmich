@@ -2,11 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   checkLatestCimmichDatabaseBackup,
   getCimmichArchiveBackupProof,
+  getCimmichArchiveMissingFileScan,
+  getCimmichArchiveMissingFiles,
   getCimmichArchiveSourceEvidence,
   getCimmichDatabaseBackupStatus,
   getCimmichExactDuplicates,
+  removeAllCimmichArchiveTrashedFiles,
+  removeCimmichArchiveMissingFiles,
   setCimmichDatabaseBackupPolicy,
   startCimmichDatabaseBackup,
+  startCimmichArchiveMissingFileScan,
 } from './cimmich-archive-integrity.service';
 
 afterEach(() => {
@@ -100,6 +105,68 @@ describe('Cimmich Archive integrity client', () => {
       expect.any(Object),
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it('keeps missing-file reads, catalogue scans and explicit removal on separate routes', async () => {
+    const scanStatus = {
+      inventory: { schemaVersion: 'cimmich.immich-inventory.v1', source: null },
+      scan: { completedAt: null, error: null, scanId: null, startedAt: null, state: 'idle' },
+      schemaVersion: 'cimmich.archive-missing-file-scan.v1',
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({
+          items: [],
+          schemaVersion: 'cimmich.archive-missing-files.v2',
+          summary: { missing: 1, total: 1, trashed: 0 },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json(scanStatus))
+      .mockResolvedValueOnce(Response.json({ replayed: false, scan: scanStatus.scan }, { status: 202 }))
+      .mockResolvedValueOnce(
+        Response.json({
+          removedSourceAssetIds: ['source-one'],
+          replayed: false,
+          schemaVersion: 'cimmich.archive-missing-files.v2',
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          removedSourceAssetIds: ['trash-one', 'trash-two'],
+          replayed: false,
+          schemaVersion: 'cimmich.archive-missing-files.v2',
+        }),
+      );
+
+    await getCimmichArchiveMissingFiles({ limit: 25, offset: 50 });
+    await getCimmichArchiveMissingFileScan();
+    await startCimmichArchiveMissingFileScan();
+    await removeCimmichArchiveMissingFiles('immich-primary', ['source-one'], 'archive-missing-command-1');
+    await removeAllCimmichArchiveTrashedFiles('cedar-house-archive', 12, 'archive-trash-all-command-1');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'http://127.0.0.1:3101/v1/archive-integrity/missing-files?limit=25&offset=50',
+      'http://127.0.0.1:3101/v1/archive-integrity/missing-files/scan',
+      'http://127.0.0.1:3101/v1/archive-integrity/missing-files/scan',
+      'http://127.0.0.1:3101/v1/archive-integrity/missing-files:remove',
+      'http://127.0.0.1:3101/v1/archive-integrity/missing-files:remove',
+    ]);
+    expect(fetchMock.mock.calls.map(([, options]) => options?.method)).toEqual([
+      undefined,
+      undefined,
+      'POST',
+      'POST',
+      'POST',
+    ]);
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.body).toBe(
+      JSON.stringify({
+        commandId: 'archive-trash-all-command-1',
+        expectedCount: 12,
+        selection: 'trashed',
+        sourceId: 'cedar-house-archive',
+      }),
+    );
   });
 
   it('reads and updates database backup health through explicit bounded operations', async () => {

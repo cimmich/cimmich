@@ -8,11 +8,13 @@ const root = resolve(import.meta.dirname, "../..");
 const source = (path) => readFile(resolve(root, path), "utf8");
 
 test("release dependency policy is fail-closed and CI actions are immutable", async () => {
-  const [workflow, workspace, perceptualRequirements] = await Promise.all([
-    source(".github/workflows/ci.yml"),
-    source("ui/pnpm-workspace.yaml"),
-    source("providers/perceptual-dhash/requirements.txt"),
-  ]);
+  const [workflow, containerWorkflow, workspace, perceptualRequirements] =
+    await Promise.all([
+      source(".github/workflows/ci.yml"),
+      source(".github/workflows/container-images.yml"),
+      source("ui/pnpm-workspace.yaml"),
+      source("providers/perceptual-dhash/requirements.txt"),
+    ]);
 
   assert.match(workflow, /npm audit --audit-level=low/);
   assert.match(workflow, /pnpm audit --audit-level=low/);
@@ -29,6 +31,25 @@ test("release dependency policy is fail-closed and CI actions are immutable", as
       new RegExp(`${action.replace("/", "\\/")}@[0-9a-f]{40}`),
     );
   }
+  assert.match(containerWorkflow, /workflow_dispatch:/);
+  assert.doesNotMatch(containerWorkflow, /workflow_run:/);
+  assert.match(
+    containerWorkflow,
+    /resolve-release:[\s\S]*permissions:\s*actions: read\s*contents: read/,
+  );
+  assert.match(
+    containerWorkflow,
+    /publish:[\s\S]*permissions:\s*attestations: write\s*contents: read\s*id-token: write\s*packages: write/,
+  );
+  assert.equal(
+    (containerWorkflow.match(/persist-credentials: false/g) ?? []).length,
+    2,
+  );
+  assert.match(containerWorkflow, /ref: \$\{\{ inputs\.release_tag \}\}/);
+  assert.match(
+    containerWorkflow,
+    /run\.name === "Cimmich CI"[\s\S]*run\.conclusion === "success"[\s\S]*run\.head_sha === sha[\s\S]*run\.head_branch === tag/,
+  );
   for (const patchedDependency of [
     "brace-expansion",
     "cookie",
@@ -98,6 +119,11 @@ test("local runtime secrets, images and browser response headers are hardened", 
       /location = \/cimmich-api\/health \{[\s\S]*proxy_pass http:\/\/cimmich-api:3101\/health;/,
     );
   }
+  assert.match(
+    publicDemoGateway,
+    /location \^~ \/_app\/immutable\/ \{[\s\S]*expires epoch;[\s\S]*try_files \$uri =404;/,
+    "public release chunks must revalidate across same-origin candidate rebuilds",
+  );
   assert.match(publicDemoCompose, /PUBLIC_CIMMICH_API_URL: \/cimmich-api/);
   for (const compose of [companionCompose, publicDemoCompose]) {
     assert.match(

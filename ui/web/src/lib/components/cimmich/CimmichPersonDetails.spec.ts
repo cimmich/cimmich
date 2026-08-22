@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   patchDefaults: vi.fn(),
   patchDisplay: vi.fn(),
   patchProfile: vi.fn(),
+  createRelationship: vi.fn(),
 }));
 
 vi.mock('$lib/services/cimmich.service', () => ({
@@ -29,6 +30,7 @@ vi.mock('$lib/services/cimmich.service', () => ({
   },
   createCimmichPersonProfileCommandId: () => 'profile.test.00000000-0000-4000-8000-000000000000',
   createCimmichPersonProfileItemId: () => 'profile-item.00000000-0000-4000-8000-000000000000',
+  createCimmichRelationshipCategory: mocks.createRelationship,
   patchCimmichPersonDetailsDisplay: mocks.patchDetailsDisplay,
   patchCimmichPersonDetailsDisplayDefaults: mocks.patchDetailsDefaults,
   patchCimmichPersonProfile: mocks.patchProfile,
@@ -132,6 +134,7 @@ describe('CimmichPersonDetails', () => {
     mocks.patchDefaults.mockReset();
     mocks.patchDisplay.mockReset();
     mocks.patchProfile.mockReset();
+    mocks.createRelationship.mockReset();
   });
 
   it('persists one Person Details visibility override without changing People defaults', async () => {
@@ -374,5 +377,39 @@ describe('CimmichPersonDetails', () => {
       pronounsLabel: 'he/him',
       relationshipCategoryIds: ['relationship_me', 'relationship_family'],
     });
+  });
+
+  it('creates and selects an owner-defined relationship from At a glance', async () => {
+    const customProfile = {
+      ...profile,
+      relationshipCatalog: [
+        ...profile.relationshipCatalog,
+        { categoryId: 'relationship_mentor', name: 'Mentor', slug: 'mentor', sortOrder: 3 },
+      ],
+      relationships: [
+        ...profile.relationships,
+        { categoryId: 'relationship_mentor', name: 'Mentor', slug: 'mentor', sortOrder: 3 },
+      ],
+    };
+    mocks.createRelationship.mockResolvedValueOnce({ profile: customProfile, replayed: false });
+    mocks.patchProfile.mockResolvedValueOnce({ profile: customProfile, replayed: false });
+    const { getByRole } = renderDetails();
+
+    await fireEvent.click(getByRole('button', { name: 'Edit At a glance' }));
+    await fireEvent.input(getByRole('textbox', { name: 'New relationship' }), { target: { value: 'Mentor' } });
+    await fireEvent.click(getByRole('button', { name: 'Create & add' }));
+
+    await waitFor(() => expect(mocks.createRelationship).toHaveBeenCalledOnce());
+    expect(mocks.createRelationship).toHaveBeenCalledWith(
+      'person_1',
+      'profile.test.00000000-0000-4000-8000-000000000000',
+      'Mentor',
+    );
+    await fireEvent.click(getByRole('button', { name: 'Save At a glance' }));
+    await waitFor(() => expect(mocks.patchProfile).toHaveBeenCalledOnce());
+    expect(mocks.patchProfile.mock.calls[0]?.[1].relationshipCategoryIds).toEqual([
+      'relationship_me',
+      'relationship_mentor',
+    ]);
   });
 });

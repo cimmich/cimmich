@@ -4,6 +4,11 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CHECKSUM="$ROOT/tools/sha256.sh"
 COMPOSE_FILE="$ROOT/compose.yaml"
+if test "${CIMMICH_COMPANION_PROJECT+x}" = x; then
+  CALLER_PROJECT_SET=true
+else
+  CALLER_PROJECT_SET=false
+fi
 PROJECT=${CIMMICH_COMPANION_PROJECT:-cimmich-companion}
 STATE_ROOT=${CIMMICH_COMPANION_STATE_ROOT:-}
 ENV_FILE="${STATE_ROOT:+$STATE_ROOT/runtime.env}"
@@ -11,14 +16,16 @@ DATABASE_VOLUME="${PROJECT}-database"
 DOCUMENT_VOLUME="${PROJECT}-documents"
 CONFIG_VOLUME="${PROJECT}-config"
 FACE_PROVIDER_VOLUME="${PROJECT}-face-provider"
+LOCAL_AI_VOLUME="${PROJECT}-local-ai"
+LOCAL_AI_MODELS_VOLUME="${PROJECT}-local-ai-models"
 ZERO_DIGEST=0000000000000000000000000000000000000000000000000000000000000000
 CURRENT_SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
 ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 PGVECTOR_IMAGE=pgvector/pgvector:0.8.2-pg17-trixie@sha256:5c97c57367a485a8e99389548db67d441ab1a878f5492c3df04989f34ecf3c75
 NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 SUPPORTED_IMMICH_VERSION=3.1.0
-API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.18}
-UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.18}
+API_IMAGE=${CIMMICH_API_IMAGE:-cimmich-api:v1.1.0-community-preview.19}
+UI_IMAGE=${CIMMICH_UI_IMAGE:-cimmich-ui:v1.1.0-community-preview.19}
 
 fail() {
   printf 'cimmich companion: %s\n' "$*" >&2
@@ -29,6 +36,38 @@ validate_project() {
   case "$PROJECT" in
     ''|*[!a-z0-9_-]*|[!a-z0-9]*) fail "project must be a lowercase Docker identifier" ;;
   esac
+}
+
+set_project_resources() {
+  DATABASE_VOLUME="${PROJECT}-database"
+  DOCUMENT_VOLUME="${PROJECT}-documents"
+  CONFIG_VOLUME="${PROJECT}-config"
+  FACE_PROVIDER_VOLUME="${PROJECT}-face-provider"
+  LOCAL_AI_VOLUME="${PROJECT}-local-ai"
+  LOCAL_AI_MODELS_VOLUME="${PROJECT}-local-ai-models"
+}
+
+assert_project_available() {
+  command -v docker >/dev/null 2>&1 || fail "docker is required to verify the Compose project"
+  project_containers=$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT")
+  project_volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")
+  for reserved_volume in "$DATABASE_VOLUME" "$DOCUMENT_VOLUME" "$CONFIG_VOLUME" \
+    "$FACE_PROVIDER_VOLUME" "$LOCAL_AI_VOLUME" "$LOCAL_AI_MODELS_VOLUME"; do
+    if docker volume inspect "$reserved_volume" >/dev/null 2>&1; then
+      project_volumes="${project_volumes}${project_volumes:+
+}$reserved_volume"
+    fi
+  done
+  project_networks=$(docker network ls -q --filter "label=com.docker.compose.project=$PROJECT")
+  for reserved_network in "${PROJECT}_cimmich-internal" "${PROJECT}_default"; do
+    if docker network inspect "$reserved_network" >/dev/null 2>&1; then
+      project_networks="${project_networks}${project_networks:+
+}$reserved_network"
+    fi
+  done
+  test -z "$project_containers" && test -z "$project_volumes" &&
+    test -z "$project_networks" ||
+    fail "Docker resources already use project $PROJECT; choose another CIMMICH_COMPANION_PROJECT or recover the matching runtime.env"
 }
 
 validate_state_root() {
@@ -96,6 +135,16 @@ configured_value_or() {
 require_configured() {
   validate_state_root
   test -f "$ENV_FILE" || fail "run configure first"
+  configured_project=$(configured_value CIMMICH_COMPANION_PROJECT)
+  case "$configured_project" in
+    ''|*[!a-z0-9_-]*|[!a-z0-9]*) fail "runtime configuration has an invalid CIMMICH_COMPANION_PROJECT entry" ;;
+  esac
+  if test "$CALLER_PROJECT_SET" = true && test "$PROJECT" != "$configured_project"; then
+    fail "caller project $PROJECT does not match configured project $configured_project"
+  fi
+  PROJECT=$configured_project
+  validate_project
+  set_project_resources
 }
 
 compose() {
@@ -228,6 +277,7 @@ configure() {
     case "$api_key" in *[!A-Za-z0-9_-]*) fail "API key file contains unsupported characters" ;; esac
   fi
   test ! -e "$ENV_FILE" || fail "runtime configuration already exists"
+  assert_project_available
   if test -e "$STATE_ROOT"; then
     test -d "$STATE_ROOT" || fail "state root is not a directory"
     test -z "$(find "$STATE_ROOT" -mindepth 1 -maxdepth 1 -print)" ||
@@ -310,6 +360,7 @@ status() {
 
 doctor() {
   test "$#" -eq 0 || fail "usage: companion.sh doctor"
+  require_configured
   CIMMICH_COMPANION_PROJECT="$PROJECT" \
     CIMMICH_COMPANION_STATE_ROOT="$STATE_ROOT" \
     node "$ROOT/tools/doctor.mjs"
@@ -448,6 +499,64 @@ validate_backup_path() {
 semantic_counts() {
   compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
     "SELECT (SELECT count(*) FROM asset WHERE state='active') || ':' || (SELECT count(*) FROM person WHERE status='active') || ':' || (SELECT count(*) FROM context_entity WHERE status='active') || ':' || (SELECT count(*) FROM cimmich_document WHERE status='active') || ':' || (SELECT count(*) FROM manual_subject_tag_operation WHERE state='active') || ':' || (SELECT count(*) FROM source_pack WHERE state='active');"
+}
+
+document_state_digest() {
+  docker run --rm -v "$DOCUMENT_VOLUME:/documents:ro" "$NODE_IMAGE" node -e '
+    const { createHash } = require("node:crypto");
+    const { lstatSync, readFileSync, readdirSync, readlinkSync } = require("node:fs");
+    const { join, relative } = require("node:path");
+    const root = "/documents";
+    const entries = [];
+    const visit = (directory) => {
+      for (const name of readdirSync(directory).sort()) {
+        const absolute = join(directory, name);
+        const key = relative(root, absolute).split("/").join("/");
+        const stat = lstatSync(absolute);
+        if (stat.isDirectory()) {
+          entries.push(["directory", key, null]);
+          visit(absolute);
+        } else if (stat.isFile()) {
+          entries.push(["file", key, absolute]);
+        } else if (stat.isSymbolicLink()) {
+          entries.push(["symlink", key, Buffer.from(readlinkSync(absolute))]);
+        } else {
+          process.exit(2);
+        }
+      }
+    };
+    visit(root);
+    const digest = createHash("sha256");
+    for (const [kind, key, source] of entries) {
+      digest.update(kind).update("\0").update(key).update("\0");
+      if (kind === "file") digest.update(readFileSync(source));
+      else if (source) digest.update(source);
+      digest.update("\0");
+    }
+    process.stdout.write(digest.digest("hex"));
+  ' || fail "unable to digest the Cimmich Document store"
+}
+
+quiesce_document_writers() {
+  QUIESCED_SERVICES=$(compose ps --status running --services | awk '
+    $0 == "cimmich-api" || $0 == "cimmich-ui" || $0 == "cimmich-gateway" {
+      printf "%s%s", separator, $0; separator=" "
+    }
+  ')
+  if test -n "$QUIESCED_SERVICES"; then
+    # Service names come only from the fixed allowlist above.
+    # shellcheck disable=SC2086
+    compose stop $QUIESCED_SERVICES >/dev/null
+  fi
+}
+
+resume_document_writers() {
+  if test -n "${QUIESCED_SERVICES:-}"; then
+    # Service names come only from quiesce_document_writers' fixed allowlist.
+    # shellcheck disable=SC2086
+    compose start $QUIESCED_SERVICES >/dev/null
+    QUIESCED_SERVICES=
+  fi
 }
 
 validate_semantic_counts() {
@@ -689,17 +798,21 @@ validate_backup() {
     const fs = require("node:fs");
     const value = JSON.parse(fs.readFileSync("/backup/manifest.json", "utf8"));
     if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(2);
-    if (Object.keys(value).sort().join(",") !== "health,project,semanticCounts") process.exit(2);
+    if (Object.keys(value).sort().join(",") !== "documentStateDigest,health,project,semanticCounts,snapshotProtocol") process.exit(2);
     const schema = value.health?.schemaVersion;
     if (!Number.isSafeInteger(schema) || schema < 1) process.exit(2);
     if (typeof value.project !== "string" || !/^[a-z0-9_-]+$/.test(value.project)) process.exit(2);
     if (typeof value.semanticCounts !== "string" || !/^\d+(?::\d+){5}$/.test(value.semanticCounts)) process.exit(2);
-    process.stdout.write(`${value.project}|${schema}|${value.semanticCounts}`);
+    if (!/^[0-9a-f]{64}$/.test(value.documentStateDigest)) process.exit(2);
+    if (value.snapshotProtocol !== "cimmich.quiesced-db-documents.v1") process.exit(2);
+    process.stdout.write(`${value.project}|${schema}|${value.semanticCounts}|${value.documentStateDigest}`);
   ') || fail "backup manifest is invalid"
   BACKUP_PROJECT=${manifest_fields%%|*}
   manifest_remainder=${manifest_fields#*|}
   BACKUP_SCHEMA_VERSION=${manifest_remainder%%|*}
-  BACKUP_SEMANTIC_COUNTS=${manifest_remainder#*|}
+  manifest_remainder=${manifest_remainder#*|}
+  BACKUP_SEMANTIC_COUNTS=${manifest_remainder%%|*}
+  BACKUP_DOCUMENT_STATE_DIGEST=${manifest_remainder#*|}
   test "$BACKUP_PROJECT" = "$PROJECT" || fail "backup project mismatch"
   test "$BACKUP_SCHEMA_VERSION" -le "$CURRENT_SCHEMA_VERSION" ||
     fail "backup schema is newer than this Cimmich build"
@@ -730,19 +843,23 @@ validate_portable_export() {
     const fs = require("node:fs");
     const value = JSON.parse(fs.readFileSync("/portable/manifest.json", "utf8"));
     if (!value || typeof value !== "object" || Array.isArray(value)) process.exit(2);
-    if (Object.keys(value).sort().join(",") !== "excludes,format,health,project,semanticCounts") process.exit(2);
+    if (Object.keys(value).sort().join(",") !== "documentStateDigest,excludes,format,health,project,semanticCounts,snapshotProtocol") process.exit(2);
     if (value.format !== "cimmich.portable-export.v1") process.exit(2);
     if (JSON.stringify(value.excludes) !== JSON.stringify(["credentials","media","provider-artifacts"])) process.exit(2);
     const schema = value.health?.schemaVersion;
     if (!Number.isSafeInteger(schema) || schema < 1) process.exit(2);
     if (typeof value.project !== "string" || !/^[a-z0-9_-]+$/.test(value.project)) process.exit(2);
     if (typeof value.semanticCounts !== "string" || !/^\d+(?::\d+){5}$/.test(value.semanticCounts)) process.exit(2);
-    process.stdout.write(`${value.project}|${schema}|${value.semanticCounts}`);
+    if (!/^[0-9a-f]{64}$/.test(value.documentStateDigest)) process.exit(2);
+    if (value.snapshotProtocol !== "cimmich.quiesced-db-documents.v1") process.exit(2);
+    process.stdout.write(`${value.project}|${schema}|${value.semanticCounts}|${value.documentStateDigest}`);
   ') || fail "portable export manifest is invalid"
   BACKUP_PROJECT=${manifest_fields%%|*}
   manifest_remainder=${manifest_fields#*|}
   BACKUP_SCHEMA_VERSION=${manifest_remainder%%|*}
-  BACKUP_SEMANTIC_COUNTS=${manifest_remainder#*|}
+  manifest_remainder=${manifest_remainder#*|}
+  BACKUP_SEMANTIC_COUNTS=${manifest_remainder%%|*}
+  BACKUP_DOCUMENT_STATE_DIGEST=${manifest_remainder#*|}
   test "$BACKUP_SCHEMA_VERSION" -le "$CURRENT_SCHEMA_VERSION" ||
     fail "portable export schema is newer than this Cimmich build"
   validate_semantic_counts "$BACKUP_SEMANTIC_COUNTS"
@@ -760,18 +877,22 @@ backup() {
   backup_destination=$1
   validate_backup_path "$backup_destination"
   test ! -e "$backup_destination" || fail "backup target already exists"
-  backup_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read companion semantic counts"
-  validate_semantic_counts "$backup_counts_before"
   backup_staging="$backup_destination.incomplete.$$"
   test ! -e "$backup_staging" || fail "incomplete backup staging path already exists"
   backup_complete=0
   backup_cleanup() {
+    resume_document_writers >/dev/null 2>&1 || true
     if test "$backup_complete" -eq 0; then rm -rf "$backup_staging"; fi
   }
   trap backup_cleanup EXIT INT TERM
   umask 077
   mkdir -p "$backup_staging"
   chmod 700 "$backup_staging"
+  QUIESCED_SERVICES=
+  quiesce_document_writers
+  backup_counts_before=$(semantic_counts 2>/dev/null) || fail "unable to read companion semantic counts"
+  validate_semantic_counts "$backup_counts_before"
+  backup_documents_before=$(document_state_digest)
   backup_archive_uid=$(id -u)
   backup_archive_gid=$(id -g)
   compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc > "$backup_staging/cimmich.dump"
@@ -790,23 +911,23 @@ backup() {
     -v "$FACE_PROVIDER_VOLUME:/source:ro" -v "$backup_staging:/backup" \
     "$ALPINE_IMAGE" sh -c \
     'tar -czf /backup/face-provider.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /backup/face-provider.tgz'
-  if test "${backup_health_mode:-api}" = database; then
-    backup_schema=$(compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
-      'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;') ||
-      fail "unable to read companion schema during rollback capture"
-    test "$backup_schema" = "$CURRENT_SCHEMA_VERSION" ||
-      fail "companion schema is not current during rollback capture"
-    health="{\"database\":\"ready\",\"schemaVersion\":$backup_schema,\"status\":\"ok\"}"
-  else
-    health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
-  fi
+  backup_schema=$(compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+    'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;') ||
+    fail "unable to read companion schema during backup"
+  test "$backup_schema" = "$CURRENT_SCHEMA_VERSION" ||
+    fail "companion schema is not current during backup"
+  health="{\"database\":\"ready\",\"schemaVersion\":$backup_schema,\"status\":\"ok\"}"
   backup_counts_after=$(semantic_counts 2>/dev/null) || fail "unable to re-read companion semantic counts"
   test "$backup_counts_after" = "$backup_counts_before" ||
     fail "companion semantic counts changed during backup"
-  printf '{"health":%s,"project":"%s","semanticCounts":"%s"}\n' \
-    "$health" "$PROJECT" "$backup_counts_before" > "$backup_staging/manifest.json"
+  backup_documents_after=$(document_state_digest)
+  test "$backup_documents_after" = "$backup_documents_before" ||
+    fail "Cimmich Document content changed during backup"
+  printf '{"documentStateDigest":"%s","health":%s,"project":"%s","semanticCounts":"%s","snapshotProtocol":"cimmich.quiesced-db-documents.v1"}\n' \
+    "$backup_documents_before" "$health" "$PROJECT" "$backup_counts_before" > "$backup_staging/manifest.json"
   (cd "$backup_staging" && "$CHECKSUM" generate cimmich.dump documents.tgz config.tgz face-provider.tgz manifest.json > SHA256SUMS)
   chmod 600 "$backup_staging"/*
+  resume_document_writers || fail "backup completed but Cimmich writer services did not resume"
   validate_backup "$backup_staging"
   mv "$backup_staging" "$backup_destination"
   backup_complete=1
@@ -822,20 +943,24 @@ portable_export() {
   portable_destination=$1
   validate_backup_path "$portable_destination"
   test ! -e "$portable_destination" || fail "portable export target already exists"
-  portable_counts_before=$(semantic_counts 2>/dev/null) ||
-    fail "unable to read companion semantic counts"
-  validate_semantic_counts "$portable_counts_before"
   portable_staging="$portable_destination.incomplete.$$"
   test ! -e "$portable_staging" ||
     fail "incomplete portable export staging path already exists"
   portable_complete=0
   portable_cleanup() {
+    resume_document_writers >/dev/null 2>&1 || true
     if test "$portable_complete" -eq 0; then rm -rf "$portable_staging"; fi
   }
   trap portable_cleanup EXIT INT TERM
   umask 077
   mkdir -p "$portable_staging"
   chmod 700 "$portable_staging"
+  QUIESCED_SERVICES=
+  quiesce_document_writers
+  portable_counts_before=$(semantic_counts 2>/dev/null) ||
+    fail "unable to read companion semantic counts"
+  validate_semantic_counts "$portable_counts_before"
+  portable_documents_before=$(document_state_digest)
   portable_archive_uid=$(id -u)
   portable_archive_gid=$(id -g)
   compose exec -T cimmich-database pg_dump -U cimmich -d cimmich -Fc \
@@ -845,15 +970,24 @@ portable_export() {
     -v "$DOCUMENT_VOLUME:/source:ro" -v "$portable_staging:/portable" \
     "$ALPINE_IMAGE" sh -c \
     'tar -czf /portable/documents.tgz -C /source . && chown "$ARCHIVE_UID:$ARCHIVE_GID" /portable/documents.tgz'
-  health=$(compose exec -T cimmich-api node -e "fetch('http://127.0.0.1:3101/health').then(r=>r.json()).then(v=>process.stdout.write(JSON.stringify(v)))")
+  portable_schema=$(compose exec -T cimmich-database psql -U cimmich -d cimmich -Atc \
+    'SELECT COALESCE(max(version), 0) FROM cimmich_schema_migration;') ||
+    fail "unable to read companion schema during portable export"
+  test "$portable_schema" = "$CURRENT_SCHEMA_VERSION" ||
+    fail "companion schema is not current during portable export"
+  health="{\"database\":\"ready\",\"schemaVersion\":$portable_schema,\"status\":\"ok\"}"
   portable_counts_after=$(semantic_counts 2>/dev/null) ||
     fail "unable to re-read companion semantic counts"
   test "$portable_counts_after" = "$portable_counts_before" ||
     fail "companion semantic counts changed during portable export"
-  printf '{"excludes":["credentials","media","provider-artifacts"],"format":"cimmich.portable-export.v1","health":%s,"project":"%s","semanticCounts":"%s"}\n' \
-    "$health" "$PROJECT" "$portable_counts_before" > "$portable_staging/manifest.json"
+  portable_documents_after=$(document_state_digest)
+  test "$portable_documents_after" = "$portable_documents_before" ||
+    fail "Cimmich Document content changed during portable export"
+  printf '{"documentStateDigest":"%s","excludes":["credentials","media","provider-artifacts"],"format":"cimmich.portable-export.v1","health":%s,"project":"%s","semanticCounts":"%s","snapshotProtocol":"cimmich.quiesced-db-documents.v1"}\n' \
+    "$portable_documents_before" "$health" "$PROJECT" "$portable_counts_before" > "$portable_staging/manifest.json"
   (cd "$portable_staging" && "$CHECKSUM" generate cimmich.dump documents.tgz manifest.json > SHA256SUMS)
   chmod 600 "$portable_staging"/*
+  resume_document_writers || fail "portable export completed but Cimmich writer services did not resume"
   validate_portable_export "$portable_staging"
   mv "$portable_staging" "$portable_destination"
   portable_complete=1
@@ -921,9 +1055,12 @@ create_restore_rollback() {
 
 recover_failed_restore() {
   expected_counts=$1
+  expected_document_digest=$2
   if replace_from_full_backup "$restore_rollback_path"; then
     rollback_counts=$(semantic_counts 2>/dev/null || true)
-    if test "$rollback_counts" = "$expected_counts"; then
+    rollback_documents=$(document_state_digest 2>/dev/null || true)
+    if test "$rollback_counts" = "$expected_counts" &&
+      test "$rollback_documents" = "$expected_document_digest"; then
       fail "restore failed; the previous owner state was recovered automatically"
     fi
   fi
@@ -941,16 +1078,20 @@ restore() {
   restore_source=$backup_path
   restore_schema_version=$BACKUP_SCHEMA_VERSION
   restore_expected_counts=$BACKUP_SEMANTIC_COUNTS
+  restore_expected_document_digest=$BACKUP_DOCUMENT_STATE_DIGEST
   restore_previous_counts=$(semantic_counts 2>/dev/null) ||
     fail "unable to read owner state before restore"
   validate_semantic_counts "$restore_previous_counts"
+  restore_previous_document_digest=$(document_state_digest)
   create_restore_rollback
   if ! replace_from_full_backup "$restore_source"; then
-    recover_failed_restore "$restore_previous_counts"
+    recover_failed_restore "$restore_previous_counts" "$restore_previous_document_digest"
   fi
   restored_counts=$(semantic_counts 2>/dev/null || true)
-  if test "$restored_counts" != "$restore_expected_counts"; then
-    recover_failed_restore "$restore_previous_counts"
+  restored_document_digest=$(document_state_digest 2>/dev/null || true)
+  if test "$restored_counts" != "$restore_expected_counts" ||
+    test "$restored_document_digest" != "$restore_expected_document_digest"; then
+    recover_failed_restore "$restore_previous_counts" "$restore_previous_document_digest"
   fi
   restore_cleanup_rollback=1
   backup_id=${restore_source##*/}
@@ -970,21 +1111,54 @@ portable_restore() {
   restore_source=$backup_path
   restore_schema_version=$BACKUP_SCHEMA_VERSION
   restore_expected_counts=$BACKUP_SEMANTIC_COUNTS
+  restore_expected_document_digest=$BACKUP_DOCUMENT_STATE_DIGEST
   restore_previous_counts=$(semantic_counts 2>/dev/null) ||
     fail "unable to read owner state before portable restore"
   validate_semantic_counts "$restore_previous_counts"
+  restore_previous_document_digest=$(document_state_digest)
   create_restore_rollback
   if ! replace_from_portable_export "$restore_source"; then
-    recover_failed_restore "$restore_previous_counts"
+    recover_failed_restore "$restore_previous_counts" "$restore_previous_document_digest"
   fi
   restored_counts=$(semantic_counts 2>/dev/null || true)
-  if test "$restored_counts" != "$restore_expected_counts"; then
-    recover_failed_restore "$restore_previous_counts"
+  restored_document_digest=$(document_state_digest 2>/dev/null || true)
+  if test "$restored_counts" != "$restore_expected_counts" ||
+    test "$restored_document_digest" != "$restore_expected_document_digest"; then
+    recover_failed_restore "$restore_previous_counts" "$restore_previous_document_digest"
   fi
   restore_cleanup_rollback=1
   portable_id=${restore_source##*/}
   printf '{"exportId":"%s","exportSchemaVersion":%s,"format":"cimmich.portable-export.v1","project":"%s","restoredSchemaVersion":%s,"semanticCounts":"%s","status":"RESTORED"}\n' \
     "$portable_id" "$restore_schema_version" "$PROJECT" "$CURRENT_SCHEMA_VERSION" "$restored_counts"
+}
+
+rollback_restore() {
+  require_configured
+  test "$#" -eq 3 ||
+    fail "usage: companion.sh rollback-restore ABSOLUTE_BACKUP --confirm=PROJECT --accept-current-state-loss"
+  backup_path=$1
+  confirmation=$2
+  loss_confirmation=$3
+  test "$confirmation" = "--confirm=$PROJECT" ||
+    fail "rollback restore confirmation must exactly name $PROJECT"
+  test "$loss_confirmation" = --accept-current-state-loss ||
+    fail "rollback restore requires --accept-current-state-loss"
+  validate_backup "$backup_path"
+  test "$BACKUP_SCHEMA_VERSION" = "$CURRENT_SCHEMA_VERSION" ||
+    fail "run rollback-restore from the exact release bundle that created this backup"
+  rollback_source=$backup_path
+  rollback_expected_counts=$BACKUP_SEMANTIC_COUNTS
+  rollback_expected_document_digest=$BACKUP_DOCUMENT_STATE_DIGEST
+  if ! replace_from_full_backup "$rollback_source"; then
+    fail "rollback restore failed after replacement began; keep the source backup and do not start another release"
+  fi
+  rollback_counts=$(semantic_counts 2>/dev/null || true)
+  rollback_document_digest=$(document_state_digest 2>/dev/null || true)
+  test "$rollback_counts" = "$rollback_expected_counts" &&
+    test "$rollback_document_digest" = "$rollback_expected_document_digest" ||
+    fail "rollback restore completed but exact database/Document verification failed"
+  printf '{"backupSchemaVersion":%s,"project":"%s","semanticCounts":"%s","status":"ROLLED_BACK"}\n' \
+    "$BACKUP_SCHEMA_VERSION" "$PROJECT" "$rollback_counts"
 }
 
 disable() {
@@ -1011,7 +1185,7 @@ remove_companion() {
 validate_project
 
 command=${1:-}
-test -n "$command" || fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove"
+test -n "$command" || fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|rollback-restore|disable|remove"
 shift
 case "$command" in
   configure) configure "$@" ;;
@@ -1026,7 +1200,8 @@ case "$command" in
   restore) restore "$@" ;;
   portable-export) portable_export "$@" ;;
   portable-restore) portable_restore "$@" ;;
+  rollback-restore) rollback_restore "$@" ;;
   disable) disable "$@" ;;
   remove) remove_companion "$@" ;;
-  *) fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|disable|remove" ;;
+  *) fail "usage: companion.sh configure|up|status|doctor|sync|face-provider|process-faces|private-password|backup|restore|portable-export|portable-restore|rollback-restore|disable|remove" ;;
 esac

@@ -93,6 +93,66 @@ export type CimmichArchiveBackupProofPage = {
   };
 };
 
+export type CimmichArchiveMissingFile = {
+  assetId: string;
+  assetType: 'image' | 'video';
+  assignments: number;
+  captureTime: string | null;
+  filename: string;
+  lastSeenAt: string | null;
+  lastSeenRunId: string;
+  people: number;
+  sourceAssetId: string;
+  sourceId: string;
+  state: 'missing' | 'trashed';
+};
+
+export type CimmichArchiveMissingFilesPage = {
+  items: CimmichArchiveMissingFile[];
+  limit: number;
+  nextOffset: number | null;
+  offset: number;
+  schemaVersion: 'cimmich.archive-missing-files.v2';
+  summary: {
+    missing: number;
+    total: number;
+    trashed: number;
+  };
+};
+
+export type CimmichArchiveMissingFileScan = {
+  completedAt: string | null;
+  error: { code: string; message: string } | null;
+  result?: {
+    activeAssets: number;
+    missingAssets: number;
+    runId: string | null;
+    suspectedMissingAssets: number;
+  };
+  scanId: string | null;
+  startedAt: string | null;
+  state: 'complete' | 'failed' | 'idle' | 'running';
+};
+
+export type CimmichArchiveMissingFileScanStatus = {
+  inventory: {
+    coverage: { complete: boolean; runId: string | null; state: string };
+    schemaVersion: 'cimmich.immich-inventory.v1';
+    source: {
+      activeAssets: number;
+      lastCompletedRunId: string | null;
+      missingAssets: number;
+      processingRunId: string | null;
+      sourceId: string;
+      state: string;
+      suspectedMissingAssets: number;
+      unsupportedAssets: number;
+    } | null;
+  };
+  scan: CimmichArchiveMissingFileScan;
+  schemaVersion: 'cimmich.archive-missing-file-scan.v1';
+};
+
 export type CimmichArchiveBackupTarget = {
   available: boolean;
   distinctFailureDomain: boolean;
@@ -242,6 +302,47 @@ export const getCimmichArchiveBackupProof = (sourceAssetIds: string[] = []) => {
   const suffix = sourceAssetIds.length > 0 ? `?${search.toString()}` : '';
   return request<CimmichArchiveBackupProofPage>(`/v1/archive-integrity/backup-proof${suffix}`);
 };
+
+export const getCimmichArchiveMissingFiles = ({ limit = 50, offset = 0 } = {}) => {
+  const search = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return request<CimmichArchiveMissingFilesPage>(`/v1/archive-integrity/missing-files?${search.toString()}`);
+};
+
+export const getCimmichArchiveMissingFileScan = () =>
+  request<CimmichArchiveMissingFileScanStatus>('/v1/archive-integrity/missing-files/scan');
+
+export const startCimmichArchiveMissingFileScan = () =>
+  request<{
+    replayed: boolean;
+    scan: CimmichArchiveMissingFileScan;
+    schemaVersion: 'cimmich.archive-missing-file-scan.v1';
+  }>('/v1/archive-integrity/missing-files/scan', { method: 'POST' });
+
+export const removeCimmichArchiveMissingFiles = (sourceId: string, sourceAssetIds: string[], commandId: string) =>
+  request<{
+    removedSourceAssetIds: string[];
+    replayed: boolean;
+    schemaVersion: 'cimmich.archive-missing-files.v1';
+    sourceId: string;
+    tombstonedAssets: number;
+  }>('/v1/archive-integrity/missing-files:remove', {
+    body: JSON.stringify({ commandId, sourceAssetIds, sourceId }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
+
+export const removeAllCimmichArchiveTrashedFiles = (sourceId: string, expectedCount: number, commandId: string) =>
+  request<{
+    removedSourceAssetIds: string[];
+    replayed: boolean;
+    schemaVersion: 'cimmich.archive-missing-files.v2';
+    sourceId: string;
+    tombstonedAssets: number;
+  }>('/v1/archive-integrity/missing-files:remove', {
+    body: JSON.stringify({ commandId, expectedCount, selection: 'trashed', sourceId }),
+    headers: { 'x-cimmich-actor': 'local-operator' },
+    method: 'POST',
+  });
 
 export const getCimmichArchiveBackupTargets = () =>
   request<{ items: CimmichArchiveBackupTarget[]; schemaVersion: 'cimmich.archive-backup-scan.v1' }>(

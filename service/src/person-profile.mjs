@@ -1,4 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import {
+  applyRelationships,
+  cleanRelationshipIds,
+  createRelationshipCategory as createPersonRelationshipCategory,
+} from "./person-relationship-catalog.mjs";
 
 const schemaVersion = "cimmich.person-profile.v1";
 const localOwnerId = "local-primary";
@@ -463,26 +468,6 @@ const loadPersonDisplay = async (executor, personId, presentationRank) => {
   };
 };
 
-const cleanRelationshipIds = (value) => {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > 20) {
-    throw typedError(
-      "relationshipCategoryIds must be an array of at most 20 IDs",
-      400,
-      "PERSON_PROFILE_RELATIONSHIPS_INVALID",
-    );
-  }
-  const ids = value.map((item) => String(item || "").trim());
-  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
-    throw typedError(
-      "relationshipCategoryIds must contain unique non-blank IDs",
-      400,
-      "PERSON_PROFILE_RELATIONSHIPS_INVALID",
-    );
-  }
-  return ids;
-};
-
 const cleanItemCommands = (value) => {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || value.length > 100) {
@@ -637,50 +622,6 @@ const applyItemCommands = async (tx, personId, commands = []) => {
         date_value = ${item.dateValue}, updated_at = now(),
         revision = revision + 1
       WHERE item_id = ${item.itemId}
-    `;
-  }
-};
-
-const applyRelationships = async (tx, personId, actorId, desiredIds) => {
-  if (desiredIds === undefined) return;
-  const available = desiredIds.length
-    ? await tx`
-        SELECT category_id
-        FROM person_category
-        WHERE category_id = ANY(${desiredIds})
-          AND category_kind = 'relationship' AND state = 'active'
-      `
-    : [];
-  const availableIds = new Set(available.map((row) => row.category_id));
-  const invalid = desiredIds.filter((id) => !availableIds.has(id));
-  if (invalid.length) {
-    throw typedError(
-      "One or more relationship categories are not active relationship truth",
-      400,
-      "PERSON_PROFILE_RELATIONSHIPS_INVALID",
-      { invalidCategoryIds: invalid },
-    );
-  }
-  const current = await tx`
-    SELECT category_id
-    FROM current_person_category
-    WHERE person_id = ${personId} AND category_kind = 'relationship'
-  `;
-  const currentIds = new Set(current.map((row) => row.category_id));
-  const desired = new Set(desiredIds);
-  for (const categoryId of new Set([...currentIds, ...desired])) {
-    const wasSelected = currentIds.has(categoryId);
-    const selected = desired.has(categoryId);
-    if (wasSelected === selected) continue;
-    await tx`
-      INSERT INTO person_category_membership_event (
-        membership_event_id, person_id, category_id, action, actor_kind,
-        actor_id, producer_receipt_id, privacy_class
-      ) VALUES (
-        ${`categoryevent_${randomUUID().replaceAll("-", "")}`}, ${personId},
-        ${categoryId}, ${selected ? "add" : "remove"}, 'user', ${actorId},
-        ${userCommandReceiptId}, 'private'
-      )
     `;
   }
 };
@@ -888,8 +829,11 @@ export const createPersonProfileStore = (
       `;
       await applyRelationships(
         tx,
-        person.person_id,
-        actor,
+        {
+          actorId: actor,
+          personId: person.person_id,
+          producerReceiptId: userCommandReceiptId,
+        },
         requested.relationshipCategoryIds,
       );
       await applyItemCommands(tx, person.person_id, requested.itemCommands);
@@ -912,6 +856,22 @@ export const createPersonProfileStore = (
         personId: person.person_id,
         response,
       });
+    });
+  },
+
+  createRelationshipCategory({ actorId, commandId, name, personId }) {
+    return createPersonRelationshipCategory(sql, {
+      actorId: cleanActor(actorId),
+      beginCommand,
+      commandId,
+      completeCommand,
+      ensureUserCommandReceipt,
+      loadProfile,
+      name,
+      personId,
+      presentationRank,
+      producerReceiptId: userCommandReceiptId,
+      requireHumanPerson,
     });
   },
 

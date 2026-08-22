@@ -93,12 +93,14 @@ describe('human-first Library information architecture', () => {
     expect(sorter).not.toContain('title={asset.originalPath}');
   });
 
-  it('makes Event folders browsable before requiring a search', async () => {
+  it('makes Event folders browsable and reviewable before requiring a search or selection', async () => {
     const source = await read('src/lib/components/cimmich/CimmichContextBrowser.svelte');
 
     expect(source).toContain('Browse folders');
     expect(source).toContain('Recent folders');
-    expect(source).toContain('Recent visible folders are ready below. Search only when you need something else.');
+    expect(source).toContain('Open a folder to review its visible images before choosing anything.');
+    expect(source).toContain('Opening a folder never selects its media.');
+    expect(source).toContain('aria-label="Folder media"');
     expect(source).toContain('folderSearchStarted ? folderSearchAssets : libraryAssets');
     expect(source).toContain('getCimmichVisibleMapAssetBindings(recent.map((asset) => asset.id))');
     expect(source).not.toContain('Type at least two characters from the folder name or path.');

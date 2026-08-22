@@ -25,7 +25,7 @@ Recorded 2026-07-20 for the optional, unbundled local Body provider.
 - Licence metadata in the accepted packages: BSD-3-Clause / BSD
 - Cimmich integration: optional Linux CPU execution runtime for the Body
   provider only. The CPU wheels are selected explicitly; this integration does
-  not install CUDA packages or claim X1 GPU acceleration.
+  not install CUDA packages or claim unverified GPU acceleration.
 
 The Cedar House validation used a local file named `yolo11n.pt`, SHA-256
 `0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1`.

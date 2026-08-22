@@ -12,6 +12,11 @@ const readPersonProfile = async () => {
     readFile('src/lib/components/cimmich/person-identity-workspace.ts', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichPersonAppearanceGallery.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/person-connections.ts', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonConnectionAdd.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonConnectionAddPerson.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonConnectionList.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonConnectionToolbar.svelte', 'utf8'),
+    readFile('src/lib/components/cimmich/CimmichPersonConnectionWeb.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichIdentityWaitingBadges.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichReviewPhotoMedia.svelte', 'utf8'),
     readFile('src/lib/components/cimmich/CimmichAcceptedMistagActions.svelte', 'utf8'),
@@ -26,6 +31,15 @@ const readPersonProfile = async () => {
 };
 
 describe('Person profile layout', () => {
+  it('marks Immich trash and deleted source records inline on photo cards', async () => {
+    const source = await readFile('src/lib/components/cimmich/CimmichPersonPhotoCard.svelte', 'utf8');
+
+    expect(source).toContain("asset.sourceState !== 'active'");
+    expect(source).toContain('In Immich trash');
+    expect(source).toContain('Missing from Immich');
+    expect(source).toContain('Archive Health');
+  });
+
   it('opens with a photo-led identity hero instead of an administrative record card', async () => {
     const source = await readPersonProfile();
 
@@ -347,14 +361,56 @@ describe('Person profile layout', () => {
 
   it('promotes Connections and keeps Details free of add and administration rails', async () => {
     const source = await readPersonProfile();
+    const [card, toolbar] = await Promise.all([
+      readFile('src/lib/components/cimmich/CimmichPersonConnectionCard.svelte', 'utf8'),
+      readFile('src/lib/components/cimmich/CimmichPersonConnectionToolbar.svelte', 'utf8'),
+    ]);
 
     expect(source).toContain("cimmichMode === 'connections'");
+    expect(source).toContain('<CimmichPersonConnectionAdd');
+    expect(source).toContain('bind:open={cimmichConnectionAddOpen}');
+    expect(source).toContain('bind:selectedKind={cimmichConnectionAddKind}');
+    expect(source).toContain('showTrigger={false}');
+    expect(source).toContain('aria-label="Connection view options"');
+    expect(source).toContain('aria-label="List view"');
+    expect(source).toContain('aria-label="Web view"');
+    expect(toolbar).toContain('class="ml-auto flex min-w-max items-stretch"');
+    expect(toolbar).not.toContain('rounded-xl border border-gray-200 bg-white shadow-sm');
+    expect(source).toContain('<CimmichPersonConnectionAddPerson');
+    expect(source).toContain('Add a person connection');
+    expect(source).toContain('Choose anyone in People');
+    expect(source).toContain('aria-label={`Add ${singular(group.id)} connection`}');
+    expect(source).toContain('No {group.label.toLocaleLowerCase()} connected yet.');
+    expect(source).toContain('buildCimmichPersonConnectionGraph');
+    expect(source).toContain('<CimmichMemoryGraph');
+    expect(source).toContain('compact');
+    expect(source).toContain("'s connection web");
+    expect(source).toContain('Open full Discover');
+    expect(source).toContain('getCimmichMemoryGraph(120)');
+    expect(source).toContain('buildCimmichPersonDrilldownGraph');
+    expect(source).toContain('People are the only points. Switch views to see contexts as labelled outlines.');
+    expect(source).toContain('aria-label="Graph view"');
+    expect(source).toContain("graphView = $state<CimmichPersonGraphView>('people')");
+    expect(source).toContain("groupContextNodes={graphView !== 'people'}");
+    expect(source).toContain('Reset to {personName}');
+    expect(source).toContain('<CimmichConnectionHubEditor');
+    expect(toolbar).not.toContain('Connect people through…');
+    expect(source).toContain('aria-label="Add several people through a shared context"');
+    expect(source).toContain('Add several');
+    expect(source).toContain('expandableNodeCounts={hiddenNeighbourCounts}');
+    expect(source).toContain('collapsed.delete(group.id)');
+    expect(source).toContain('aria-expanded={!collapsed.has(group.id)}');
+    expect(source).toContain("'rotate-90'");
+    expect(source).toContain('cimmichDirectContextConnections = await getCimmichPersonConnections');
     expect(source).toContain('aria-label="Connections"');
     expect(source).not.toContain('id="person-connections-heading"');
     expect(source).not.toContain("connected through {cimmichPerson.display_name}'s photo stories");
     expect(source).toContain(".filter((category) => category.category_kind === 'relationship')");
-    expect(source).toContain(".join(' · ') || 'Connected person'");
+    expect(source).toContain("metaLabel: 'Shared context'");
     expect(source).toContain("{ id: 'person', label: 'People' }");
+    expect(source).toContain('cimmichPersonConnectionPortrait(person)');
+    expect(card).toContain('style={connection.portraitStyle}');
+    expect(card).toContain("? 'max-w-none transition");
     expect(source).toContain("{ id: 'event', label: 'Events' }");
     expect(source).toContain("{ id: 'place', label: 'Places' }");
     expect(source).toContain("{ id: 'object', label: 'Things' }");
@@ -362,7 +418,7 @@ describe('Person profile layout', () => {
     expect(source).toContain('undoCimmichPersonConnection');
     expect(source).toContain('existing.directRelations = [...(existing.directRelations ?? []), ...relation]');
     expect(source).toContain('connection.directRelations.map((relation) => relation.relationId)');
-    expect(source).toContain('aria-label={`Remove linked roles from ${connection.displayName}`}');
+    expect(card).toContain('aria-label={`Remove linked roles from ${connection.displayName}`}');
     expect(source).toContain('getCimmichPersonConnections(cimmichPerson.person_id)');
     expect(source.indexOf('await getCimmichPersonConnections')).toBeLessThan(
       source.indexOf('await getCimmichPeople(500)'),
@@ -373,5 +429,11 @@ describe('Person profile layout', () => {
     expect(source).not.toContain('aria-label="Details tools"');
     expect(source).not.toContain('cimmichQuickDetailActions');
     expect(source).toContain('<h2 class="text-lg font-semibold">Profile settings</h2>');
+  });
+
+  it('loads Details when a direct Details URL initializes the Person workspace', async () => {
+    const source = await readPersonProfile();
+
+    expect(source).toMatch(/case 'details': \{\s+openCimmichDetails\(\);/);
   });
 });

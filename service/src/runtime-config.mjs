@@ -284,6 +284,27 @@ export const loadRuntimeConfig = (environment = {}) => {
     );
   }
 
+  const optionalEgressEnabled = exactBoolean(
+    environment.CIMMICH_OPTIONAL_EGRESS_ENABLED,
+    "false",
+    "Cimmich optional egress enabled",
+  );
+  const ownerGatewayRequired = exactBoolean(
+    environment.CIMMICH_OWNER_GATEWAY_REQUIRED,
+    "true",
+    "Cimmich owner gateway required",
+  );
+  const visibilityTestMode = exactBoolean(
+    environment.CIMMICH_VISIBILITY_TEST_MODE,
+    "false",
+    "Cimmich visibility test mode",
+  );
+  if (visibilityTestMode && runtimeMode !== "acceptance") {
+    throw configError(
+      "Cimmich visibility test mode is restricted to acceptance runtime",
+    );
+  }
+
   return {
     allTrustedShortlistEnabled,
     allTrustedShortlistEvaluationReceiptDigest,
@@ -304,7 +325,10 @@ export const loadRuntimeConfig = (environment = {}) => {
     guidedVisibilityCeiling,
     host,
     immichCredentialFile,
+    optionalEgressEnabled,
+    ownerGatewayRequired,
     port,
     runtimeMode,
+    visibilityTestMode,
   };
 };

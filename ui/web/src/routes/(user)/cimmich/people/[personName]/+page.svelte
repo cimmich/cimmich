@@ -6,6 +6,16 @@
   import CimmichPersonHoldingControl from '$lib/components/cimmich/CimmichPersonHoldingControl.svelte';
   import CimmichPersonSplitWorkspace from '$lib/components/cimmich/CimmichPersonSplitWorkspace.svelte';
   import CimmichPersonAppearanceGallery from '$lib/components/cimmich/CimmichPersonAppearanceGallery.svelte';
+  import CimmichPersonConnectionAdd, {
+    type CimmichPersonConnectionAddKind,
+  } from '$lib/components/cimmich/CimmichPersonConnectionAdd.svelte';
+  import CimmichPersonConnectionAddPerson from '$lib/components/cimmich/CimmichPersonConnectionAddPerson.svelte';
+  import CimmichPersonConnectionList from '$lib/components/cimmich/CimmichPersonConnectionList.svelte';
+  import CimmichPersonConnectionToolbar from '$lib/components/cimmich/CimmichPersonConnectionToolbar.svelte';
+  import CimmichPersonConnectionWeb from '$lib/components/cimmich/CimmichPersonConnectionWeb.svelte';
+  import CimmichConnectionHubEditor from '$lib/components/cimmich/CimmichConnectionHubEditor.svelte';
+  import CimmichConnectionFactEditor from '$lib/components/cimmich/CimmichConnectionFactEditor.svelte';
+  import CimmichPersonConnectionNotices from '$lib/components/cimmich/CimmichPersonConnectionNotices.svelte';
   import CimmichPersonIdentityNavigation from '$lib/components/cimmich/CimmichPersonIdentityNavigation.svelte';
   import CimmichPersonPrimaryTabs from '$lib/components/cimmich/CimmichPersonPrimaryTabs.svelte';
   import CimmichPersonPhotoViewToggle from '$lib/components/cimmich/CimmichPersonPhotoViewToggle.svelte';
@@ -54,14 +64,18 @@
   import type {
     CimmichHeroField,
     CimmichPersonConnection,
+    CimmichPersonConnectionView,
     CimmichPresentationDrag,
     CimmichPresentationFrame,
   } from '$lib/components/cimmich/person-page-types';
   import { preparePersonCandidates } from '$lib/components/cimmich/person-candidate-review';
   import {
+    buildCimmichPersonConnectionGraph,
+    cimmichPersonConnectionPortrait,
     groupCimmichPersonConnections,
+    getCimmichPersonConnectionHref,
     loadCimmichPeopleConnections,
-    personConnectionRelationshipLabel,
+    mergeCimmichRecordedConnectionFacts,
   } from '$lib/components/cimmich/person-connections';
   import { loadPersonDetailsProjection } from '$lib/components/cimmich/person-details-projection';
   import { loadPersonSecondaryProjections } from '$lib/components/cimmich/person-secondary-projections';
@@ -120,6 +134,11 @@
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { Route } from '$lib/route';
+  import {
+    getCimmichPersonConnectionFacts,
+    type CimmichConnectionFact,
+    type CimmichConnectionSuggestion,
+  } from '$lib/services/cimmich-connection-facts.service';
   import { getCimmichPersonSetup } from '$lib/services/cimmich-person-names.service';
   import {
     acceptCimmichMachineSuggestion,
@@ -223,18 +242,21 @@
     mdiSelectAll,
     mdiSortVariant,
     mdiTagMultipleOutline,
-    mdiTrashCanOutline,
     mdiViewGridOutline,
   } from '@mdi/js';
   import { Icon, Tooltip, toastManager } from '@immich/ui';
-  import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
+  import { SvelteMap } from 'svelte/reactivity';
   import type { PageData } from './$types';
+  import {
+    personArchiveTabs as tabs,
+    personPhotoFilters as photoFilters,
+    type PersonArchiveTab as PersonTab,
+    type PersonPhotoFilter as PhotoFilter,
+  } from '$lib/components/cimmich/person-page-options';
   interface Props {
     data: PageData;
   }
   type CimmichMoveMode = 'existing' | 'new';
-  type PhotoFilter = 'all' | 'body' | 'face' | 'needs';
-  type PersonTab = 'identity' | 'maintenance' | 'photos' | 'places' | 'signals' | 'story' | 'with';
   type FaceConfirmationCandidate = {
     asset?: CimmichResolvedAsset;
     evidenceKind: 'candidate' | 'source';
@@ -329,6 +351,10 @@
   let cimmichPresentationSaving = $state<CimmichPersonPresentationSlot | ''>('');
   let cimmichLoadError = $state('');
   let cimmichMode = $state<CimmichPersonMode>(data.mode as CimmichPersonMode);
+  let cimmichConnectionAddOpen = $state(false);
+  let cimmichConnectionAddKind = $state<CimmichPersonConnectionAddKind>('event');
+  let cimmichConnectionPersonAddOpen = $state(false);
+  let cimmichConnectionHubOpen = $state(false);
   let cimmichPerson = $state<CimmichPerson>();
   let cimmichEvidenceCoverage = $state<CimmichPersonEvidenceCoverageProjection>();
   let cimmichEvidenceError = $state('');
@@ -344,6 +370,8 @@
   const syncCimmichWorkspaceUrl = () => syncPersonWorkspaceUrl(cimmichMode, cimmichIdentityFilter);
   const selectCimmichMode = (mode: CimmichPersonMode) => {
     cimmichMode = mode;
+    cimmichConnectionAddOpen = mode === 'connections' && cimmichConnectionAddOpen;
+    cimmichConnectionHubOpen = mode === 'connections' && cimmichConnectionHubOpen;
     syncCimmichWorkspaceUrl();
   };
   const storeCimmichReturnScroll = () => storePersonWorkspaceReturnScroll(cimmichMode, cimmichIdentityFilter);
@@ -377,6 +405,10 @@
   let cimmichPersonVisibility = $state<CimmichVisibilityObject>();
   let cimmichPeopleConnections = $state<CimmichPersonConnection[]>([]);
   let cimmichDirectContextConnections = $state<CimmichPersonContextConnection[]>([]);
+  let cimmichRecordedConnectionFacts = $state<CimmichConnectionFact[]>([]);
+  let cimmichConnectionSuggestions = $state<CimmichConnectionSuggestion[]>([]);
+  let cimmichConnectionEditing = $state<CimmichPersonConnection>();
+  let cimmichConnectionView = $state<CimmichPersonConnectionView>('list');
   let cimmichConnectionsLoaded = $state(false);
   let cimmichConnectionError = $state('');
   let cimmichConnectionSavingId = $state('');
@@ -408,12 +440,6 @@
   let photoFilter = $state<PhotoFilter>('all');
   let resolvedAssets = $state<Record<string, CimmichResolvedAsset>>({});
   let assetResolveRun = 0;
-  const photoFilters: Array<{ id: PhotoFilter; label: string }> = [
-    { id: 'all', label: 'All' },
-    { id: 'face', label: 'Face' },
-    { id: 'body', label: 'Body' },
-    { id: 'needs', label: 'Needs check' },
-  ];
   const updateCimmichTabsOverflow = () => {
     if (!cimmichTabsScroller) {
       return;
@@ -477,16 +503,6 @@
   ];
   const cimmichModifierOptions = ['Helmet', 'Sunglasses', 'Mask', 'Profile', 'Low light', 'Occluded'];
 
-  const tabs: Array<{ id: PersonTab; label: string }> = [
-    { id: 'photos', label: 'Photos' },
-    { id: 'story', label: 'Story' },
-    { id: 'identity', label: 'Identity' },
-    { id: 'with', label: 'With' },
-    { id: 'places', label: 'Places' },
-    { id: 'signals', label: 'Signals' },
-    { id: 'maintenance', label: 'Maintenance' },
-  ];
-
   const resolveFilenames = $derived(
     [person?.featureFace?.filename, ...(person?.photos.map((photo) => photo.filename) ?? [])].filter(
       (filename): filename is string => typeof filename === 'string',
@@ -499,7 +515,8 @@
       const relation = connection.relationId
         ? [{ relationId: connection.relationId, relationType: connection.relationType }]
         : [];
-      const existing = connections.get(connection.targetId);
+      const key = `${connection.targetKind}:${connection.targetId}`;
+      const existing = connections.get(key);
       if (existing) {
         existing.directRelations = [...(existing.directRelations ?? []), ...relation];
         existing.metaLabel = [...new Set(existing.directRelations.map((item) => item.relationType))]
@@ -509,31 +526,30 @@
         existing.sourceAssetId ||= connection.coverAssetId;
         continue;
       }
-      connections.set(connection.targetId, {
+      connections.set(key, {
         assetIds: new Set(),
         directRelations: relation,
         displayName: connection.displayName,
         entityId: connection.targetId,
         entityKind: connection.targetKind,
-        metaLabel:
-          connection.targetKind === 'person'
-            ? personConnectionRelationshipLabel(cimmichSetupPeople, connection.targetId)
-            : connection.relationType.replaceAll('_', ' '),
+        metaLabel: connection.targetKind === 'person' ? 'Shared context' : connection.relationType.replaceAll('_', ' '),
         photoCount: connection.targetKind === 'person' ? connection.photoCount : 0,
         sourceAssetId: connection.coverAssetId,
         typeKind: connection.typeKind ?? connection.targetKind,
       });
     }
+    mergeCimmichRecordedConnectionFacts(connections, cimmichRecordedConnectionFacts, cimmichSetupPeople);
     for (const asset of cimmichAssets) {
       for (const context of asset.contexts) {
-        const existing = connections.get(context.entityId);
+        const key = `${context.entityKind}:${context.entityId}`;
+        const existing = connections.get(key);
         if (existing) {
           existing.assetIds.add(asset.asset_id);
           existing.photoCount = existing.assetIds.size;
           existing.sourceAssetId ||= asset.sourceAssetId;
           continue;
         }
-        connections.set(context.entityId, {
+        connections.set(key, {
           assetIds: new Set([asset.asset_id]),
           displayName: context.displayName,
           entityId: context.entityId,
@@ -545,28 +561,64 @@
         });
       }
     }
-    return [...connections.values()].sort(
-      (left, right) =>
-        left.entityKind.localeCompare(right.entityKind) || left.displayName.localeCompare(right.displayName),
-    );
+    return [...connections.values()]
+      .map((connection) => {
+        if (connection.entityKind !== 'person') {
+          return connection;
+        }
+        const person = cimmichSetupPeople.find(({ person_id }) => person_id === connection.entityId);
+        return person ? { ...connection, ...cimmichPersonConnectionPortrait(person) } : connection;
+      })
+      .sort(
+        (left, right) =>
+          left.entityKind.localeCompare(right.entityKind) || left.displayName.localeCompare(right.displayName),
+      );
   });
   const cimmichPersonConnectionGroups = $derived(
     groupCimmichPersonConnections([...cimmichPeopleConnections, ...cimmichPersonConnections]),
   );
-  const cimmichPersonConnectionCount = $derived(cimmichPersonConnectionGroups.flatMap(({ items }) => items).length);
-  const cimmichPersonConnectionHref = ({ entityId, entityKind }: CimmichPersonConnection) => {
-    if (entityKind === 'person') {
-      const person = cimmichSetupPeople.find((row) => row.person_id === entityId);
-      return person
-        ? Route.cimmichPerson({ name: person.display_name, personId: person.person_id })
-        : Route.cimmichPeople();
+  const cimmichPersonConnectionItems = $derived(cimmichPersonConnectionGroups.flatMap(({ items }) => items));
+  const cimmichPersonConnectionCount = $derived(cimmichPersonConnectionItems.length);
+  const cimmichPersonPortrait = $derived(cimmichPerson ? cimmichPersonConnectionPortrait(cimmichPerson) : null);
+  const cimmichPersonConnectionGraph = $derived(
+    buildCimmichPersonConnectionGraph({
+      connections: cimmichPersonConnectionItems,
+      personId: cimmichPerson?.person_id ?? '',
+      personName: cimmichPerson?.display_name ?? '',
+      sourcePortraitStyle: cimmichPersonPortrait?.portraitStyle,
+      sourceAssetId: cimmichPersonPortrait?.sourceAssetId ?? null,
+    }),
+  );
+  const openCimmichConnectionSectionAdd = (kind: CimmichPersonConnection['entityKind']) => {
+    cimmichConnectionEditing = undefined;
+    if (kind === 'person') {
+      cimmichConnectionAddOpen = false;
+      cimmichConnectionPersonAddOpen = true;
+      return;
     }
-    const search = new SvelteURLSearchParams({ entityId });
-    if (entityKind === 'object') {
-      search.set('family', 'objects');
-      return `${Route.cimmichPlaces()}?${search.toString()}`;
+    cimmichConnectionPersonAddOpen = false;
+    cimmichConnectionAddKind = kind === 'object' ? 'object' : kind === 'place' ? 'place' : 'event';
+    cimmichConnectionAddOpen = true;
+  };
+  const chooseCimmichConnectionPerson = (person: CimmichPerson) => {
+    cimmichConnectionPersonAddOpen = false;
+    cimmichConnectionEditing = {
+      displayName: person.display_name,
+      entityId: person.person_id,
+      entityKind: 'person',
+      metaLabel: 'Not yet described',
+      photoCount: 0,
+      sourceAssetId: person.sourceAssetId || null,
+      typeKind: 'person',
+    };
+  };
+  const refreshCimmichConnectionFacts = async () => {
+    if (!cimmichPerson) {
+      return;
     }
-    return `${entityKind === 'event' ? Route.cimmichEvents() : Route.cimmichPlaces()}?${search.toString()}`;
+    const projection = await getCimmichPersonConnectionFacts(cimmichPerson.person_id);
+    cimmichRecordedConnectionFacts = projection.facts;
+    cimmichConnectionSuggestions = projection.suggestions;
   };
   const removeCimmichPersonConnection = async (connection: CimmichPersonConnection) => {
     if (!cimmichPerson || !connection.directRelations?.length || connection.entityKind === 'person') {
@@ -2455,11 +2507,16 @@
     }
     const generation = personProjectionGeneration;
     try {
-      const directConnections = await getCimmichPersonConnections(cimmichPerson.person_id);
+      const [directConnections, recordedConnections] = await Promise.all([
+        getCimmichPersonConnections(cimmichPerson.person_id),
+        getCimmichPersonConnectionFacts(cimmichPerson.person_id),
+      ]);
       if (generation !== personProjectionGeneration) {
         return;
       }
       cimmichDirectContextConnections = directConnections;
+      cimmichRecordedConnectionFacts = recordedConnections.facts;
+      cimmichConnectionSuggestions = recordedConnections.suggestions;
       cimmichConnectionsLoaded = true;
       const setupPeople = cimmichSetupPeople.length > 0 ? cimmichSetupPeople : await getCimmichPeople(500);
       if (generation !== personProjectionGeneration) {
@@ -2926,10 +2983,25 @@
       cimmichPerson = row;
       cimmichIdentityMoveUndo = restoreIdentityMoveUndo(row.person_id);
       cimmichLoadError = '';
-      if (cimmichMode === 'identity') {
-        void openCimmichIdentity(generation);
-      } else if (cimmichMode === 'connections') {
-        void openCimmichConnections();
+      switch (cimmichMode) {
+        case 'connections': {
+          void openCimmichConnections();
+          break;
+        }
+        case 'details': {
+          openCimmichDetails();
+          break;
+        }
+        case 'identity': {
+          void openCimmichIdentity(generation);
+          break;
+        }
+        case 'documents':
+        case 'photos':
+        case 'setup':
+        case 'split': {
+          break;
+        }
       }
 
       loadPersonSecondaryProjections({
@@ -3002,6 +3074,12 @@
     cimmichPersonVisibility = undefined;
     cimmichPeopleConnections = [];
     cimmichDirectContextConnections = [];
+    cimmichRecordedConnectionFacts = [];
+    cimmichConnectionSuggestions = [];
+    cimmichConnectionEditing = undefined;
+    cimmichConnectionAddOpen = false;
+    cimmichConnectionHubOpen = false;
+    cimmichConnectionPersonAddOpen = false;
     cimmichConnectionsLoaded = false;
     cimmichConnectionError = '';
     cimmichConnectionSavingId = '';
@@ -3291,6 +3369,13 @@
               waitingHint={cimmichAwaitingCountHint}
             />
 
+            {#if cimmichMode === 'connections'}
+              <CimmichPersonConnectionToolbar
+                onchange={(view) => (cimmichConnectionView = view)}
+                view={cimmichConnectionView}
+              />
+            {/if}
+
             {#if cimmichMode === 'photos'}
               <div class="my-2 w-px shrink-0 bg-gray-300 dark:bg-gray-700" aria-hidden="true"></div>
               <div
@@ -3472,110 +3557,79 @@
         </section>
       {:else if cimmichMode === 'connections'}
         <section class="grid gap-4" aria-label="Connections">
-          {#if cimmichConnectionError}
-            <p
-              class="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-              role="alert"
-            >
-              {cimmichConnectionError}
-            </p>
+          <div id="person-connection-add-workspace">
+            <CimmichPersonConnectionAdd
+              bind:open={cimmichConnectionAddOpen}
+              bind:selectedKind={cimmichConnectionAddKind}
+              onchanged={async (personId) => {
+                cimmichDirectContextConnections = await getCimmichPersonConnections(personId);
+                cimmichConnectionsLoaded = true;
+              }}
+              personId={cimmichPerson.person_id}
+              personName={cimmichPerson.display_name}
+              showTrigger={false}
+            />
+          </div>
+          {#if cimmichConnectionHubOpen}
+            <CimmichConnectionHubEditor
+              onchanged={refreshCimmichConnectionFacts}
+              onclose={() => (cimmichConnectionHubOpen = false)}
+              personId={cimmichPerson.person_id}
+              personName={cimmichPerson.display_name}
+            />
           {/if}
-          {#if cimmichConnectionUndoDecisionId}
-            <div
-              class="flex min-h-11 items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-2 text-sm"
-              aria-live="polite"
-            >
-              <span>Connection removed.</span>
-              <button
-                class="min-h-11 rounded-md px-3 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
-                type="button"
-                disabled={cimmichConnectionSavingId === 'undo'}
-                onclick={() => void undoCimmichPersonConnection()}
-                >{cimmichConnectionSavingId === 'undo' ? 'Restoring…' : 'Undo'}</button
-              >
-            </div>
+          {#if cimmichConnectionPersonAddOpen}
+            <CimmichPersonConnectionAddPerson
+              connectedPersonIds={cimmichPersonConnectionItems
+                .filter(({ entityKind }) => entityKind === 'person')
+                .map(({ entityId }) => entityId)}
+              onclose={() => (cimmichConnectionPersonAddOpen = false)}
+              onselect={chooseCimmichConnectionPerson}
+              personId={cimmichPerson.person_id}
+              personName={cimmichPerson.display_name}
+            />
           {/if}
-          {#if cimmichPersonConnectionGroups.length > 0}
-            <div class="grid gap-7">
-              {#each cimmichPersonConnectionGroups as group (group.id)}
-                <section class="grid gap-3" aria-labelledby={`person-connections-${group.id}`}>
-                  <div class="flex items-baseline gap-2 border-b border-gray-200 pb-2 dark:border-gray-800">
-                    <h3 class="text-sm font-semibold tracking-wide uppercase" id={`person-connections-${group.id}`}>
-                      {group.label}
-                    </h3>
-                    <span class="text-xs text-gray-400">{group.items.length.toLocaleString()}</span>
-                  </div>
-                  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {#each group.items as connection (connection.entityId)}
-                      <div class="relative">
-                        <a
-                          class="group grid min-h-28 grid-cols-[7rem_1fr] overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary dark:border-immich-dark-gray dark:bg-immich-dark-bg dark:hover:border-gray-600"
-                          href={cimmichPersonConnectionHref(connection)}
-                        >
-                          {#if connection.sourceAssetId}
-                            <img
-                              class="size-full object-cover transition duration-200 group-hover:scale-[1.03]"
-                              src={getAssetMediaUrl({ id: connection.sourceAssetId, size: AssetMediaSize.Thumbnail })}
-                              alt=""
-                            />
-                          {:else}
-                            <span
-                              class="flex size-full items-center justify-center bg-primary/10 text-primary"
-                              aria-hidden="true"
-                            >
-                              <Icon icon={mdiShapeOutline} size="30" />
-                            </span>
-                          {/if}
-                          <span class="flex min-w-0 flex-col justify-center p-4 pr-12">
-                            <span class="text-xs font-semibold tracking-wide text-gray-400 uppercase">
-                              {connection.entityKind === 'person'
-                                ? connection.metaLabel
-                                : connection.typeKind.replaceAll('_', ' ')}
-                            </span>
-                            <span class="mt-1 truncate font-semibold">{connection.displayName}</span>
-                            <span class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {#if connection.entityKind === 'person'}
-                                {#if connection.photoCount > 0}
-                                  {connection.photoCount.toLocaleString()} shared
-                                  {connection.photoCount === 1 ? 'photo' : 'photos'}
-                                {/if}
-                                {#if connection.photoCount > 0 && (connection.contextCount ?? 0) > 0}
-                                  ·
-                                {/if}
-                                {#if (connection.contextCount ?? 0) > 0}
-                                  {(connection.contextCount ?? 0).toLocaleString()} shared
-                                  {connection.contextCount === 1 ? 'context' : 'contexts'}
-                                {/if}
-                              {:else if connection.photoCount > 0}
-                                {connection.photoCount.toLocaleString()}
-                                {connection.photoCount === 1 ? 'photo' : 'photos'}
-                              {:else}
-                                {connection.metaLabel || 'Connected'}
-                              {/if}
-                            </span>
-                          </span>
-                        </a>
-                        {#if connection.directRelations?.length}
-                          <button
-                            class="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 dark:bg-immich-dark-gray/90 dark:text-gray-300 dark:hover:bg-red-950 dark:hover:text-red-200"
-                            type="button"
-                            aria-label={`Remove linked roles from ${connection.displayName}`}
-                            title={`Remove linked roles from ${connection.displayName}`}
-                            disabled={cimmichConnectionSavingId === connection.entityId}
-                            onclick={() => void removeCimmichPersonConnection(connection)}
-                            ><Icon icon={mdiTrashCanOutline} size="18" /></button
-                          >
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                </section>
-              {/each}
-            </div>
-          {:else}
-            <CimmichStatePanel
-              title="No connections yet"
-              description={`People, events, places and things linked to ${cimmichPerson.display_name}'s photo stories will appear here.`}
+          {#if cimmichConnectionEditing}
+            <CimmichConnectionFactEditor
+              facts={cimmichRecordedConnectionFacts}
+              onchanged={refreshCimmichConnectionFacts}
+              onclose={() => (cimmichConnectionEditing = undefined)}
+              personId={cimmichPerson.person_id}
+              personName={cimmichPerson.display_name}
+              targetId={cimmichConnectionEditing.entityId}
+              targetKind={cimmichConnectionEditing.entityKind as 'object' | 'person' | 'place'}
+              targetName={cimmichConnectionEditing.displayName}
+            />
+          {/if}
+          <CimmichPersonConnectionNotices
+            error={cimmichConnectionError}
+            onchanged={refreshCimmichConnectionFacts}
+            onundo={() => void undoCimmichPersonConnection()}
+            personId={cimmichPerson.person_id}
+            savingId={cimmichConnectionSavingId}
+            suggestions={cimmichConnectionSuggestions}
+            undoDecisionId={cimmichConnectionUndoDecisionId}
+          />
+          {#if cimmichConnectionView === 'web' && cimmichPersonConnectionItems.length > 0}
+            <CimmichPersonConnectionWeb
+              graph={cimmichPersonConnectionGraph}
+              personId={cimmichPerson.person_id}
+              personName={cimmichPerson.display_name}
+            />
+          {:else if cimmichConnectionView === 'list'}
+            <CimmichPersonConnectionList
+              gethref={(connection) => getCimmichPersonConnectionHref(connection, cimmichSetupPeople)}
+              groups={cimmichPersonConnectionGroups}
+              onadd={openCimmichConnectionSectionAdd}
+              ondescribe={(connection) => (cimmichConnectionEditing = connection)}
+              onhub={() => {
+                cimmichConnectionAddOpen = false;
+                cimmichConnectionPersonAddOpen = false;
+                cimmichConnectionEditing = undefined;
+                cimmichConnectionHubOpen = !cimmichConnectionHubOpen;
+              }}
+              onremove={(connection) => void removeCimmichPersonConnection(connection)}
+              savingId={cimmichConnectionSavingId}
             />
           {/if}
         </section>

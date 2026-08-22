@@ -3,7 +3,14 @@ const routeContract = (pathname) => {
     return {
       code: "PRESENTATION_ASSET_IDS_INVALID",
       message: "Photo presentation visibility input is invalid",
-      method: "filterPresentableAssetSourceIds",
+      method: "filterViewableAssetSourceIds",
+    };
+  }
+  if (pathname === "/v1/visibility/assets/viewable") {
+    return {
+      code: "VIEWABLE_ASSET_IDS_INVALID",
+      message: "Photo viewer visibility input is invalid",
+      method: "filterViewableAssetSourceIds",
     };
   }
   if (pathname === "/v1/map/visible-assets") {

@@ -3454,7 +3454,7 @@
         return;
       }
       evidence = undefined;
-      loadError = photoEvidenceLoadErrorMessage(error);
+      loadError = photoEvidenceLoadErrorMessage(error, { isTrashed: asset.isTrashed });
     } finally {
       if (generation === evidenceLoadGeneration && asset.id === assetId) {
         isLoading = false;

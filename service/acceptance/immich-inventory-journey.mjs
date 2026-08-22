@@ -24,7 +24,7 @@ const refreshLiveBridge = createInventoryProjectionBridgeRefresher({
   sql,
 });
 
-const asset = (id, visibility, revision, type = "image") => ({
+const asset = (id, visibility, revision, type = "image", overrides = {}) => ({
   assetType: type,
   captureTime: "2026-01-01T00:00:00.000Z",
   checksum: `checksum-${id}-${revision}`,
@@ -47,6 +47,7 @@ const asset = (id, visibility, revision, type = "image") => ({
   updatedAt: `2026-01-0${revision === "a" ? "2" : "3"}T00:00:00.000Z`,
   visibility,
   width: type === "audio" ? null : 1200,
+  ...overrides,
 });
 
 const companion = {
@@ -57,7 +58,7 @@ const companion = {
       state: "ready",
     };
   },
-  async listAssets({ cursor, visibility }) {
+  async listAssets({ cursor, includeDeleted, visibility }) {
     calls.push({ cursor, scenario, visibility });
     if (visibility === "timeline") {
       if (scenario === "initial") {
@@ -77,6 +78,22 @@ const companion = {
       if (scenario === "changed-missing") {
         return {
           items: [asset("inventory-a", "timeline", "b")],
+          nextCursor: null,
+          visibility,
+        };
+      }
+      if (scenario === "trashed") {
+        return {
+          items: [
+            asset("inventory-a", "timeline", "b"),
+            ...(includeDeleted
+              ? [
+                  asset("inventory-b", "timeline", "a", "image", {
+                    isTrashed: true,
+                  }),
+                ]
+              : []),
+          ],
           nextCursor: null,
           visibility,
         };
@@ -266,19 +283,38 @@ try {
   scenario = "changed-missing";
   const changed = await createSynchronizer().synchronize();
   assert.equal(changed.run.state, "completed");
-  assert.equal(changed.source.activeAssets, 2);
+  assert.equal(changed.source.activeAssets, 3);
   assert.equal(changed.source.missingAssets, 0);
-  assert.equal(changed.source.suspectedMissingAssets, 1);
-  const [firstAbsence] = await sql`
+  assert.equal(changed.source.suspectedMissingAssets, 0);
+  const [ordinaryInventoryAbsence] = await sql`
     SELECT projection.state AS projection_state, asset.state AS asset_state
     FROM immich_asset_projection projection
     JOIN asset ON asset.asset_id = projection.cimmich_asset_id
     WHERE projection.source_id = 'synthetic-immich-primary'
       AND projection.immich_asset_id = 'inventory-b'
   `;
-  assert.deepEqual(firstAbsence, {
+  assert.deepEqual(ordinaryInventoryAbsence, {
+    asset_state: "active",
+    projection_state: "active",
+  });
+
+  const inactiveLibrary = await createSynchronizer().synchronize({
+    cataloguePresenceOnly: true,
+    visibilities: ["timeline", "archive", "hidden"],
+  });
+  assert.equal(inactiveLibrary.source.activeAssets, 2);
+  assert.equal(inactiveLibrary.source.suspectedMissingAssets, 0);
+  assert.equal(inactiveLibrary.source.missingAssets, 1);
+  const [firstAuthoritativeAbsence] = await sql`
+    SELECT projection.state AS projection_state, asset.state AS asset_state
+    FROM immich_asset_projection projection
+    JOIN asset ON asset.asset_id = projection.cimmich_asset_id
+    WHERE projection.source_id = 'synthetic-immich-primary'
+      AND projection.immich_asset_id = 'inventory-b'
+  `;
+  assert.deepEqual(firstAuthoritativeAbsence, {
     asset_state: "missing",
-    projection_state: "suspected_missing",
+    projection_state: "missing",
   });
   const changedJobs = await sql`
     SELECT projection.immich_asset_id, job.input_revision, job.state,
@@ -305,21 +341,6 @@ try {
     "ASSET_NOT_VISIBLE",
   );
 
-  const confirmedMissing = await createSynchronizer().synchronize();
-  assert.equal(confirmedMissing.source.suspectedMissingAssets, 0);
-  assert.equal(confirmedMissing.source.missingAssets, 1);
-  const [secondAbsence] = await sql`
-    SELECT projection.state AS projection_state, asset.state AS asset_state
-    FROM immich_asset_projection projection
-    JOIN asset ON asset.asset_id = projection.cimmich_asset_id
-    WHERE projection.source_id = 'synthetic-immich-primary'
-      AND projection.immich_asset_id = 'inventory-b'
-  `;
-  assert.deepEqual(secondAbsence, {
-    asset_state: "missing",
-    projection_state: "missing",
-  });
-
   scenario = "reentry";
   const reentered = await createSynchronizer().synchronize();
   assert.equal(reentered.run.state, "completed");
@@ -335,6 +356,35 @@ try {
       AND job.config_digest = ${configDigest}
   `;
   assert.deepEqual(reentryJob, { last_error_code: null, state: "pending" });
+
+  scenario = "trashed";
+  const trashed = await createSynchronizer().synchronize({
+    cataloguePresenceOnly: true,
+    visibilities: ["timeline"],
+  });
+  assert.equal(trashed.source.missingAssets, 1);
+  const [trashedState] = await sql`
+    SELECT projection.is_trashed, projection.state AS projection_state,
+      binding.state AS binding_state
+    FROM immich_asset_projection projection
+    JOIN asset_source_binding binding
+      ON binding.source_kind = 'immich'
+      AND binding.source_id = projection.source_id
+      AND binding.external_asset_id = projection.immich_asset_id
+    WHERE projection.source_id = 'synthetic-immich-primary'
+      AND projection.immich_asset_id = 'inventory-b'
+  `;
+  assert.deepEqual(trashedState, {
+    binding_state: "missing",
+    is_trashed: true,
+    projection_state: "missing",
+  });
+
+  scenario = "reentry";
+  const restoredAfterTrash = await createSynchronizer().synchronize({
+    visibilities: ["timeline"],
+  });
+  assert.equal(restoredAfterTrash.source.missingAssets, 0);
   const [{ jobs: finalJobs }] = await sql`
     SELECT count(*)::int AS jobs FROM media_job job
     JOIN immich_asset_projection projection

@@ -124,7 +124,7 @@ away.
 A second bounded screen used 24 private photos with accepted owner evidence,
 stratified across four time periods and small, medium and large saved Face areas.
 The set included nightlife, beaches, cliffs, ATVs, a fruit market, low light,
-crowds and compressed social-media images. Media stayed local and the active X1
+crowds and compressed social-media images. Media stayed local and the active reference
 OCR run was not changed.
 
 | Apple path                                           | Result                                                                 |
@@ -230,10 +230,10 @@ native reference lanes:
 - **Smart Search** is the stretch target. It measures how quickly the installed
   Immich visual encoder can turn an image into useful stored evidence.
 
-On the private X1 archive, a live Immich v3.1.0 CPU run on 16 August 2026
+On the private reference archive, a live Immich v3.1.0 CPU run on 16 August 2026
 retained enough queue history for an end-to-end measurement:
 
-| Native X1 lane | Installed model | Completed sample          | Sustained rate |
+| Native reference lane | Installed model | Completed sample          | Sustained rate |
 | -------------- | --------------- | ------------------------- | -------------- |
 | OCR            | PP-OCRv5_mobile | 5,000 photos in 1,048.7 s | 4.77 photos/s  |
 | Smart Search   | ViT-B/32 OpenAI | 5,000 photos in 254.8 s   | 19.62 photos/s |
@@ -249,12 +249,12 @@ throughput.
 | -------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
 | Same-host throughput             | At least 90% of that host's Immich OCR rate               | At least the OCR rate; approach Smart Search where truth still passes |
 | Same-host compute                | No more than 110% of OCR core-seconds per committed photo | At or below OCR core-seconds per photo                                |
-| Private X1 provisional wall-rate | At least 4.29 complete photos/s                           | At least 4.77 complete photos/s                                       |
+| Private reference-host provisional wall-rate | At least 4.29 complete photos/s                           | At least 4.77 complete photos/s                                       |
 
 The 10% qualification tolerance absorbs normal queue and storage variance; it
 does not redefine a substantially slower model as fast. A Mac profile is judged
 against Immich OCR and Smart Search measured on that Mac, not against an
-invented accelerated-machine number or an X1 result scaled by core count.
+invented accelerated-machine number or a reference-host result scaled by core count.
 
 The sustained rate includes image decode, model work, schema validation and
 committing the result. It is measured over both the labelled 1,000-photo corpus
@@ -269,7 +269,7 @@ OCR, People, Context and other metadata rather than calculating them again. If
 no candidate clears both the Immich-relative throughput gate and the usefulness
 bar, Cimmich does not ship it as Smart.
 
-The Mac Smart worker should stay below 16 GiB additional memory. X1 should stay
+The Mac Smart worker should stay below 16 GiB additional memory. The reference Linux host should stay
 below 8 GiB additional memory, use adaptive multi-core concurrency, and
 automatically reduce or pause when API/database latency, memory pressure or
 Immich jobs cross their guardrails. A faster model that makes ordinary Cimmich
@@ -298,7 +298,7 @@ requires long unattended compute.
 3. Resolve Florence in a disposable compatible runtime and compare it as the
    portable specialist. Add Moondream only if Florence and SmolVLM leave an
    unfilled speed/quality quadrant. Do not retest Qwen as an every-photo lane.
-4. Qualify the best two on 1,000 photos on both the Mac and X1 CPU baseline.
+4. Qualify the best two on 1,000 photos on both the Mac and reference Linux CPU baseline.
    Reject any profile below either its hard throughput gate or the independent
    usefulness bar; do not average the two into one forgiving score.
 5. Use the already available larger local VLM only as a diagnostic comparison;

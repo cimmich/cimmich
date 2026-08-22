@@ -1257,6 +1257,263 @@ test("schema 142 converges public organisation and private SourcePack history", 
   assert.match(source, /coalesce\(pack\.state, 'missing'\) <> 'active'/);
 });
 
+test("schema 143 records replay-safe Archive Health missing-file retirement", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0143_archive_missing_file_management_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /CREATE TABLE archive_missing_file_command/);
+  assert.match(migration, /request_digest text NOT NULL/);
+  assert.match(migration, /source_asset_ids text\[\] NOT NULL/);
+  assert.match(migration, /receipt_cimmich_archive_missing_file_management_v1/);
+});
+
+test("schema 144 records deleted Immich rows as catalogue presence", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0144_immich_deleted_catalogue_presence_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /catalogue_includes_deleted boolean/);
+  assert.match(migration, /DEFAULT false/);
+  assert.match(migration, /CATALOGUE_SCOPE_UPGRADED/);
+  assert.match(
+    migration,
+    /ALTER COLUMN catalogue_includes_deleted SET DEFAULT true/,
+  );
+  assert.match(
+    migration,
+    /receipt_cimmich_immich_deleted_catalogue_presence_v1/,
+  );
+});
+
+test("schema 145 isolates catalogue presence from normal inventory", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0145_catalogue_presence_inventory_mode_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /p_catalogue_includes_deleted boolean/);
+  assert.match(migration, /CATALOGUE_MODE_SUPERSEDED/);
+  assert.match(migration, /IF v_run\.catalogue_includes_deleted THEN/);
+  assert.match(
+    migration,
+    /ALTER COLUMN catalogue_includes_deleted SET DEFAULT false/,
+  );
+  assert.match(
+    migration,
+    /receipt_cimmich_catalogue_presence_inventory_mode_v1/,
+  );
+});
+
+test("schema 146 treats trash and first complete absence as outside the active library", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0146_active_library_removal_model_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /SET state = 'missing'/);
+  assert.match(migration, /UPDATE asset_source_binding binding/);
+  assert.match(migration, /IF v_run\.catalogue_includes_deleted THEN/);
+  assert.doesNotMatch(migration, /WHEN state = 'suspected_missing'/);
+  assert.match(migration, /receipt_cimmich_active_library_removal_model_v1/);
+});
+
+test("schema 147 permits one audited bulk trash command to retain every removed asset id", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0147_archive_missing_file_command_bulk_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(
+    migration,
+    /DROP CONSTRAINT archive_missing_file_command_source_asset_ids_check/,
+  );
+  assert.match(migration, /cardinality\(source_asset_ids\) >= 1/);
+  assert.doesNotMatch(migration, /BETWEEN 1 AND 100/);
+});
+
+test("schema 148 reapplies explicit Cimmich retirements after refresh resurrection", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0148_durable_archive_retirement_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /FROM archive_missing_file_command command/);
+  assert.match(
+    migration,
+    /CROSS JOIN LATERAL unnest\(command\.source_asset_ids\)/,
+  );
+  assert.match(migration, /UPDATE asset_source_binding binding/);
+  assert.match(migration, /SET state = 'superseded'/);
+  assert.match(migration, /UPDATE asset SET state = 'tombstoned'/);
+  assert.match(migration, /receipt_cimmich_durable_archive_retirement_v1/);
+});
+
+test("schema 149 admits audited owner-created relationship categories", async () => {
+  const migration = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0149_person_relationship_catalog_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+
+  assert.match(migration, /relationship_category_create/);
+  assert.match(migration, /receipt_cimmich_person_relationship_catalog_v1/);
+  assert.match(
+    migration,
+    /ADD CONSTRAINT person_profile_command_command_kind_check/,
+  );
+});
+
+test("schema 150 separates typed graph facts from explainable suggestions", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0150_typed_connection_fact_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE connection_type/);
+  assert.match(source, /CREATE TABLE connection_fact_event/);
+  assert.match(source, /recorded_sequence bigint GENERATED ALWAYS AS IDENTITY/);
+  assert.match(source, /CREATE VIEW current_connection_fact/);
+  assert.match(source, /current_or_past/);
+  assert.match(source, /connectiontype_coworker/);
+  assert.match(source, /connectiontype_works_at/);
+  assert.match(source, /CREATE TABLE connection_suggestion_decision/);
+  assert.match(source, /receipt_cimmich_typed_connection_fact_v1/);
+});
+
+test("schema 151 makes Former temporal and retires the standalone Ex type", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0151_former_person_relationship_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /label \|\| ' \(Former\)'/);
+  assert.match(source, /type_id <> 'connectiontype_ex'/);
+  assert.match(source, /INSERT INTO connection_fact_event/);
+  assert.match(source, /THEN 'connectiontype_partner'/);
+  assert.match(source, /fact\.validity = 'timeless'/);
+  assert.match(source, /SET state = 'retired'/);
+  assert.match(source, /receipt_cimmich_former_person_relationship_v1/);
+});
+
+test("schema 152 makes Former a seeded reusable connection modifier", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0152_connection_fact_modifier_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE connection_modifier/);
+  assert.match(source, /connectionmodifier_former/);
+  assert.match(source, /behavior IN \('qualifier','historical'\)/);
+  assert.match(source, /CREATE TABLE connection_fact_event_modifier/);
+  assert.match(source, /WHERE target_kind = 'person' AND validity = 'past'/);
+  assert.match(source, /schema-151 service remains an availability rollback/);
+  assert.doesNotMatch(
+    source,
+    /CREATE CONSTRAINT TRIGGER connection_fact_former_modifier/,
+  );
+  assert.match(source, /receipt_cimmich_connection_fact_modifier_v1/);
+});
+
+test("schema 153 adds atomic Person connection hubs", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL("../../migrations/0153_connection_hub_v1.sql", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.match(source, /'organisation','group'/);
+  assert.match(source, /target_kind IN \('person','place','object'\)/);
+  assert.match(source, /connectiontype_works_for/);
+  assert.match(source, /connectiontype_member_of/);
+  assert.match(source, /CREATE TABLE connection_hub_command/);
+  assert.match(source, /receipt_cimmich_connection_hub_v1/);
+});
+
+test("schema 154 links relationship facts to existing contexts append-only", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0154_connection_fact_context_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /CREATE TABLE connection_fact_context_event/);
+  assert.match(source, /CREATE VIEW current_connection_fact_context/);
+  assert.match(
+    source,
+    /action text NOT NULL CHECK \(action IN \('attach','detach'\)\)/,
+  );
+  assert.match(source, /Relationship context supersession crossed links/);
+  assert.match(source, /receipt_cimmich_connection_fact_context_v1/);
+});
+
+test("schema 155 persists bounded Context hero framing with its selected cover", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(
+      new URL(
+        "../../migrations/0155_context_cover_framing_v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.match(source, /ADD COLUMN cover_crop jsonb/);
+  assert.match(source, /context_entity_cover_crop_shape_check/);
+  assert.match(source, /cover_crop IS NULL OR cover_asset_id IS NOT NULL/);
+  assert.match(source, /NEW\.cover_crop := NULL/);
+});
+
 test("schema 132 trusts accepted aliases of the same physical face during SourcePack activation", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) =>
     readFile(

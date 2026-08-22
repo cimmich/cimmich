@@ -3,6 +3,10 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CURRENT_SCHEMA_VERSION=$(sh "$ROOT/tools/current_schema_version.sh" "$ROOT/migrations")
+PREVIEW18_VERSION=v1.1.0-community-preview.18
+PREVIEW18_COMMIT=ce4534cf96c5dbe8e6d048c6472e4dc7215087e7
+PREVIEW18_SCHEMA_VERSION=142
+PREVIEW18_SEMANTIC_LEDGER_SHA256=556461408a7667724c853ecba93543481d8314387882b4cc27a20c7bf27687af
 CONTAINER=cimmich-migration-acceptance
 IMAGE=pgvector/pgvector:0.8.2-pg17-trixie
 PORT=55433
@@ -23,6 +27,19 @@ copy_migrations_through() {
       cp "$migration" "$destination/"
     fi
   done
+}
+
+migration_semantic_ledger_digest() {
+  ledger_root=$1
+  find "$ledger_root" -type f -print | sed "s#^$ledger_root/##" | LC_ALL=C sort |
+    while IFS= read -r relative; do
+      # A privacy scrub may remove historical comments without changing the
+      # published migration program. Bind the executable ledger while retaining
+      # filenames, ordering and every non-comment SQL line.
+      file_digest=$(sed '/^[[:space:]]*--/d; /^[[:space:]]*$/d' \
+        "$ledger_root/$relative" | sha256sum | awk '{ print $1 }')
+      printf '%s  migrations/%s\n' "$file_digest" "$relative"
+    done | sha256sum | awk '{ print $1 }'
 }
 
 cleanup() {
@@ -143,6 +160,261 @@ test "$schema75_after" = "$CURRENT_SCHEMA_VERSION:$CURRENT_SCHEMA_VERSION:1:1:1"
   echo "schema-75 to current upgrade did not preserve the fixture" >&2
   exit 1
 }
+
+# Rebuild the exact public Preview 18/schema-142 migration ledger by its
+# immutable release digest, seed every durable domain that must cross the final
+# V1 boundary, upgrade it, then restore the exact pre-upgrade dump. This makes
+# rollback a tested state transition rather than a count-only claim.
+docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_preview18_upgrade_test
+copy_migrations_through "$TMP_ROOT/preview18/migrations" "$PREVIEW18_SCHEMA_VERSION"
+mkdir -p "$TMP_ROOT/preview18/migrations/patches"
+cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
+  "$TMP_ROOT/preview18/migrations/patches/"
+test "$(migration_semantic_ledger_digest "$TMP_ROOT/preview18/migrations")" = \
+  "$PREVIEW18_SEMANTIC_LEDGER_SHA256" || {
+  echo "Preview 18 executable migration ledger does not match $PREVIEW18_COMMIT" >&2
+  exit 1
+}
+PREVIEW18_DATABASE_URL="postgres://cimmich_migration_test:synthetic-migration-password@127.0.0.1:${PORT}/cimmich_preview18_upgrade_test"
+DATABASE_URL="$PREVIEW18_DATABASE_URL" \
+  CIMMICH_MIGRATIONS_DIRECTORY="$TMP_ROOT/preview18/migrations" \
+  npm --prefix "$ROOT/service" run migrate -- apply >"$TMP_ROOT/preview18-install.log"
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test <<'SQL'
+INSERT INTO source_snapshot (
+  snapshot_id, input_schema_version, source_digest, locator_root_token,
+  started_at, completed_at, declared_asset_count, observed_asset_count, state
+) VALUES (
+  'snapshot_preview18_final_seed', 'preview18-final-seed-v1', repeat('1', 64),
+  'preview18-final-seed-root', now(), now(), 1, 1, 'complete'
+);
+INSERT INTO producer_receipt (
+  producer_receipt_id, producer_kind, producer_name, producer_version,
+  source_snapshot_id, started_at, completed_at, result_digest, privacy_class
+) VALUES (
+  'receipt_preview18_final_seed', 'trusted_import', 'preview18-final-seed', 'v1',
+  'snapshot_preview18_final_seed', now(), now(), repeat('2', 64), 'private'
+);
+INSERT INTO asset (
+  asset_id, content_hash, locator_token, media_kind, mime_type,
+  source_snapshot_id, state
+) VALUES (
+  'asset_preview18_final_seed', repeat('3', 40), 'preview18-final-seed-asset',
+  'image', 'image/jpeg', 'snapshot_preview18_final_seed', 'active'
+);
+INSERT INTO media_content (content_id, byte_length)
+VALUES ('media_content_1111111111111111111111111111111111111111', 1);
+INSERT INTO media_content_fingerprint (
+  content_id, hash_algorithm, content_digest, verification, producer_receipt_id
+) VALUES (
+  'media_content_1111111111111111111111111111111111111111',
+  'sha1', repeat('3', 40), 'byte_verified', 'receipt_preview18_final_seed'
+);
+INSERT INTO asset_content_link (asset_id, content_id, producer_receipt_id)
+VALUES (
+  'asset_preview18_final_seed',
+  'media_content_1111111111111111111111111111111111111111',
+  'receipt_preview18_final_seed'
+);
+INSERT INTO person (
+  person_id, display_name, status, created_by_receipt_id
+) VALUES (
+  'person_preview18_final_seed', 'Preview 18 Final Seed', 'active',
+  'receipt_preview18_final_seed'
+);
+INSERT INTO face_observation (
+  face_id, asset_id, box_x, box_y, box_w, box_h, detection_confidence,
+  quality_measurements, state, producer_receipt_id
+) VALUES (
+  'face_preview18_final_seed', 'asset_preview18_final_seed',
+  0.1, 0.1, 0.2, 0.2, 0.95, '{}'::jsonb, 'valid',
+  'receipt_preview18_final_seed'
+);
+INSERT INTO face_embedding (
+  embedding_id, face_id, model_family, model_version, config_digest,
+  dimension, normalized, embedding, vector_digest, state, producer_receipt_id
+) VALUES (
+  'embedding_preview18_final_seed', 'face_preview18_final_seed',
+  'preview18-fixture', 'v1', repeat('4', 64), 3, true,
+  '[1,0,0]'::vector, repeat('5', 64), 'active', 'receipt_preview18_final_seed'
+);
+INSERT INTO decision (
+  decision_id, subject_type, subject_id, action, actor_kind, actor_id,
+  reason_code, note, producer_receipt_id
+) VALUES (
+  'decision_preview18_final_seed', 'face_observation',
+  'face_preview18_final_seed', 'accept', 'user', 'preview18-owner',
+  'owner_confirmed', 'Preview 18 rollback fixture', 'receipt_preview18_final_seed'
+);
+INSERT INTO identity_claim (
+  identity_claim_id, face_id, person_id, origin, state,
+  calibrated_confidence, evidence_refs, decision_id, producer_receipt_id
+) VALUES (
+  'claim_preview18_final_seed', 'face_preview18_final_seed',
+  'person_preview18_final_seed', 'user', 'accepted', 1,
+  '{"fixture":"preview18"}'::jsonb, 'decision_preview18_final_seed',
+  'receipt_preview18_final_seed'
+);
+INSERT INTO cimmich_document (
+  document_id, source_kind, source_asset_id, source_filename, mime_type,
+  display_title, document_kind, status, visibility_tier, created_by
+) VALUES (
+  'document_11111111111111111111111111111111', 'immich_asset',
+  'asset_preview18_final_seed', 'release-fixture.jpg', 'image/jpeg',
+  'Preview 18 document seed', 'other', 'active', 'private', 'preview18-owner'
+);
+INSERT INTO asset_label (
+  label_id, display_name, normalized_name, label_kind, created_by_actor_id
+) VALUES (
+  'label_11111111111111111111111111111111', 'Release collection',
+  'release collection', 'collection', 'preview18-owner'
+);
+INSERT INTO immich_companion_owner (principal_id)
+VALUES ('preview18-owner-principal');
+INSERT INTO asset_source_binding (
+  binding_id, asset_id, content_id, source_kind, source_id,
+  external_asset_id, locator_token, input_revision, state
+) SELECT
+  'source_binding_1111111111111111111111111111111111111111',
+  'asset_preview18_final_seed', content_id, 'immich', 'preview18-source',
+  'preview18-external-asset', 'preview18-source-locator', repeat('6', 64), 'active'
+FROM asset_content_link WHERE asset_id = 'asset_preview18_final_seed';
+SQL
+preview18_before=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test -Atc \
+  "SELECT max(version) || ':' || count(*) FROM cimmich_schema_migration")
+test "$preview18_before" = "$PREVIEW18_SCHEMA_VERSION:$PREVIEW18_SCHEMA_VERSION" || {
+  echo "$PREVIEW18_VERSION fixture did not reach exact schema $PREVIEW18_SCHEMA_VERSION" >&2
+  exit 1
+}
+docker exec "$CONTAINER" pg_dump -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test -Fc > "$TMP_ROOT/preview18-schema142.dump"
+DATABASE_URL="$PREVIEW18_DATABASE_URL" npm --prefix "$ROOT/service" run migrate -- apply \
+  >"$TMP_ROOT/preview18-upgrade.log"
+preview18_after=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test -Atc \
+  "SELECT (SELECT max(version) FROM cimmich_schema_migration) || ':' ||
+    (SELECT display_name FROM person WHERE person_id='person_preview18_final_seed') || ':' ||
+    (SELECT count(*) FROM identity_claim WHERE identity_claim_id='claim_preview18_final_seed' AND state='accepted') || ':' ||
+    (SELECT count(*) FROM cimmich_document WHERE document_id='document_11111111111111111111111111111111') || ':' ||
+    (SELECT count(*) FROM asset_label WHERE label_id='label_11111111111111111111111111111111' AND label_kind='collection') || ':' ||
+    (SELECT count(*) FROM immich_companion_owner WHERE principal_id='preview18-owner-principal') || ':' ||
+    (SELECT count(*) FROM asset_source_binding WHERE external_asset_id='preview18-external-asset')")
+test "$preview18_after" = "$CURRENT_SCHEMA_VERSION:Preview 18 Final Seed:1:1:1:1:1" || {
+  echo "Preview 18 to current upgrade did not preserve the complete final seed" >&2
+  exit 1
+}
+docker exec "$CONTAINER" dropdb --force -U cimmich_migration_test cimmich_preview18_upgrade_test
+docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_preview18_upgrade_test
+docker exec -i "$CONTAINER" pg_restore -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test --no-owner --no-privileges \
+  < "$TMP_ROOT/preview18-schema142.dump"
+preview18_rollback=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_preview18_upgrade_test -Atc \
+  "SELECT (SELECT max(version) FROM cimmich_schema_migration) || ':' ||
+    (SELECT display_name FROM person WHERE person_id='person_preview18_final_seed') || ':' ||
+    (SELECT count(*) FROM identity_claim WHERE identity_claim_id='claim_preview18_final_seed' AND state='accepted') || ':' ||
+    (SELECT count(*) FROM cimmich_document WHERE document_id='document_11111111111111111111111111111111') || ':' ||
+    (SELECT count(*) FROM asset_label WHERE label_id='label_11111111111111111111111111111111' AND label_kind='collection') || ':' ||
+    (SELECT count(*) FROM immich_companion_owner WHERE principal_id='preview18-owner-principal') || ':' ||
+    (SELECT count(*) FROM asset_source_binding WHERE external_asset_id='preview18-external-asset')")
+test "$preview18_rollback" = "$PREVIEW18_SCHEMA_VERSION:Preview 18 Final Seed:1:1:1:1:1" || {
+  echo "Preview 18 rollback did not restore the exact pre-upgrade seed" >&2
+  exit 1
+}
+
+# Prove schemas 151-152 preserve real schema-150 Person facts while changing
+# their temporal model. Custom labels become current/former automatically,
+# timeless facts become current, legacy Ex becomes Partner (Former), and the
+# historical fact gains the seeded Former modifier.
+docker exec "$CONTAINER" createdb -U cimmich_migration_test cimmich_schema150_former_test
+copy_migrations_through "$TMP_ROOT/through-150-migrations" 150
+mkdir -p "$TMP_ROOT/through-150-migrations/patches"
+cp "$ROOT/migrations/patches/0048_0001_inventory_two_strike_v1.sql" \
+  "$TMP_ROOT/through-150-migrations/patches/"
+SCHEMA150_DATABASE_URL="postgres://cimmich_migration_test:synthetic-migration-password@127.0.0.1:${PORT}/cimmich_schema150_former_test"
+DATABASE_URL="$SCHEMA150_DATABASE_URL" \
+  CIMMICH_MIGRATIONS_DIRECTORY="$TMP_ROOT/through-150-migrations" \
+  npm --prefix "$ROOT/service" run migrate -- apply >"$TMP_ROOT/schema150-install.log"
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_schema150_former_test <<'SQL'
+INSERT INTO person (person_id, display_name, status, created_by_receipt_id)
+VALUES
+  ('person_schema150_former_source', 'Schema 150 Source', 'active',
+    'receipt_cimmich_typed_connection_fact_v1'),
+  ('person_schema150_former_target', 'Schema 150 Target', 'active',
+    'receipt_cimmich_typed_connection_fact_v1');
+
+INSERT INTO connection_type (
+  type_id, slug, label, inverse_label, source_kind, target_kind, is_symmetric,
+  temporal_mode, semantic_kind, is_system_seed, command_id, actor_id
+) VALUES (
+  'connectiontype_custom_housemate', 'housemate', 'Housemate', 'Housemate',
+  'person', 'person', true, 'none', 'housemate', false,
+  'schema150.housemate.create', 'migration-acceptance'
+);
+
+INSERT INTO connection_fact_event (
+  event_id, fact_id, action, source_kind, source_id, target_kind, target_id,
+  type_id, validity, date_start, date_end, note, command_id, actor_id
+) VALUES
+  ('connectionevent_15000000000000000000000000000001',
+    'connectionfact_15000000000000000000000000000001', 'record', 'person',
+    'person_schema150_former_source', 'person', 'person_schema150_former_target',
+    'connectiontype_friend', 'timeless', NULL, NULL, 'Friend note',
+    'schema150.fact.friend', 'migration-acceptance'),
+  ('connectionevent_15000000000000000000000000000002',
+    'connectionfact_15000000000000000000000000000002', 'record', 'person',
+    'person_schema150_former_source', 'person', 'person_schema150_former_target',
+    'connectiontype_custom_housemate', 'timeless', NULL, NULL, 'Housemate note',
+    'schema150.fact.housemate', 'migration-acceptance'),
+  ('connectionevent_15000000000000000000000000000003',
+    'connectionfact_15000000000000000000000000000003', 'record', 'person',
+    'person_schema150_former_source', 'person', 'person_schema150_former_target',
+    'connectiontype_ex', 'timeless', '2018-01-01', '2020-12-31', 'Ex note',
+    'schema150.fact.ex', 'migration-acceptance');
+SQL
+DATABASE_URL="$SCHEMA150_DATABASE_URL" npm --prefix "$ROOT/service" run migrate -- apply \
+  >"$TMP_ROOT/schema150-former-upgrade.log"
+former_upgrade=$(docker exec "$CONTAINER" psql -U cimmich_migration_test \
+  -d cimmich_schema150_former_test -Atc \
+  "SELECT
+    (SELECT max(version) FROM cimmich_schema_migration) || ':' ||
+    (SELECT count(*) FROM connection_fact_event) || ':' ||
+    (SELECT count(*) FROM current_connection_fact) || ':' ||
+    (SELECT count(*) FROM current_connection_fact WHERE validity='current') || ':' ||
+    (SELECT count(*) FROM current_connection_fact WHERE validity='past') || ':' ||
+    (SELECT count(*) FROM current_connection_fact WHERE type_id='connectiontype_partner' AND validity='past' AND date_start='2018-01-01' AND date_end='2020-12-31' AND note='Ex note') || ':' ||
+    (SELECT count(*) FROM current_connection_fact WHERE type_id='connectiontype_custom_housemate' AND validity='current' AND note='Housemate note') || ':' ||
+    (SELECT count(*) FROM current_connection_fact WHERE type_id='connectiontype_friend' AND validity='current' AND note='Friend note') || ':' ||
+    (SELECT count(*) FROM connection_type WHERE target_kind='person' AND state='active' AND temporal_mode='current_or_past' AND past_label=label || ' (Former)' AND inverse_past_label=inverse_label || ' (Former)') || ':' ||
+    (SELECT count(*) FROM connection_type WHERE target_kind='person' AND state='active') || ':' ||
+    (SELECT count(*) FROM connection_type WHERE type_id='connectiontype_ex' AND state='retired') || ':' ||
+    (SELECT count(*) FROM connection_fact_event WHERE supersedes_event_id IS NOT NULL) || ':' ||
+    (SELECT count(*) FROM connection_fact_event_modifier event_modifier JOIN current_connection_fact fact USING (event_id) WHERE event_modifier.modifier_id='connectionmodifier_former' AND fact.validity='past')")
+test "$former_upgrade" = "$CURRENT_SCHEMA_VERSION:6:3:2:1:1:1:1:9:9:1:3:1" || {
+  echo "schema-150 Former relationship upgrade verification failed: $former_upgrade" >&2
+  exit 1
+}
+
+# The schema-151 service is the immediate availability rollback. Prove its
+# legacy past-event shape remains writable on schema 152 even though it cannot
+# yet persist the explicit modifier association.
+docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U cimmich_migration_test \
+  -d cimmich_schema150_former_test <<'SQL'
+BEGIN;
+INSERT INTO connection_fact_event (
+  event_id, fact_id, action, source_kind, source_id, target_kind, target_id,
+  type_id, validity, command_id, actor_id
+) VALUES (
+  'connectionevent_15200000000000000000000000000001',
+  'connectionfact_15200000000000000000000000000001', 'record', 'person',
+  'person_schema150_former_source', 'person', 'person_schema150_former_target',
+  'connectiontype_best_friend', 'past', 'schema152.rollback.past',
+  'schema-151-rollback'
+);
+ROLLBACK;
+SQL
 
 # Schema 117 keeps recurring time on Activity Events and stop order on the
 # existing Trip -> Place location relation. Exercise the real constraints and
@@ -493,4 +765,4 @@ if [ "$resume_count" != "2" ] || [ "$resume_timing_count" != "2" ]; then
   exit 1
 fi
 
-echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/schema75-upgrade/concurrent/checksum/resume/legacy-restore/locator-preservation/new-write-enforcement)"
+echo "Cimmich migration runner acceptance: PASS (schema=$CURRENT_SCHEMA_VERSION fresh/preview18-schema142-upgrade-rollback/schema75-upgrade/schema150-former-upgrade/concurrent/checksum/resume/legacy-restore/locator-preservation/new-write-enforcement)"

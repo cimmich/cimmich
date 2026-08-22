@@ -26,6 +26,21 @@ REQUEST_SCHEMA = "cimmich.recognition-request.v1"
 OBSERVATION_SCHEMA = "cimmich.recognition-observation.v1"
 PROVIDER_SCHEMA = "cimmich.recognition-provider.v1"
 DETECTOR_INPUT_SIZE = (640, 640)
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
+
+
+def validate_source_dimensions(path: Path) -> None:
+    Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
+    with Image.open(path) as image:
+        if (
+            image.width < 1
+            or image.height < 1
+            or image.width > MAX_DECODED_DIMENSION
+            or image.height > MAX_DECODED_DIMENSION
+            or image.width * image.height > MAX_DECODED_PIXELS
+        ):
+            raise ValueError("source image exceeds its decoded pixel bound")
 
 
 def canonical_json(value: Any) -> str:
@@ -621,6 +636,7 @@ def main() -> None:
             if cached_source == source and cached_image is not None:
                 image = cached_image
             else:
+                validate_source_dimensions(source)
                 image = cv2.imread(str(source), cv2.IMREAD_COLOR)
                 cached_source = source
                 cached_image = image

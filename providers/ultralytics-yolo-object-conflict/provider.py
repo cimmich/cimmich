@@ -20,6 +20,20 @@ MAX_HEADER_BYTES = 4096
 HEX64 = set("0123456789abcdef")
 RAW_CONFIDENCE_FLOOR = 0.05
 MAX_RAW_DETECTIONS = 32
+MAX_DECODED_DIMENSION = 32_768
+MAX_DECODED_PIXELS = 100_000_000
+
+
+def validate_image_dimensions(image: Any) -> None:
+    width, height = image.size
+    if (
+        width < 1
+        or height < 1
+        or width > MAX_DECODED_DIMENSION
+        or height > MAX_DECODED_DIMENSION
+        or width * height > MAX_DECODED_PIXELS
+    ):
+        raise ProviderError("source image exceeds its decoded pixel bound")
 MANIFEST_KEYS = {
     "detector", "execution", "licensing", "objectConfigDigest",
     "preprocessing", "privacy", "provider", "resources", "schemaVersion",
@@ -192,7 +206,12 @@ def execute(
         model_factory = YOLO
     if image_decoder is None:
         from PIL import Image
-        image_decoder = lambda value: Image.open(io.BytesIO(value)).convert("RGB")
+        Image.MAX_IMAGE_PIXELS = MAX_DECODED_PIXELS
+
+        def image_decoder(value):
+            with Image.open(io.BytesIO(value)) as opened:
+                validate_image_dimensions(opened)
+                return opened.convert("RGB")
     try:
         image = image_decoder(image_bytes)
     except Exception as error:

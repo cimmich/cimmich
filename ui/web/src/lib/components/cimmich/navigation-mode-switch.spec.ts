@@ -1,7 +1,7 @@
 import { cimmichModeSwitch, isCimmichMode, isCimmichPath } from './navigation-mode-switch';
 
 describe('Cimmich navigation mode switch', () => {
-  it.each(['/cimmich', '/cimmich/home', '/cimmich/people/Benji%20Hart'])('recognises %s as Cimmich', (path) => {
+  it.each(['/cimmich', '/cimmich/home', '/cimmich/people/Cedar%20Quinn'])('recognises %s as Cimmich', (path) => {
     expect(isCimmichPath(path)).toBe(true);
     expect(cimmichModeSwitch(path)).toEqual({ cimmich: true, href: '/photos', label: 'Switch to Immich' });
   });

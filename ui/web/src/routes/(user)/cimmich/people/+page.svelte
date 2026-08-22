@@ -38,7 +38,11 @@
     type CimmichPersonCandidateSummary,
   } from '$lib/services/cimmich.service';
   import { getAssetMediaUrl } from '$lib/utils';
-  import { cimmichSquareCropBackgroundStyle, cimmichSquareObservationStyle } from '$lib/utils/cimmich-crop';
+  import {
+    cimmichPresentationSquareStyle,
+    cimmichSquareCropBackgroundStyle,
+    cimmichSquareObservationStyle,
+  } from '$lib/utils/cimmich-crop';
   import { AssetMediaSize } from '@immich/sdk';
   import {
     mdiAccountMultipleOutline,
@@ -295,38 +299,7 @@
   const cimmichPresentationSquareCropStyle = (
     media: NonNullable<CimmichPerson['presentationBody'] | CimmichPerson['presentationFace']>,
     presentationAspect: number,
-  ) => {
-    if (!media.width || !media.height) {
-      return 'position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;';
-    }
-    const sourceAspect = media.width / media.height;
-    const presentationBase =
-      sourceAspect > presentationAspect
-        ? { h: 1, w: presentationAspect / sourceAspect }
-        : { h: sourceAspect / presentationAspect, w: 1 };
-    const crop = media.crop ?? {
-      h: presentationBase.h,
-      w: presentationBase.w,
-      x: (1 - presentationBase.w) / 2,
-      y: (1 - presentationBase.h) / 2,
-    };
-    const zoom = Math.max(1, Math.max(presentationBase.w / crop.w, presentationBase.h / crop.h));
-    const squareBase = sourceAspect > 1 ? { h: 1, w: 1 / sourceAspect } : { h: sourceAspect, w: 1 };
-    const cropW = squareBase.w / zoom;
-    const cropH = squareBase.h / zoom;
-    const centerX = crop.x + crop.w / 2;
-    const centerY = crop.y + crop.h / 2;
-    const cropX = Math.max(0, Math.min(1 - cropW, centerX - cropW / 2));
-    const cropY = Math.max(0, Math.min(1 - cropH, centerY - cropH / 2));
-    return [
-      'position: absolute',
-      `width: ${100 / cropW}%`,
-      'height: auto',
-      'max-width: none',
-      `left: ${(-cropX / cropW) * 100}%`,
-      `top: ${(-cropY / cropH) * 100}%`,
-    ].join('; ');
-  };
+  ) => cimmichPresentationSquareStyle({ ...media, presentationAspect });
 
   const cimmichPresentationBodyCropStyle = (media: NonNullable<CimmichPerson['presentationBody']>) =>
     cimmichPresentationSquareCropStyle(media, 3 / 4);

@@ -1,5 +1,6 @@
 import { render, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
 import { assetFactory } from '@test-data/factories/asset-factory';
 import CimmichVisualSearch from './CimmichVisualSearch.svelte';
 
@@ -11,10 +12,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@immich/sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@immich/sdk')>()),
   searchSmart: mocks.searchSmart,
-}));
-
-vi.mock('$lib/managers/cimmich-visibility-manager.svelte', () => ({
-  cimmichVisibilityManager: { version: 0 },
 }));
 
 vi.mock('$lib/services/cimmich-archive-integrity.service', async (importOriginal) => ({
@@ -80,5 +77,31 @@ describe('Cimmich visual search', () => {
 
     await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('red bicycle', ''));
     expect(mocks.searchSmart).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears disclosed results while a visibility reprojection is pending and keeps them closed when it fails', async () => {
+    let rejectReprojection: (error: Error) => void = () => undefined;
+    const reprojection = new Promise<never>((_resolve, reject) => {
+      rejectReprojection = reject;
+    });
+    const privateResult = assetFactory.build({ id: 'private-result', originalFileName: 'private-result.jpg' });
+    mocks.searchSmart
+      .mockResolvedValueOnce({ assets: { items: [privateResult], nextPage: null } })
+      .mockReturnValueOnce(reprojection);
+    mocks.evidence.mockResolvedValueOnce({ items: [{ assetId: 'internal-private', sourceAssetId: privateResult.id }] });
+
+    const rendered = render(CimmichVisualSearch, { initialQuery: 'family picnic' });
+    expect(await rendered.findByRole('link', { name: 'Open private-result.jpg' })).toBeInTheDocument();
+
+    cimmichVisibilityManager.notify();
+
+    await waitFor(() =>
+      expect(rendered.queryByRole('link', { name: 'Open private-result.jpg' })).not.toBeInTheDocument(),
+    );
+    expect(mocks.searchSmart).toHaveBeenCalledTimes(2);
+
+    rejectReprojection(new Error('replacement projection unavailable'));
+    expect(await rendered.findByText('replacement projection unavailable')).toBeInTheDocument();
+    expect(rendered.queryByRole('link', { name: 'Open private-result.jpg' })).not.toBeInTheDocument();
   });
 });

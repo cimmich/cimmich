@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,10 +15,10 @@ const legacyCeilings = new Map([
   ["service/src/repository.mjs", 10_230],
   ["ui/web/src/lib/components/cimmich/CimmichPhotoOverlay.svelte", 6_402],
   ["ui/web/src/lib/components/cimmich/CimmichContextBrowser.svelte", 6_511],
-  ["ui/web/src/routes/(user)/cimmich/people/[personName]/+page.svelte", 5_834],
+  ["ui/web/src/routes/(user)/cimmich/people/[personName]/+page.svelte", 5_833],
   ["service/src/context-entities.mjs", 4_484],
-  ["ui/web/src/lib/services/cimmich.service.ts", 4_321],
-  ["service/src/server.mjs", 3_918],
+  ["ui/web/src/lib/services/cimmich.service.ts", 4_315],
+  ["service/src/server.mjs", 3_916],
   ["ui/web/src/routes/(user)/cimmich/pets/+page.svelte", 3_066],
   ["ui/web/src/lib/services/cimmich-evidence.service.ts", 2_614],
   ["service/src/guided-route-catalog.mjs", 2_575],
@@ -31,7 +31,7 @@ const legacyCeilings = new Map([
   ["service/src/manual-subject-tag.mjs", 1_610],
   ["ui/web/src/lib/components/cimmich/CimmichDocuments.svelte", 1_572],
   ["service/src/documents.mjs", 1_496],
-  ["service/src/immich-inventory.mjs", 1_485],
+  ["service/src/immich-inventory.mjs", 1_474],
   ["ui/web/src/lib/components/cimmich/CimmichContextCollection.svelte", 1_275],
   ["service/src/body-continuity-contract.mjs", 1_193],
   ["service/src/manual-photo-context.mjs", 1_178],
@@ -46,9 +46,11 @@ const legacyCeilings = new Map([
   ["service/src/person-profile.mjs", 1_027],
 ]);
 
-const tracked = execFileSync("git", ["-C", root, "ls-files", "-z"], {
-  encoding: "utf8",
-})
+const tracked = execFileSync(
+  "git",
+  ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+  { encoding: "utf8" },
+)
   .split("\0")
   .filter(Boolean);
 
@@ -61,7 +63,9 @@ const isProductionSource = (relative) => {
 const failures = [];
 let checked = 0;
 for (const relative of tracked.filter(isProductionSource)) {
-  const text = readFileSync(path.join(root, relative), "utf8");
+  const absolute = path.join(root, relative);
+  if (!existsSync(absolute)) continue;
+  const text = readFileSync(absolute, "utf8");
   const lines = (text.match(/\n/g) ?? []).length;
   const limit = legacyCeilings.get(relative) ?? newFileLineLimit;
   checked += 1;

@@ -29,5 +29,6 @@ export type CimmichPersonAssetProjection<TContextTypeKind extends string, TVisib
   presence_evidence: boolean;
   privacy_tier?: TVisibilityTier;
   sourceAssetId: string;
+  sourceState?: 'active' | 'missing' | 'trashed';
   width: number;
 };

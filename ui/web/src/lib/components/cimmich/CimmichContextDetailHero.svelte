@@ -1,6 +1,7 @@
 <script lang="ts">
   import type {
     CimmichContextDetail,
+    CimmichContextAsset,
     CimmichContextEntity,
     CimmichContextFamily,
     CimmichPlacePlan,
@@ -29,16 +30,18 @@
     formatImmichPlaceLocation,
   } from './context-entity-presentation';
   import CimmichPlanSatellite from './CimmichPlanSatellite.svelte';
+  import { contextCoverHeroStyle } from './context-cover-framing';
 
   interface Props {
     detail: CimmichContextDetail;
     entities: CimmichContextEntity[];
     family: CimmichContextFamily;
     onOpenPlan?: () => void;
+    onFrameCover?: (asset: CimmichContextAsset) => void;
     plans?: CimmichPlacePlan[];
   }
 
-  let { detail, entities, family, onOpenPlan, plans = [] }: Props = $props();
+  let { detail, entities, family, onFrameCover, onOpenPlan, plans = [] }: Props = $props();
   const heroAssets = $derived(family === 'places' ? (detail.subtreeAssets ?? detail.assets) : detail.assets);
   const heroAsset = $derived(
     heroAssets.find((asset) => asset.sourceAssetId === detail.entity.coverAssetId) ?? heroAssets[0] ?? null,
@@ -285,12 +288,19 @@
           src={getAssetMediaUrl({ id: heroAsset.sourceAssetId, size: AssetMediaSize.Preview })}
           alt=""
           fetchpriority="high"
+          style={contextCoverHeroStyle(detail.entity.coverCrop ?? null, heroAsset.width, heroAsset.height)}
         />
       </a>
     {:else}
       <div class="context-detail-placeholder">
         <span><Icon icon={familyIcon} size="34" /></span>
       </div>
+    {/if}
+
+    {#if heroAsset}
+      <button class="context-detail-frame-cover" type="button" onclick={() => onFrameCover?.(heroAsset)}>
+        Frame cover
+      </button>
     {/if}
 
     <!-- Opaque enough at the text to hold contrast over any photo, including a
@@ -497,11 +507,38 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: var(--context-cover-x, 50%) var(--context-cover-y, 50%);
+    transform: scale(var(--context-cover-zoom, 1));
+    transform-origin: var(--context-cover-x, 50%) var(--context-cover-y, 50%);
     transition: transform 220ms ease;
   }
 
-  .context-detail-asset-link:hover img {
+  .context-detail-asset-link:hover img:not([style*='--context-cover-zoom:']) {
     transform: scale(1.012);
+  }
+
+  .context-detail-frame-cover {
+    position: absolute;
+    top: 16px;
+    left: 64px;
+    z-index: 4;
+    min-height: 40px;
+    border: 1px solid rgb(255 255 255 / 0.24);
+    border-radius: 999px;
+    padding: 0 14px;
+    background: rgb(2 6 23 / 0.68);
+    color: white;
+    font-size: 0.78rem;
+    font-weight: 650;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+    backdrop-filter: blur(12px);
+  }
+
+  .context-detail-frame-cover:hover,
+  .context-detail-frame-cover:focus-visible {
+    background: rgb(2 6 23 / 0.86);
+    outline: 2px solid white;
+    outline-offset: 2px;
   }
 
   .context-detail-placeholder {
@@ -552,7 +589,7 @@
   }
 
   /* Clamped to two lines rather than a single ellipsised one: on a phone a
-     single line cut "Also Home, Parents Home" down to "Parent…", which is worse
+     single line cut "Also Cedar House, Willow House" down to "Willow…", which is worse
      than letting it use the line it needs. */
   .context-detail-subline {
     display: -webkit-box;

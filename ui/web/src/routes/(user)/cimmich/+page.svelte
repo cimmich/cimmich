@@ -22,6 +22,7 @@
   } from '$lib/components/cimmich/home-presentation';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import { cimmichVisibilityManager } from '$lib/managers/cimmich-visibility-manager.svelte';
+  import { beginCimmichProjection } from '$lib/components/cimmich/cimmich-projection-boundary';
   import { Route } from '$lib/route';
   import {
     getCimmichContextEntities,
@@ -304,11 +305,21 @@
   };
 
   const loadHome = () => {
-    const generation = ++loadGeneration;
-    loaded = false;
-    loadError = '';
-    coverPreferences = {};
-    randomCoverAssetIds = {};
+    const generation = (loadGeneration = beginCimmichProjection(loadGeneration, () => {
+      coverGeneration += 1;
+      summary = undefined;
+      people = [];
+      petProfiles = [];
+      places = [];
+      objects = [];
+      events = [];
+      documents = [];
+      onboardingStatus = undefined;
+      loaded = false;
+      loadError = '';
+      coverPreferences = {};
+      randomCoverAssetIds = {};
+    }));
     void Promise.all([
       getCimmichSummary(),
       getCimmichPeople(500),

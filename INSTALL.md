@@ -13,7 +13,7 @@ complete lifecycle.
 
 ## Before you begin
 
-Community Preview 18 requires:
+Community Preview 19 requires:
 
 - exact Immich 3.1.0 already running;
 - Docker Desktop, OrbStack or Docker Engine with Compose v2;
@@ -286,6 +286,11 @@ Everyday operations:
 Do not add `--volumes` to ad hoc Compose commands. Do not edit an active
 `runtime.env` by hand.
 
+The configured Compose project is durable operator state inside `runtime.env`.
+You do not need to export it for `companion.sh`; the operator loads it. If a
+caller supplies a different `CIMMICH_COMPANION_PROJECT`, the command stops
+before touching Docker resources. Keep one state root paired with one project.
+
 ## Optional local face provider
 
 Core Cimmich does not need a model. To install the checksum-pinned OpenCV YuNet
@@ -311,7 +316,8 @@ export CIMMICH_BACKUP_SCAN_PATH=/mnt/independent-photo-backup
 export CIMMICH_BACKUP_SCAN_LABEL='Primary NAS backup'
 export CIMMICH_BACKUP_STORAGE_DOMAIN='nas-volume-photos-1'
 export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
-export CIMMICH_COMPANION_PROJECT=cimmich-companion
+export CIMMICH_COMPANION_PROJECT=$(sed -n 's/^CIMMICH_COMPANION_PROJECT=//p' "$CIMMICH_COMPANION_STATE_ROOT/runtime.env")
+test -n "$CIMMICH_COMPANION_PROJECT"
 docker compose \
   --project-name "$CIMMICH_COMPANION_PROJECT" \
   --env-file "$CIMMICH_COMPANION_STATE_ROOT/runtime.env" \
@@ -344,7 +350,8 @@ export CIMMICH_DATABASE_BACKUP_LABEL='Primary database backup'
 export CIMMICH_DATABASE_BACKUP_DESCRIPTION='External drive or NAS'
 export CIMMICH_DATABASE_BACKUP_STORAGE_DOMAIN=independent-disk-id
 export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
-export CIMMICH_COMPANION_PROJECT=cimmich-companion
+export CIMMICH_COMPANION_PROJECT=$(sed -n 's/^CIMMICH_COMPANION_PROJECT=//p' "$CIMMICH_COMPANION_STATE_ROOT/runtime.env")
+test -n "$CIMMICH_COMPANION_PROJECT"
 docker compose \
   --project-name "$CIMMICH_COMPANION_PROJECT" \
   --env-file "$CIMMICH_COMPANION_STATE_ROOT/runtime.env" \
@@ -385,8 +392,12 @@ Create and inspect a backup before updates, restore or removal:
 ./tools/companion.sh backup /absolute/new/backup-directory
 ```
 
-The command validates the database dump, archive members, configuration,
-semantic counts and checksums before it renames the new directory into place.
+The command briefly stops the API, UI and gateway so no Document revision can
+cross the database/archive boundary, while leaving PostgreSQL available for
+the dump. It records one deterministic Document-store digest beside the schema
+and database counts, restarts only the services that were running, then
+validates the database dump, archive members, configuration and checksums
+before renaming the new directory into place.
 Success is a JSON receipt containing `"status":"READY"`. The directory should
 contain `cimmich.dump`, three `.tgz` archives, `manifest.json` and
 `SHA256SUMS`; retain the receipt with the backup.
@@ -431,6 +442,37 @@ before moving state to a different Immich installation.
 Do not combine a newer Compose definition with older images or source. Do not
 remove the existing project to perform a normal update.
 
+### If an update fails
+
+Do not edit `runtime.env`, delete volumes, rerun `configure`, or start the old
+bundle over a database that may already have newer migrations.
+
+1. Keep the failed new bundle and its terminal output. From that bundle, run
+   `./tools/install.sh --status` and `./tools/companion.sh doctor`; save only the
+   redacted output.
+2. If the new operator can still create a verified backup, keep that failed-
+   state backup separately for diagnosis. Never overwrite the pre-update
+   backup.
+3. Run `./tools/companion.sh disable` from the new bundle.
+4. Return to the exact old named release bundle that created the pre-update
+   backup. Verify that bundle and the backup's `SHA256SUMS` again.
+5. Replace the failed state explicitly:
+
+   ```sh
+   export CIMMICH_COMPANION_STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/cimmich-companion"
+   ./tools/companion.sh rollback-restore /absolute/pre-update-backup \
+     --confirm=cimmich-companion --accept-current-state-loss
+   ./tools/install.sh --status
+   ./tools/companion.sh doctor
+   ```
+
+For a custom project, use its exact saved name in `--confirm`. `rollback-restore`
+is intentionally available only when the backup schema exactly matches the old
+operator. It preflights the complete backup before replacement, but after the
+second confirmation it discards the failed current database and Cimmich
+volumes; there is no automatic recovery from that failed state. Stop and retain
+the original backup if any verification fails.
+
 ## Advanced operator install
 
 Operators who need a non-default state root can use the same complete lifecycle
@@ -453,6 +495,11 @@ inside your home directory is valid. `configure` writes a mode-`0600`
 `CIMMICH_COMPANION_API_PORT` and `CIMMICH_COMPANION_UI_PORT` before `configure`
 to change them.
 
+After configuration, omit `CIMMICH_COMPANION_PROJECT` for routine
+`companion.sh` calls or keep it equal to the saved value. Configuration refuses
+pre-existing containers or reserved volumes for the chosen project, preventing
+an advanced install from silently adopting unrelated state.
+
 The root `compose.yaml` is the deployment definition used by this operator.
 Running it directly with a hand-written `.env` can start the services, but it
 does not create the operator's `runtime.env`; the documented backup, restore,
@@ -474,7 +521,7 @@ for another machine. Confirm Immich opens in a browser before retrying.
 
 ### The version check fails
 
-Community Preview 18 is tested with exact Immich 3.1.0. Do not bypass the
+Community Preview 19 is tested with exact Immich 3.1.0. Do not bypass the
 preflight or edit the claimed version. Use the tested Immich version or wait for
 a named Cimmich release that explicitly tests yours.
 
