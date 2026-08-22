@@ -14,7 +14,7 @@ services:
       REDIS_HOSTNAME: immich-redis
       IMMICH_MACHINE_LEARNING_URL: http://immich-machine-learning:3003
     ports:
-      - 127.0.0.1:${IMMICH_PORT:-22839}:2283
+      - ${IMMICH_TEST_BIND_ADDRESS:-127.0.0.1}:${IMMICH_PORT:-22839}:2283
     depends_on:
       immich-database:
         condition: service_healthy

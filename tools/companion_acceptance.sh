@@ -40,6 +40,17 @@ API_PORT=${CIMMICH_COMPANION_ACCEPTANCE_API_PORT:-3421}
 UI_PORT=${CIMMICH_COMPANION_ACCEPTANCE_UI_PORT:-3423}
 ALPINE_IMAGE=alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
+# Linux containers reach the disposable fixture through the Docker host
+# gateway, which cannot enter a port published only on host loopback. Keep the
+# normal stock-harness default loopback-only and widen only this fictional,
+# short-lived acceptance fixture on Linux.
+if test "$(uname -s)" = Linux; then
+  IMMICH_TEST_BIND_ADDRESS=0.0.0.0
+else
+  IMMICH_TEST_BIND_ADDRESS=127.0.0.1
+fi
+export IMMICH_TEST_BIND_ADDRESS
+
 : "${CIMMICH_PUBLIC_FIXTURE_IMAGE:?Set CIMMICH_PUBLIC_FIXTURE_IMAGE}"
 : "${CIMMICH_PUBLIC_FIXTURE_SHA256:?Set CIMMICH_PUBLIC_FIXTURE_SHA256}"
 

@@ -286,11 +286,12 @@ test("backup restore validates hostile input before replacing owner state", asyn
 });
 
 test("release lifecycle stages are portable across macOS and Linux runners", async () => {
-  const [stock, companion, publicDemo, bootstrap] = await Promise.all([
+  const [stock, companion, publicDemo, bootstrap, stockCompose] = await Promise.all([
     source("tools/run_stock_immich_lifecycle_acceptance.sh"),
     source("tools/companion_acceptance.sh"),
     source("tools/public_demo_acceptance.sh"),
     source("tools/run_public_demo_bootstrap_acceptance.sh"),
+    source("ops/stock-immich-v3.1.0.compose.yml"),
   ]);
 
   for (const script of [stock, companion, publicDemo, bootstrap]) {
@@ -301,6 +302,13 @@ test("release lifecycle stages are portable across macOS and Linux runners", asy
   assert.match(stock, /\.cimmich-stock-acceptance/);
   assert.match(stock, /if ! mkdir "\$STAGE"/);
   assert.match(companion, /\.cimmich-companion-acceptance/);
+  assert.match(companion, /if test "\$\(uname -s\)" = Linux/);
+  assert.match(companion, /IMMICH_TEST_BIND_ADDRESS=0\.0\.0\.0/);
+  assert.match(companion, /IMMICH_TEST_BIND_ADDRESS=127\.0\.0\.1/);
+  assert.match(
+    stockCompose,
+    /\$\{IMMICH_TEST_BIND_ADDRESS:-127\.0\.0\.1\}:\$\{IMMICH_PORT:-22839\}:2283/,
+  );
   assert.match(publicDemo, /\.cimmich-public-demo-acceptance/);
   for (const script of [stock, companion, publicDemo]) {
     assert.match(script, /alpine:3\.22@sha256:[0-9a-f]{64}/);

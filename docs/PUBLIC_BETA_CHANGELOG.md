@@ -4,7 +4,7 @@ This changelog records maintained-product work after the immutable
 `v1.0.0-build-week` submission. It does not revise or expand what was submitted
 for OpenAI Build Week.
 
-## v1.1.0-community-preview.24: Final V1 closeout
+## v1.1.0-community-preview.25: Final V1 closeout
 
 - Discover and Person memory webs are now explicitly Experimental and off by
   default. An owner can opt in from Cimmich experience settings, turn the
@@ -36,6 +36,9 @@ for OpenAI Build Week.
 - Hosted release lifecycles bind the OpenCV probe to the same pinned Python 3.12
   environment that receives its dependencies, and disposable Linux bind-mount
   stages remove container-owned files through a pinned helper container.
+- The fictional companion acceptance fixture remains loopback-only by default;
+  on Linux only, its disposable port is widened for the run so sibling
+  containers can reach it through the Docker host gateway.
 - Oversized UI and service responsibilities were extracted into focused
   modules without raising source-shape ceilings. Publication scanning covers
   tracked names and paths as well as textual contents.
