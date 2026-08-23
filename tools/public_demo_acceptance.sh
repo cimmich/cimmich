@@ -265,14 +265,14 @@ node "$ROOT/tools/owner_gateway_summary_probe.mjs" \
 private_password_file=$(run_demo private-password-file)
 test "$private_password_file" = "$STATE_ROOT/private-password"
 test -s "$private_password_file"
-private_mode=$(stat -f '%Lp' "$private_password_file" 2>/dev/null || stat -c '%a' "$private_password_file")
+private_mode=$("$ROOT/tools/file_mode.sh" "$private_password_file")
 test "$private_mode" = 600
 printf '%s\n' "$state" > "$PRIVACY_PROOF_ROOT/ordinary-status.txt"
 assert_secret_absent "$private_password_file" "$PRIVACY_PROOF_ROOT/ordinary-status.txt"
 guided_token_file=$(run_demo guided-token-file)
 test "$guided_token_file" = "$STATE_ROOT/guided-token"
 test -s "$guided_token_file"
-guided_mode=$(stat -f '%Lp' "$guided_token_file" 2>/dev/null || stat -c '%a' "$guided_token_file")
+guided_mode=$("$ROOT/tools/file_mode.sh" "$guided_token_file")
 test "$guided_mode" = 600
 assert_secret_absent "$guided_token_file" "$PRIVACY_PROOF_ROOT/ordinary-status.txt"
 guided_header_file="$PRIVACY_PROOF_ROOT/guided-header.txt"
@@ -590,7 +590,7 @@ restored_private_password=$("$CHECKSUM" generate "$STATE_ROOT/private-password" 
 test "$restored_private_password" = "$first_private_password"
 restored_guided_upload_credential=$("$CHECKSUM" generate "$STATE_ROOT/immich-guided-credential.json" | cut -d ' ' -f 1)
 test "$restored_guided_upload_credential" = "$first_guided_upload_credential"
-restored_guided_upload_mode=$(stat -f '%Lp' "$STATE_ROOT/immich-guided-credential.json" 2>/dev/null || stat -c '%a' "$STATE_ROOT/immich-guided-credential.json")
+restored_guided_upload_mode=$("$ROOT/tools/file_mode.sh" "$STATE_ROOT/immich-guided-credential.json")
 test "$restored_guided_upload_mode" = 600
 restored_state=$(run_demo status)
 printf '%s\n' "$restored_state" > "$PRIVACY_PROOF_ROOT/restored-status.json"
