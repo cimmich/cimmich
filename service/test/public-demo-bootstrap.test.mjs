@@ -305,6 +305,11 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(source, /compose build cimmich-api public-demo-ui/);
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_UID="\$\(id -u\)"/);
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_GID="\$\(id -g\)"/);
+  assert.match(
+    source,
+    /docker run --rm \\\n+      -v "\$volume:\/source:ro"[\s\S]*tar -czf - -C \/source \. > "\$backup_staging\/\$archive"/,
+  );
+  assert.doesNotMatch(source, /--user "\$\(id -u\):\$\(id -g\)"/);
   assert.equal(
     compose.match(
       /user: \$\{CIMMICH_PUBLIC_DEMO_HOST_UID:-1000\}:\$\{CIMMICH_PUBLIC_DEMO_HOST_GID:-1000\}/g,

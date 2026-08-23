@@ -36,6 +36,9 @@ for OpenAI Build Week.
   was withdrawn before any release or asset publication when the prior
   fallback captured GNU filesystem status along with the expected mode; its
   tag will not be reused.
+- Public-demo backups stream read-only volume archives to operator-created
+  files, so Linux can secure and move the finished backup without weakening
+  access to Immich-owned content or leaving root-owned bind-mount artifacts.
 - Release lifecycle staging follows the host temporary directory with a
   portable `/tmp` fallback. Run identifiers are whole-string validated,
   collision checks and ownership sentinels constrain cleanup, concurrent

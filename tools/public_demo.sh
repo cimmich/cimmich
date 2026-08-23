@@ -473,18 +473,17 @@ backup() {
   compose exec -T immich-database pg_dump -U immich -d immich -Fc > "$backup_staging/immich.dump"
   compose stop cimmich-database immich-database immich-redis >/dev/null
 
-  docker run --rm \
-    -v "${PROJECT}_immich-library:/source:ro" \
-    -v "$backup_staging:/backup" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce tar -czf /backup/immich-library.tgz -C /source .
-  docker run --rm \
-    -v "${PROJECT}_cimmich-documents:/source:ro" \
-    -v "$backup_staging:/backup" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce tar -czf /backup/cimmich-documents.tgz -C /source .
-  docker run --rm \
-    -v "${PROJECT}_cimmich-face-models:/source:ro" \
-    -v "$backup_staging:/backup" \
-    alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce tar -czf /backup/cimmich-face-models.tgz -C /source .
+  for volume_and_archive in \
+    "${PROJECT}_immich-library:immich-library.tgz" \
+    "${PROJECT}_cimmich-documents:cimmich-documents.tgz" \
+    "${PROJECT}_cimmich-face-models:cimmich-face-models.tgz"; do
+    volume=${volume_and_archive%%:*}
+    archive=${volume_and_archive#*:}
+    docker run --rm \
+      -v "$volume:/source:ro" \
+      alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce \
+      tar -czf - -C /source . > "$backup_staging/$archive"
+  done
   test -d "$EXTERNAL_LIBRARY_ROOT" || fail "public demo External Library is missing"
   tar -czf "$backup_staging/external-library.tgz" -C "$EXTERNAL_LIBRARY_ROOT" .
   operator_state_members=".cimmich-public-demo operator.env private-password guided-token immich-map.json immich-credential.json seed-receipt.json display-bridge.json"
