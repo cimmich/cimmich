@@ -257,24 +257,10 @@ CIMMICH_E2E_BASE_URL="http://127.0.0.1:$UI_PORT" \
 owner_gateway_unauthenticated=$(curl -sS -o "$PRIVACY_PROOF_ROOT/owner-gateway-unauthenticated.txt" -w '%{http_code}' \
   "http://127.0.0.1:$UI_PORT/cimmich-api/v1/summary")
 assert_code "$owner_gateway_unauthenticated" 401
-node -e '
-  const fs = require("fs");
-  const credential = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  fetch(process.argv[2], { headers: { "x-api-key": credential.apiKey } })
-    .then(async (response) => {
-      fs.writeFileSync(process.argv[3], await response.text(), { mode: 0o600 });
-      if (response.status !== 200) process.exitCode = 1;
-    })
-    .catch(() => process.exit(1));
-' "$STATE_ROOT/immich-credential.json" \
+node "$ROOT/tools/owner_gateway_summary_probe.mjs" \
+  "$STATE_ROOT/immich-credential.json" \
   "http://127.0.0.1:$UI_PORT/cimmich-api/v1/summary" \
   "$PRIVACY_PROOF_ROOT/owner-gateway-summary.json"
-node -e '
-  const fs = require("fs");
-  const summary = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (!Number.isInteger(summary.assets) || summary.assets < 1) process.exit(1);
-  if (summary.people !== 7) process.exit(1);
-' "$PRIVACY_PROOF_ROOT/owner-gateway-summary.json"
 
 private_password_file=$(run_demo private-password-file)
 test "$private_password_file" = "$STATE_ROOT/private-password"
