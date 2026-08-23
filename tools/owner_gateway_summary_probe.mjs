@@ -4,8 +4,26 @@ import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const safeInteger = (value) => (Number.isInteger(value) ? value : null);
-const safeText = (value) =>
-  typeof value === "string" && value.length > 0 ? value.slice(0, 120) : null;
+const responseCodes = new Set([
+  "IMMICH_OWNER_BINDING_CONFLICT",
+  "IMMICH_OWNER_ORIGIN_REQUIRED",
+  "IMMICH_OWNER_SESSION_FORBIDDEN",
+  "IMMICH_OWNER_SESSION_INVALID",
+  "IMMICH_OWNER_SESSION_REQUIRED",
+  "IMMICH_OWNER_SESSION_ROUTE_UNAVAILABLE",
+  "IMMICH_OWNER_SESSION_UNAVAILABLE",
+]);
+const transportCodes = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+const safeCode = (value, allowed, fallback = null) =>
+  typeof value === "string" && allowed.has(value) ? value : fallback;
 
 export class OwnerGatewaySummaryProbeError extends Error {
   constructor(message, diagnostic) {
@@ -52,7 +70,11 @@ export const probeOwnerGatewaySummary = async ({
   } catch (error) {
     throw new OwnerGatewaySummaryProbeError("gateway request failed", {
       category: "transport",
-      errorCode: safeText(error?.cause?.code || error?.code) || "UNKNOWN",
+      errorCode: safeCode(
+        error?.cause?.code || error?.code,
+        transportCodes,
+        "UNKNOWN",
+      ),
     });
   }
 
@@ -71,7 +93,7 @@ export const probeOwnerGatewaySummary = async ({
   const diagnostic = {
     assets: safeInteger(summary.assets),
     category: "response",
-    code: safeText(summary.code),
+    code: safeCode(summary.code, responseCodes),
     people: safeInteger(summary.people),
     status: response.status,
   };
@@ -131,4 +153,5 @@ const run = async () => {
   }
 };
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) await run();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  await run();

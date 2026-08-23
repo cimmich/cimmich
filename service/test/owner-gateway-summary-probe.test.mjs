@@ -52,9 +52,10 @@ test("owner gateway summary probe reports safe HTTP and projection failures", as
     probeOwnerGatewaySummary({
       ...paths,
       fetchImpl: async () =>
-        new Response(JSON.stringify({ code: "OWNER_AUTH_REQUIRED" }), {
-          status: 401,
-        }),
+        new Response(
+          JSON.stringify({ code: "IMMICH_OWNER_SESSION_REQUIRED" }),
+          { status: 401 },
+        ),
       url: "http://127.0.0.1:3303/cimmich-api/v1/summary",
     }),
     (error) => {
@@ -62,7 +63,7 @@ test("owner gateway summary probe reports safe HTTP and projection failures", as
       assert.deepEqual(error.diagnostic, {
         assets: null,
         category: "response",
-        code: "OWNER_AUTH_REQUIRED",
+        code: "IMMICH_OWNER_SESSION_REQUIRED",
         message: "gateway returned an unexpected HTTP status",
         people: null,
         phase: "owner-gateway-summary",
@@ -92,6 +93,49 @@ test("owner gateway summary probe reports safe HTTP and projection failures", as
       return true;
     },
   );
+});
+
+test("owner gateway summary probe never logs a reflected credential", async () => {
+  const paths = await fixture();
+  const reflectedSecret = "fixture-owner-key";
+  await assert.rejects(
+    probeOwnerGatewaySummary({
+      ...paths,
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({ code: `UNEXPECTED_${reflectedSecret}` }),
+          { status: 401 },
+        ),
+      url: "http://127.0.0.1:3303/cimmich-api/v1/summary",
+    }),
+    (error) => {
+      assert.equal(error.diagnostic.code, null);
+      assert.doesNotMatch(
+        JSON.stringify(error.diagnostic),
+        /fixture-owner-key/u,
+      );
+      return true;
+    },
+  );
+});
+
+test("owner gateway summary probe remains safe when imported without argv", async () => {
+  const moduleUrl = new URL(
+    "../../tools/owner_gateway_summary_probe.mjs",
+    import.meta.url,
+  );
+  const script = `process.argv.splice(1); await import(${JSON.stringify(`${moduleUrl.href}?argv-guard`)});`;
+  const { spawnSync } = await import("node:child_process");
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", script],
+    {
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "");
 });
 
 test("owner gateway summary probe reports transport failures without credentials", async () => {
