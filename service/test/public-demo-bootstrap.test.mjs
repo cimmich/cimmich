@@ -303,6 +303,23 @@ test("public demo stop and restart preserve state while destruction is explicit"
   assert.match(source, /refresh\(\)/);
   assert.match(source, /refresh_counts_after.*refresh_counts_before/);
   assert.match(source, /compose build cimmich-api public-demo-ui/);
+  const resumeUp = source.match(
+    /up\(\) \{[\s\S]*?if test -f "\$SENTINEL"; then([\s\S]*?)    return 0/,
+  )?.[1];
+  assert.ok(resumeUp, "configured up branch must remain inspectable");
+  assert.match(resumeUp, /compose up -d/);
+  assert.match(
+    resumeUp,
+    /wait_http Immich "http:\/\/127\.0\.0\.1:\$IMMICH_PORT\/api\/server\/version" 180/,
+  );
+  assert.ok(
+    resumeUp.indexOf("wait_http Immich") <
+      resumeUp.indexOf("wait_http Cimmich") &&
+      resumeUp.indexOf("wait_http Cimmich") <
+        resumeUp.indexOf("wait_http UI") &&
+      resumeUp.indexOf("wait_http UI") < resumeUp.lastIndexOf("status"),
+    "configured up must await every status surface before reporting ready",
+  );
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_UID="\$\(id -u\)"/);
   assert.match(source, /CIMMICH_PUBLIC_DEMO_HOST_GID="\$\(id -g\)"/);
   assert.match(

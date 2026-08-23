@@ -838,6 +838,11 @@ up() {
     test -s "$STATE_ROOT/seed-receipt.json" && test -s "$STATE_ROOT/display-bridge.json" && test -s "$STATE_ROOT/immich-credential.json" && test -s "$PRIVATE_PASSWORD_FILE" && test -s "$GUIDED_TOKEN_FILE" && test "$(find "$EXTERNAL_LIBRARY_ROOT" -type f -name '*.png' | wc -l | tr -d ' ')" = 51 ||
       fail "partial demo state found; recover with: tools/public_demo.sh reset --confirm=$PROJECT"
     compose up -d
+    # After `down`, Compose recreates every container. The Cimmich API and UI
+    # can become healthy before Immich's HTTP listener is ready, while status()
+    # deliberately requires all three surfaces. Wait for that same invariant
+    # here so a normal resume cannot lose a readiness race.
+    wait_http Immich "http://127.0.0.1:$IMMICH_PORT/api/server/version" 180
     wait_http Cimmich "http://127.0.0.1:$API_PORT/health" 120
     wait_http UI "http://127.0.0.1:$UI_PORT/" 120
     status
