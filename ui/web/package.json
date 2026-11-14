@@ -77,7 +77,7 @@
     "@koddsson/eslint-plugin-tscompat": "^0.2.0",
     "@playwright/test": "1.62.1",
     "@socket.io/component-emitter": "^3.1.0",
-    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/adapter-node": "^5.5.8",
     "@sveltejs/adapter-static": "^3.0.8",
     "@sveltejs/enhanced-img": "^0.10.4",
     "@sveltejs/kit": "^2.56.1",
